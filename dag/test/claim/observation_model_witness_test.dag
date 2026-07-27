@@ -20,7 +20,17 @@ import std.symbols {
 }
 import std.change { KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
-import std.measure { Millisecond, millisecond, ByteSize, byte_size, BasisPoint, basis_point, basis_point_count }
+import std.measure {
+  nanosecond,
+  Millisecond,
+  millisecond,
+  millisecond_to_nanosecond,
+  ByteSize,
+  byte_size,
+  BasisPoint,
+  basis_point,
+  basis_point_count,
+}
 import std.perturbation { BackwardDiffInDiffOut, ForwardSameInSameOut, perturbation_consistent }
 import extdeps.render.glyphs { resolve_symbol, symbol_color, reward_animal_at, reward_animals }
 import std.observation {
@@ -175,7 +185,18 @@ fn obs_event(transition: ObservationTransition, wall_ms: Int) -> ObservationEven
   ObservationEvent {
     subject: obs_entry_subject(),
     transition: transition,
-    wall: MeasuredValue { value: millisecond(count: wall_ms) },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: wall_ms))
+    },
+    rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as NonEmptyStr }
+  }
+}
+
+fn obs_event_ns(transition: ObservationTransition, wall_ns: Int) -> ObservationEvent {
+  ObservationEvent {
+    subject: obs_entry_subject(),
+    transition: transition,
+    wall: MeasuredValue { value: nanosecond(count: wall_ns) },
     rss: MeasuredUnavailable { cause: "cgroup memory.current unreadable in this fixture" as NonEmptyStr }
   }
 }
@@ -293,6 +314,33 @@ test fn w_attention_grounds_on_supplied_basis() -> Bool {
   observation_attention(event: quick, basis: obs_basis()) == Ambient &&
   observation_attention(event: over_average, basis: obs_basis()) == Notable &&
   observation_attention(event: over_maximum, basis: obs_basis()) == Anomaly
+}
+
+test fn w_attention_compares_exact_nanoseconds_to_millisecond_policy() -> Bool {
+  let basis = AttentionBasis {
+    average: millisecond(count: 1),
+    maximum: millisecond(count: 2)
+  }
+  observation_attention(
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1),
+    basis: basis
+  ) == Ambient &&
+  observation_attention(
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 999999),
+    basis: basis
+  ) == Ambient &&
+  observation_attention(
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1000000),
+    basis: basis
+  ) == Ambient &&
+  observation_attention(
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 1000001),
+    basis: basis
+  ) == Notable &&
+  observation_attention(
+    event: obs_event_ns(transition: Concluded { outcome: Done }, wall_ns: 2000001),
+    basis: basis
+  ) == Anomaly
 }
 
 test fn w_attention_moves_with_the_basis_not_a_local_constant() -> Bool {

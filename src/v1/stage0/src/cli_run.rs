@@ -12218,23 +12218,20 @@ pub struct HistogramData {
     pub eval: TimingPercentiles,
 }
 
-fn witness_cost_millisecond_value(
+fn witness_cost_nanosecond_value(
     ctx: &v1_interpreter::InterpContext,
     nanos: u128,
 ) -> Result<v1_interpreter::Value, String> {
-    let count = i64::try_from(nanos / 1_000_000).map_err(|_| {
-        format!(
-            "[witness-row-cost] REFUSED: measured wall {}ms exceeds the seed Int boundary",
-            nanos / 1_000_000
-        )
+    let count = i64::try_from(nanos).map_err(|_| {
+        format!("[witness-row-cost] REFUSED: measured wall {nanos}ns exceeds the seed Int boundary")
     })?;
     v1_interpreter::run_in_context_with_args(
         ctx,
-        "millisecond",
+        "nanosecond",
         &[(Some("count".to_string()), v1_interpreter::Value::Int(count))],
         false,
     )
-    .map_err(|e| format!("[witness-row-cost] REFUSED: millisecond constructor failed: {e}"))
+    .map_err(|e| format!("[witness-row-cost] REFUSED: nanosecond constructor failed: {e}"))
 }
 
 fn witness_cost_string_field(
@@ -12254,24 +12251,24 @@ fn witness_cost_string_field(
     }
 }
 
-fn witness_cost_millisecond_nanos(
+fn witness_cost_nanosecond_count(
     ctx: &v1_interpreter::InterpContext,
     value: v1_interpreter::Value,
     field: &str,
 ) -> Result<u128, String> {
     match v1_interpreter::run_in_context_with_args(
         ctx,
-        "millisecond_count",
-        &[(Some("m".to_string()), value)],
+        "nanosecond_count",
+        &[(Some("n".to_string()), value)],
         false,
     ) {
-        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok((n as u128) * 1_000_000),
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u128),
         Ok(other) => Err(format!(
-            "[witness-row-cost] REFUSED: millisecond_count({field}) returned {}, expected Nat",
+            "[witness-row-cost] REFUSED: nanosecond_count({field}) returned {}, expected Nat",
             other.type_label_public()
         )),
         Err(e) => Err(format!(
-            "[witness-row-cost] REFUSED: millisecond_count({field}) failed: {e}"
+            "[witness-row-cost] REFUSED: nanosecond_count({field}) failed: {e}"
         )),
     }
 }
@@ -12345,14 +12342,14 @@ pub fn project_witness_cost_receipt(
         let resolve_receipts = resolve_groups.remove(&entry_name).unwrap_or_default();
         let mut events = Vec::with_capacity(indices.len() + resolve_receipts.len());
         for receipt in resolve_receipts {
-            let entry_ms = witness_cost_millisecond_value(&ctx, receipt.resolve_nanos)?;
+            let entry_wall = witness_cost_nanosecond_value(&ctx, receipt.resolve_nanos)?;
             events.push(
                 run_in_context_with_args(
                     &ctx,
                     "witness_cost_entry_resolve_event",
                     &[
                         (Some("entry".to_string()), Value::Str(entry_name.clone())),
-                        (Some("resolve".to_string()), entry_ms),
+                        (Some("resolve".to_string()), entry_wall),
                     ],
                     false,
                 )
@@ -12363,7 +12360,7 @@ pub fn project_witness_cost_receipt(
         }
         for index in indices {
             let outcome = &summary.witness_outcomes[index];
-            let eval = witness_cost_millisecond_value(
+            let eval = witness_cost_nanosecond_value(
                 &ctx,
                 summary.performance_receipts[index].wall_nanos,
             )?;
@@ -12508,9 +12505,9 @@ pub fn project_witness_cost_receipt(
             projected_rows.push((
                 row_entry,
                 function,
-                witness_cost_millisecond_nanos(&ctx, eval, "eval")?,
-                witness_cost_millisecond_nanos(&ctx, resolve, "resolve")?,
-                witness_cost_millisecond_nanos(&ctx, warm, "warm")?,
+                witness_cost_nanosecond_count(&ctx, eval, "eval")?,
+                witness_cost_nanosecond_count(&ctx, resolve, "resolve")?,
+                witness_cost_nanosecond_count(&ctx, warm, "warm")?,
                 outcome,
                 outcome_detail,
             ));
@@ -20504,10 +20501,11 @@ mod moduleless_entry_skip_tests {
 #[cfg(test)]
 mod discovery_summary_merge_tests {
     use super::{
-        merge_discovery_summaries, project_witness_cost_receipt, repo_relative_dag_path,
-        run_discovery_corpus_with_options, witness_execution_leg_cache_put, ClaimOutcome,
-        DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome,
-        EntryResolveReceipt, NodeFrontierSelectionMode, ResolveStageNanos,
+        compute_histogram_data, merge_discovery_summaries, project_witness_cost_receipt,
+        repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
+        witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
+        DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
+        NodeFrontierSelectionMode, ResolveStageNanos,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -20636,6 +20634,53 @@ mod discovery_summary_merge_tests {
         assert_eq!(rows[0].6, "returned Bool(false)");
         assert_eq!(rows[1].5, "Refused");
         assert_eq!(rows[1].6, "returned `String`, not Bool");
+    }
+
+    #[test]
+    fn production_witness_cost_projection_preserves_exact_nanoseconds_and_ordering() {
+        let mut summary = sample_summary();
+        for (outcome, function) in summary
+            .witness_outcomes
+            .iter_mut()
+            .zip(["one_ns", "sub_ms", "one_ms"])
+        {
+            outcome.entry = "a.dag".to_string();
+            outcome.module_path = "a".to_string();
+            outcome.function = function.to_string();
+        }
+        summary.entry_resolve_receipts.truncate(1);
+        summary.entry_resolve_receipts[0].resolve_nanos = 7;
+        for (receipt, nanos) in summary
+            .performance_receipts
+            .iter_mut()
+            .zip([1, 999_999, 1_000_000])
+        {
+            receipt.wall_nanos = nanos;
+            receipt.eval_self_nanos = nanos;
+        }
+
+        let rows =
+            project_witness_cost_receipt(&source_roots(), &summary).expect("authored projection");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].1, "one_ns");
+        assert_eq!(rows[0].2, 1);
+        assert_eq!(rows[0].3, 7);
+        assert_eq!(rows[0].4, 8);
+        assert_eq!(rows[1].1, "sub_ms");
+        assert_eq!(rows[1].2, 999_999);
+        assert_eq!(rows[1].4, 1_000_006);
+        assert_eq!(rows[2].1, "one_ms");
+        assert_eq!(rows[2].2, 1_000_000);
+        assert_eq!(rows[2].4, 1_000_007);
+
+        let slowest = top_n_slowest_witnesses(&rows, rows.len());
+        assert_eq!(
+            slowest.iter().map(|row| row.1.as_str()).collect::<Vec<_>>(),
+            vec!["one_ms", "sub_ms", "one_ns"]
+        );
+        let histogram = compute_histogram_data(&rows);
+        assert_eq!(histogram.eval.p50, 999_999);
+        assert_eq!(histogram.eval.p100, 1_000_000);
     }
 
     #[test]
