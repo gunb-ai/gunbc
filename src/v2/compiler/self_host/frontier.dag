@@ -1103,7 +1103,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true }
 ]
 
-data test_module_hygiene_intrinsic_registration_note: String = "U1-U3 umbrella-dissolution hygiene is a seed-retained intrinsic beside cli_run (naming-walk consumer); not a SelfEmitted .dag module."
+data test_module_hygiene_intrinsic_registration_note: String = "U1-U3 umbrella-dissolution hygiene is a seed-retained intrinsic beside cli_run (naming-walk consumer); not a SelfEmitted .dag module. Phase 0: orphan fold authority is gunbc.test_module_hygiene (ModuleSurface); this HAND file stays until host peels parse/FS/U1/U3 and leaves seed_retained_intrinsic_registrations (scaffold dissolve-on)."
 
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },

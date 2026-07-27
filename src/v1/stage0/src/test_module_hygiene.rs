@@ -7,24 +7,30 @@
 //!
 //! SCAFFOLD (§7 HAND-RUST — `test_module_hygiene_orphan_gate`):
 //! Seed-retained host for U1–U3. Naming-walk live via `check_orphan_helpers_or_err`
-//! (proud-wren-892 sweep B). Not a census shrink: this file is already on
-//! `HAND_MAINTAINED_STAGE0_FILES` until the hygiene fold is expressed in `.dag`
-//! and the module deletes.
+//! (proud-wren-892 sweep B). Phase 0: orphan reachability authority lives in
+//! `dag/gunbc/test_module_hygiene.dag` (`orphan_plain_names` over `ModuleSurface`),
+//! pinned by `dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag`
+//! on the same fixture spellings as the unit RED plants below — this Rust module
+//! still parses Node and walks the corpus until Phase 1 projects `ModuleFns`→surface.
+//! Not a census shrink: this file stays on `HAND_MAINTAINED_STAGE0_FILES` until the
+//! host peels and the module deletes.
 //! DELETE WHEN dissolved: this module, the `cli_run` naming-walk call site, and the
-//! unit RED plants below — host then reads a modeled enroll-or-refuse lens.
+//! unit RED plants below — host then reads the modeled enroll-or-refuse fold.
 //! Lane: ROADMAP §1 "**drain the HAND_MAINTAINED queue**"
 //! (`gunbc.roadmap_authority` ticket `5-dissolve-patches`; plan anchor
 //! `dag/gunbc/v1_deletion_plan.dag` `^hand_queue_drain`).
-//! Discriminating receipt (HAND-RUST GATE — unit RED plants, not a marker-count rg):
+//! Discriminating receipt (HAND-RUST GATE — unit RED plants + Phase-0 equivalence
+//! witness, not a marker-count rg):
 //!   `zero_enrolled_plain_helpers_refuse_demotion`
-//!   `allowlisted_fixture_library_path_exempts_zero_enrolled_plains`
+//!   `cross_module_export_roster_seeds_named_plain_not_whole_file`
 //!   `directory_prefix_alone_does_not_exempt_zero_enrolled_plains`
 //!   `orphan_collect_refuses_unparsable_test_dag`
 //!   `test_data_only_module_still_orphans_unreachable_plains`
 //!   `plain_data_alone_does_not_enroll_demoted_holds`
 //!   `unrelated_test_plus_dead_plain_data_does_not_enroll`
 //!   `plain_data_reached_from_test_data_still_covers_helpers`
-//! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag`.
+//! Authority row: `dag/gunbc/test_module_hygiene_scaffold.dag` → bind
+//! `gunbc.test_module_hygiene.orphan_plain_names`.
 
 /// INTERIM hand-Rust scaffold marker (`test_module_hygiene_orphan_gate` / §7).
 /// Discriminating receipt: unit RED plants named in the module-level SCAFFOLD header
@@ -99,8 +105,10 @@ fn is_test_dag_path(path: &str) -> bool {
 /// Local orphan walk cannot see importers; these names seed reachability as if
 /// called (review 43604 — declaration-grain, never a whole-file bypass / DESIGN §5).
 /// A plain in an allowlisted file that is NOT listed (and not reached from tests/
-/// data/exports) still orphans. Dissolve-on: rename each file off `*_test.dag`,
-/// or import-graph reachability supersedes the roster.
+/// data/exports) still orphans.
+/// Dual until Phase 1: same rows as `gunbc.test_module_hygiene.cross_module_exported_plains`.
+/// Dissolve-on: rename each file off `*_test.dag`, or import-graph reachability
+/// supersedes the roster (then delete this const).
 const CROSS_MODULE_EXPORTED_PLAINS: &[(&str, &[&str])] = &[
     // long/ wrappers execute these holds (review 43557).
     (

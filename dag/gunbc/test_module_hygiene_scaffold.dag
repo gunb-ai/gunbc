@@ -7,17 +7,21 @@ import std.types { String }
 data test_module_hygiene_orphan_gate_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v1_compiler.test_module_hygiene",
-    decl_name: "TEST_MODULE_HYGIENE_ORPHAN_GATE_SCAFFOLD_MARKER",
+    module_path: "gunbc.test_module_hygiene",
+    decl_name: "orphan_plain_names",
     field: WholeDeclaration
   }
 }
 
-data test_module_hygiene_orphan_gate_dissolve_trigger: String = "🟡 dissolve-on: test_module_hygiene — U1/U2/U3 seed-retained host (umbrella roster, orphan enroll-or-refuse, file-grain expand); DISSOLVES WHEN the hygiene fold is expressed in .dag and src/v1/stage0/src/test_module_hygiene.rs deletes from HAND_MAINTAINED_STAGE0_FILES (ROADMAP §1 checkbox drain the HAND_MAINTAINED queue — gunbc.roadmap_authority ticket 5-dissolve-patches; v1_deletion_plan milestone hand_queue_drain). Discriminating receipt: the unit RED plants named below (not a marker-count rg)."
+data test_module_hygiene_orphan_gate_dissolve_trigger: String = "🟡 dissolve-on: test_module_hygiene — U1/U2/U3 seed-retained host (umbrella roster, orphan enroll-or-refuse, file-grain expand). Phase 0 LANDED: orphan reachability fold + cross_module export roster live in gunbc.test_module_hygiene (ModuleSurface), pinned by dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag against the unit RED plants below. Remaining peel: (1) host projects parse ModuleFns→ModuleSurface and consumes orphan_plain_names (or Node-tree reader), (2) U1 umbrella + U3 file-grain scan + FS walk leave the seed, (3) src/v1/stage0/src/test_module_hygiene.rs deletes from HAND_MAINTAINED_STAGE0_FILES / seed_retained_intrinsic_registrations (ROADMAP §1 checkbox drain the HAND_MAINTAINED queue — gunbc.roadmap_authority ticket 5-dissolve-patches; v1_deletion_plan milestone hand_queue_drain). Discriminating receipt: the unit RED plants named below + Phase-0 equivalence witness (not a marker-count rg)."
 
-data test_module_hygiene_orphan_gate_receipt_lane_deferral: String = "ROADMAP §1 drain the HAND_MAINTAINED queue (gunbc.roadmap_authority ticket 5-dissolve-patches; ROADMAP.md line under §1 Get off v1) / DESIGN §7 hand-Rust shrink-to-zero — test_module_hygiene.rs is already on HAND_MAINTAINED_STAGE0_FILES; explicit interim lane deferral (review 43601), not unmarked workaround"
+data test_module_hygiene_orphan_gate_receipt_lane_deferral: String = "ROADMAP §1 drain the HAND_MAINTAINED queue (gunbc.roadmap_authority ticket 5-dissolve-patches; ROADMAP.md line under §1 Get off v1) / DESIGN §7 hand-Rust shrink-to-zero — test_module_hygiene.rs is already on HAND_MAINTAINED_STAGE0_FILES; explicit interim lane deferral (review 43601), not unmarked workaround. Phase 0 retargets scaffold bind to gunbc.test_module_hygiene.orphan_plain_names while the seed host still executes."
 
 data test_module_hygiene_orphan_gate_receipt_plan_anchor: String = "dag/gunbc/v1_deletion_plan.dag ^hand_queue_drain"
+
+data test_module_hygiene_phase0_authority_entry: String = "dag/gunbc/test_module_hygiene.dag"
+
+data test_module_hygiene_equivalence_witness_entry: String = "dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag"
 
 data test_module_hygiene_orphan_gate_test_discriminator_demotion: String = "zero_enrolled_plain_helpers_refuse_demotion"
 

@@ -1,0 +1,433 @@
+module gunbc.test_module_hygiene
+
+import std.types { String, Bool, List }
+
+data test_module_hygiene_authority_note: String = "Phase-0 dissolve authority for U2 orphan enroll-or-refuse (proud-wren-892). Pure fold over ModuleSurface — host still parses Node→surface and walks the corpus (src/v1/stage0/src/test_module_hygiene.rs). Equivalence: dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag pins the same fixture spellings as the HAND-RUST unit RED plants. Dissolve-on (full peel): host consumes this fold (or an equivalent Node-tree reader), then test_module_hygiene.rs leaves HAND_MAINTAINED / seed_retained_intrinsic_registrations (ROADMAP 5-dissolve-patches; v1_deletion_plan ^hand_queue_drain)."
+
+// Abstract module surface: refs are already-extracted local names (call + bare-var),
+// so the fold is parse-free. Host projection from ModuleFns is Phase 1.
+type DeclSurface {
+  name: String
+  refs: List<String>
+}
+
+type ModuleSurface {
+  entry: String
+  test_fns: List<DeclSurface>
+  plain_fns: List<DeclSurface>
+  test_data: List<DeclSurface>
+  plain_data: List<DeclSurface>
+}
+
+type CrossModuleExportRow {
+  entry_path: String
+  exports: List<String>
+}
+
+// Declaration-grain seeds (review 43604) — single authority for the interim roster.
+// Dissolve-on: rename each file off *_test.dag, or import-graph reachability supersedes.
+data cross_module_exported_plains: List<CrossModuleExportRow> = [
+  CrossModuleExportRow {
+    entry_path: "src/v2/lens/no_dual_representation_test.dag",
+    exports: [
+      "no_dual_representation_test_clean_holds",
+      "no_dual_representation_test_coverage_honesty_holds",
+    ]
+  },
+  CrossModuleExportRow {
+    entry_path: "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+    exports: [
+      "edit_locus_source_provenance_affected_set_wire_holds",
+      "edit_locus_source_provenance_producer_rejects_malformed_source_holds",
+      "edit_locus_source_provenance_producer_holds",
+      "edit_locus_source_provenance_parse_root_span_holds",
+    ]
+  },
+]
+
+fn is_file_grain_function(function: String) -> Bool {
+  function == ""
+}
+
+fn name_in(xs: List<String>, needle: String) -> Bool {
+  any(xs: xs, predicate: fn(x) { x == needle })
+}
+
+fn names_set_eq(left: List<String>, right: List<String>) -> Bool {
+  (length(xs: left) == length(xs: right))
+    && (left |> all(x => name_in(xs: right, needle: x)))
+    && (right |> all(x => name_in(xs: left, needle: x)))
+}
+
+fn unique_snoc(xs: List<String>, item: String) -> List<String> {
+  if name_in(xs: xs, needle: item) {
+    xs
+  } else {
+    concat(xs, [item])
+  }
+}
+
+fn unique_concat(left: List<String>, right: List<String>) -> List<String> {
+  fold(
+    right,
+    init: left,
+    f: fn(acc, item) {
+      unique_snoc(xs: acc, item: item)
+    }
+  )
+}
+
+fn entry_path_matches(entry: String, auth: String) -> Bool {
+  (entry == auth) || ends_with(s: entry, suffix: concat("/", auth))
+}
+
+fn cross_module_exports_for(entry: String) -> List<String> {
+  fold(
+    cross_module_exported_plains,
+    init: [],
+    f: fn(acc, row) {
+      if length(xs: acc) > 0 {
+        acc
+      } else if entry_path_matches(entry: entry, auth: row.entry_path) {
+        row.exports
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn has_enrollment_surface(module: ModuleSurface) -> Bool {
+  (length(xs: module.test_fns) > 0) || (length(xs: module.test_data) > 0)
+}
+
+fn plain_names(module: ModuleSurface) -> List<String> {
+  fold(
+    module.plain_fns,
+    init: [],
+    f: fn(acc, d) {
+      concat(acc, [d.name])
+    }
+  )
+}
+
+fn all_decl_bodies(module: ModuleSurface) -> List<DeclSurface> {
+  concat(
+    concat(concat(module.test_fns, module.plain_fns), module.test_data),
+    module.plain_data
+  )
+}
+
+fn refs_of(bodies: List<DeclSurface>, name: String) -> List<String> {
+  fold(
+    bodies,
+    init: [],
+    f: fn(acc, d) {
+      if length(xs: acc) > 0 {
+        acc
+      } else if d.name == name {
+        d.refs
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+type ReachState {
+  reachable_plains: List<String>
+  seen_data: List<String>
+  frontier: List<String>
+}
+
+fn expand_refs_into(
+  refs: List<String>,
+  plains: List<String>,
+  data_keys: List<String>,
+  state: ReachState
+) -> ReachState {
+  fold(
+    refs,
+    init: state,
+    f: fn(st, r) {
+      if name_in(xs: plains, needle: r) {
+        ReachState {
+          reachable_plains: st.reachable_plains,
+          seen_data: st.seen_data,
+          frontier: unique_snoc(xs: st.frontier, item: r)
+        }
+      } else if name_in(xs: data_keys, needle: r) && (name_in(xs: st.seen_data, needle: r) == false) {
+        ReachState {
+          reachable_plains: st.reachable_plains,
+          seen_data: unique_snoc(xs: st.seen_data, item: r),
+          frontier: unique_snoc(xs: st.frontier, item: r)
+        }
+      } else {
+        st
+      }
+    }
+  )
+}
+
+fn reach_step(
+  module: ModuleSurface,
+  plains: List<String>,
+  data_keys: List<String>,
+  bodies: List<DeclSurface>,
+  state: ReachState
+) -> ReachState {
+  if length(xs: state.frontier) == 0 {
+    state
+  } else {
+    let name = state.frontier.first()
+    let rest = state.frontier.skip(n: 1)
+    let is_plain = name_in(xs: plains, needle: name)
+    let already = name_in(xs: state.reachable_plains, needle: name)
+    if is_plain && already {
+      ReachState {
+        reachable_plains: state.reachable_plains,
+        seen_data: state.seen_data,
+        frontier: rest
+      }
+    } else {
+      let next_reachable = if is_plain {
+        unique_snoc(xs: state.reachable_plains, item: name)
+      } else {
+        state.reachable_plains
+      }
+      let seeded = ReachState {
+        reachable_plains: next_reachable,
+        seen_data: state.seen_data,
+        frontier: rest
+      }
+      expand_refs_into(
+        refs: refs_of(bodies: bodies, name: name),
+        plains: plains,
+        data_keys: data_keys,
+        state: seeded
+      )
+    }
+  }
+}
+
+fn reach_fixpoint_pass(
+  module: ModuleSurface,
+  plains: List<String>,
+  data_keys: List<String>,
+  bodies: List<DeclSurface>,
+  state: ReachState
+) -> ReachState {
+  // Fuel: one step per frontier head; outer rounds bound diameter.
+  reach_step(
+    module: module,
+    plains: plains,
+    data_keys: data_keys,
+    bodies: bodies,
+    state: state
+  )
+}
+
+fn reach_convergence_fuel(module: ModuleSurface) -> List<String> {
+  // Two full sweeps over every decl name — enough for fixture diameters; Phase 1
+  // host may tighten once Node projection is wired.
+  let names = fold(
+    all_decl_bodies(module: module),
+    init: [],
+    f: fn(acc, d) {
+      concat(acc, [d.name])
+    }
+  )
+  concat(names, names)
+}
+
+fn seed_reach_state(module: ModuleSurface, plains: List<String>, exports: List<String>) -> ReachState {
+  let data_keys = fold(
+    concat(module.test_data, module.plain_data),
+    init: [],
+    f: fn(acc, d) {
+      concat(acc, [d.name])
+    }
+  )
+  let bodies = all_decl_bodies(module: module)
+  let from_tests = fold(
+    module.test_fns,
+    init: ReachState {
+      reachable_plains: [],
+      seen_data: [],
+      frontier: []
+    },
+    f: fn(st, d) {
+      expand_refs_into(
+        refs: d.refs,
+        plains: plains,
+        data_keys: data_keys,
+        state: st
+      )
+    }
+  )
+  let from_test_data = fold(
+    module.test_data,
+    init: from_tests,
+    f: fn(st, d) {
+      let marked = ReachState {
+        reachable_plains: st.reachable_plains,
+        seen_data: unique_snoc(xs: st.seen_data, item: d.name),
+        frontier: st.frontier
+      }
+      expand_refs_into(
+        refs: d.refs,
+        plains: plains,
+        data_keys: data_keys,
+        state: marked
+      )
+    }
+  )
+  fold(
+    exports,
+    init: from_test_data,
+    f: fn(st, name) {
+      if name_in(xs: plains, needle: name) {
+        ReachState {
+          reachable_plains: st.reachable_plains,
+          seen_data: st.seen_data,
+          frontier: unique_snoc(xs: st.frontier, item: name)
+        }
+      } else {
+        st
+      }
+    }
+  )
+}
+
+fn orphan_plain_names(module: ModuleSurface) -> List<String> {
+  let plains = plain_names(module: module)
+  if length(xs: plains) == 0 {
+    []
+  } else {
+    let exports = cross_module_exports_for(entry: module.entry)
+    if (has_enrollment_surface(module: module) == false) && (length(xs: exports) == 0) {
+      plains
+    } else {
+      let data_keys = fold(
+        concat(module.test_data, module.plain_data),
+        init: [],
+        f: fn(acc, d) {
+          concat(acc, [d.name])
+        }
+      )
+      let bodies = all_decl_bodies(module: module)
+      let seeded = seed_reach_state(module: module, plains: plains, exports: exports)
+      let closed = fold(
+        reach_convergence_fuel(module: module),
+        init: seeded,
+        f: fn(st, _) {
+          if length(xs: st.frontier) == 0 {
+            st
+          } else {
+            reach_fixpoint_pass(
+              module: module,
+              plains: plains,
+              data_keys: data_keys,
+              bodies: bodies,
+              state: st
+            )
+          }
+        }
+      )
+      fold(
+        plains,
+        init: [],
+        f: fn(acc, name) {
+          if name_in(xs: closed.reachable_plains, needle: name) {
+            acc
+          } else {
+            concat(acc, [name])
+          }
+        }
+      )
+    }
+  }
+}
+
+// --- Synthetic fixtures (same spellings as HAND-RUST unit RED plants) ---
+
+data fixture_zero_enrolled_demotion: ModuleSurface = ModuleSurface {
+  entry: "demoted_witness_test.dag",
+  test_fns: [],
+  plain_fns: [DeclSurface { name: "formerly_test_holds", refs: [] }],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_directory_prefix_bypass: ModuleSurface = ModuleSurface {
+  entry: "extdeps/languages/not_on_allowlist_test.dag",
+  test_fns: [],
+  plain_fns: [DeclSurface { name: "export_for_importers", refs: [] }],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_cross_module_export_partial: ModuleSurface = ModuleSurface {
+  entry: "src/v2/lens/no_dual_representation_test.dag",
+  test_fns: [],
+  plain_fns: [
+    DeclSurface { name: "no_dual_representation_test_clean_holds", refs: [] },
+    DeclSurface { name: "accidental_demotion_holds", refs: [] },
+  ],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_cross_module_export_empty_file: ModuleSurface = ModuleSurface {
+  entry: "src/v2/lens/no_dual_representation_test.dag",
+  test_fns: [],
+  plain_fns: [DeclSurface { name: "unrelated_dark_holds", refs: [] }],
+  test_data: [],
+  plain_data: []
+}
+
+data fixture_test_data_only: ModuleSurface = ModuleSurface {
+  entry: "test_data_only_test.dag",
+  test_fns: [],
+  plain_fns: [
+    DeclSurface { name: "used_by_test_data", refs: [] },
+    DeclSurface { name: "dark_plain", refs: [] },
+  ],
+  test_data: [DeclSurface { name: "enrolled_row", refs: ["used_by_test_data"] }],
+  plain_data: []
+}
+
+data fixture_plain_data_not_enrollment: ModuleSurface = ModuleSurface {
+  entry: "plain_data_demotion_test.dag",
+  test_fns: [],
+  plain_fns: [DeclSurface { name: "formerly_test_holds", refs: [] }],
+  test_data: [],
+  plain_data: [DeclSurface { name: "fixture", refs: ["formerly_test_holds"] }]
+}
+
+data fixture_dead_plain_data: ModuleSurface = ModuleSurface {
+  entry: "dead_plain_data_test.dag",
+  test_fns: [DeclSurface { name: "unrelated_holds", refs: [] }],
+  plain_fns: [DeclSurface { name: "demoted_holds", refs: [] }],
+  test_data: [],
+  plain_data: [DeclSurface { name: "fixture", refs: ["demoted_holds"] }]
+}
+
+data fixture_plain_data_chain: ModuleSurface = ModuleSurface {
+  entry: "plain_data_chain_test.dag",
+  test_fns: [],
+  plain_fns: [
+    DeclSurface { name: "helper_holds", refs: [] },
+    DeclSurface { name: "dark_plain", refs: [] },
+  ],
+  test_data: [DeclSurface { name: "enrolled_run", refs: ["claim_row"] }],
+  plain_data: [DeclSurface { name: "claim_row", refs: ["helper_holds"] }]
+}
+
+data fixture_orphan_plant: ModuleSurface = ModuleSurface {
+  entry: "orphan_plant_test.dag",
+  test_fns: [DeclSurface { name: "live_holds", refs: [] }],
+  plain_fns: [DeclSurface { name: "dark_unreachable_check", refs: [] }],
+  test_data: [],
+  plain_data: []
+}

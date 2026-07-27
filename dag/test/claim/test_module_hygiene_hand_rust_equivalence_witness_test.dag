@@ -1,0 +1,141 @@
+module test.claim.test_module_hygiene_hand_rust_equivalence_witness
+
+import gunbc.test_module_hygiene_scaffold {
+  test_module_hygiene_orphan_gate_scaffold,
+  test_module_hygiene_orphan_gate_dissolve_trigger,
+  test_module_hygiene_orphan_gate_receipt_plan_anchor,
+  test_module_hygiene_orphan_gate_test_discriminator_demotion,
+  test_module_hygiene_orphan_gate_test_discriminator_fixture_allowlist,
+  test_module_hygiene_orphan_gate_test_discriminator_directory_bypass_refused,
+  test_module_hygiene_orphan_gate_test_discriminator_export_roster_no_whole_file_green,
+  test_module_hygiene_orphan_gate_test_discriminator_test_data,
+  test_module_hygiene_orphan_gate_test_discriminator_plain_data_not_enrollment,
+  test_module_hygiene_orphan_gate_test_discriminator_dead_plain_data,
+  test_module_hygiene_orphan_gate_test_discriminator_plain_data_chain,
+  test_module_hygiene_phase0_authority_entry,
+  test_module_hygiene_equivalence_witness_entry,
+}
+import gunbc.test_module_hygiene {
+  ModuleSurface,
+  orphan_plain_names,
+  names_set_eq,
+  is_file_grain_function,
+  fixture_zero_enrolled_demotion,
+  fixture_directory_prefix_bypass,
+  fixture_cross_module_export_partial,
+  fixture_cross_module_export_empty_file,
+  fixture_test_data_only,
+  fixture_plain_data_not_enrollment,
+  fixture_dead_plain_data,
+  fixture_plain_data_chain,
+  fixture_orphan_plant,
+}
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data test_module_hygiene_hand_rust_equivalence_note: String = "Phase-0 peel: pins gunbc.test_module_hygiene.orphan_plain_names against the SAME fixture spellings as src/v1/stage0/src/test_module_hygiene.rs unit RED plants (HAND-RUST still executes parse+walk). Both must agree on orphan name sets. Unparsable-file refuse stays host-only until FS/parse peels (no ModuleSurface). Full dissolve: host consumes the .dag fold and test_module_hygiene.rs leaves HAND."
+
+fn orphans_are(module: ModuleSurface, expected: List<String>) -> Bool {
+  names_set_eq(left: orphan_plain_names(module: module), right: expected)
+}
+
+test fn test_module_hygiene_scaffold_is_seed_retained() -> Bool {
+  match test_module_hygiene_orphan_gate_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn test_module_hygiene_dissolve_trigger_names_phase0_and_hand_drain() -> Bool {
+  string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "Phase 0")
+    && string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "hand_queue_drain")
+    && string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "5-dissolve-patches")
+    && string_contains(s: test_module_hygiene_orphan_gate_receipt_plan_anchor, pattern: "hand_queue_drain")
+}
+
+test fn test_module_hygiene_phase0_authority_paths_named() -> Bool {
+  string_contains(s: test_module_hygiene_phase0_authority_entry, pattern: "test_module_hygiene.dag")
+    && string_contains(s: test_module_hygiene_equivalence_witness_entry, pattern: "equivalence_witness")
+}
+
+test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
+  is_file_grain_function(function: "")
+    && (is_file_grain_function(function: "alpha_holds") == false)
+}
+
+test fn test_module_hygiene_equivalence_zero_enrolled_demotion_holds() -> Bool {
+  orphans_are(module: fixture_zero_enrolled_demotion, expected: ["formerly_test_holds"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_demotion,
+      pattern: "zero_enrolled_plain_helpers_refuse_demotion"
+    )
+}
+
+test fn test_module_hygiene_equivalence_directory_prefix_bypass_refused_holds() -> Bool {
+  orphans_are(module: fixture_directory_prefix_bypass, expected: ["export_for_importers"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_directory_bypass_refused,
+      pattern: "directory_prefix_alone_does_not_exempt"
+    )
+}
+
+test fn test_module_hygiene_equivalence_cross_module_export_partial_holds() -> Bool {
+  orphans_are(module: fixture_cross_module_export_partial, expected: ["accidental_demotion_holds"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_fixture_allowlist,
+      pattern: "cross_module_export_roster_seeds_named_plain"
+    )
+}
+
+test fn test_module_hygiene_equivalence_cross_module_export_no_whole_file_holds() -> Bool {
+  orphans_are(module: fixture_cross_module_export_empty_file, expected: ["unrelated_dark_holds"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_export_roster_no_whole_file_green,
+      pattern: "cross_module_export_roster_alone_does_not_green"
+    )
+}
+
+test fn test_module_hygiene_equivalence_test_data_only_holds() -> Bool {
+  orphans_are(module: fixture_test_data_only, expected: ["dark_plain"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_test_data,
+      pattern: "test_data_only_module_still_orphans"
+    )
+}
+
+test fn test_module_hygiene_equivalence_plain_data_not_enrollment_holds() -> Bool {
+  orphans_are(module: fixture_plain_data_not_enrollment, expected: ["formerly_test_holds"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_plain_data_not_enrollment,
+      pattern: "plain_data_alone_does_not_enroll"
+    )
+}
+
+test fn test_module_hygiene_equivalence_dead_plain_data_holds() -> Bool {
+  orphans_are(module: fixture_dead_plain_data, expected: ["demoted_holds"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_dead_plain_data,
+      pattern: "unrelated_test_plus_dead_plain_data"
+    )
+}
+
+test fn test_module_hygiene_equivalence_plain_data_chain_holds() -> Bool {
+  orphans_are(module: fixture_plain_data_chain, expected: ["dark_plain"])
+    && string_contains(
+      s: test_module_hygiene_orphan_gate_test_discriminator_plain_data_chain,
+      pattern: "plain_data_reached_from_test_data_still_covers"
+    )
+}
+
+test fn test_module_hygiene_equivalence_orphan_plant_holds() -> Bool {
+  orphans_are(module: fixture_orphan_plant, expected: ["dark_unreachable_check"])
+}
+
+// RED control: if plain data were wrongly treated as enrollment, this fixture
+// would go green with zero orphans — keep the refuse countable.
+test fn test_module_hygiene_red_plain_data_must_not_green_demotion() -> Bool {
+  length(xs: orphan_plain_names(module: fixture_plain_data_not_enrollment)) > 0
+}
