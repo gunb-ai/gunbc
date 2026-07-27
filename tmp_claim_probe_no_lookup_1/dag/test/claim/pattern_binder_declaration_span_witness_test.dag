@@ -1,4 +1,4 @@
-module test.claim.pattern_binder_declaration_span_witness_test
+module temp.test.claim.pattern_binder_declaration_span_witness_test
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 import v1.compiler.infer_items { TypedModule }
@@ -38,18 +38,6 @@ fn source_index(haystack: String, needle: String) -> Int? {
   source_index_from(haystack: haystack, needle: needle, pos: 0)
 }
 
-fn item_body_named(module: Node, name: String) -> Node? {
-  match module_items(n: module) |> filter(item => item.name == name) |> first {
-    Present { value: item } => item.body
-    Absent => none
-  }
-}
-
-fn typed_item_body_named(typed_module: TypedModule, name: String) -> Node? {
-  match typed_module.items |> filter(item => item.name == name) |> first {
-    Present { value: item } => item.body
-    Absent => none
-  }
 }
 
 fn direct_binder_start(source: String) -> Int? {

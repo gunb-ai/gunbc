@@ -1,4 +1,4 @@
-module test.claim.pattern_binder_declaration_span_witness_test
+module temp.test.claim.pattern_binder_declaration_span_witness_test
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 import v1.compiler.infer_items { TypedModule }
@@ -20,68 +20,6 @@ fn typed_pattern_binder_source() -> String {
   "module typed_pattern_spans\n\ntype Duo = Left { value: Int } | Right { value: Int }\n\nfn separate_arms(x: Duo) -> Int {\n  match x {\n    Left { value: y } => y\n    Right { value: y } => y\n  }\n}\n".to_string()
 }
 
-fn source_index_from(haystack: String, needle: String, pos: Int) -> Int? {
-  let needle_len = string_length(s: needle)
-  let haystack_len = string_length(s: haystack)
-  if needle_len == 0 {
-    Present { value: pos }
-  } else if pos + needle_len > haystack_len {
-    none
-  } else if substring(s: haystack, start: pos, end: pos + needle_len) == needle {
-    Present { value: pos }
-  } else {
-    source_index_from(haystack: haystack, needle: needle, pos: pos + 1)
-  }
-}
-
-fn source_index(haystack: String, needle: String) -> Int? {
-  source_index_from(haystack: haystack, needle: needle, pos: 0)
-}
-
-fn item_body_named(module: Node, name: String) -> Node? {
-  match module_items(n: module) |> filter(item => item.name == name) |> first {
-    Present { value: item } => item.body
-    Absent => none
-  }
-}
-
-fn typed_item_body_named(typed_module: TypedModule, name: String) -> Node? {
-  match typed_module.items |> filter(item => item.name == name) |> first {
-    Present { value: item } => item.body
-    Absent => none
-  }
-}
-
-fn direct_binder_start(source: String) -> Int? {
-  match source_index(haystack: source, needle: "direct_bind =>".to_string()) {
-    Present { value: start } => Present { value: start }
-    Absent => none
-  }
-}
-
-fn alias_binder_start(source: String) -> Int? {
-  match source_index(haystack: source, needle: "value: alias_bind".to_string()) {
-    Present { value: start } => Present { value: start + string_length(s: "value: ") }
-    Absent => none
-  }
-}
-
-fn shorthand_binder_start(source: String) -> Int? {
-  match source_index(haystack: source, needle: "Boxed { value }".to_string()) {
-    Present { value: start } => Present { value: start + string_length(s: "Boxed { ") }
-    Absent => none
-  }
-}
-
-fn nested_binder_start(source: String) -> Int? {
-  match source_index(
-    haystack: source,
-    needle: "value: Boxed { value: nested_bind }".to_string()
-  ) {
-    Present { value: start } => Present { value: start + string_length(s: "value: Boxed { value: ") }
-    Absent => none
-  }
-}
 
 fn match_first_arm(body: Node) -> Node? {
   first(match_arm_nodes(texpr: body))

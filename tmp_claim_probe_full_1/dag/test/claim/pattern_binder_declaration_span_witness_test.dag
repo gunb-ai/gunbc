@@ -1,4 +1,4 @@
-module test.claim.pattern_binder_declaration_span_witness_test
+module temp.test.claim.pattern_binder_declaration_span_witness_test
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 import v1.compiler.infer_items { TypedModule }

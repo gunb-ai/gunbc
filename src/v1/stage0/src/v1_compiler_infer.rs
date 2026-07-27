@@ -944,30 +944,6 @@ pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBind
     }
 }
 
-pub fn remove_match_bound_name(
-    match_bound_names: Rc<HashMap<String, Rc<SourceSpan>>>,
-    name: String,
-) -> Rc<HashMap<String, Rc<SourceSpan>>> {
-    Rc::new(v1_rt::map_keys(&match_bound_names))
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
-            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, key: String| {
-                if (key.clone() == name.clone()) {
-                    acc.clone()
-                } else {
-                    match v1_rt::map_get(&match_bound_names, key.clone()) {
-                        Some(declaration_span) => {
-                            v1_rt::rc_map_insert(acc.clone(), key.clone(), declaration_span.clone())
-                        }
-                        None => acc.clone(),
-                    }
-                }
-            },
-        )
-}
-
 pub fn inference_error(
     message: String,
     span: Rc<SourceSpan>,
@@ -2478,7 +2454,7 @@ pub fn extend_scope(
             }),
         ),
         body_locals: v1_rt::rc_map_insert(scope.body_locals.clone(), name.clone(), true),
-        match_bound_names: remove_match_bound_name(scope.match_bound_names.clone(), name.clone()),
+        match_bound_names: scope.match_bound_names.clone(),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
         item_registry: scope.item_registry.clone(),
@@ -2538,18 +2514,12 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
             scope.body_locals.clone(),
             |acc: Rc<HashMap<String, bool>>, p: String| v1_rt::rc_map_insert(acc, p.clone(), true),
         );
-        let new_match_bound_names = params.clone().iter().cloned().fold(
-            scope.match_bound_names.clone(),
-            |acc: Rc<HashMap<String, Rc<SourceSpan>>>, p: String| {
-                remove_match_bound_name(acc, p.clone())
-            },
-        );
         Rc::new(InferScope {
             type_env: scope.type_env.clone(),
             func_env: scope.func_env.clone(),
             locals: new_locals.clone(),
             body_locals: new_body_locals.clone(),
-            match_bound_names: new_match_bound_names.clone(),
+            match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
             item_registry: scope.item_registry.clone(),

@@ -1,4 +1,4 @@
-module test.claim.pattern_binder_declaration_span_witness_test
+module temp.test.claim.pattern_binder_declaration_span_witness_test
 
 import v1.compiler.compile { SourceFile, compile_to_resolved }
 import v1.compiler.infer_items { TypedModule }
@@ -249,64 +249,3 @@ test fn parse_nested_bind_uses_innermost_binder_span() -> Bool {
   }
 }
 
-fn typed_match_bound_binding_span_from_arm(arm: Node) -> Int {
-  match arm_pattern(n: arm) {
-    MatchPattern::VariantPattern { field_bindings, .. } =>
-      match first(field_bindings) {
-        Present { value: field_binding } =>
-          match field_binding_pattern(n: field_binding) {
-            MatchPattern::Bind { declaration_span, .. } => declaration_span.start
-            _ => -1
-          }
-        Absent => -1
-      }
-    _ => -1
-  }
-}
-
-fn typed_expr_var_binding_span(expr: Node) -> Int {
-  match expr.expr_data {
-    ExprData::ExprVar { binding_kind } =>
-      match binding_kind {
-        Present { value: VarBindingKind::MatchBoundBinding { declaration_span } } => declaration_span.start
-        _ => -1
-      }
-    _ => -1
-  }
-}
-
-test fn typed_separate_arms_carry_each_own_binding_span() -> Bool {
-  let source = typed_pattern_binder_source()
-  match typed_resolved_module() {
-    Present { value: typed_module } =>
-      match typed_item_body_named(typed_module: typed_module, name: "separate_arms".to_string()) {
-        Present { value: body } =>
-          let arms = match_arm_nodes(texpr: body)
-          let expected = arms |> map(arm => typed_match_bound_binding_span_from_arm(arm: arm))
-          let expr_spans = arms |> map(arm => typed_expr_var_binding_span(expr: arm_body(n: arm)))
-          match first(expected) {
-            Present { value: expected_left } =>
-              match last(expected) {
-                Present { value: expected_right } =>
-                  match first(expr_spans) {
-                    Present { value: expr_left } =>
-                      match last(expr_spans) {
-                        Present { value: expr_right } =>
-                          expected_left != -1
-                            && expected_right != -1
-                            && expr_left == expected_left
-                            && expr_right == expected_right
-                            && expected_left != expected_right
-                        Absent => false
-                      }
-                    Absent => false
-                  }
-                Absent => false
-              }
-            Absent => false
-          }
-        Absent => false
-      }
-    Absent => false
-  }
-}
