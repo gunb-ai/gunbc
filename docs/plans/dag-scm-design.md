@@ -1131,7 +1131,8 @@ The initial wedge is narrow and credible:
 - teams running many coding agents against the same modeled monorepo;
 - long or expensive CI;
 - a lossless daglang source model;
-- Git-compatible input/output; and
+- Git-compatible input/output for the first product, with the compatibility shape already
+  falsified against Mercurial and Pijul upstream models; and
 - a dashboard showing judgment and validation work actually displaced.
 
 The GitLab corpus supports the “cheap to serve” premise, not “distribution is free.” GitLab's
@@ -1152,7 +1153,7 @@ Track at least:
 - CI minutes and wall-clock delay invalidated, rerun, and reused;
 - safe partial assessments and independent proposal groups preserved when a batch cannot commit;
 - proposal queue latency under the 50-agent/10-overlap stress profile;
-- Git-import fidelity distribution and round-trip fidelity; and
+- compatibility-import fidelity distribution and round-trip fidelity by bound realization; and
 - storage operations/bytes/egress under the landed packing and provider models.
 
 The “unsafe automatic integration” target is not hand-waved as absolute. Every claim is scoped to
@@ -1190,6 +1191,9 @@ projection:
 | authorized prior transition adds a new invariant as ordinary data | later outcome changes through the same kernel | no new merge mode or user workflow |
 | one batch has unique, contradictory, unknown, and ambiguous independent groups | all four partial assessments retained; partial commit only with declared atomicity + proven independence | land proven-independent work; at most one `Choice required`; terminal refused groups say `Could not land`, details on inspect |
 | ordinary Git branch is stale but proposal transport is provable | target refresh/transport/CAS happens internally | submit succeeds without asking the user to merge or rebase |
+| one accepted state projects through Git, Mercurial, and Pijul bounded fixtures | identical native semantic/admission receipt; realization-specific projection and fidelity receipts | identical primary outcome; SCM mechanics remain inspect-only |
+| an SCM realization lacks the target policy's required conditional-advance guarantee | semantic result is retained; target admission/projection is capability-refused, never fabricated | machine uses another authorized target realization or eventually says `Could not land`; never asks the user to invent synchronization |
+| a fourth SCM model/handler is added | no proof-kernel or primary-outcome edit | the same edit → submit → outcome contract |
 
 Every committed/Applied case needs a perturbation that breaks one obligation or certificate and
 turns the appropriate semantic/admission/transition layer red. Every refusal needs a nearby
@@ -1200,7 +1204,9 @@ internal type/logic/proof vocabulary on the default surface and reject more than
 normative question.
 
 Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline
-should run on the same corpus. The comparison is evidence, not the design authority.
+should run on the same corpus. Mercurial and Pijul fixtures additionally exercise the compatibility
+boundary, not their merge engines as semantic oracles. The comparison is evidence, not the design
+authority.
 
 ## 14. Sequencing and acceptance
 
@@ -1209,17 +1215,44 @@ does not wait for a native store:
 
 1. **Visibility Stage 0 (already first):** `Publish`/`Reference` model, public/private Git roots,
    file-grain declarations, push guard, and existing-public-corpus stamp.
-2. **P−1 — shared claim-indexed evidence carrier, separate PR:** after DFS, model recorded facts,
+2. **R0 — three independent upstream-model PRs:** complete the Git extdeps boundary, then model
+   Mercurial and Pijul from their own primary authorities. Each PR keeps its upstream's real
+   object/change, target, identity, history, publication, path, format, and availability
+   distinctions and deliberately declares no shared SCM interface.
+   **Accept T1 per upstream:** a bounded fixture decodes, projects, and independently reads back its
+   declared fragment; a nearby RED proves that one upstream-specific distinction cannot be
+   represented as the tempting Git analogue. For Git this includes modes, symlinks, gitlinks, tags,
+   paths, object format, and exact-old-OID ref advance. For Mercurial it includes portable changeset
+   identity versus clone-local revision, manifests/file revisions, bookmarks/branches, phases, and
+   optional evolution metadata. For Pijul it includes change dependency/context, pristine/tree
+   state, conflict facts, and channels as sets of channel-independent changes. Write capability may
+   remain honestly unavailable.
+3. **P−1 — shared claim-indexed evidence carrier, separate PR:** after DFS, model recorded facts,
    scoped claims, support/challenge evidence links, maximum conclusions, assessments, and readiness
    policy once for Codex provider readiness, `os_install_deduction`, and SCM.
    **Accept T1:** login-status/live-request and self-establishing-probe scenarios preserve
    credential-vs-provider and support/challenge/neither distinctions; the three consumers use the
    same carrier rather than local enums.
-3. **P0 — user contract, cost, and layered scenario model:** carry the §0
+4. **R1 — extract the compatibility realization shape:** only after all three R0 models land, run
+   DFS over their executing fixtures and extract the smallest role interface actually shared. Keep
+   upstream dispatch peripheral; capability support is data/receipts, never a central vendor enum
+   or switch.
+   **Accept T1/T2:** one accepted native state exercises all three fixtures and returns the same
+   semantic/admission/primary receipt while projection/fidelity receipts remain realization
+   specific; removing a required conditional-advance capability refuses that target policy; a
+   synthetic fourth adapter requires no proof-kernel or primary-interaction edit. This slice
+   replaces C0's optional `git` fixture slot and Git-named presentation cases with
+   realization-indexed projection receipts without changing primary behavior.
+   R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
+   all three R0 models; the proof kernel waits for P−1.
+5. **P0 — user contract, cost, and layered scenario model:** carry the §0
    `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
    evidence profiles, semantic
    zero/one/many/unclosed space, admission, transition, projection, closure certificates,
    timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
+   The landed C0 carrier from PR #7334 supplies twelve presentation-journey witnesses, not the
+   semantic kernel, evidence relation, or compatibility interface; its optional Git projection is
+   the explicit R1 frontier.
    **Accept T1:** every scenario produces its internal receipt and three-arm primary outcome, with
    only `Landed | ChoiceRequired` as semantic handoffs; nearby REDs prevent always-apply/refuse;
    removing a closure certificate changes `ClosedOne` to `Unclosed`; self-amendment,
@@ -1229,40 +1262,48 @@ does not wait for a native store:
    normative; machine-answerable work stays internal while a permitted continuation exists; one
    answer resumes automatically; every terminal refusal is visible; ordinary Git export remains
    valid.
-4. **P1 — bounded source-integration proof kernel:** one public operation composes directly
+6. **P1 — bounded source-integration proof kernel:** one public operation composes directly
    authored transformations over a small decidable program fragment. Domains contribute facts,
    claims, procedures, and checkable certificates; scenarios never add feature-pair arms.
    **Accept T1:** occurrence-ID dedup, context validity/transport, commuting squares,
    batch-partition invariance, grounded/frame-preserving deltas, n-way invariants, order honesty,
    and each closure certificate execute. Adding a new invariant as data changes a later outcome
    without editing the kernel.
-5. **P2 — law-governed authoring capture:** one daglang surface supplies a quotient-delta-lens
+7. **P2 — law-governed authoring capture:** one daglang surface supplies a quotient-delta-lens
    projection. Native authored operation and exact endpoint delta remain distinct.
    **Accept T2:** unchanged-view write-back, supported edit round-trip, sequential edit coherence,
    source-only information retention/declared canonicalization, and unsupported/ambiguous refusal
    all execute without mutation on refusal.
-6. **P3 — target-scoped atomic admission + receipt reuse:** first realize the commit point with
-   Git `update-ref <ref> <new> <old>`; pending proposals re-evaluate against the accepted target,
-   and affected receipts survive unrelated advances.
+8. **P3 — target-scoped atomic admission + receipt reuse:** consume the R1 bound
+   target-transition capability rather than an SCM name. The first writable realization uses Git
+   `update-ref <ref> <new> <old>`; pending proposals re-evaluate against the accepted target, and
+   affected receipts survive unrelated advances. Mercurial and Pijul fixtures remain read-only or
+   capability-refused until their own executing transports ground the target policy's required
+   guarantee.
    **Accept T2/T3:** two concurrent proposals accept without full CI replay; changed
    model/policy/evidence/affected inputs invalidate the receipt; a race returns
    `RetryStaleParent` and retries without user rebase; independent read-back gates Applied; a
    committed transition plus projection failure enters the idempotent outbox.
-7. **P4 — complete Git compatibility realization:** import an ordinary branch/PR with the §10
-   fidelity inventory; export accepted transitions as ordinary squash/one-parent commits.
-   **Accept T3:** unmodified Git clone/build works across modes/symlinks/gitlinks/tags/attributes/
-   opaque data/object formats; unavailable objects remain typed; native metadata removal lowers
-   authored-operation evidence but never changes the emitted program.
-8. **P5 — publication capability profile and remote realization:** after visibility Stage 0, land
+9. **P4 — compatibility realization family:** promote Git to the first product-grade realization:
+   import an ordinary branch/PR with the §10 fidelity inventory and export accepted transitions as
+   ordinary squash/one-parent commits. Keep Mercurial and Pijul at bounded real-fixture T2 unless a
+   design-partner receipt justifies product-grade support.
+   **Accept Git T3:** unmodified Git clone/build works across
+   modes/symlinks/gitlinks/tags/attributes/opaque data/object formats; unavailable objects remain
+   typed; native metadata removal lowers authored-operation evidence but never changes the emitted
+   program. **Accept Mercurial/Pijul T2:** each declared fixture round-trips or refuses honestly and
+   demonstrates cross-realization receipt invariance; it does not imply a writable hosted product.
+10. **P5 — publication capability profile and remote realization:** after visibility Stage 0, land
    the capability product and execute withheld nodes through declared interfaces/effect grants
    where a consumer prices it, with audience-safe diagnostics and explicit declassification.
-9. **P6 — native store/serving:** only after the semantic path is a named consumer; use the landed
+11. **P6 — native store/serving:** only after the semantic path is a named consumer; use the landed
    object-storage, packing, reliability, and regional-compute carriers. Never one stored object per
    semantic node by default.
 
 The publication capability profile may advance independently after visibility Stage 0; it is not a
-semantic-integration prerequisite. P−1 is a shared substrate prerequisite for P0/P1, not an
-SCM-local prelude. No phase is complete at T0 algebra alone: each names an executing consumer and a
+semantic-integration prerequisite. R0 is upstream grounding and P−1 is shared deduction substrate;
+they may run concurrently, neither imports the other, and both precede the downstream consumer that
+needs them. No phase is complete at T0 algebra alone: each names an executing consumer and a
 discriminating red.
 
 ## 15. Non-goals
@@ -1281,7 +1322,11 @@ discriminating red.
   closedness, fidelity, equivalence, and proof bounds.
 - Making node identity, module identity, a file path, or a universal durable entity ID the
   definition of compatibility.
-- Replacing Git hosting, object storage, or forge UI before the integration consumer proves value.
+- Deriving a supposedly generic SCM interface from Git alone, adding
+  `ScmKind = Git | Mercurial | Pijul`, or branching the proof kernel on a vendor.
+- Treating an R0/T1 upstream fixture as a promise of product-grade Mercurial or Pijul hosting.
+- Replacing existing hosting, object storage, or forge UI before the integration consumer proves
+  value.
 - One semantic node per billable storage object.
 - General arbitrary-language semantic merge outside a declared `DecodeFidelity` boundary.
 - Unbounded behavioral equivalence; every such claim names a bound.
@@ -1300,7 +1345,8 @@ dissolve as follows:
 - capture/storage content → `v2.compiler.source_authority` and the module-storage design;
 - visibility/capability-profile content → the visibility-grants authority;
 - admission/receipt content → the temporal-effect, affected-set, realization, and roadmap rows;
-- Git shapes → `extdeps.git` interface operations plus peripheral handlers; and
+- Git/Mercurial/Pijul shapes → their independent `extdeps/` authorities; proven common
+  compatibility roles → the R1 bound-realization interface plus peripheral handlers; and
 - economics → the already-landed cited extdeps/econ carriers.
 
 Delete this plan when the native admission consumer reaches P4/T3 and the registered roadmap/carrier
