@@ -322,6 +322,14 @@ fn sgb_contract_row(
   }
 }
 
+fn sgb_requirements_match_exact(
+  left: TargetDeriveSupplementalGenericBoundRequirement,
+  right: TargetDeriveSupplementalGenericBoundRequirement
+) -> Bool {
+  left.representation_parameter == right.representation_parameter
+    && left.required_trait == right.required_trait
+}
+
 fn sgb_requirement_lists_match_exact(
   left: List<TargetDeriveSupplementalGenericBoundRequirement>,
   right: List<TargetDeriveSupplementalGenericBoundRequirement>
@@ -335,8 +343,7 @@ fn sgb_requirement_lists_match_exact(
     Cons { head: left_head, tail: left_tail } =>
       match right {
         Cons { head: right_head, tail: right_tail } =>
-          left_head.representation_parameter == right_head.representation_parameter
-            && left_head.required_trait == right_head.required_trait
+          sgb_requirements_match_exact(left: left_head, right: right_head)
             && sgb_requirement_lists_match_exact(
               left: left_tail,
               right: right_tail
@@ -344,6 +351,17 @@ fn sgb_requirement_lists_match_exact(
         _ => false
       }
   }
+}
+
+fn sgb_contracts_match_exact(
+  left: TargetDeriveSupplementalGenericBoundContract,
+  right: TargetDeriveSupplementalGenericBoundContract
+) -> Bool {
+  left.derive_trait == right.derive_trait
+    && sgb_requirement_lists_match_exact(
+      left: left.requirements,
+      right: right.requirements
+    )
 }
 
 fn sgb_contract_lists_match_exact(
@@ -359,11 +377,7 @@ fn sgb_contract_lists_match_exact(
     Cons { head: left_head, tail: left_tail } =>
       match right {
         Cons { head: right_head, tail: right_tail } =>
-          left_head.derive_trait == right_head.derive_trait
-            && sgb_requirement_lists_match_exact(
-              left: left_head.requirements,
-              right: right_head.requirements
-            )
+          sgb_contracts_match_exact(left: left_head, right: right_head)
             && sgb_contract_lists_match_exact(
               left: left_tail,
               right: right_tail

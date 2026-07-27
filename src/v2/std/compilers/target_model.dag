@@ -9318,13 +9318,36 @@ fn target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic
   }
 }
 
+fn target_representation_choice_empty_parameter_validation(
+) -> Outcome<List<Symbol>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_contract_empty_requirement_validation(
+) -> Outcome<List<TargetDeriveSupplementalGenericBoundRequirement>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_contract_empty_trait_validation(
+) -> Outcome<List<ReprGroundingDeriveTrait>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_requirements_equal(
+  left: TargetDeriveSupplementalGenericBoundRequirement,
+  right: TargetDeriveSupplementalGenericBoundRequirement
+) -> Bool {
+  left.representation_parameter == right.representation_parameter
+    && left.required_trait == right.required_trait
+}
+
 fn target_representation_choice_validate_parameter_slots(
   choice: TargetRepresentationChoice,
   at: Node
 ) -> Outcome<List<Symbol>> {
   fold_list(
     xs: choice.representation_parameters,
-    empty: outcome_accepted(Empty),
+    empty: target_representation_choice_empty_parameter_validation(),
     cons: fn(acc, representation_parameter) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -9355,7 +9378,7 @@ fn target_derive_supplemental_generic_bound_contract_validate_requirements(
 ) -> Outcome<List<TargetDeriveSupplementalGenericBoundRequirement>> {
   fold_list(
     xs: row.requirements,
-    empty: outcome_accepted(Empty),
+    empty: target_derive_supplemental_generic_bound_contract_empty_requirement_validation(),
     cons: fn(acc, requirement) {
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -9372,8 +9395,10 @@ fn target_derive_supplemental_generic_bound_contract_validate_requirements(
           } else if any(
             xs: seen,
             predicate: fn(candidate) {
-              candidate.representation_parameter == requirement.representation_parameter
-                && candidate.required_trait == requirement.required_trait
+              target_derive_supplemental_generic_bound_requirements_equal(
+                left: candidate,
+                right: requirement
+              )
             }
           ) {
             outcome_rejected(
@@ -9402,7 +9427,7 @@ fn target_representation_choice_validate_supplemental_generic_bound_contracts(
       bind_outcome(
         o: fold_list(
           xs: choice.supplemental_generic_bound_contracts,
-          empty: outcome_accepted(Empty),
+          empty: target_derive_supplemental_generic_bound_contract_empty_trait_validation(),
           cons: fn(acc, row) {
             match acc {
               Rejected { diagnostics: r } => Rejected { diagnostics: r }
