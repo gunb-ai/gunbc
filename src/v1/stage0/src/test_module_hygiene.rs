@@ -93,26 +93,40 @@ fn is_test_dag_path(path: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Explicit cross-module fixture-library entries (repo-relative, `/`-normalized).
-/// These keep the historical `*_test.dag` suffix while exporting plain helpers for
-/// cross-module import — local reachability cannot see importers. Bounded roster,
-/// never a directory-wide bypass (review 43367 / DESIGN §5). Dissolve-on: rename
-/// each off `_test.dag`.
-const CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES: &[&str] = &[
-    "src/v2/extdeps/languages/rust_test.dag",
-    "dag/examples/interp_test/interp_test.dag",
-    // long/ wrappers execute these holds; module-local orphan walk cannot see importers
-    // (review 43557 — honest fixture-library disposition, not if-false pins).
-    // Dissolve-on: rename each off `*_test.dag`.
-    "src/v2/lens/no_dual_representation_test.dag",
-    "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+/// Cross-module plain exports (repo-relative path → declaration names).
+/// Local orphan walk cannot see importers; these names seed reachability as if
+/// called (review 43604 — declaration-grain, never a whole-file bypass / DESIGN §5).
+/// A plain in an allowlisted file that is NOT listed (and not reached from tests/
+/// data/exports) still orphans. Dissolve-on: rename each file off `*_test.dag`,
+/// or import-graph reachability supersedes the roster.
+const CROSS_MODULE_EXPORTED_PLAINS: &[(&str, &[&str])] = &[
+    // long/ wrappers execute these holds (review 43557).
+    (
+        "src/v2/lens/no_dual_representation_test.dag",
+        &[
+            "no_dual_representation_test_clean_holds",
+            "no_dual_representation_test_coverage_honesty_holds",
+        ],
+    ),
+    (
+        "src/v2/lens/affected_set/edit_locus_resolver_test.dag",
+        &[
+            "edit_locus_source_provenance_affected_set_wire_holds",
+            "edit_locus_source_provenance_producer_rejects_malformed_source_holds",
+            "edit_locus_source_provenance_producer_holds",
+            "edit_locus_source_provenance_parse_root_span_holds",
+        ],
+    ),
 ];
 
-fn is_cross_module_fixture_library_path(path: &str) -> bool {
+fn cross_module_exported_plains_for(path: &str) -> &'static [&'static str] {
     let p = path.replace('\\', "/");
-    CROSS_MODULE_FIXTURE_LIBRARY_ENTRIES
-        .iter()
-        .any(|auth| p == *auth || p.ends_with(&format!("/{auth}")))
+    for (auth, exports) in CROSS_MODULE_EXPORTED_PLAINS {
+        if p == *auth || p.ends_with(&format!("/{auth}")) {
+            return exports;
+        }
+    }
+    &[]
 }
 
 fn scan_test_decl_names(content: &str) -> Vec<String> {
@@ -340,17 +354,17 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
         return Vec::new();
     }
 
-    // Cross-module fixture libraries export plain helpers for importers local
-    // reachability cannot see — exempt the whole orphan check, not only the
-    // zero-enrollment demotion arm (review 43367 allowlist intent).
-    if is_cross_module_fixture_library_path(entry) {
-        return Vec::new();
-    }
+    let cross_exports: HashSet<String> = cross_module_exported_plains_for(entry)
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
 
     // Zero enrollment surface + plain helpers is the demotion failure mode
     // (all witnesses accidentally plain) — refuse (DESIGN §5; reviews 43330 / 43367).
     // Enrollment surface = `test fn` / `test data` OR plain `data` claim rows.
-    if !module.has_enrollment_surface {
+    // Cross-module export names alone are NOT an enrollment surface: they only
+    // seed reachability below (review 43604 — no whole-file clean return).
+    if !module.has_enrollment_surface && cross_exports.is_empty() {
         let mut orphans: Vec<OrphanHelper> = plain
             .into_iter()
             .map(|name| OrphanHelper {
@@ -365,7 +379,8 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
     let mut reachable: HashSet<String> = HashSet::new();
     let mut queue: VecDeque<String> = VecDeque::new();
 
-    // Roots: test fn bodies + data/const initializers (fixture / claim-row surface).
+    // Roots: test fn bodies + data/const initializers (fixture / claim-row surface)
+    // + explicitly exported plains (cross-module importers invisible locally).
     for (name, (is_test, _, body)) in &module.fns {
         if *is_test {
             reachable.insert(name.clone());
@@ -387,6 +402,11 @@ fn orphans_in_module(entry: &str, module: &ModuleFns) -> Vec<OrphanHelper> {
             if plain.contains(&c) {
                 queue.push_back(c);
             }
+        }
+    }
+    for name in &cross_exports {
+        if plain.contains(name) {
+            queue.push_back(name.clone());
         }
     }
 
