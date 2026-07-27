@@ -7,7 +7,7 @@ data occurrence_binding_staged_adoption_scaffold_note: String = "STAGED ADOPTION
 
 data occurrence_binding_staged_adoption_dissolve_on: String = "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row."
 
-type ContainmentPath<N: Clone> {
+type ContainmentPath<N> {
   ancestors: FreeMonoid<N>
   terminal: N
 }

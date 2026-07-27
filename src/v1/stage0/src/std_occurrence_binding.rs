@@ -30,7 +30,7 @@ pub fn occurrence_binding_staged_adoption_dissolve_on() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ContainmentPath<N> {
+pub struct ContainmentPath<N: Clone> {
     pub ancestors: Rc<Vec<N>>,
     pub terminal: N,
     pub _phantom: std::marker::PhantomData<N>,
@@ -107,7 +107,7 @@ impl<N> OccurrenceBindingFoldState<N> {
     }
 }
 
-pub fn occurrence_binding_from_candidates<N>(
+pub fn occurrence_binding_from_candidates<N: Clone>(
     occurrence: Rc<BindingOccurrence<N>>,
     candidates: Rc<Vec<Rc<BindingCandidate<N>>>>,
 ) -> Rc<OccurrenceBindingResult<N>> {
