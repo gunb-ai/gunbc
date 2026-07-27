@@ -29,6 +29,7 @@ import std.realization_schedule {
 }
 import std.types { NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -111,7 +112,13 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       module_path: "v2.test.execution.bind_eval_by_execution",
       declaration_names: [
         "bind_source_pipeline_admits_holds",
-        "bind_source_driven_executes_holds"
+        "bind_source_driven_executes_holds",
+        "bind_direct_runtime_holds",
+        "bind_value_perturbation_red_holds",
+        "bind_fixture_producer_holds",
+        "bind_fixture_wrong_value_red_holds",
+        "bind_census_ingested_executes_holds",
+        "bind_census_ingested_wrong_value_red_holds"
       ]
     ),
     complete_discovery(
@@ -119,7 +126,14 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       module_path: "v2.test.execution.loop_eval_by_execution",
       declaration_names: [
         "loop_source_pipeline_admits_holds",
-        "loop_source_driven_executes_holds"
+        "loop_source_driven_executes_holds",
+        "loop_source_driven_wrong_value_red_holds",
+        "loop_direct_runtime_holds",
+        "loop_value_perturbation_red_holds",
+        "loop_fixture_producer_holds",
+        "loop_fixture_wrong_value_red_holds",
+        "loop_census_ingested_executes_holds",
+        "loop_census_ingested_wrong_value_red_holds"
       ]
     ),
     complete_discovery(
@@ -127,7 +141,12 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       module_path: "v2.test.manual.bind_demand_driven_eval",
       declaration_names: [
         "bind_eval_counted_value_body_holds",
-        "bind_eval_divergent_value_rejects_holds"
+        "bind_eval_divergent_value_rejects_holds",
+        "bind_eval_bound_reference_reads_value_holds",
+        "bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds",
+        "bind_eval_minted_occurrence_equal_reference_reads_holds",
+        "bind_eval_unbound_reference_refuses_holds",
+        "bind_eval_unbound_reference_default_algebra_refuses_holds"
       ]
     ),
     complete_discovery(
@@ -135,7 +154,11 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       module_path: "v2.test.host_language_transport_script.lens_unit.transport_script_position",
       declaration_names: [
         "witness_computed_green",
-        "witness_bare_literal_red"
+        "witness_bare_literal_red",
+        "witness_let_bound_red",
+        "witness_interp_literals_red",
+        "witness_lens_verdict_holds_on_computed",
+        "witness_lens_verdict_violation_on_bare_literal"
       ]
     ),
     complete_discovery(
@@ -151,16 +174,69 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
       module_path: "test.claim.orchestration_if_emit",
       declaration_names: [
         "orch_if_streq_empty_then_holds",
-        "orch_if_streq_empty_then_has_teeth_holds"
+        "orch_if_streq_empty_then_has_teeth_holds",
+        "orch_if_streq_else_holds",
+        "orch_if_exit_zero_negated_holds",
+        "orch_if_run_redirect_ignore_fail_holds",
+        "orch_if_log_matches_holds",
+        "orch_if_and_tests_holds"
       ]
     )
   ]
 }
 
-fn qualified_rows_have_two_declarations(rows: List<EnrollmentWitnessDemand>) -> Bool {
-  rows.count() == 6
+fn discovery_entry_matches(
+  discovery: EntryDeclarationDiscovery,
+  entry: String,
+) -> Bool {
+  match discovery {
+    DiscoveryComplete { entry: candidate, module_path: _, declarations: _ } =>
+      candidate == entry
+    DiscoveryIncomplete { entry: candidate, cause: _ } => candidate == entry
+  }
+}
+
+fn demand_row_matches_complete_discovery(
+  row: EnrollmentWitnessDemand,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Bool {
+  match row.check {
+    CommitWitnessClaim { entry, check_fns: _, kind: _, span: _ } =>
+      let matching = filter(
+        discoveries,
+        discovery => discovery_entry_matches(discovery: discovery, entry: entry)
+      )
+      if matching.count() != 1 {
+        false
+      } else {
+        match matching.first() {
+          Absent => false
+          Present { value: discovery } =>
+            match discovery {
+              DiscoveryIncomplete { entry: _, cause: _ } => false
+              DiscoveryComplete { entry: _, module_path: _, declarations } =>
+                declaration_ref_lists_eq(
+                  left: row.declarations,
+                  right: declarations
+                )
+            }
+        }
+      }
+    CommitSpecGate { gate: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn qualified_rows_match_complete_discoveries(
+  rows: List<EnrollmentWitnessDemand>,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Bool {
+  rows.count() == discoveries.count()
     && fold(rows, init: true, f: fn(acc, row) {
-      acc && row.declarations.count() == 2
+      acc && demand_row_matches_complete_discovery(
+        row: row,
+        discoveries: discoveries
+      )
     })
 }
 
@@ -180,14 +256,18 @@ test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries(
     commit_gate_roster,
     row => check_is_file_grain_witness(check: row.check)
   )
+  let discoveries = live_file_grain_discoveries()
   roster.count() == 6
     && match project_enrollment_witness_demands(
       roster: roster,
-      discoveries: live_file_grain_discoveries()
+      discoveries: discoveries
     ) {
       DemandQualified { rows } =>
         demand_rows_match_roster(roster: roster, rows: rows)
-          && qualified_rows_have_two_declarations(rows: rows)
+          && qualified_rows_match_complete_discoveries(
+            rows: rows,
+            discoveries: discoveries
+          )
       DemandMissing { check: _, cause: _ } => false
       DemandAmbiguous { check: _, cause: _ } => false
       DemandIncomplete { check: _, cause: _ } => false
