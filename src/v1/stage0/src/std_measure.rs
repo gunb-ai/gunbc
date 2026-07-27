@@ -563,6 +563,27 @@ pub fn millisecond_count(m: Millisecond) -> Nat {
     measure_count(m.clone())
 }
 
+pub fn nanoseconds_per_millisecond() -> Nat {
+    1000000
+}
+
+pub fn millisecond_to_nanosecond(m: Millisecond) -> Nanosecond {
+    nanosecond((millisecond_count(m.clone()) * nanoseconds_per_millisecond()))
+}
+
+pub fn nanosecond_to_millisecond_floor(n: Nanosecond) -> Millisecond {
+    millisecond((nanosecond_count(n.clone()) / nanoseconds_per_millisecond()))
+}
+
+pub fn nanosecond_millisecond_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Nanosecond is the canonical exact elapsed-time carrier. Millisecond remains a policy and presentation scale. Converting Millisecond to Nanosecond is exact; converting Nanosecond to Millisecond is explicitly floor-only and may be used only at a named presentation, wire, or signed-policy boundary. Measurement, ordering, joining, and attribution must retain Nanosecond.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {

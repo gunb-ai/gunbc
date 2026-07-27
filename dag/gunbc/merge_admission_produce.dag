@@ -11,7 +11,6 @@ import extdeps.github.checks {
   parse_check_conclusion,
   Success,
   Failure,
-  Skipped,
 }
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
@@ -156,10 +155,6 @@ fn merge_admission_stamp_command() -> String {
   )
 }
 
-fn merge_admission_stamp_invoke() -> String {
-  concat(merge_admission_stamp_command(), "\n")
-}
-
 fn merge_admission_gate_invoke() -> String {
   concat(
     concat(
@@ -179,59 +174,13 @@ data merge_admission_shell_emit_disposition: Disposition = Scaffold {
   }
 }
 
-data ci_documentation_only_gate_skip_prefix_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.merge_admission_produce",
-    decl_name: "ci_documentation_only_gate_skip_prefix",
-    field: WholeDeclaration
-  }
-}
-
-data ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_gate_skip_prefix — concat-built bash receipt-gate skip predicate over target/ci-floor-disposition.txt (documentation-only floor-not-run); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes documentation-only disposition through orchestration emit and receipt gates read CI_FLOOR_DISPOSITION without a transport scaffold"
-
-fn ci_merge_admission_stamp_script() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    merge_admission_stamp_invoke()
-  )
-}
-
 fn ci_merge_admission_gate_script() -> String {
   concat(
     concat(
       concat("ROOT=", ci_repo_root_shell(), "\n"),
       concat(git_fetch_script_for_gate(), "\n")
     ),
-    concat(
-      ci_documentation_only_gate_skip_prefix(
-        gate_name: "merge-admission gate",
-        skip_reason: "floor not run; merge-admission stamp already recorded Skipped disposition"
-      ),
-      merge_admission_gate_invoke()
-    )
-  )
-}
-
-fn ci_documentation_only_gate_skip_prefix(gate_name: String, skip_reason: String) -> String {
-  concat(
-    concat("# ", concat(ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger, "\n")),
-    concat(
-      concat(
-        concat("if test -f ", ci_floor_disposition_marker_path),
-        concat("; then _disp=$(cat ", ci_floor_disposition_marker_path)
-      ),
-      concat(
-        concat(")\nif test \"$_disp\" = \"", merge_admission_floor_disposition_documentation_only_skipped),
-        concat(
-          "\"; then echo \"",
-          concat(
-            gate_name,
-            concat(": skipped — CI_FLOOR_DISPOSITION=$_disp (", concat(skip_reason, ")\"; exit 0; fi; fi\n"))
-          )
-        )
-      )
-    )
+    merge_admission_gate_invoke()
   )
 }
 
@@ -240,38 +189,8 @@ fn git_fetch_script_for_gate() -> String {
   git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: false)
 }
 
-data merge_admission_floor_disposition_documentation_only_skipped: String = "documentation_only_skipped"
-
-data merge_admission_floor_disposition_floor_running: String = "floor_running"
-
-data ci_floor_disposition_marker_path: String = "target/ci-floor-disposition.txt"
-
-data ci_floor_disposition_marker_init_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.workflow.ci_merge_admission_emit",
-    decl_name: "ci_floor_disposition_marker_init_script",
-    field: WholeDeclaration
-  }
-}
-
-data ci_floor_disposition_marker_init_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_floor_disposition_marker_init_script — concat-built bash floor step opener stamping floor_running into target/ci-floor-disposition.txt (clears stale documentation_only_skipped on persistent self-hosted runners before docs-only branch); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor disposition initialization through orchestration emit and the marker init retires without a transport scaffold"
-
-data ci_floor_disposition_marker_init_note: String = "Positive floor-running stamp at the start of every floor step clears stale documentation_only_skipped left in target/ on persistent self-hosted runners (review 37010 / operator ruling 2026-07-11). Receipt gates skip only on an exact documentation_only_skipped match — never on file presence alone."
-
-
-data merge_admission_stamp_documentation_only_skip_policy: String = "CI_FLOOR_DISPOSITION=documentation_only_skipped stamps merge-admission conclusion Skipped (not Success) — floor-not-run ≠ floor-green per §5; distinct from CI_FLOOR_EXIT=0 laundering"
-
 fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
   if exit_code == 0 { Success } else { Failure }
-}
-
-fn floor_disposition_to_check_conclusion(disposition: String) -> CheckConclusion? {
-  if disposition == merge_admission_floor_disposition_documentation_only_skipped {
-    Present { value: Skipped }
-  } else {
-    none
-  }
 }
 
 fn stamp_floor_receipt(
