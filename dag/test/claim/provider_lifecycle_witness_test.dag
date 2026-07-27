@@ -39,8 +39,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn claude_lifecycle_consumes_cli_authority() -> Bool {
-  claude_cli_lifecycle_external_authority.uri.locator
-    == claude_cli_external_authority_anchor.uri.locator
+  claude_cli_lifecycle_external_authority.uri.locator == claude_cli_external_authority_anchor.uri.locator
 }
 
 fn fixture_instance() -> ProviderInstance {
