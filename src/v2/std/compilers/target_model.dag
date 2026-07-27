@@ -9095,11 +9095,7 @@ type TargetRepresentation {
   apply: TargetGenericApply
 }
 
-data target_representation_field_kind: Symbol = ^target_representation_field_kind
-data target_representation_kind_btree_set: Symbol = ^target_representation_kind_btree_set
-data target_representation_kind_hash_set: Symbol = ^target_representation_kind_hash_set
-data target_representation_kind_vec: Symbol = ^target_representation_kind_vec
-data target_representation_field_apply: Symbol = ^target_representation_field_apply
+data target_collection_choice_field_representation_parameters: Symbol = ^target_collection_choice_field_representation_parameters
 data target_collection_choice_field_supplemental_generic_bound_contracts: Symbol = ^target_collection_choice_field_supplemental_generic_bound_contracts
 data target_derive_supplemental_generic_bound_contract_field_derive_trait: Symbol = ^target_derive_supplemental_generic_bound_contract_field_derive_trait
 data target_derive_supplemental_generic_bound_contract_field_requirements: Symbol = ^target_derive_supplemental_generic_bound_contract_field_requirements
@@ -9113,6 +9109,7 @@ type RequiredTraitWitness
 
 type TargetRepresentationChoice {
   form: TargetRepresentation
+  representation_parameters: List<Symbol>
   constraints: List<RequiredTraitWitness>
   supplemental_generic_bound_contracts: List<TargetDeriveSupplementalGenericBoundContract>
 }
@@ -9202,6 +9199,33 @@ fn target_grounding_derive_trait_from_atom(id: Symbol) -> Optional<ReprGrounding
       }
     }
   }
+}
+
+fn target_representation_choice_has_parameter(
+  choice: TargetRepresentationChoice,
+  representation_parameter: Symbol
+) -> Bool {
+  any(
+    xs: choice.representation_parameters,
+    predicate: fn(candidate) { candidate == representation_parameter }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_has_allowed_parameters(
+  choice: TargetRepresentationChoice,
+  row: TargetDeriveSupplementalGenericBoundContract
+) -> Bool {
+  fold_list(
+    xs: row.requirements,
+    empty: true,
+    cons: fn(acc, requirement) {
+      acc
+        && target_representation_choice_has_parameter(
+          choice: choice,
+          representation_parameter: requirement.representation_parameter
+        )
+    }
+  )
 }
 
 fn target_derive_supplemental_generic_bound_requirement_from_node(
@@ -9330,11 +9354,16 @@ type TargetDeriveSupplementalGenericBoundContractLookup
   | TargetDeriveSupplementalGenericBoundContractAmbiguous
 
 fn target_derive_supplemental_generic_bound_contract_lookup_step(
+  choice: TargetRepresentationChoice,
   acc: TargetDeriveSupplementalGenericBoundContractLookup,
   row: TargetDeriveSupplementalGenericBoundContract,
   derive_trait: ReprGroundingDeriveTrait
 ) -> TargetDeriveSupplementalGenericBoundContractLookup {
-  if row.derive_trait == derive_trait {
+  if target_derive_supplemental_generic_bound_contract_has_allowed_parameters(
+    choice: choice,
+    row: row
+  ) {
+    if row.derive_trait == derive_trait {
     match acc {
       TargetDeriveSupplementalGenericBoundContractMissing =>
         TargetDeriveSupplementalGenericBoundContractUnique { row: row }
@@ -9342,6 +9371,9 @@ fn target_derive_supplemental_generic_bound_contract_lookup_step(
         TargetDeriveSupplementalGenericBoundContractAmbiguous
       TargetDeriveSupplementalGenericBoundContractAmbiguous =>
         TargetDeriveSupplementalGenericBoundContractAmbiguous
+    }
+    } else {
+      acc
     }
   } else {
     acc
@@ -9358,6 +9390,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
     empty: TargetDeriveSupplementalGenericBoundContractMissing,
     cons: fn(acc, row) {
       target_derive_supplemental_generic_bound_contract_lookup_step(
+        choice: choice,
         acc: acc,
         row: row,
         derive_trait: derive_trait

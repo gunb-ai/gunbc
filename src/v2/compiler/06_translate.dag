@@ -103,6 +103,7 @@ import v2.std.compilers.target_model {
   TargetTextCarrier,
   TargetRepresentationChoice,
   target_derive_supplemental_generic_bound_contracts_from_node,
+  target_collection_node_atom_identity,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
@@ -125,6 +126,7 @@ import v2.std.compilers.target_model {
   target_type_expr_emitted_kind,
   target_type_expr_record_emitted,
   target_type_expr_sum_emitted,
+  target_collection_choice_field_representation_parameters,
   target_collection_choice_field_supplemental_generic_bound_contracts,
   type_expr_projection_row_closedness_from_target,
   type_expression_projection_from_target,
@@ -1343,31 +1345,49 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
         o: target_collection_repr_from_node(node: form_node),
         f: fn(form) {
           bind_outcome(
-            o: find_named_child(root: node, name: ^target_collection_choice_field_constraints),
-            f: fn(constraints_node) {
+            o: find_named_child(
+              root: node,
+              name: ^target_collection_choice_field_representation_parameters
+            ),
+            f: fn(representation_parameters_node) {
               bind_outcome(
                 o: target_collection_fold_list_from_node(
-                  remaining: target_collection_subtree_count(n: constraints_node),
-                  node: constraints_node,
-                  decode_item: target_collection_witness_from_node
+                  remaining: target_collection_subtree_count(n: representation_parameters_node),
+                  node: representation_parameters_node,
+                  decode_item: target_collection_node_atom_identity
                 ),
-                f: fn(constraints) {
+                f: fn(representation_parameters) {
                   bind_outcome(
-                    o: find_named_child(
-                      root: node,
-                      name: ^target_collection_choice_field_supplemental_generic_bound_contracts
-                    ),
-                    f: fn(contracts_node) {
+                    o: find_named_child(root: node, name: ^target_collection_choice_field_constraints),
+                    f: fn(constraints_node) {
                       bind_outcome(
-                        o: target_derive_supplemental_generic_bound_contracts_from_node(
-                          node: contracts_node
+                        o: target_collection_fold_list_from_node(
+                          remaining: target_collection_subtree_count(n: constraints_node),
+                          node: constraints_node,
+                          decode_item: target_collection_witness_from_node
                         ),
-                        f: fn(supplemental_generic_bound_contracts) {
-                          outcome_accepted(
-                            TargetRepresentationChoice {
-                              form: form,
-                              constraints: constraints,
-                              supplemental_generic_bound_contracts: supplemental_generic_bound_contracts
+                        f: fn(constraints) {
+                          bind_outcome(
+                            o: find_named_child(
+                              root: node,
+                              name: ^target_collection_choice_field_supplemental_generic_bound_contracts
+                            ),
+                            f: fn(contracts_node) {
+                              bind_outcome(
+                                o: target_derive_supplemental_generic_bound_contracts_from_node(
+                                  node: contracts_node
+                                ),
+                                f: fn(supplemental_generic_bound_contracts) {
+                                  outcome_accepted(
+                                    TargetRepresentationChoice {
+                                      form: form,
+                                      representation_parameters: representation_parameters,
+                                      constraints: constraints,
+                                      supplemental_generic_bound_contracts: supplemental_generic_bound_contracts
+                                    }
+                                  )
+                                }
+                              )
                             }
                           )
                         }

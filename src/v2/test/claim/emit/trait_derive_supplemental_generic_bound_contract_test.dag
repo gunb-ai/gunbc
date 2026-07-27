@@ -141,10 +141,12 @@ fn sgb_representation_matches(left: TargetRepresentation, right: TargetRepresent
 }
 
 fn sgb_choice_with_contracts(
+  representation_parameters: List<Symbol>,
   contracts: List<TargetDeriveSupplementalGenericBoundContract>
 ) -> TargetRepresentationChoice {
   TargetRepresentationChoice {
     form: sgb_vec_representation(),
+    representation_parameters: representation_parameters,
     constraints: Empty,
     supplemental_generic_bound_contracts: contracts
   }
@@ -266,19 +268,28 @@ fn sgb_requirements_are_empty(
 }
 
 fn sgb_empty_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: Empty)
+  sgb_choice_with_contracts(representation_parameters: Empty, contracts: Empty)
 }
 
 fn sgb_nested_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: sgb_nested_choice_contracts())
+  sgb_choice_with_contracts(
+    representation_parameters: Cons {
+      head: ^sgb_left_slot,
+      tail: Cons {
+        head: ^sgb_right_slot,
+        tail: Empty
+      }
+    },
+    contracts: sgb_nested_choice_contracts()
+  )
 }
 
 fn sgb_concrete_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: Empty)
+  sgb_choice_with_contracts(representation_parameters: Empty, contracts: Empty)
 }
 
 fn sgb_unrelated_choice() -> TargetRepresentationChoice {
-  sgb_choice_with_contracts(contracts: Empty)
+  sgb_choice_with_contracts(representation_parameters: Empty, contracts: Empty)
 }
 
 fn sgb_realization(
@@ -390,9 +401,13 @@ fn sgb_choice_matches_exact(
   expected: TargetRepresentationChoice
 ) -> Bool {
   sgb_representation_matches(left: choice.form, right: expected.form)
+    && choice.representation_parameters == expected.representation_parameters
     && match choice.constraints {
       Empty => match expected.constraints {
-        Empty => sgb_nested_choice_contracts_match(rows: choice.supplemental_generic_bound_contracts)
+        Empty =>
+          sgb_nested_choice_contracts_match(
+            rows: choice.supplemental_generic_bound_contracts
+          )
         _ => false
       }
       _ => false
@@ -409,10 +424,13 @@ fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
     Cons {
       head: form_edge,
       tail: Cons {
-        head: constraints_edge,
+        head: params_edge,
         tail: Cons {
-          head: _contracts_edge,
-          tail: Empty
+          head: constraints_edge,
+          tail: Cons {
+            head: _contracts_edge,
+            tail: Empty
+          }
         }
       }
     } =>
@@ -421,8 +439,11 @@ fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
         children: Cons {
           head: form_edge,
           tail: Cons {
-            head: constraints_edge,
-            tail: Empty
+            head: params_edge,
+            tail: Cons {
+              head: constraints_edge,
+              tail: Empty
+            }
           }
         }
       )
@@ -436,10 +457,13 @@ fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
     Cons {
       head: form_edge,
       tail: Cons {
-        head: constraints_edge,
+        head: params_edge,
         tail: Cons {
-          head: contracts_edge,
-          tail: Empty
+          head: constraints_edge,
+          tail: Cons {
+            head: contracts_edge,
+            tail: Empty
+          }
         }
       }
     } =>
@@ -448,12 +472,15 @@ fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
         children: Cons {
           head: form_edge,
           tail: Cons {
-            head: constraints_edge,
+            head: params_edge,
             tail: Cons {
-              head: contracts_edge,
+              head: constraints_edge,
               tail: Cons {
                 head: contracts_edge,
-                tail: Empty
+                tail: Cons {
+                  head: contracts_edge,
+                  tail: Empty
+                }
               }
             }
           }
@@ -486,13 +513,16 @@ fn sgb_choice_bundle_with_malformed_contracts_node() -> Node {
     Cons {
       head: form_edge,
       tail: Cons {
-        head: constraints_edge,
+        head: params_edge,
         tail: Cons {
-          head: Edge {
-            label: contracts_label,
-            target: _contracts_target
-          },
-          tail: Empty
+          head: constraints_edge,
+          tail: Cons {
+            head: Edge {
+              label: contracts_label,
+              target: _contracts_target
+            },
+            tail: Empty
+          }
         }
       }
     } =>
@@ -501,13 +531,16 @@ fn sgb_choice_bundle_with_malformed_contracts_node() -> Node {
         children: Cons {
           head: form_edge,
           tail: Cons {
-            head: constraints_edge,
+            head: params_edge,
             tail: Cons {
-              head: Edge {
-                label: contracts_label,
-                target: sgb_malformed_contracts_bundle_node()
-              },
-              tail: Empty
+              head: constraints_edge,
+              tail: Cons {
+                head: Edge {
+                  label: contracts_label,
+                  target: sgb_malformed_contracts_bundle_node()
+                },
+                tail: Empty
+              }
             }
           }
         }
@@ -621,7 +654,16 @@ fn sgb_missing_realization() -> TargetCollectionRealization {
 fn sgb_duplicate_debug_realization() -> TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
-    primary: sgb_choice_with_contracts(contracts: sgb_duplicate_debug_choice_contracts()),
+    primary: sgb_choice_with_contracts(
+      representation_parameters: Cons {
+        head: ^sgb_left_slot,
+        tail: Cons {
+          head: ^sgb_right_slot,
+          tail: Empty
+        }
+      },
+      contracts: sgb_duplicate_debug_choice_contracts()
+    ),
     alternatives: Empty
   )
 }
@@ -631,7 +673,10 @@ fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_empty_choice(),
     alternatives: Cons {
-      head: sgb_choice_with_contracts(contracts: sgb_wrong_choice_contracts()),
+      head: sgb_choice_with_contracts(
+        representation_parameters: Empty,
+        contracts: sgb_wrong_choice_contracts()
+      ),
       tail: Empty
     }
   )

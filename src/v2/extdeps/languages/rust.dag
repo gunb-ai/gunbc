@@ -197,6 +197,7 @@ import v2.std.compilers.target_model {
   TargetCollectionReprBTreeSet,
   TargetCollectionReprHashSet,
   TargetCollectionReprVec,
+  target_collection_choice_field_representation_parameters,
   target_collection_choice_field_supplemental_generic_bound_contracts,
   target_derive_supplemental_generic_bound_contract_field_derive_trait,
   target_derive_supplemental_generic_bound_contract_field_requirements,
@@ -1555,6 +1556,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprBTreeSet,
       apply: rust_set_collection_apply_btree()
     },
+    representation_parameters: [^target_collection_type_param_t],
     constraints: [
       TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
     ],
@@ -1568,6 +1570,7 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprHashSet,
       apply: rust_set_collection_apply_hash()
     },
+    representation_parameters: [^target_collection_type_param_t],
     constraints: [
       TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
       TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
@@ -1589,6 +1592,7 @@ fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprVec,
       apply: rust_free_monoid_collection_apply_vec()
     },
+    representation_parameters: [^target_collection_type_param_t],
     constraints: [],
     supplemental_generic_bound_contracts: Empty
   }
@@ -1734,6 +1738,13 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
       rust_named_edge(
         name: ^target_collection_choice_field_form,
         target: rust_collection_repr_bundle_node(form: choice.form)
+      ),
+      rust_named_edge(
+        name: ^target_collection_choice_field_representation_parameters,
+        target: fold_list_node(
+          xs: choice.representation_parameters,
+          item_node: fn(parameter) { rust_inhabitant_atom(id: parameter) }
+        )
       ),
       rust_named_edge(
         name: ^target_collection_choice_field_constraints,
