@@ -472,7 +472,7 @@ fn section_2() -> RoadmapSection {
           }),
           with_plan(rn: ticket_row(id: "2-scm-infra-econ", done: false, t: TicketFields {
             headline: "storage + serving infra, economics-grounded",
-            brief: "Content-addressed node store with N storage realizations (rides the module-identity storage-binding thread); serving surface rides gunbc serve / belt B. Launch economics are cited carriers, not guesses: the GitLab 10-K corpus (serving = 11–13% of revenue; the spend is S&M/R&D) and gunbc.econ.free_tier_serving (10k free users floor ≈ 2×AX41-1-LTD ≈ 115 EUR/month, witnessed; metered CI compute is the abuse axis — GitLab's 400-free-minutes fence is the receipt).",
+            brief: "Content-addressed storage with N storage realizations and an explicit `PackingPolicy` (rides the module-identity storage-binding thread); semantic unit/group grain is independent of physical object grain, and `UnpackedNodeGrain` is never the default. Serving surface rides gunbc serve / belt B. Launch economics are cited carriers, not guesses: the GitLab 10-K corpus (serving = 11–13% of revenue; the spend is S&M/R&D) and gunbc.econ.free_tier_serving (10k free users floor ≈ 2×AX41-1-LTD ≈ 115 EUR/month, witnessed; metered CI compute is the abuse axis — GitLab's 400-free-minutes fence is the receipt).",
             displaced_cost: "",
             current_state: "",
             first_slice: "",
