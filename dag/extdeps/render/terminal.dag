@@ -163,7 +163,9 @@ fn project_terminal_write(
   if !capability.cursor_addressable && dynamic_line_is_open(state: prior) {
     TerminalWriteRefused { cause: "non-addressable terminal cannot continue an open dynamic line" as NonEmptyStr }
   } else {
-    if string_contains(s: rendered, pattern: "\r") || string_contains(s: rendered, pattern: terminal_erase_line_2()) {
+    if string_contains(s: rendered, pattern: "\r") ||
+       string_contains(s: rendered, pattern: "\n") ||
+       string_contains(s: rendered, pattern: terminal_erase_line_2()) {
       TerminalWriteRefused { cause: "rendered text cannot contain terminal cursor-control bytes" as NonEmptyStr }
     } else if cursor_action_is_clear(action: requested) && rendered != "" {
       TerminalWriteRefused { cause: "Clear requires empty rendered text" as NonEmptyStr }

@@ -6,6 +6,14 @@ import std.nat { Nat }
 import std.symbols { Tier, Emoji, Ascii, Spinner0, StatusBlocked, StatusFinal }
 import std.measure { millisecond, byte_size, basis_point }
 import std.render { CursorAction, Overwrite, Append, RenderCapability }
+import extdeps.render.ansi { csi_esc }
+import extdeps.render.terminal {
+  DynamicLineClosed,
+  DynamicLineOpen,
+  TerminalWriteProjected,
+  TerminalWriteRefused,
+  project_terminal_write,
+}
 import std.observation {
   ObservationSubject,
   RunSegment,
@@ -181,6 +189,60 @@ test fn w_tty_strict_facade_equals_measured_value_projection() -> Bool {
   match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: tty_cap()) {
     TtyEmissionProjected { emission: projected } => strict == projected
     TtyEmissionRefused { cause: _ } => false
+  }
+}
+
+test fn w_nonaddressable_routine_composes_to_plain_append_wire() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Begin,
+    wall: MeasuredUnavailable { cause: "not started" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  match tty_event_emission_under(event: event, basis: MeasuredValue { value: tty_basis() }, cap: pipe_cap()) {
+    TtyEmissionRefused { cause: _ } => false
+    TtyEmissionProjected { emission: e } =>
+      let rendered = tty_render_emission(emission: e, tier: Ascii)
+      e.cursor == Append &&
+      match project_terminal_write(
+        prior: DynamicLineClosed,
+        requested: e.cursor,
+        capability: pipe_cap(),
+        rendered: rendered
+      ) {
+        TerminalWriteRefused { cause: _ } => false
+        TerminalWriteProjected { bytes: b, next: n } =>
+          b == concat(rendered, "\n") &&
+          n == DynamicLineClosed &&
+          !string_contains(s: b, pattern: "\r") &&
+          !string_contains(s: b, pattern: concat(csi_esc, "2K"))
+      }
+  }
+}
+
+test fn w_addressable_refusal_persists_via_exact_closed_append_wire() -> Bool {
+  let event = ObservationEvent {
+    subject: tty_entry_subject(),
+    transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } },
+    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+  match tty_event_emission_under(event: event, basis: MeasuredUnavailable { cause: "basis absent" as NonEmptyStr }, cap: tty_cap()) {
+    TtyEmissionRefused { cause: _ } => false
+    TtyEmissionProjected { emission: e } =>
+      let rendered = tty_render_emission(emission: e, tier: Emoji)
+      e.cursor == Append &&
+      match project_terminal_write(
+        prior: DynamicLineOpen,
+        requested: e.cursor,
+        capability: tty_cap(),
+        rendered: rendered
+      ) {
+        TerminalWriteRefused { cause: _ } => false
+        TerminalWriteProjected { bytes: b, next: n } =>
+          b == concat("\r", concat(csi_esc, concat("2K", concat(rendered, "\n")))) &&
+          n == DynamicLineClosed
+      }
   }
 }
 

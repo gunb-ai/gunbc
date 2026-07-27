@@ -318,6 +318,18 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
     wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
     rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
   }
+  let done_no_wall = ObservationEvent {
+    subject: obs_entry_subject(),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
+  }
+  let refused_no_wall = ObservationEvent {
+    subject: obs_entry_subject(),
+    transition: Concluded { outcome: Refused { diagnostic: "policy" as NonEmptyStr } },
+    wall: MeasuredUnavailable { cause: "clock absent" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "rss absent" as NonEmptyStr }
+  }
   let begin = ObservationEvent {
     subject: obs_entry_subject(),
     transition: Begin,
@@ -349,6 +361,14 @@ test fn w_attention_availability_precedence_and_causes_hold() -> Bool {
   } &&
   match observation_attention_under(event: no_wall, basis: no_basis) {
     AttentionAssigned { level: l } => l == Ambient
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: done_no_wall, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Ambient
+    AttentionRefused { cause: _ } => false
+  } &&
+  match observation_attention_under(event: refused_no_wall, basis: no_basis) {
+    AttentionAssigned { level: l } => l == Anomaly
     AttentionRefused { cause: _ } => false
   } &&
   match observation_attention_under(event: done, basis: no_basis) {

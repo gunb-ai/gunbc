@@ -132,6 +132,19 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
   }
 }
 
+test fn w_rendered_text_cannot_smuggle_line_feed() -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Append,
+    capability: addressable(),
+    rendered: "forged\nsecond line"
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } =>
+      c == "rendered text cannot contain terminal cursor-control bytes"
+  }
+}
+
 test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
   projected_is(
     p: project_terminal_write(
