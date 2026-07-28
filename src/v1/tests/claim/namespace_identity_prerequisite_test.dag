@@ -1,0 +1,630 @@
+module v1.tests.claim.namespace_identity_prerequisite_test
+
+import std.algebra { FreeMonoid, Empty, Cons }
+import v1.std.core {
+  Node,
+  NewlineIndex,
+  ExprData,
+  NoExprData,
+  ExprVar,
+  ExprLet,
+  ExprLambda,
+  ExprMatch,
+  NoConnective,
+  Required,
+  MatchPattern,
+  Bind,
+  LitPattern,
+  VariantPattern,
+  Wildcard,
+  make_expr_node,
+  make_named_expr_node,
+  make_arm_node,
+  make_param_node,
+  field_binding_pattern,
+  int_type,
+  no_span,
+  build_newline_index,
+  empty_intern_table,
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse {
+  ParseContext,
+  token_stream_new,
+  parse_pattern,
+}
+import v1.compiler.infer {
+  namespace_identity_capture_node,
+  namespace_identity_capture_module,
+}
+import v1.compiler.infer_env {
+  V1NodeContainmentPathCapture,
+  NamespaceIdentityCapture,
+}
+
+data namespace_identity_prerequisite_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/namespace_identity_prerequisite_test.dag --functions w_pattern_parser_materializes_exact_declaration_nodes,w_same_name_and_sibling_paths_are_not_collapsed,w_parameter_and_lambda_paths_are_complete"
+
+data namespace_identity_prerequisite_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
+
+type ParsedFixturePattern
+  = ParsedFixturePatternReady { pattern: MatchPattern }
+  | ParsedFixturePatternRefused
+
+fn parse_fixture_pattern(source: String) -> ParsedFixturePattern {
+  let file = "namespace-identity-pattern.dag"
+  let index = build_newline_index(file: file, source: source)
+  let result = parse_pattern(
+    tokens: token_stream_new(all: tokenize(source: source, file: file)),
+    ctx: ParseContext {
+      source_indices: map_insert(empty_map(), file, index),
+      intern_table: empty_intern_table(),
+    },
+  )
+  match result.err {
+    Present { value: _ } => ParsedFixturePatternRefused
+    Absent => ParsedFixturePatternReady { pattern: result.pattern }
+  }
+}
+
+fn parsed_pattern_or_wildcard(source: String) -> MatchPattern {
+  match parse_fixture_pattern(source: source) {
+    ParsedFixturePatternReady { pattern: pattern } => pattern
+    ParsedFixturePatternRefused => Wildcard
+  }
+}
+
+fn pattern_binder_named_count(
+  pattern: MatchPattern,
+  name: String
+) -> Int {
+  match pattern {
+    Bind { declaration: declaration } =>
+      if declaration.name == name { 1 } else { 0 }
+    LitPattern { value: _ } => 0
+    Wildcard => 0
+    VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } =>
+      fold(
+        bindings,
+        init: 0,
+        f: (count, binding) =>
+          count + pattern_binder_named_count(
+            pattern: field_binding_pattern(n: binding),
+            name: name,
+          ),
+      )
+  }
+}
+
+fn fixture_node(
+  name: String,
+  expr_data: ExprData,
+  children: List<Node>,
+  params: List<Node>
+) -> Node {
+  Node {
+    name: name,
+    span: no_span(),
+    ident_span: none,
+    children: children,
+    connective: NoConnective,
+    params: params,
+    inferred: none,
+    return_cardinality: Required,
+    uses: [],
+    body: none,
+    transport: none,
+    properties: [],
+    type_annotation: none,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: none,
+    expr_data: expr_data,
+  }
+}
+
+fn fixture_reference(name: String) -> Node {
+  make_named_expr_node(
+    name: name,
+    expr_data: ExprVar { binding_kind: none },
+    children: [],
+    inferred: none,
+    span: no_span(),
+    name_span: no_span(),
+  )
+}
+
+fn fixture_match(
+  pattern_source: String,
+  reference_name: String
+) -> Node {
+  let arm = make_arm_node(
+    pattern: parsed_pattern_or_wildcard(source: pattern_source),
+    guard: none,
+    body: fixture_reference(name: reference_name),
+    span: no_span(),
+  )
+  make_expr_node(
+    expr_data: ExprMatch,
+    children: [arm],
+    inferred: none,
+    span: no_span(),
+  )
+}
+
+fn fixture_function(
+  name: String,
+  children: List<Node>,
+  params: List<Node>
+) -> Node {
+  fixture_node(
+    name: name,
+    expr_data: NoExprData,
+    children: children,
+    params: params,
+  )
+}
+
+fn identity_fixture_capture() -> NamespaceIdentityCapture {
+  let direct = fixture_function(
+    name: "direct_binder",
+    children: [fixture_match(
+      pattern_source: "direct_bind",
+      reference_name: "direct_bind",
+    )],
+    params: [],
+  )
+  let explicit = fixture_function(
+    name: "explicit_alias",
+    children: [fixture_match(
+      pattern_source: "Pair { left: explicit_bind }",
+      reference_name: "explicit_bind",
+    )],
+    params: [],
+  )
+  let shorthand = fixture_function(
+    name: "shorthand_binder",
+    children: [fixture_match(
+      pattern_source: "Shorthand { shorthand_only }",
+      reference_name: "shorthand_only",
+    )],
+    params: [],
+  )
+  let positional = fixture_function(
+    name: "positional_binder",
+    children: [fixture_match(
+      pattern_source: "Left(positional_bind)",
+      reference_name: "positional_bind",
+    )],
+    params: [],
+  )
+  let nested = fixture_function(
+    name: "nested_binder",
+    children: [fixture_match(
+      pattern_source: "Outer { pair: Pair { left: nested_bind } }",
+      reference_name: "nested_bind",
+    )],
+    params: [],
+  )
+  let same_match = fixture_match(
+    pattern_source: "Pair { left: same }",
+    reference_name: "same",
+  )
+  let same_let = fixture_node(
+    name: "same",
+    expr_data: ExprLet,
+    children: [same_match],
+    params: [],
+  )
+  let same_name = fixture_function(
+    name: "nested_same_name",
+    children: [same_let],
+    params: [],
+  )
+  let left_arm = make_arm_node(
+    pattern: parsed_pattern_or_wildcard(source: "Left(branch_value)"),
+    guard: none,
+    body: fixture_reference(name: "branch_value"),
+    span: no_span(),
+  )
+  let right_arm = make_arm_node(
+    pattern: parsed_pattern_or_wildcard(source: "Right(branch_value)"),
+    guard: none,
+    body: fixture_reference(name: "branch_value"),
+    span: no_span(),
+  )
+  let sibling = fixture_function(
+    name: "sibling_arms",
+    children: [make_expr_node(
+      expr_data: ExprMatch,
+      children: [left_arm, right_arm],
+      inferred: none,
+      span: no_span(),
+    )],
+    params: [],
+  )
+  let parameter = make_param_node(
+    name: "only_parameter",
+    type_expr: int_type(),
+    default_value: none,
+    span: no_span(),
+    name_span: no_span(),
+  )
+  let parameter_fn = fixture_function(
+    name: "parameter_once",
+    children: [fixture_reference(name: "only_parameter")],
+    params: [parameter],
+  )
+  let lambda_parameter = make_param_node(
+    name: "lambda_parameter",
+    type_expr: int_type(),
+    default_value: none,
+    span: no_span(),
+    name_span: no_span(),
+  )
+  let lambda = fixture_node(
+    name: "",
+    expr_data: ExprLambda,
+    children: [fixture_reference(name: "lambda_parameter")],
+    params: [lambda_parameter],
+  )
+  let lambda_fn = fixture_function(
+    name: "lambda_once",
+    children: [lambda],
+    params: [],
+  )
+  let module = fixture_node(
+    name: "test.namespace_identity_fixture",
+    expr_data: NoExprData,
+    children: [],
+    params: [],
+  )
+  namespace_identity_capture_module(
+    module: module,
+    items: [
+      direct,
+      explicit,
+      shorthand,
+      positional,
+      nested,
+      same_name,
+      sibling,
+      parameter_fn,
+      lambda_fn,
+    ],
+  )
+}
+
+fn ancestor_count(ancestors: FreeMonoid<Node>) -> Int {
+  match ancestors {
+    Empty => 0
+    Cons { head: _, tail: tail } => 1 + ancestor_count(ancestors: tail)
+  }
+}
+
+fn ancestors_contain_name(
+  ancestors: FreeMonoid<Node>,
+  name: String
+) -> Bool {
+  match ancestors {
+    Empty => false
+    Cons { head: head, tail: tail } =>
+      head.name == name ||
+      ancestors_contain_name(ancestors: tail, name: name)
+  }
+}
+
+fn node_is_binder_declaration(node: Node) -> Bool {
+  match node.expr_data {
+    NoExprData =>
+      match node.match_pattern {
+        Absent => true
+        Present { value: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn node_is_reference(node: Node) -> Bool {
+  match node.expr_data {
+    ExprVar { binding_kind: _ } => true
+    _ => false
+  }
+}
+
+fn node_is_let_declaration(node: Node) -> Bool {
+  match node.expr_data {
+    ExprLet => true
+    _ => false
+  }
+}
+
+fn path_matches(
+  path: V1NodeContainmentPathCapture,
+  terminal_name: String,
+  ancestor_name: String
+) -> Bool {
+  path.terminal.name == terminal_name &&
+  ancestors_contain_name(
+    ancestors: path.ancestors,
+    name: ancestor_name,
+  )
+}
+
+fn matching_path_count(
+  paths: FreeMonoid<V1NodeContainmentPathCapture>,
+  terminal_name: String,
+  ancestor_name: String
+) -> Int {
+  match paths {
+    Empty => 0
+    Cons { head: head, tail: tail } =>
+      (if path_matches(
+        path: head,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      ) { 1 } else { 0 }) +
+      matching_path_count(
+        paths: tail,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      )
+  }
+}
+
+fn matching_binder_declaration_count(
+  paths: FreeMonoid<V1NodeContainmentPathCapture>,
+  terminal_name: String,
+  ancestor_name: String
+) -> Int {
+  match paths {
+    Empty => 0
+    Cons { head: head, tail: tail } =>
+      (if path_matches(
+        path: head,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      ) && node_is_binder_declaration(node: head.terminal) { 1 } else { 0 }) +
+      matching_binder_declaration_count(
+        paths: tail,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      )
+  }
+}
+
+fn matching_reference_count(
+  paths: FreeMonoid<V1NodeContainmentPathCapture>,
+  terminal_name: String,
+  ancestor_name: String
+) -> Int {
+  match paths {
+    Empty => 0
+    Cons { head: head, tail: tail } =>
+      (if path_matches(
+        path: head,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      ) && node_is_reference(node: head.terminal) { 1 } else { 0 }) +
+      matching_reference_count(
+        paths: tail,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      )
+  }
+}
+
+fn matching_let_count(
+  paths: FreeMonoid<V1NodeContainmentPathCapture>,
+  terminal_name: String,
+  ancestor_name: String
+) -> Int {
+  match paths {
+    Empty => 0
+    Cons { head: head, tail: tail } =>
+      (if path_matches(
+        path: head,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      ) && node_is_let_declaration(node: head.terminal) { 1 } else { 0 }) +
+      matching_let_count(
+        paths: tail,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      )
+  }
+}
+
+fn matching_paths_have_minimum_ancestry(
+  paths: FreeMonoid<V1NodeContainmentPathCapture>,
+  terminal_name: String,
+  ancestor_name: String,
+  minimum: Int
+) -> Bool {
+  match paths {
+    Empty => true
+    Cons { head: head, tail: tail } =>
+      (!path_matches(
+        path: head,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+      ) || ancestor_count(ancestors: head.ancestors) >= minimum) &&
+      matching_paths_have_minimum_ancestry(
+        paths: tail,
+        terminal_name: terminal_name,
+        ancestor_name: ancestor_name,
+        minimum: minimum,
+      )
+  }
+}
+
+fn binder_pair_holds(
+  identity: NamespaceIdentityCapture,
+  name: String,
+  function_name: String
+) -> Bool {
+  matching_binder_declaration_count(
+    paths: identity.occurrences,
+    terminal_name: name,
+    ancestor_name: function_name,
+  ) == 1 &&
+  matching_reference_count(
+    paths: identity.occurrences,
+    terminal_name: name,
+    ancestor_name: function_name,
+  ) == 1 &&
+  matching_paths_have_minimum_ancestry(
+    paths: identity.occurrences,
+    terminal_name: name,
+    ancestor_name: function_name,
+    minimum: 4,
+  )
+}
+
+test fn w_pattern_parser_materializes_exact_declaration_nodes() -> Bool {
+  match parse_fixture_pattern(source: "direct_bind") {
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: direct } =>
+      pattern_binder_named_count(
+        pattern: direct,
+        name: "direct_bind",
+      ) == 1 &&
+      match parse_fixture_pattern(source: "Pair { left: explicit_bind }") {
+        ParsedFixturePatternRefused => false
+        ParsedFixturePatternReady { pattern: explicit } =>
+          pattern_binder_named_count(
+            pattern: explicit,
+            name: "explicit_bind",
+          ) == 1 &&
+          match parse_fixture_pattern(source: "Shorthand { shorthand_only }") {
+            ParsedFixturePatternRefused => false
+            ParsedFixturePatternReady { pattern: shorthand } =>
+              pattern_binder_named_count(
+                pattern: shorthand,
+                name: "shorthand_only",
+              ) == 1 &&
+              match parse_fixture_pattern(source: "Left(positional_bind)") {
+                ParsedFixturePatternRefused => false
+                ParsedFixturePatternReady { pattern: positional } =>
+                  pattern_binder_named_count(
+                    pattern: positional,
+                    name: "positional_bind",
+                  ) == 1 &&
+                  match parse_fixture_pattern(
+                    source: "Outer { pair: Pair { left: nested_bind } }",
+                  ) {
+                    ParsedFixturePatternRefused => false
+                    ParsedFixturePatternReady { pattern: nested } =>
+                      pattern_binder_named_count(
+                        pattern: nested,
+                        name: "nested_bind",
+                      ) == 1
+                  }
+              }
+          }
+      }
+  }
+}
+
+test fn w_same_name_and_sibling_paths_are_not_collapsed() -> Bool {
+  let paths = identity_fixture_capture().occurrences
+  matching_path_count(
+    paths: paths,
+    terminal_name: "same",
+    ancestor_name: "nested_same_name",
+  ) == 3 &&
+  matching_let_count(
+    paths: paths,
+    terminal_name: "same",
+    ancestor_name: "nested_same_name",
+  ) == 1 &&
+  matching_binder_declaration_count(
+    paths: paths,
+    terminal_name: "same",
+    ancestor_name: "nested_same_name",
+  ) == 1 &&
+  matching_reference_count(
+    paths: paths,
+    terminal_name: "same",
+    ancestor_name: "nested_same_name",
+  ) == 1 &&
+  matching_path_count(
+    paths: paths,
+    terminal_name: "branch_value",
+    ancestor_name: "sibling_arms",
+  ) == 4 &&
+  matching_binder_declaration_count(
+    paths: paths,
+    terminal_name: "branch_value",
+    ancestor_name: "sibling_arms",
+  ) == 2 &&
+  matching_reference_count(
+    paths: paths,
+    terminal_name: "branch_value",
+    ancestor_name: "sibling_arms",
+  ) == 2
+}
+
+test fn w_parameter_and_lambda_paths_are_complete() -> Bool {
+  let paths = identity_fixture_capture().occurrences
+  matching_binder_declaration_count(
+    paths: paths,
+    terminal_name: "only_parameter",
+    ancestor_name: "parameter_once",
+  ) == 1 &&
+  matching_reference_count(
+    paths: paths,
+    terminal_name: "only_parameter",
+    ancestor_name: "parameter_once",
+  ) == 1 &&
+  matching_binder_declaration_count(
+    paths: paths,
+    terminal_name: "lambda_parameter",
+    ancestor_name: "lambda_once",
+  ) == 1 &&
+  matching_reference_count(
+    paths: paths,
+    terminal_name: "lambda_parameter",
+    ancestor_name: "lambda_once",
+  ) == 1 &&
+  matching_paths_have_minimum_ancestry(
+    paths: paths,
+    terminal_name: "only_parameter",
+    ancestor_name: "parameter_once",
+    minimum: 2,
+  ) &&
+  matching_paths_have_minimum_ancestry(
+    paths: paths,
+    terminal_name: "lambda_parameter",
+    ancestor_name: "lambda_once",
+    minimum: 3,
+  ) &&
+  binder_pair_holds(
+    identity: identity_fixture_capture(),
+    name: "direct_bind",
+    function_name: "direct_binder",
+  ) &&
+  binder_pair_holds(
+    identity: identity_fixture_capture(),
+    name: "explicit_bind",
+    function_name: "explicit_alias",
+  ) &&
+  binder_pair_holds(
+    identity: identity_fixture_capture(),
+    name: "shorthand_only",
+    function_name: "shorthand_binder",
+  ) &&
+  binder_pair_holds(
+    identity: identity_fixture_capture(),
+    name: "positional_bind",
+    function_name: "positional_binder",
+  ) &&
+  binder_pair_holds(
+    identity: identity_fixture_capture(),
+    name: "nested_bind",
+    function_name: "nested_binder",
+  )
+}

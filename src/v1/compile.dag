@@ -414,8 +414,8 @@ fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineInd
 
 fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
-    Bind { name: inner } =>
-      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: inner), "}")
+    Bind { declaration: declaration } =>
+      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
     VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
