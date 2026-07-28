@@ -1260,6 +1260,7 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    selected_function_identities: HashMap<String, SelectedFunctionIdentity>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1318,6 +1319,13 @@ pub struct InterpContext {
     // Without this arm the refusal fires only after the overrun is fully spent (707s on a
     // 600s budget; 21–34min receipts in the original finding).
     witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectedFunctionIdentity {
+    pub module_path: String,
+    pub decl_name: String,
+    pub bare_name_ambiguous: bool,
 }
 
 impl InterpContext {
@@ -1408,15 +1416,35 @@ impl InterpContext {
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
+        let mut selected_function_identities = HashMap::new();
+        let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
+                    *bare_name_counts.entry(name.clone()).or_default() += 1;
                     fn_nodes.insert(name.clone(), item.clone());
+                    selected_function_identities.insert(
+                        name.clone(),
+                        SelectedFunctionIdentity {
+                            module_path: module_path.clone(),
+                            decl_name: name.clone(),
+                            bare_name_ambiguous: false,
+                        },
+                    );
                     if !module_path.is_empty() {
-                        fn_nodes.insert(format!("{}.{}", module_path, name), item.clone());
+                        let qualified = format!("{}.{}", module_path, name);
+                        fn_nodes.insert(qualified.clone(), item.clone());
+                        selected_function_identities.insert(
+                            qualified,
+                            SelectedFunctionIdentity {
+                                module_path: module_path.clone(),
+                                decl_name: name.clone(),
+                                bare_name_ambiguous: false,
+                            },
+                        );
                     }
                 }
                 // Service-item detection is node-local: the item node carries the
@@ -1446,11 +1474,19 @@ impl InterpContext {
                 }
             }
         }
+        for (name, count) in bare_name_counts {
+            if count > 1 {
+                if let Some(identity) = selected_function_identities.get_mut(&name) {
+                    identity.bare_name_ambiguous = true;
+                }
+            }
+        }
         InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
+            selected_function_identities,
             service_ops,
             execution_mode,
             fixture_store,
@@ -1578,6 +1614,12 @@ impl InterpContext {
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
+    }
+
+    /// Identity captured alongside the exact fn_nodes entry used by lookup_fn.
+    /// This is observational only: it does not select, resolve, or alter lookup.
+    pub fn selected_function_identity(&self, name: &str) -> Option<&SelectedFunctionIdentity> {
+        self.selected_function_identities.get(name)
     }
 }
 
