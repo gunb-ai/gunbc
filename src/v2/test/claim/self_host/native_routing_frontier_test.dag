@@ -11,10 +11,11 @@ import v2.compiler.self_host.native_routing_frontier {
 }
 import v2.compiler.self_host.parity_window {
   ParityWindowReceipt,
+  WindowObserved,
   parity_holding,
   parity_revert_required
 }
-import v2.compiler.self_host.parity_receipts_local { meet_join_local_receipts, complement_local_receipts }
+import v2.compiler.self_host.parity_receipts_local { meet_join_local_observations, complement_local_observations }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }

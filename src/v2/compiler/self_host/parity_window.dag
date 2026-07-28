@@ -4,7 +4,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data parity_window_note: String = "Parity window, DEMOTED to post-flip monitoring (2026-07-28; was the P6 pre-flip routing flip gate of 2026-07-22). Demotion ground is the routed_flip_reverted_note receipt in v2.compiler.self_host.native_routing_frontier: the pre-flip window PASSED for meet_join and complement (three consecutive green srv1 probe windows, parity_receipts_local) and the flip still redded WARM on main run 29963619401 — the pre-flip streak was not the operative protection; the live agreement leg in the per-PR floor plus the one-data-edit frontier revert was. The window observation law is unchanged (green = the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root; any red or divergence resets the trailing streak), but the verdict it feeds now MONITORS NativeRouted families AFTER the flip instead of gating the flip: the latest red cadence window yields ParityRevertRequired naming that window (typed, located — the loudness routed_flip_reverted_note demands), an empty observation history is ParityUnobserved (never conflated with holding — DESIGN section 5 state-space conflation), and only a trailing green streak is ParityHolding. The flip bar itself lives on the frontier rows: a no-evict cached agreement leg plus a warm green agreement receipt — see native_routing_frontier_note."
+data parity_window_note: String = "Parity window, DEMOTED to post-flip monitoring (2026-07-28; was the P6 pre-flip routing flip gate of 2026-07-22). Demotion ground is the routed_flip_reverted_note receipt in v2.compiler.self_host.native_routing_frontier: the pre-flip window PASSED for meet_join and complement (three consecutive green srv1 probe windows, parity_receipts_local) and the flip still redded WARM on main run 29963619401 — the pre-flip streak was not the operative protection; the live agreement leg in the per-PR floor plus the one-data-edit frontier revert was. The window observation law is unchanged (green = the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root), and the monitor law is LATCHING (operator rework ruling 2026-07-28, rework of the first cut whose one later green cleared a red with no revert and no acknowledgment — that defeats a monitor): a red observed in the current routing epoch is ABSORBING — the verdict stays ParityRevertRequired naming the FIRST red window until an explicit RevertAcknowledged observation opens a new epoch; a green after an ack (never a green after an unacknowledged red) resumes ParityHolding. Evidence discipline is typed, never accidental: every observation must match the requested family (a mixed-family receipt is ParityEvidenceRefused, never counted), and cadence order is explicit in the evidence — each observation carries cadence_sequence, strictly increasing, an order violation is ParityEvidenceRefused (refusal is itself absorbing — DESIGN section 5, a failure arm refuses, never widens). An empty observation history is ParityUnobserved, never conflated with holding. The flip bar itself lives on the frontier rows: a no-evict cached agreement leg plus a warm green agreement receipt — see native_routing_frontier_note."
 
 type ParityWindowReceipt {
   family: String
@@ -13,51 +13,183 @@ type ParityWindowReceipt {
   warm_compile_skipped: Bool
 }
 
+type ParityObservation
+  = WindowObserved { receipt: ParityWindowReceipt, cadence_sequence: Int }
+  | RevertAcknowledged { family: String, ack_id: String, cadence_sequence: Int }
+
+type ParityEvidenceRefusal
+  = MixedFamilyReceipt { requested: String, found: String, cadence_sequence: Int }
+  | CadenceOrderViolation { prior_sequence: Int, offending_sequence: Int }
+
 type ParityMonitorVerdict
   = ParityHolding { family: String, consecutive_green: Int }
   | ParityRevertRequired { family: String, red_window_id: String }
   | ParityUnobserved { family: String }
+  | ParityEvidenceRefused { family: String, cause: ParityEvidenceRefusal }
+
+type ParityCadenceCursor
+  = NoCadenceYet
+  | CadenceAt { value: Int }
+
+type ParityFoldState {
+  verdict: ParityMonitorVerdict
+  cursor: ParityCadenceCursor
+}
 
 fn receipt_is_green(r: ParityWindowReceipt) -> Bool {
   r.agreement_green && r.warm_compile_skipped
 }
 
-fn parity_monitor_verdict(
-  family: String,
-  receipts: List<ParityWindowReceipt>
-) -> ParityMonitorVerdict {
-  fold(
-    receipts,
-    init: ParityUnobserved { family: family },
-    f: fn(acc, r) {
-      if receipt_is_green(r: r) {
-        match acc {
-          ParityHolding { family: f, consecutive_green: n } =>
-            ParityHolding { family: f, consecutive_green: n + 1 }
-          ParityRevertRequired { family: f, red_window_id: _ } =>
-            ParityHolding { family: f, consecutive_green: 1 }
-          ParityUnobserved { family: f } =>
-            ParityHolding { family: f, consecutive_green: 1 }
-        }
-      } else {
-        ParityRevertRequired { family: family, red_window_id: r.cadence_window_id }
-      }
-    }
-  )
-}
-
-fn parity_holding(family: String, receipts: List<ParityWindowReceipt>) -> Bool {
-  match parity_monitor_verdict(family: family, receipts: receipts) {
-    ParityHolding { family: _, consecutive_green: _ } => true
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
+fn observation_sequence(o: ParityObservation) -> Int {
+  match o {
+    WindowObserved { receipt: _, cadence_sequence: s } => s
+    RevertAcknowledged { family: _, ack_id: _, cadence_sequence: s } => s
   }
 }
 
-fn parity_revert_required(family: String, receipts: List<ParityWindowReceipt>) -> Bool {
-  match parity_monitor_verdict(family: family, receipts: receipts) {
+fn observation_family(o: ParityObservation) -> String {
+  match o {
+    WindowObserved { receipt: r, cadence_sequence: _ } => r.family
+    RevertAcknowledged { family: f, ack_id: _, cadence_sequence: _ } => f
+  }
+}
+
+fn verdict_is_refused(v: ParityMonitorVerdict) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => true
+  }
+}
+
+fn cadence_admits(cursor: ParityCadenceCursor, s: Int) -> Bool {
+  match cursor {
+    NoCadenceYet => true
+    CadenceAt { value: v } => s > v
+  }
+}
+
+fn cursor_prior_value(cursor: ParityCadenceCursor) -> Int {
+  match cursor {
+    NoCadenceYet => 0
+    CadenceAt { value: v } => v
+  }
+}
+
+fn apply_admitted_observation(
+  family: String,
+  verdict: ParityMonitorVerdict,
+  o: ParityObservation
+) -> ParityMonitorVerdict {
+  match o {
+    RevertAcknowledged { family: _, ack_id: _, cadence_sequence: _ } =>
+      ParityUnobserved { family: family }
+    WindowObserved { receipt: r, cadence_sequence: _ } =>
+      match verdict {
+        ParityRevertRequired { family: f, red_window_id: w } =>
+          ParityRevertRequired { family: f, red_window_id: w }
+        ParityEvidenceRefused { family: f, cause: c } =>
+          ParityEvidenceRefused { family: f, cause: c }
+        ParityHolding { family: f, consecutive_green: n } =>
+          if receipt_is_green(r: r) {
+            ParityHolding { family: f, consecutive_green: n + 1 }
+          } else {
+            ParityRevertRequired { family: f, red_window_id: r.cadence_window_id }
+          }
+        ParityUnobserved { family: f } =>
+          if receipt_is_green(r: r) {
+            ParityHolding { family: f, consecutive_green: 1 }
+          } else {
+            ParityRevertRequired { family: f, red_window_id: r.cadence_window_id }
+          }
+      }
+  }
+}
+
+fn parity_monitor_step(
+  family: String,
+  state: ParityFoldState,
+  o: ParityObservation
+) -> ParityFoldState {
+  if verdict_is_refused(v: state.verdict) {
+    state
+  } else {
+    let s = observation_sequence(o: o)
+    if cadence_admits(cursor: state.cursor, s: s) {
+      if observation_family(o: o) == family {
+        ParityFoldState {
+          verdict: apply_admitted_observation(family: family, verdict: state.verdict, o: o),
+          cursor: CadenceAt { value: s }
+        }
+      } else {
+        ParityFoldState {
+          verdict: ParityEvidenceRefused {
+            family: family,
+            cause: MixedFamilyReceipt {
+              requested: family,
+              found: observation_family(o: o),
+              cadence_sequence: s
+            }
+          },
+          cursor: state.cursor
+        }
+      }
+    } else {
+      ParityFoldState {
+        verdict: ParityEvidenceRefused {
+          family: family,
+          cause: CadenceOrderViolation {
+            prior_sequence: cursor_prior_value(cursor: state.cursor),
+            offending_sequence: s
+          }
+        },
+        cursor: state.cursor
+      }
+    }
+  }
+}
+
+fn parity_monitor_verdict(
+  family: String,
+  observations: List<ParityObservation>
+) -> ParityMonitorVerdict {
+  let final_state = fold(
+    observations,
+    init: ParityFoldState {
+      verdict: ParityUnobserved { family: family },
+      cursor: NoCadenceYet
+    },
+    f: fn(acc, o) {
+      parity_monitor_step(family: family, state: acc, o: o)
+    }
+  )
+  final_state.verdict
+}
+
+fn parity_holding(family: String, observations: List<ParityObservation>) -> Bool {
+  match parity_monitor_verdict(family: family, observations: observations) {
+    ParityHolding { family: _, consecutive_green: _ } => true
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+fn parity_revert_required(family: String, observations: List<ParityObservation>) -> Bool {
+  match parity_monitor_verdict(family: family, observations: observations) {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => true
     ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+fn parity_evidence_refused(family: String, observations: List<ParityObservation>) -> Bool {
+  match parity_monitor_verdict(family: family, observations: observations) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => true
   }
 }

@@ -2,105 +2,202 @@ module v2.test.claim.self_host.parity_window_test
 
 import v2.compiler.self_host.parity_window {
   ParityWindowReceipt,
+  ParityObservation,
+  WindowObserved,
+  RevertAcknowledged,
+  ParityEvidenceRefusal,
+  MixedFamilyReceipt,
+  CadenceOrderViolation,
   ParityMonitorVerdict,
   ParityHolding,
   ParityRevertRequired,
   ParityUnobserved,
+  ParityEvidenceRefused,
   parity_monitor_verdict,
   parity_holding,
-  parity_revert_required
+  parity_revert_required,
+  parity_evidence_refused
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-fn green_receipt(id: String) -> ParityWindowReceipt {
-  ParityWindowReceipt {
-    family: "add",
-    cadence_window_id: id,
-    agreement_green: true,
-    warm_compile_skipped: true
+fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> ParityObservation {
+  WindowObserved {
+    receipt: ParityWindowReceipt {
+      family: family,
+      cadence_window_id: id,
+      agreement_green: green,
+      warm_compile_skipped: warm
+    },
+    cadence_sequence: seq
   }
 }
 
-fn red_receipt(id: String) -> ParityWindowReceipt {
-  ParityWindowReceipt {
-    family: "add",
-    cadence_window_id: id,
-    agreement_green: false,
-    warm_compile_skipped: true
-  }
+fn green_obs(id: String, seq: Int) -> ParityObservation {
+  observed(family: "add", id: id, seq: seq, green: true, warm: true)
 }
 
-fn cold_receipt(id: String) -> ParityWindowReceipt {
-  ParityWindowReceipt {
-    family: "add",
-    cadence_window_id: id,
-    agreement_green: true,
-    warm_compile_skipped: false
-  }
+fn red_obs(id: String, seq: Int) -> ParityObservation {
+  observed(family: "add", id: id, seq: seq, green: false, warm: true)
 }
 
-test fn witness_trailing_greens_hold_with_streak() -> Bool {
-  match parity_monitor_verdict(
-    family: "add",
-    receipts: [green_receipt(id: "w1"), green_receipt(id: "w2"), green_receipt(id: "w3")]
-  ) {
-    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 3)
+fn cold_obs(id: String, seq: Int) -> ParityObservation {
+  observed(family: "add", id: id, seq: seq, green: true, warm: false)
+}
+
+fn ack_obs(id: String, seq: Int) -> ParityObservation {
+  RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
+}
+
+test fn witness_empty_history_is_unobserved() -> Bool {
+  let unobserved = match parity_monitor_verdict(family: "add", observations: []) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: f } => f == "add"
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+  unobserved
+    && (parity_holding(family: "add", observations: []) == false)
+    && (parity_revert_required(family: "add", observations: []) == false)
+}
+
+test fn witness_green_holds() -> Bool {
+  match parity_monitor_verdict(family: "add", observations: [green_obs(id: "w1", seq: 1)]) {
+    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
     ParityRevertRequired { family: _, red_window_id: _ } => false
     ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
-test fn witness_latest_red_demands_revert_naming_window() -> Bool {
+test fn witness_greens_accumulate_streak() -> Bool {
   match parity_monitor_verdict(
     family: "add",
-    receipts: [green_receipt(id: "w1"), green_receipt(id: "w2"), red_receipt(id: "w3")]
+    observations: [green_obs(id: "w1", seq: 1), green_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
+  ) {
+    ParityHolding { family: _, consecutive_green: n } => n == 3
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+test fn witness_red_demands_revert_naming_window() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
   ) {
     ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: f, red_window_id: w } => (f == "add") && (w == "w3")
+    ParityRevertRequired { family: f, red_window_id: w } => (f == "add") && (w == "w2")
     ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+test fn witness_red_latches_over_later_green() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [green_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2), green_obs(id: "w3", seq: 3)]
+  ) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: w } => w == "w2"
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+test fn witness_latch_names_first_red_window() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [red_obs(id: "w1", seq: 1), red_obs(id: "w2", seq: 2)]
+  ) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: w } => w == "w1"
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
   }
 }
 
 test fn witness_cold_divergence_demands_revert() -> Bool {
   parity_revert_required(
     family: "add",
-    receipts: [green_receipt(id: "w1"), cold_receipt(id: "w2")]
+    observations: [green_obs(id: "w1", seq: 1), cold_obs(id: "w2", seq: 2)]
   )
 }
 
-test fn witness_empty_history_is_unobserved_not_holding() -> Bool {
-  let unobserved = match parity_monitor_verdict(family: "add", receipts: []) {
+test fn witness_mixed_family_receipt_refused() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [
+      green_obs(id: "w1", seq: 1),
+      observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+    ]
+  ) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: c } =>
+      match c {
+        MixedFamilyReceipt { requested: rq, found: fd, cadence_sequence: s } =>
+          (rq == "add") && (fd == "meet_join") && (s == 2)
+        CadenceOrderViolation { prior_sequence: _, offending_sequence: _ } => false
+      }
+  }
+}
+
+test fn witness_refusal_is_absorbing() -> Bool {
+  parity_evidence_refused(
+    family: "add",
+    observations: [
+      observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
+      green_obs(id: "w2", seq: 2)
+    ]
+  )
+}
+
+test fn witness_cadence_order_violation_refused() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
+  ) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: c } =>
+      match c {
+        MixedFamilyReceipt { requested: _, found: _, cadence_sequence: _ } => false
+        CadenceOrderViolation { prior_sequence: p, offending_sequence: o } =>
+          (p == 2) && (o == 2)
+      }
+  }
+}
+
+test fn witness_ack_opens_new_epoch_then_green_holds() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [
+      green_obs(id: "w1", seq: 1),
+      red_obs(id: "w2", seq: 2),
+      ack_obs(id: "revert-7091", seq: 3),
+      green_obs(id: "w4", seq: 4)
+    ]
+  ) {
+    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 1)
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+test fn witness_ack_alone_is_unobserved_not_holding() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    observations: [red_obs(id: "w1", seq: 1), ack_obs(id: "revert-7091", seq: 2)]
+  ) {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => false
     ParityUnobserved { family: f } => f == "add"
+    ParityEvidenceRefused { family: _, cause: _ } => false
   }
-  unobserved
-    && (parity_holding(family: "add", receipts: []) == false)
-    && (parity_revert_required(family: "add", receipts: []) == false)
-}
-
-test fn witness_streak_counts_trailing_only() -> Bool {
-  match parity_monitor_verdict(
-    family: "add",
-    receipts: [
-      green_receipt(id: "w1"),
-      green_receipt(id: "w2"),
-      green_receipt(id: "w3"),
-      red_receipt(id: "w4"),
-      green_receipt(id: "w5")
-    ]
-  ) {
-    ParityHolding { family: _, consecutive_green: n } => n == 1
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-  }
-}
-
-test fn witness_red_control_holding_rejects_trailing_red() -> Bool {
-  parity_holding(
-    family: "add",
-    receipts: [green_receipt(id: "w1"), red_receipt(id: "w2")]
-  ) == false
 }
