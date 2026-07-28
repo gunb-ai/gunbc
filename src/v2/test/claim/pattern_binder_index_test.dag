@@ -6,6 +6,7 @@ import std.occurrence_binding {
   BindingCandidate,
   ContainmentPath,
   OccurrenceAmbiguous,
+  OccurrenceBinding,
   OccurrenceBound,
   OccurrenceUnbound
 }
@@ -229,8 +230,12 @@ test fn pattern_binder_nested_same_name_coexistence_holds() -> Bool {
     position: pb_inner_path,
     name: ^dup
   ) {
-    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
-      observed == pb_inner_path
+    OccurrenceBound {
+      binding: OccurrenceBinding {
+        occurrence: _,
+        candidate: BindingCandidate { containment: observed },
+      },
+    } => observed == pb_inner_path
     OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
     OccurrenceUnbound { occurrence: _ } => false
   }
@@ -242,8 +247,12 @@ test fn pattern_binder_sibling_arm_isolation_holds() -> Bool {
     position: pb_arm_a_path,
     name: ^arm_local
   ) {
-    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
-      observed == pb_arm_a_path
+    OccurrenceBound {
+      binding: OccurrenceBinding {
+        occurrence: _,
+        candidate: BindingCandidate { containment: observed },
+      },
+    } => observed == pb_arm_a_path
     OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
     OccurrenceUnbound { occurrence: _ } => false
   }
@@ -255,8 +264,12 @@ test fn pattern_binder_same_declaration_discovered_once_holds() -> Bool {
     position: pb_same_path,
     name: ^singleton
   ) {
-    OccurrenceBound { binding: BindingCandidate { containment: observed } } =>
-      observed == pb_same_path
+    OccurrenceBound {
+      binding: OccurrenceBinding {
+        occurrence: _,
+        candidate: BindingCandidate { containment: observed },
+      },
+    } => observed == pb_same_path
     OccurrenceAmbiguous { occurrence: _, candidates: _ } => false
     OccurrenceUnbound { occurrence: _ } => false
   }
