@@ -10768,17 +10768,13 @@ impl ScopedRunObservation {
             if !self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredProjected") {
                 return Err("scoped measured projection returned a non-measured arm".to_string());
             }
-            let Some(Value::Variant {
-                variant_name: wall_variant,
+            let Some(Value::Record {
                 fields: wall_fields,
                 ..
             }) = self.ctx.field(fields, "wall")
             else {
                 return Err("scoped measured projection omitted canonical wall".to_string());
             };
-            if !self.ctx.sym_eq(*wall_variant, "Nanosecond") {
-                return Err("scoped measured projection returned non-Nanosecond wall".to_string());
-            }
             match self.ctx.field(wall_fields, "count") {
                 Some(Value::Int(value)) if *value >= 0 => Some(*value as u128),
                 _ => return Err("scoped measured Nanosecond omitted count".to_string()),
@@ -10826,7 +10822,8 @@ impl ScopedRunObservation {
         self.emit("scoped_run_begin_write_measured", None, true)
     }
     fn finish(&mut self) -> Result<(), String> {
-        self.emit("scoped_run_final_write_measured", None, true)
+        // Clean Final has no attention basis; timing is carried by the typed receipt.
+        self.emit("scoped_run_final_write", None, false)
     }
     fn refused(&mut self, cause: &str) -> Result<(), String> {
         self.emit(

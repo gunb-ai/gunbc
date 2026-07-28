@@ -13,7 +13,7 @@ import gunbc.observation_seed_render {
   ScopedRunMeasuredProjected,
   ScopedRunMeasuredRefused,
   scoped_run_begin_write,
-  scoped_run_final_write_measured,
+  scoped_run_refused_write_measured,
   scoped_run_final_write,
   scoped_run_refused_write,
   scoped_run_failed_write,
@@ -157,13 +157,13 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 }
 
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
-  match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1, addressable: false, emoji: false, prior_open: false) {
+  match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall_ns: 1, addressable: false, emoji: false, prior_open: false) {
     ScopedRunMeasuredRefused { cause: _ } => false
     ScopedRunMeasuredProjected { bytes: one, next_open: one_open, wall: one_wall } =>
-      match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 999999, addressable: false, emoji: false, prior_open: false) {
+      match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall_ns: 999999, addressable: false, emoji: false, prior_open: false) {
         ScopedRunMeasuredRefused { cause: _ } => false
         ScopedRunMeasuredProjected { bytes: sub_ms, next_open: sub_ms_open, wall: sub_ms_wall } =>
-          match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1000000, addressable: false, emoji: false, prior_open: false) {
+          match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall_ns: 1000000, addressable: false, emoji: false, prior_open: false) {
             ScopedRunMeasuredRefused { cause: _ } => false
             ScopedRunMeasuredProjected { bytes: one_ms, next_open: one_ms_open, wall: one_ms_wall } =>
               !one_open && !sub_ms_open && !one_ms_open &&
