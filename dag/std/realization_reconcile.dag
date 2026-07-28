@@ -2,6 +2,11 @@ module std.realization_reconcile
 
 import std.types { String, Bool }
 import std.disposition { Disposition, Terminal }
+import std.state_durability {
+  StateDurabilityVerdict,
+  state_durability_satisfied,
+  state_durability_verdict_reason,
+}
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }
@@ -38,5 +43,26 @@ fn reconciliation_converged<A, E>(r: Reconciliation<A, E>) -> Bool {
   match r {
     Converged { evidence: _, applied: _ } => true
     NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+fn grounding_qualified_by_durability<E>(
+  grounding: Grounding<E>,
+  durability: StateDurabilityVerdict,
+) -> Grounding<E> {
+  match grounding {
+    DoesNotGround { reason: reason } =>
+      DoesNotGround { reason: reason }
+    Grounds { evidence: evidence } =>
+      if state_durability_satisfied(verdict: durability) {
+        Grounds { evidence: evidence }
+      } else {
+        DoesNotGround {
+          reason: concat(
+            "effective state does not satisfy declared lifetime: ",
+            state_durability_verdict_reason(verdict: durability),
+          ),
+        }
+      }
   }
 }

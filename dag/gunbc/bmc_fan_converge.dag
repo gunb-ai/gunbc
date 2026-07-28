@@ -13,12 +13,17 @@ import extdeps.bmc.types {
   BmcFanCurve,
   BmcFanCurveStep,
   BmcFanPolicyObservation,
-  BmcFlashBackedOverlayObserved,
+  BmcOverlayConfigObserved,
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
 }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.exec.command { shell_quote }
+import extdeps.filesystem.linux {
+  LinuxMountObservation,
+  LinuxOverlayObservation,
+  linux_filesystem_kind_from_mount_type,
+}
 import extdeps.languages.json.emit {
   json_array,
   json_int,
@@ -55,6 +60,7 @@ import gunbc.bmc_onboarding {
   srv4_onboarding_plan,
 }
 import gunbc.fleet_bmc_state {
+  srv4_bmc_fan_durability_evidence,
   srv4_bmc_fan_projection_capability,
 }
 import gunbc.fleet_intent {
@@ -75,6 +81,7 @@ import std.measure {
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
+import std.state_durability { StateDurabilityEvidence }
 import std.types {
   Bool,
   Int,
@@ -95,6 +102,7 @@ type BmcFanConvergeTarget {
   board: BaseboardModel
   onboarding: BmcOnboardingPlan
   projection: BmcFanPolicyProjectionCapability?
+  durability_evidence: List<StateDurabilityEvidence>
 }
 
 data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
@@ -102,6 +110,7 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   board: srv3_baseboard.catalog.model,
   onboarding: srv3_onboarding_plan,
   projection: none,
+  durability_evidence: [],
 }
 
 data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
@@ -109,6 +118,7 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   board: srv4_baseboard.catalog.model,
   onboarding: srv4_onboarding_plan,
   projection: Present { value: srv4_bmc_fan_projection_capability },
+  durability_evidence: srv4_bmc_fan_durability_evidence,
 }
 
 type BmcFanLiveObservation {
@@ -451,6 +461,12 @@ fn bmc_fan_observer_script(
     "upperdir=$(printf '%s\\n' \"$root_options\" | tr ',' '\\n' | sed -n 's/^upperdir=//p')",
     "case \"$lowerdir\" in /*) ;; *) lowerdir=\"/$lowerdir\" ;; esac",
     "case \"$upperdir\" in /*) ;; *) upperdir=\"/$upperdir\" ;; esac",
+    "root_source=$(awk '$2 == \"/\" { print $1; exit }' /proc/mounts)",
+    "root_fstype=$(awk '$2 == \"/\" { print $3; exit }' /proc/mounts)",
+    "lower_source=$(awk -v p=\"$lowerdir\" '$2 == p { print $1; exit }' /proc/mounts)",
+    "lower_fstype=$(awk -v p=\"$lowerdir\" '$2 == p { print $3; exit }' /proc/mounts)",
+    "upper_source=$(awk -v p=\"$upperdir\" '$2 == p { print $1; exit }' /proc/mounts)",
+    "upper_fstype=$(awk -v p=\"$upperdir\" '$2 == p { print $3; exit }' /proc/mounts)",
     "if [ -w \"$(dirname \"$CONFIG\")\" ]; then writable=true; else writable=false; fi",
     "if [ -n \"$upperdir\" ] && [ -e \"$upperdir$CONFIG\" ]; then upper_override=true; else upper_override=false; fi",
     "available_bytes=$(df -Pk / | awk 'NR == 2 { printf \"%.0f\", $4 * 1024 }')",
@@ -477,6 +493,12 @@ fn bmc_fan_observer_script(
     "printf 'fan_inputs=%s\\n' \"$fan_inputs\"",
     "printf 'lowerdir=%s\\n' \"$lowerdir\"",
     "printf 'upperdir=%s\\n' \"$upperdir\"",
+    "printf 'root_source=%s\\n' \"$root_source\"",
+    "printf 'root_fstype=%s\\n' \"$root_fstype\"",
+    "printf 'lower_source=%s\\n' \"$lower_source\"",
+    "printf 'lower_fstype=%s\\n' \"$lower_fstype\"",
+    "printf 'upper_source=%s\\n' \"$upper_source\"",
+    "printf 'upper_fstype=%s\\n' \"$upper_fstype\"",
     "printf 'writable=%s\\n' \"$writable\"",
     "printf 'upper_override=%s\\n' \"$upper_override\"",
     "printf 'available_bytes=%s\\n' \"$available_bytes\"",
@@ -636,6 +658,12 @@ fn bmc_fan_parse_live_observation(
   let observed_at = bmc_fan_observation_value_or_empty(lines: lines, key: "observed_at")
   let lowerdir = bmc_fan_observation_value_or_empty(lines: lines, key: "lowerdir")
   let upperdir = bmc_fan_observation_value_or_empty(lines: lines, key: "upperdir")
+  let root_source = bmc_fan_observation_value_or_empty(lines: lines, key: "root_source")
+  let root_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "root_fstype")
+  let lower_source = bmc_fan_observation_value_or_empty(lines: lines, key: "lower_source")
+  let lower_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "lower_fstype")
+  let upper_source = bmc_fan_observation_value_or_empty(lines: lines, key: "upper_source")
+  let upper_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "upper_fstype")
   let target_count_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "target_count")
   let available_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "available_bytes")
   if firmware == "" {
@@ -720,9 +748,17 @@ fn bmc_fan_parse_live_observation(
                                 reason: "persistent overlay override observation is absent",
                               }
                             Present { value: upper_override } =>
-                              if lowerdir == "" || upperdir == "" || available <= 0 {
+                              if lowerdir == ""
+                                || upperdir == ""
+                                || root_source == ""
+                                || root_fstype == ""
+                                || lower_source == ""
+                                || lower_fstype == ""
+                                || upper_source == ""
+                                || upper_fstype == ""
+                                || available <= 0 {
                                 BmcFanLiveObservationRefused {
-                                  reason: "root overlay lower/upper layer or free-space observation is absent",
+                                  reason: "root overlay mount, lower/upper backing mount, or free-space observation is absent",
                                 }
                               } else {
                                 let firmware_version = BmcFirmwareVersion {
@@ -741,12 +777,34 @@ fn bmc_fan_parse_live_observation(
                                       controller_shape: shape,
                                       observed_at: observed_at as NonEmptyStr,
                                     },
-                                    persistence: BmcFlashBackedOverlayObserved {
+                                    persistence: BmcOverlayConfigObserved {
                                       firmware: firmware_version,
                                       config_path: board_path as NonEmptyStr,
-                                      lower_filesystem: lowerdir as NonEmptyStr,
-                                      upper_filesystem: upperdir as NonEmptyStr,
-                                      overlay_mount: "/",
+                                      overlay: LinuxOverlayObservation {
+                                        merged_mount: LinuxMountObservation {
+                                          source: root_source as NonEmptyStr,
+                                          target: "/",
+                                          filesystem: linux_filesystem_kind_from_mount_type(
+                                            mount_type: root_fstype as NonEmptyStr,
+                                          ),
+                                        },
+                                        lower_directory: lowerdir as NonEmptyStr,
+                                        upper_directory: upperdir as NonEmptyStr,
+                                        lower_backing_mount: LinuxMountObservation {
+                                          source: lower_source as NonEmptyStr,
+                                          target: lowerdir as NonEmptyStr,
+                                          filesystem: linux_filesystem_kind_from_mount_type(
+                                            mount_type: lower_fstype as NonEmptyStr,
+                                          ),
+                                        },
+                                        upper_backing_mount: LinuxMountObservation {
+                                          source: upper_source as NonEmptyStr,
+                                          target: upperdir as NonEmptyStr,
+                                          filesystem: linux_filesystem_kind_from_mount_type(
+                                            mount_type: upper_fstype as NonEmptyStr,
+                                          ),
+                                        },
+                                      },
                                       writable: writable,
                                       upper_override_present: upper_override,
                                       available_bytes: byte_size(available),
@@ -1193,6 +1251,7 @@ fn bmc_fan_observe_only_with_credential(
         observation: Present { value: observed.policy },
         persistence: Present { value: observed.persistence },
         projection: target.projection,
+        durability_evidence: target.durability_evidence,
       )
       match classified.decision {
         Refuse { reason: reason } =>
@@ -1300,6 +1359,7 @@ fn bmc_fan_converge_with_credential(
         observation: Present { value: observed.policy },
         persistence: Present { value: observed.persistence },
         projection: target.projection,
+        durability_evidence: target.durability_evidence,
       )
       match classified.decision {
         Refuse { reason: reason } =>
@@ -1362,6 +1422,7 @@ fn bmc_fan_converge_with_credential(
                     observation: Present { value: readback.policy },
                     persistence: Present { value: readback.persistence },
                     projection: target.projection,
+                    durability_evidence: target.durability_evidence,
                   )
                   match reclassified.decision {
                     Noop =>

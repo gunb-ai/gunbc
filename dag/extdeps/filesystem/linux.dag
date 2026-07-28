@@ -1,0 +1,136 @@
+module extdeps.filesystem.linux
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import std.types { Bool, NonEmptyStr, String }
+
+data linux_overlayfs_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/filesystems/overlayfs.html",
+  },
+}
+
+data linux_rename_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/rename.2.html",
+  },
+}
+
+data linux_sync_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/sync.2.html",
+  },
+}
+
+type LinuxFilesystemKind
+  = LinuxOverlayFs
+  | LinuxSquashFs
+  | LinuxJffs2
+  | OtherLinuxFilesystem { mount_type: NonEmptyStr }
+
+type LinuxMountObservation {
+  source: NonEmptyStr
+  target: NonEmptyStr
+  filesystem: LinuxFilesystemKind
+}
+
+type LinuxOverlayObservation {
+  merged_mount: LinuxMountObservation
+  lower_directory: NonEmptyStr
+  upper_directory: NonEmptyStr
+  lower_backing_mount: LinuxMountObservation
+  upper_backing_mount: LinuxMountObservation
+}
+
+type LinuxFileReplacement
+  = RenameReplaceWithinTargetDirectory
+  | ReplacementAtomicityUnspecified
+
+type LinuxFilesystemSynchronization
+  = NoExplicitFilesystemSynchronization
+  | SyncAllFilesystemsAfterReplacement
+
+type LinuxFilePublicationProtocol {
+  stage_in_target_directory: Bool
+  staged_content_validated: Bool
+  replacement: LinuxFileReplacement
+  synchronization: LinuxFilesystemSynchronization
+}
+
+fn linux_filesystem_kind_from_mount_type(
+  mount_type: NonEmptyStr,
+) -> LinuxFilesystemKind {
+  if mount_type == "overlay" {
+    LinuxOverlayFs
+  } else if mount_type == "squashfs" {
+    LinuxSquashFs
+  } else if mount_type == "jffs2" {
+    LinuxJffs2
+  } else {
+    OtherLinuxFilesystem { mount_type: mount_type }
+  }
+}
+
+fn linux_filesystem_kind_is_overlay(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxOverlayFs => true
+    _ => false
+  }
+}
+
+fn linux_filesystem_kind_is_squashfs(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxSquashFs => true
+    _ => false
+  }
+}
+
+fn linux_filesystem_kind_is_jffs2(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxJffs2 => true
+    _ => false
+  }
+}
+
+fn linux_overlay_observation_is_flash_backed(
+  observation: LinuxOverlayObservation,
+) -> Bool {
+  observation.merged_mount.target == "/"
+    && linux_filesystem_kind_is_overlay(
+      kind: observation.merged_mount.filesystem,
+    )
+    && linux_filesystem_kind_is_squashfs(
+      kind: observation.lower_backing_mount.filesystem,
+    )
+    && linux_filesystem_kind_is_jffs2(
+      kind: observation.upper_backing_mount.filesystem,
+    )
+    && starts_with(
+      s: observation.lower_directory as String,
+      prefix: observation.lower_backing_mount.target as String,
+    )
+    && starts_with(
+      s: observation.upper_directory as String,
+      prefix: observation.upper_backing_mount.target as String,
+    )
+}
+
+fn linux_file_publication_has_synchronized_commit(
+  protocol: LinuxFilePublicationProtocol,
+) -> Bool {
+  protocol.stage_in_target_directory
+    && protocol.staged_content_validated
+    && match protocol.replacement {
+      RenameReplaceWithinTargetDirectory =>
+        match protocol.synchronization {
+          SyncAllFilesystemsAfterReplacement => true
+          NoExplicitFilesystemSynchronization => false
+        }
+      ReplacementAtomicityUnspecified => false
+    }
+}
+
+data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."

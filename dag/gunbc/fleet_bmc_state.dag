@@ -7,21 +7,39 @@ import extdeps.bmc.capability {
 import extdeps.bmc.types {
   BmcConfigPersistenceObservation,
   BmcFanPolicyObservation,
-  BmcFlashBackedOverlayObserved,
+  BmcOverlayConfigObserved,
   BmcRedfishSurfaceObservation,
   BmcUpdateServiceObservation,
   FanPidAggregatedEntry,
   On,
+  RedfishManagerResetObservation,
   RedfishFanControlResourceAbsent,
   RedfishInitialDutyControlResource,
   RedfishLegacyChassisThermal,
   RedfishPowerState,
+  ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  LinuxJffs2,
+  LinuxMountObservation,
+  LinuxOverlayFs,
+  LinuxOverlayObservation,
+  LinuxSquashFs,
+  RenameReplaceWithinTargetDirectory,
+  SyncAllFilesystemsAfterReplacement,
+}
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
-import gunbc.bmc_intent { fleet_bmc_valid_state }
-import gunbc.bmc_fan_projection { BmcFanPolicyProjectionCapability }
+import gunbc.bmc_intent {
+  fleet_bmc_fan_graceful_restart_boundary,
+  fleet_bmc_valid_state,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_state_durability_capability,
+}
 import std.bmc { OpenBmc }
 import std.measure {
   Celsius,
@@ -31,6 +49,17 @@ import std.measure {
   rpm,
 }
 import std.nat { Nat }
+import std.state_durability {
+  ActivationUnverified,
+  ActivationVerified,
+  StateActivationEvidence,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  StateDurabilityEvidence,
+  StatePreservationObservationRefused,
+  StatePreservationOutcome,
+  StatePreserved,
+}
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -58,9 +87,7 @@ type BmcFanConvergenceReceipt {
 type BmcFanRebootPersistenceReceipt {
   before: BmcFanConvergenceReceipt
   post_reboot_policy: BmcFanPolicyObservation
-  reset_action_target: NonEmptyStr
-  reset_type: NonEmptyStr
-  reset_http_status: Nat
+  reset: RedfishManagerResetObservation
   bmc_down_observed: Bool
   bmc_returned: Bool
   bmc_down_observed_at: NonEmptyStr
@@ -137,6 +164,21 @@ data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdat
   observed_at: "2026-07-27",
 }
 
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = LinuxFilePublicationProtocol {
+  stage_in_target_directory: true,
+  staged_content_validated: true,
+  replacement: RenameReplaceWithinTargetDirectory,
+  synchronization: SyncAllFilesystemsAfterReplacement,
+}
+
+data srv4_bmc_fan_durability_capability: StateDurabilityCapability = bmc_fan_state_durability_capability(
+    realization_id: srv4_bmc_fan_realization_id,
+    boundaries: [fleet_bmc_fan_graceful_restart_boundary],
+    publication_protocol: srv4_bmc_fan_publication_protocol,
+  )
+
 data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcFanPolicyProjectionCapability {
   board: srv4_baseboard.catalog.model,
   firmware: srv4_bmc_firmware_observation.firmware,
@@ -144,7 +186,9 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcF
   controller_service: "phosphor-pid-control.service",
   controller_zone_path: "/xyz/openbmc_project/settings/fanctrl/zone0",
   aggregate_fan_pid_entry: "FAN1",
-  projection_id: "swampd-asrr-temp-soc-stepwise-v2",
+  projection_id: srv4_bmc_fan_realization_id,
+  publication_protocol: srv4_bmc_fan_publication_protocol,
+  durability_capability: srv4_bmc_fan_durability_capability,
   required_tach_inputs: fleet_bmc_valid_state.fan_policy.required_tach_inputs,
 }
 
@@ -162,12 +206,30 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
   observed_at: "2026-07-27T22:31:25Z",
 }
 
-data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = BmcFlashBackedOverlayObserved {
+data srv4_bmc_root_overlay_observation: LinuxOverlayObservation = LinuxOverlayObservation {
+  merged_mount: LinuxMountObservation {
+    source: "overlay",
+    target: "/",
+    filesystem: LinuxOverlayFs,
+  },
+  lower_directory: "/run/initramfs/ro",
+  upper_directory: "/run/initramfs/rw",
+  lower_backing_mount: LinuxMountObservation {
+    source: "/dev/mtdblock4",
+    target: "/run/initramfs/ro",
+    filesystem: LinuxSquashFs,
+  },
+  upper_backing_mount: LinuxMountObservation {
+    source: "/dev/mtdblock5",
+    target: "/run/initramfs/rw",
+    filesystem: LinuxJffs2,
+  },
+}
+
+data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = BmcOverlayConfigObserved {
   firmware: srv4_bmc_firmware_observation.firmware,
   config_path: "/usr/share/swampd/config-asrr.json",
-  lower_filesystem: "squashfs:/dev/mtdblock4",
-  upper_filesystem: "jffs2:/dev/mtdblock5",
-  overlay_mount: "/",
+  overlay: srv4_bmc_root_overlay_observation,
   writable: true,
   upper_override_present: true,
   available_bytes: byte_size(20365312),
@@ -218,9 +280,13 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
 data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
   before: srv4_bmc_fan_convergence_receipt,
   post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
-  reset_action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
-  reset_type: "GracefulRestart",
-  reset_http_status: 200,
+  reset: RedfishManagerResetObservation {
+    action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
+    reset_type: ResetGracefulRestart,
+    http_status: 200,
+    accepted: true,
+    observed_at: "2026-07-27T23:09:42Z",
+  },
   bmc_down_observed: true,
   bmc_returned: true,
   bmc_down_observed_at: "2026-07-27T23:09:49Z",
@@ -252,6 +318,79 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   post_reboot_converge_noop_exit_success: true,
   observed_at: "2026-07-27T23:14:45Z",
 }
+
+fn bmc_fan_reboot_host_power_stayed_on(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> Bool {
+  match receipt.host_power_before {
+    On =>
+      match receipt.host_power_after {
+        On => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn bmc_fan_reboot_activation_evidence(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> StateActivationEvidence {
+  if receipt.reset.reset_type == ResetGracefulRestart
+    && receipt.reset.http_status == 200
+    && receipt.reset.accepted
+    && receipt.bmc_down_observed
+    && receipt.bmc_returned
+    && receipt.observed_outage_seconds > 0
+    && bmc_fan_reboot_host_power_stayed_on(receipt: receipt)
+    && receipt.host_os_ssh_reachable_throughout
+    && receipt.post_reboot_controller_active
+    && !receipt.post_reboot_zone_failsafe_active
+    && receipt.post_reboot_observer_exit_success
+    && receipt.post_reboot_converge_noop_exit_success {
+    ActivationVerified
+  } else {
+    ActivationUnverified {
+      reason: "graceful BMC restart did not carry complete preservation and post-restart activation readback",
+    }
+  }
+}
+
+fn bmc_fan_reboot_preservation_outcome(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> StatePreservationOutcome {
+  if receipt.bmc_returned {
+    StatePreserved {
+      before_digest: receipt.before.active_config_digest,
+      after_digest: receipt.post_reboot_active_config_digest,
+      activation: bmc_fan_reboot_activation_evidence(receipt: receipt),
+    }
+  } else {
+    StatePreservationObservationRefused {
+      reason: "BMC did not return for post-boundary content and activation readback",
+    }
+  }
+}
+
+fn bmc_fan_reboot_durability_evidence(
+  receipt: BmcFanRebootPersistenceReceipt,
+  realization_id: NonEmptyStr,
+  boundary: StateDurabilityBoundary,
+) -> StateDurabilityEvidence {
+  StateDurabilityEvidence {
+    realization_id: realization_id,
+    boundary: boundary,
+    outcome: bmc_fan_reboot_preservation_outcome(receipt: receipt),
+    observed_at: receipt.observed_at,
+  }
+}
+
+data srv4_bmc_fan_durability_evidence: List<StateDurabilityEvidence> = [
+  bmc_fan_reboot_durability_evidence(
+    receipt: srv4_bmc_fan_reboot_persistence_receipt,
+    realization_id: srv4_bmc_fan_projection_capability.projection_id,
+    boundary: fleet_bmc_fan_graceful_restart_boundary,
+  ),
+]
 
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
 

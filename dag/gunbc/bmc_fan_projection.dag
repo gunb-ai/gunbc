@@ -7,6 +7,17 @@ import extdeps.bmc.types {
   FanPidIndependentEntries,
 }
 import extdeps.boards.types { BaseboardModel }
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  linux_file_publication_has_synchronized_commit,
+}
+import std.state_durability {
+  NoDurabilityCommitBarrier,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  SynchronizedCommit,
+  durability_commit_barrier_is_synchronized,
+}
 import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanPolicyProjectionCapability {
@@ -17,6 +28,8 @@ type BmcFanPolicyProjectionCapability {
   controller_zone_path: NonEmptyStr
   aggregate_fan_pid_entry: NonEmptyStr
   projection_id: NonEmptyStr
+  publication_protocol: LinuxFilePublicationProtocol
+  durability_capability: StateDurabilityCapability
   required_tach_inputs: List<NonEmptyStr>
 }
 
@@ -29,6 +42,31 @@ fn bmc_fan_policy_projection_supports_apply(
     && capability.firmware == observation.firmware
     && capability.config_path == observation.board_config_path
     && capability.controller_service == observation.controller_service
+    && capability.projection_id == capability.durability_capability.realization_id
+    && linux_file_publication_has_synchronized_commit(
+      protocol: capability.publication_protocol,
+    )
+    && durability_commit_barrier_is_synchronized(
+      barrier: capability.durability_capability.commit_barrier,
+    )
+}
+
+fn bmc_fan_state_durability_capability(
+  realization_id: NonEmptyStr,
+  boundaries: List<StateDurabilityBoundary>,
+  publication_protocol: LinuxFilePublicationProtocol,
+) -> StateDurabilityCapability {
+  StateDurabilityCapability {
+    realization_id: realization_id,
+    supported_boundaries: boundaries,
+    commit_barrier: if linux_file_publication_has_synchronized_commit(
+      protocol: publication_protocol,
+    ) {
+        SynchronizedCommit
+      } else {
+        NoDurabilityCommitBarrier
+      },
+  }
 }
 
 fn bmc_fan_policy_projection_topology_matches(
@@ -46,4 +84,4 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently observed swampd-asrr-temp-soc-stepwise-v2 projection."
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its projection identity must also equal its durability realizer identity, so lifecycle evidence for an old firmware/path/writer cannot qualify a different projection. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently qualified projection."

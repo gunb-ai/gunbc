@@ -12,7 +12,7 @@ import extdeps.bmc.types {
   BmcFanDutyFromCurve,
   BmcFanDutyFromSensorFailsafe,
   BmcFanPolicyObservation,
-  BmcFlashBackedOverlayObserved,
+  BmcOverlayConfigObserved,
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
   On,
@@ -22,6 +22,7 @@ import extdeps.bmc.types {
   RedfishThermalQueryComplete,
   RedfishThermalQueryRefused,
   RedfishThermalSubsystemSensorCollection,
+  ResetGracefulRestart,
   bmc_fan_duty_decision,
   redfish_thermal_query_verdict,
 }
@@ -38,12 +39,14 @@ import gunbc.fleet_bmc_state {
   srv4_bmc_config_persistence_observation,
   srv4_bmc_fan_converged_policy_observation,
   srv4_bmc_fan_convergence_receipt,
+  srv4_bmc_fan_durability_evidence,
   srv4_bmc_fan_projection_capability,
   srv4_bmc_fan_reboot_persistence_receipt,
   srv4_bmc_redfish_surface_observation,
   srv3_bmc_update_service_observation,
   srv4_bmc_update_service_observation,
 }
+import extdeps.filesystem.linux { linux_overlay_observation_is_flash_backed }
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
   bmc_fan_policy_classification,
@@ -404,12 +407,10 @@ fn minimum_duty_perturbation() -> BmcFanCurve {
 
 test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
   match srv4_bmc_config_persistence_observation {
-    BmcFlashBackedOverlayObserved {
+    BmcOverlayConfigObserved {
       firmware: firmware,
       config_path: path,
-      lower_filesystem: _,
-      upper_filesystem: _,
-      overlay_mount: _,
+      overlay: overlay,
       writable: writable,
       upper_override_present: upper_present,
       available_bytes: _,
@@ -417,6 +418,7 @@ test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
     } =>
       firmware.version == "3.22.00"
         && path == "/usr/share/swampd/config-asrr.json"
+        && linux_overlay_observation_is_flash_backed(observation: overlay)
         && writable
         && upper_present
     BmcConfigPersistenceUnsupported {
@@ -443,12 +445,14 @@ test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Boo
     board: srv4_baseboard.catalog.model,
     intent: fleet_bmc_valid_state,
     observation: Present { value: receipt.post_reboot_policy },
-    persistence: none,
+    persistence: Present { value: srv4_bmc_config_persistence_observation },
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
-  receipt.reset_action_target == "/redfish/v1/Managers/bmc/Actions/Manager.Reset"
-    && receipt.reset_type == "GracefulRestart"
-    && receipt.reset_http_status == 200
+  receipt.reset.action_target == "/redfish/v1/Managers/bmc/Actions/Manager.Reset"
+    && receipt.reset.reset_type == ResetGracefulRestart
+    && receipt.reset.http_status == 200
+    && receipt.reset.accepted
     && receipt.bmc_down_observed
     && receipt.bmc_returned
     && receipt.observed_outage_seconds == 157
@@ -486,6 +490,7 @@ test fn converged_srv4_curve_without_topology_projection_refuses_noop() -> Bool 
     },
     persistence: none,
     projection: none,
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   classified.verdict == UnknownRefused
     && match classified.decision {
@@ -503,8 +508,9 @@ test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
     observation: Present {
       value: srv4_fan_policy_with_curve(curve: fleet_quiet_temp_soc_fan_curve),
     },
-    persistence: none,
+    persistence: Present { value: srv4_bmc_config_persistence_observation },
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   classified.verdict == Converged
     && match classified.decision {
@@ -532,6 +538,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
     observation: Present { value: stale_topology },
     persistence: Present { value: srv4_bmc_config_persistence_observation },
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   classified.verdict == Drifted
     && match classified.decision {
@@ -550,6 +557,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     observation: Present { value: drifted },
     persistence: Present { value: srv4_bmc_config_persistence_observation },
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   let without_storage = bmc_fan_policy_classification(
     host: srv4_host.identity,
@@ -558,6 +566,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     observation: Present { value: drifted },
     persistence: none,
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   let without_projection = bmc_fan_policy_classification(
     host: srv4_host.identity,
@@ -566,6 +575,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     observation: Present { value: drifted },
     persistence: Present { value: srv4_bmc_config_persistence_observation },
     projection: none,
+    durability_evidence: srv4_bmc_fan_durability_evidence,
   )
   with_storage.verdict == Drifted
     && match with_storage.decision {
@@ -578,7 +588,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
       Noop => false
       Refuse { reason: _ } => false
     }
-    && without_storage.verdict == Drifted
+    && without_storage.verdict == UnknownRefused
     && match without_storage.decision {
       Refuse { reason: _ } => true
       Noop => false
@@ -610,6 +620,7 @@ test fn major_three_track_does_not_authorize_a_322_projection_on_306() -> Bool {
     observation: Present { value: observed },
     persistence: none,
     projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_evidence: [],
   )
   classified.verdict == Conflict
     && match classified.decision {
@@ -629,6 +640,7 @@ test fn srv3_fan_realization_refuses_until_global_firmware_track_converges() -> 
     },
     persistence: none,
     projection: none,
+    durability_evidence: [],
   )
   classified.verdict == Conflict
     && match classified.decision {

@@ -1,0 +1,337 @@
+module test.claim.state_durability_witness
+
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.realization_reconcile {
+  DoesNotGround,
+  Grounding,
+  Grounds,
+  grounding_qualified_by_durability,
+}
+import std.state_durability {
+  ActivationUnverified,
+  ActivationVerified,
+  ControlPlaneFirmwareReplacement,
+  ControlPlaneRestartBoundary,
+  DurableAcross,
+  DurabilityCommitBarrier,
+  DurabilityEvidenceMissing,
+  DurabilityEvidenceRefused,
+  DurabilityIntentUnspecified,
+  DurabilityRequirementEmpty,
+  DurabilityBoundaryUnsupported,
+  DurabilityCapabilityMissing,
+  DurabilityCommitBarrierMissing,
+  DurabilityUnspecified,
+  LifecycleGracefulRestart,
+  NoDurabilityCommitBarrier,
+  RuntimeLifetimeOnly,
+  SoftwareReplacementBoundary,
+  StateActivationEvidence,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  StateDurabilityEvidence,
+  StateDurabilityIntent,
+  StateDurabilityVerdict,
+  StatePreserved,
+  SynchronizedCommit,
+  state_durability_satisfied,
+  state_durability_verdict,
+}
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fixture_graceful_control_plane_restart: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+  mode: LifecycleGracefulRestart,
+}
+
+data fixture_control_plane_firmware_replacement: StateDurabilityBoundary = SoftwareReplacementBoundary {
+  scope: ControlPlaneFirmwareReplacement,
+}
+
+data fixture_digest_a: Digest = sha256_digest(
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+)
+
+data fixture_digest_b: Digest = sha256_digest(
+  hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+)
+
+fn fixture_capability(
+  realization_id: NonEmptyStr,
+  boundaries: List<StateDurabilityBoundary>,
+  barrier: DurabilityCommitBarrier,
+) -> StateDurabilityCapability {
+  StateDurabilityCapability {
+    realization_id: realization_id,
+    supported_boundaries: boundaries,
+    commit_barrier: barrier,
+  }
+}
+
+fn fixture_preserved_evidence(
+  realization_id: NonEmptyStr,
+  boundary: StateDurabilityBoundary,
+  before: Digest,
+  after: Digest,
+  activation: StateActivationEvidence,
+) -> StateDurabilityEvidence {
+  StateDurabilityEvidence {
+    realization_id: realization_id,
+    boundary: boundary,
+    outcome: StatePreserved {
+      before_digest: before,
+      after_digest: after,
+      activation: activation,
+    },
+    observed_at: "2026-07-27T23:14:45Z",
+  }
+}
+
+fn durable_restart_intent() -> StateDurabilityIntent {
+  DurableAcross { boundaries: [fixture_graceful_control_plane_restart] }
+}
+
+fn synchronized_restart_capability() -> StateDurabilityCapability {
+  fixture_capability(
+    realization_id: "fixture-realizer-v1",
+    boundaries: [fixture_graceful_control_plane_restart],
+    barrier: SynchronizedCommit,
+  )
+}
+
+fn qualify_string_grounding(
+  verdict: StateDurabilityVerdict,
+) -> Grounding<String> {
+  grounding_qualified_by_durability(
+    grounding: Grounds { evidence: "currently effective" },
+    durability: verdict,
+  )
+}
+
+test fn unspecified_lifetime_refuses_before_reconciliation() -> Bool {
+  match state_durability_verdict(
+    intent: DurabilityUnspecified,
+    capability: none,
+    evidence: [],
+  ) {
+    DurabilityIntentUnspecified => true
+    _ => false
+  }
+}
+
+test fn runtime_only_lifetime_is_explicitly_satisfiable_without_durable_storage() -> Bool {
+  state_durability_satisfied(verdict: state_durability_verdict(
+    intent: RuntimeLifetimeOnly,
+    capability: none,
+    evidence: [],
+  ))
+}
+
+test fn durable_lifetime_requires_at_least_one_named_boundary() -> Bool {
+  match state_durability_verdict(
+    intent: DurableAcross { boundaries: [] },
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [],
+  ) {
+    DurabilityRequirementEmpty => true
+    _ => false
+  }
+}
+
+test fn durable_lifetime_refuses_when_selected_realizer_has_no_capability() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: none,
+    evidence: [],
+  ) {
+    DurabilityCapabilityMissing => true
+    _ => false
+  }
+}
+
+test fn writable_without_a_commit_barrier_is_not_durable_capability() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: fixture_capability(
+        realization_id: "fixture-realizer-v1",
+        boundaries: [fixture_graceful_control_plane_restart],
+        barrier: NoDurabilityCommitBarrier,
+      ),
+    },
+    evidence: [],
+  ) {
+    DurabilityCommitBarrierMissing { realization_id: realization_id } =>
+      realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn capability_for_a_different_boundary_cannot_satisfy_the_intent() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: fixture_capability(
+        realization_id: "fixture-realizer-v1",
+        boundaries: [fixture_control_plane_firmware_replacement],
+        barrier: SynchronizedCommit,
+      ),
+    },
+    evidence: [],
+  ) {
+    DurabilityBoundaryUnsupported {
+      realization_id: realization_id,
+      boundary: _,
+    } => realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn declared_capability_without_perturbation_readback_evidence_refuses() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [],
+  ) {
+    DurabilityEvidenceMissing {
+      realization_id: realization_id,
+      boundary: _,
+    } => realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn matching_perturbation_readback_qualifies_the_realizer_and_boundary() -> Bool {
+  state_durability_satisfied(verdict: state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [
+      fixture_preserved_evidence(
+        realization_id: "fixture-realizer-v1",
+        boundary: fixture_graceful_control_plane_restart,
+        before: fixture_digest_a,
+        after: fixture_digest_a,
+        activation: ActivationVerified,
+      ),
+    ],
+  ))
+}
+
+test fn evidence_is_scoped_to_the_selected_realizer() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [
+      fixture_preserved_evidence(
+        realization_id: "different-realizer",
+        boundary: fixture_graceful_control_plane_restart,
+        before: fixture_digest_a,
+        after: fixture_digest_a,
+        activation: ActivationVerified,
+      ),
+    ],
+  ) {
+    DurabilityEvidenceMissing {
+      realization_id: realization_id,
+      boundary: _,
+    } => realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn unequal_readback_digest_refuses_durability_qualification() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [
+      fixture_preserved_evidence(
+        realization_id: "fixture-realizer-v1",
+        boundary: fixture_graceful_control_plane_restart,
+        before: fixture_digest_a,
+        after: fixture_digest_b,
+        activation: ActivationVerified,
+      ),
+    ],
+  ) {
+    DurabilityEvidenceRefused {
+      realization_id: realization_id,
+      boundary: _,
+      reason: _,
+    } => realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn unverified_post_boundary_activation_refuses_durability_qualification() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [
+      fixture_preserved_evidence(
+        realization_id: "fixture-realizer-v1",
+        boundary: fixture_graceful_control_plane_restart,
+        before: fixture_digest_a,
+        after: fixture_digest_a,
+        activation: ActivationUnverified {
+          reason: "service activation was not read back",
+        },
+      ),
+    ],
+  ) {
+    DurabilityEvidenceRefused {
+      realization_id: realization_id,
+      boundary: _,
+      reason: _,
+    } => realization_id == "fixture-realizer-v1"
+    _ => false
+  }
+}
+
+test fn current_effectiveness_does_not_ground_an_unproven_lifetime() -> Bool {
+  match qualify_string_grounding(verdict: state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [],
+  )) {
+    DoesNotGround { reason: reason } =>
+      string_contains(s: reason, pattern: "declared lifetime")
+    Grounds { evidence: _ } => false
+  }
+}
+
+test fn current_effectiveness_grounds_after_lifetime_qualification() -> Bool {
+  match qualify_string_grounding(verdict: state_durability_verdict(
+    intent: durable_restart_intent(),
+    capability: Present {
+      value: synchronized_restart_capability(),
+    },
+    evidence: [
+      fixture_preserved_evidence(
+        realization_id: "fixture-realizer-v1",
+        boundary: fixture_graceful_control_plane_restart,
+        before: fixture_digest_a,
+        after: fixture_digest_a,
+        activation: ActivationVerified,
+      ),
+    ],
+  )) {
+    Grounds { evidence: evidence } => evidence == "currently effective"
+    DoesNotGround { reason: _ } => false
+  }
+}

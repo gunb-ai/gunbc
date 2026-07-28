@@ -5,8 +5,9 @@ import extdeps.boards.asrock_rack {
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceUnsupported,
-  BmcFlashBackedOverlayObserved,
+  BmcOverlayConfigObserved,
 }
+import extdeps.filesystem.linux { linux_overlay_observation_is_flash_backed }
 import gunbc.bmc_converge { BmcFanPolicyApplyPlan }
 import gunbc.bmc_fan_converge {
   BmcFanLiveIdentityObserved,
@@ -55,6 +56,12 @@ data desired_live_observation_lines: List<String> = [
   "fan_inputs=FAN1,FAN2,FAN3,FAN4",
   "lowerdir=/run/initramfs/ro",
   "upperdir=/run/initramfs/rw",
+  "root_source=overlay",
+  "root_fstype=overlay",
+  "lower_source=/dev/mtdblock4",
+  "lower_fstype=squashfs",
+  "upper_source=/dev/mtdblock5",
+  "upper_fstype=jffs2",
   "writable=true",
   "upper_override=true",
   "available_bytes=20000000",
@@ -120,17 +127,16 @@ test fn live_observer_normalizes_desired_curve_and_safety_surface() -> Bool {
         && observed.policy.firmware.version == "3.22.00"
         && !observed.zone_failsafe_active
         && match observed.persistence {
-          BmcFlashBackedOverlayObserved {
+          BmcOverlayConfigObserved {
             firmware: _,
             config_path: _,
-            lower_filesystem: _,
-            upper_filesystem: _,
-            overlay_mount: _,
+            overlay: overlay,
             writable: writable,
             upper_override_present: _,
             available_bytes: _,
             observed_at: _,
           } => writable
+            && linux_overlay_observation_is_flash_backed(observation: overlay)
           BmcConfigPersistenceUnsupported {
             firmware: _,
             config_path: _,

@@ -18,8 +18,16 @@ import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
 import std.bmc { OpenBmc }
 import std.measure { celsius, celsius_count, percent }
+import std.state_durability {
+  ControlPlaneRestartBoundary,
+  DurableAcross,
+  LifecycleGracefulRestart,
+  StateDurabilityBoundary,
+  StateDurabilityIntent,
+}
 
 type BmcFanPolicyIntent {
+  durability: StateDurabilityIntent
   curve: BmcFanCurve
   required_tach_inputs: List<NonEmptyStr>
   acoustic_policy: BmcFanAcousticPolicy
@@ -30,6 +38,14 @@ type BmcFanPolicyIntent {
 type BmcControlPlaneIntent {
   firmware: BmcFirmwareIntent
   fan_policy: BmcFanPolicyIntent
+}
+
+data fleet_bmc_fan_graceful_restart_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+  mode: LifecycleGracefulRestart,
+}
+
+data fleet_bmc_fan_durability_intent: StateDurabilityIntent = DurableAcross {
+  boundaries: [fleet_bmc_fan_graceful_restart_boundary],
 }
 
 data fleet_quiet_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
@@ -106,6 +122,7 @@ data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
     },
   },
   fan_policy: BmcFanPolicyIntent {
+    durability: fleet_bmc_fan_durability_intent,
     curve: fleet_quiet_temp_soc_fan_curve,
     required_tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4"],
     acoustic_policy: fleet_fan_acoustic_policy,
@@ -114,4 +131,4 @@ data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
   },
 }
 
-data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired state for the current homogeneous ALTRAD8UD/M128-30 fleet: OpenBMC major track 3 and the fleet-owned quiet TEMP_SOC curve. The curve stays at the factory-established 30 percent minimum through 90C, then rises to 55/70/85/100 percent at 93/95/97/98C. With the cited controller's 1C rising hysteresis, full cooling is effectively selected below the processor's cited 100C maximum-continuous junction temperature. Sensor or zone-controller loss deliberately requests 75 percent. This is desired policy, not a factory observation and not an acoustic measurement: inaudibility is a live acceptance criterion because different fan models produce different sound at one PWM duty. Firmware application still requires an exact approved release artifact."
+data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired state for the current homogeneous ALTRAD8UD/M128-30 fleet: OpenBMC major track 3 and the fleet-owned quiet TEMP_SOC curve. Its declared lifetime currently requires preservation and reactivation across a graceful BMC control-plane restart; power loss, forced restart, firmware replacement, and factory reset are different boundaries and remain unclaimed until separately qualified. The curve stays at the factory-established 30 percent minimum through 90C, then rises to 55/70/85/100 percent at 93/95/97/98C. With the cited controller's 1C rising hysteresis, full cooling is effectively selected below the processor's cited 100C maximum-continuous junction temperature. Sensor or zone-controller loss deliberately requests 75 percent. This is desired policy, not a factory observation and not an acoustic measurement: inaudibility is a live acceptance criterion because different fan models produce different sound at one PWM duty. Firmware application still requires an exact approved release artifact."

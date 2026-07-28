@@ -1,0 +1,315 @@
+module std.state_durability
+
+import extdeps.crypto.hash { Digest }
+import std.disposition { Disposition, Terminal }
+import std.types { Bool, List, NonEmptyStr, String }
+
+data state_durability_boundary_contract: Disposition = Terminal {
+  reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
+}
+
+data state_durability_separation_note: String = "State durability is neither extdeps.storage.types.PersistenceKind nor std.materialization_ladder. PersistenceKind describes a storage device/medium; the materialization ladder decides where redundant computation is retained. This module asks a different reconciliation question: across WHICH lifecycle boundary must desired world state remain effective, can the selected realizer provide that lifetime with a commit barrier, and has that realizer been qualified by a perturbation/readback receipt? Keeping the three facts separate prevents a writable filesystem, an extant file, or current runtime effectiveness from being misclassified as durable convergence."
+
+type LifecycleRestartMode
+  = LifecycleGracefulRestart
+  | LifecycleForcedRestart
+
+type PowerLossScope
+  = ControlPlanePowerLoss
+  | HostPowerLoss
+  | SitePowerLoss
+
+type SoftwareReplacementScope
+  = ControlPlaneFirmwareReplacement
+  | HostOsReplacement
+  | ApplicationReplacement
+
+type StateDurabilityBoundary
+  = ServiceRestartBoundary
+  | ControlPlaneRestartBoundary { mode: LifecycleRestartMode }
+  | HostRestartBoundary { mode: LifecycleRestartMode }
+  | PowerLossBoundary { scope: PowerLossScope }
+  | SoftwareReplacementBoundary { scope: SoftwareReplacementScope }
+  | FactoryResetBoundary
+
+type StateDurabilityIntent
+  = DurabilityUnspecified
+  | RuntimeLifetimeOnly
+  | DurableAcross { boundaries: List<StateDurabilityBoundary> }
+
+type DurabilityCommitBarrier
+  = NoDurabilityCommitBarrier
+  | SynchronizedCommit
+
+type StateDurabilityCapability {
+  realization_id: NonEmptyStr
+  supported_boundaries: List<StateDurabilityBoundary>
+  commit_barrier: DurabilityCommitBarrier
+}
+
+type StateActivationEvidence
+  = ActivationVerified
+  | ActivationUnverified { reason: String }
+
+type StatePreservationOutcome
+  = StatePreserved {
+      before_digest: Digest,
+      after_digest: Digest,
+      activation: StateActivationEvidence,
+    }
+  | StateLost {
+      before_digest: Digest,
+      after_digest: Digest,
+      reason: String,
+    }
+  | StatePreservationObservationRefused { reason: String }
+
+type StateDurabilityEvidence {
+  realization_id: NonEmptyStr
+  boundary: StateDurabilityBoundary
+  outcome: StatePreservationOutcome
+  observed_at: NonEmptyStr
+}
+
+type StateDurabilityVerdict
+  = RuntimeLifetimeSatisfied
+  | DurableLifetimeSatisfied {
+      realization_id: NonEmptyStr,
+      boundaries: List<StateDurabilityBoundary>,
+    }
+  | DurabilityIntentUnspecified
+  | DurabilityRequirementEmpty
+  | DurabilityCapabilityMissing
+  | DurabilityCommitBarrierMissing { realization_id: NonEmptyStr }
+  | DurabilityBoundaryUnsupported {
+      realization_id: NonEmptyStr,
+      boundary: StateDurabilityBoundary,
+    }
+  | DurabilityEvidenceMissing {
+      realization_id: NonEmptyStr,
+      boundary: StateDurabilityBoundary,
+    }
+  | DurabilityEvidenceRefused {
+      realization_id: NonEmptyStr,
+      boundary: StateDurabilityBoundary,
+      reason: String,
+    }
+
+fn durability_commit_barrier_is_synchronized(
+  barrier: DurabilityCommitBarrier,
+) -> Bool {
+  match barrier {
+    NoDurabilityCommitBarrier => false
+    SynchronizedCommit => true
+  }
+}
+
+fn state_durability_boundary_eq(
+  a: StateDurabilityBoundary,
+  b: StateDurabilityBoundary,
+) -> Bool {
+  a == b
+}
+
+fn state_durability_boundary_present(
+  boundaries: List<StateDurabilityBoundary>,
+  wanted: StateDurabilityBoundary,
+) -> Bool {
+  boundaries |> any(boundary =>
+    state_durability_boundary_eq(a: boundary, b: wanted)
+  )
+}
+
+fn state_durability_evidence_for(
+  evidence: List<StateDurabilityEvidence>,
+  realization_id: NonEmptyStr,
+  boundary: StateDurabilityBoundary,
+) -> StateDurabilityEvidence? {
+  match evidence.first() {
+    Absent => none
+    Present { value: head } =>
+      if head.realization_id == realization_id
+        && state_durability_boundary_eq(a: head.boundary, b: boundary) {
+        Present { value: head }
+      } else {
+        state_durability_evidence_for(
+          evidence: evidence.skip(n: 1),
+          realization_id: realization_id,
+          boundary: boundary,
+        )
+      }
+  }
+}
+
+fn state_durability_boundaries_verdict(
+  remaining: List<StateDurabilityBoundary>,
+  required: List<StateDurabilityBoundary>,
+  capability: StateDurabilityCapability,
+  evidence: List<StateDurabilityEvidence>,
+) -> StateDurabilityVerdict {
+  match remaining.first() {
+    Absent =>
+      DurableLifetimeSatisfied {
+        realization_id: capability.realization_id,
+        boundaries: required,
+      }
+    Present { value: boundary } =>
+      if !state_durability_boundary_present(
+        boundaries: capability.supported_boundaries,
+        wanted: boundary,
+      ) {
+        DurabilityBoundaryUnsupported {
+          realization_id: capability.realization_id,
+          boundary: boundary,
+        }
+      } else {
+        match state_durability_evidence_for(
+          evidence: evidence,
+          realization_id: capability.realization_id,
+          boundary: boundary,
+        ) {
+          Absent =>
+            DurabilityEvidenceMissing {
+              realization_id: capability.realization_id,
+              boundary: boundary,
+            }
+          Present { value: receipt } =>
+            match receipt.outcome {
+              StatePreservationObservationRefused { reason: reason } =>
+                DurabilityEvidenceRefused {
+                  realization_id: capability.realization_id,
+                  boundary: boundary,
+                  reason: reason,
+                }
+              StateLost {
+                before_digest: _,
+                after_digest: _,
+                reason: reason,
+              } =>
+                DurabilityEvidenceRefused {
+                  realization_id: capability.realization_id,
+                  boundary: boundary,
+                  reason: reason,
+                }
+              StatePreserved {
+                before_digest: before,
+                after_digest: after,
+                activation: activation,
+              } =>
+                if before != after {
+                  DurabilityEvidenceRefused {
+                    realization_id: capability.realization_id,
+                    boundary: boundary,
+                    reason: "state-preserved receipt carries unequal before/after digests",
+                  }
+                } else {
+                  match activation {
+                    ActivationUnverified { reason: reason } =>
+                      DurabilityEvidenceRefused {
+                        realization_id: capability.realization_id,
+                        boundary: boundary,
+                        reason: reason,
+                      }
+                    ActivationVerified =>
+                      state_durability_boundaries_verdict(
+                        remaining: remaining.skip(n: 1),
+                        required: required,
+                        capability: capability,
+                        evidence: evidence,
+                      )
+                  }
+                }
+            }
+        }
+      }
+  }
+}
+
+fn state_durability_verdict(
+  intent: StateDurabilityIntent,
+  capability: StateDurabilityCapability?,
+  evidence: List<StateDurabilityEvidence>,
+) -> StateDurabilityVerdict {
+  match intent {
+    DurabilityUnspecified => DurabilityIntentUnspecified
+    RuntimeLifetimeOnly => RuntimeLifetimeSatisfied
+    DurableAcross { boundaries: boundaries } =>
+      if boundaries.length() == 0 {
+        DurabilityRequirementEmpty
+      } else {
+        match capability {
+          Absent => DurabilityCapabilityMissing
+          Present { value: realizer } =>
+            if !durability_commit_barrier_is_synchronized(
+              barrier: realizer.commit_barrier,
+            ) {
+              DurabilityCommitBarrierMissing {
+                realization_id: realizer.realization_id,
+              }
+            } else {
+              state_durability_boundaries_verdict(
+                remaining: boundaries,
+                required: boundaries,
+                capability: realizer,
+                evidence: evidence,
+              )
+            }
+        }
+      }
+  }
+}
+
+fn state_durability_satisfied(verdict: StateDurabilityVerdict) -> Bool {
+  match verdict {
+    RuntimeLifetimeSatisfied => true
+    DurableLifetimeSatisfied { realization_id: _, boundaries: _ } => true
+    DurabilityIntentUnspecified => false
+    DurabilityRequirementEmpty => false
+    DurabilityCapabilityMissing => false
+    DurabilityCommitBarrierMissing { realization_id: _ } => false
+    DurabilityBoundaryUnsupported { realization_id: _, boundary: _ } => false
+    DurabilityEvidenceMissing { realization_id: _, boundary: _ } => false
+    DurabilityEvidenceRefused { realization_id: _, boundary: _, reason: _ } => false
+  }
+}
+
+fn state_durability_verdict_reason(verdict: StateDurabilityVerdict) -> String {
+  match verdict {
+    RuntimeLifetimeSatisfied => "runtime-only lifetime explicitly satisfied"
+    DurableLifetimeSatisfied { realization_id: _, boundaries: _ } =>
+      "required durability boundaries satisfied"
+    DurabilityIntentUnspecified =>
+      "desired state does not declare its required lifetime"
+    DurabilityRequirementEmpty =>
+      "durable desired state declares no lifecycle boundary"
+    DurabilityCapabilityMissing =>
+      "selected realization does not declare a durability capability"
+    DurabilityCommitBarrierMissing { realization_id: realization_id } =>
+      concat(
+        "selected realization lacks a synchronized durability commit barrier: ",
+        realization_id as String,
+      )
+    DurabilityBoundaryUnsupported { realization_id: realization_id, boundary: _ } =>
+      concat(
+        "selected realization does not support a required lifecycle boundary: ",
+        realization_id as String,
+      )
+    DurabilityEvidenceMissing { realization_id: realization_id, boundary: _ } =>
+      concat(
+        "selected realization has not been qualified across a required lifecycle boundary: ",
+        realization_id as String,
+      )
+    DurabilityEvidenceRefused {
+      realization_id: realization_id,
+      boundary: _,
+      reason: reason,
+    } =>
+      concat(
+        concat(
+          "selected realization failed durability qualification: ",
+          realization_id as String,
+        ),
+        concat("; ", reason),
+      )
+  }
+}

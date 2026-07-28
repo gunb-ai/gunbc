@@ -1,6 +1,7 @@
 module extdeps.bmc.types
 
 import extdeps.bmc.capability { BmcFirmwareObservation, BmcFirmwareVersion }
+import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
   Celsius,
@@ -264,12 +265,10 @@ type BmcFanPolicyObservation {
 }
 
 type BmcConfigPersistenceObservation
-  = BmcFlashBackedOverlayObserved {
+  = BmcOverlayConfigObserved {
       firmware: BmcFirmwareVersion
       config_path: NonEmptyStr
-      lower_filesystem: NonEmptyStr
-      upper_filesystem: NonEmptyStr
-      overlay_mount: NonEmptyStr
+      overlay: LinuxOverlayObservation
       writable: Bool
       upper_override_present: Bool
       available_bytes: ByteSize
@@ -321,6 +320,14 @@ type RedfishResetType =
   | ResetGracefulRestart
   | ResetGracefulShutdown
   | ResetPowerCycle
+
+type RedfishManagerResetObservation {
+  action_target: NonEmptyStr
+  reset_type: RedfishResetType
+  http_status: Nat
+  accepted: Bool
+  observed_at: NonEmptyStr
+}
 
 type RedfishAccountRole =
     AccountRoleAdministrator
