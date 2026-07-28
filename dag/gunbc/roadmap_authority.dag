@@ -263,11 +263,12 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
 
-type RoadmapDispatchGate
-  = DispatchBlockedUntilRuntimeIdentityLeaseJoin
+type RoadmapDispatchGate {
+  required_join: RoadmapNodeId
+}
 
 fn active_roadmap_dispatch_gate() -> RoadmapDispatchGate {
-  DispatchBlockedUntilRuntimeIdentityLeaseJoin
+  RoadmapDispatchGate { required_join: nid(s: "roadmap-runtime-identity-join") }
 }
 
 fn active_roadmap_nodes() -> List<RoadmapNode> {
@@ -941,7 +942,7 @@ fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. It carries no accepted or superseded history and no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Runtime dispatch remains blocked until the typed node-to-lease identity join exists and every dependency is accepted or covered by an explicit Ready override. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. This authority is not admitted as a live dispatch source until the typed node-to-lease identity join is implemented. Once admitted, dispatch readiness requires every dependency to be accepted or covered by an explicit Ready override. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
     ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM/source-intent design](docs/plans/dag-scm-design.md) · [SCM product strategy](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }

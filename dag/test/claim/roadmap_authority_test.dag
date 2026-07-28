@@ -6,7 +6,6 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   active_roadmap_dispatch_gate,
-  DispatchBlockedUntilRuntimeIdentityLeaseJoin,
 }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
@@ -274,10 +273,9 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-test fn witness_runtime_dispatch_gate_remains_closed() -> Bool {
-  match active_roadmap_dispatch_gate() {
-    DispatchBlockedUntilRuntimeIdentityLeaseJoin => true
-  }
+test fn witness_dispatch_activation_names_runtime_identity_join_prerequisite() -> Bool {
+  active_roadmap_dispatch_gate().required_join == "roadmap-runtime-identity-join"
+    && id_exists(id: active_roadmap_dispatch_gate().required_join)
 }
 
 test fn witness_scm_context_is_reachable_but_cannot_spawn() -> Bool {
