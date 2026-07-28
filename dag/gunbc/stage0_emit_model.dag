@@ -104,6 +104,7 @@ data generated_stage0_files: List<String> = [
   "v1_rt.rs",
   "v1_std_core.rs",
   "v1_test_non_ascii_perf_fixture.rs",
+  "v1_tests_claim_namespace_identity_prerequisite_test.rs",
   "wt_a.rs",
   "wt_b.rs",
   "wt_common.rs",

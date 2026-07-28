@@ -2,8 +2,8 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
-pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
+pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -53,20 +53,22 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    bare_name_miss_diagnostic, binding_declares_name, empty_symbol_index, empty_type_env_cache,
+    bare_name_miss_diagnostic, binding_declares_name, concat_namespace_identity_capture,
+    empty_namespace_identity_capture, empty_symbol_index, empty_type_env_cache,
     env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, lookup_binding_by_name, lookup_type,
     lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
-    merge_type_env_cache_guarded, node_with_children, node_with_inferred, put_inductive_field,
-    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, str_bindings_from_bindings,
-    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
-    symbol_index_lookup,
+    merge_type_env_cache_guarded, namespace_identity_capture_singleton, node_with_children,
+    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
-    SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
+    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, NamespaceIdentityCapture,
+    ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
+    V1NodeContainmentPathCapture,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -230,6 +232,177 @@ pub struct VariantExportSurface {
 pub struct TypeNameExportFacts {
     pub exporter_count: i64,
     pub canonical_binding: Option<Rc<TypeBinding>>,
+}
+
+pub fn namespace_containment_ancestors_snoc(
+    ancestors: Rc<Vec<Rc<Node>>>,
+    node: Rc<Node>,
+) -> Rc<Vec<Rc<Node>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = ancestors.clone();
+        if __fm.is_empty() {
+            Rc::new({
+                let mut __cons_v = (*Rc::new(vec![])).clone();
+                __cons_v.insert(0, node.clone());
+                __cons_v
+            })
+        } else {
+            let head = (*__fm)[0].clone();
+            let tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+            Rc::new({
+                let mut __cons_v =
+                    (*namespace_containment_ancestors_snoc(tail.clone(), node.clone())).clone();
+                __cons_v.insert(0, head.clone());
+                __cons_v
+            })
+        }
+    })
+}
+
+pub fn namespace_containment_path_at(
+    ancestors: Rc<Vec<Rc<Node>>>,
+    terminal: Rc<Node>,
+) -> Rc<V1NodeContainmentPathCapture> {
+    Rc::new(V1NodeContainmentPathCapture {
+        ancestors: ancestors.clone(),
+        terminal: terminal.clone(),
+    })
+}
+
+pub fn namespace_identity_capture_pattern(
+    match_pattern_value: Rc<MatchPattern>,
+    ancestors: Rc<Vec<Rc<Node>>>,
+) -> Rc<NamespaceIdentityCapture> {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || match (*match_pattern_value.clone()).clone() {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => namespace_identity_capture_singleton(namespace_containment_path_at(
+                ancestors.clone(),
+                declaration.clone(),
+            )),
+            MatchPattern::LitPattern { value: _, .. } => empty_namespace_identity_capture(),
+            MatchPattern::Wildcard => empty_namespace_identity_capture(),
+            MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            } => bindings.clone().iter().cloned().fold(
+                empty_namespace_identity_capture(),
+                |acc: Rc<NamespaceIdentityCapture>, binding: Rc<Node>| {
+                    let binding_capture = namespace_identity_capture_singleton(
+                        namespace_containment_path_at(ancestors.clone(), binding.clone()),
+                    );
+                    let binding_ancestors =
+                        namespace_containment_ancestors_snoc(ancestors.clone(), binding.clone());
+                    let nested_capture = namespace_identity_capture_pattern(
+                        field_binding_pattern(binding.clone()),
+                        binding_ancestors.clone(),
+                    );
+                    concat_namespace_identity_capture(
+                        acc,
+                        concat_namespace_identity_capture(
+                            binding_capture.clone(),
+                            nested_capture.clone(),
+                        ),
+                    )
+                },
+            ),
+        },
+    )
+}
+
+pub fn namespace_identity_capture_node(
+    node: Rc<Node>,
+    ancestors: Rc<Vec<Rc<Node>>>,
+) -> Rc<NamespaceIdentityCapture> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let current = namespace_identity_capture_singleton(namespace_containment_path_at(
+            ancestors.clone(),
+            node.clone(),
+        ));
+        let child_ancestors = namespace_containment_ancestors_snoc(ancestors.clone(), node.clone());
+        let child_capture = v1_rt::concat(
+            node.children.clone(),
+            v1_rt::concat(
+                node.params.clone(),
+                v1_rt::concat(node.uses.clone(), node.properties.clone()),
+            ),
+        )
+        .iter()
+        .cloned()
+        .fold(
+            empty_namespace_identity_capture(),
+            |acc: Rc<NamespaceIdentityCapture>, child: Rc<Node>| {
+                concat_namespace_identity_capture(
+                    acc,
+                    namespace_identity_capture_node(child.clone(), child_ancestors.clone()),
+                )
+            },
+        );
+        let body_capture = match node.body.clone() {
+            Some(body) => namespace_identity_capture_node(body.clone(), child_ancestors.clone()),
+            None => empty_namespace_identity_capture(),
+        };
+        let transport_capture = match node.transport.clone() {
+            Some(transport) => {
+                namespace_identity_capture_node(transport.clone(), child_ancestors.clone())
+            }
+            None => empty_namespace_identity_capture(),
+        };
+        let annotation_capture = match node.type_annotation.clone() {
+            Some(annotation) => {
+                namespace_identity_capture_node(annotation.clone(), child_ancestors.clone())
+            }
+            None => empty_namespace_identity_capture(),
+        };
+        let pattern_capture =
+            namespace_identity_capture_pattern(arm_pattern(node.clone()), child_ancestors.clone());
+        concat_namespace_identity_capture(
+            current.clone(),
+            concat_namespace_identity_capture(
+                child_capture.clone(),
+                concat_namespace_identity_capture(
+                    body_capture.clone(),
+                    concat_namespace_identity_capture(
+                        transport_capture.clone(),
+                        concat_namespace_identity_capture(
+                            annotation_capture.clone(),
+                            pattern_capture.clone(),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    })
+}
+
+pub fn namespace_identity_capture_module(
+    module: Rc<Node>,
+    items: Rc<Vec<Rc<Node>>>,
+) -> Rc<NamespaceIdentityCapture> {
+    {
+        let module_capture = namespace_identity_capture_singleton(namespace_containment_path_at(
+            Rc::new(vec![]),
+            module.clone(),
+        ));
+        let module_ancestors = Rc::new({
+            let mut __cons_v = (*Rc::new(vec![])).clone();
+            __cons_v.insert(0, module.clone());
+            __cons_v
+        });
+        items.clone().iter().cloned().fold(
+            module_capture.clone(),
+            |acc: Rc<NamespaceIdentityCapture>, item: Rc<Node>| {
+                concat_namespace_identity_capture(
+                    acc,
+                    namespace_identity_capture_node(item.clone(), module_ancestors.clone()),
+                )
+            },
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2615,10 +2788,13 @@ pub fn extend_scope_with_pattern_node(
 ) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
-            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => Rc::new(PatternScopeResult {
                 scope: extend_scope_match_bound(
                     scope.clone(),
-                    n.clone(),
+                    declaration.name.clone(),
                     pattern_binding_type(scrutinee_subject.clone()),
                     scrutinee_provenance.clone(),
                 ),
@@ -2675,10 +2851,13 @@ pub fn extend_scope_with_pattern_node(
                         );
                         let fb_pattern = field_binding_pattern(fb.clone());
                         match (*fb_pattern.clone()).clone() {
-                            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+                            MatchPattern::Bind {
+                                declaration: declaration,
+                                ..
+                            } => Rc::new(PatternScopeResult {
                                 scope: extend_scope_match_bound(
                                     acc.scope.clone(),
-                                    n.clone(),
+                                    declaration.name.clone(),
                                     field_type.clone(),
                                     field_provenance.clone(),
                                 ),
@@ -9561,12 +9740,12 @@ let arm_ctx = match variant_arm_ctx.clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
     Some(ind_field) => if (vname.clone() == "Present".to_string()) {
                         bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
-    MatchPattern::Bind { name: bname, .. } => Rc::new(DescentContext {
+    MatchPattern::Bind { declaration: declaration, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(c.param_names.clone(), bname.clone(), ind_field.element_type.clone()),
+    param_names: v1_rt::rc_map_insert(c.param_names.clone(), declaration.name.clone(), ind_field.element_type.clone()),
     param_order: c.param_order.clone(),
     type_env: c.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(c.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    sub_value_vars: v1_rt::rc_map_insert(c.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
@@ -9580,7 +9759,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
 inner_bindings.clone().iter().cloned().fold(c.clone(), |ic: Rc<DescentContext>, inner_fb: Rc<Node>| {
                                 let inner_field_name = field_binding_name_at(inner_fb.clone(), ctx.type_env.clone().source_indices.clone());
 let inner_bind_name = match (*field_binding_pattern(inner_fb.clone())).clone() {
-    MatchPattern::Bind { name: ibname, .. } => ibname.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 let inner_matching = Rc::new({ let mut __result = Vec::new(); for f in inner_ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == inner_vname.clone()) && (f.field_name.clone() == inner_field_name.clone())) { __result.push(f); } } __result }).first().cloned();
@@ -9617,7 +9796,7 @@ match inner_matching.clone() {
 bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
                             let field_name = field_binding_name_at(fb.clone(), ctx.type_env.clone().source_indices.clone());
 let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
-    MatchPattern::Bind { name: bname, .. } => bname.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == vname.clone()) && (f.field_name.clone() == field_name.clone())) { __result.push(f); } } __result }).first().cloned();
@@ -9645,13 +9824,13 @@ match matching.clone() {
 })
 },
 },
-    MatchPattern::Bind { name: bname, .. } => if (scrut_type.clone() != "".to_string()) {
+    MatchPattern::Bind { declaration: declaration, .. } => if (scrut_type.clone() != "".to_string()) {
                         Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), scrut_type.clone()),
+    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), declaration.name.clone(), scrut_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::PreservedValue)),
+    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::PreservedValue)),
     size_aliases: ctx.size_aliases.clone(),
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
@@ -9661,10 +9840,10 @@ match matching.clone() {
                         match scrut_inducing_field.clone() {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), ind_field.element_type.clone()),
+    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), declaration.name.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
@@ -10602,7 +10781,7 @@ pub fn classify_body_provenance(
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
                     let field_label = field_binding_name_at(binding.clone(), type_env.source_indices.clone());
 let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
-    MatchPattern::Bind { name: bn, .. } => bn.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 if ((bind_name.clone() != "".to_string()) && (field_label.clone() != "".to_string())) {
@@ -10614,7 +10793,7 @@ v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), field_prov.clone())
                         acc.clone()
                     }
 }),
-    MatchPattern::Bind { name: bname, .. } => v1_rt::rc_map_insert(let_prov.clone(), bname.clone(), scrut_prov.clone()),
+    MatchPattern::Bind { declaration: declaration, .. } => v1_rt::rc_map_insert(let_prov.clone(), declaration.name.clone(), scrut_prov.clone()),
     _ => let_prov.clone(),
 };
 classify_body_provenance(arm_body(arm.clone()), param_names.clone(), param_types.clone(), type_env.clone(), func_env.clone(), arm_let_prov.clone())
@@ -11220,7 +11399,10 @@ pub fn arm_ctx_from_variant_provenance(
                             ctx.type_env.clone().source_indices.clone(),
                         );
                         let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
-                            MatchPattern::Bind { name: bn, .. } => bn.clone(),
+                            MatchPattern::Bind {
+                                declaration: declaration,
+                                ..
+                            } => declaration.name.clone(),
                             _ => "".to_string(),
                         };
                         if ((bind_name.clone() == "".to_string())
@@ -16753,6 +16935,10 @@ pub fn typecheck_module(
                 typed: Rc::new(TypedModule {
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
+                    namespace_identity: namespace_identity_capture_module(
+                        resolved.module.clone(),
+                        Rc::new(vec![]),
+                    ),
                     type_env: env.clone(),
                     type_env_cache: env_cache.clone(),
                     interface: build_module_interface(
@@ -16900,6 +17086,10 @@ pub fn typecheck_module(
             typed: Rc::new(TypedModule {
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
+                namespace_identity: namespace_identity_capture_module(
+                    typed_module.clone(),
+                    reannotated_items.clone(),
+                ),
                 type_env: env.clone(),
                 type_env_cache: Rc::new(TypeEnvCache {
                     deps_map: env_cache.deps_map.clone(),
@@ -18002,6 +18192,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
+                        namespace_identity: m.namespace_identity.clone(),
                         type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
@@ -18307,6 +18498,7 @@ pub fn rewire_type_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
+                        namespace_identity: m.namespace_identity.clone(),
                         type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
@@ -18376,6 +18568,7 @@ pub fn rewire_func_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
+                        namespace_identity: m.namespace_identity.clone(),
                         type_env: m.type_env.clone(),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
