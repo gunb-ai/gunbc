@@ -226,6 +226,23 @@ and it takes 100%:
 raw R1+R2+R3 count, which exceeds sites×modules because one position can be reported at
 several columns.
 
+### 3.1 Both readings of "modeled operation" fail, for the same reason
+
+A fair objection: perhaps `TraitBoundSiteMethodInvoke` was never meant to name a
+*source-level* `.clone()`. Two readings, and the verdict is the same under each.
+
+* **Source-level invoke** — the plan's own examples (".clone() on a type-param
+  receiver", ".is_empty()/.iter() on a collection receiver") and its RED
+  (`fn f<T>() -> Outcome<T>` *with no clone invoke*) both presuppose an invoke that
+  could be present or absent in the body. Measured: never present. Zero inhabitants.
+* **Post-lowering substrate behavior** — if "operation" means the lowered `Transform`,
+  then the operation at these sites is a **`match` over a coproduct**, not a method
+  invoke. A carrier whose fields are `{ method, receiver }` cannot name it: there is no
+  method. The shape does not fit.
+
+So the finding is not "the plan picked the wrong grain of evidence" — it is that **the
+carrier's shape presumes a method invoke, and the requirement never originates in one.**
+
 **The wrapper-retained row is the load-bearing correction.** The plan framed the risk
 as body-lowering *coverage* — that Stage-A might not lower enough shapes. That is not
 what is wrong. These bodies lower fine. Recording them as "wrapper-retained" would
