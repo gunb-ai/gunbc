@@ -324,10 +324,7 @@ type GitProjectionOutcome
   | GitProjectionRefused { cause: ObjectLookupResult }
 
 fn git_tag_objects(objects: List<StoredObject>) -> List<StoredObject> {
-  objects |> filter(o => match o.object {
-    ObjectTag { tag: _ } => true
-    _ => false
-  })
+  objects |> filter(o => store_object_kind(object: o.object) == TagObj)
 }
 
 fn git_project_repository(repo: GitRepositoryState, tree_oid: GitObjectId) -> GitProjectionOutcome {
@@ -406,6 +403,33 @@ type GitUpdateRefOutcome
       target: GitRefName,
     }
   | GitRefAdvanceInvalidObjectId { repository: GitRepositoryState, oid: GitObjectId }
+  | GitRefAdvanceFormatMismatch {
+      repository: GitRepositoryState,
+      repository_format: GitObjectFormat,
+      oid: GitObjectId,
+    }
+  | GitRefAdvanceTargetUnavailable {
+      repository: GitRepositoryState,
+      oid: GitObjectId,
+      lookup: ObjectLookupResult,
+    }
+  | GitRefAdvanceTargetKindRefused {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      oid: GitObjectId,
+      object_type: ObjectType,
+    }
+  | GitRefAdvanceReadBackMismatch {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      requested: GitObjectId,
+      observed: GitObjectId,
+    }
+  | GitRefAdvanceReadBackRefused {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      result: RefResolutionResult,
+    }
 
 fn git_replace_direct_ref(
   refs: List<GitRefRecord>,
@@ -429,39 +453,86 @@ fn git_update_ref_exact(
 ) -> GitUpdateRefOutcome {
   if !git_object_id_valid(oid: new_oid) {
     GitRefAdvanceInvalidObjectId { repository: repo, oid: new_oid }
+  } else if !(new_oid.format == repo.object_format) {
+    GitRefAdvanceFormatMismatch {
+      repository: repo,
+      repository_format: repo.object_format,
+      oid: new_oid,
+    }
+  } else if !(expected_old.format == repo.object_format) {
+    GitRefAdvanceFormatMismatch {
+      repository: repo,
+      repository_format: repo.object_format,
+      oid: expected_old,
+    }
   } else {
-    match git_find_ref(refs: repo.refs, name: name) {
-      Absent => GitRefAdvanceMissing { repository: repo, name: name }
-      Present { value: record } => match record.target {
-        SymbolicTarget { ref_name } =>
-          GitRefAdvanceSymbolic { repository: repo, name: name, target: ref_name }
-        DirectTarget { oid: observed } =>
-          if !(observed == expected_old) {
-            GitRefAdvanceStale {
-              repository: repo,
-              name: name,
-              expected_old: expected_old,
-              observed: observed,
-            }
-          } else {
-            let updated = GitRepositoryState {
-              object_format: repo.object_format,
-              objects: repo.objects,
-              unavailable: repo.unavailable,
-              refs: git_replace_direct_ref(refs: repo.refs, name: name, new_oid: new_oid),
-              index: repo.index,
-              worktree: repo.worktree,
-            }
-            GitRefAdvanced {
-              repository: updated,
-              receipt: GitUpdateRefReceipt {
-                name: name,
-                expected_old: expected_old,
-                new: new_oid,
-                read_back: new_oid,
-              }
+    match git_lookup_object(repo: repo, oid: new_oid) {
+      ObjectFound { stored: new_object } =>
+        if starts_with(s: name as String, prefix: "refs/heads/")
+          && !(store_object_kind(object: new_object.object) == CommitObj) {
+          GitRefAdvanceTargetKindRefused {
+            repository: repo,
+            name: name,
+            oid: new_oid,
+            object_type: store_object_kind(object: new_object.object),
+          }
+        } else {
+          match git_find_ref(refs: repo.refs, name: name) {
+            Absent => GitRefAdvanceMissing { repository: repo, name: name }
+            Present { value: record } => match record.target {
+              SymbolicTarget { ref_name } =>
+                GitRefAdvanceSymbolic { repository: repo, name: name, target: ref_name }
+              DirectTarget { oid: observed } =>
+                if !(observed == expected_old) {
+                  GitRefAdvanceStale {
+                    repository: repo,
+                    name: name,
+                    expected_old: expected_old,
+                    observed: observed,
+                  }
+                } else {
+                  let updated = GitRepositoryState {
+                    object_format: repo.object_format,
+                    objects: repo.objects,
+                    unavailable: repo.unavailable,
+                    refs: git_replace_direct_ref(refs: repo.refs, name: name, new_oid: new_oid),
+                    index: repo.index,
+                    worktree: repo.worktree,
+                  }
+                  match git_resolve_direct_ref(repo: updated, name: name) {
+                    RefResolved { oid: read_back } =>
+                      if read_back == new_oid {
+                        GitRefAdvanced {
+                          repository: updated,
+                          receipt: GitUpdateRefReceipt {
+                            name: name,
+                            expected_old: expected_old,
+                            new: new_oid,
+                            read_back: read_back,
+                          }
+                        }
+                      } else {
+                        GitRefAdvanceReadBackMismatch {
+                          repository: updated,
+                          name: name,
+                          requested: new_oid,
+                          observed: read_back,
+                        }
+                      }
+                    other => GitRefAdvanceReadBackRefused {
+                      repository: updated,
+                      name: name,
+                      result: other,
+                    }
+                  }
+                }
             }
           }
+        }
+      unavailable => GitRefAdvanceTargetUnavailable {
+        repository: repo,
+        oid: new_oid,
+        lookup: unavailable,
       }
     }
   }
