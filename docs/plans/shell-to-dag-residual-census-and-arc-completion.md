@@ -609,6 +609,7 @@ Bash-as-target lives in one isolated backend: `src/v2/extdeps/languages/bash*` +
 | `merge_admission_produce` · 4 `ci_*_script` | GitHub Actions | same |
 | `fleet_converge_emit` · `fresh_standup_bootstrap_script`/`_arm_golden` | pre-runtime bootstrap | emit, byte-oracle vs `.github/fleet-converge.sh` (largely done #6572/#6585) |
 | cron entry lines, `local_tidy_spec` pre-push hook | cron / git | emit, **permanent** roster (the honest residue) |
+| `roadmap_dispatch_actuator` · `dispatch_event_pipe_command` | tmux `pipe-pane` (its input contract IS a shell command) | **concat-assembled today**, both dynamic tokens through `shell_quote`; declared scaffold with its trigger in-file (`dispatch_event_pipe_command_note`). Same §4 punch-list shape as the pre-push hook row above: the *seam* is permanent, the hand-joined *construction* is not. Blocked on reaching the bash backend from a realization-edge module — `dag/gunbc/roadmap_dispatch_actuator.dag` is outside `realization_edge_path_prefixes`, so importing the bash AST there is exactly the leak `v2.lens.realization_vocabulary_containment` reds (surfaced by `review 44039`) |
 
 `roadmap_static_site` · `roadmap_site_*_body` is HTML/JSON content emit (not shell) for the srv1 dashboard — dissolves with belt B (`gunbc serve`), tracked there, not here.
 

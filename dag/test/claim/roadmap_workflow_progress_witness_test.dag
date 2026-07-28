@@ -19,6 +19,8 @@ import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
   EnvironmentRefused,
   dispatch_environment_admission_json,
+  dispatch_environment_receipt_identity_prefix,
+  dispatch_environment_receipt_status_admitted,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
@@ -205,6 +207,22 @@ fn nested_admitted_forgery() -> String {
   "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\", \"reason\": \"probe failed\", \"receipts\": [{\"capability\": \"git-workspace\", \"status\": \"admitted\"}]}"
 }
 
+test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
+  let truncated = "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\", \"validation\": \"gunbc ru"
+  let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  starts_with(
+    s: truncated,
+    prefix: dispatch_environment_receipt_identity_prefix(
+      status: dispatch_environment_receipt_status_admitted,
+    ),
+  )
+    && !environment_admission_receipt_is_admitted(receipt: truncated)
+    && environment_admission_receipt_is_admitted(receipt: genuine)
+}
+
 test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
   let forged = nested_admitted_forgery()
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
@@ -363,6 +381,7 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
     && completed_event_with_absent_process_refuses()
     && completed_event_with_unobserved_process_refuses()
     && refused_receipt_quoting_admitted_fragments_is_not_admitted()
+    && truncated_receipt_with_admitted_prefix_is_not_admitted()
     && forged_admission_receipt_cannot_complete_environment()
     && persisted_staging_failure_precedes_empty_event_stream()
     && legacy_attempt_refuses_unobserved_early_stages()
