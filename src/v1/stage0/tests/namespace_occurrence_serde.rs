@@ -1,3 +1,7 @@
+// Seed-growth mark + dissolution trigger live on the carrier:
+// test.claim.namespace_occurrence_transport_test.namespace_occurrence_serde_seed_test_dissolution
+// (dag/test/claim/namespace_occurrence_transport_test.dag). v1-test class: this file
+// deletes with src/v1 once its behavior is carried per the v1-test-migration coverage bar.
 use im::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
