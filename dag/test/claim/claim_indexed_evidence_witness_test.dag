@@ -39,6 +39,8 @@ import gunbc.os_install_deduction {
   KvmOperatorAttestation,
   LoginPrompt,
   CompleteForUnattended,
+}
+import gunbc.os_install_claim_evidence {
   os_install_boot_suggestion_claim,
   os_install_completed_claim,
   os_install_kvm_attestation_inference,
@@ -252,10 +254,12 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
   )
   let boot_claim = os_install_boot_suggestion_claim(
     target: target,
+    preflight: CompleteForUnattended,
     bound: bound,
   )
   let installed_claim = os_install_completed_claim(
     target: target,
+    preflight: CompleteForUnattended,
     bound: bound,
   )
   let boot = claim_information_state(
