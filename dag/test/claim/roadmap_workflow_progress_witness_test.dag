@@ -12,7 +12,7 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
   workflow_attempt_progress_json_value,
-  environment_admission_receipt_is_admitted,
+  receipt_records_admission,
 }
 import gunbc.roadmap_dispatch_environment {
   DispatchEnvironmentAdmission,
@@ -20,7 +20,11 @@ import gunbc.roadmap_dispatch_environment {
   EnvironmentRefused,
   dispatch_environment_admission_json,
   dispatch_environment_receipt_identity_prefix,
-  dispatch_environment_receipt_status_admitted,
+  dispatch_environment_receipt_decode,
+  ReceiptDecoded,
+  ReceiptUndecodable,
+  ReceiptAdmitted,
+  ReceiptRefused,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
@@ -216,11 +220,11 @@ test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
   starts_with(
     s: truncated,
     prefix: dispatch_environment_receipt_identity_prefix(
-      status: dispatch_environment_receipt_status_admitted,
+      status: ReceiptAdmitted,
     ),
   )
-    && !environment_admission_receipt_is_admitted(receipt: truncated)
-    && environment_admission_receipt_is_admitted(receipt: genuine)
+    && !receipt_records_admission(receipt: truncated)
+    && receipt_records_admission(receipt: genuine)
 }
 
 test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
@@ -231,8 +235,44 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
   })
   string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
     && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
-    && !environment_admission_receipt_is_admitted(receipt: forged)
-    && environment_admission_receipt_is_admitted(receipt: genuine)
+    && !receipt_records_admission(receipt: forged)
+    && receipt_records_admission(receipt: genuine)
+}
+
+data receipt_decode_witness_note: String = "review 44094. The decode splits what the old Bool merged: a receipt that RECORDS a refusal is a different state from a document this reader cannot decode, and each now has its own arm. The truncated fixture is the discriminating one — it carries the admitted prefix verbatim and still fails, because a prefix match alone was never the claim; the whole document must also parse."
+
+test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
+  let refused = admission_receipt_for(admission: EnvironmentRefused {
+    receipts: [],
+    validation_summary: "",
+    reason: "probe failed",
+  })
+  let foreign = "{\"schema\": \"some-other-emitter/v1\", \"status\": \"admitted\"}"
+  let admitted = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  match dispatch_environment_receipt_decode(receipt: refused) {
+    ReceiptDecoded { status } =>
+      match status {
+        ReceiptRefused => true
+        ReceiptAdmitted => false
+      }
+    ReceiptUndecodable { reason: _ } => false
+  }
+    && match dispatch_environment_receipt_decode(receipt: foreign) {
+      ReceiptDecoded { status: _ } => false
+      ReceiptUndecodable { reason } =>
+        string_contains(s: reason, pattern: "known status")
+    }
+    && match dispatch_environment_receipt_decode(receipt: admitted) {
+      ReceiptDecoded { status } =>
+        match status {
+          ReceiptAdmitted => true
+          ReceiptRefused => false
+        }
+      ReceiptUndecodable { reason: _ } => false
+    }
 }
 
 test fn forged_admission_receipt_cannot_complete_environment() -> Bool {

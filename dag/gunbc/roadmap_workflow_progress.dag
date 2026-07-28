@@ -508,9 +508,7 @@ fn workflow_attempt_progress(
   let provider = workflow_provider_from_evidence(evidence: evidence)
   let admitted = evidence.modeled_state_present
     && evidence.admission_receipt_readable
-    && environment_admission_receipt_is_admitted(
-      receipt: evidence.admission_receipt,
-    )
+    && receipt_records_admission(receipt: evidence.admission_receipt)
   let segments = map(
     roadmap_attempt_workflow_segment_kinds,
     kind => workflow_segment_from_evidence(
