@@ -221,6 +221,7 @@ fn fixture_projection_with_local_revisions(
     },
     availability: MercurialRepositoryPartial {
       missing_changesets: [],
+      missing_manifests: [],
       missing_file_revisions: [hg_file_missing],
     },
   }
@@ -258,25 +259,35 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let entries = repository.manifests.first().entries
-      count(entries) == 3
-        && match entries.first().flag {
-          MercurialRegularFile => true
-          _ => false
-        }
-        && match entries.skip(n: 1).first().flag {
-          MercurialExecutableFile => true
-          _ => false
-        }
-        && match entries.skip(n: 2).first() {
-          Present { value: entry } =>
-            entry.path == hg_path_symlink
-              && match entry.flag {
-                MercurialSymlink => true
+      match repository.manifests.first() {
+        Absent => false
+        Present { value: manifest } =>
+          let entries = manifest.entries
+          count(entries) == 3
+            && match entries.first() {
+              Present { value: entry } => match entry.flag {
+                MercurialRegularFile => true
                 _ => false
               }
-          Absent => false
-        }
+              Absent => false
+            }
+            && match entries.skip(n: 1).first() {
+              Present { value: entry } => match entry.flag {
+                MercurialExecutableFile => true
+                _ => false
+              }
+              Absent => false
+            }
+            && match entries.skip(n: 2).first() {
+              Present { value: entry } =>
+                entry.path == hg_path_symlink
+                  && match entry.flag {
+                    MercurialSymlink => true
+                    _ => false
+                  }
+              Absent => false
+            }
+      }
   }
 }
 
@@ -318,17 +329,26 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
     Absent => false
     Present { value: repository } =>
       count(repository.phases) == 3
-        && match repository.phases.first().phase {
-          MercurialPublic => true
-          _ => false
+        && match repository.phases.first() {
+          Present { value: entry } => match entry.phase {
+            MercurialPublic => true
+            _ => false
+          }
+          Absent => false
         }
-        && match repository.phases.skip(n: 1).first().phase {
-          MercurialDraft => true
-          _ => false
+        && match repository.phases.skip(n: 1).first() {
+          Present { value: entry } => match entry.phase {
+            MercurialDraft => true
+            _ => false
+          }
+          Absent => false
         }
-        && match repository.phases.skip(n: 2).first().phase {
-          MercurialSecret => true
-          _ => false
+        && match repository.phases.skip(n: 2).first() {
+          Present { value: entry } => match entry.phase {
+            MercurialSecret => true
+            _ => false
+          }
+          Absent => false
         }
   }
 }
@@ -426,7 +446,10 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     requirements: projection.requirements,
     file_revisions: projection.file_revisions,
     manifests: projection.manifests,
-    changesets: [projection.changesets.first(), projection.changesets.skip(n: 1).first(), broken],
+    changesets: append(
+      projection.changesets |> filter(c => !(c.node == hg_c2)),
+      items: [broken],
+    ),
     local_revisions: projection.local_revisions,
     heads: projection.heads,
     bookmarks: projection.bookmarks,

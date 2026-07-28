@@ -67,10 +67,18 @@ type MercurialManifestFlag
   | MercurialExecutableFile
   | MercurialSymlink
 
+type MercurialCopyMetadata
+  = MercurialNotCopied
+  | MercurialCopiedFrom {
+      path: MercurialPath,
+      file_revision: MercurialFileRevisionId,
+    }
+
 type MercurialManifestEntry {
   path: MercurialPath
   file_revision: MercurialFileRevisionId
   flag: MercurialManifestFlag
+  copy: MercurialCopyMetadata
 }
 
 type MercurialManifest {
@@ -128,6 +136,14 @@ type MercurialPhaseEntry {
   phase: MercurialPhase
 }
 
+type MercurialPublishingBehavior
+  = MercurialPublishingServer
+  | MercurialNonPublishingServer
+
+type MercurialExchangeDisposition
+  = MercurialExchangeWithheld
+  | MercurialExchangeVisible { resulting_phase: MercurialPhase }
+
 type MercurialSubrepository {
   path: MercurialPath
   source: NonEmptyStr
@@ -148,6 +164,7 @@ type MercurialRepositoryAvailability
   = MercurialRepositoryComplete
   | MercurialRepositoryPartial {
       missing_changesets: List<MercurialChangesetId>,
+      missing_manifests: List<MercurialManifestId>,
       missing_file_revisions: List<MercurialFileRevisionId>,
     }
   | MercurialRepositoryInaccessible { reason: NonEmptyStr }
@@ -166,6 +183,7 @@ type MercurialRepositoryState {
   bookmarks: List<MercurialBookmark>
   tags: List<MercurialTag>
   phases: List<MercurialPhaseEntry>
+  publishing: MercurialPublishingBehavior
   subrepositories: List<MercurialSubrepository>
   evolution: MercurialEvolutionMetadata
   availability: MercurialRepositoryAvailability
@@ -175,6 +193,7 @@ type MercurialManifestWireEntry {
   path: MercurialPath
   file_revision: MercurialFileRevisionId
   flag: String
+  copy: MercurialCopyMetadata
 }
 
 type MercurialManifestWire {
@@ -197,6 +216,7 @@ type MercurialRepositoryProjection {
   bookmarks: List<MercurialBookmark>
   tags: List<MercurialTag>
   phases: List<MercurialPhaseWireEntry>
+  publishing: MercurialPublishingBehavior
   subrepositories: List<MercurialSubrepository>
   evolution: MercurialEvolutionMetadata
   availability: MercurialRepositoryAvailability
@@ -221,6 +241,37 @@ type MercurialProjectionRefusal
       changeset: MercurialChangesetId,
       parent: MercurialChangesetId,
     }
+  | MercurialMissingFileRevision {
+      manifest: MercurialManifestId,
+      path: MercurialPath,
+      file_revision: MercurialFileRevisionId,
+    }
+  | MercurialMissingChangesetReference {
+      target: MercurialChangesetId,
+      origin: MercurialChangesetReferenceOrigin,
+    }
+  | MercurialMissingPhase { changeset: MercurialChangesetId }
+  | MercurialDuplicatePhase { changeset: MercurialChangesetId }
+  | MercurialPhaseMonotonicityViolation {
+      parent: MercurialChangesetId,
+      parent_phase: MercurialPhase,
+      child: MercurialChangesetId,
+      child_phase: MercurialPhase,
+    }
+
+type MercurialChangesetReferenceOrigin
+  = MercurialLocalRevisionTarget { revision: MercurialLocalRevision }
+  | MercurialHeadTarget
+  | MercurialBookmarkTarget { name: MercurialBookmarkName }
+  | MercurialTagTarget { name: MercurialTagName }
+  | MercurialPhaseTarget
+  | MercurialEvolutionPredecessor
+  | MercurialEvolutionSuccessor { predecessor: MercurialChangesetId }
+
+type MercurialChangesetReference {
+  target: MercurialChangesetId
+  origin: MercurialChangesetReferenceOrigin
+}
 
 type MercurialManifestDecodeOutcome
   = MercurialManifestsDecoded { manifests: List<MercurialManifest> }
@@ -267,6 +318,7 @@ fn mercurial_decode_manifest_entry_step(
                 path: wire.path,
                 file_revision: wire.file_revision,
                 flag: flag,
+                copy: wire.copy,
               },
             ],
           )
@@ -377,6 +429,53 @@ fn mercurial_decode_phases(
   )
 }
 
+fn mercurial_exchange_disposition(
+  publishing: MercurialPublishingBehavior,
+  phase: MercurialPhase,
+) -> MercurialExchangeDisposition {
+  match phase {
+    MercurialSecret => MercurialExchangeWithheld
+    MercurialPublic =>
+      MercurialExchangeVisible { resulting_phase: MercurialPublic }
+    MercurialDraft => match publishing {
+      MercurialPublishingServer =>
+        MercurialExchangeVisible { resulting_phase: MercurialPublic }
+      MercurialNonPublishingServer =>
+        MercurialExchangeVisible { resulting_phase: MercurialDraft }
+    }
+  }
+}
+
+type MercurialPhaseLookupOutcome
+  = MercurialPhaseNotFound
+  | MercurialPhaseFound { phase: MercurialPhase }
+  | MercurialPhaseFoundMoreThanOnce
+
+fn mercurial_phase_for(
+  phases: List<MercurialPhaseEntry>,
+  wanted: MercurialChangesetId,
+) -> MercurialPhaseLookupOutcome {
+  let matching = phases |> filter(entry => entry.changeset == wanted)
+  if count(matching) == 0 {
+    MercurialPhaseNotFound
+  } else if count(matching) > 1 {
+    MercurialPhaseFoundMoreThanOnce
+  } else {
+    match matching.first() {
+      Present { value: entry } => MercurialPhaseFound { phase: entry.phase }
+      Absent => MercurialPhaseNotFound
+    }
+  }
+}
+
+fn mercurial_phase_rank(phase: MercurialPhase) -> NonNegativeInt {
+  match phase {
+    MercurialPublic => 0
+    MercurialDraft => 1
+    MercurialSecret => 2
+  }
+}
+
 fn mercurial_changeset_exists(
   changesets: List<MercurialChangeset>,
   wanted: MercurialChangesetId,
@@ -391,51 +490,135 @@ fn mercurial_manifest_exists(
   manifests |> any(m => m.node == wanted)
 }
 
+fn mercurial_file_revision_exists(
+  file_revisions: List<MercurialFileRevision>,
+  wanted: MercurialFileRevisionId,
+) -> Bool {
+  file_revisions |> any(file_revision => file_revision.node == wanted)
+}
+
+fn mercurial_changeset_declared_missing(
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialChangesetId,
+) -> Bool {
+  match availability {
+    MercurialRepositoryPartial { missing_changesets, missing_manifests: _, missing_file_revisions: _ } =>
+      missing_changesets |> any(changeset => changeset == wanted)
+    _ => false
+  }
+}
+
+fn mercurial_manifest_declared_missing(
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialManifestId,
+) -> Bool {
+  match availability {
+    MercurialRepositoryPartial { missing_changesets: _, missing_manifests, missing_file_revisions: _ } =>
+      missing_manifests |> any(manifest => manifest == wanted)
+    _ => false
+  }
+}
+
+fn mercurial_file_revision_declared_missing(
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialFileRevisionId,
+) -> Bool {
+  match availability {
+    MercurialRepositoryPartial { missing_changesets: _, missing_manifests: _, missing_file_revisions } =>
+      missing_file_revisions |> any(file_revision => file_revision == wanted)
+    _ => false
+  }
+}
+
+fn mercurial_changeset_known(
+  changesets: List<MercurialChangeset>,
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialChangesetId,
+) -> Bool {
+  mercurial_changeset_exists(changesets: changesets, wanted: wanted)
+    || mercurial_changeset_declared_missing(availability: availability, wanted: wanted)
+}
+
+fn mercurial_manifest_known(
+  manifests: List<MercurialManifest>,
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialManifestId,
+) -> Bool {
+  mercurial_manifest_exists(manifests: manifests, wanted: wanted)
+    || mercurial_manifest_declared_missing(availability: availability, wanted: wanted)
+}
+
+fn mercurial_file_revision_known(
+  file_revisions: List<MercurialFileRevision>,
+  availability: MercurialRepositoryAvailability,
+  wanted: MercurialFileRevisionId,
+) -> Bool {
+  mercurial_file_revision_exists(file_revisions: file_revisions, wanted: wanted)
+    || mercurial_file_revision_declared_missing(availability: availability, wanted: wanted)
+}
+
+type MercurialDuplicateChangesetOutcome
+  = MercurialChangesetNodesUnique
+  | MercurialDuplicateChangesetFound { changeset: MercurialChangesetId }
+
 fn mercurial_duplicate_changeset(
   changesets: List<MercurialChangeset>,
-) -> MercurialChangesetId? {
-  fold(changesets, init: Absent, f: fn(found, c) {
+) -> MercurialDuplicateChangesetOutcome {
+  fold(changesets, init: MercurialChangesetNodesUnique, f: fn(found, c) {
     match found {
-      Present { value: _ } => found
-      Absent =>
+      MercurialDuplicateChangesetFound { changeset: _ } => found
+      MercurialChangesetNodesUnique =>
         if count(changesets |> filter(other => other.node == c.node)) > 1 {
-          Present { value: c.node }
+          MercurialDuplicateChangesetFound { changeset: c.node }
         } else {
-          Absent
+          MercurialChangesetNodesUnique
         }
     }
   })
 }
 
+type MercurialDuplicateLocalRevisionOutcome
+  = MercurialLocalRevisionsUnique
+  | MercurialDuplicateLocalRevisionFound { revision: MercurialLocalRevision }
+
 fn mercurial_duplicate_local_revision(
   entries: List<MercurialLocalRevisionEntry>,
-) -> MercurialLocalRevision? {
-  fold(entries, init: Absent, f: fn(found, entry) {
+) -> MercurialDuplicateLocalRevisionOutcome {
+  fold(entries, init: MercurialLocalRevisionsUnique, f: fn(found, entry) {
     match found {
-      Present { value: _ } => found
-      Absent =>
+      MercurialDuplicateLocalRevisionFound { revision: _ } => found
+      MercurialLocalRevisionsUnique =>
         if count(entries |> filter(other => other.revision == entry.revision)) > 1 {
-          Present { value: entry.revision }
+          MercurialDuplicateLocalRevisionFound { revision: entry.revision }
         } else {
-          Absent
+          MercurialLocalRevisionsUnique
         }
     }
   })
 }
+
+type MercurialReferenceCheckOutcome
+  = MercurialReferencesValid
+  | MercurialReferenceInvalid { cause: MercurialProjectionRefusal }
 
 fn mercurial_first_missing_manifest(
   changesets: List<MercurialChangeset>,
   manifests: List<MercurialManifest>,
-) -> MercurialProjectionRefusal? {
-  fold(changesets, init: Absent, f: fn(found, c) {
+  availability: MercurialRepositoryAvailability,
+) -> MercurialReferenceCheckOutcome {
+  fold(changesets, init: MercurialReferencesValid, f: fn(found, c) {
     match found {
-      Present { value: _ } => found
-      Absent =>
-        if mercurial_manifest_exists(manifests: manifests, wanted: c.manifest) {
-          Absent
+      MercurialReferenceInvalid { cause: _ } => found
+      MercurialReferencesValid =>
+        if mercurial_manifest_known(
+          manifests: manifests,
+          availability: availability,
+          wanted: c.manifest,
+        ) {
+          MercurialReferencesValid
         } else {
-          Present {
-            value: MercurialMissingManifest {
+          MercurialReferenceInvalid {
+            cause: MercurialMissingManifest {
               changeset: c.node,
               manifest: c.manifest,
             }
@@ -447,19 +630,25 @@ fn mercurial_first_missing_manifest(
 
 fn mercurial_first_missing_parent(
   changesets: List<MercurialChangeset>,
-) -> MercurialProjectionRefusal? {
-  fold(changesets, init: Absent, f: fn(found, c) {
+  availability: MercurialRepositoryAvailability,
+) -> MercurialReferenceCheckOutcome {
+  fold(changesets, init: MercurialReferencesValid, f: fn(found, c) {
     match found {
-      Present { value: _ } => found
-      Absent => fold(c.parents, init: Absent, f: fn(parent_found, parent) {
+      MercurialReferenceInvalid { cause: _ } => found
+      MercurialReferencesValid =>
+        fold(c.parents, init: MercurialReferencesValid, f: fn(parent_found, parent) {
         match parent_found {
-          Present { value: _ } => parent_found
-          Absent =>
-            if mercurial_changeset_exists(changesets: changesets, wanted: parent) {
-              Absent
+          MercurialReferenceInvalid { cause: _ } => parent_found
+          MercurialReferencesValid =>
+            if mercurial_changeset_known(
+              changesets: changesets,
+              availability: availability,
+              wanted: parent,
+            ) {
+              MercurialReferencesValid
             } else {
-              Present {
-                value: MercurialMissingParent {
+              MercurialReferenceInvalid {
+                cause: MercurialMissingParent {
                   changeset: c.node,
                   parent: parent,
                 }
@@ -469,6 +658,163 @@ fn mercurial_first_missing_parent(
       })
     }
   })
+}
+
+fn mercurial_first_missing_file_revision(
+  manifests: List<MercurialManifest>,
+  file_revisions: List<MercurialFileRevision>,
+  availability: MercurialRepositoryAvailability,
+) -> MercurialReferenceCheckOutcome {
+  fold(manifests, init: MercurialReferencesValid, f: fn(found, manifest) {
+    match found {
+      MercurialReferenceInvalid { cause: _ } => found
+      MercurialReferencesValid =>
+        fold(manifest.entries, init: MercurialReferencesValid, f: fn(entry_found, entry) {
+          match entry_found {
+            MercurialReferenceInvalid { cause: _ } => entry_found
+            MercurialReferencesValid =>
+              if mercurial_file_revision_known(
+                file_revisions: file_revisions,
+                availability: availability,
+                wanted: entry.file_revision,
+              ) {
+                MercurialReferencesValid
+              } else {
+                MercurialReferenceInvalid {
+                  cause: MercurialMissingFileRevision {
+                    manifest: manifest.node,
+                    path: entry.path,
+                    file_revision: entry.file_revision,
+                  }
+                }
+              }
+          }
+        })
+    }
+  })
+}
+
+fn mercurial_changeset_references(
+  projection: MercurialRepositoryProjection,
+  phases: List<MercurialPhaseEntry>,
+) -> List<MercurialChangesetReference> {
+  let local_revisions = projection.local_revisions |> map(entry =>
+    MercurialChangesetReference {
+      target: entry.changeset,
+      origin: MercurialLocalRevisionTarget { revision: entry.revision },
+    }
+  )
+  let heads = projection.heads |> map(head =>
+    MercurialChangesetReference {
+      target: head.changeset,
+      origin: MercurialHeadTarget,
+    }
+  )
+  let bookmarks = projection.bookmarks |> map(bookmark =>
+    MercurialChangesetReference {
+      target: bookmark.target,
+      origin: MercurialBookmarkTarget { name: bookmark.name },
+    }
+  )
+  let tags = projection.tags |> map(tag =>
+    MercurialChangesetReference {
+      target: tag.target,
+      origin: MercurialTagTarget { name: tag.name },
+    }
+  )
+  let phase_references = phases |> map(phase =>
+    MercurialChangesetReference {
+      target: phase.changeset,
+      origin: MercurialPhaseTarget,
+    }
+  )
+  let evolution_references = match projection.evolution {
+    MercurialEvolutionNotEnabled => []
+    MercurialEvolutionMarkers { markers } => markers |> flat_map(marker =>
+      append(
+        [
+          MercurialChangesetReference {
+            target: marker.predecessor,
+            origin: MercurialEvolutionPredecessor,
+          },
+        ],
+        items: marker.successors |> map(successor =>
+          MercurialChangesetReference {
+            target: successor,
+            origin: MercurialEvolutionSuccessor { predecessor: marker.predecessor },
+          }
+        ),
+      )
+    )
+  }
+  concat(
+    concat(concat(local_revisions, heads), concat(bookmarks, tags)),
+    concat(phase_references, evolution_references),
+  )
+}
+
+fn mercurial_first_missing_changeset_reference(
+  projection: MercurialRepositoryProjection,
+  phases: List<MercurialPhaseEntry>,
+) -> MercurialReferenceCheckOutcome {
+  fold(
+    mercurial_changeset_references(projection: projection, phases: phases),
+    init: MercurialReferencesValid,
+    f: fn(found, reference) {
+      match found {
+        MercurialReferenceInvalid { cause: _ } => found
+        MercurialReferencesValid =>
+          if mercurial_changeset_known(
+            changesets: projection.changesets,
+            availability: projection.availability,
+            wanted: reference.target,
+          ) {
+            MercurialReferencesValid
+          } else {
+            MercurialReferenceInvalid {
+              cause: MercurialMissingChangesetReference {
+                target: reference.target,
+                origin: reference.origin,
+              }
+            }
+          }
+      }
+    },
+  )
+}
+
+fn mercurial_validate_references(
+  projection: MercurialRepositoryProjection,
+  manifests: List<MercurialManifest>,
+  phases: List<MercurialPhaseEntry>,
+) -> MercurialReferenceCheckOutcome {
+  match mercurial_first_missing_manifest(
+    changesets: projection.changesets,
+    manifests: manifests,
+    availability: projection.availability,
+  ) {
+    MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
+    MercurialReferencesValid =>
+      match mercurial_first_missing_parent(
+        changesets: projection.changesets,
+        availability: projection.availability,
+      ) {
+        MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
+        MercurialReferencesValid =>
+          match mercurial_first_missing_file_revision(
+            manifests: manifests,
+            file_revisions: projection.file_revisions,
+            availability: projection.availability,
+          ) {
+            MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
+            MercurialReferencesValid =>
+              mercurial_first_missing_changeset_reference(
+                projection: projection,
+                phases: phases,
+              )
+          }
+      }
+  }
 }
 
 type MercurialDecodeOutcome
@@ -487,42 +833,39 @@ fn mercurial_decode_projection(
           MercurialDecodeRefused { cause: cause }
         MercurialPhasesDecoded { phases } =>
           match mercurial_duplicate_changeset(changesets: projection.changesets) {
-            Present { value: duplicate } =>
+            MercurialDuplicateChangesetFound { changeset: duplicate } =>
               MercurialDecodeRefused {
                 cause: MercurialDuplicateChangesetNode { changeset: duplicate }
               }
-            Absent =>
+            MercurialChangesetNodesUnique =>
               match mercurial_duplicate_local_revision(entries: projection.local_revisions) {
-                Present { value: duplicate } =>
+                MercurialDuplicateLocalRevisionFound { revision: duplicate } =>
                   MercurialDecodeRefused {
                     cause: MercurialDuplicateLocalRevision { revision: duplicate }
                   }
-                Absent =>
-                  match mercurial_first_missing_manifest(
-                    changesets: projection.changesets,
+                MercurialLocalRevisionsUnique =>
+                  match mercurial_validate_references(
+                    projection: projection,
                     manifests: manifests,
+                    phases: phases,
                   ) {
-                    Present { value: cause } => MercurialDecodeRefused { cause: cause }
-                    Absent =>
-                      match mercurial_first_missing_parent(changesets: projection.changesets) {
-                        Present { value: cause } => MercurialDecodeRefused { cause: cause }
-                        Absent => MercurialDecoded {
-                          repository: MercurialRepositoryState {
-                            requirements: projection.requirements,
-                            file_revisions: projection.file_revisions,
-                            manifests: manifests,
-                            changesets: projection.changesets,
-                            local_revisions: projection.local_revisions,
-                            heads: projection.heads,
-                            bookmarks: projection.bookmarks,
-                            tags: projection.tags,
-                            phases: phases,
-                            subrepositories: projection.subrepositories,
-                            evolution: projection.evolution,
-                            availability: projection.availability,
-                          }
-                        }
+                    MercurialReferenceInvalid { cause } => MercurialDecodeRefused { cause: cause }
+                    MercurialReferencesValid => MercurialDecoded {
+                      repository: MercurialRepositoryState {
+                        requirements: projection.requirements,
+                        file_revisions: projection.file_revisions,
+                        manifests: manifests,
+                        changesets: projection.changesets,
+                        local_revisions: projection.local_revisions,
+                        heads: projection.heads,
+                        bookmarks: projection.bookmarks,
+                        tags: projection.tags,
+                        phases: phases,
+                        subrepositories: projection.subrepositories,
+                        evolution: projection.evolution,
+                        availability: projection.availability,
                       }
+                    }
                   }
               }
           }
