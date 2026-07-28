@@ -87,7 +87,6 @@ type ResolvedGraph {
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
-  occurrence_transport: OccurrenceTransport
 }
 
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {

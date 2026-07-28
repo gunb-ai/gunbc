@@ -55,11 +55,11 @@ import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
+  OccurrenceContainmentPath,
   OccurrenceMinted,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
 }
-import std.occurrence_binding { ContainmentPath }
 import std.algebra { FreeMonoid, Empty, Cons }
 
 import std.syntax {
@@ -1018,7 +1018,7 @@ fn stamp_parsed_node(
     alloc: parse_context_occurrence_allocator(ctx: ctx)
   )
   let occurrence = allocated.id
-  let containment = ContainmentPath {
+  let containment = OccurrenceContainmentPath {
     ancestors: ancestors,
     terminal: occurrence,
   }

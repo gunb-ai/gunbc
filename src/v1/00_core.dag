@@ -11,10 +11,10 @@ import std.induction { SubValueRelation }
 import std.occurrence_identity {
   OccurrenceId,
   NodeOccurrenceIdentity,
+  OccurrenceContainmentPath,
   OccurrenceSynthetic,
   OccurrenceMinted,
 }
-import std.occurrence_binding { ContainmentPath }
 
 type Token {
   text: String
@@ -141,7 +141,7 @@ type OccurrenceProjection {
 
 type OccurrenceIndexEntry {
   projection: OccurrenceProjection
-  containment: ContainmentPath<OccurrenceId>
+  containment: OccurrenceContainmentPath
 }
 
 type OccurrenceIndex {
@@ -150,14 +150,14 @@ type OccurrenceIndex {
 
 type DeclarationOccurrence {
   occurrence: OccurrenceId
-  containment: ContainmentPath<OccurrenceId>
+  containment: OccurrenceContainmentPath
   category: OccurrenceCategory
   diagnostic_span: SourceSpan
 }
 
 type ReferenceOccurrence {
   occurrence: OccurrenceId
-  containment: ContainmentPath<OccurrenceId>
+  containment: OccurrenceContainmentPath
   category: OccurrenceCategory
   diagnostic_span: SourceSpan
 }

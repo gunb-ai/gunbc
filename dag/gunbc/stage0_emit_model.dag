@@ -53,7 +53,6 @@ data generated_stage0_files: List<String> = [
   "std_measure.rs",
   "std_nat.rs",
   "std_node.rs",
-  "std_occurrence_binding.rs",
   "std_occurrence_identity.rs",
   "std_pareto.rs",
   "std_realization_schedule.rs",

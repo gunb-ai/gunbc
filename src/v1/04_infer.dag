@@ -1,7 +1,6 @@
 module v1.compiler.infer
 
-import std.occurrence_binding { ContainmentPath }
-import std.occurrence_identity { OccurrenceId }
+import std.occurrence_identity { OccurrenceContainmentPath, OccurrenceId }
 import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
@@ -8223,7 +8222,7 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 }
 
 fn occurrence_containment_has_root(
-  containment: ContainmentPath<OccurrenceId>,
+  containment: OccurrenceContainmentPath,
   root: OccurrenceId
 ) -> Bool {
   match containment.ancestors {
@@ -8282,6 +8281,5 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     item_registry: typed.item_registry,
     diagnostics: typed.diagnostics,
     emit_graph_info: emit_info,
-    occurrence_transport: graph.occurrence_transport,
   }
 }

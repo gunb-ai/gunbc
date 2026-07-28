@@ -48,11 +48,11 @@ import v2.std.node {
   well_formed
 }
 import v2.std.occurrence_id {
-  OccurrenceIdAllocator,
   alloc_occurrence_id,
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
+import std.occurrence_identity { OccurrenceIdAllocator }
 import v2.std.provenance {
   DerivedBy,
   SpanIndex,
@@ -122,7 +122,7 @@ import v2.std.grammar {
 }
 
 type ParseProvenanceState {
-  alloc: v2.std.occurrence_id.OccurrenceIdAllocator
+  alloc: OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
 }
 

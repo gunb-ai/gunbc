@@ -1,11 +1,21 @@
 module std.occurrence_identity
 
+import std.algebra { FreeMonoid }
 import std.types { Bool, Int, String }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
 type OccurrenceId {
   value: Int
+}
+
+data occurrence_containment_storage_projection_note: String = "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because the generic carrier cannot yet be emitted by the v1 stage0 backend without invented generic derive and match-clone obligations."
+
+data occurrence_containment_storage_projection_dissolve_on: String = "DISSOLVE-ON: generic stage0 emission accepts std.occurrence_binding.ContainmentPath<OccurrenceId> without supplemental derive bounds or match clones; then replace this projection with the canonical generic carrier and delete both storage-projection rows."
+
+type OccurrenceContainmentPath {
+  ancestors: FreeMonoid<OccurrenceId>
+  terminal: OccurrenceId
 }
 
 data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
