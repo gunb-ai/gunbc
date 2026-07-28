@@ -47,7 +47,7 @@ test fn witness_authority_serializes_with_structure() -> Bool {
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   string_contains(
     s: authority_page_html(),
-    pattern: "requires all: 2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model",
+    pattern: "requires all: product-scm-git-upstream, product-scm-mercurial-upstream, product-scm-pijul-upstream",
   )
 }
 
@@ -303,8 +303,8 @@ test fn witness_ticket_rows_render_structured() -> Bool {
   string_contains(s: h, pattern: "class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>ticket</summary>")
     && string_contains(s: h, pattern: "class=\"ticket-brief\"")
     && string_contains(s: h, pattern: ">displaced cost</span>")
-    && string_contains(s: h, pattern: "class=\"ticket-updates\"")
-    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/node-subtree-visibility-grants.md\"")
+    && !string_contains(s: h, pattern: "class=\"ticket-updates\"")
+    && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
 }
 
 fn long_brief_fixture() -> RoadmapNode {
@@ -350,8 +350,9 @@ test fn witness_raw_text_close_guard_refuses() -> Bool {
 
 test fn witness_item_detail_disclosure_present() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: "<details class=\"item-detail\"><summary><span class=\"disclosure-mark\">›</span>brief</summary>")
+  string_contains(s: h, pattern: "<details class=\"item-detail ticket-row\"><summary><span class=\"disclosure-mark\">›</span>ticket</summary>")
     && string_contains(s: h, pattern: "class=\"item-body\"")
+    && !string_contains(s: h, pattern: "<span class=\"disclosure-mark\">›</span>brief</summary>")
 }
 
 test fn witness_status_chip_min_width() -> Bool {

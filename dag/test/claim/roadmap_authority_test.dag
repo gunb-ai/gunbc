@@ -11,18 +11,27 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapNodeId,
+  Pointer,
+  IntricacyMedium,
+  VolumeMedium,
   Sized,
   Unsized,
+  PrsMerged,
 }
 import gunbc.roadmap_status {
+  RoadmapItem,
+  Signoff,
   TicketLine,
+  TicketFields,
   SupersededLine,
   AuthoredLine,
   PlainLine,
   DerivableLine,
   Unsigned,
+  SignedOff,
 }
 import extdeps.languages.markdown { serialize_markdown_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -122,6 +131,41 @@ fn active_ticket_complete(n: RoadmapNode) -> Bool {
   }
 }
 
+fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    node: "red-fixture",
+    line: line,
+    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    sizing: Sized {
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+    owner: "roadmap-authority",
+    signoff: signoff,
+  }
+}
+
+fn red_ticket(done: Bool) -> RoadmapItem {
+  TicketLine {
+    done: done,
+    ticket: TicketFields {
+      headline: "planted completed-row RED",
+      brief: "Every required field is populated so only the forbidden completion or acceptance state can reject this fixture.",
+      displaced_cost: "none",
+      current_state: "fixture",
+      first_slice: "fixture",
+      red_control: "fixture",
+      out_of_scope: "fixture",
+      handback: "fixture",
+      updates: [],
+      authored_on: "",
+      last_verified_on: "",
+    },
+  }
+}
+
 test fn witness_active_graph_has_justified_size() -> Bool {
   count(nodes()) == 41 && count(edges()) == 37
 }
@@ -141,6 +185,29 @@ test fn witness_active_graph_is_acyclic_by_topological_rank() -> Bool {
 
 test fn witness_every_active_row_is_complete_unsigned_ticket() -> Bool {
   all(nodes(), n => active_ticket_complete(n: n))
+}
+
+test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_ticket_complete(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
+}
+
+test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_ticket_complete(n: red_fixture(
+    line: red_ticket(done: false),
+    signoff: SignedOff {
+      by: "operator",
+      works: true,
+      scope_equivalent: true,
+      as_expected: true,
+    },
+  ))
+}
+
+test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
+  !active_ticket_complete(n: red_fixture(
+    line: SupersededLine { by: "replacement", content: "retired history" },
+    signoff: Unsigned,
+  ))
 }
 
 test fn witness_only_product_rows_are_queued_nonspawnable() -> Bool {
