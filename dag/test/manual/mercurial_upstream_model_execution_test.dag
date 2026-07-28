@@ -480,12 +480,11 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       workdir: fixture.path,
       bin_path: "hg",
       args: [
-        "files",
+        "manifest",
         "-r",
         trim(s: c0.stdout),
         "-T",
-        "\{node}",
-        "path:src/main.dag",
+        "\{ifeq(path, 'src/main.dag', hash)}",
       ],
       expect: ExpectSuccess,
     )
@@ -493,12 +492,11 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       workdir: fixture.path,
       bin_path: "hg",
       args: [
-        "files",
+        "manifest",
         "-r",
         trim(s: c0.stdout),
         "-T",
-        "\{node}",
-        "path:link",
+        "\{ifeq(path, 'link', hash)}",
       ],
       expect: ExpectSuccess,
     )
@@ -506,12 +504,11 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       workdir: fixture.path,
       bin_path: "hg",
       args: [
-        "files",
+        "manifest",
         "-r",
         trim(s: c1.stdout),
         "-T",
-        "\{node}",
-        "path:bin/run",
+        "\{ifeq(path, 'bin/run', hash)}",
       ],
       expect: ExpectSuccess,
     )
@@ -519,12 +516,11 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       workdir: fixture.path,
       bin_path: "hg",
       args: [
-        "files",
+        "manifest",
         "-r",
         trim(s: c2.stdout),
         "-T",
-        "\{node}",
-        "path:src/main.dag",
+        "\{ifeq(path, 'src/main.dag', hash)}",
       ],
       expect: ExpectSuccess,
     )
