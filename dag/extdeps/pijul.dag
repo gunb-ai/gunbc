@@ -254,15 +254,6 @@ type PijulChannel {
   state_identity: PijulChannelStateIdentity
 }
 
-type PijulRepositoryAvailability
-  = PijulRepositoryComplete
-  | PijulRepositoryPartial {
-      missing_changes: List<PijulChangeHash>,
-      missing_vertices: List<PijulVertexId>,
-      missing_paths: List<PijulPath>,
-    }
-  | PijulRepositoryInaccessible { reason: NonEmptyStr }
-
 type PijulRepositoryState {
   changes: List<PijulRecordedChange>
   pristine: PijulPristineState
@@ -270,15 +261,63 @@ type PijulRepositoryState {
   working_copy: PijulWorkingCopy
   channels: List<PijulChannel>
   current_channel: PijulChannelName
-  availability: PijulRepositoryAvailability
 }
 
-type PijulRepositoryProjection {
-  candidate: PijulRepositoryState
+type PijulRepositoryProjection
+  = PijulCompleteProjection {
+      candidate: PijulRepositoryState,
+    }
+  | PijulPartialProjection {
+      candidate: PijulRepositoryState,
+      missing_changes: List<PijulChangeHash>,
+      missing_vertices: List<PijulVertexId>,
+      missing_paths: List<PijulPath>,
+    }
+  | PijulInaccessibleProjection { reason: NonEmptyStr }
+
+type PijulRepositoryProjectionFold<R> {
+  complete: fn(PijulRepositoryState) -> R
+  partial: fn(
+    PijulRepositoryState,
+    List<PijulChangeHash>,
+    List<PijulVertexId>,
+    List<PijulPath>,
+  ) -> R
+  inaccessible: fn(NonEmptyStr) -> R
 }
+
+fn pijul_repository_projection_fold<R>(
+  projection: PijulRepositoryProjection,
+  fold: PijulRepositoryProjectionFold<R>,
+) -> R {
+  match projection {
+    PijulCompleteProjection { candidate } => fold.complete(candidate)
+    PijulPartialProjection {
+      candidate,
+      missing_changes,
+      missing_vertices,
+      missing_paths,
+    } => fold.partial(
+      candidate,
+      missing_changes,
+      missing_vertices,
+      missing_paths,
+    )
+    PijulInaccessibleProjection { reason } => fold.inaccessible(reason)
+  }
+}
+
+type PijulDecodedAvailability
+  = PijulDecodedComplete
+  | PijulDecodedPartial {
+      missing_changes: List<PijulChangeHash>,
+      missing_vertices: List<PijulVertexId>,
+      missing_paths: List<PijulPath>,
+    }
 
 type PijulDecodedRepository {
   state: PijulRepositoryState
+  availability: PijulDecodedAvailability
 }
 
 type PijulReferenceOrigin
@@ -308,6 +347,9 @@ type PijulProjectionRefusal
   | PijulDuplicateTreePath { path: PijulPath }
   | PijulDuplicateTreeInode { inode: PijulInode }
   | PijulDuplicateWorkingCopyPath { path: PijulPath }
+  | PijulPresentChangeDeclaredMissing { change: PijulChangeHash }
+  | PijulPresentVertexDeclaredMissing { vertex: PijulVertexId }
+  | PijulPresentPathDeclaredMissing { path: PijulPath }
   | PijulStateIdentityCollision {
       state: PijulStateHash,
       left: PijulChannelName,
@@ -380,44 +422,17 @@ fn pijul_change_set_union(
   fold(right, init: left, f: pijul_add_change_once)
 }
 
-fn pijul_missing_changes(
-  availability: PijulRepositoryAvailability,
-) -> List<PijulChangeHash> {
-  match availability {
-    PijulRepositoryComplete => []
-    PijulRepositoryPartial {
-      missing_changes,
-      missing_vertices: _,
-      missing_paths: _,
-    } => missing_changes
-    PijulRepositoryInaccessible { reason: _ } => []
-  }
-}
-
-fn pijul_missing_vertices(
-  availability: PijulRepositoryAvailability,
-) -> List<PijulVertexId> {
-  match availability {
-    PijulRepositoryComplete => []
-    PijulRepositoryPartial {
-      missing_changes: _,
-      missing_vertices,
-      missing_paths: _,
-    } => missing_vertices
-    PijulRepositoryInaccessible { reason: _ } => []
-  }
-}
-
 fn pijul_change_known_or_declared_missing(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_changes: List<PijulChangeHash>,
   change: PijulChangeHash,
 ) -> Bool {
   pijul_hash_present(
-    changes: pijul_change_hashes(changes: projection.candidate.changes),
+    changes: pijul_change_hashes(changes: state.changes),
     target: change,
   )
     || pijul_hash_present(
-      changes: pijul_missing_changes(availability: projection.candidate.availability),
+      changes: missing_changes,
       target: change,
     )
 }
@@ -430,11 +445,12 @@ fn pijul_vertex_present(
 }
 
 fn pijul_vertex_known_or_declared_missing(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_vertices: List<PijulVertexId>,
   vertex: PijulVertexId,
 ) -> Bool {
-  pijul_vertex_present(pristine: projection.candidate.pristine, vertex: vertex)
-    || pijul_missing_vertices(availability: projection.candidate.availability)
+  pijul_vertex_present(pristine: state.pristine, vertex: vertex)
+    || missing_vertices
       |> filter(missing => missing == vertex)
       |> count > 0
 }
@@ -499,14 +515,16 @@ type PijulMissingChangeIssue {
 }
 
 fn pijul_missing_dependency_issue(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_changes: List<PijulChangeHash>,
 ) -> PijulMissingChangeIssue? {
-  projection.candidate.changes
+  state.changes
     |> flat_map(change =>
       change.dependencies
         |> filter(dependency =>
           !pijul_change_known_or_declared_missing(
-            projection: projection,
+            state: state,
+            missing_changes: missing_changes,
             change: dependency.change,
           )
         )
@@ -575,15 +593,17 @@ type PijulMissingContextIssue {
 }
 
 fn pijul_missing_context_issue(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_vertices: List<PijulVertexId>,
 ) -> PijulMissingContextIssue? {
-  projection.candidate.changes
+  state.changes
     |> flat_map(change =>
       change.actions
         |> flat_map(action => pijul_action_contexts(action: action))
         |> filter(context =>
           !pijul_vertex_known_or_declared_missing(
-            projection: projection,
+            state: state,
+            missing_vertices: missing_vertices,
             vertex: context.vertex,
           )
         )
@@ -654,14 +674,16 @@ fn pijul_duplicate_working_copy_path(
 }
 
 fn pijul_missing_channel_member_issue(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_changes: List<PijulChangeHash>,
 ) -> PijulMissingChangeIssue? {
-  projection.candidate.channels
+  state.channels
     |> flat_map(channel =>
       channel.state_identity.changes
         |> filter(change =>
           !pijul_change_known_or_declared_missing(
-            projection: projection,
+            state: state,
+            missing_changes: missing_changes,
             change: change,
           )
         )
@@ -687,13 +709,15 @@ fn pijul_conflict_changes(conflict: PijulConflictFact) -> List<PijulChangeHash> 
 }
 
 fn pijul_missing_conflict_change_issue(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_changes: List<PijulChangeHash>,
 ) -> PijulMissingChangeIssue? {
-  projection.candidate.pristine.conflicts
+  state.pristine.conflicts
     |> flat_map(conflict => pijul_conflict_changes(conflict: conflict))
     |> filter(change =>
       !pijul_change_known_or_declared_missing(
-        projection: projection,
+        state: state,
+        missing_changes: missing_changes,
         change: change,
       )
     )
@@ -705,12 +729,14 @@ fn pijul_missing_conflict_change_issue(
 }
 
 fn pijul_missing_tree_change_issue(
-  projection: PijulRepositoryProjection,
+  state: PijulRepositoryState,
+  missing_changes: List<PijulChangeHash>,
 ) -> PijulMissingChangeIssue? {
-  projection.candidate.tree.entries
+  state.tree.entries
     |> filter(entry =>
       !pijul_change_known_or_declared_missing(
-        projection: projection,
+        state: state,
+        missing_changes: missing_changes,
         change: entry.introduced_by,
       )
     )
