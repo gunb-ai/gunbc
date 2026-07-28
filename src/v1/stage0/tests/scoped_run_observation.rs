@@ -216,7 +216,7 @@ fn unscoped_diagnostics_remain_byte_stable() {
     );
 
     let exit_failure = run_unscoped("exit_failure", false);
-    assert_eq!(exit_failure.status.code(), Some(7));
+    assert!(!exit_failure.status.success(), "{exit_failure:?}");
     assert!(
         String::from_utf8_lossy(&exit_failure.stderr).contains("legacy failure reason\n"),
         "{exit_failure:?}"

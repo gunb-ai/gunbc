@@ -10977,6 +10977,21 @@ pub fn handle_run_with_options(
     };
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
+    let requested_decl_name = function.rsplit('.').next().unwrap_or(&function);
+    let selected_decl_count = graph
+        .modules
+        .iter()
+        .flat_map(|module| module.items.iter())
+        .filter(|item| {
+            authored_name_at(result.source_indices.clone(), (*item).clone()) == requested_decl_name
+        })
+        .count();
+    if entry_file.is_some() && selected_decl_count != 1 {
+        eprintln!(
+            "error: scoped run function `{function}` resolved to {selected_decl_count} declaration candidates; refusing ambiguous observation identity"
+        );
+        std::process::exit(1);
+    }
     let scoped_module_path = ctx
         .item_registry
         .get(&function)
