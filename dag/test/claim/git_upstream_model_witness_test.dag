@@ -44,6 +44,8 @@ import extdeps.git.object_store {
   GitRefAdvanced,
   GitRefAdvanceStale,
   GitRefAdvanceSymbolic,
+  GitRefAdvanceFormatMismatch,
+  GitRefAdvanceTargetUnavailable,
   RefResolved,
   ObjectPromisorUnavailable,
   GitAttributesTransformExecution,
@@ -107,6 +109,11 @@ data sha1_next_commit: GitObjectId = GitObjectId {
 data sha1_tag: GitObjectId = GitObjectId {
   format: GitObjectFormatSha1,
   hex: "9999999999999999999999999999999999999999",
+}
+
+data sha1_absent_commit: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "cccccccccccccccccccccccccccccccccccccccc",
 }
 
 data sha1_promisor_missing: GitObjectId = GitObjectId {
@@ -198,6 +205,18 @@ fn fixture_objects() -> List<StoredObject> {
           author: fixture_author,
           committer: fixture_author,
           message: "parent",
+        }
+      },
+    },
+    StoredObject {
+      oid: sha1_next_commit,
+      object: ObjectCommit {
+        commit: Commit {
+          tree: sha1_root_tree,
+          parents: [sha1_parent_commit],
+          author: fixture_author,
+          committer: fixture_author,
+          message: "next",
         }
       },
     },
@@ -385,6 +404,41 @@ test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
           RefResolved { oid } => oid == sha1_parent_commit
           _ => false
         }
+    _ => false
+  }
+}
+
+test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
+  let repo = fixture_repository()
+  match git_update_ref_exact(
+    repo: repo,
+    name: "refs/heads/main",
+    new_oid: sha1_absent_commit,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanceTargetUnavailable { repository, oid, lookup: _ } =>
+      repository == repo
+        && oid == sha1_absent_commit
+        && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
+          RefResolved { oid: observed } => observed == sha1_parent_commit
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool {
+  let repo = fixture_repository()
+  match git_update_ref_exact(
+    repo: repo,
+    name: "refs/heads/main",
+    new_oid: sha256_object,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanceFormatMismatch { repository, repository_format, oid } =>
+      repository == repo
+        && repository_format == GitObjectFormatSha1
+        && oid == sha256_object
     _ => false
   }
 }
