@@ -8371,10 +8371,13 @@ fn emit_host_resolved_build_toolchain_identity(
             });
         }
 
+        let logical_name = std::path::Path::new(requested)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(requested);
         let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
         for field in [
-            v1_rt::atom_identity_hash(requested.to_string()),
-            v1_rt::atom_identity_hash(canonical.to_string_lossy().into_owned()),
+            v1_rt::atom_identity_hash(logical_name.to_string()),
             v1_rt::bytes_identity_hash(&executable),
             v1_rt::bytes_identity_hash(&output.stdout),
             v1_rt::bytes_identity_hash(&output.stderr),
