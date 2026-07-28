@@ -1224,6 +1224,13 @@ fn stamp_parsed_node_children(
         head_role: ParsedOccurrenceReference { category: CallableOccurrence },
         tail_role: ParsedOccurrenceUnclassified
       )
+    ExprLet =>
+      stamp_parsed_node_list(
+        nodes: node.children,
+        ancestors: ancestors,
+        ctx: ctx,
+        role: ParsedOccurrenceUnclassified
+      )
     ExprLambda =>
       stamp_parsed_node_list_with_head_role(
         nodes: node.children,
