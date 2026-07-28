@@ -178,6 +178,174 @@ type OccurrenceTransportRefusal
       diagnostic_span: SourceSpan,
     }
 
+fn occurrence_id_matches(left: OccurrenceId, right: OccurrenceId) -> Bool {
+  left.value == right.value
+}
+
+fn occurrence_index_population(
+  index: OccurrenceIndex,
+  occurrence: OccurrenceId
+) -> List<OccurrenceIndexEntry> {
+  index.entries |> filter(entry =>
+    occurrence_id_matches(
+      left: entry.projection.occurrence,
+      right: occurrence
+    )
+  )
+}
+
+fn occurrence_transport_index_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  fold(
+    transport.index.entries,
+    init: none,
+    f: (refusal, entry) =>
+      match refusal {
+        Present { value: _ } => refusal
+        Absent =>
+          if occurrence_index_population(
+            index: transport.index,
+            occurrence: entry.projection.occurrence
+          ) |> count > 1 {
+            Present {
+              value: DuplicateAuthoredOccurrenceIdentity {
+                occurrence: entry.projection.occurrence,
+                diagnostic_span: entry.projection.diagnostic_span,
+              },
+            }
+          } else {
+            none
+          }
+      }
+  )
+}
+
+fn declaration_occurrence_refusal(
+  transport: OccurrenceTransport,
+  declaration: DeclarationOccurrence
+) -> OccurrenceTransportRefusal? {
+  let population = occurrence_index_population(
+    index: transport.index,
+    occurrence: declaration.occurrence
+  )
+  if population |> count == 0 {
+    Present {
+      value: MissingAuthoredOccurrenceIdentity {
+        diagnostic_span: declaration.diagnostic_span,
+      },
+    }
+  } else if population |> count > 1 {
+    Present {
+      value: DuplicateAuthoredOccurrenceIdentity {
+        occurrence: declaration.occurrence,
+        diagnostic_span: declaration.diagnostic_span,
+      },
+    }
+  } else {
+    match transport.references
+      |> filter(reference =>
+        occurrence_id_matches(
+          left: reference.occurrence,
+          right: declaration.occurrence
+        )
+      )
+      |> first {
+      Present { value: reference } =>
+        Present {
+          value: WrongOccurrenceCategory {
+            occurrence: declaration.occurrence,
+            expected: declaration.category,
+            observed: reference.category,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        }
+      Absent => none
+    }
+  }
+}
+
+fn reference_occurrence_refusal(
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence
+) -> OccurrenceTransportRefusal? {
+  let population = occurrence_index_population(
+    index: transport.index,
+    occurrence: reference.occurrence
+  )
+  if population |> count == 0 {
+    Present {
+      value: MissingAuthoredOccurrenceIdentity {
+        diagnostic_span: reference.diagnostic_span,
+      },
+    }
+  } else if population |> count > 1 {
+    Present {
+      value: DuplicateAuthoredOccurrenceIdentity {
+        occurrence: reference.occurrence,
+        diagnostic_span: reference.diagnostic_span,
+      },
+    }
+  } else {
+    match transport.declarations
+      |> filter(declaration =>
+        occurrence_id_matches(
+          left: declaration.occurrence,
+          right: reference.occurrence
+        )
+      )
+      |> first {
+      Present { value: declaration } =>
+        Present {
+          value: WrongOccurrenceCategory {
+            occurrence: reference.occurrence,
+            expected: reference.category,
+            observed: declaration.category,
+            diagnostic_span: reference.diagnostic_span,
+          },
+        }
+      Absent => none
+    }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  match occurrence_transport_index_refusal(transport: transport) {
+    Present { value: refusal } => Present { value: refusal }
+    Absent =>
+      let declaration_refusal = fold(
+        transport.declarations,
+        init: none,
+        f: (refusal, declaration) =>
+          match refusal {
+            Present { value: _ } => refusal
+            Absent => declaration_occurrence_refusal(
+              transport: transport,
+              declaration: declaration
+            )
+          }
+      )
+      match declaration_refusal {
+        Present { value: refusal } => Present { value: refusal }
+        Absent =>
+          fold(
+            transport.references,
+            init: none,
+            f: (refusal, reference) =>
+              match refusal {
+                Present { value: _ } => refusal
+                Absent => reference_occurrence_refusal(
+                  transport: transport,
+                  reference: reference
+                )
+              }
+          )
+      }
+  }
+}
+
 type UnaryOpKind = Not | Neg
 
 type StringPart
