@@ -1,0 +1,46 @@
+module extdeps.languages.rust.derive_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/1.93.0/std/vec/struct.Vec.html#trait-implementations"
+  }
+}
+
+data rust_1_93_vec_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/1.93.0/std/vec/struct.Vec.html#trait-implementations"
+  }
+}
+
+data serde_1_0_228_vec_serialize_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/serde/1.0.228/serde/ser/trait.Serialize.html#impl-Serialize-for-Vec%3CT%3E"
+  }
+}
+
+data serde_1_0_228_vec_deserialize_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-Vec%3CT%3E"
+  }
+}
+
+data im_15_1_0_vector_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/im/15.1.0/im/struct.Vector.html#trait-implementations"
+  }
+}
+
+data serde_1_0_228_btree_set_deserialize_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-BTreeSet%3CT%3E"
+  }
+}
