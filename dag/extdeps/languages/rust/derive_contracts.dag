@@ -2,6 +2,8 @@ module extdeps.languages.rust.derive_contracts
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Https, Uri }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -72,5 +74,32 @@ data serde_1_0_228_hash_set_deserialize_authority: ExternalAuthority = ExternalA
   uri: Uri {
     scheme: Https
     locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-HashSet%3CT,+S%3E"
+  }
+}
+
+type RustSupplementalGenericBoundContractCoverageDisposition {
+  owner: DeclarationRef
+  lane: DeclarationRef
+  dissolution: Disposition
+}
+
+data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: RustSupplementalGenericBoundContractCoverageDisposition = RustSupplementalGenericBoundContractCoverageDisposition {
+  owner: DeclarationRef {
+    module_path: "v2.std.compilers.target_model",
+    decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
+    field: WholeDeclaration
+  },
+  lane: DeclarationRef {
+    module_path: "v2.std.compilers.target_model",
+    decl_name: "RequiredTraitWitness",
+    field: WholeDeclaration
+  },
+  dissolution: Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "RequiredTraitWitness",
+      field: WholeDeclaration
+    }
   }
 }

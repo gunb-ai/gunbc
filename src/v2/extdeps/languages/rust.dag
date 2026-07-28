@@ -7,13 +7,13 @@ import std.trait_derive_shape {
   ReprDeriveOrd,
   ReprDeriveSerialize
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
+  RustSupplementalGenericBoundContractCoverageDisposition,
   rust_1_93_btree_set_trait_implementations_authority,
   rust_1_93_hash_set_trait_implementations_authority,
   rust_1_93_vec_trait_implementations_authority,
+  rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
   serde_1_0_228_btree_set_deserialize_authority,
   serde_1_0_228_btree_set_serialize_authority,
   serde_1_0_228_hash_set_deserialize_authority,
@@ -1682,33 +1682,6 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
     derive_trait: ReprDeriveSerialize,
     authority: serde_1_0_228_hash_set_serialize_authority
   )
-}
-
-type RustSupplementalGenericBoundContractCoverageDisposition {
-  owner: DeclarationRef
-  lane: DeclarationRef
-  dissolution: Disposition
-}
-
-data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: RustSupplementalGenericBoundContractCoverageDisposition = RustSupplementalGenericBoundContractCoverageDisposition {
-  owner: DeclarationRef {
-    module_path: "v2.std.compilers.target_model",
-    decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
-    field: WholeDeclaration
-  },
-  lane: DeclarationRef {
-    module_path: "v2.std.compilers.target_model",
-    decl_name: "RequiredTraitWitness",
-    field: WholeDeclaration
-  },
-  dissolution: Scaffold {
-    dissolves_to: SingleAuthority,
-    bind: DeclarationRef {
-      module_path: "v2.std.compilers.target_model",
-      decl_name: "RequiredTraitWitness",
-      field: WholeDeclaration
-    }
-  }
 }
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
