@@ -295,8 +295,7 @@ fn node_with_authored_occurrence(
   occurrence: AuthoredOccurrence
 ) -> Node {
   Node {
-    name: node.name, ident: node.ident, span: node.span,
-    ident_span: node.ident_span,
+    name: node.name, span: node.span, ident_span: node.ident_span,
     authored_occurrence: Present { value: occurrence },
     children: node.children, connective: node.connective,
     params: node.params, inferred: node.inferred,

@@ -3425,8 +3425,7 @@ fn parse_bare_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   )
   if count(cr.constraints) > 0 {
     let node = Node {
-      name: node.name, ident: node.ident, span: node.span,
-      ident_span: node.ident_span,
+      name: node.name, span: node.span, ident_span: node.ident_span,
       authored_occurrence: node.authored_occurrence,
       children: node.children, params: node.params, inferred: node.inferred,
       return_cardinality: node.return_cardinality, uses: node.uses,
