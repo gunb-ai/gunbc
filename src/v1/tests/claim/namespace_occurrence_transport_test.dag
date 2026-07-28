@@ -3,6 +3,7 @@ module v1.tests.claim.namespace_occurrence_transport_test
 import std.algebra { Empty }
 import std.occurrence_identity {
   OccurrenceId,
+  OccurrenceIdAllocator,
   OccurrenceContainmentPath,
   occurrence_id_allocator_initial,
 }
@@ -37,7 +38,7 @@ data namespace_occurrence_transport_dissolve_on: String = "DISSOLVE-ON: move thi
 fn parse_transport(
   source: String,
   file: String,
-  allocator: std.occurrence_identity.OccurrenceIdAllocator
+  allocator: OccurrenceIdAllocator
 ) -> ParseWithTableResult {
   let index = build_newline_index(file: file, source: source)
   parse_with_table_in_occurrence_scope(
