@@ -20,7 +20,7 @@ import v2.workflow.effect_plan_bash_materialize {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data effect_plan_bash_real_execution_note: String = "Wet model witness only, not a production consumer. It executes the emitted carrier through Bash to prove two typed declared operations run, metachar/newline arguments stay one word, and grammar-owned && enforces FailFast by preventing the observable second command after the first fails."
+data effect_plan_bash_real_execution_note: String = "T1/T2 wet model evidence only, not the Wave-B gate consumer or policy activation. The controls execute emitted carriers through Bash using read-only test/id operations over fixed paths: no file write, environment mutation, network, repo state, or cleanup obligation. They prove two typed declared operations run, metachar/newline arguments stay one word, and grammar-owned && enforces FailFast by preventing the observable second command after the first fails."
 
 fn wet_ref(path: String, service: String, operation: String) -> OperationRef {
   OperationRef { path: path, service: service, operation: operation }

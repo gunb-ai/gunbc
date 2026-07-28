@@ -13,7 +13,7 @@ import v2.std.algebra {
   list_tail
 }
 import v2.std.collection { List, list_at_optional }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan {
   BoundedPoll,
   Call,
@@ -28,7 +28,6 @@ import v2.std.effect_plan {
 }
 import v2.std.node { Node }
 import v2.std.operation_argv {
-  ArgvEmpty,
   ArgvMaterialization,
   ArgvMaterializationRefused,
   ArgvMaterialized,
@@ -69,7 +68,7 @@ type EffectPlanBashRefusalCause
   | UnsupportedEffectPlanStep { kind: EffectPlanBashUnsupportedStep }
   | OperationArgvRefused { cause: ArgvRefusalCause }
   | ArgumentContainsNul { argument_index: Int }
-  | BashGrammarEmissionRefused
+  | BashGrammarEmissionRefused { diagnostics: NonEmptyDiagnostics }
 
 type EffectPlanBashRefusal {
   step_index: Int
@@ -306,12 +305,14 @@ fn effect_plan_bash_materialize(
           match bash_fold_serialize_node(stmt: statement) {
             Accepted { value: source, diagnostics: _ } =>
               EffectPlanBashMaterialized { source: source }
-            Rejected { diagnostics: _ } =>
+            Rejected { diagnostics: diagnostics } =>
               EffectPlanBashMaterializationRefused {
                 refusal: EffectPlanBashRefusal {
                   step_index: -1,
                   operation: Absent,
-                  cause: BashGrammarEmissionRefused
+                  cause: BashGrammarEmissionRefused {
+                    diagnostics: diagnostics
+                  }
                 }
               }
           }
