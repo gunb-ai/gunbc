@@ -10830,12 +10830,47 @@ impl ScopedRunObservation {
         self.last_wall_ns = end_wall_ns;
         self.emit("scoped_run_final_write", None, false)?;
         if std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
+            let (wall_ns, seed_resolution_ns) = self.timing_receipt()?;
             eprintln!(
                 "[scoped-observation-receipt wall_ns={} seed_resolution_ns={}]",
-                self.last_wall_ns, self.seed_resolution_ns
+                wall_ns, seed_resolution_ns
             );
         }
         Ok(())
+    }
+
+    fn timing_receipt(&self) -> Result<(u128, u128), String> {
+        use v1_interpreter::Value;
+        let args = vec![
+            (
+                Some("wall_ns".to_string()),
+                Value::Int(self.last_wall_ns as i64),
+            ),
+            (
+                Some("seed_resolution_ns".to_string()),
+                Value::Int(self.seed_resolution_ns as i64),
+            ),
+        ];
+        let receipt = v1_interpreter::run_in_context_with_args(
+            &self.ctx,
+            "scoped_run_timing_receipt",
+            &args,
+            false,
+        )
+        .map_err(|e| format!("scoped run timing receipt failed: {e}"))?;
+        let Value::Variant { fields, .. } = receipt else {
+            return Err("scoped run timing receipt returned non-typed value".to_string());
+        };
+        let decode = |name: &str| -> Result<u128, String> {
+            let Some(Value::Record { fields, .. }) = self.ctx.field(&fields, name) else {
+                return Err(format!("scoped run timing receipt omitted {name}"));
+            };
+            match self.ctx.field(fields, "count") {
+                Some(Value::Int(value)) if *value >= 0 => Ok(*value as u128),
+                _ => Err(format!("scoped run timing receipt {name} omitted count")),
+            }
+        };
+        Ok((decode("wall")?, decode("seed_resolution")?))
     }
     fn refused(&mut self, cause: &str) -> Result<(), String> {
         self.emit(

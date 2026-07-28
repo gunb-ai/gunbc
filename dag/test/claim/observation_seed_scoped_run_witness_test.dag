@@ -12,6 +12,7 @@ import gunbc.observation_seed_render {
   ScopedRunWriteRefused,
   ScopedRunMeasuredProjected,
   ScopedRunMeasuredRefused,
+  ScopedRunTimingProjected,
   scoped_run_begin_write,
   scoped_run_refused_write_measured,
   scoped_run_final_write,
@@ -20,6 +21,7 @@ import gunbc.observation_seed_render {
   scoped_run_timed_out_write,
   scoped_run_routine_measured_without_basis,
   scoped_run_close_before_deferred_write,
+  scoped_run_timing_receipt,
 }
 
 fn entry() -> NonEmptyStr {
@@ -169,6 +171,17 @@ test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
               !one_open && !sub_ms_open && !one_ms_open &&
               nanosecond_count(n: one_wall) == 1 && nanosecond_count(n: sub_ms_wall) == 999999 && nanosecond_count(n: one_ms_wall) == 1000000
           }
+      }
+  }
+}
+
+test fn scoped_run_clean_final_is_unmeasured_and_end_receipt_is_typed() -> Bool {
+  match scoped_run_final_write(entry_file: entry(), module_path: module_path(), function: function(), addressable: false, emoji: false, prior_open: false) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: _, next_open: final_open } =>
+      match scoped_run_timing_receipt(wall_ns: 1000000, seed_resolution_ns: 999999) {
+        ScopedRunTimingProjected { wall: wall, seed_resolution: seed } =>
+          !final_open && nanosecond_count(n: wall) == 1000000 && nanosecond_count(n: seed) == 999999
       }
   }
 }
