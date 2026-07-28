@@ -186,7 +186,9 @@ test fn stall_cause_fold_no_bootable_device() -> Bool {
 }
 
 test fn post_install_subsumption_clears_os_install_actuated_gap() -> Bool {
-  host_standup_gap_count_at_actuation_verdict(verdict: Converged) == 3
+  host_standup_gap_count_at_actuation_verdict(verdict: Converged) == (
+    host_standup_gap_count_at_actuation_verdict(verdict: Absent) - 1
+  )
     && fold(
       host_standup_spine,
       init: false,

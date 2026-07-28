@@ -1,0 +1,328 @@
+module test.claim.bmc_fan_converge_witness
+
+import extdeps.bmc.types {
+  BmcConfigPersistenceUnsupported,
+  BmcOverlayConfigObserved,
+}
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  NoExplicitFilesystemSynchronization,
+  RenameReplaceWithinTargetDirectory,
+  linux_file_publication_has_synchronized_commit,
+  linux_overlay_observation_from_proc_mounts,
+  linux_overlay_observation_is_flash_backed,
+}
+import extdeps.ssh.password_session { password_ssh_render_remote_argv }
+import gunbc.bmc_fan_converge {
+  BmcFanPreviousConfigRestored,
+  BmcFanRollbackAttemptFailed,
+  BmcFanTypedMutationRefused,
+  BmcFanLiveIdentityObserved,
+  BmcFanLiveIdentityRefused,
+  BmcFanLiveObserved,
+  BmcFanLiveObservationRefused,
+  bmc_fan_identity_matches_firmware_intent,
+  bmc_fan_mutation_failure_reason,
+  bmc_fan_refused_with_rollback,
+  bmc_fan_parse_os_release_identity,
+  bmc_fan_policy_projection_json,
+  bmc_fan_sensor_integer_value,
+  bmc_fan_live_safety_holds,
+  bmc_fan_parse_live_observation,
+  bmc_fan_typed_observation_plan,
+}
+import gunbc.bmc_fan_projection {
+  bmc_fan_policy_projection_durability_capability,
+  bmc_fan_state_durability_capability,
+}
+import gunbc.bmc_intent {
+  fleet_bmc_valid_state,
+  fleet_quiet_temp_soc_fan_curve,
+}
+import gunbc.fleet_bmc_observation {
+  srv4_bmc_root_overlay_observation,
+}
+import gunbc.fleet_bmc_state { srv4_bmc_fan_projection_capability }
+import std.state_durability { durability_commit_barrier_is_synchronized }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data desired_live_observation_lines: List<String> = [
+  "firmware=3.22.00",
+  "machine=altrad8ud-1l2t",
+  "selected_config_path=/usr/share/swampd/config.json",
+  "board_config_path=/usr/share/swampd/config-asrr.json",
+  "controller_service=phosphor-pid-control.service",
+  "controller_binary=/usr/bin/swampd",
+  "service_active=active",
+  "zone_control_path=/xyz/openbmc_project/settings/fanctrl/zone0",
+  "zone_failsafe=false",
+  "target_count=1",
+  "minimum=30",
+  "zone_failsafe_duty=75",
+  "sensor_failsafe=75",
+  "positive_hysteresis=1",
+  "negative_hysteresis=2",
+  "readings=40,75,90,93,95,97,98",
+  "outputs=30,30,30,55,70,85,100",
+  "fan_entries=FAN1",
+  "fan_entry_count=1",
+  "fan_inputs=FAN1,FAN2,FAN3,FAN4",
+  "writable=true",
+  "upper_override=true",
+  "available_bytes=20000000",
+  "observed_at=2026-07-27T20:00:00Z",
+  "temperature_TEMP_SOC=74",
+  "tach_FAN1=4800",
+  "tach_FAN2=1200",
+  "tach_FAN3=1210",
+  "tach_FAN4=1190",
+  "tach_FAN5=absent",
+  "temperature_TEMP_Core_VRD=63",
+  "temperature_TEMP_DIMM_A1=65",
+  "temperature_TEMP_DIMM_B1=64",
+  "temperature_TEMP_DIMM_C1=63",
+  "temperature_TEMP_DIMM_D1=60",
+  "temperature_TEMP_DIMM_E1=68",
+  "temperature_TEMP_DIMM_F1=70",
+  "temperature_TEMP_DIMM_G1=70",
+  "temperature_TEMP_DIMM_H1=67",
+  "temperature_TEMP_DIMM_VRD=59",
+  "temperature_TEMP_MB=55",
+  "temperature_TEMP_RCA_VR=60",
+  "temperature_TEMP_SOC_VRD=58",
+  "temperature_TEMP_VR=59",
+  "temperature_TEMP_X550=63",
+  "temperature_TEMP_CARD_SIDE=52",
+]
+
+test fn typed_os_release_identity_preflight_rejects_openbmc_2_track() -> Bool {
+  let parsed = bmc_fan_parse_os_release_identity(
+    content: "ID=openbmc-phosphor\nVERSION_ID=\"2.07.00\"\nOPENBMC_TARGET_MACHINE=\"altrad8ud-1l2t\"\n",
+  )
+  match parsed {
+      BmcFanLiveIdentityRefused { reason: _ } => false
+      BmcFanLiveIdentityObserved { identity: identity } =>
+        identity.firmware.version == "2.07.00"
+          && identity.machine == "altrad8ud-1l2t"
+          && !bmc_fan_identity_matches_firmware_intent(
+          identity: identity,
+          intent: fleet_bmc_valid_state.firmware,
+        )
+  }
+}
+
+test fn typed_json_sensor_projection_is_parsed_as_the_numeric_payload() -> Bool {
+  bmc_fan_sensor_integer_value(raw: "94\n") == "94"
+    && bmc_fan_sensor_integer_value(raw: "absent\n") == "absent"
+}
+
+test fn password_ssh_serializes_complex_remote_argv_at_one_boundary() -> Bool {
+  password_ssh_render_remote_argv(
+    argv: ["jq", "-r", "(.data | round)", "/tmp/config.json"],
+  ) == "'jq' '-r' '(.data | round)' '/tmp/config.json'"
+}
+
+test fn failed_apply_retains_a_typed_successful_rollback_receipt() -> Bool {
+  let receipt = BmcFanPreviousConfigRestored {
+    config_path: srv4_bmc_fan_projection_capability.config_path,
+    backup_path: "/var/lib/gunbc/bmc-fan-policy/previous.json",
+    firmware: srv4_bmc_fan_projection_capability.firmware,
+  }
+  match bmc_fan_refused_with_rollback(
+    reason: "post-apply readback failed",
+    rollback: receipt,
+  ) {
+    BmcFanTypedMutationRefused {
+      reason: reason,
+      rollback: BmcFanPreviousConfigRestored {
+        config_path: config_path,
+        backup_path: backup_path,
+        firmware: firmware,
+      },
+    } =>
+      reason == "post-apply readback failed"
+        && config_path == srv4_bmc_fan_projection_capability.config_path
+        && backup_path == "/var/lib/gunbc/bmc-fan-policy/previous.json"
+        && firmware == srv4_bmc_fan_projection_capability.firmware
+    _ => false
+  }
+}
+
+test fn failed_rollback_remains_structured_until_the_process_exit_adapter() -> Bool {
+  let receipt = BmcFanRollbackAttemptFailed {
+    config_path: srv4_bmc_fan_projection_capability.config_path,
+    backup_path: "/var/lib/gunbc/bmc-fan-policy/previous.json",
+    firmware: srv4_bmc_fan_projection_capability.firmware,
+    reason: "controller restart failed",
+  }
+  bmc_fan_mutation_failure_reason(
+    reason: "post-apply readback failed",
+    rollback: receipt,
+  ) == "post-apply readback failed; rollback also failed: controller restart failed"
+}
+
+test fn live_observer_normalizes_desired_curve_and_safety_surface() -> Bool {
+  match bmc_fan_parse_live_observation(
+    lines: desired_live_observation_lines,
+    overlay: srv4_bmc_root_overlay_observation,
+  ) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      observed.policy.curve == fleet_quiet_temp_soc_fan_curve
+        && observed.policy.firmware.version == "3.22.00"
+        && !observed.zone_failsafe_active
+        && match observed.persistence {
+          BmcOverlayConfigObserved {
+            firmware: _,
+            config_path: _,
+            overlay: overlay,
+            writable: writable,
+            upper_override_present: _,
+            available_bytes: _,
+            observed_at: _,
+          } => writable
+            && linux_overlay_observation_is_flash_backed(observation: overlay)
+          BmcConfigPersistenceUnsupported {
+            firmware: _,
+            config_path: _,
+            reason: _,
+            observed_at: _,
+          } => false
+        }
+        && bmc_fan_live_safety_holds(
+          observation: observed,
+          intent: fleet_bmc_valid_state,
+          projection: srv4_bmc_fan_projection_capability,
+        )
+  }
+}
+
+test fn active_zone_failsafe_is_not_a_converged_live_state() -> Bool {
+  let failsafe = desired_live_observation_lines |> map(
+    line =>
+      if starts_with(s: line, prefix: "zone_failsafe=") {
+        "zone_failsafe=true"
+      } else {
+        line
+      }
+  )
+  match bmc_fan_parse_live_observation(
+    lines: failsafe,
+    overlay: srv4_bmc_root_overlay_observation,
+  ) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      !bmc_fan_live_safety_holds(
+        observation: observed,
+        intent: fleet_bmc_valid_state,
+        projection: srv4_bmc_fan_projection_capability,
+      )
+  }
+}
+
+test fn absent_required_tach_fails_closed() -> Bool {
+  let without_fan4 = desired_live_observation_lines |> filter(line => !starts_with(s: line, prefix: "tach_FAN4="))
+  match bmc_fan_parse_live_observation(
+    lines: without_fan4,
+    overlay: srv4_bmc_root_overlay_observation,
+  ) {
+    BmcFanLiveObservationRefused { reason: _ } => false
+    BmcFanLiveObserved { observation: observed } =>
+      !bmc_fan_live_safety_holds(
+        observation: observed,
+        intent: fleet_bmc_valid_state,
+        projection: srv4_bmc_fan_projection_capability,
+      )
+  }
+}
+
+test fn malformed_or_unordered_curve_refuses_observation() -> Bool {
+  let malformed = desired_live_observation_lines |> map(
+    line =>
+      if starts_with(s: line, prefix: "readings=") {
+        "readings=40,90,75,93,95,97,98"
+      } else {
+        line
+      }
+  )
+  match bmc_fan_parse_live_observation(
+    lines: malformed,
+    overlay: srv4_bmc_root_overlay_observation,
+  ) {
+    BmcFanLiveObservationRefused { reason: _ } => true
+    BmcFanLiveObserved { observation: _ } => false
+  }
+}
+
+test fn desired_projection_is_derived_once_as_json() -> Bool {
+  bmc_fan_policy_projection_json(
+    curve: fleet_quiet_temp_soc_fan_curve,
+    projection: srv4_bmc_fan_projection_capability,
+  ) == "{\"readings\": [40, 75, 90, 93, 95, 97, 98], \"outputs\": [30, 30, 30, 55, 70, 85, 100], \"minimum\": 30, \"sensor_failsafe\": 75, \"zone_failsafe_duty\": 75, \"positive_hysteresis\": 1, \"negative_hysteresis\": 2, \"fan_pid_entry\": \"FAN1\", \"fan_inputs\": [\"FAN1\", \"FAN2\", \"FAN3\", \"FAN4\"]}"
+}
+
+test fn typed_publication_plan_drives_the_durability_commit_barrier() -> Bool {
+  let protocol = srv4_bmc_fan_projection_capability.publication_protocol
+  let capability = bmc_fan_policy_projection_durability_capability(
+    capability: srv4_bmc_fan_projection_capability,
+  )
+  linux_file_publication_has_synchronized_commit(protocol: protocol)
+    && durability_commit_barrier_is_synchronized(
+      barrier: capability.commit_barrier,
+    )
+    && capability.realization == srv4_bmc_fan_projection_capability.realization
+    && capability.capability_version == srv4_bmc_fan_projection_capability.durability_capability_version
+    && capability.supported_boundaries == srv4_bmc_fan_projection_capability.durability_boundaries
+}
+
+test fn missing_sync_step_cannot_claim_a_durability_barrier() -> Bool {
+  let without_sync = LinuxFilePublicationProtocol {
+    stage_in_target_directory: true,
+    staged_content_validated: true,
+    replacement: RenameReplaceWithinTargetDirectory,
+    synchronization: NoExplicitFilesystemSynchronization,
+  }
+  let capability = bmc_fan_state_durability_capability(
+    realization: srv4_bmc_fan_projection_capability.realization,
+    capability_version: srv4_bmc_fan_projection_capability.durability_capability_version,
+    boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
+    publication_protocol: without_sync,
+  )
+  !linux_file_publication_has_synchronized_commit(protocol: without_sync)
+    && !durability_commit_barrier_is_synchronized(
+      barrier: capability.commit_barrier,
+    )
+}
+
+test fn proc_mounts_ingest_recovers_literal_flash_overlay_facts() -> Bool {
+  let proc_mounts = "/dev/mtdblock4 /run/initramfs/ro squashfs ro,relatime 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw,relatime 0 0\ncow / overlay rw,relatime,lowerdir=run/initramfs/ro,upperdir=run/initramfs/rw/cow,workdir=run/initramfs/rw/work 0 0\n"
+  match linux_overlay_observation_from_proc_mounts(proc_mounts: proc_mounts) {
+    Absent => false
+    Present { value: overlay } =>
+      overlay == srv4_bmc_root_overlay_observation
+        && linux_overlay_observation_is_flash_backed(observation: overlay)
+  }
+}
+
+test fn incomplete_mount_table_refuses_overlay_inference() -> Bool {
+  let without_upper = "/dev/mtdblock4 /run/initramfs/ro squashfs ro,relatime 0 0\ncow / overlay rw,relatime,lowerdir=run/initramfs/ro,upperdir=run/initramfs/rw/cow,workdir=run/initramfs/rw/work 0 0\n"
+  match linux_overlay_observation_from_proc_mounts(proc_mounts: without_upper) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn typed_observer_plan_contains_every_required_safety_sensor() -> Bool {
+  let plan = bmc_fan_typed_observation_plan(
+    projection: srv4_bmc_fan_projection_capability,
+    intent: fleet_bmc_valid_state,
+  )
+  plan.tach_sensors == fleet_bmc_valid_state.fan_policy.required_tach_inputs
+    && (plan.temperature_sensors.length() == fleet_bmc_valid_state.fan_policy.thermal_guard.required_component_sensors.length() + 1)
+    && (plan.temperature_sensors |> any(sensor => sensor == "TEMP_SOC"))
+    && (plan.temperature_sensors |> any(sensor => sensor == "TEMP_DIMM_A1"))
+    && (plan.temperature_sensors |> any(sensor => sensor == "TEMP_DIMM_H1"))
+    && (plan.temperature_sensors |> any(sensor => sensor == "TEMP_X550"))
+}

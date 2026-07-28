@@ -2,19 +2,37 @@ module test.claim.host_phase_status
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data modeled_phase_fixture: PhaseDisposition = ModeledCompose {
+data modeled_phase_fixture: PhaseDisposition = PhaseDisposition {
   authorities: [
     DeclarationRef {
       module_path: "gunbc.host_phase_status",
       decl_name: "host_phase_verdict_from",
       field: WholeDeclaration,
     },
-  ]
+  ],
+  gaps: [],
 }
 
-data unmodeled_phase_fixture: PhaseDisposition = DeclaredGap {
-  interim_realization: "ctrl:scripts/session-dashboard/lib/spawn_placement.mjs",
-  refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority",
+data unmodeled_phase_fixture: PhaseDisposition = PhaseDisposition {
+  authorities: [],
+  gaps: [
+    PhaseGap {
+      gap_id: "session-placement-enrollment-authority",
+      missing: "typed placement authority",
+      refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority",
+    },
+  ],
+}
+
+data partial_phase_fixture: PhaseDisposition = PhaseDisposition {
+  authorities: modeled_phase_fixture.authorities,
+  gaps: [
+    PhaseGap {
+      gap_id: "partial-apply",
+      missing: "live actuator",
+      refusal: "host_standup:fixture:partial-apply — modeled comparison exists but apply is absent",
+    },
+  ],
 }
 
 fn cell_fixture(
@@ -42,7 +60,7 @@ test fn witness_no_producer_derives_unknown_not_converged() -> Bool {
   }
 }
 
-data witness_orthogonality_note: String = "The two axes must stay independent, and this is the conjunct that CAUGHT them being fused. The cell type was first written as a sum (StatusUnmodeled | StatusObserved), so a DeclaredGap phase discarded its observation — and the one cell with a live producer today, (srv3, prefix:os-install-actuated), is a DeclaredGap phase, so coverage computed as zero with a real Converged verdict one branch away. Four combinations must all be representable and distinct: modeled+converged (done), modeled+inaccessible (srv1/srv2 build-cache — a finished model the host refuses to answer for), unmodeled+unknown (ordinary remaining work), and unmodeled+converged (the host is in the desired condition by means the model cannot reproduce — srv3's OS install). A fused enum has to round the middle two to something false."
+data witness_orthogonality_note: String = "The model and observation axes must stay independent. PhaseDisposition is authorities × gaps, so four important combinations remain representable: model-complete+converged, model-complete+inaccessible, gap+unknown, and partial+converged. The last means live state happens to match even though the model cannot reproduce it; a fused enum would falsely round that cell green."
 
 test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
   let modeled_inaccessible = cell_fixture(
@@ -60,15 +78,24 @@ test fn witness_modeled_and_observed_axes_are_independent() -> Bool {
     disposition: unmodeled_phase_fixture,
     observation: none,
   )
-  host_phase_cell_is_modeled(c: modeled_inaccessible)
+  let partial_converged = cell_fixture(
+    label: "prefix:bmc-fan-policy-converge",
+    disposition: partial_phase_fixture,
+    observation: Present { value: std.upsert_decision.Converged },
+  )
+  host_phase_cell_is_model_complete(c: modeled_inaccessible)
     && !host_phase_cell_is_converged(c: modeled_inaccessible)
     && host_phase_cell_has_live_producer(c: modeled_inaccessible)
-    && !host_phase_cell_is_modeled(c: unmodeled_converged)
+    && !host_phase_cell_is_model_complete(c: unmodeled_converged)
     && host_phase_cell_is_converged(c: unmodeled_converged)
     && host_phase_cell_has_live_producer(c: unmodeled_converged)
-    && !host_phase_cell_is_modeled(c: unmodeled_unknown)
+    && !host_phase_cell_is_model_complete(c: unmodeled_unknown)
     && !host_phase_cell_is_converged(c: unmodeled_unknown)
     && !host_phase_cell_has_live_producer(c: unmodeled_unknown)
+    && host_phase_cell_has_authority(c: partial_converged)
+    && host_phase_cell_has_model_gap(c: partial_converged)
+    && !host_phase_cell_is_model_complete(c: partial_converged)
+    && host_phase_cell_is_converged(c: partial_converged)
 }
 
 data witness_producer_refusal_is_coverage_note: String = "A producer that RAN and honestly refused is coverage; no producer at all is not. The distinction is load-bearing because the two have different owners — a refusing producer is a reach or observation defect to fix, an absent producer is a model to build — and the first version of this module conflated them by reading coverage off the verdict instead of off the observation's presence."
@@ -150,10 +177,10 @@ test fn witness_live_observation_frontier_is_one_cell() -> Bool {
   host_phase_observation_coverage_count(hosts: fleet_subsumption_hosts) == 1
 }
 
-test fn witness_unmodeled_cells_track_spine_gaps() -> Bool {
-  let unmodeled = host_phase_unmodeled_count(hosts: fleet_subsumption_hosts)
+test fn witness_model_incomplete_cells_track_spine_gap_phases() -> Bool {
+  let incomplete = host_phase_model_incomplete_count(hosts: fleet_subsumption_hosts)
   let expected = fleet_subsumption_hosts.length() * host_standup_gap_phase_count()
-  unmodeled == expected
+  incomplete == expected
 }
 
 data witness_remaining_work_note: String = "Remaining work is the reconcile's own upsert count, and it must equal every cell that is not already at the FULL desired state — modeled AND converged. Asserting it against an independently computed count is what stops the reconcile from silently retiring cells: if desired ever weakened to 'converged, disposition ignored', srv3's installed-but-unmodeled OS cell would drop out of the count and the lane would look one item closer to done than it is."
@@ -164,4 +191,3 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
   let finished = host_phase_finished_cell_count(hosts: fleet_subsumption_hosts)
   remaining == total - finished
 }
-

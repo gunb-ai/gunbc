@@ -6,17 +6,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn spine_step_tag(step: HostStandupStep) -> Int {
   match step.phase {
     Prefix { phase: BmcCredentialConverge } => 0
-    Prefix { phase: OsInstallMechanismResolved } => 1
-    Prefix { phase: OsInstallActuated } => 2
-    Prefix { phase: HostConvergePolicyDerived } => 3
-    Assimilation { phase: HostIdentityConverge } => 4
-    Assimilation { phase: ReachSecretsNetwork } => 5
-    Assimilation { phase: RunnerDeploySlot } => 6
-    Assimilation { phase: BuildCacheProvision } => 7
-    Assimilation { phase: ComputeFabricEnroll } => 8
-    Assimilation { phase: GreenPlaceReadiness } => 9
-    Assimilation { phase: SessionPlacementEnrollment } => 10
-    Assimilation { phase: StandupAssimilationComplete } => 11
+    Prefix { phase: BmcFirmwareConverge } => 1
+    Prefix { phase: BmcSurfaceRediscover } => 2
+    Prefix { phase: BmcFanPolicyConverge } => 3
+    Prefix { phase: BmcThermalSafetyVerify } => 4
+    Prefix { phase: OsInstallMechanismResolved } => 5
+    Prefix { phase: OsInstallActuated } => 6
+    Prefix { phase: HostConvergePolicyDerived } => 7
+    Assimilation { phase: HostIdentityConverge } => 8
+    Assimilation { phase: ReachSecretsNetwork } => 9
+    Assimilation { phase: RunnerDeploySlot } => 10
+    Assimilation { phase: BuildCacheProvision } => 11
+    Assimilation { phase: ComputeFabricEnroll } => 12
+    Assimilation { phase: GreenPlaceReadiness } => 13
+    Assimilation { phase: SessionPlacementEnrollment } => 14
+    Assimilation { phase: StandupAssimilationComplete } => 15
   }
 }
 
@@ -36,10 +40,16 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_twelve_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 12
+test fn host_standup_spine_is_sixteen_step_linear_bmc_os_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 16
     && spine_tags_are_linear()
-    && host_standup_gap_ledger.length() == 12
+    && host_standup_named_gap_count() == 13
+    && host_standup_bmc_named_gap_count() == 9
+    && !host_standup_gap_present(gap_id: "bmc-fan-live-observer")
+    && !host_standup_gap_present(gap_id: "bmc-fan-overlay-actuator")
+    && !host_standup_gap_present(gap_id: "bmc-fan-rollback-readback")
+    && !host_standup_gap_present(gap_id: "bmc-thermal-postapply-probe")
+    && !host_standup_gap_present(gap_id: "bmc-fan-reboot-persistence-witness")
 }
 
 test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
@@ -50,12 +60,9 @@ test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
       acc || match s.phase {
         Assimilation { phase: BuildCacheProvision } =>
           s.label == "P1b:build-cache-provision"
-            && match s.disposition {
-              ModeledCompose { authorities: refs } =>
-                refs.length() >= 3
-                  && string_contains(s: s.label, pattern: "build-cache-provision")
-              DeclaredGap { interim_realization: _, refusal: _ } => false
-            }
+            && s.disposition.authorities.length() >= 3
+            && s.disposition.gaps.length() == 0
+            && string_contains(s: s.label, pattern: "build-cache-provision")
         Prefix { phase: _ } => acc
         Assimilation { phase: _ } => acc
       }
@@ -173,41 +180,53 @@ test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
     && host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.Converged) == (host_standup_gap_count() - 1)
 }
 
-test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
+test fn every_step_has_authority_or_typed_gap_and_every_gap_refuses() -> Bool {
   fold(
     host_standup_spine,
     init: true,
-    f: (acc, s) => acc && match s.disposition {
-      DeclaredGap { interim_realization: path, refusal: r } =>
-        string_contains(s: r, pattern: "host_standup:")
-          && (string_contains(s: path, pattern: "ctrl:")
-            || string_contains(s: path, pattern: "extdeps.")
-            || string_contains(s: path, pattern: "gunbc."))
-      ModeledCompose { authorities: refs } => refs.length() > 0
-    }
+    f: (acc, s) =>
+      acc
+        && (s.disposition.authorities.length() > 0 || s.disposition.gaps.length() > 0)
+        && fold(
+          s.disposition.gaps,
+          init: true,
+          f: (gaps_ok, gap) =>
+            gaps_ok
+              && (gap.gap_id as String) != ""
+              && (gap.missing as String) != ""
+              && string_contains(s: gap.refusal as String, pattern: "host_standup:"),
+        )
   )
 }
 
-test fn p0_gap_ledger_matches_spine_partial_authorities() -> Bool {
+test fn p0_partial_phase_carries_authorities_and_gap_in_one_product() -> Bool {
   fold(
-    host_standup_gap_ledger,
+    host_standup_spine,
     init: false,
-    f: (acc, row) =>
-      acc || (row.phase_label == "P0:reach-secrets-network"
-        && row.modeling == "partial"
-        && string_contains(s: row.authority_or_interim, pattern: "extdeps.tailscale.acl")
-        && string_contains(s: row.authority_or_interim, pattern: "gunbc.tailscale_acl"))
+    f: (acc, step) =>
+      acc || (step.label == "P0:reach-secrets-network"
+        && step.disposition.authorities.length() >= 3
+        && step.disposition.gaps.length() == 1
+        && match step.disposition.gaps.first() {
+          Present { value: gap } => gap.gap_id == "reach-secrets-live-upsert"
+          Absent => false
+        })
   )
 }
 
-test fn p3_gap_ledger_notes_green_place_dag_writer_path() -> Bool {
-  fold(
-    host_standup_gap_ledger,
-    init: false,
-    f: (acc, row) =>
-      acc || (row.phase_label == "P3:green-place-readiness"
-        && string_contains(s: row.authority_or_interim, pattern: "green_place.dag")
-        && string_contains(s: row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
-  )
+test fn remaining_bmc_gap_projection_is_complete_and_derived_from_spine() -> Bool {
+  host_standup_gap_present(gap_id: "bmc-managed-credential-binding")
+    && host_standup_gap_present(gap_id: "bmc-firmware-live-observer")
+    && host_standup_gap_present(gap_id: "bmc-firmware-approved-artifact")
+    && host_standup_gap_present(gap_id: "bmc-firmware-update-actuator")
+    && host_standup_gap_present(gap_id: "bmc-firmware-return-readback")
+    && host_standup_gap_present(gap_id: "bmc-firmware-recovery-proof")
+    && host_standup_gap_present(gap_id: "bmc-subsumption-entrypoint-wiring")
+    && host_standup_gap_present(gap_id: "bmc-surface-live-rediscovery")
+    && !host_standup_gap_present(gap_id: "bmc-fan-live-observer")
+    && !host_standup_gap_present(gap_id: "bmc-fan-overlay-actuator")
+    && !host_standup_gap_present(gap_id: "bmc-fan-rollback-readback")
+    && !host_standup_gap_present(gap_id: "bmc-thermal-postapply-probe")
+    && !host_standup_gap_present(gap_id: "bmc-fan-reboot-persistence-witness")
+    && host_standup_gap_present(gap_id: "bmc-thermal-operating-envelope")
 }
-

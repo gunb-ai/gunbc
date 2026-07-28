@@ -1131,6 +1131,7 @@ fn provision_build_cache_arch_unknown_host_fixture() -> ComputeHost {
   ComputeHost {
     identity: srv1_host.identity,
     baseboard: none,
+    bmc_intent: none,
     processors: [],
     memory: [],
     storage: [],
