@@ -1,18 +1,31 @@
 module test.claim.cli_run_floor_lens_oracle_witness
 
 
-test fn floor_lens_legacy_graph_oracle_is_declared_scaffold() -> Bool {
-  match cli_run_floor_lens_legacy_graph_oracle_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    _ => false
+fn disposition_is_single_authority_scaffold(d: Disposition) -> Bool {
+  match d {
+    Scaffold { dissolves_to: mechanism, bind: _ } =>
+      match mechanism {
+        SingleAuthority => true
+        RealizationDispatch => false
+        SubstrateMandatoryTag => false
+      }
+    Terminal { reason: _ } => false
   }
 }
 
+test fn floor_lens_legacy_graph_oracle_is_declared_scaffold() -> Bool {
+  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_legacy_graph_oracle_scaffold)
+}
+
 test fn floor_lens_legacy_walk_oracle_is_declared_scaffold() -> Bool {
-  match cli_run_floor_lens_legacy_walk_oracle_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    _ => false
-  }
+  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_legacy_walk_oracle_scaffold)
+}
+
+test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool {
+  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_census_walk_hand_rust_scaffold) &&
+    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_justification_hand_rust_scaffold) &&
+    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
+    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_observation_hand_rust_scaffold)
 }
 
 test fn floor_lens_oracle_dissolve_trigger_names_sites_and_lane() -> Bool {
@@ -32,6 +45,26 @@ test fn floor_lens_oracle_dissolve_trigger_names_sites_and_lane() -> Bool {
       s: cli_run_floor_lens_oracle_dissolve_trigger,
       pattern: "cli-run-reconcile-defork"
     )
+}
+
+test fn floor_lens_hand_rust_trigger_names_sites_ticket_and_loc() -> Bool {
+  string_contains(
+    s: cli_run_floor_lens_hand_rust_dissolve_trigger,
+    pattern: "refuse_on_module_graph_read_refusals"
+  ) &&
+    string_contains(
+      s: cli_run_floor_lens_hand_rust_dissolve_trigger,
+      pattern: "import_resolution_facts_with_observation"
+    ) &&
+    string_contains(
+      s: cli_run_floor_lens_hand_rust_dissolve_trigger,
+      pattern: "5-dissolve-patches"
+    ) &&
+    string_contains(
+      s: cli_run_floor_lens_hand_rust_dissolve_trigger,
+      pattern: "cli-run-reconcile-defork"
+    ) &&
+    cli_run_floor_lens_hand_rust_loc_delta_net > 0
 }
 
 test fn floor_lens_oracle_executing_receipts_named() -> Bool {
