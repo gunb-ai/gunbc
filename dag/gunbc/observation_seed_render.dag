@@ -67,6 +67,10 @@ type ScopedRunWriteProjection
   = ScopedRunWriteProjected { bytes: String, next_open: Bool }
   | ScopedRunWriteRefused { cause: NonEmptyStr }
 
+type ScopedRunMeasuredProjection
+  = ScopedRunMeasuredProjected { bytes: String, next_open: Bool, wall_ns: Nat }
+  | ScopedRunMeasuredRefused { cause: NonEmptyStr }
+
 data scoped_run_observation_note: String = "The first real density-aware seed consumer. The user program's entry graph stays independent: cli_run resolves this authority as a dedicated graph and transports only the scoped run facts it already owns. The interpreter seed bridge is the narrow primitive-argument call into this module; its hand seam dissolves when the generated host-effect bridge can carry the same typed arguments without a stringly call scaffold. This module constructs the Run/Entry/Phase subject, derives attention and cursor action through observation_tty_render, and delegates every terminal byte and dynamic-line transition to extdeps.render.terminal. The seed may write returned bytes and retain next_open; it may not spell a fallback line or reinterpret a refusal. Monotonic Nanosecond elapsed wall values include the bridge-resolution overhead by starting before authority resolution; no acceptance threshold is invented here, and the measured overhead is recorded by the seed witness receipt."
 
 fn scoped_run_subject(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr) -> ObservationSubject {
@@ -160,44 +164,52 @@ fn scoped_run_project_measured(
   event: ObservationEvent,
   addressable: Bool,
   emoji: Bool,
-  prior_open: Bool
-) -> ScopedRunWriteProjection {
-  scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior_open: prior_open)
+  prior_open: Bool,
+  wall_ns: Nat
+) -> ScopedRunMeasuredProjection {
+  match scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior_open: prior_open) {
+    ScopedRunWriteRefused { cause: c } => ScopedRunMeasuredRefused { cause: c }
+    ScopedRunWriteProjected { bytes: b, next_open: n } => ScopedRunMeasuredProjected { bytes: b, next_open: n, wall_ns: wall_ns }
+  }
 }
 
-fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Begin),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior_open: prior_open,
+    wall_ns: wall_ns
   )
 }
 
-fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Final { shown_failures: 0 } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior_open: prior_open,
+    wall_ns: wall_ns
   )
 }
 
-fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior_open: prior_open,
+    wall_ns: wall_ns
   )
 }
 
-fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Failed { error: error, output: "" } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior_open: prior_open,
+    wall_ns: wall_ns
   )
 }
 

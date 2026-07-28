@@ -10675,7 +10675,6 @@ impl ScopedRunObservation {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-        let seed_resolution_ns = started.elapsed().as_nanos();
         Ok(Self {
             ctx,
             entry_file: entry_file.to_string(),
@@ -10687,7 +10686,7 @@ impl ScopedRunObservation {
             open: false,
             started,
             last_wall_ns: 0,
-            seed_resolution_ns,
+            seed_resolution_ns: 0,
         })
     }
 
@@ -10747,7 +10746,9 @@ impl ScopedRunObservation {
                 projected.type_label_public()
             ));
         };
-        if self.ctx.sym_eq(*variant_name, "ScopedRunWriteRefused") {
+        if self.ctx.sym_eq(*variant_name, "ScopedRunWriteRefused")
+            || (measured && self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredRefused"))
+        {
             let cause = match self.ctx.field(fields, "cause") {
                 Some(Value::Str(cause)) => cause.clone(),
                 _ => "typed refusal without a String cause".to_string(),
@@ -10763,9 +10764,19 @@ impl ScopedRunObservation {
                 "scoped run observation refusal projection refused: {cause}"
             ));
         }
-        if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
+        let measured_wall_ns = if measured {
+            if !self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredProjected") {
+                return Err("scoped measured projection returned a non-measured arm".to_string());
+            }
+            match self.ctx.field(fields, "wall_ns") {
+                Some(Value::Int(value)) if *value >= 0 => Some(*value as u128),
+                _ => return Err("scoped measured projection omitted wall_ns".to_string()),
+            }
+        } else if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
             return Err("scoped run observation returned an unknown projection arm".to_string());
-        }
+        } else {
+            None
+        };
         let bytes = match self.ctx.field(fields, "bytes") {
             Some(Value::Str(bytes)) => bytes,
             _ => return Err("scoped run observation projected non-String bytes".to_string()),
@@ -10774,6 +10785,17 @@ impl ScopedRunObservation {
             Some(Value::Bool(next_open)) => *next_open,
             _ => return Err("scoped run observation projected non-Bool state".to_string()),
         };
+        if let Some(projected_wall_ns) = measured_wall_ns {
+            let expected = self.last_wall_ns;
+            if projected_wall_ns != expected {
+                return Err(format!(
+                    "scoped measured projection wall mismatch: projected={projected_wall_ns} expected={expected}"
+                ));
+            }
+            if self.seed_resolution_ns == 0 {
+                self.seed_resolution_ns = self.started.elapsed().as_nanos();
+            }
+        }
         let mut stderr = std::io::stderr().lock();
         stderr
             .write_all(bytes.as_bytes())

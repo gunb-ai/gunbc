@@ -50,7 +50,7 @@ pub struct SymbolInterner {
 #[cfg(test)]
 mod selected_identity_path_tests {
     use super::selected_module_path;
-    use std::collections::HashMap;
+    use im::HashMap;
 
     #[test]
     fn suffix_collision_refuses_instead_of_guessing() {

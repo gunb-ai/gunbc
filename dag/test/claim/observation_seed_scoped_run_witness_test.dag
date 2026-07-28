@@ -9,6 +9,8 @@ import extdeps.render.ansi {
 import gunbc.observation_seed_render {
   ScopedRunWriteProjected,
   ScopedRunWriteRefused,
+  ScopedRunMeasuredProjected,
+  ScopedRunMeasuredRefused,
   scoped_run_begin_write,
   scoped_run_begin_write_measured,
   scoped_run_final_write,
@@ -155,15 +157,16 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
   match scoped_run_begin_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1, addressable: false, emoji: false, prior_open: false) {
-    ScopedRunWriteRefused { cause: _ } => false
-    ScopedRunWriteProjected { bytes: one, next_open: one_open } =>
+    ScopedRunMeasuredRefused { cause: _ } => false
+    ScopedRunMeasuredProjected { bytes: one, next_open: one_open, wall_ns: one_ns } =>
       match scoped_run_begin_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 999999, addressable: false, emoji: false, prior_open: false) {
-        ScopedRunWriteRefused { cause: _ } => false
-        ScopedRunWriteProjected { bytes: sub_ms, next_open: sub_ms_open } =>
+        ScopedRunMeasuredRefused { cause: _ } => false
+        ScopedRunMeasuredProjected { bytes: sub_ms, next_open: sub_ms_open, wall_ns: sub_ms_ns } =>
           match scoped_run_begin_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1000000, addressable: false, emoji: false, prior_open: false) {
-            ScopedRunWriteRefused { cause: _ } => false
-            ScopedRunWriteProjected { bytes: one_ms, next_open: one_ms_open } =>
+            ScopedRunMeasuredRefused { cause: _ } => false
+            ScopedRunMeasuredProjected { bytes: one_ms, next_open: one_ms_open, wall_ns: one_ms_ns } =>
               !one_open && !sub_ms_open && !one_ms_open &&
+              one_ns == 1 && sub_ms_ns == 999999 && one_ms_ns == 1000000 &&
               string_contains(s: one, pattern: "duration") &&
               string_contains(s: sub_ms, pattern: "duration") &&
               string_contains(s: one_ms, pattern: "duration")
