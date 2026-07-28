@@ -1184,6 +1184,7 @@ fn active_section() -> RoadmapSection {
         edges: [
           RoadmapEdge { child: nid(s: "5-real-fixpoint"), parent: nid(s: "5-regen-cutover") },
           RoadmapEdge { child: nid(s: "5-dual-rep-lens"), parent: nid(s: "5-dissolve-patches") },
+          RoadmapEdge { child: nid(s: "5-seed-growth-bridge"), parent: nid(s: "5-dissolve-patches") },
           RoadmapEdge { child: nid(s: "5-root-b"), parent: nid(s: "5-defork") },
           RoadmapEdge { child: nid(s: "5-v1coupled"), parent: nid(s: "5-defork") },
           RoadmapEdge { child: nid(s: "5-seed-honesty"), parent: nid(s: "5-real-fixpoint") },
