@@ -11156,9 +11156,22 @@ pub fn handle_run_with_options(
         let mut run = || {
             if let Some(secs) = scoped_periodic_secs {
                 let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+                let (armed_tx, armed_rx) = std::sync::mpsc::channel();
                 let periodic_ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
                 let tick_count = periodic_ticks.clone();
+                let witness = std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some();
                 let handle = std::thread::spawn(move || loop {
+                    if witness && secs == 0 {
+                        if let std::sync::mpsc::RecvTimeoutError::Timeout =
+                            stop_rx.recv_timeout(std::time::Duration::ZERO)
+                        {
+                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            dump_residual_hunt_instrumentation();
+                        }
+                        let _ = armed_tx.send(());
+                        break;
+                    }
+                    let _ = armed_tx.send(());
                     match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
                         Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -11173,6 +11186,9 @@ pub fn handle_run_with_options(
                         }
                     }
                 });
+                if witness {
+                    let _ = armed_rx.recv();
+                }
                 scoped_periodic_dump = Some((stop_tx, handle, periodic_ticks));
             }
             let outcome =
