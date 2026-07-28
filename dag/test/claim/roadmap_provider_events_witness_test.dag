@@ -168,7 +168,7 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
   }
 }
 
-data codex_item_activity_anchor_witness_note: String = "review 44058. The activity read used to scan the whole projected line for a \"type\":\"…\" fragment, so any item whose payload QUOTED another item type reclassified the pane. These two witnesses are the discriminating pair: an agent_message carrying the file_change spelling inside its own text must still read as reporting (the fragment is present and must not win), and a genuine file_change must still read as editing files (the anchored walk must not have simply stopped working). The projector bounds item payloads rather than dropping them, so this line shape is reachable in production, not hypothetical."
+data codex_item_activity_anchor_witness_note: String = "review 44058. The activity read used to scan the WHOLE projected line for a \"type\":\"…\" fragment, so a sibling or nested object carrying another item type reclassified the pane — the same shape the top-level classifier is already anchored against (nested_type_token_cannot_fabricate_terminal_success, right above). The pair is discriminating in both directions: the forged line puts item.type = agent_message beside a sibling object spelling file_change, and the old scan answered \"editing files\" on it because file_change is tested before agent_message; the genuine line proves the anchored walk still finds a real file_change rather than having simply stopped working. Reachability: today the projector emits only a top-level type plus an item object carrying only its own type, so the sibling shape arrives on projector drift or on any future direct read of the raw stream — this is the defense-in-depth the top-level anchor already carries, applied to the member beneath it."
 
 fn activity_of(text: String) -> String {
   match provider_execution_state(parsed: parse_codex_jsonl(text: text)) {
@@ -179,7 +179,7 @@ fn activity_of(text: String) -> String {
 
 test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
   let forged = activity_of(
-    text: "{\"type\":\"item.started\",\"item\":{\"type\":\"agent_message\",\"text\":\"see \\\"type\\\":\\\"file_change\\\"\"}}\n",
+    text: "{\"type\":\"item.started\",\"item\":{\"type\":\"agent_message\"},\"echo\":{\"type\":\"file_change\"}}\n",
   )
   let genuine = activity_of(
     text: "{\"type\":\"item.started\",\"item\":{\"type\":\"file_change\"}}\n",
