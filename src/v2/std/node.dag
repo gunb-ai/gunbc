@@ -13,6 +13,8 @@ type Hash = ContentHash
 
 type OccurrenceId = std.occurrence_identity.OccurrenceId
 
+data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
+
 type NodeOccurrenceId
   = SyntheticOccurrence
   | MintedOccurrence { id: OccurrenceId }
@@ -58,7 +60,7 @@ fn node_occurrence_id_semantically_equivalent(
   }
 }
 
-data node_occurrence_id_compatibility_dissolve_on: String = "COUNTED DISSOLVE-ON: migrate the 265 v2 files/import blocks that import legacy SyntheticOccurrence or MintedOccurrence from v2.std.node to std.occurrence_identity; the wider compatibility surface currently appears in 360 v2 .dag files and 270 relevant v2.std.node import blocks. When the constructor-import count reaches zero and remaining type imports consume the shared authority directly, delete legacy NodeOccurrenceId and these total conversions. Until then this coproduct is representation-only and cannot decide occurrence category, binding, or resolution."
+data node_occurrence_id_compatibility_dissolve_on: String = "COUNTED DISSOLVE-ON: migrate the 265 v2 files/import blocks that import legacy SyntheticOccurrence or MintedOccurrence from v2.std.node to std.occurrence_identity; the wider compatibility surface currently appears in 360 v2 .dag files and 270 relevant v2.std.node import blocks as deletion provenance, not a migration target for this change. When the constructor-import count reaches zero and remaining type imports consume the shared authority directly, delete legacy NodeOccurrenceId and these total conversions. Until then this coproduct is representation-only and cannot decide occurrence category, binding, or resolution."
 
 type Connective
   = Atom { identity: Symbol }

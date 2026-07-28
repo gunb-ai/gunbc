@@ -4,6 +4,8 @@ import std.types { Bool, Int, String }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped occurrence space. Production parsing assigns every source a disjoint authored-token ordinal range. Identity is the packed authored-token ordinal plus a typed edge role; filename, SourceSpan, authored name, structural Node equality, content hash, and module-local reset are forbidden identity inputs."
 
+data occurrence_identity_constructor_spelling_note: String = "Shared NodeOccurrenceId uses collision-free neutral constructors because .dag variant names are closure-global: legacy v2 SyntheticOccurrence/MintedOccurrence and identically named shared constructors cannot coexist in one conversion closure. Constructor spelling is representation; this shared carrier remains the sole semantic authority."
+
 data occurrence_identity_slots_per_authored_token: Int = 4
 
 type OccurrenceId {

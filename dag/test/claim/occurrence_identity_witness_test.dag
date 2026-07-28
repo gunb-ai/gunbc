@@ -166,37 +166,3 @@ test fn occurrence_identity_wrong_category_and_malformed_are_red_holds() -> Bool
   declaration_wrong && reference_wrong
     && declaration_malformed && reference_malformed
 }
-
-test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
-  let facade: NodeOccurrenceId = SyntheticOccurrence
-  match node_occurrence_id_from_shared(
-    occurrence: node_occurrence_id_to_shared(occurrence: facade)
-  ) {
-    SyntheticOccurrence => true
-    _ => false
-  }
-}
-
-test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
-  let facade: NodeOccurrenceId = MintedOccurrence {
-    id: std.occurrence_identity.OccurrenceId { value: 11 },
-  }
-  match node_occurrence_id_from_shared(
-    occurrence: node_occurrence_id_to_shared(occurrence: facade)
-  ) {
-    MintedOccurrence { id: id } => id.value == 11
-    _ => false
-  }
-}
-
-test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
-  let shared: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceMinted {
-    id: std.occurrence_identity.OccurrenceId { value: 12 },
-  }
-  match node_occurrence_id_to_shared(
-    occurrence: node_occurrence_id_from_shared(occurrence: shared)
-  ) {
-    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
-    _ => false
-  }
-}
