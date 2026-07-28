@@ -152,13 +152,13 @@ fn scoped_run_measured_event(
   entry_file: NonEmptyStr,
   module_path: NonEmptyStr,
   function: NonEmptyStr,
-  wall_ns: Nat,
+  wall: Nanosecond,
   transition: std.observation.ObservationTransition
 ) -> ObservationEvent {
   ObservationEvent {
     subject: scoped_run_subject(entry_file: entry_file, module_path: module_path, function: function),
     transition: transition,
-    wall: MeasuredValue { value: nanosecond(count: wall_ns) },
+    wall: MeasuredValue { value: wall: },
     rss: MeasuredUnavailable { cause: "scoped run rss is not sampled" as NonEmptyStr }
   }
 }
