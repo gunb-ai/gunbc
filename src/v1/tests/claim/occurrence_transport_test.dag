@@ -1,0 +1,341 @@
+module v1.tests.claim.occurrence_transport_test
+
+import std.occurrence_identity {
+  AuthoredOccurrenceId,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  AuthoredDeclarationOccurrence,
+  AuthoredReferenceOccurrence,
+}
+
+import v1.std.core {
+  Node,
+  Bind,
+  ExprData,
+  ExprLet,
+  ExprLambda,
+  ExprError,
+  make_span,
+  leaf_node_with_span,
+  make_arm_node,
+  make_expr_node,
+  node_with_authored_occurrence,
+  arm_pattern,
+  arm_body,
+  field_binding_pattern,
+  int_type,
+  build_newline_index,
+  empty_intern_table,
+}
+
+import v1.compiler.tokenize { tokenize }
+
+import v1.compiler.parse {
+  ParseContext,
+  token_stream_new_at,
+  parse_pattern,
+  parse_expr,
+  parse_let,
+  parse_param,
+}
+
+import v1.compiler.infer {
+  InferScope,
+  infer_expr,
+  substitute_generics_apply,
+}
+
+import v1.compiler.infer_env {
+  empty_type_env,
+}
+
+import v1.compiler.infer_sigs {
+  ResolvedFuncEnv,
+}
+
+import v1.compiler.dag_collect {
+  dag_node_key,
+  dag_collect_insert_slots,
+}
+
+import v1.compiler.dag_collect_support {
+  DagCollectSlot,
+  dag_node_surface_fingerprint,
+}
+
+data occurrence_transport_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_transport_test.dag --functions occurrence_transport_parser_forms_hold,occurrence_transport_inferred_and_rebuilt_references_hold,occurrence_transport_collector_is_occurrence_safe"
+
+data occurrence_transport_boundary_note: String = "These witnesses stop at transport. They compare typed authored occurrence categories and IDs, never resolve a declaration candidate or infer identity from SourceSpan, spelling, or Node structure."
+
+fn declaration_node(name: String, id: Int) -> Node {
+  node_with_authored_occurrence(
+    node: leaf_node_with_span(
+      name: name,
+      span: make_span(start: 0, end: 0),
+    ),
+    occurrence: AuthoredDeclarationOccurrence {
+      occurrence: DeclarationOccurrence {
+        identity: AuthoredOccurrenceId { value: id },
+      },
+    },
+  )
+}
+
+fn reference_node(name: String, id: Int) -> Node {
+  node_with_authored_occurrence(
+    node: leaf_node_with_span(
+      name: name,
+      span: make_span(start: 0, end: 0),
+    ),
+    occurrence: AuthoredReferenceOccurrence {
+      occurrence: ReferenceOccurrence {
+        identity: AuthoredOccurrenceId { value: id },
+      },
+    },
+  )
+}
+
+fn node_declaration_id(node: Node) -> Int? {
+  match node.authored_occurrence {
+    Present { value: AuthoredDeclarationOccurrence { occurrence: occurrence } } =>
+      Present { value: occurrence.identity.value }
+    _ => none
+  }
+}
+
+fn node_reference_id(node: Node) -> Int? {
+  match node.authored_occurrence {
+    Present { value: AuthoredReferenceOccurrence { occurrence: occurrence } } =>
+      Present { value: occurrence.identity.value }
+    _ => none
+  }
+}
+
+fn fixture_context(file: String, source: String) -> ParseContext {
+  ParseContext {
+    source_indices: map_insert(
+      empty_map(),
+      file,
+      build_newline_index(file: file, source: source),
+    ),
+    intern_table: empty_intern_table(),
+  }
+}
+
+fn parse_fixture_expr(source: String, occurrence_base: Int) -> Node? {
+  let file = "occurrence-transport-expr.dag"
+  let result = parse_expr(
+    tokens: token_stream_new_at(
+      all: tokenize(source: source, file: file),
+      occurrence_base: occurrence_base,
+    ),
+    ctx: fixture_context(file: file, source: source),
+  )
+  match result.err {
+    Present { value: _ } => none
+    Absent => Present { value: result.expr }
+  }
+}
+
+fn parse_fixture_let(source: String, occurrence_base: Int) -> Node? {
+  let file = "occurrence-transport-let.dag"
+  let result = parse_let(
+    tokens: token_stream_new_at(
+      all: tokenize(source: source, file: file),
+      occurrence_base: occurrence_base,
+    ),
+    ctx: fixture_context(file: file, source: source),
+  )
+  match result.err {
+    Present { value: _ } => none
+    Absent => Present { value: result.expr }
+  }
+}
+
+fn parse_fixture_param(source: String, occurrence_base: Int) -> Node? {
+  let file = "occurrence-transport-param.dag"
+  let result = parse_param(
+    tokens: token_stream_new_at(
+      all: tokenize(source: source, file: file),
+      occurrence_base: occurrence_base,
+    ),
+    ctx: fixture_context(file: file, source: source),
+  )
+  match result.err {
+    Present { value: _ } => none
+    Absent => Present { value: result.param }
+  }
+}
+
+fn bind_declaration(pattern: v1.std.core.MatchPattern) -> Node? {
+  match pattern {
+    Bind { declaration: declaration } => Present { value: declaration }
+    _ => none
+  }
+}
+
+fn parser_let_and_reference_are_typed_distinct() -> Bool {
+  match parse_fixture_let(source: "let kept = kept", occurrence_base: 100) {
+    Absent => false
+    Present { value: let_node } =>
+      match let_node.children |> first {
+        Absent => false
+        Present { value: reference } =>
+          node_declaration_id(node: let_node) != none &&
+          node_reference_id(node: reference) != none &&
+          node_declaration_id(node: let_node).value !=
+            node_reference_id(node: reference).value
+      }
+  }
+}
+
+fn parser_lambda_and_reference_are_typed_distinct() -> Bool {
+  match parse_fixture_expr(source: "arg => arg", occurrence_base: 200) {
+    Absent => false
+    Present { value: lambda } =>
+      match lambda.expr_data {
+        ExprLambda =>
+          match lambda.children |> first {
+            Absent => false
+            Present { value: body } =>
+              match lambda.children |> skip(1) |> first {
+                Absent => false
+                Present { value: parameter } =>
+                  node_declaration_id(node: parameter) != none &&
+                  node_reference_id(node: body) != none &&
+                  node_declaration_id(node: parameter).value !=
+                    node_reference_id(node: body).value
+              }
+          }
+        _ => false
+      }
+  }
+}
+
+fn parser_function_parameter_and_reference_are_typed() -> Bool {
+  match parse_fixture_param(source: "arg: Int", occurrence_base: 300) {
+    Absent => false
+    Present { value: parameter } =>
+      match parse_fixture_expr(source: "arg", occurrence_base: 400) {
+        Absent => false
+        Present { value: reference } =>
+          node_declaration_id(node: parameter) != none &&
+          node_reference_id(node: reference) != none &&
+          node_declaration_id(node: parameter).value !=
+            node_reference_id(node: reference).value
+      }
+  }
+}
+
+test fn occurrence_transport_parser_forms_hold() -> Bool {
+  parser_let_and_reference_are_typed_distinct() &&
+  parser_lambda_and_reference_are_typed_distinct() &&
+  parser_function_parameter_and_reference_are_typed()
+}
+
+fn empty_infer_scope() -> InferScope {
+  InferScope {
+    type_env: empty_type_env(),
+    func_env: ResolvedFuncEnv {
+      name: "occurrence.transport",
+      local: empty_map(),
+      parents: [],
+    },
+    locals: empty_map(),
+    body_locals: empty_map(),
+    match_bound_names: empty_map(),
+    module_name: "occurrence.transport",
+    service_registry: empty_map(),
+    item_registry: empty_map(),
+    lambda_param_provenance: empty_map(),
+  }
+}
+
+fn inferred_error_reference_keeps_id() -> Bool {
+  match parse_fixture_expr(source: "missing", occurrence_base: 500) {
+    Absent => false
+    Present { value: reference } =>
+      let typed = infer_expr(
+        texpr: reference,
+        scope: empty_infer_scope(),
+        expected: none,
+      ).typed
+      match typed.expr_data {
+        ExprError { kind: _, message: _ } =>
+          node_reference_id(node: reference) != none &&
+          node_reference_id(node: typed) == node_reference_id(node: reference)
+        _ => false
+      }
+  }
+}
+
+fn rebuilt_reference_keeps_id() -> Bool {
+  let reference = reference_node(name: "T", id: 601)
+  let rebuilt = substitute_generics_apply(
+    n: reference,
+    subst: map_insert(empty_map(), "T", int_type),
+    source_indices: empty_map(),
+  )
+  node_reference_id(node: rebuilt) == Present { value: 601 }
+}
+
+test fn occurrence_transport_inferred_and_rebuilt_references_hold() -> Bool {
+  inferred_error_reference_keeps_id() &&
+  rebuilt_reference_keeps_id()
+}
+
+fn collector_insert(node: Node, slots: Map<String, DagCollectSlot>) -> Map<String, DagCollectSlot> {
+  dag_collect_insert_slots(
+    node: node,
+    slots: slots,
+    collision_errors: [],
+  )
+}
+
+fn collector_dedupes_one_occurrence() -> Bool {
+  let first_copy = reference_node(name: "same", id: 701)
+  let rebuilt_copy = reference_node(name: "rebuilt", id: 701)
+  let slots = collector_insert(
+    node: rebuilt_copy,
+    slots: collector_insert(node: first_copy, slots: empty_map()),
+  )
+  (slots |> count) == 1
+}
+
+fn collector_keeps_structurally_equal_occurrences() -> Bool {
+  let first_authored = reference_node(name: "same", id: 801)
+  let second_authored = reference_node(name: "same", id: 805)
+  let same_surface =
+    dag_node_surface_fingerprint(node: first_authored) ==
+    dag_node_surface_fingerprint(node: second_authored)
+  let slots = collector_insert(
+    node: second_authored,
+    slots: collector_insert(node: first_authored, slots: empty_map()),
+  )
+  same_surface &&
+  dag_node_key(node: first_authored) != dag_node_key(node: second_authored) &&
+  (slots |> count) == 2
+}
+
+fn collector_reaches_pattern_declaration() -> Bool {
+  let declaration = declaration_node(name: "bound", id: 900)
+  let arm = make_arm_node(
+    pattern: Bind { declaration: declaration },
+    guard: none,
+    body: make_expr_node(
+      expr_data: ExprLet,
+      children: [],
+      inferred: none,
+      span: make_span(start: 0, end: 0),
+    ),
+    span: make_span(start: 0, end: 0),
+  )
+  let slots = collector_insert(node: arm, slots: empty_map())
+  map_has(slots, dag_node_key(node: declaration))
+}
+
+test fn occurrence_transport_collector_is_occurrence_safe() -> Bool {
+  collector_dedupes_one_occurrence() &&
+  collector_keeps_structurally_equal_occurrences() &&
+  collector_reaches_pattern_declaration()
+}

@@ -6,8 +6,15 @@ import v1.std.core {
   ExprData,
   Connective, NoConnective,
   MatchPattern,
+  Bind, LitPattern, Wildcard, VariantPattern,
   ErrorNode,
   import_is_all
+}
+
+import std.occurrence_identity {
+  AuthoredOccurrence,
+  AuthoredDeclarationOccurrence,
+  AuthoredReferenceOccurrence
 }
 
 import v1.compiler.dag_collect_support {
@@ -44,7 +51,9 @@ fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
 }
 
 fn dag_node_collection_anchor(node: Node) -> Node {
-  if dag_node_is_resolved_identity_shell(node: node) {
+  if node.authored_occurrence != none {
+    node
+  } else if dag_node_is_resolved_identity_shell(node: node) {
     match node.inferred {
       Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
       _ => node
@@ -54,17 +63,31 @@ fn dag_node_collection_anchor(node: Node) -> Node {
   }
 }
 
+fn dag_authored_occurrence_key(occurrence: AuthoredOccurrence) -> String {
+  match occurrence {
+    AuthoredDeclarationOccurrence { occurrence: declaration } =>
+      concat("occ:declaration:", to_string(i: declaration.identity.value))
+    AuthoredReferenceOccurrence { occurrence: reference } =>
+      concat("occ:reference:", to_string(i: reference.identity.value))
+  }
+}
+
 fn dag_node_key(node: Node) -> String {
-  let anchor = dag_node_collection_anchor(node: node)
-  if anchor.span.start == 0 && anchor.span.end == 0 {
-    concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
-  } else {
-    concat(
-      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
-      match anchor.ident {
-        Present { value: id } => concat(":", to_string(i: id))
-        Absent => ""
-      })
+  match node.authored_occurrence {
+    Present { value: occurrence } =>
+      dag_authored_occurrence_key(occurrence: occurrence)
+    Absent =>
+      let anchor = dag_node_collection_anchor(node: node)
+      if anchor.span.start == 0 && anchor.span.end == 0 {
+        concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
+      } else {
+        concat(
+          anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+          match anchor.ident {
+            Present { value: id } => concat(":", to_string(i: id))
+            Absent => ""
+          })
+      }
   }
 }
 
@@ -90,6 +113,22 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>
   }
 }
 
+fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
+  match pattern {
+    Absent => slots
+    Present { value: Bind { declaration: declaration } } =>
+      dag_collect_insert_slots(node: declaration, slots: slots, collision_errors: collision_errors)
+    Present { value: LitPattern { value: _ } } => slots
+    Present { value: Wildcard } => slots
+    Present { value: VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } } =>
+      dag_collect_nodes_list(nodes: bindings, slots: slots, collision_errors: collision_errors)
+  }
+}
+
 fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
@@ -102,6 +141,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collisi
   let slots = dag_collect_optional_node(value: node.transport, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_nodes_list(nodes: node.properties, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_optional_node(value: node.type_annotation, slots: slots, collision_errors: collision_errors)
+  let slots = dag_collect_match_pattern(pattern: node.match_pattern, slots: slots, collision_errors: collision_errors)
   dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
@@ -111,7 +151,9 @@ fn dag_collect_insert_slots(node: Node, slots: Map<String, DagCollectSlot>, coll
   match map_get(slots, key) {
     Present { value: _ } => slots
     Absent => {
-      let fp = if anchor.span.start == 0 && anchor.span.end == 0 {
+      let fp = if anchor.authored_occurrence != none {
+        dag_node_fingerprint(node: anchor)
+      } else if anchor.span.start == 0 && anchor.span.end == 0 {
         substring(s: key, start: 6, end: string_length(s: key))
       } else {
         dag_node_fingerprint(node: anchor)

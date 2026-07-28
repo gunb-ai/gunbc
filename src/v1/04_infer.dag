@@ -6115,7 +6115,7 @@ fn substitute_generics_apply_rebuild(n: Node, subst: Map<String, Node>, source_i
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
       n
     } else {
-      Node { authored_occurrence: item.authored_occurrence,
+      Node { authored_occurrence: n.authored_occurrence,
         name: n.name, span: n.span, ident_span: n.ident_span,
         children: new_children,
         connective: n.connective,

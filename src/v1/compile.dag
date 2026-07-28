@@ -60,6 +60,12 @@ import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_n
 
 import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
 
+import std.occurrence_identity {
+  AuthoredOccurrence,
+  AuthoredDeclarationOccurrence,
+  AuthoredReferenceOccurrence
+}
+
 
 type SourceFile {
   path: String
@@ -222,6 +228,30 @@ fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<Strin
   }
 }
 
+fn dag_emit_check_match_pattern_refs(value: MatchPattern?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+  match value {
+    Absent => []
+    Present { value: Bind { declaration: declaration } } =>
+      dag_emit_check_ref_target(node: declaration, key_to_id: key_to_id)
+    Present { value: LitPattern { value: _ } } => []
+    Present { value: Wildcard } => []
+    Present { value: VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } } =>
+      bindings |> flat_map(binding =>
+        concat(
+          dag_emit_check_ref_target(node: binding, key_to_id: key_to_id),
+          dag_emit_check_match_pattern_refs(
+            value: binding.match_pattern,
+            key_to_id: key_to_id,
+          ),
+        )
+      )
+  }
+}
+
 fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
   concat(
     if is_import_statement_node(n: node) {
@@ -239,6 +269,7 @@ fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<
     dag_emit_check_optional_ref_target(value: node.transport, key_to_id: key_to_id),
     node.properties |> flat_map(p => dag_emit_check_ref_target(node: p, key_to_id: key_to_id)),
     dag_emit_check_optional_ref_target(value: node.type_annotation, key_to_id: key_to_id),
+    dag_emit_check_match_pattern_refs(value: node.match_pattern, key_to_id: key_to_id),
     dag_emit_check_inferred_ref_target(value: node.inferred, key_to_id: key_to_id)
   )
 }
@@ -275,6 +306,22 @@ fn json_optional_inferred_node_ref(value: InferredNode?, key_to_id: Map<String, 
   match value {
     Present { value: inner } => serialize_inferred_node_ref(inferred: inner, key_to_id: key_to_id)
     Absent => "null"
+  }
+}
+
+fn serialize_authored_occurrence(value: AuthoredOccurrence?) -> String {
+  match value {
+    Absent => "null"
+    Present { value: AuthoredDeclarationOccurrence { occurrence: declaration } } =>
+      concat(
+        "{\"category\": \"declaration\", \"id\": ",
+        to_string(i: declaration.identity.value),
+        "}")
+    Present { value: AuthoredReferenceOccurrence { occurrence: reference } } =>
+      concat(
+        "{\"category\": \"reference\", \"id\": ",
+        to_string(i: reference.identity.value),
+        "}")
   }
 }
 
@@ -407,24 +454,28 @@ fn serialize_literal(value: LiteralValue) -> String {
   }
 }
 
-fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_indices: source_indices)),
-    ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices),
+    ", \"occurrence\": ", serialize_authored_occurrence(value: binding.authored_occurrence),
+    ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices, key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match pattern {
     Bind { declaration: declaration } =>
-      concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
+      concat(
+        "{\"kind\": \"Bind\", \"declaration\": ",
+        serialize_node_ref(node: declaration, key_to_id: key_to_id),
+        "}")
     LitPattern { value: inner } =>
       concat("{\"kind\": \"LitPattern\", \"value\": ", serialize_literal(value: inner), "}")
     VariantPattern { name: inner, parent_enum: parent_enum, field_bindings: field_bindings } =>
       concat(
         "{\"kind\": \"VariantPattern\", \"name\": ", json_quote(s: inner),
         ", \"parent_enum\": ", json_optional_string(value: parent_enum),
-        ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices))),
+        ", \"field_bindings\": ", json_list(items: field_bindings |> map(fb => serialize_field_binding(binding: fb, source_indices: source_indices, key_to_id: key_to_id))),
         "}")
     Wildcard => "{\"kind\": \"Wildcard\"}"
   }
@@ -439,7 +490,7 @@ fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key
 
 fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
-    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
+    "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices, key_to_id: key_to_id),
     ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
     ", \"body\": ", serialize_node_ref(node: arm_body(n: arm), key_to_id: key_to_id),
     "}")
@@ -769,6 +820,7 @@ fn serialize_module_imports_json(node: Node, source_indices: Map<String, Newline
 fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
+    ", \"authored_occurrence\": ", serialize_authored_occurrence(value: node.authored_occurrence),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
     ", \"span\": ", serialize_span(span: node.span),
     ", \"ident_span\": ", json_optional_span(value: node.ident_span),
