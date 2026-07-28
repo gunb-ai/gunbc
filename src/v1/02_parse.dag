@@ -49,7 +49,10 @@ import v1.std.core {
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   field_access_base,
   OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
-  OccurrenceTransport,
+  OccurrenceTransport, DeclarationOccurrence, ReferenceOccurrence,
+  OccurrenceCategory, LexicalValueOccurrence, TypeOccurrence,
+  CallableOccurrence, NamespaceSegmentOccurrence, FieldOccurrence,
+  MethodOccurrence,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -107,6 +110,8 @@ type ParseContext {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator?
   occurrence_index: OccurrenceIndex?
+  declaration_occurrences: List<DeclarationOccurrence>?
+  reference_occurrences: List<ReferenceOccurrence>?
 }
 
 type ParseResult {
@@ -141,6 +146,11 @@ type ParsedPatternStampResult {
   ctx: ParseContext
 }
 
+type ParsedOccurrenceRole
+  = ParsedOccurrenceUnclassified
+  | ParsedOccurrenceDeclaration { category: OccurrenceCategory }
+  | ParsedOccurrenceReference { category: OccurrenceCategory }
+
 fn parse_context_occurrence_allocator(ctx: ParseContext) -> OccurrenceIdAllocator {
   match ctx.occurrence_allocator {
     Present { value: allocator } => allocator
@@ -152,6 +162,24 @@ fn parse_context_occurrence_index(ctx: ParseContext) -> OccurrenceIndex {
   match ctx.occurrence_index {
     Present { value: index } => index
     Absent => OccurrenceIndex { entries: [] }
+  }
+}
+
+fn parse_context_declaration_occurrences(
+  ctx: ParseContext
+) -> List<DeclarationOccurrence> {
+  match ctx.declaration_occurrences {
+    Present { value: occurrences } => occurrences
+    Absent => []
+  }
+}
+
+fn parse_context_reference_occurrences(
+  ctx: ParseContext
+) -> List<ReferenceOccurrence> {
+  match ctx.reference_occurrences {
+    Present { value: occurrences } => occurrences
+    Absent => []
   }
 }
 
@@ -895,7 +923,8 @@ fn occurrence_ancestors_push(
 fn stamp_parsed_node_list(
   nodes: List<Node>,
   ancestors: FreeMonoid<OccurrenceId>,
-  ctx: ParseContext
+  ctx: ParseContext,
+  role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
   fold(
     nodes,
@@ -904,7 +933,8 @@ fn stamp_parsed_node_list(
       let stamped = stamp_parsed_node(
         node: node,
         ancestors: ancestors,
-        ctx: acc.ctx
+        ctx: acc.ctx,
+        role: role
       )
       ParsedNodeListStampResult {
         nodes: list_push(acc.nodes, stamped.node),
@@ -916,14 +946,16 @@ fn stamp_parsed_node_list(
 fn stamp_parsed_optional_node(
   node: Node?,
   ancestors: FreeMonoid<OccurrenceId>,
-  ctx: ParseContext
+  ctx: ParseContext,
+  role: ParsedOccurrenceRole
 ) -> ParsedOptionalNodeStampResult {
   match node {
     Present { value: value } =>
       let stamped = stamp_parsed_node(
         node: value,
         ancestors: ancestors,
-        ctx: ctx
+        ctx: ctx,
+        role: role
       )
       ParsedOptionalNodeStampResult {
         node: Present { value: stamped.node },
@@ -944,7 +976,10 @@ fn stamp_parsed_pattern(
       let stamped = stamp_parsed_node(
         node: declaration,
         ancestors: ancestors,
-        ctx: ctx
+        ctx: ctx,
+        role: ParsedOccurrenceDeclaration {
+          category: LexicalValueOccurrence,
+        }
       )
       ParsedPatternStampResult {
         pattern: Present {
@@ -962,7 +997,8 @@ fn stamp_parsed_pattern(
       let stamped = stamp_parsed_node_list(
         nodes: field_bindings,
         ancestors: ancestors,
-        ctx: ctx
+        ctx: ctx,
+        role: ParsedOccurrenceDeclaration { category: FieldOccurrence }
       )
       ParsedPatternStampResult {
         pattern: Present {
@@ -999,7 +1035,8 @@ fn stamp_parsed_inferred(
       let stamped = stamp_parsed_node(
         node: node,
         ancestors: ancestors,
-        ctx: ctx
+        ctx: ctx,
+        role: ParsedOccurrenceReference { category: TypeOccurrence }
       )
       ParsedOptionalNodeStampResult {
         node: Present { value: stamped.node },
@@ -1009,10 +1046,145 @@ fn stamp_parsed_inferred(
   }
 }
 
+fn parsed_occurrence_role_for_node(
+  node: Node,
+  requested: ParsedOccurrenceRole
+) -> ParsedOccurrenceRole {
+  match requested {
+    ParsedOccurrenceUnclassified =>
+      match node.expr_data {
+        ExprLet =>
+          ParsedOccurrenceDeclaration { category: LexicalValueOccurrence }
+        ExprVar { binding_kind: _ } =>
+          ParsedOccurrenceReference { category: LexicalValueOccurrence }
+        ExprFieldAccess { summary: _ } =>
+          ParsedOccurrenceReference { category: FieldOccurrence }
+        ExprMethodCall { method_semantics: _ } =>
+          ParsedOccurrenceReference { category: MethodOccurrence }
+        _ => ParsedOccurrenceUnclassified
+      }
+    _ => requested
+  }
+}
+
+fn parse_context_record_occurrence(
+  ctx: ParseContext,
+  role: ParsedOccurrenceRole,
+  occurrence: OccurrenceId,
+  containment: OccurrenceContainmentPath,
+  diagnostic_span: SourceSpan
+) -> ParseContext {
+  match role {
+    ParsedOccurrenceDeclaration { category: category } =>
+      with(ctx, {
+        declaration_occurrences: Present {
+          value: list_push(
+            parse_context_declaration_occurrences(ctx: ctx),
+            DeclarationOccurrence {
+              occurrence: occurrence,
+              containment: containment,
+              category: category,
+              diagnostic_span: diagnostic_span,
+            }
+          ),
+        },
+      })
+    ParsedOccurrenceReference { category: category } =>
+      with(ctx, {
+        reference_occurrences: Present {
+          value: list_push(
+            parse_context_reference_occurrences(ctx: ctx),
+            ReferenceOccurrence {
+              occurrence: occurrence,
+              containment: containment,
+              category: category,
+              diagnostic_span: diagnostic_span,
+            }
+          ),
+        },
+      })
+    ParsedOccurrenceUnclassified => ctx
+  }
+}
+
+fn stamp_parsed_node_list_with_head_role(
+  nodes: List<Node>,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext,
+  head_role: ParsedOccurrenceRole,
+  tail_role: ParsedOccurrenceRole
+) -> ParsedNodeListStampResult {
+  match first(nodes) {
+    Present { value: head } =>
+      let stamped_head = stamp_parsed_node(
+        node: head,
+        ancestors: ancestors,
+        ctx: ctx,
+        role: head_role
+      )
+      let stamped_tail = stamp_parsed_node_list(
+        nodes: skip(nodes, 1),
+        ancestors: ancestors,
+        ctx: stamped_head.ctx,
+        role: tail_role
+      )
+      ParsedNodeListStampResult {
+        nodes: concat([stamped_head.node], stamped_tail.nodes),
+        ctx: stamped_tail.ctx,
+      }
+    Absent => ParsedNodeListStampResult { nodes: [], ctx: ctx }
+  }
+}
+
+fn stamp_parsed_node_children(
+  node: Node,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext,
+  role: ParsedOccurrenceRole
+) -> ParsedNodeListStampResult {
+  match node.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      stamp_parsed_node_list_with_head_role(
+        nodes: node.children,
+        ancestors: ancestors,
+        ctx: ctx,
+        head_role: ParsedOccurrenceReference { category: CallableOccurrence },
+        tail_role: ParsedOccurrenceUnclassified
+      )
+    ExprLambda =>
+      stamp_parsed_node_list_with_head_role(
+        nodes: node.children,
+        ancestors: ancestors,
+        ctx: ctx,
+        head_role: ParsedOccurrenceUnclassified,
+        tail_role: ParsedOccurrenceDeclaration { category: LexicalValueOccurrence }
+      )
+    _ =>
+      match role {
+        ParsedOccurrenceDeclaration { category: LexicalValueOccurrence } =>
+          stamp_parsed_node_list_with_head_role(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx,
+            head_role: ParsedOccurrenceReference { category: TypeOccurrence },
+            tail_role: ParsedOccurrenceUnclassified
+          )
+        _ =>
+          stamp_parsed_node_list(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx,
+            role: ParsedOccurrenceUnclassified
+          )
+      }
+  }
+}
+
 fn stamp_parsed_node(
   node: Node,
   ancestors: FreeMonoid<OccurrenceId>,
-  ctx: ParseContext
+  ctx: ParseContext,
+  role: ParsedOccurrenceRole
 ) -> ParsedNodeStampResult {
   let allocated = alloc_occurrence_id(
     alloc: parse_context_occurrence_allocator(ctx: ctx)
@@ -1027,6 +1199,10 @@ fn stamp_parsed_node(
     authored_name: node.name,
     diagnostic_span: node.span,
   }
+  let effective_role = parsed_occurrence_role_for_node(
+    node: node,
+    requested: role
+  )
   let indexed_ctx = with(ctx, {
     occurrence_allocator: Present { value: allocated.alloc },
     occurrence_index: Present { value: OccurrenceIndex {
@@ -1039,44 +1215,58 @@ fn stamp_parsed_node(
       ),
     } },
   })
+  let indexed_ctx = parse_context_record_occurrence(
+    ctx: indexed_ctx,
+    role: effective_role,
+    occurrence: occurrence,
+    containment: containment,
+    diagnostic_span: node.span
+  )
   let child_ancestors = occurrence_ancestors_push(
     ancestors: ancestors,
     occurrence: occurrence
   )
-  let children = stamp_parsed_node_list(
-    nodes: node.children,
+  let children = stamp_parsed_node_children(
+    node: node,
     ancestors: child_ancestors,
-    ctx: indexed_ctx
+    ctx: indexed_ctx,
+    role: effective_role
   )
   let params = stamp_parsed_node_list(
     nodes: node.params,
     ancestors: child_ancestors,
-    ctx: children.ctx
+    ctx: children.ctx,
+    role: ParsedOccurrenceDeclaration { category: LexicalValueOccurrence }
   )
   let uses = stamp_parsed_node_list(
     nodes: node.uses,
     ancestors: child_ancestors,
-    ctx: params.ctx
+    ctx: params.ctx,
+    role: ParsedOccurrenceUnclassified
   )
   let properties = stamp_parsed_node_list(
     nodes: node.properties,
     ancestors: child_ancestors,
-    ctx: uses.ctx
+    ctx: uses.ctx,
+    role: ParsedOccurrenceUnclassified
   )
   let body = stamp_parsed_optional_node(
     node: node.body,
     ancestors: child_ancestors,
-    ctx: properties.ctx
+    ctx: properties.ctx,
+    role: ParsedOccurrenceUnclassified
   )
   let transport = stamp_parsed_optional_node(
     node: node.transport,
     ancestors: child_ancestors,
-    ctx: body.ctx
+    ctx: body.ctx,
+    role: ParsedOccurrenceUnclassified
   )
   let annotation = stamp_parsed_optional_node(
     node: node.type_annotation,
     ancestors: child_ancestors,
-    ctx: transport.ctx
+    ctx: transport.ctx,
+    role: ParsedOccurrenceReference { category: TypeOccurrence }
   )
   let inferred = stamp_parsed_inferred(
     inferred: node.inferred,
@@ -1116,11 +1306,11 @@ fn stamp_parsed_node(
   }
 }
 
-fn empty_occurrence_transport(index: OccurrenceIndex) -> OccurrenceTransport {
+fn occurrence_transport_from_parse_context(ctx: ParseContext) -> OccurrenceTransport {
   OccurrenceTransport {
-    index: index,
-    declarations: [],
-    references: [],
+    index: parse_context_occurrence_index(ctx: ctx),
+    declarations: parse_context_declaration_occurrences(ctx: ctx),
+    references: parse_context_reference_occurrences(ctx: ctx),
   }
 }
 
@@ -1138,6 +1328,8 @@ fn parse_with_table_in_occurrence_scope(
     occurrence_index: Present {
       value: OccurrenceIndex { entries: [] },
     },
+    declaration_occurrences: Present { value: [] },
+    reference_occurrences: Present { value: [] },
   }
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
@@ -1145,15 +1337,14 @@ fn parse_with_table_in_occurrence_scope(
       result: ParseResult { module: none, error: r.err },
       intern_table: r.ctx.intern_table,
       occurrence_allocator: parse_context_occurrence_allocator(ctx: r.ctx),
-      occurrence_transport: empty_occurrence_transport(
-        index: parse_context_occurrence_index(ctx: r.ctx)
-      ),
+      occurrence_transport: occurrence_transport_from_parse_context(ctx: r.ctx),
     }
   } else {
     let stamped = stamp_parsed_node(
       node: r.module,
       ancestors: Empty,
-      ctx: r.ctx
+      ctx: r.ctx,
+      role: ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence }
     )
     ParseWithTableResult {
       result: ParseResult {
@@ -1162,9 +1353,7 @@ fn parse_with_table_in_occurrence_scope(
       },
       intern_table: stamped.ctx.intern_table,
       occurrence_allocator: parse_context_occurrence_allocator(ctx: stamped.ctx),
-      occurrence_transport: empty_occurrence_transport(
-        index: parse_context_occurrence_index(ctx: stamped.ctx)
-      ),
+      occurrence_transport: occurrence_transport_from_parse_context(ctx: stamped.ctx),
     }
   }
 }
