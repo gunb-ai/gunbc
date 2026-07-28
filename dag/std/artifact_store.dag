@@ -19,10 +19,10 @@ type ArtifactRealizationInput {
   content_digest: ContentHash
 }
 
-fn artifact_realization_input_digest(input: ArtifactRealizationInput) -> ContentHash {
+fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> ContentHash {
   content_hash_tagged(
-    tag: input.identity,
-    payload: input.content_digest
+    tag: realization_input.identity,
+    payload: realization_input.content_digest
   )
 }
 
@@ -30,9 +30,9 @@ fn artifact_realization_digest(inputs: List<ArtifactRealizationInput>) -> Conten
   fold(
     inputs,
     init: content_hash_atom(value: "artifact_store.realization"),
-    f: (acc, input) => content_hash_combine(
+    f: (acc, realization_input) => content_hash_combine(
       left: acc,
-      right: artifact_realization_input_digest(input: input)
+      right: artifact_realization_input_digest(realization_input: realization_input)
     )
   )
 }
