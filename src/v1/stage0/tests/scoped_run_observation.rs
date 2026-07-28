@@ -12,7 +12,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn primary_fixture() -> (PathBuf, PathBuf) {
-    let root = std::env::temp_dir().join(format!(
+    let root = repo_root().join("target").join(format!(
         "gunbc-scoped-run-primary-{}-{}",
         std::process::id(),
         FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
@@ -240,8 +240,9 @@ fn unscoped_diagnostics_remain_byte_stable() {
 
 #[test]
 fn scoped_declaration_identity_follows_the_selected_function_node() {
-    let fixture_root =
-        std::env::temp_dir().join(format!("gunbc-scoped-run-identity-{}", std::process::id()));
+    let fixture_root = repo_root()
+        .join("target")
+        .join(format!("gunbc-scoped-run-identity-{}", std::process::id()));
     std::fs::create_dir_all(&fixture_root).expect("create identity fixture root");
     let imported = fixture_root.join("imported.dag");
     let entry = fixture_root.join("entry.dag");
