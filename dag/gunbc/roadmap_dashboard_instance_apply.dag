@@ -560,7 +560,7 @@ fn dashboard_health_names_instance(
 }
 
 data dashboard_health_poll_attempts: Int = 31
-data dashboard_health_poll_seconds: Seconds = 2 as Seconds
+data dashboard_health_poll_seconds: Seconds = 2
 
 fn dashboard_verify_health_after_attempts(
   instance: HostDashboardInstance,
@@ -586,7 +586,7 @@ fn dashboard_verify_health_after_attempts(
     let delay = dashboard_local_exec(
       workdir: dashboard_instance_controller_workdir(instance: instance),
       program: "/usr/bin/sleep" as FilePath,
-      args: [to_string(dashboard_health_poll_seconds as Int)],
+      args: [to_string(dashboard_health_poll_seconds)],
     )
     if delay.success {
       dashboard_verify_health_after_attempts(
