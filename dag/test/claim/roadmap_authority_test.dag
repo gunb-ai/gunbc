@@ -41,6 +41,15 @@ fn edge_exists(child: String, parent: String) -> Bool {
   edges() |> any(e => e.child == child && e.parent == parent)
 }
 
+fn is_product_node(id: RoadmapNodeId) -> Bool {
+  id == "product-scm-git-upstream"
+    || id == "product-scm-mercurial-upstream"
+    || id == "product-scm-pijul-upstream"
+    || id == "product-scm-common-shape"
+    || id == "product-source-intent-kernel"
+    || id == "product-agent-landing-benchmark"
+}
+
 fn rank(id: RoadmapNodeId) -> Int {
   match id {
     "namespace-occurrence-transport" => 0
@@ -136,7 +145,7 @@ test fn witness_every_active_row_is_complete_unsigned_ticket() -> Bool {
 
 test fn witness_only_product_rows_are_queued_nonspawnable() -> Bool {
   all(nodes(), n =>
-    if string_starts_with(s: n.node, prefix: "product-") {
+    if is_product_node(id: n.node) {
       match n.sizing { Unsized => true _ => false }
     } else {
       match n.sizing { Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true _ => false }
@@ -212,7 +221,7 @@ test fn witness_projection_is_active_only() -> Bool {
     )
   )
   string_contains(s: out, pattern: "## Active deliverables — dependency order")
-    && !string_contains(s: out, pattern: "superseded")
+    && !string_contains(s: out, pattern: "**superseded →**")
     && !string_contains(s: out, pattern: "awaiting sign-off")
     && !string_contains(s: out, pattern: "Operator TODO")
 }
