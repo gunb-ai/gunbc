@@ -14,6 +14,7 @@ import std.occurrence_identity {
   occurrence_id_eq,
   occurrence_id_allocator_advance_to,
   node_occurrence_identity_minted,
+  occurrence_identity_consumer_red_debts,
 }
 import v2.std.node {
   NodeOccurrenceId,
@@ -124,4 +125,35 @@ test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
     std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
     _ => false
   }
+}
+
+fn occurrence_identity_consumer_red_debt_has(id: String) -> Bool {
+  occurrence_identity_consumer_red_debts
+    |> any(row =>
+      row.id == id &&
+      row.owner == "namespace-canonical-binding" &&
+      string_contains(row.dissolve_on, "DISSOLVE-ON:")
+    )
+}
+
+test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
+  (occurrence_identity_consumer_red_debts |> count) == 6 &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "rebuilt-reference-identity-preservation"
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "one-occurrence-collector-dedupe"
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "structurally-equal-distinct-occurrences"
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "pattern-declaration-reachability"
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "inferred-target-anchor-identity"
+  ) &&
+  occurrence_identity_consumer_red_debt_has(
+    id: "same-spelling-parser-declaration-isolation"
+  )
 }

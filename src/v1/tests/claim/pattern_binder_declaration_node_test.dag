@@ -37,6 +37,7 @@ import std.occurrence_identity {
   DeclarationOccurrence,
   ReferenceOccurrence,
   LexicalValueOccurrence,
+  TypeOccurrence,
   CallableOccurrence,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
@@ -46,7 +47,7 @@ import std.occurrence_identity {
   OccurrenceIdAllocator,
 }
 
-data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch,w_production_frontend_refuses_duplicate_declaration_rows,w_production_frontend_refuses_duplicate_reference_rows"
+data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_let_initializer_retains_lexical_reference_category,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch,w_production_frontend_refuses_duplicate_declaration_rows,w_production_frontend_refuses_duplicate_reference_rows"
 
 data pattern_binder_declaration_node_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
@@ -159,6 +160,95 @@ fn transport_fixture_reference(
   }
 }
 
+fn occurrence_index_has_name(
+  index: OccurrenceIndex,
+  occurrence: OccurrenceId,
+  name: String
+) -> Bool {
+  fold(
+    index.entries,
+    init: false,
+    f: (found, entry) =>
+      found ||
+      (
+        entry.projection.occurrence.value == occurrence.value &&
+        entry.projection.authored_name == name
+      )
+  )
+}
+
+fn lexical_declaration_count_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> Int {
+  fold(
+    transport.declarations,
+    init: 0,
+    f: (total, declaration) =>
+      match declaration.category {
+        LexicalValueOccurrence =>
+          if occurrence_index_has_name(
+            index: transport.index,
+            occurrence: declaration.occurrence,
+            name: name
+          ) {
+            total + 1
+          } else {
+            total
+          }
+        _ => total
+      }
+  )
+}
+
+fn lexical_reference_count_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> Int {
+  fold(
+    transport.references,
+    init: 0,
+    f: (total, reference) =>
+      match reference.category {
+        LexicalValueOccurrence =>
+          if occurrence_index_has_name(
+            index: transport.index,
+            occurrence: reference.occurrence,
+            name: name
+          ) {
+            total + 1
+          } else {
+            total
+          }
+        _ => total
+      }
+  )
+}
+
+fn type_reference_count_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> Int {
+  fold(
+    transport.references,
+    init: 0,
+    f: (total, reference) =>
+      match reference.category {
+        TypeOccurrence =>
+          if occurrence_index_has_name(
+            index: transport.index,
+            occurrence: reference.occurrence,
+            name: name
+          ) {
+            total + 1
+          } else {
+            total
+          }
+        _ => total
+      }
+  )
+}
+
 test fn w_pattern_parser_materializes_dedicated_declaration_nodes() -> Bool {
   parsed_pattern_has_one_binder(
     source: "direct_bind",
@@ -216,6 +306,37 @@ test fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> Bool {
         _ => false
       }
   }
+}
+
+test fn w_let_initializer_retains_lexical_reference_category() -> Bool {
+  let file = "occurrence-let-initializer-role.dag"
+  let source = "module occurrence.let_initializer_role\n\nfn demo(y: Int) -> Int {\n  let x = y\n  x\n}\n"
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file),
+    source_indices: map_insert(
+      empty_map(),
+      file,
+      build_newline_index(file: file, source: source)
+    ),
+    intern_table: empty_intern_table()
+  )
+  parsed.result.error == none &&
+  lexical_declaration_count_named(
+    transport: parsed.occurrence_transport,
+    name: "x"
+  ) == 1 &&
+  lexical_reference_count_named(
+    transport: parsed.occurrence_transport,
+    name: "y"
+  ) == 1 &&
+  type_reference_count_named(
+    transport: parsed.occurrence_transport,
+    name: "y"
+  ) == 0 &&
+  type_reference_count_named(
+    transport: parsed.occurrence_transport,
+    name: "Int"
+  ) == 2
 }
 
 test fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> Bool {
