@@ -5,6 +5,7 @@ import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_
 import std.types { SourceSpan, is_kernel_type }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+import std.algebra { FreeMonoid, Empty, Cons }
 
 
 type TypeEnv {

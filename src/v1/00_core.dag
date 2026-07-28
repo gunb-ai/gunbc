@@ -112,7 +112,7 @@ type ExprData
   | ExprReturn
 
 type MatchPattern
-  = Bind { name: String }
+  = Bind { declaration: Node }
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
@@ -322,6 +322,17 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: expr_data
   }
+}
+
+fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node {
+  make_named_expr_node(
+    name: name,
+    expr_data: NoExprData,
+    children: [],
+    inferred: none,
+    span: span,
+    name_span: span
+  )
 }
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {

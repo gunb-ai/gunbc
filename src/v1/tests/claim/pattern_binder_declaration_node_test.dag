@@ -1,0 +1,141 @@
+module v1.tests.claim.pattern_binder_declaration_node_test
+
+import v1.std.core {
+  Node,
+  NewlineIndex,
+  MatchPattern,
+  Bind,
+  LitPattern,
+  VariantPattern,
+  Wildcard,
+  NoExprData,
+  field_binding_pattern,
+  build_newline_index,
+  empty_intern_table,
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse {
+  ParseContext,
+  token_stream_new,
+  parse_pattern,
+}
+
+data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct"
+
+data pattern_binder_declaration_node_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
+
+type ParsedFixturePattern
+  = ParsedFixturePatternReady { pattern: MatchPattern }
+  | ParsedFixturePatternRefused
+
+fn parse_fixture_pattern(source: String) -> ParsedFixturePattern {
+  let file = "pattern-binder-declaration-node.dag"
+  let index = build_newline_index(file: file, source: source)
+  let result = parse_pattern(
+    tokens: token_stream_new(all: tokenize(source: source, file: file)),
+    ctx: ParseContext {
+      source_indices: map_insert(empty_map(), file, index),
+      intern_table: empty_intern_table(),
+    },
+  )
+  match result.err {
+    Present { value: _ } => ParsedFixturePatternRefused
+    Absent => ParsedFixturePatternReady { pattern: result.pattern }
+  }
+}
+
+fn pattern_binder_named_count(
+  pattern: MatchPattern,
+  name: String
+) -> Int {
+  match pattern {
+    Bind { declaration: declaration } =>
+      if declaration.name == name { 1 } else { 0 }
+    LitPattern { value: _ } => 0
+    Wildcard => 0
+    VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } =>
+      fold(
+        bindings,
+        init: 0,
+        f: (count, binding) =>
+          count + pattern_binder_named_count(
+            pattern: field_binding_pattern(n: binding),
+            name: name,
+          ),
+      )
+  }
+}
+
+fn parsed_pattern_has_one_binder(
+  source: String,
+  name: String
+) -> Bool {
+  match parse_fixture_pattern(source: source) {
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: pattern } =>
+      pattern_binder_named_count(pattern: pattern, name: name) == 1
+  }
+}
+
+test fn w_pattern_parser_materializes_dedicated_declaration_nodes() -> Bool {
+  parsed_pattern_has_one_binder(
+    source: "direct_bind",
+    name: "direct_bind",
+  ) &&
+  parsed_pattern_has_one_binder(
+    source: "Pair { left: explicit_bind }",
+    name: "explicit_bind",
+  ) &&
+  parsed_pattern_has_one_binder(
+    source: "Shorthand { shorthand_only }",
+    name: "shorthand_only",
+  ) &&
+  parsed_pattern_has_one_binder(
+    source: "Left(positional_bind)",
+    name: "positional_bind",
+  ) &&
+  parsed_pattern_has_one_binder(
+    source: "Outer { pair: Pair { left: nested_bind } }",
+    name: "nested_bind",
+  )
+}
+
+test fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> Bool {
+  match parse_fixture_pattern(source: "Shorthand { shorthand_only }") {
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: pattern } =>
+      match pattern {
+        VariantPattern {
+          name: _,
+          parent_enum: _,
+          field_bindings: bindings,
+        } =>
+          (bindings |> count) == 1 &&
+          fold(
+            bindings,
+            init: true,
+            f: (ok, wrapper) =>
+              ok &&
+              wrapper.name == "shorthand_only" &&
+              match field_binding_pattern(n: wrapper) {
+                Bind { declaration: declaration } =>
+                  declaration.name == "shorthand_only" &&
+                  match declaration.expr_data {
+                    NoExprData =>
+                      match declaration.match_pattern {
+                        Present { value: _ } => false
+                        Absent => true
+                      }
+                    _ => false
+                  }
+                _ => false
+              },
+          )
+        _ => false
+      }
+  }
+}
