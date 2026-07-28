@@ -44,7 +44,9 @@ data roadmap_css_repin_stop_note: String = "Re-pinned for U4 (stop from the UI):
 
 data roadmap_css_repin_workflow_lamps_note: String = "Re-pinned 2026-07-26 for workflow lamps v0: the new .workflow-controls wrapper remains the row archetype's third grid occupant while .workflow-strip and .workflow-lamp render the independent Live and Attempted observations. Pending, observed-off, observed-on, and refused each have explicit flat presentation; the compact-width media realization moves the same wrapper across the second row so the new actuator cluster does not overflow. No latch depth styling lands in this slice. Behavioral receipts: workflow_lamps_witness_test (including both symmetric refusal REDs and compact-layout receipt), roadmap_row_witness_test, and the existing sessions/attempts client witnesses. Derived by execution; this digest only pins bytes."
 
-data roadmap_css_lift_parity_digest: String = "3ec3aa0ec8d9b702"
+data roadmap_css_repin_lifecycle_truth_note: String = "Re-pinned 2026-07-27 for dispatch lifecycle truth: the stylesheet changes only because the dispatch button's already-modeled reserved width is re-derived from the new truthful caption set (`dispatch · accepted` and `session · present`) instead of provider process-result words. The observation polling itself is client behavior and adds no CSS rule. Behavioral receipts: provider_lifecycle_witness_test, sessions_panel_witness_test, dispatch_presentation_keystone, and roadmap_tactile_keystone. Derived by execution from this tree; this digest only pins bytes."
+
+data roadmap_css_lift_parity_digest: String = "57831c9c135af27e"
 data moodboard_thesis_themes_lift_parity_digest: String = "69e68066c49667f9"
 
 fn emission_content_digest(s: String) -> String {
