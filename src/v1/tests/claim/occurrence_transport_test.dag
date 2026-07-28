@@ -10,11 +10,16 @@ import std.occurrence_identity {
 
 import v1.std.core {
   Node,
+  MatchPattern,
   Bind,
+  LitPattern,
+  VariantPattern,
+  Wildcard,
   ExprData,
   ExprLet,
   ExprLambda,
   ExprError,
+  ExprMatch,
   make_span,
   leaf_node_with_span,
   make_arm_node,
@@ -167,10 +172,140 @@ fn parse_fixture_param(source: String, occurrence_base: Int) -> Node? {
   }
 }
 
-fn bind_declaration(pattern: v1.std.core.MatchPattern) -> Node? {
+fn parse_fixture_pattern(source: String, occurrence_base: Int) -> MatchPattern? {
+  let file = "occurrence-transport-pattern.dag"
+  let result = parse_pattern(
+    tokens: token_stream_new_at(
+      all: tokenize(source: source, file: file),
+      occurrence_base: occurrence_base,
+    ),
+    ctx: fixture_context(file: file, source: source),
+  )
+  match result.err {
+    Present { value: _ } => none
+    Absent => Present { value: result.pattern }
+  }
+}
+
+fn pattern_declaration_ids(pattern: MatchPattern) -> List<Int> {
   match pattern {
-    Bind { declaration: declaration } => Present { value: declaration }
-    _ => none
+    Bind { declaration: declaration } =>
+      match node_declaration_id(node: declaration) {
+        Present { value: id } => [id]
+        Absent => []
+      }
+    LitPattern { value: _ } => []
+    Wildcard => []
+    VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } =>
+      bindings |> flat_map(binding =>
+        pattern_declaration_ids(pattern: field_binding_pattern(n: binding))
+      )
+  }
+}
+
+fn two_distinct(values: List<Int>) -> Bool {
+  if (values |> count) != 2 {
+    false
+  } else {
+    values |> first != values |> skip(1) |> first
+  }
+}
+
+fn parsed_pattern_has_one_typed_declaration(source: String, occurrence_base: Int) -> Bool {
+  match parse_fixture_pattern(source: source, occurrence_base: occurrence_base) {
+    Absent => false
+    Present { value: pattern } =>
+      (pattern_declaration_ids(pattern: pattern) |> count) == 1
+  }
+}
+
+fn parser_pattern_binder_matrix_is_typed() -> Bool {
+  parsed_pattern_has_one_typed_declaration(
+    source: "direct_bind",
+    occurrence_base: 1000,
+  ) &&
+  parsed_pattern_has_one_typed_declaration(
+    source: "Pair { left: explicit_bind }",
+    occurrence_base: 1100,
+  ) &&
+  parsed_pattern_has_one_typed_declaration(
+    source: "Shorthand { shorthand_bind }",
+    occurrence_base: 1200,
+  ) &&
+  parsed_pattern_has_one_typed_declaration(
+    source: "Left(positional_bind)",
+    occurrence_base: 1300,
+  ) &&
+  parsed_pattern_has_one_typed_declaration(
+    source: "Outer { pair: Pair { left: nested_bind } }",
+    occurrence_base: 1400,
+  )
+}
+
+fn parser_explicit_alias_label_and_declaration_are_distinct() -> Bool {
+  match parse_fixture_pattern(
+    source: "Pair { left: explicit_bind }",
+    occurrence_base: 1500,
+  ) {
+    Absent => false
+    Present { value: VariantPattern {
+      name: _,
+      parent_enum: _,
+      field_bindings: bindings,
+    } } =>
+      match bindings |> first {
+        Absent => false
+        Present { value: binding } =>
+          let declarations = pattern_declaration_ids(
+            pattern: field_binding_pattern(n: binding)
+          )
+          node_reference_id(node: binding) != none &&
+          (declarations |> count) == 1 &&
+          node_reference_id(node: binding).value !=
+            (declarations |> first).value
+      }
+    _ => false
+  }
+}
+
+fn parser_nested_same_spelling_is_distinct() -> Bool {
+  match parse_fixture_pattern(
+    source: "Outer { x, nested: Pair { x } }",
+    occurrence_base: 1600,
+  ) {
+    Absent => false
+    Present { value: pattern } =>
+      two_distinct(values: pattern_declaration_ids(pattern: pattern))
+  }
+}
+
+fn parser_sibling_arm_same_spelling_is_distinct() -> Bool {
+  match parse_fixture_expr(
+    source: "match source { Pair { value: x } => x, Pair { value: x } => x }",
+    occurrence_base: 1700,
+  ) {
+    Absent => false
+    Present { value: expression } =>
+      match expression.expr_data {
+        ExprMatch =>
+          let arms = expression.children |> skip(1)
+          let declarations = arms |> flat_map(arm =>
+            pattern_declaration_ids(pattern: arm_pattern(n: arm))
+          )
+          let references = arms |> flat_map(arm =>
+            match node_reference_id(node: arm_body(n: arm)) {
+              Present { value: id } => [id]
+              Absent => []
+            }
+          )
+          two_distinct(values: declarations) &&
+          two_distinct(values: references)
+        _ => false
+      }
   }
 }
 
@@ -230,7 +365,11 @@ fn parser_function_parameter_and_reference_are_typed() -> Bool {
 test fn occurrence_transport_parser_forms_hold() -> Bool {
   parser_let_and_reference_are_typed_distinct() &&
   parser_lambda_and_reference_are_typed_distinct() &&
-  parser_function_parameter_and_reference_are_typed()
+  parser_function_parameter_and_reference_are_typed() &&
+  parser_pattern_binder_matrix_is_typed() &&
+  parser_explicit_alias_label_and_declaration_are_distinct() &&
+  parser_nested_same_spelling_is_distinct() &&
+  parser_sibling_arm_same_spelling_is_distinct()
 }
 
 fn empty_infer_scope() -> InferScope {
@@ -305,9 +444,7 @@ fn collector_dedupes_one_occurrence() -> Bool {
 fn collector_keeps_structurally_equal_occurrences() -> Bool {
   let first_authored = reference_node(name: "same", id: 801)
   let second_authored = reference_node(name: "same", id: 805)
-  let same_surface =
-    dag_node_surface_fingerprint(node: first_authored) ==
-    dag_node_surface_fingerprint(node: second_authored)
+  let same_surface = dag_node_surface_fingerprint(node: first_authored) == dag_node_surface_fingerprint(node: second_authored)
   let slots = collector_insert(
     node: second_authored,
     slots: collector_insert(node: first_authored, slots: empty_map()),

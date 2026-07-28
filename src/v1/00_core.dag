@@ -330,7 +330,8 @@ fn empty_node_list() -> List<Node> {
 
 fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, ident_span: none, children: children,
+    name: "", ident: none, span: span, ident_span: none,
+    authored_occurrence: none, children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -342,7 +343,9 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
 
 fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
   Node {
-    name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
+    name: name, ident: none, span: span,
+    ident_span: default_ident_span(name: name, span: name_span),
+    authored_occurrence: none, children: children,
     connective: NoConnective,
 
     params: [], inferred: inferred, return_cardinality: Required,
@@ -365,7 +368,8 @@ fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node 
 
 fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
   Node {
-    name: "", span: span, ident_span: none, children: [], connective: NoConnective,
+    name: "", ident: none, span: span, ident_span: none,
+    authored_occurrence: none, children: [], connective: NoConnective,
 
     params: [], inferred: Present { value: CompilerError { message: message, span: span } },
     return_cardinality: Required, uses: [], body: none, transport: none,
@@ -390,7 +394,8 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: Source
 fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node { authored_occurrence: none,
-    name: "", span: span, ident_span: none, children: children, connective: NoConnective,
+    name: "", ident: none, span: span, ident_span: none,
+    children: children, connective: NoConnective,
 
     params: [], inferred: none, return_cardinality: Required,
     uses: [], body: none, transport: none, properties: [],
