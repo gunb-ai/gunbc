@@ -30,6 +30,9 @@ import extdeps.git.object_store {
   StoreObject,
   GitContentAddressReceipt,
   GitHashObjectObserved,
+  GitHashObjectObservationUnavailable,
+  GitCanonicalHashInputReady,
+  GitCanonicalHashInputRefused,
   StoredObject,
   GitPromisorObjectUnavailable,
   GitRepositoryState,
@@ -80,13 +83,12 @@ import extdeps.git.object_store {
   git_model_update_ref_exact,
   git_resolve_direct_ref,
   store_object_kind,
-  git_store_object_canonical_size,
+  git_store_object_canonical_hash_input,
   stored_object_oid,
   git_object_id_format,
   git_object_id_content_hash,
   git_r0_unsupported_boundary,
 }
-import std.measure { byte_size }
 import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 
@@ -240,15 +242,16 @@ fn fixture_content_address(
   oid: GitObjectId,
   object: StoreObject,
 ) -> GitContentAddressReceipt {
-  GitContentAddressReceipt {
-    oid: oid,
-    object_type: store_object_kind(object: object),
-    canonical_size: git_store_object_canonical_size(object: object),
-    canonical_subject: object,
-    producer: GitHashObjectObserved {
-      git_version: "git version 2.39.5",
-      object_format: GitObjectFormatSha1,
-    },
+  match git_store_object_canonical_hash_input(object: object) {
+    GitCanonicalHashInputReady { bytes } =>
+      GitHashObjectObserved {
+        git_version: "git version 2.39.5",
+        object_format: GitObjectFormatSha1,
+        canonical_input: bytes,
+        observed_oid: oid,
+      }
+    GitCanonicalHashInputRefused { cause } =>
+      GitHashObjectObservationUnavailable { cause: cause }
   }
 }
 
@@ -257,6 +260,7 @@ fn fixture_stored_object(
   object: StoreObject,
 ) -> StoredObject {
   StoredObject {
+    oid: oid,
     content_address: fixture_content_address(oid: oid, object: object),
     object: object,
   }
@@ -700,24 +704,27 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
 
 test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
   let repo = fixture_repository()
-  let object = ObjectBlob {
+  let observed_object = ObjectBlob {
     blob: Blob {
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
   }
   let observed = fixture_content_address(
     oid: sha1_blob_regular,
-    object: object,
+    object: observed_object,
   )
   let forged = StoredObject {
-    content_address: GitContentAddressReceipt {
-      oid: observed.oid,
-      object_type: TagObj,
-      canonical_size: observed.canonical_size,
-      canonical_subject: observed.canonical_subject,
-      producer: observed.producer,
+    oid: sha1_blob_regular,
+    content_address: observed,
+    object: ObjectTag {
+      tag: AnnotatedTag {
+        target: sha1_parent_commit,
+        target_type: CommitObj,
+        name: "forged",
+        tagger: fixture_author,
+        message: "forged",
+      }
     },
-    object: object,
   }
   let invalid = GitRepositoryState {
     object_format: repo.object_format,
@@ -738,7 +745,7 @@ test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
   }
 }
 
-test fn witness_git_content_address_binds_subject_and_canonical_size() -> Bool {
+test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() -> Bool {
   let repo = fixture_repository()
   let observed_subject = ObjectBlob {
     blob: Blob {
@@ -749,50 +756,70 @@ test fn witness_git_content_address_binds_subject_and_canonical_size() -> Bool {
     oid: sha1_blob_regular,
     object: observed_subject,
   )
+  let observation_grounded = match receipt {
+    GitHashObjectObserved {
+      git_version: _,
+      object_format,
+      canonical_input,
+      observed_oid,
+    } =>
+      object_format == GitObjectFormatSha1
+        && observed_oid == sha1_blob_regular
+        && bytes_octets(b: canonical_input) == [
+          98, 108, 111, 98, 32, 54, 0,
+          115, 111, 117, 114, 99, 101,
+        ]
+    GitHashObjectObservationUnavailable { cause: _ } => false
+  }
   let different_object = ObjectBlob {
     blob: Blob {
-      content: octets_bytes(o: [114, 117, 110]),
+      content: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
     }
   }
-  let subject_mismatch = StoredObject {
+  let input_mismatch = StoredObject {
+    oid: sha1_blob_regular,
     content_address: receipt,
     object: different_object,
   }
-  let size_mismatch = StoredObject {
-    content_address: GitContentAddressReceipt {
-      oid: receipt.oid,
-      object_type: receipt.object_type,
-      canonical_size: byte_size(count: 99),
-      canonical_subject: receipt.canonical_subject,
-      producer: receipt.producer,
-    },
+  let oid_mismatch = StoredObject {
+    oid: sha1_blob_executable,
+    content_address: fixture_content_address(
+      oid: sha1_blob_regular,
+      object: observed_subject,
+    ),
     object: observed_subject,
   }
   let without_original = repo.objects |> filter(object =>
     !(stored_object_oid(stored: object) == sha1_blob_regular)
   )
-  let subject_repo = GitRepositoryState {
+  let input_repo = GitRepositoryState {
     object_format: repo.object_format,
-    objects: append(without_original, items: [subject_mismatch]),
+    objects: append(without_original, items: [input_mismatch]),
     unavailable: repo.unavailable,
     refs: repo.refs,
     index: repo.index,
     worktree: repo.worktree,
   }
-  let size_repo = GitRepositoryState {
+  let oid_repo = GitRepositoryState {
     object_format: repo.object_format,
-    objects: append(without_original, items: [size_mismatch]),
+    objects: append(
+      repo.objects |> filter(object =>
+        !(stored_object_oid(stored: object) == sha1_blob_executable)
+      ),
+      items: [oid_mismatch],
+    ),
     unavailable: repo.unavailable,
     refs: repo.refs,
     index: repo.index,
     worktree: repo.worktree,
   }
-  match git_lookup_object(repo: subject_repo, oid: sha1_blob_regular) {
+  match git_lookup_object(repo: input_repo, oid: sha1_blob_regular) {
     ObjectCorrupt { oid, reason: _ } =>
-      oid == sha1_blob_regular
-        && match git_lookup_object(repo: size_repo, oid: sha1_blob_regular) {
+      observation_grounded
+        && oid == sha1_blob_regular
+        && match git_lookup_object(repo: oid_repo, oid: sha1_blob_executable) {
           ObjectCorrupt { oid: sized_oid, reason: _ } =>
-            sized_oid == sha1_blob_regular
+            sized_oid == sha1_blob_executable
           _ => false
         }
     _ => false

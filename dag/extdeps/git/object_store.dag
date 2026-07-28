@@ -243,6 +243,10 @@ fn git_lower_hex_nibble(cp: Int) -> Int? {
   }
 }
 
+fn git_octet_of_int(value: Int) -> UInt8 {
+  value
+}
+
 fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
   if text.length() == 0 {
     Present { value: [] }
@@ -266,7 +270,7 @@ fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
               Present { value: rest } =>
                 Present {
                   value: append(
-                    [(high * 16 + low) as UInt8],
+                    [git_octet_of_int(value: high * 16 + low)],
                     items: rest,
                   )
                 }
