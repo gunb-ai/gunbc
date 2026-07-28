@@ -1,6 +1,7 @@
 module gunbc.source_integration_claim_evidence
 
 import std.types { NonEmptyStr, RunKey }
+import std.syntax { SyntaxSpec }
 import std.claim_evidence {
   RecordedFactId,
   RecordedFact,
@@ -12,6 +13,7 @@ import std.claim_evidence {
   EvidenceLink,
   EvidenceInference,
 }
+import extdeps.languages.dag.syntax { dag_syntax_spec }
 import gunbc.native_scm_interaction_contract {
   NativeScmProposalIdentity,
 }
@@ -32,9 +34,9 @@ type SourceIntegrationProposition
 
 type SourceIntegrationClaim = Claim<NativeScmProposalIdentity, NativeScmProposalIdentity, SourceIntegrationProposition, NativeScmProposalIdentity, RunKey>
 
-type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, SourceIntegrationProposition, ReadBackProbe>
+type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 
-type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, SourceIntegrationProposition, ReadBackProbe>
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 
 data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
   label: "decode one authored source binding",
@@ -82,7 +84,7 @@ fn source_binding_capture_inference(
     },
     direction: EvidenceSupports,
     inference_rule: "decoded-binding-supports-capture-only",
-    authority: "dag-source-decoder",
+    authority: dag_syntax_spec,
     provenance: EvidenceProvenance {
       entity: "decoded-source-binding",
       activity: "decode-authored-proposal",
