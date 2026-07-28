@@ -10,7 +10,12 @@ import gunbc.roadmap_component {
   dispatch_button_component, dispatch_client_js_source,
   dispatch_caption_set,
 }
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_label_band_key }
+import gunbc.roadmap_belt_actuate {
+  belt_dispatch_all_status_labels,
+  belt_dispatch_label_band_key,
+  belt_dispatch_disabled_status_label,
+  belt_dispatch_provider_label,
+}
 import gunbc.roadmap_style { roadmap_css }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -74,13 +79,18 @@ test fn witness_located_fields_surface_to_title() -> Bool {
     && string_contains(s: js, pattern: "j.detail")
 }
 
-test fn witness_fresh_dispatch_receipt_names_provider() -> Bool {
+test fn witness_dispatch_receipt_is_provider_agnostic() -> Bool {
   let js = dispatch_client_js_source()
-  any(dispatch_caption_set(), c => c == "dispatch · spawned · codex")
-    && any(dispatch_caption_set(), c => c == "dispatch · disabled")
-    && string_contains(s: js, pattern: "j.provider")
-    && string_contains(s: js, pattern: "' · ' + p")
-    && string_contains(s: js, pattern: "s === 'disabled' ? 'dispatch · ' + s")
+  let captions = dispatch_caption_set()
+  any(captions, c => c == "dispatch · accepted")
+    && any(captions, c => c == "dispatch · disabled")
+    && !any(
+      captions,
+      c => string_contains(s: c, pattern: belt_dispatch_provider_label()),
+    )
+    && !string_contains(s: js, pattern: "j.provider")
+    && string_contains(s: js, pattern: "dispatch · accepted")
+    && string_contains(s: js, pattern: belt_dispatch_disabled_status_label())
 }
 
 test fn witness_js_and_css_share_class_authority() -> Bool {

@@ -22,8 +22,11 @@ import gunbc.roadmap_model {
   section_group,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
 
 fn authority_page_html() -> String {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {
@@ -195,7 +198,10 @@ test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
     && string_contains(s: js, pattern: "gunbcRefreshWorkflow().finally")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
-    && !string_contains(s: js, pattern: "j.ok")
+    && all(
+      belt_dispatch_all_status_labels(),
+      label => string_contains(s: js, pattern: join(["'", label, "'"], "")),
+    )
     && !string_contains(s: js, pattern: "j.node)")
 }
 
