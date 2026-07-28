@@ -32,10 +32,6 @@ data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\
 
 data orch_while_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
 
-data orch_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
-
-data orch_while_body_command: String = "d=$(dirname \"$d\")"
-
 test data orch_while_path_ref: PathIntent = PathRef { name: "d" as NonEmptyStr }
 
 test data orch_while_root_path: PathIntent = PathLiteral {
@@ -67,6 +63,32 @@ test data orch_while_ascent: DirnameAscent = DirnameAscent {
   path: orch_while_path_ref,
   target: "d" as NonEmptyStr
 }
+
+fn orch_while_cond_model_text() -> String {
+  match bash_path_predicate_target_model(predicate: orch_while_predicate) {
+    Accepted { value: source, diagnostics: dg } =>
+      match dg {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn orch_while_body_model_text() -> String {
+  match bash_dirname_ascent_target_model(ascent: orch_while_ascent) {
+    Accepted { value: source, diagnostics: dg } =>
+      match dg {
+        None => source.authority_source_text
+        Some { diagnostics: _ } => ""
+      }
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test data orch_while_cond_command: String = orch_while_cond_model_text()
+
+test data orch_while_body_command: String = orch_while_body_model_text()
 
 test data orch_while_locate_intent: PipelineStep = While {
   cond: ExitZero {
