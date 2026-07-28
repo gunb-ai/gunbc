@@ -257,9 +257,47 @@ type MercurialManifest {
   entries: List<MercurialManifestEntry>
 }
 
+type MercurialRevisionParents
+  = MercurialNoParents
+  | MercurialOneParent { parent: MercurialNodeId }
+  | MercurialTwoParents {
+      first: MercurialNodeId,
+      second: MercurialNodeId,
+    }
+
+type MercurialRevisionParentsFold<R> {
+  no_parents: R
+  one: fn(MercurialNodeId) -> R
+  two: fn(MercurialNodeId, MercurialNodeId) -> R
+}
+
+fn mercurial_revision_parents_fold<R>(
+  parents: MercurialRevisionParents,
+  fold: MercurialRevisionParentsFold<R>,
+) -> R {
+  match parents {
+    MercurialNoParents => fold.no_parents
+    MercurialOneParent { parent } => fold.one(parent)
+    MercurialTwoParents { first, second } => fold.two(first, second)
+  }
+}
+
+fn mercurial_revision_parent_nodes(
+  parents: MercurialRevisionParents,
+) -> List<MercurialNodeId> {
+  mercurial_revision_parents_fold(
+    parents: parents,
+    fold: MercurialRevisionParentsFold {
+      no_parents: [],
+      one: fn(parent) { [parent] },
+      two: fn(first, second) { [first, second] },
+    },
+  )
+}
+
 type MercurialFileRevision {
   node: MercurialNodeId
-  parents: List<MercurialNodeId>
+  parents: MercurialRevisionParents
   copy: MercurialCopyMetadata
   content: Bytes
 }
@@ -267,7 +305,7 @@ type MercurialFileRevision {
 type MercurialChangeset {
   node: MercurialNodeId
   manifest: MercurialNodeId
-  parents: List<MercurialNodeId>
+  parents: MercurialRevisionParents
   branch: MercurialNamedBranchName
   user: NonEmptyStr
   authored_at: Timestamp
@@ -511,6 +549,22 @@ type MercurialProjectionRefusal
   | MercurialDuplicateChangesetNode { changeset: MercurialNodeId }
   | MercurialDuplicateManifestNode { manifest: MercurialNodeId }
   | MercurialDuplicateFileRevisionNode { file_revision: MercurialNodeId }
+  | MercurialDuplicateChangesetParent {
+      changeset: MercurialNodeId,
+      parent: MercurialNodeId,
+    }
+  | MercurialDuplicateFileRevisionParent {
+      file_revision: MercurialNodeId,
+      parent: MercurialNodeId,
+    }
+  | MercurialChangesetAncestryCycle { changeset: MercurialNodeId }
+  | MercurialFileRevisionAncestryCycle {
+      file_revision: MercurialNodeId,
+    }
+  | MercurialHeadSetMismatch {
+      observed: List<MercurialNodeId>,
+      derived: List<MercurialNodeId>,
+    }
   | MercurialMissingManifest {
       changeset: MercurialNodeId,
       manifest: MercurialNodeId,
@@ -937,6 +991,294 @@ type MercurialReferenceCheckOutcome
   = MercurialReferencesValid
   | MercurialReferenceInvalid { cause: MercurialProjectionRefusal }
 
+type MercurialParentEdge {
+  child: MercurialNodeId
+  parent: MercurialNodeId
+}
+
+type MercurialParentWalk {
+  frontier: List<MercurialNodeId>
+  visited: List<MercurialNodeId>
+  found_origin: Bool
+}
+
+type MercurialParentCycleIssue {
+  node: MercurialNodeId
+}
+
+fn mercurial_node_present(
+  nodes: List<MercurialNodeId>,
+  wanted: MercurialNodeId,
+) -> Bool {
+  nodes |> any(node => node == wanted)
+}
+
+fn mercurial_add_node_once(
+  nodes: List<MercurialNodeId>,
+  node: MercurialNodeId,
+) -> List<MercurialNodeId> {
+  if mercurial_node_present(nodes: nodes, wanted: node) {
+    nodes
+  } else {
+    append(nodes, items: [node])
+  }
+}
+
+fn mercurial_parent_edge_targets(
+  edges: List<MercurialParentEdge>,
+  child: MercurialNodeId,
+) -> List<MercurialNodeId> {
+  edges
+    |> filter(edge => edge.child == child)
+    |> map(edge => edge.parent)
+}
+
+fn mercurial_node_reaches_itself(
+  origin: MercurialNodeId,
+  nodes: List<MercurialNodeId>,
+  edges: List<MercurialParentEdge>,
+) -> Bool {
+  let walked = fold(
+    nodes,
+    init: MercurialParentWalk {
+      frontier: mercurial_parent_edge_targets(
+        edges: edges,
+        child: origin,
+      ),
+      visited: [],
+      found_origin: false,
+    },
+    f: fn(state, _) {
+      if state.found_origin {
+        state
+      } else {
+        let found = mercurial_node_present(
+          nodes: state.frontier,
+          wanted: origin,
+        )
+        let visited = fold(
+          state.frontier,
+          init: state.visited,
+          f: mercurial_add_node_once,
+        )
+        let next = state.frontier
+          |> flat_map(node =>
+            mercurial_parent_edge_targets(
+              edges: edges,
+              child: node,
+            )
+          )
+          |> filter(node =>
+            node == origin
+              || !mercurial_node_present(nodes: visited, wanted: node)
+          )
+          |> fold(init: [], f: mercurial_add_node_once)
+        MercurialParentWalk {
+          frontier: next,
+          visited: visited,
+          found_origin: found,
+        }
+      }
+    },
+  )
+  walked.found_origin
+}
+
+fn mercurial_first_parent_cycle(
+  nodes: List<MercurialNodeId>,
+  edges: List<MercurialParentEdge>,
+) -> MercurialParentCycleIssue? {
+  nodes
+    |> filter(node =>
+      mercurial_node_reaches_itself(
+        origin: node,
+        nodes: nodes,
+        edges: edges,
+      )
+    )
+    |> map(node => MercurialParentCycleIssue { node: node })
+    |> first
+}
+
+fn mercurial_changeset_parent_edges(
+  changesets: List<MercurialChangeset>,
+) -> List<MercurialParentEdge> {
+  changesets |> flat_map(changeset =>
+    mercurial_revision_parent_nodes(parents: changeset.parents)
+      |> map(parent => MercurialParentEdge {
+        child: changeset.node,
+        parent: parent,
+      })
+  )
+}
+
+fn mercurial_file_revision_parent_edges(
+  file_revisions: List<MercurialFileRevision>,
+) -> List<MercurialParentEdge> {
+  file_revisions |> flat_map(file_revision =>
+    mercurial_revision_parent_nodes(parents: file_revision.parents)
+      |> map(parent => MercurialParentEdge {
+        child: file_revision.node,
+        parent: parent,
+      })
+  )
+}
+
+fn mercurial_first_duplicate_changeset_parent(
+  changesets: List<MercurialChangeset>,
+) -> MercurialReferenceCheckOutcome {
+  match changesets
+    |> filter(changeset =>
+      mercurial_revision_parents_fold(
+        parents: changeset.parents,
+        fold: MercurialRevisionParentsFold {
+          no_parents: false,
+          one: fn(_) { false },
+          two: fn(first, second) { first == second },
+        },
+      )
+    )
+    |> first {
+    Absent => MercurialReferencesValid
+    Present { value: changeset } =>
+      match changeset.parents {
+        MercurialTwoParents { first, second: _ } =>
+          MercurialReferenceInvalid {
+            cause: MercurialDuplicateChangesetParent {
+              changeset: changeset.node,
+              parent: first,
+            },
+          }
+        _ => MercurialReferencesValid
+      }
+  }
+}
+
+fn mercurial_first_duplicate_file_revision_parent(
+  file_revisions: List<MercurialFileRevision>,
+) -> MercurialReferenceCheckOutcome {
+  match file_revisions
+    |> filter(file_revision =>
+      mercurial_revision_parents_fold(
+        parents: file_revision.parents,
+        fold: MercurialRevisionParentsFold {
+          no_parents: false,
+          one: fn(_) { false },
+          two: fn(first, second) { first == second },
+        },
+      )
+    )
+    |> first {
+    Absent => MercurialReferencesValid
+    Present { value: file_revision } =>
+      match file_revision.parents {
+        MercurialTwoParents { first, second: _ } =>
+          MercurialReferenceInvalid {
+            cause: MercurialDuplicateFileRevisionParent {
+              file_revision: file_revision.node,
+              parent: first,
+            },
+          }
+        _ => MercurialReferencesValid
+      }
+  }
+}
+
+fn mercurial_node_sets_equal(
+  left: List<MercurialNodeId>,
+  right: List<MercurialNodeId>,
+) -> Bool {
+  count(left) == count(right)
+    && all(left, node =>
+      count(left |> filter(other => other == node)) == 1
+        && mercurial_node_present(nodes: right, wanted: node)
+    )
+    && all(right, node =>
+      count(right |> filter(other => other == node)) == 1
+        && mercurial_node_present(nodes: left, wanted: node)
+    )
+}
+
+fn mercurial_derived_open_branch_heads(
+  changesets: List<MercurialChangeset>,
+) -> List<MercurialNodeId> {
+  changesets
+    |> filter(candidate =>
+      !any(changesets, child =>
+        child.branch == candidate.branch
+          && mercurial_node_present(
+            nodes: mercurial_revision_parent_nodes(parents: child.parents),
+            wanted: candidate.node,
+          )
+      )
+    )
+    |> map(changeset => changeset.node)
+}
+
+fn mercurial_validate_history_shape(
+  projection: MercurialRepositoryProjectionContents,
+) -> MercurialReferenceCheckOutcome {
+  match mercurial_first_duplicate_changeset_parent(
+    changesets: projection.changesets,
+  ) {
+    MercurialReferenceInvalid { cause } =>
+      MercurialReferenceInvalid { cause: cause }
+    MercurialReferencesValid =>
+      match mercurial_first_duplicate_file_revision_parent(
+        file_revisions: projection.file_revisions,
+      ) {
+        MercurialReferenceInvalid { cause } =>
+          MercurialReferenceInvalid { cause: cause }
+        MercurialReferencesValid =>
+          match mercurial_first_parent_cycle(
+            nodes: projection.changesets |> map(changeset => changeset.node),
+            edges: mercurial_changeset_parent_edges(
+              changesets: projection.changesets,
+            ),
+          ) {
+            Present { value: issue } => MercurialReferenceInvalid {
+              cause: MercurialChangesetAncestryCycle {
+                changeset: issue.node,
+              },
+            }
+            Absent =>
+              match mercurial_first_parent_cycle(
+                nodes: projection.file_revisions
+                  |> map(file_revision => file_revision.node),
+                edges: mercurial_file_revision_parent_edges(
+                  file_revisions: projection.file_revisions,
+                ),
+              ) {
+                Present { value: issue } => MercurialReferenceInvalid {
+                  cause: MercurialFileRevisionAncestryCycle {
+                    file_revision: issue.node,
+                  },
+                }
+                Absent =>
+                  let observed = projection.heads
+                    |> map(head => head.changeset)
+                  let derived = mercurial_derived_open_branch_heads(
+                    changesets: projection.changesets,
+                  )
+                  if mercurial_node_sets_equal(
+                    left: observed,
+                    right: derived,
+                  ) {
+                    MercurialReferencesValid
+                  } else {
+                    MercurialReferenceInvalid {
+                      cause: MercurialHeadSetMismatch {
+                        observed: observed,
+                        derived: derived,
+                      },
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
 fn mercurial_validate_phase_assignments(
   changesets: List<MercurialChangeset>,
   phases: List<MercurialPhaseEntry>,
@@ -974,7 +1316,7 @@ fn mercurial_validate_phase_assignments(
               }
               MercurialPhaseFound { phase: child_phase } =>
                 fold(
-                  child.parents,
+                  mercurial_revision_parent_nodes(parents: child.parents),
                   init: MercurialReferencesValid,
                   f: fn(parent_found, parent) {
                     match parent_found {
@@ -1053,7 +1395,10 @@ fn mercurial_first_missing_parent(
     match found {
       MercurialReferenceInvalid { cause: _ } => found
       MercurialReferencesValid =>
-        fold(c.parents, init: MercurialReferencesValid, f: fn(parent_found, parent) {
+        fold(
+          mercurial_revision_parent_nodes(parents: c.parents),
+          init: MercurialReferencesValid,
+          f: fn(parent_found, parent) {
         match parent_found {
           MercurialReferenceInvalid { cause: _ } => parent_found
           MercurialReferencesValid =>
@@ -1072,7 +1417,8 @@ fn mercurial_first_missing_parent(
               }
             }
         }
-      })
+          },
+        )
     }
   })
 }
@@ -1120,7 +1466,7 @@ fn mercurial_first_missing_file_revision_dependency(
       MercurialReferenceInvalid { cause: _ } => found
       MercurialReferencesValid =>
         let parents_checked = fold(
-          file_revision.parents,
+          mercurial_revision_parent_nodes(parents: file_revision.parents),
           init: MercurialReferencesValid,
           f: fn(parent_found, parent) {
             match parent_found {
@@ -1259,7 +1605,7 @@ fn mercurial_first_missing_changeset_reference(
   )
 }
 
-fn mercurial_validate_references(
+fn mercurial_validate_references_after_history_shape(
   projection: MercurialRepositoryProjectionContents,
   completeness: MercurialRepositoryCompleteness,
   manifests: List<MercurialManifest>,
@@ -1308,6 +1654,25 @@ fn mercurial_validate_references(
               }
           }
       }
+  }
+}
+
+fn mercurial_validate_references(
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
+  manifests: List<MercurialManifest>,
+  phases: List<MercurialPhaseEntry>,
+) -> MercurialReferenceCheckOutcome {
+  match mercurial_validate_history_shape(projection: projection) {
+    MercurialReferenceInvalid { cause } =>
+      MercurialReferenceInvalid { cause: cause }
+    MercurialReferencesValid =>
+      mercurial_validate_references_after_history_shape(
+        projection: projection,
+        completeness: completeness,
+        manifests: manifests,
+        phases: phases,
+      )
   }
 }
 
@@ -1665,8 +2030,9 @@ fn mercurial_named_branch_changesets(
 
 type MercurialConditionalAdvanceCapability
   = MercurialConditionalAdvanceUnavailable { reason: NonEmptyStr }
-  | MercurialConditionalAdvanceGrounded { transport_receipt: NonEmptyStr }
 
 data mercurial_r0_conditional_advance: MercurialConditionalAdvanceCapability = MercurialConditionalAdvanceUnavailable {
     reason: "R0 has no executing transaction transport that grounds the target policy's conditional-advance guarantee"
   }
+
+data mercurial_history_shape_boundary_note: NonEmptyStr = "MercurialRevisionParents makes the upstream zero/one/two-parent bound structural for both changelog and filelog revisions. Decode refuses duplicate parents, self- or multi-revision ancestry cycles, and an observed open-named-branch head set that differs from the head set derived from the captured changeset graph. A partial projection establishes only that captured fragment; declared missing changesets remain an explicit completeness bound. R0 exposes no caller-constructible grounded conditional-advance arm: that capability can enter only with the later executing transport and its typed read-back receipt."

@@ -16,6 +16,8 @@ import extdeps.mercurial {
   MercurialPath,
   MercurialNotCopied,
   MercurialCopiedFrom,
+  MercurialNoParents,
+  MercurialOneParent,
   MercurialFileRevision,
   MercurialManifestWire,
   MercurialManifestWireEntry,
@@ -147,13 +149,13 @@ fn mercurial_live_projection_decodes(
                   file_revisions: [
                     MercurialFileRevision {
                       node: f0,
-                      parents: [],
+                      parents: MercurialNoParents,
                       copy: MercurialNotCopied,
                       content: octets_bytes(o: [109, 97, 105, 110]),
                     },
                     MercurialFileRevision {
                       node: fl,
-                      parents: [],
+                      parents: MercurialNoParents,
                       copy: MercurialNotCopied,
                       content: octets_bytes(
                         o: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103],
@@ -161,7 +163,7 @@ fn mercurial_live_projection_decodes(
                     },
                     MercurialFileRevision {
                       node: fbin,
-                      parents: [f0],
+                      parents: MercurialOneParent { parent: f0 },
                       copy: MercurialCopiedFrom {
                         path: live_path_source,
                         file_revision: f0,
@@ -170,7 +172,7 @@ fn mercurial_live_projection_decodes(
                     },
                     MercurialFileRevision {
                       node: f2,
-                      parents: [f0],
+                      parents: MercurialOneParent { parent: f0 },
                       copy: MercurialNotCopied,
                       content: octets_bytes(
                         o: [109, 97, 105, 110, 115, 105, 100, 101],
@@ -233,7 +235,7 @@ fn mercurial_live_projection_decodes(
                     MercurialChangeset {
                       node: c0,
                       manifest: m0,
-                      parents: [],
+                      parents: MercurialNoParents,
                       branch: "default",
                       user: "author@example.invalid",
                       authored_at: "0 0",
@@ -242,7 +244,7 @@ fn mercurial_live_projection_decodes(
                     MercurialChangeset {
                       node: c1,
                       manifest: m1,
-                      parents: [c0],
+                      parents: MercurialOneParent { parent: c0 },
                       branch: "default",
                       user: "author@example.invalid",
                       authored_at: "1 0",
@@ -251,7 +253,7 @@ fn mercurial_live_projection_decodes(
                     MercurialChangeset {
                       node: c2,
                       manifest: m2,
-                      parents: [c0],
+                      parents: MercurialOneParent { parent: c0 },
                       branch: "default",
                       user: "author@example.invalid",
                       authored_at: "2 0",
