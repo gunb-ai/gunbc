@@ -97,7 +97,11 @@ fn token_stream_first(stream: TokenStream) -> Token? {
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
-  with(stream, { pos: stream.pos + n })
+  TokenStream {
+    all: stream.all,
+    pos: stream.pos + n,
+    occurrence_base: stream.occurrence_base,
+  }
 }
 
 fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
@@ -1090,12 +1094,15 @@ fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   match form {
     Present { value: f } => {
       let result = parse_item_by_form(tokens: tokens, ctx: ctx, form: f)
-      with(result, {
+      ItemResult {
         item: with_declaration_occurrence(
           node: result.item,
           tokens: token_stream_advance(stream: tokens, n: 1),
         ),
-      })
+        tokens: result.tokens,
+        ctx: result.ctx,
+        err: result.err,
+      }
     }
     Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
   }
@@ -1626,12 +1633,15 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
         }
       }
       let result = finish_type_expr_from_name(tokens: r.tokens, ctx: ctx, type_name: r.name, start_span: r.span)
-      with(result, {
+      TypeResult {
         type_expr: with_primary_reference_occurrence(
           node: result.type_expr,
           tokens: occurrence_tokens,
         ),
-      })
+        tokens: result.tokens,
+        ctx: result.ctx,
+        err: result.err,
+      }
     }
     _ => TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected type expression", span: span) } }
   }
@@ -3414,7 +3424,19 @@ fn parse_bare_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     tokens: declaration_tokens,
   )
   if count(cr.constraints) > 0 {
-    let node = with(node, { properties: cr.constraints })
+    let node = Node {
+      name: node.name, ident: node.ident, span: node.span,
+      ident_span: node.ident_span,
+      authored_occurrence: node.authored_occurrence,
+      children: node.children, params: node.params, inferred: node.inferred,
+      return_cardinality: node.return_cardinality, uses: node.uses,
+      body: node.body, connective: node.connective,
+      transport: node.transport, properties: cr.constraints,
+      type_annotation: node.type_annotation,
+      is_self_recursive: node.is_self_recursive,
+      has_non_tail_self_call: node.has_non_tail_self_call,
+      match_pattern: node.match_pattern, expr_data: node.expr_data,
+    }
     ExprResult { expr: node, tokens: cr.tokens, ctx: cr.ctx, err: none }
   } else {
     ExprResult { expr: node, tokens: cr.tokens, ctx: cr.ctx, err: none }
@@ -3714,12 +3736,15 @@ fn parse_ident_expr(tokens: TokenStream, ctx: ParseContext, name: String) -> Exp
   } else {
     if is_uppercase_start(name: name) && tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
       let result = parse_record_literal(tokens: tokens, ctx: ctx, name: name, span: span)
-      with(result, {
+      ExprResult {
         expr: with_primary_reference_occurrence(
           node: result.expr,
           tokens: occurrence_tokens,
         ),
-      })
+        tokens: result.tokens,
+        ctx: result.ctx,
+        err: result.err,
+      }
     } else {
       ExprResult {
         expr: with_primary_reference_occurrence(

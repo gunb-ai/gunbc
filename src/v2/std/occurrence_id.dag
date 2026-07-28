@@ -2,10 +2,12 @@ module v2.std.occurrence_id
 
 import v2.std.node { OccurrenceId }
 import std.occurrence_identity {
-  occurrence_id_allocator_initial_shared,
-  alloc_occurrence_id_from_next,
-  occurrence_id_allocator_advance_from_next,
-  occurrence_id_values_eq,
+  AuthoredOccurrenceId,
+  AuthoredOccurrenceIdAllocator,
+  authored_occurrence_id_allocator_initial,
+  alloc_authored_occurrence_id,
+  authored_occurrence_id_eq,
+  authored_occurrence_id_allocator_advance_to,
 }
 
 data occurrence_identity_v2_facade_note: String = "Source-compatible v2 facade over std.occurrence_identity while existing v2 consumers still import or qualify v2.std.occurrence_id. Its bodies only project shared authority results into legacy record shapes; it contains no allocator, advance, equality, name, span, or category rule."
@@ -22,12 +24,14 @@ type OccurrenceIdAllocResult {
 }
 
 fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
-  let shared = occurrence_id_allocator_initial_shared()
+  let shared = authored_occurrence_id_allocator_initial()
   OccurrenceIdAllocator { next_id: shared.next_id }
 }
 
 fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
-  let shared = alloc_occurrence_id_from_next(next_id: alloc.next_id)
+  let shared = alloc_authored_occurrence_id(
+    alloc: AuthoredOccurrenceIdAllocator { next_id: alloc.next_id },
+  )
   OccurrenceIdAllocResult {
     id: OccurrenceId { value: shared.id.value },
     alloc: OccurrenceIdAllocator { next_id: shared.alloc.next_id },
@@ -35,15 +39,18 @@ fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult 
 }
 
 fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
-  occurrence_id_values_eq(left: left.value, right: right.value)
+  authored_occurrence_id_eq(
+    left: AuthoredOccurrenceId { value: left.value },
+    right: AuthoredOccurrenceId { value: right.value },
+  )
 }
 
 fn occurrence_id_allocator_advance_to(
   alloc: OccurrenceIdAllocator,
   min_next: Int
 ) -> OccurrenceIdAllocator {
-  let shared = occurrence_id_allocator_advance_from_next(
-    next_id: alloc.next_id,
+  let shared = authored_occurrence_id_allocator_advance_to(
+    alloc: AuthoredOccurrenceIdAllocator { next_id: alloc.next_id },
     min_next: min_next,
   )
   OccurrenceIdAllocator { next_id: shared.next_id }

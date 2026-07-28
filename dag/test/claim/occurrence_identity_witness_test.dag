@@ -2,7 +2,7 @@ module test.claim.occurrence_identity_witness_test
 
 import std.types { Bool }
 import std.occurrence_identity {
-  OccurrenceId,
+  AuthoredOccurrenceId,
   OccurrenceSynthetic,
   OccurrenceMinted,
   AuthoredDeclarationOccurrence,
@@ -13,10 +13,10 @@ import std.occurrence_identity {
   ReferenceOccurrenceAccepted,
   ReferenceOccurrenceWrongCategory,
   ReferenceOccurrenceMalformed,
-  occurrence_id_allocator_initial,
-  alloc_occurrence_id,
-  occurrence_id_eq,
-  occurrence_id_allocator_advance_to,
+  authored_occurrence_id_allocator_initial,
+  alloc_authored_occurrence_id,
+  authored_occurrence_id_eq,
+  authored_occurrence_id_allocator_advance_to,
   occurrence_node_minted,
   declaration_occurrence_for_token,
   primary_reference_occurrence_for_token,
@@ -35,24 +35,26 @@ import v2.std.node {
 }
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
-  occurrence_id_allocator_initial().next_id == 0
+  authored_occurrence_id_allocator_initial().next_id == 0
 }
 
 test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
-  let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
-  let second = alloc_occurrence_id(alloc: first.alloc)
+  let first = alloc_authored_occurrence_id(
+    alloc: authored_occurrence_id_allocator_initial(),
+  )
+  let second = alloc_authored_occurrence_id(alloc: first.alloc)
   first.id.value == 0
     && second.id.value == 1
-    && !occurrence_id_eq(left: first.id, right: second.id)
+    && !authored_occurrence_id_eq(left: first.id, right: second.id)
 }
 
 test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
-  let initial = occurrence_id_allocator_initial()
-  let advanced = occurrence_id_allocator_advance_to(
+  let initial = authored_occurrence_id_allocator_initial()
+  let advanced = authored_occurrence_id_allocator_advance_to(
     alloc: initial,
     min_next: 7,
   )
-  let unchanged = occurrence_id_allocator_advance_to(
+  let unchanged = authored_occurrence_id_allocator_advance_to(
     alloc: advanced,
     min_next: 3,
   )
@@ -80,7 +82,7 @@ test fn occurrence_identity_authored_categories_are_disjoint_holds() -> Bool {
 
 test fn occurrence_identity_legacy_to_shared_to_legacy_round_trip_holds() -> Bool {
   let legacy_minted = node_occurrence_id_from_shared(
-    shared: OccurrenceMinted { id: OccurrenceId { value: 41 } },
+    shared: OccurrenceMinted { id: AuthoredOccurrenceId { value: 41 } },
   )
   let shared_minted = node_occurrence_id_to_shared(legacy: legacy_minted)
   let legacy_minted_again = node_occurrence_id_from_shared(shared: shared_minted)
@@ -98,7 +100,9 @@ test fn occurrence_identity_legacy_to_shared_to_legacy_round_trip_holds() -> Boo
 }
 
 test fn occurrence_identity_shared_to_legacy_to_shared_round_trip_holds() -> Bool {
-  let shared_minted = occurrence_node_minted(id: OccurrenceId { value: 53 })
+  let shared_minted = occurrence_node_minted(
+    id: AuthoredOccurrenceId { value: 53 },
+  )
   let shared_minted_again = node_occurrence_id_to_shared(
     legacy: node_occurrence_id_from_shared(shared: shared_minted),
   )
@@ -122,25 +126,35 @@ test fn occurrence_identity_legacy_shared_semantic_equivalence_holds() -> Bool {
     )
     && node_occurrence_id_semantically_equivalent(
       legacy: node_occurrence_id_from_shared(
-        shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+        shared: OccurrenceMinted {
+          id: AuthoredOccurrenceId { value: 67 },
+        },
       ),
-      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+      shared: OccurrenceMinted {
+        id: AuthoredOccurrenceId { value: 67 },
+      },
     )
     && !node_occurrence_id_semantically_equivalent(
       legacy: SyntheticOccurrence,
-      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+      shared: OccurrenceMinted {
+        id: AuthoredOccurrenceId { value: 67 },
+      },
     )
     && !node_occurrence_id_semantically_equivalent(
       legacy: node_occurrence_id_from_shared(
-        shared: OccurrenceMinted { id: OccurrenceId { value: 68 } },
+        shared: OccurrenceMinted {
+          id: AuthoredOccurrenceId { value: 68 },
+        },
       ),
-      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+      shared: OccurrenceMinted {
+        id: AuthoredOccurrenceId { value: 67 },
+      },
     )
 }
 
 test fn occurrence_identity_wrong_category_and_malformed_are_red_holds() -> Bool {
   let declaration_wrong = match declaration_occurrence_from_identity(
-    identity: OccurrenceId { value: 1 },
+    identity: AuthoredOccurrenceId { value: 1 },
   ) {
     DeclarationOccurrenceWrongCategory { identity: identity } =>
       identity.value == 1
@@ -148,7 +162,7 @@ test fn occurrence_identity_wrong_category_and_malformed_are_red_holds() -> Bool
     DeclarationOccurrenceMalformed { identity: _ } => false
   }
   let reference_wrong = match reference_occurrence_from_identity(
-    identity: OccurrenceId { value: 4 },
+    identity: AuthoredOccurrenceId { value: 4 },
   ) {
     ReferenceOccurrenceWrongCategory { identity: identity } =>
       identity.value == 4
@@ -156,14 +170,14 @@ test fn occurrence_identity_wrong_category_and_malformed_are_red_holds() -> Bool
     ReferenceOccurrenceMalformed { identity: _ } => false
   }
   let declaration_malformed = match declaration_occurrence_from_identity(
-    identity: OccurrenceId { value: 3 },
+    identity: AuthoredOccurrenceId { value: 3 },
   ) {
     DeclarationOccurrenceMalformed { identity: identity } =>
       identity.value == 3
     _ => false
   }
   let reference_malformed = match reference_occurrence_from_identity(
-    identity: OccurrenceId { value: -1 },
+    identity: AuthoredOccurrenceId { value: -1 },
   ) {
     ReferenceOccurrenceMalformed { identity: identity } =>
       identity.value == -1
