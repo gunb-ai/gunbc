@@ -2,8 +2,6 @@ module test.claim.mercurial_upstream_model_witness
 
 import extdeps.mercurial {
   MercurialNodeId,
-  MercurialNodeId,
-  MercurialNodeId,
   MercurialNodeIdentityObservation,
   MercurialChangesetNodeIdentity,
   MercurialNodeIdentityWrongLength,
@@ -40,7 +38,6 @@ import extdeps.mercurial {
   MercurialDecoded,
   MercurialDecodeRefused,
   MercurialRepositoryUnavailable,
-  MercurialInvalidNodeIdentity,
   MercurialMissingCopySourceRevision,
   MercurialMissingPhase,
   MercurialDuplicatePhase,
@@ -71,27 +68,50 @@ import extdeps.mercurial {
   mercurial_repository_contents,
   mercurial_projection_map_contents,
   mercurial_r0_conditional_advance,
-  mercurial_node_identity_syntax,
-  MercurialNodeIdentitySyntaxAccepted,
-  MercurialNodeIdentitySyntaxRefused,
+  mercurial_decode_node_identity,
+  MercurialNodeIdentityDecoded,
+  MercurialNodeIdentityDecodeRefused,
   mercurial_upstream_version,
 }
 import std.bytes { octets_bytes }
+import std.integer { UInt8 }
 
-data hg_c0: MercurialNodeId = "1111111111111111111111111111111111111111"
-data hg_c1: MercurialNodeId = "2222222222222222222222222222222222222222"
-data hg_c2: MercurialNodeId = "3333333333333333333333333333333333333333"
-data hg_missing_c: MercurialNodeId = "4444444444444444444444444444444444444444"
-data hg_invalid_short: MercurialNodeId = "x"
-data hg_invalid_non_hex: MercurialNodeId = "gggggggggggggggggggggggggggggggggggggggg"
-data hg_invalid_uppercase: MercurialNodeId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+fn repeated_mercurial_node_id(octet: UInt8) -> MercurialNodeId {
+  MercurialNodeId {
+    octet00: octet,
+    octet01: octet,
+    octet02: octet,
+    octet03: octet,
+    octet04: octet,
+    octet05: octet,
+    octet06: octet,
+    octet07: octet,
+    octet08: octet,
+    octet09: octet,
+    octet10: octet,
+    octet11: octet,
+    octet12: octet,
+    octet13: octet,
+    octet14: octet,
+    octet15: octet,
+    octet16: octet,
+    octet17: octet,
+    octet18: octet,
+    octet19: octet,
+  }
+}
 
-data hg_manifest: MercurialNodeId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data hg_file_regular: MercurialNodeId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data hg_file_executable: MercurialNodeId = "cccccccccccccccccccccccccccccccccccccccc"
-data hg_file_symlink: MercurialNodeId = "dddddddddddddddddddddddddddddddddddddddd"
-data hg_file_missing: MercurialNodeId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-data hg_file_undeclared: MercurialNodeId = "ffffffffffffffffffffffffffffffffffffffff"
+data hg_c0: MercurialNodeId = repeated_mercurial_node_id(octet: 17)
+data hg_c1: MercurialNodeId = repeated_mercurial_node_id(octet: 34)
+data hg_c2: MercurialNodeId = repeated_mercurial_node_id(octet: 51)
+data hg_missing_c: MercurialNodeId = repeated_mercurial_node_id(octet: 68)
+
+data hg_manifest: MercurialNodeId = repeated_mercurial_node_id(octet: 170)
+data hg_file_regular: MercurialNodeId = repeated_mercurial_node_id(octet: 187)
+data hg_file_executable: MercurialNodeId = repeated_mercurial_node_id(octet: 204)
+data hg_file_symlink: MercurialNodeId = repeated_mercurial_node_id(octet: 221)
+data hg_file_missing: MercurialNodeId = repeated_mercurial_node_id(octet: 238)
+data hg_file_undeclared: MercurialNodeId = repeated_mercurial_node_id(octet: 255)
 
 data hg_path_regular: MercurialPath = MercurialPath {
   octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
@@ -416,29 +436,6 @@ fn projection_with_changesets(
   )
 }
 
-fn projection_with_replaced_root_node(
-  node: MercurialNodeId,
-) -> MercurialRepositoryProjection {
-  projection_with_changesets(
-    projection: fixture_projection(),
-    changesets: fixture_changesets() |> map(changeset =>
-      if changeset.node == hg_c0 {
-        MercurialChangeset {
-          node: node,
-          manifest: changeset.manifest,
-          parents: changeset.parents,
-          branch: changeset.branch,
-          user: changeset.user,
-          authored_at: changeset.authored_at,
-          description: changeset.description,
-        }
-      } else {
-        changeset
-      }
-    ),
-  )
-}
-
 fn projection_with_local_revisions(
   projection: MercurialRepositoryProjection,
   local_revisions: List<MercurialLocalRevisionEntry>,
@@ -507,47 +504,54 @@ test fn witness_mercurial_upstream_authority_is_version_pinned() -> Bool {
     && mercurial_upstream_version.patch == 3
 }
 
-test fn witness_mercurial_invalid_node_identity_refuses_at_ingestion() -> Bool {
-  match mercurial_decode_projection(
-    projection: projection_with_replaced_root_node(node: hg_invalid_short),
+test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
+  match mercurial_decode_node_identity(
+    observation: MercurialNodeIdentityObservation {
+      role: MercurialChangesetNodeIdentity,
+      text: "1111111111111111111111111111111111111111",
+    },
   ) {
-    MercurialDecodeRefused {
-      cause: MercurialInvalidNodeIdentity {
-        observation,
-        cause: MercurialNodeIdentityWrongLength { observed },
-      },
-    } =>
-      observed == 1
-        && observation.text == "x"
-        && match observation.role {
-          MercurialChangesetNodeIdentity => true
-          _ => false
-        }
+    MercurialNodeIdentityDecoded { node } => node == hg_c0
     _ => false
   }
 }
 
-test fn witness_mercurial_node_identity_syntax_refuses_noncanonical_text() -> Bool {
-  let non_hex = mercurial_node_identity_syntax(
+test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool {
+  let short = mercurial_decode_node_identity(
     observation: MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
-      text: hg_invalid_non_hex as NonEmptyStr,
+      text: "x",
     },
   )
-  let uppercase = mercurial_node_identity_syntax(
+  let non_hex = mercurial_decode_node_identity(
     observation: MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
-      text: hg_invalid_uppercase as NonEmptyStr,
+      text: "gggggggggggggggggggggggggggggggggggggggg",
     },
   )
-  match non_hex {
-    MercurialNodeIdentitySyntaxRefused {
-      cause: MercurialNodeIdentityNonHexadecimal,
-    } => match uppercase {
-      MercurialNodeIdentitySyntaxRefused {
-        cause: MercurialNodeIdentityNonCanonicalUppercase,
-      } => true
-      _ => false
+  let uppercase = mercurial_decode_node_identity(
+    observation: MercurialNodeIdentityObservation {
+      role: MercurialChangesetNodeIdentity,
+      text: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    },
+  )
+  match short {
+    MercurialNodeIdentityDecodeRefused {
+      cause: MercurialNodeIdentityWrongLength { observed },
+    } => if observed == 1 {
+      match non_hex {
+        MercurialNodeIdentityDecodeRefused {
+          cause: MercurialNodeIdentityNonHexadecimal,
+        } => match uppercase {
+          MercurialNodeIdentityDecodeRefused {
+            cause: MercurialNodeIdentityNonCanonicalUppercase,
+          } => true
+          _ => false
+        }
+        _ => false
+      }
+    } else {
+      false
     }
     _ => false
   }

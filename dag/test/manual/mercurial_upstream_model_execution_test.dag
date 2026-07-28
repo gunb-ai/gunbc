@@ -4,6 +4,12 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.gunbc
 import gunbc.output_policy { ExpectSuccess }
+import extdeps.mercurial {
+  MercurialNodeIdentityObservation,
+  MercurialChangesetNodeIdentity,
+  MercurialNodeIdentityDecoded,
+  mercurial_decode_node_identity,
+}
 import test.claim.mercurial_upstream_model_witness {
   mercurial_r0_fixture_expected_execution_receipt,
 }
@@ -12,6 +18,18 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data mercurial_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Mercurial R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp/Mkdir/Test/Remove, Filesystem.Write, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. A real Mercurial CLI creates three changesets on two heads, observes portable node identities separately from clone-local revision numbers, reads a bookmark and local tag, checks public/draft/secret phases, copy metadata, manifest executable/symlink flags, repository requirements, and runs `hg verify`. Changeset identities are computed by Mercurial and checked as distinct 40-character upstream identities rather than embedded constants. Local recipe: put a real `hg` on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/mercurial_upstream_model_execution_test.dag --function witness_mercurial_cli_fixture_projects_and_independently_reads_back."
+
+fn mercurial_wire_identity_decodes(text: String) -> Bool {
+  match mercurial_decode_node_identity(
+    observation: MercurialNodeIdentityObservation {
+      role: MercurialChangesetNodeIdentity,
+      text: text,
+    },
+  ) {
+    MercurialNodeIdentityDecoded { node: _ } => true
+    _ => false
+  }
+}
 
 fn mercurial_r0_typed_execution_read_back() -> String {
   let fixture = shell.Mktemp.Dir()
@@ -253,9 +271,11 @@ fn mercurial_r0_typed_execution_read_back() -> String {
       && symlink_present.success
       && cleaned.success
 
-    let identities_grounded = string_length(s: trim(s: c0.stdout)) == 40
-      && string_length(s: trim(s: c1.stdout)) == 40
-      && string_length(s: trim(s: c2.stdout)) == 40
+    let identities_grounded = mercurial_wire_identity_decodes(
+      text: trim(s: c0.stdout),
+    )
+      && mercurial_wire_identity_decodes(text: trim(s: c1.stdout))
+      && mercurial_wire_identity_decodes(text: trim(s: c2.stdout))
       && !(trim(s: c0.stdout) == trim(s: c1.stdout))
       && !(trim(s: c0.stdout) == trim(s: c2.stdout))
       && !(trim(s: c1.stdout) == trim(s: c2.stdout))

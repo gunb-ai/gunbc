@@ -61,9 +61,28 @@ data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVer
 
 data mercurial_upstream_version_note: NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
 
-type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
-type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
-type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
+type MercurialNodeId {
+  octet00: UInt8
+  octet01: UInt8
+  octet02: UInt8
+  octet03: UInt8
+  octet04: UInt8
+  octet05: UInt8
+  octet06: UInt8
+  octet07: UInt8
+  octet08: UInt8
+  octet09: UInt8
+  octet10: UInt8
+  octet11: UInt8
+  octet12: UInt8
+  octet13: UInt8
+  octet14: UInt8
+  octet15: UInt8
+  octet16: UInt8
+  octet17: UInt8
+  octet18: UInt8
+  octet19: UInt8
+}
 
 type MercurialNodeIdentityRole
   = MercurialChangesetNodeIdentity
@@ -72,7 +91,7 @@ type MercurialNodeIdentityRole
 
 type MercurialNodeIdentityObservation {
   role: MercurialNodeIdentityRole
-  text: NonEmptyStr
+  text: String
 }
 
 type MercurialNodeIdentitySyntaxRefusal
@@ -80,18 +99,92 @@ type MercurialNodeIdentitySyntaxRefusal
   | MercurialNodeIdentityNonHexadecimal
   | MercurialNodeIdentityNonCanonicalUppercase
 
-type MercurialNodeIdentitySyntaxOutcome
-  = MercurialNodeIdentitySyntaxAccepted
-  | MercurialNodeIdentitySyntaxRefused {
+type MercurialNodeIdentityDecodeOutcome
+  = MercurialNodeIdentityDecoded { node: MercurialNodeId }
+  | MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentitySyntaxRefusal,
     }
 
-fn mercurial_node_identity_syntax(
+fn mercurial_lower_hex_nibble(cp: Int) -> Int? {
+  if cp >= 48 && cp <= 57 {
+    Present { value: cp - 48 }
+  } else if cp >= 97 && cp <= 102 {
+    Present { value: cp - 87 }
+  } else {
+    none
+  }
+}
+
+fn mercurial_octet_of_int(value: Int) -> UInt8 {
+  value
+}
+
+fn mercurial_decode_lower_hex_octets(text: String) -> List<UInt8>? {
+  if text.length() == 0 {
+    Present { value: [] }
+  } else if text.length() < 2 {
+    none
+  } else {
+    match mercurial_lower_hex_nibble(
+      cp: code_point(substring(s: text, start: 0, end: 1)),
+    ) {
+      Absent => none
+      Present { value: high } =>
+        match mercurial_lower_hex_nibble(
+          cp: code_point(substring(s: text, start: 1, end: 2)),
+        ) {
+          Absent => none
+          Present { value: low } =>
+            match mercurial_decode_lower_hex_octets(
+              text: substring(s: text, start: 2, end: text.length()),
+            ) {
+              Absent => none
+              Present { value: rest } =>
+                Present {
+                  value: append(
+                    [mercurial_octet_of_int(value: high * 16 + low)],
+                    items: rest,
+                  )
+                }
+            }
+        }
+    }
+  }
+}
+
+fn mercurial_node_id_from_octets(
+  octets: List<UInt8>,
+) -> MercurialNodeId {
+  MercurialNodeId {
+    octet00: octets.first(),
+    octet01: octets.skip(n: 1).first(),
+    octet02: octets.skip(n: 2).first(),
+    octet03: octets.skip(n: 3).first(),
+    octet04: octets.skip(n: 4).first(),
+    octet05: octets.skip(n: 5).first(),
+    octet06: octets.skip(n: 6).first(),
+    octet07: octets.skip(n: 7).first(),
+    octet08: octets.skip(n: 8).first(),
+    octet09: octets.skip(n: 9).first(),
+    octet10: octets.skip(n: 10).first(),
+    octet11: octets.skip(n: 11).first(),
+    octet12: octets.skip(n: 12).first(),
+    octet13: octets.skip(n: 13).first(),
+    octet14: octets.skip(n: 14).first(),
+    octet15: octets.skip(n: 15).first(),
+    octet16: octets.skip(n: 16).first(),
+    octet17: octets.skip(n: 17).first(),
+    octet18: octets.skip(n: 18).first(),
+    octet19: octets.skip(n: 19).first(),
+  }
+}
+
+fn mercurial_decode_node_identity(
   observation: MercurialNodeIdentityObservation,
-) -> MercurialNodeIdentitySyntaxOutcome {
-  let text = observation.text as String
+) -> MercurialNodeIdentityDecodeOutcome {
+  let text = observation.text
   if text.length() != 40 {
-    MercurialNodeIdentitySyntaxRefused {
+    MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityWrongLength { observed: text.length() },
     }
   } else if !all(
@@ -101,15 +194,31 @@ fn mercurial_node_identity_syntax(
         || (cp >= 65 && cp <= 70)
         || (cp >= 97 && cp <= 102),
   ) {
-    MercurialNodeIdentitySyntaxRefused {
+    MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityNonHexadecimal,
     }
   } else if any(chars(s: text), cp => cp >= 65 && cp <= 70) {
-    MercurialNodeIdentitySyntaxRefused {
+    MercurialNodeIdentityDecodeRefused {
       cause: MercurialNodeIdentityNonCanonicalUppercase,
     }
   } else {
-    MercurialNodeIdentitySyntaxAccepted
+    match mercurial_decode_lower_hex_octets(text: text) {
+      Absent => MercurialNodeIdentityDecodeRefused {
+        cause: MercurialNodeIdentityNonHexadecimal,
+      }
+      Present { value: octets } =>
+        if count(octets) == 20 {
+          MercurialNodeIdentityDecoded {
+            node: mercurial_node_id_from_octets(octets: octets),
+          }
+        } else {
+          MercurialNodeIdentityDecodeRefused {
+            cause: MercurialNodeIdentityWrongLength {
+              observed: count(octets) * 2,
+            },
+          }
+        }
+    }
   }
 }
 
@@ -402,11 +511,7 @@ fn mercurial_projection_map_contents(
 }
 
 type MercurialProjectionRefusal
-  = MercurialInvalidNodeIdentity {
-      observation: MercurialNodeIdentityObservation,
-      cause: MercurialNodeIdentitySyntaxRefusal,
-    }
-  | MercurialUnknownManifestFlag {
+  = MercurialUnknownManifestFlag {
       path: MercurialPath,
       flag: String,
     }
@@ -1315,112 +1420,6 @@ fn mercurial_validate_partial_projection(
   }
 }
 
-fn mercurial_changeset_node_identity(
-  changeset: MercurialNodeId,
-) -> MercurialNodeIdentityObservation {
-  MercurialNodeIdentityObservation {
-    role: MercurialChangesetNodeIdentity,
-    text: changeset as NonEmptyStr,
-  }
-}
-
-fn mercurial_manifest_node_identity(
-  manifest: MercurialNodeId,
-) -> MercurialNodeIdentityObservation {
-  MercurialNodeIdentityObservation {
-    role: MercurialManifestNodeIdentity,
-    text: manifest as NonEmptyStr,
-  }
-}
-
-fn mercurial_file_revision_node_identity(
-  file_revision: MercurialNodeId,
-) -> MercurialNodeIdentityObservation {
-  MercurialNodeIdentityObservation {
-    role: MercurialFileRevisionNodeIdentity,
-    text: file_revision as NonEmptyStr,
-  }
-}
-
-fn mercurial_projection_node_identities(
-  projection: MercurialRepositoryProjectionContents,
-  completeness: MercurialRepositoryCompleteness,
-) -> List<MercurialNodeIdentityObservation> {
-  let present = concat(
-    projection.changesets
-      |> map(changeset =>
-        mercurial_changeset_node_identity(changeset: changeset.node)
-      ),
-    concat(
-      projection.manifests
-        |> map(manifest =>
-          mercurial_manifest_node_identity(manifest: manifest.node)
-        ),
-      projection.file_revisions
-        |> map(file_revision =>
-          mercurial_file_revision_node_identity(
-            file_revision: file_revision.node,
-          )
-        ),
-    ),
-  )
-  let declared_missing = match completeness {
-    MercurialContentsComplete => []
-    MercurialContentsPartial {
-      missing_changesets,
-      missing_manifests,
-      missing_file_revisions,
-    } => concat(
-      missing_changesets
-        |> map(changeset =>
-          mercurial_changeset_node_identity(changeset: changeset)
-        ),
-      concat(
-        missing_manifests
-          |> map(manifest =>
-            mercurial_manifest_node_identity(manifest: manifest)
-          ),
-        missing_file_revisions
-          |> map(file_revision =>
-            mercurial_file_revision_node_identity(
-              file_revision: file_revision,
-            )
-          ),
-      ),
-    )
-  }
-  append(present, items: declared_missing)
-}
-
-fn mercurial_validate_node_identities(
-  projection: MercurialRepositoryProjectionContents,
-  completeness: MercurialRepositoryCompleteness,
-) -> MercurialReferenceCheckOutcome {
-  fold(
-    mercurial_projection_node_identities(
-      projection: projection,
-      completeness: completeness,
-    ),
-    init: MercurialReferencesValid,
-    f: fn(found, observation) {
-      match found {
-        MercurialReferenceInvalid { cause: _ } => found
-        MercurialReferencesValid =>
-          match mercurial_node_identity_syntax(observation: observation) {
-            MercurialNodeIdentitySyntaxAccepted => MercurialReferencesValid
-            MercurialNodeIdentitySyntaxRefused { cause } =>
-              MercurialReferenceInvalid {
-                cause: MercurialInvalidNodeIdentity {
-                  observation: observation,
-                  cause: cause,
-                },
-              }
-          }
-      }
-    },
-  )
-}
-
 fn mercurial_decode_accessible_projection(
   projection: MercurialRepositoryProjectionContents,
   completeness: MercurialRepositoryCompleteness,
@@ -1433,14 +1432,7 @@ fn mercurial_decode_accessible_projection(
         MercurialPhaseDecodeRefused { cause } =>
           MercurialDecodeRefused { cause: cause }
         MercurialPhasesDecoded { phases } =>
-          match mercurial_validate_node_identities(
-            projection: projection,
-            completeness: completeness,
-          ) {
-            MercurialReferenceInvalid { cause } =>
-              MercurialDecodeRefused { cause: cause }
-            MercurialReferencesValid =>
-              match mercurial_duplicate_manifest(manifests: manifests) {
+          match mercurial_duplicate_manifest(manifests: manifests) {
             MercurialDuplicateManifestFound { manifest: duplicate } =>
               MercurialDecodeRefused {
                 cause: MercurialDuplicateManifestNode { manifest: duplicate }
@@ -1503,7 +1495,6 @@ fn mercurial_decode_accessible_projection(
                     }
                   }
               }
-          }
           }
       }
   }
