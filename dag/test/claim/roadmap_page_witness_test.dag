@@ -47,7 +47,7 @@ test fn witness_authority_serializes_with_structure() -> Bool {
 test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
   string_contains(
     s: authority_page_html(),
-    pattern: "requires all: product-scm-git-upstream, product-scm-mercurial-upstream, product-scm-pijul-upstream",
+    pattern: "requires all: v1-materialization-kernel, v1-emitter-fixed-point",
   )
 }
 
