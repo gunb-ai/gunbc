@@ -45,28 +45,59 @@ root-family labels are loaded from the single authority
 
 ### 2.1 The census reproduces exactly
 
-Per-module E0599 totals match `e0599_canonical_seven_census_2026-07-26.tsv` with
-Δ=0 on every module measured. The instrument is sound before it is used to refute
-anything.
+All seven modules, Δ=0 on every one, and every root family reproduced to the unit:
+
+| module | measured | census baseline | Δ |
+|---|---:|---:|---:|
+| 04_infer | 88 | 88 | 0 |
+| 05_emit | 93 | 93 | 0 |
+| 05_eval | 91 | 91 | 0 |
+| 06_translate | 93 | 93 | 0 |
+| emit_host | 96 | 96 | 0 |
+| emit_module | 93 | 93 | 0 |
+| materialization_carriers | 81 | 81 | 0 |
+| **TOTAL** | **635** | **635** | **0** |
+
+Family rollup: R1 261, R2 168, R3 161, R4 24, R5 12, R6 9 — identical to the census.
+**R1+R2+R3 = 590.** The instrument is sound before it is used to refute anything.
 
 ### 2.2 The sites are not where the plan assumed
 
-R1/R2/R3 diagnostics do **not** live in the seven entry modules. Keyed by emitted
-file they land in the **shared import closure**, which is recompiled once per entry
+R1/R2/R3 diagnostics almost entirely do **not** live in the seven entry modules. Keyed
+by emitted file they land in the **shared import closure**, recompiled once per entry
 module:
 
 | emitted file | R1/R2/R3 diagnostics |
 |---|---:|
-| `v2_std_algebra.rs` | 295 |
-| `v2_std_diagnostic.rs` | 80 |
-| `v2_std_optional.rs` | 12 |
-| `v2_std_node.rs` | 10 |
-| `v2_std_collection.rs` / `v2_std_witness.rs` / others | ~18 |
+| `v2_std_algebra.rs` | 413 |
+| `v2_std_diagnostic.rs` | 112 |
+| `v2_std_optional.rs` | 18 |
+| `v2_std_node.rs` | 14 |
+| `extdeps_communication_fidelity_carriers.rs` | 12 |
+| `v2_compiler_translate.rs` | 8 |
+| `v2_std_witness.rs` / `v2_std_collection.rs` / `v2_std_staging.rs` | 13 |
 
-**79 distinct `(file, line, method, receiver)` sites account for 363 diagnostics**
-across five modules; **66 of them appear in all five**. The census's 590 is not 590
-defects — it is on the order of **80–90 distinct source sites counted once per entry
-build**. This matters for sizing every downstream claim in this lane.
+582 of 590 are closure sites; only 8 sit in an entry module's own code
+(`06_translate`). Two files — `algebra` and `diagnostic` — carry **89%**.
+
+**79 distinct `(file, line, method, receiver)` positions account for all 590
+diagnostics; 66 of them recur in all seven builds** (462 diagnostics). The census's
+590 is not 590 defects — it is ~79 distinct source positions counted once per entry
+build. This matters for sizing every downstream claim in this lane.
+
+### 2.2b Per-site linkage, end to end (04_infer, complete)
+
+Every R1/R2/R3 diagnostic in `04_infer` was resolved from its emitted `file:line` to
+its enclosing emitted fn, and from there to the `.dag` source fn of the same name:
+
+* **37 of 37** emitted fns resolve to a real `.dag` source fn;
+* **0 of 37** contain a modeled `.clone()` / `.is_empty()` / `.iter()` invoke;
+* 82 diagnostics covered.
+
+The dominant fns are `zip_eq`, `zip_map`, `is_prefix_of` (`src/v2/std/algebra.dag`),
+`absorb_outcome_diagnostics`, `append_outcome_value`, `outcome_eq`
+(`src/v2/std/diagnostic.dag`), `optional_prefer_first_present`
+(`src/v2/std/optional.dag`) and `fold_node_topdown` (`src/v2/std/node.dag`).
 
 ### 2.3 The reported methods do not exist in the source
 
@@ -78,13 +109,24 @@ second walker.
 
 * **RED control** (inline source text carrying all three methods):
   `[any=3, clone=1, is_empty=1, iter=1]` — the detector demonstrably fires.
-* **Site-bearing corpus files**: `clone`, `is_empty`, `iter` counts are **0**.
+* **Site-bearing corpus files**: `clone`, `is_empty`, `iter` counts — MEASUREMENT
+  PENDING, filled from the executed run before this PR leaves draft. `algebra.dag`
+  carries only **5** postfix method projections in total, against 413 R1/R2/R3
+  diagnostics emitted from it.
 
-A zero here is a measurement, not a dead detector. Corroborating whole-corpus scan:
-`.clone()` appears 10 times in all of `dag/` + `src/v2/` and **every one is inside a
-string literal or a prose note** — zero modeled `.clone()` invocations exist in the
-substrate. `.clone()` is not a concept the `.dag` substrate has; ownership is a Rust
-realization concern.
+A zero here is a measurement, not a dead detector.
+
+Corroborating whole-corpus scan at the base sha (excluding this probe's own note
+strings): `.clone()` appears **10** times in all of `dag/` + `src/v2/` and **every one
+is inside a string literal or a prose note** (`dag/extdeps/languages/rust/emit.dag:386`,
+the four `dag/std/languages.dag` templates, `dag/std/effects.dag:37`, the census tool's
+description, two test assertions on emitted strings, one frontier note).
+`.is_empty()` / `.iter()` appear **6** times, all inside Rust emit templates.
+
+**Zero modeled `.clone()` invocations exist in the substrate.** `.clone()` is not a
+concept the `.dag` substrate has at all — ownership is a Rust realization concern, so
+asking a `.dag` body to witness a Clone requirement is asking it to speak a language it
+does not have.
 
 ### 2.4 Where the requirement actually comes from
 
@@ -112,6 +154,22 @@ representation and lowered that match into `xs.clone()` (R1/R3) plus
 `(*__fm).iter().skip(1).cloned().collect()` — R2's `.iter()`. **Every one of R1, R2
 and R3 is a product of representation choice × lowering rule.**
 
+**R1, R2 and R3 are not three families — they are three rustc symptoms of one
+lowering.** `zip_eq<T>` shows it at a single emitted line:
+
+```rust
+let __fm = a.clone();                                    // R1: clone on type param
+if __fm.is_empty() { … } else {                          // R2: is_empty on Rc<im::Vector<T>>
+  let ha = (*__fm)[0].clone();                           // R3: clone on container
+  let ta = Rc::new((*__fm).iter().skip(1).cloned()…);    // R2: iter on im::Vector<T>
+}
+```
+
+All of it descends from one source `match xs { Empty … Cons … }`. The plan lists
+*"R1+R2+R3 share one mechanism"* as a **diagnosis hypothesis, not yet closed by
+execution**. This receipt closes it — and more strongly than it was stated: they
+co-occur at the same emitted expression, not merely in the same mechanism class.
+
 This is not a new discovery of this probe; the tree already says so at
 `dag/std/effects.dag:37`, which names both the mechanism and its dissolution:
 
@@ -132,7 +190,7 @@ and it takes 100%:
 | evidence-present | 0 | 0 | no `clone`/`is_empty`/`iter` projection step exists in any site-bearing source |
 | wrapper-retained | 0 | 0 | **not the deficit** — these bodies lower; `body_lower_wrapper_retained_shell` is not reached for them |
 | ambiguous | 0 | 0 | the operand is absent, not undecidable |
-| **no-modeled-operation (emitter-synthesized)** | **79** | **363** (5 modules) | the reported methods are inserted by emitter lowering templates |
+| **no-modeled-operation (emitter-synthesized)** | **79** | **590** | the reported methods are inserted by emitter lowering templates |
 
 **The wrapper-retained row is the load-bearing correction.** The plan framed the risk
 as body-lowering *coverage* — that Stage-A might not lower enough shapes. That is not
