@@ -42,81 +42,75 @@ data orch_while_golden_note: String = "Goldens are hand-authored bytes independe
 
 data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
 
-fn orch_while_locate_intent() -> PipelineStep {
-  While {
-    cond: ExitZero {
-      run: Run {
-        command: ci_floor_peak_while_cond_command,
-        env: [],
-        redirect: Absent,
-        capture: Absent
-      }
-    },
-    body: Pipeline {
-      steps: [
-        Do {
-          run: Run {
-            command: ci_floor_peak_while_body_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
-          }
-        }
-      ],
-      on_failure: FailFast
+test data orch_while_locate_intent: PipelineStep = While {
+  cond: ExitZero {
+    run: Run {
+      command: ci_floor_peak_while_cond_command,
+      env: [],
+      redirect: Absent,
+      capture: Absent
     }
+  },
+  body: Pipeline {
+    steps: [
+      Do {
+        run: Run {
+          command: ci_floor_peak_while_body_command,
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
+    on_failure: FailFast
   }
 }
 
-fn orch_while_locate_perturbed_intent() -> PipelineStep {
-  While {
-    cond: ExitZero {
-      run: Run {
-        command: concat(ci_floor_peak_while_cond_command, " # perturbed"),
-        env: [],
-        redirect: Absent,
-        capture: Absent
-      }
-    },
-    body: Pipeline {
-      steps: [
-        Do {
-          run: Run {
-            command: ci_floor_peak_while_body_command,
-            env: [],
-            redirect: Absent,
-            capture: Absent
-          }
-        }
-      ],
-      on_failure: FailFast
+test data orch_while_locate_perturbed_intent: PipelineStep = While {
+  cond: ExitZero {
+    run: Run {
+      command: concat(ci_floor_peak_while_cond_command, " # perturbed"),
+      env: [],
+      redirect: Absent,
+      capture: Absent
     }
+  },
+  body: Pipeline {
+    steps: [
+      Do {
+        run: Run {
+          command: ci_floor_peak_while_body_command,
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
+    on_failure: FailFast
   }
 }
 
-fn orch_while_locate_body_perturbed_intent() -> PipelineStep {
-  While {
-    cond: ExitZero {
-      run: Run {
-        command: ci_floor_peak_while_cond_command,
-        env: [],
-        redirect: Absent,
-        capture: Absent
-      }
-    },
-    body: Pipeline {
-      steps: [
-        Do {
-          run: Run {
-            command: concat(ci_floor_peak_while_body_command, " # perturbed"),
-            env: [],
-            redirect: Absent,
-            capture: Absent
-          }
-        }
-      ],
-      on_failure: FailFast
+test data orch_while_locate_body_perturbed_intent: PipelineStep = While {
+  cond: ExitZero {
+    run: Run {
+      command: ci_floor_peak_while_cond_command,
+      env: [],
+      redirect: Absent,
+      capture: Absent
     }
+  },
+  body: Pipeline {
+    steps: [
+      Do {
+        run: Run {
+          command: concat(ci_floor_peak_while_body_command, " # perturbed"),
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      }
+    ],
+    on_failure: FailFast
   }
 }
 
@@ -143,7 +137,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
             capture: Absent
           }
         },
-        orch_while_locate_intent()
+        orch_while_locate_intent
       ],
       on_failure: FailFast
     },
