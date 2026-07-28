@@ -1,12 +1,6 @@
 module v2.test.fixture.e0599_phase_a.carries_realization_methods
 
-# RED control for the Phase A body-evidence probe.
-#
-# This fixture deliberately carries the three postfix method projections the P-fn
-# carrier would need to witness (`.clone()`, `.is_empty()`, `.iter()`). It exists so
-# that a ZERO count over the real corpus is a measurement rather than a dead
-# detector: the same accessor that returns 0 on `src/v2/std/algebra.dag` must return
-# non-zero here. Never imported by production code.
+data e0599pa_fixture_note: String = "RED control for the Phase A body-evidence probe. Carries the three postfix method projections the P-fn carrier would need to witness (.clone/.is_empty/.iter) so that a ZERO count over the real corpus is a measurement rather than a dead detector: the accessor that returns 0 on src/v2/std/algebra.dag must return non-zero here. Never imported by production code."
 
 fn e0599pa_fixture_clone_site(xs: FreeMonoid<Int>) -> FreeMonoid<Int> {
   xs.clone()

@@ -11,7 +11,7 @@ fn e0599pa_parse_text_optional(source_text: String) -> Optional<Node> {
     Accepted { value: stream, diagnostics: _ } =>
       match parse_module(tokens: stream, grammar: lm.grammar) {
         Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: tree, diagnostics: _ } => optional_present(value: tree)
+        Accepted { value: artifact, diagnostics: _ } => optional_present(value: artifact.tree)
       }
   }
 }
