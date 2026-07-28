@@ -1,0 +1,321 @@
+module v2.workflow.effect_plan_bash_materialize
+
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_command_from_lits
+}
+import v2.std.algebra {
+  HeadAbsent,
+  HeadFound,
+  TailAbsent,
+  TailFound,
+  list_head,
+  list_tail
+}
+import v2.std.collection { List, list_at_optional }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.effect_plan {
+  BoundedPoll,
+  Call,
+  Do,
+  EffectPlan,
+  EffectPlanStep,
+  For,
+  If,
+  Let,
+  Retry,
+  While
+}
+import v2.std.node { Node }
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterializationRefused,
+  ArgvMaterialized,
+  ArgvRefusalCause,
+  BoundOperationInvocation,
+  OperationRef
+}
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.orchestration {
+  Continue,
+  FailFast,
+  FailurePolicy
+}
+import v2.std.text { String }
+import v2.workflow.bash_command_fold_serialize {
+  bash_fold_serialize_node
+}
+
+data effect_plan_bash_materialize_authority_note: String = "Model-only Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv. FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, second operation registry, or production consumer is introduced."
+
+type EffectPlanBashUnsupportedStep
+  = UnsupportedIf
+  | UnsupportedFor
+  | UnsupportedWhile
+  | UnsupportedBoundedPoll
+  | UnsupportedRetry
+  | UnsupportedLet
+  | UnsupportedCall
+
+type EffectPlanBashRefusalCause
+  = UnsupportedFailurePolicy { policy: FailurePolicy }
+  | UnsupportedEffectPlanStep { kind: EffectPlanBashUnsupportedStep }
+  | OperationArgvRefused { cause: ArgvRefusalCause }
+  | ArgumentContainsNul { argument_index: Int }
+  | BashGrammarEmissionRefused { diagnostics: NonEmptyDiagnostics }
+
+type EffectPlanBashRefusal {
+  step_index: Int
+  operation: Optional<OperationRef>
+  cause: EffectPlanBashRefusalCause
+}
+
+type EffectPlanBashEncoding
+  = EffectPlanBashEmpty
+  | EffectPlanBashEncoded { statement: Node }
+
+type EffectPlanBashEncodeResult
+  = EffectPlanBashEncodingAccepted { encoding: EffectPlanBashEncoding }
+  | EffectPlanBashEncodingRefused { refusal: EffectPlanBashRefusal }
+
+type EffectPlanBashMaterialization
+  = EffectPlanBashMaterialized { source: String }
+  | EffectPlanBashMaterializationRefused { refusal: EffectPlanBashRefusal }
+
+fn effect_plan_bash_refuse(
+  step_index: Int,
+  operation: Optional<OperationRef>,
+  cause: EffectPlanBashRefusalCause
+) -> EffectPlanBashEncodeResult {
+  EffectPlanBashEncodingRefused {
+    refusal: EffectPlanBashRefusal {
+      step_index: step_index,
+      operation: operation,
+      cause: cause
+    }
+  }
+}
+
+fn effect_plan_bash_argv_nul_index(
+  argv: List<String>,
+  index: Int
+) -> Optional<Int> {
+  match list_at_optional(xs: argv, index: index) {
+    Present { value: argument } =>
+      if string_contains(s: argument, pattern: "\u{0000}") {
+        optional_present(value: index)
+      } else {
+        effect_plan_bash_argv_nul_index(argv: argv, index: index + 1)
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn effect_plan_bash_encode_invocation(
+  invocation: BoundOperationInvocation,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  let at = invocation.at
+  match shell_materialize_operation_argv(
+    at.path,
+    at.service,
+    at.operation,
+    invocation.bindings
+  ) {
+    ArgvMaterialized { argv: argv } =>
+      match effect_plan_bash_argv_nul_index(argv: argv, index: 0) {
+        Present { value: argument_index } =>
+          effect_plan_bash_refuse(
+            step_index: step_index,
+            operation: Present { value: at },
+            cause: ArgumentContainsNul { argument_index: argument_index }
+          )
+        Absent =>
+          EffectPlanBashEncodingAccepted {
+            encoding: EffectPlanBashEncoded {
+              statement: bash_build_command_from_lits(lits: argv)
+            }
+          }
+      }
+    ArgvMaterializationRefused { at: refused_at, cause: cause } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Present { value: refused_at },
+        cause: OperationArgvRefused { cause: cause }
+      )
+  }
+}
+
+fn effect_plan_bash_encode_step(
+  step: EffectPlanStep<BoundOperationInvocation>,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  match step {
+    Do { effect: invocation } =>
+      effect_plan_bash_encode_invocation(
+        invocation: invocation,
+        step_index: step_index
+      )
+    If { cond: _, then_: _, else_: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedIf
+        }
+      )
+    For { binder: _, over: _, body: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedFor
+        }
+      )
+    While { cond: _, body: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedWhile
+        }
+      )
+    BoundedPoll { max_attempts: _, body: _, success: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedBoundedPoll
+        }
+      )
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedRetry
+        }
+      )
+    Let { name: _, value: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedLet
+        }
+      )
+    Call { callee: _, args: _ } =>
+      effect_plan_bash_refuse(
+        step_index: step_index,
+        operation: Absent,
+        cause: UnsupportedEffectPlanStep {
+          kind: UnsupportedCall
+        }
+      )
+  }
+}
+
+fn effect_plan_bash_and_then(
+  left: EffectPlanBashEncoding,
+  right: EffectPlanBashEncoding
+) -> EffectPlanBashEncoding {
+  match left {
+    EffectPlanBashEmpty => right
+    EffectPlanBashEncoded { statement: left_statement } =>
+      match right {
+        EffectPlanBashEmpty => left
+        EffectPlanBashEncoded { statement: right_statement } =>
+          EffectPlanBashEncoded {
+            statement: bash_build_and_then(
+              left: left_statement,
+              right: right_statement
+            )
+          }
+      }
+  }
+}
+
+fn effect_plan_bash_encode_steps(
+  steps: List<EffectPlanStep<BoundOperationInvocation>>,
+  step_index: Int
+) -> EffectPlanBashEncodeResult {
+  match list_head(xs: steps) {
+    HeadAbsent =>
+      EffectPlanBashEncodingAccepted { encoding: EffectPlanBashEmpty }
+    HeadFound { value: step } =>
+      match effect_plan_bash_encode_step(step: step, step_index: step_index) {
+        EffectPlanBashEncodingRefused { refusal: refusal } =>
+          EffectPlanBashEncodingRefused { refusal: refusal }
+        EffectPlanBashEncodingAccepted { encoding: first } =>
+          match list_tail(xs: steps) {
+            TailAbsent =>
+              EffectPlanBashEncodingAccepted { encoding: first }
+            TailFound { tail: rest } =>
+              match effect_plan_bash_encode_steps(
+                steps: rest,
+                step_index: step_index + 1
+              ) {
+                EffectPlanBashEncodingRefused { refusal: refusal } =>
+                  EffectPlanBashEncodingRefused { refusal: refusal }
+                EffectPlanBashEncodingAccepted { encoding: tail_encoding } =>
+                  EffectPlanBashEncodingAccepted {
+                    encoding: effect_plan_bash_and_then(
+                      left: first,
+                      right: tail_encoding
+                    )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn effect_plan_bash_encode(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> EffectPlanBashEncodeResult {
+  match plan.on_failure {
+    Continue =>
+      effect_plan_bash_refuse(
+        step_index: -1,
+        operation: Absent,
+        cause: UnsupportedFailurePolicy { policy: Continue }
+      )
+    FailFast =>
+      effect_plan_bash_encode_steps(steps: plan.steps, step_index: 0)
+  }
+}
+
+fn effect_plan_bash_materialize(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> EffectPlanBashMaterialization {
+  match effect_plan_bash_encode(plan: plan) {
+    EffectPlanBashEncodingRefused { refusal: refusal } =>
+      EffectPlanBashMaterializationRefused { refusal: refusal }
+    EffectPlanBashEncodingAccepted { encoding: encoding } =>
+      match encoding {
+        EffectPlanBashEmpty =>
+          EffectPlanBashMaterialized { source: "" }
+        EffectPlanBashEncoded { statement: statement } =>
+          match bash_fold_serialize_node(stmt: statement) {
+            Accepted { value: source, diagnostics: _ } =>
+              EffectPlanBashMaterialized { source: source }
+            Rejected { diagnostics: diagnostics } =>
+              EffectPlanBashMaterializationRefused {
+                refusal: EffectPlanBashRefusal {
+                  step_index: -1,
+                  operation: Absent,
+                  cause: BashGrammarEmissionRefused {
+                    diagnostics: diagnostics
+                  }
+                }
+              }
+          }
+      }
+  }
+}

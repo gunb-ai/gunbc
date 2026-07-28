@@ -26,6 +26,23 @@ type OperationInputBinding {
   value: OperationInputValue
 }
 
+type BoundOperationInvocation {
+  at: OperationRef
+  bindings: List<OperationInputBinding>
+}
+
+data bound_operation_invocation_authority_note: String = "A bound operation invocation is exactly an existing OperationRef paired with the existing declaration-owned OperationInputBinding vocabulary. It carries no argv, process, target-language, registry, or path-alias fact: argv remains derived from the referenced extdeps declaration by shell_materialize_operation_argv, and a realization chooses whether/how to transport it. Wave A is model-only; this fact has no production consumer."
+
+fn bind_operation_invocation(
+  at: OperationRef,
+  bindings: List<OperationInputBinding>
+) -> BoundOperationInvocation {
+  BoundOperationInvocation {
+    at: at,
+    bindings: bindings
+  }
+}
+
 type ArgvRefusalCause
   = OperationNotFound
   | ArgvEmpty
