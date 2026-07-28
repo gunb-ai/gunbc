@@ -1,0 +1,377 @@
+module extdeps.bmc.openbmc_fan_control
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.ssh.password_session {
+  PasswordSshExecResult,
+  PasswordSshSession,
+  password_ssh_session_copy_file,
+  password_ssh_session_exec_argv,
+}
+import extdeps.tools.jq
+import extdeps.uri { Https, Uri }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
+  },
+}
+
+data jq_filter_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "jqlang.org/manual/",
+  },
+}
+
+type OpenBmcLocalTransformResult {
+  exit_code: Int
+  success: Bool
+  content: String
+  stderr: String
+}
+
+data openbmc_fan_config_projection_filter: NonEmptyStr = "if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then error(\"expected exactly one TEMP_SOC stepwise controller\") elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then error(\"expected exactly one projected aggregate fan PID entry\") else .zones |= map(if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then .minThermalOutput = $desired.minimum | .failsafePercent = $desired.zone_failsafe_duty | .pids |= map(if .name == $desired.fan_pid_entry and .type == \"fan\" then .inputs = $desired.fan_inputs elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then .failsafePercent = $desired.sensor_failsafe | .pid.positiveHysteresis = $desired.positive_hysteresis | .pid.negativeHysteresis = $desired.negative_hysteresis | .pid.reading = ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) | .pid.output = ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) else . end) else . end) end"
+
+data openbmc_fan_config_verify_filter: NonEmptyStr = "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0]) as $zone | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0]) as $pid | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")][0]) as $fan | ($zone.minThermalOutput == $desired.minimum) and ($zone.failsafePercent == $desired.zone_failsafe_duty) and ($pid.failsafePercent == $desired.sensor_failsafe) and ($pid.pid.positiveHysteresis == $desired.positive_hysteresis) and ($pid.pid.negativeHysteresis == $desired.negative_hysteresis) and ($pid.pid.reading == ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($pid.pid.output == ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($fan.inputs == $desired.fan_inputs)"
+
+data openbmc_fan_config_observation_filter: NonEmptyStr = "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0]) as $zone | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $targets | ($targets[0]) as $pid | ([.zones[].pids[] | select(.type == \"fan\")]) as $fans | [($targets | length), ($zone.minThermalOutput | floor), ($zone.failsafePercent | floor), ($pid.failsafePercent | floor), ($pid.pid.positiveHysteresis | floor), ($pid.pid.negativeHysteresis | floor), ($pid.pid.reading | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")), ($pid.pid.output | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")), ($fans | map(.name) | join(\",\")), ($fans | length), ($fans[0].inputs | join(\",\"))] | @tsv"
+
+data openbmc_object_mapper_service_filter: NonEmptyStr = ".data[0] | keys[0]"
+
+data openbmc_sensor_numeric_value_filter: NonEmptyStr = ".data | if type == \"number\" then round else null end"
+
+fn openbmc_read_file(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(session: session, argv: ["cat", path as String])
+}
+
+fn openbmc_resolve_path(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["readlink", "-f", path as String],
+  )
+}
+
+fn openbmc_parent_directory(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["dirname", path as String],
+  )
+}
+
+fn openbmc_systemd_is_active(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["systemctl", "is-active", service as String],
+  )
+}
+
+fn openbmc_systemd_restart(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["systemctl", "restart", service as String],
+  )
+}
+
+fn openbmc_zone_failsafe(
+  session: PasswordSshSession,
+  zone_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: [
+      "busctl",
+      "get-property",
+      "xyz.openbmc_project.State.FanCtrl",
+      zone_path as String,
+      "xyz.openbmc_project.Control.Mode",
+      "FailSafe",
+    ],
+  )
+}
+
+fn openbmc_sensor_service(
+  session: PasswordSshSession,
+  sensor_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  let remote = password_ssh_session_exec_argv(
+    session: session,
+    argv: [
+      "busctl",
+      "--json=short",
+      "call",
+      "xyz.openbmc_project.ObjectMapper",
+      "/xyz/openbmc_project/object_mapper",
+      "xyz.openbmc_project.ObjectMapper",
+      "GetObject",
+      "sas",
+      sensor_path as String,
+      "1",
+      "xyz.openbmc_project.Sensor.Value",
+    ],
+  )
+  if !remote.success {
+    remote
+  } else {
+    let extracted = jq.Json.ExtractRequiredRawFromContent(
+      filter: openbmc_object_mapper_service_filter,
+      content: remote.stdout,
+    )
+    PasswordSshExecResult {
+      exit_code: extracted.exit_code,
+      success: extracted.success,
+      stdout: extracted.value,
+      stderr: extracted.stderr,
+    }
+  }
+}
+
+fn openbmc_sensor_value(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+  sensor_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  let remote = password_ssh_session_exec_argv(
+    session: session,
+    argv: [
+      "busctl",
+      "--json=short",
+      "get-property",
+      service as String,
+      sensor_path as String,
+      "xyz.openbmc_project.Sensor.Value",
+      "Value",
+    ],
+  )
+  if !remote.success {
+    remote
+  } else {
+    let extracted = jq.Json.ExtractRequiredRawFromContent(
+      filter: openbmc_sensor_numeric_value_filter,
+      content: remote.stdout,
+    )
+    PasswordSshExecResult {
+      exit_code: extracted.exit_code,
+      success: extracted.success,
+      stdout: extracted.value,
+      stderr: extracted.stderr,
+    }
+  }
+}
+
+fn openbmc_fan_config_observe(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: [
+      "jq",
+      "-r",
+      openbmc_fan_config_observation_filter as String,
+      config_path as String,
+    ],
+  )
+}
+
+fn openbmc_fan_config_validate(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["jq", "empty", config_path as String],
+  )
+}
+
+fn openbmc_fan_config_verify(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  desired_json: String,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: [
+      "jq",
+      "-e",
+      "--argjson",
+      "desired",
+      desired_json,
+      openbmc_fan_config_verify_filter as String,
+      config_path as String,
+    ],
+  )
+}
+
+fn openbmc_fan_config_project_local(
+  input_path: NonEmptyStr,
+  desired_json: String,
+) -> OpenBmcLocalTransformResult {
+  let result = jq.Json.TransformWithArgJson(
+    arg_name: "desired",
+    arg_json: desired_json,
+    filter: openbmc_fan_config_projection_filter,
+    path: input_path,
+  )
+  OpenBmcLocalTransformResult {
+    exit_code: result.exit_code,
+    success: result.success,
+    content: result.value,
+    stderr: result.stderr,
+  }
+}
+
+fn openbmc_path_is_writable(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["test", "-w", path as String],
+  )
+}
+
+fn openbmc_path_exists(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["test", "-e", path as String],
+  )
+}
+
+fn openbmc_path_is_nonempty_file(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["test", "-s", path as String],
+  )
+}
+
+fn openbmc_disk_usage_kib(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["df", "-Pk", path as String],
+  )
+}
+
+fn openbmc_utc_timestamp(
+  session: PasswordSshSession,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"],
+  )
+}
+
+fn openbmc_make_directory(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+  parents: Bool,
+) -> PasswordSshExecResult {
+  if parents {
+    password_ssh_session_exec_argv(
+      session: session,
+      argv: ["mkdir", "-p", path as String],
+    )
+  } else {
+    password_ssh_session_exec_argv(
+      session: session,
+      argv: ["mkdir", path as String],
+    )
+  }
+}
+
+fn openbmc_remove_directory(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["rmdir", path as String],
+  )
+}
+
+fn openbmc_remove_file(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["rm", "-f", path as String],
+  )
+}
+
+fn openbmc_copy_file_preserving_metadata(
+  session: PasswordSshSession,
+  source_path: NonEmptyStr,
+  destination_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["cp", "-p", source_path as String, destination_path as String],
+  )
+}
+
+fn openbmc_rename_replace(
+  session: PasswordSshSession,
+  source_path: NonEmptyStr,
+  destination_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["mv", "-f", source_path as String, destination_path as String],
+  )
+}
+
+fn openbmc_synchronize_filesystems(
+  session: PasswordSshSession,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(session: session, argv: ["sync"])
+}
+
+fn openbmc_wait_seconds(
+  session: PasswordSshSession,
+  seconds: Int,
+) -> PasswordSshExecResult {
+  password_ssh_session_exec_argv(
+    session: session,
+    argv: ["sleep", to_string(seconds)],
+  )
+}
+
+fn openbmc_upload_file(
+  session: PasswordSshSession,
+  local_path: NonEmptyStr,
+  remote_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  password_ssh_session_copy_file(
+    session: session,
+    source_path: local_path,
+    destination_path: remote_path,
+  )
+}
+
+data openbmc_fan_typed_operation_note: String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."

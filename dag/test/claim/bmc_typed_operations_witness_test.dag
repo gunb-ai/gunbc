@@ -1,0 +1,51 @@
+module test.claim.bmc_typed_operations_witness
+
+import extdeps.bmc.openbmc_fan_control {
+  openbmc_fan_config_observation_filter,
+  openbmc_fan_config_projection_filter,
+  openbmc_fan_config_verify_filter,
+  openbmc_object_mapper_service_filter,
+  openbmc_sensor_numeric_value_filter,
+}
+import extdeps.ssh.password_session {
+  password_ssh_render_remote_argv,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn remote_argv_is_serialized_once_at_the_ssh_boundary() -> Bool {
+  password_ssh_render_remote_argv(
+    argv: ["jq", "-r", "(.data | round)", "/tmp/config.json"],
+  ) == "'jq' '-r' '(.data | round)' '/tmp/config.json'"
+}
+
+test fn remote_argv_quoting_preserves_an_embedded_apostrophe_as_data() -> Bool {
+  password_ssh_render_remote_argv(
+    argv: ["printf", "%s", "operator's value"],
+  ) == "'printf' '%s' 'operator'\\''s value'"
+}
+
+test fn fixed_openbmc_filters_keep_policy_out_of_shell_program_construction() -> Bool {
+  string_contains(
+    s: openbmc_fan_config_projection_filter,
+    pattern: "$desired",
+  )
+    && string_contains(
+      s: openbmc_fan_config_projection_filter,
+      pattern: "TEMP_SOC",
+    )
+    && string_contains(
+      s: openbmc_fan_config_verify_filter,
+      pattern: "$desired",
+    )
+    && string_contains(
+      s: openbmc_fan_config_observation_filter,
+      pattern: "@tsv",
+    )
+}
+
+test fn typed_busctl_json_projections_are_fixed_extdeps_facts() -> Bool {
+  openbmc_object_mapper_service_filter == ".data[0] | keys[0]"
+    && openbmc_sensor_numeric_value_filter == ".data | if type == \"number\" then round else null end"
+}
