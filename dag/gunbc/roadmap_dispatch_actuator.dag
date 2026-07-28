@@ -102,11 +102,15 @@ import gunbc.roadmap_execution_contract {
   TmuxSessionCapability,
   TmuxPipeShellCapability,
   TeeEventCaptureCapability,
+  ProviderEventProjectionCapability,
   EnvironmentBindingCapability,
   AttemptStateDirectoryCapability,
   AttemptCurrentPointerCapability,
   dispatch_host_realization,
   execution_contract_validation_summary,
+}
+import gunbc.roadmap_provider_events {
+  codex_provider_event_projection_args,
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 
@@ -145,7 +149,7 @@ data dispatch_codex_exec_spec: CodexExecSpec = CodexExecSpec {
   json_events: true,
   persist_session: true,
 }
-data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but not unrestricted: workspace-write permits implementation inside the attempt worktree; approval never returns blocked operations to the agent instead of hanging on an invisible prompt; --json exposes the provider event stream in the pane; persisted sessions preserve the provider transcript after the process exits. The dashboard does not yet parse those persisted events, so Spawned and session-present remain actuator/process observations only — never a claim that the provider completed successfully."
+data dispatch_codex_exec_spec_note: String = "Codex dispatch is unattended but not unrestricted: workspace-write permits implementation inside the attempt worktree; approval never returns blocked operations to the agent instead of hanging on an invisible prompt; --json exposes the provider event stream in the pane; persisted sessions preserve the provider transcript after the process exits. Attempt capture retains the complete JSONL stream, while workflow observation consumes a separately validated bounded projection. Spawned and session-present remain actuator/process observations only — never a claim that the provider completed successfully."
 
 fn dispatch_provider_label(provider: DispatchCliProvider) -> String {
   match provider {
@@ -493,6 +497,24 @@ fn dispatch_current_attempt_events_path_for_instance(
     ),
     "/provider-events.jsonl",
   ], "")
+}
+
+fn dispatch_current_attempt_events_projection_argv_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> HostExecArgv {
+  host_exec_argv(
+    program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: ProviderEventProjectionCapability,
+    ),
+    args: codex_provider_event_projection_args(
+      path: dispatch_current_attempt_events_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ) as FilePath,
+    ),
+  )
 }
 
 fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {

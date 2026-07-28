@@ -41,7 +41,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_spawn_failure_path_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
-  dispatch_current_attempt_events_path_for_instance,
+  dispatch_current_attempt_events_projection_argv_for_instance,
   dispatch_current_attempt_spawn_failure_path_for_instance,
   dispatch_branch_name,
   DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence,
@@ -1391,6 +1391,73 @@ fn belt_validation_summary_for_node(
   }
 }
 
+type ProviderEventProjectionObservation
+  = ProviderEventProjectionObserved { events: String }
+  | ProviderEventProjectionRefused { reason: String }
+
+fn belt_provider_event_projection_observe_for_instance(
+  instance: HostDashboardInstance,
+  node_id: gunbc.roadmap_model.RoadmapNodeId,
+) -> ProviderEventProjectionObservation {
+  match belt_exec(
+    cmd: dispatch_current_attempt_events_projection_argv_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    workdir: instance.repo_root as String,
+  ) {
+    ExecOk { stdout } =>
+      ProviderEventProjectionObserved { events: stdout }
+    ExecFailed { program, exit_code, stderr } =>
+      ProviderEventProjectionRefused {
+        reason: join([
+          "provider event projection failed through ",
+          program,
+          " (exit ",
+          to_string(exit_code),
+          "): ",
+          stderr,
+        ], ""),
+      }
+    ExecRefused { program, reason } =>
+      ProviderEventProjectionRefused {
+        reason: join([
+          "provider event projection unavailable through ",
+          program,
+          ": ",
+          reason,
+        ], ""),
+      }
+  }
+}
+
+fn provider_event_projection_readable(
+  observation: ProviderEventProjectionObservation,
+) -> Bool {
+  match observation {
+    ProviderEventProjectionObserved { events: _ } => true
+    ProviderEventProjectionRefused { reason: _ } => false
+  }
+}
+
+fn provider_event_projection_events(
+  observation: ProviderEventProjectionObservation,
+) -> String {
+  match observation {
+    ProviderEventProjectionObserved { events } => events
+    ProviderEventProjectionRefused { reason: _ } => ""
+  }
+}
+
+fn provider_event_projection_error(
+  observation: ProviderEventProjectionObservation,
+) -> String {
+  match observation {
+    ProviderEventProjectionObserved { events: _ } => ""
+    ProviderEventProjectionRefused { reason } => reason
+  }
+}
+
 fn belt_workflow_progress_for_attempt_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -1433,11 +1500,9 @@ fn belt_workflow_progress_for_attempt_ref(
         node_id: node_id,
       ),
     )
-    let events = Filesystem.Read(
-      path: dispatch_current_attempt_events_path_for_instance(
-        instance: instance,
-        node_id: node_id,
-      ),
+    let events = belt_provider_event_projection_observe_for_instance(
+      instance: instance,
+      node_id: node_id,
     )
     let spawn_failure = Filesystem.Read(
       path: dispatch_current_attempt_spawn_failure_path_for_instance(
@@ -1457,9 +1522,15 @@ fn belt_workflow_progress_for_attempt_ref(
       admission_receipt: admission.content,
       spawn_failure_present: spawn_failure.success,
       spawn_failure: spawn_failure.content,
-      provider_events_readable: events.success,
-      provider_events: events.content,
-      provider_events_error: events.error,
+      provider_events_readable: provider_event_projection_readable(
+        observation: events,
+      ),
+      provider_events: provider_event_projection_events(
+        observation: events,
+      ),
+      provider_events_error: provider_event_projection_error(
+        observation: events,
+      ),
       process: attempt_process_for_node(
         panes: panes,
         node_id: attempt.node_id,

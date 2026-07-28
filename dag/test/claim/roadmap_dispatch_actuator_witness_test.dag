@@ -74,6 +74,7 @@ import gunbc.roadmap_dispatch_actuator {
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
   dispatch_event_pipe_command,
+  dispatch_current_attempt_events_projection_argv_for_instance,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -297,6 +298,23 @@ test fn witness_event_pipe_shell_quotes_dynamic_argv_tokens() -> Bool {
   body == "exec '/usr/bin/tee' -a -- '/tmp/a'\\'';$(touch nope)'"
 }
 
+test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
+  let cmd = dispatch_current_attempt_events_projection_argv_for_instance(
+    instance: srv1_lab_dashboard_instance(),
+    node_id: nid(s: "projection-node"),
+  )
+  let wire = join(cmd.args, separator: "\0")
+  cmd.program == "/usr/bin/jq"
+    && starts_with(s: wire, prefix: "--raw-input\0--compact-output\0fromjson |")
+    && string_contains(s: wire, pattern: "[0:128]")
+    && string_contains(s: wire, pattern: ".[0:4096]")
+    && string_contains(
+      s: wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/projection-node-current/provider-events.jsonl",
+    )
+    && !string_contains(s: wire, pattern: "aggregated_output")
+}
+
 test fn codex_provider_v0_argv_keystone_holds() -> Bool {
   witness_codex_provider_is_selected_explicitly()
     && witness_codex_npm_launcher_fingerprint_is_live_receipt()
@@ -306,6 +324,7 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
     && witness_tmux_attempt_panes_parse_alive_and_exit()
     && witness_tmux_attempt_panes_malformed_row_refuses()
     && witness_event_pipe_shell_quotes_dynamic_argv_tokens()
+    && witness_provider_projection_is_exact_bounded_capability()
     && witness_host_exec_argv_shapes_bound_to_extdeps()
 }
 

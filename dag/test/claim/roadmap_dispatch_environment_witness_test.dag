@@ -12,6 +12,7 @@ import gunbc.roadmap_execution_contract {
   TmuxSessionCapability,
   TmuxPipeShellCapability,
   TeeEventCaptureCapability,
+  ProviderEventProjectionCapability,
   EnvironmentBindingCapability,
   AttemptStateDirectoryCapability,
   AttemptCurrentPointerCapability,
@@ -99,6 +100,7 @@ fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt> {
     grounded_capability(cap: TmuxSessionCapability),
     grounded_capability(cap: TmuxPipeShellCapability),
     grounded_capability(cap: TeeEventCaptureCapability),
+    grounded_capability(cap: ProviderEventProjectionCapability),
     grounded_capability(cap: EnvironmentBindingCapability),
     grounded_capability(cap: AttemptStateDirectoryCapability),
     grounded_capability(cap: AttemptCurrentPointerCapability),
@@ -122,7 +124,7 @@ fn admitted_fixture() -> DispatchEnvironmentAdmission {
 test fn all_required_grounded_receipts_admit() -> Bool {
   match admitted_fixture() {
     EnvironmentAdmitted { receipts, validation_summary } =>
-      count(receipts) == 8 && validation_summary != ""
+      count(receipts) == 9 && validation_summary != ""
     EnvironmentRefused { receipts: _, validation_summary: _, reason: _ } => false
   }
 }
@@ -185,6 +187,10 @@ test fn admission_receipt_is_structured_and_located() -> Bool {
   let wire = dispatch_environment_admission_json(admission: admitted_fixture())
   string_contains(s: wire, pattern: "\"status\": \"admitted\"")
     && string_contains(s: wire, pattern: "\"capability\": \"git-workspace\"")
+    && string_contains(
+      s: wire,
+      pattern: "\"capability\": \"provider-event-projection\"",
+    )
     && string_contains(s: wire, pattern: "\"grounded\": true")
 }
 

@@ -8,6 +8,7 @@ import gunbc.roadmap_execution_contract {
   TmuxSessionCapability,
   TmuxPipeShellCapability,
   TeeEventCaptureCapability,
+  ProviderEventProjectionCapability,
   EnvironmentBindingCapability,
   AttemptStateDirectoryCapability,
   AttemptCurrentPointerCapability,
@@ -229,6 +230,13 @@ fn dashboard_execution_environment(
         executable: "/usr/bin/tee" as FilePath,
         identity_args: ["--version"],
         identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
+      },
+      CapabilityRealization {
+        capability: ProviderEventProjectionCapability,
+        executable: "/usr/bin/jq" as FilePath,
+        identity_args: ["--version"],
+        identity_contains: "jq-" as NonEmptyStr,
         ensure_policy: EnsureObserveOnly,
       },
       CapabilityRealization {

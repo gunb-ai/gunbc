@@ -1,6 +1,6 @@
 module gunbc.roadmap_provider_events
 
-import std.types { String, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.languages.json.grammar {
   json_text_parseable,
   json_text_skip_ws,
@@ -51,7 +51,35 @@ type ProviderExecutionState
 
 data codex_provider_event_line_observation_budget_chars: Int = 65536
 
-data codex_jsonl_classifier_note: String = "Codex --json is the provider protocol authority: one JSON object per line with thread.started, turn.started, item.*, turn.completed, turn.failed, and error event types. This module is deliberately a bounded total envelope classifier, not a second general JSON implementation: the shared RFC 8259 grammar first proves the entire line parseable, then the classifier requires Codex's emitted top-level `type` member to be the first object member before selecting a closed event variant. That fail-closed envelope rule prevents a nested item or user-authored string containing `type: turn.completed` from fabricating terminal success. The grammar budget is explicit because command_execution item.completed may embed hundreds of kilobytes of aggregated_output in ONE JSON line; feeding that unbounded payload through the interpreted RFC-8259 recognizer made one /workflow.json observation exceed 19 GiB RSS and 150 seconds on the real 510 KiB attempt transcript. A line above codex_provider_event_line_observation_budget_chars refuses BEFORE grammar descent with line number and measured character count; its raw payload is deliberately elided from the wire while the attempt-owned provider-events.jsonl remains the full evidence authority. This is fail-closed, not truncation: no later terminal event may upgrade the refused stream. Unknown, reordered, malformed, or truncated in-budget lines still refuse with their raw located evidence and parsed prefix. A refusal is a workflow fact, never dropped as console noise. Item activity is only a presentation projection from nested item text; terminal success/failure comes only from the anchored top-level turn.completed, turn.failed, or error envelope, never from tmux Spawned. The durable dissolution is a provider-side compact envelope projection retained beside the full raw transcript; until then the line budget protects the synchronous observation surface without fabricating progress."
+data codex_provider_projection_type_chars: Int = 128
+data codex_provider_projection_detail_chars: Int = 4096
+
+data codex_provider_event_projection_filter: NonEmptyStr = join([
+  "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
+  to_string(codex_provider_projection_type_chars),
+  "] else \"unknown\" end; def item_type: if (.item.type | type) == \"string\" then .item.type[0:",
+  to_string(codex_provider_projection_type_chars),
+  "] else \"unknown\" end; def bounded_text: if . == null then \"\" elif type == \"string\" then .[0:",
+  to_string(codex_provider_projection_detail_chars),
+  "] elif type == \"object\" and (.message | type) == \"string\" then .message[0:",
+  to_string(codex_provider_projection_detail_chars),
+  "] else tostring[0:",
+  to_string(codex_provider_projection_detail_chars),
+  "] end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then {\"type\":$type,\"item\":{\"type\":item_type}} elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} else {\"type\":$type} end",
+], "") as NonEmptyStr
+
+fn codex_provider_event_projection_args(path: FilePath) -> List<String> {
+  [
+    "--raw-input",
+    "--compact-output",
+    codex_provider_event_projection_filter as String,
+    path as String,
+  ]
+}
+
+data codex_jsonl_projection_note: String = "The attempt-owned provider-events.jsonl remains the complete Codex protocol authority. Workflow observation first runs a separately modeled jq capability over that file. `--raw-input` plus `fromjson` proves exactly one JSON value per physical JSONL line before emitting only a bounded envelope (top-level event type, bounded item type, and a bounded terminal error detail); two values on one line, a multiline value, and malformed JSON all refuse. Large command aggregated_output therefore becomes opaque to the synchronous dashboard without becoming lost evidence or an invented success. The exact jq executable and identity probe are part of dispatch-platform Ensure and dashboard provisioning; absence refuses before dispatch and is also visible as an observation refusal for retained attempts. A malformed raw event makes jq nonzero, so no parsed prefix is accepted as a complete observation."
+
+data codex_jsonl_classifier_note: String = "Codex --json is the provider protocol authority: one JSON object per line with thread.started, turn.started, item.*, turn.completed, turn.failed, and error event types. The raw stream is structurally reduced by codex_provider_event_projection_filter before this bounded total envelope classifier runs. The shared RFC 8259 grammar proves each projected line parseable, then the classifier requires the emitted top-level `type` member to be the first object member before selecting a closed event variant. That fail-closed envelope rule prevents a nested item or user-authored string containing `type: turn.completed` from fabricating terminal success. Projected lines are mechanically bounded; the remaining line budget is a red control against projector drift and refuses before grammar descent with the payload elided. Unknown, reordered, malformed, or truncated projected lines still refuse with their located evidence and parsed prefix. A refusal is a workflow fact, never dropped as console noise. Item activity is only a presentation projection from the bounded item type; terminal success/failure comes only from the anchored top-level turn.completed, turn.failed, or error envelope, never from tmux Spawned."
 
 fn codex_line_contains_type_token(raw: String, event_type: String) -> Bool {
   string_contains(
