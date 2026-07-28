@@ -189,7 +189,6 @@ type GitIndexStage
   | GitIndexStageTheirs
 
 type GitIndexEntry {
-  path: GitPath
   entry: TreeEntry
   stage: GitIndexStage
 }
@@ -1185,7 +1184,6 @@ fn git_ls_files_stage_z_row_step(
                                   entries,
                                   items: [
                                     GitIndexEntry {
-                                      path: path,
                                       entry: git_tree_entry_from_mode(
                                         mode: mode,
                                         path: path,

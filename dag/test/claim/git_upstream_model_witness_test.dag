@@ -395,32 +395,26 @@ fn fixture_repository() -> GitRepositoryState {
     ],
     index: [
       GitIndexEntry {
-        path: path_symlink,
         entry: SymlinkEntry { path: path_symlink, oid: sha1_blob_symlink },
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        path: path_regular,
         entry: RegularBlobEntry { path: path_regular, oid: sha1_blob_regular },
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        path: path_executable,
         entry: ExecutableBlobEntry { path: path_executable, oid: sha1_blob_executable },
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        path: path_subtree_member,
         entry: RegularBlobEntry { path: path_subtree_member, oid: sha1_empty_blob },
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        path: path_gitlink,
         entry: GitlinkEntry { path: path_gitlink, oid: sha1_gitlink },
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        path: path_non_ascii,
         entry: RegularBlobEntry { path: path_non_ascii, oid: sha1_blob_regular },
         stage: GitIndexStageNormal,
       },
@@ -600,7 +594,6 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
     GitLsFilesStageZDecoded { entries } =>
       entries == [
         GitIndexEntry {
-          path: path_non_utf8,
           entry: RegularBlobEntry {
             path: path_non_utf8,
             oid: sha1_blob_regular,
