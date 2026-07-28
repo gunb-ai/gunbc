@@ -9,10 +9,12 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
-import extdeps.languages.json.grammar { json_text_parseable }
 import gunbc.roadmap_dispatch_environment {
-  dispatch_environment_receipt_status_admitted,
-  dispatch_environment_receipt_identity_prefix,
+  dispatch_environment_receipt_decode,
+  ReceiptDecoded,
+  ReceiptUndecodable,
+  ReceiptAdmitted,
+  ReceiptRefused,
 }
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
@@ -103,14 +105,34 @@ type WorkflowAttemptProgress {
 
 data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection requires the receipt to START with the emitter's own admitted identity prefix (schema then status), so a corrupted or refused receipt cannot paint Environment complete. Positional identity replaces a text scan that any value position could satisfy. Complete Codex JSONL remains attempt evidence; the observer's modeled jq capability validates it and emits bounded structural envelopes before this module derives agent activity and provider terminal events. Large command output is therefore opaque to the synchronous UI rather than a workflow refusal. The shared gunbc.worker_lifecycle.WorkerProcessEvidence supplies process presence and exit to both the Sessions surface and Agent reconciliation. Reconciliation is fail-closed, and Agent completes ONLY on the design contract's compatible process exit: a failed event projection refuses, nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, contradictory turn.completed plus nonzero process exit is refused, turn.completed with the pane still running stays ACTIVE awaiting that exit, and turn.completed with an absent or unobserved process REFUSES because no exit was established. A terminal provider event alone never paints Agent complete — that would fabricate a completed obligation from incomplete evidence. The ordered desired facts derive from roadmap_attempt_workflow_segment_kinds; only non-pending evidence projections enter the observed fact forest, so Pending in the row means an absent observation rather than a fabricated pending receipt. The two forests reconcile through gunbc.workflow_reconcile, making observed count, remaining work, and overall convergence fold results rather than another hand-authored status. Verification, publication, review, and goal audit remain pending until their own authoritative receipts exist; provider completion cannot fabricate them."
 
-fn environment_admission_receipt_is_admitted(receipt: String) -> Bool {
-  json_text_parseable(s: receipt)
-    && starts_with(
-      s: receipt,
-      prefix: dispatch_environment_receipt_identity_prefix(
-        status: dispatch_environment_receipt_status_admitted,
-      ),
-    )
+
+
+data admission_receipt_decode_note: String = "review 44094. This consumer used to ask a Bool of the receipt text and give ONE message to two different states: a receipt that records a refusal, and a document this reader cannot decode at all. They have different remedies — read the refusal's own reason versus find out who wrote a foreign document at the attempt path — so each gets its own located arm, decoded through the emitter's own rows rather than re-spelled here."
+
+fn receipt_records_admission(receipt: String) -> Bool {
+  match dispatch_environment_receipt_decode(receipt: receipt) {
+    ReceiptDecoded { status } =>
+      match status {
+        ReceiptAdmitted => true
+        ReceiptRefused => false
+      }
+    ReceiptUndecodable { reason: _ } => false
+  }
+}
+
+fn admission_receipt_refusal(receipt: String) -> ProviderExecutionState {
+  match dispatch_environment_receipt_decode(receipt: receipt) {
+    ReceiptDecoded { status: _ } =>
+      ProviderEventsRefused {
+        activity: "environment admission refused",
+        detail: "admission receipt records a refused environment admission; its own reason field carries the cause",
+      }
+    ReceiptUndecodable { reason } =>
+      ProviderEventsRefused {
+        activity: "admission receipt undecodable",
+        detail: reason,
+      }
+  }
 }
 
 fn provider_execution_reconcile_process(
@@ -208,13 +230,8 @@ fn workflow_provider_from_evidence(
       activity: "attempt state refused",
       detail: "current attempt pointer exists but its admission receipt is unreadable",
     }
-  } else if !environment_admission_receipt_is_admitted(
-    receipt: evidence.admission_receipt,
-  ) {
-    ProviderEventsRefused {
-      activity: "environment admission refused",
-      detail: "admission receipt did not carry the modeled v1 admitted verdict",
-    }
+  } else if !receipt_records_admission(receipt: evidence.admission_receipt) {
+    admission_receipt_refusal(receipt: evidence.admission_receipt)
   } else if evidence.spawn_failure_present {
     ProviderFailed {
       activity: "dispatch staging failed",
