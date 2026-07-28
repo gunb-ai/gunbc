@@ -1,0 +1,325 @@
+module test.claim.claim_indexed_evidence_witness
+
+import std.types { Bool, NonEmptyStr, RunKey }
+import std.claim_evidence {
+  RecordedFact,
+  ClaimReadinessPolicy,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceChallenges,
+  claim_evidence_grounding_authorities,
+  claim_assessment_from_links,
+  claim_information_state,
+  claim_readiness_assessment,
+  claim_readiness_is_ready,
+}
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  CodexCliProvider,
+  ProviderCredentialsRecordedUnverified,
+  codex_cli_auth_external_authority,
+}
+import gunbc.provider_readiness_claim_evidence {
+  ProviderReadinessEvidenceLink,
+  provider_credential_recorded_claim,
+  provider_ready_claim,
+  provider_login_status_inference,
+  provider_live_request_failed_inference,
+  provider_live_request_succeeded_inference,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeMayEstablish,
+}
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+import gunbc.os_install_deduction {
+  KvmOperatorAttestation,
+  LoginPrompt,
+  CompleteForUnattended,
+  os_install_boot_suggestion_claim,
+  os_install_completed_claim,
+  os_install_kvm_attestation_inference,
+}
+import gunbc.native_scm_interaction_contract {
+  NativeScmProposalIdentity,
+}
+import gunbc.source_integration_claim_evidence {
+  SourceBindingFact,
+  source_proposal_captured_claim,
+  source_proposal_admissible_claim,
+  source_binding_capture_inference,
+}
+import product.placement_supply { HostIdentity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn provider_evidence_fixture() -> ProviderInstance {
+  ProviderInstance {
+    kind: CodexCliProvider,
+    host: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    executable: "codex",
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "dedicated CODEX_HOME fixture",
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+  }
+}
+
+data provider_evidence_bound: RunKey = "provider-attempt-1"
+
+test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
+  let provider = provider_evidence_fixture()
+  let login = provider_login_status_inference(
+    fact_id: "provider-login-status-fact",
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let failed = provider_live_request_failed_inference(
+    fact_id: "provider-live-request-failed-fact",
+    provider: provider,
+    bound: provider_evidence_bound,
+    reason: "invalid refresh token",
+  )
+  let links = append(login.applicable, items: failed.applicable)
+  let credential_claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let credential_assessment = claim_assessment_from_links(
+    claim: credential_claim,
+    links: links,
+  )
+  let ready_assessment = claim_assessment_from_links(
+    claim: ready_claim,
+    links: links,
+  )
+  let credential_state = claim_information_state(
+    assessment: credential_assessment,
+  )
+  let ready_state = claim_information_state(
+    assessment: ready_assessment,
+  )
+  let readiness = claim_readiness_assessment(
+    policy: ClaimReadinessPolicy { required: [ready_claim] },
+    assessments: [credential_assessment, ready_assessment],
+  )
+  credential_state.support
+    && !credential_state.challenge
+    && !ready_state.support
+    && ready_state.challenge
+    && !claim_readiness_is_ready(assessment: readiness)
+}
+
+test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
+  let provider = provider_evidence_fixture()
+  let failed = provider_live_request_failed_inference(
+    fact_id: "provider-live-request-failed-both",
+    provider: provider,
+    bound: provider_evidence_bound,
+    reason: "refresh refused",
+  )
+  let succeeded = provider_live_request_succeeded_inference(
+    fact_id: "provider-live-request-succeeded-both",
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let credential_claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let links = append(failed.applicable, items: succeeded.applicable)
+  let both = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: ready_claim,
+      links: links,
+    ),
+  )
+  let neither = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: credential_claim,
+      links: links,
+    ),
+  )
+  both.support
+    && both.challenge
+    && !neither.support
+    && !neither.challenge
+}
+
+test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {
+  let provider = provider_evidence_fixture()
+  let claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let fact = RecordedFact {
+    id: "self-establishing-provider-probe",
+    value: ProviderCredentialsRecordedUnverified,
+  }
+  let probe = ReadBackProbe {
+    label: "ensure credentials then report status",
+    subject: "credential material is recorded",
+    effect_on_subject: ProbeMayEstablish {
+      mechanism: "the query installs or refreshes credentials before reporting",
+    },
+  }
+  let support = infer_probe_evidence(
+    fact: fact,
+    claim: claim,
+    direction: EvidenceSupports,
+    inference_rule: "self-establishing-provider-probe",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "self-establishing-provider-output",
+      activity: "ensure-then-read",
+      agent: "fixture-provider-cli",
+    },
+    freshness: EvidenceFreshness {
+      bound: provider_evidence_bound,
+      basis: "same fixture attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [],
+    },
+    probe: probe,
+    maximum_conclusion: claim,
+  )
+  let challenge = infer_probe_evidence(
+    fact: fact,
+    claim: claim,
+    direction: EvidenceChallenges,
+    inference_rule: "self-establishing-provider-probe",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "self-establishing-provider-output",
+      activity: "ensure-then-read",
+      agent: "fixture-provider-cli",
+    },
+    freshness: EvidenceFreshness {
+      bound: provider_evidence_bound,
+      basis: "same fixture attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [],
+    },
+    probe: probe,
+    maximum_conclusion: claim,
+  )
+  support.applicable.length() == 0
+    && support.insufficient.length() == 1
+    && challenge.applicable.length() == 1
+    && challenge.insufficient.length() == 0
+}
+
+test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
+  let target = "claim-evidence-host" as HostIdentity
+  let bound = "os-install-attempt-1" as RunKey
+  let attestation = KvmOperatorAttestation {
+    target: target,
+    observed_screen: LoginPrompt,
+    observed_at: "2026-07-28T18:00:00Z",
+    attested_by: "operator",
+  }
+  let inference = os_install_kvm_attestation_inference(
+    fact_id: "kvm-login-prompt-fact",
+    attestation: attestation,
+    preflight: CompleteForUnattended,
+    bound: bound,
+  )
+  let boot_claim = os_install_boot_suggestion_claim(
+    target: target,
+    bound: bound,
+  )
+  let installed_claim = os_install_completed_claim(
+    target: target,
+    bound: bound,
+  )
+  let boot = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: boot_claim,
+      links: inference.applicable,
+    ),
+  )
+  let installed = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: installed_claim,
+      links: inference.applicable,
+    ),
+  )
+  boot.support
+    && !boot.challenge
+    && !installed.support
+    && !installed.challenge
+}
+
+test fn witness_source_capture_does_not_invent_admission() -> Bool {
+  let proposal = NativeScmProposalIdentity {
+    name: "rename-one-binding",
+    attempt_key: "source-attempt-1",
+  }
+  let bound = "source-attempt-1" as RunKey
+  let inference = source_binding_capture_inference(
+    fact_id: "source-binding-capture-fact",
+    fact: SourceBindingFact {
+      proposal: proposal,
+      binding: "call foo resolves to declaration foo",
+    },
+    bound: bound,
+  )
+  let captured_claim = source_proposal_captured_claim(
+    proposal: proposal,
+    bound: bound,
+  )
+  let admissible_claim = source_proposal_admissible_claim(
+    proposal: proposal,
+    bound: bound,
+  )
+  let captured = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: captured_claim,
+      links: inference.applicable,
+    ),
+  )
+  let admissible = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: admissible_claim,
+      links: inference.applicable,
+    ),
+  )
+  captured.support
+    && !captured.challenge
+    && !admissible.support
+    && !admissible.challenge
+    && all(
+      inference.applicable,
+      link => link.maximum_conclusion == captured_claim,
+    )
+}
+
+test fn witness_claim_evidence_roles_are_externally_grounded() -> Bool {
+  claim_evidence_grounding_authorities.length() == 3
+}

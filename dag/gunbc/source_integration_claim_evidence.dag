@@ -1,0 +1,112 @@
+module gunbc.source_integration_claim_evidence
+
+import std.types { NonEmptyStr, RunKey }
+import std.claim_evidence {
+  RecordedFactId,
+  RecordedFact,
+  Claim,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceLink,
+  EvidenceInference,
+}
+import gunbc.native_scm_interaction_contract {
+  NativeScmProposalIdentity,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeInert,
+}
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+
+type SourceBindingFact {
+  proposal: NativeScmProposalIdentity
+  binding: NonEmptyStr
+}
+
+type SourceIntegrationProposition
+  = SourceProposalCaptured
+  | SourceProposalAdmissible
+
+type SourceIntegrationClaim = Claim<NativeScmProposalIdentity, NativeScmProposalIdentity, SourceIntegrationProposition, NativeScmProposalIdentity, RunKey>
+
+type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, RunKey, SourceIntegrationProposition, ReadBackProbe>
+
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceIntegrationEvidenceLink, SourceBindingFact, SourceIntegrationClaim, ReadBackProbe>
+
+data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
+  label: "decode one authored source binding",
+  subject: "the binding captured for one proposal occurrence",
+  effect_on_subject: ProbeInert,
+}
+
+fn source_proposal_captured_claim(
+  proposal: NativeScmProposalIdentity,
+  bound: RunKey,
+) -> SourceIntegrationClaim {
+  Claim {
+    id: "source-proposal-captured",
+    subject: proposal,
+    target: proposal,
+    proposition: SourceProposalCaptured,
+    scope: proposal,
+    bound: bound,
+  }
+}
+
+fn source_proposal_admissible_claim(
+  proposal: NativeScmProposalIdentity,
+  bound: RunKey,
+) -> SourceIntegrationClaim {
+  Claim {
+    id: "source-proposal-admissible",
+    subject: proposal,
+    target: proposal,
+    proposition: SourceProposalAdmissible,
+    scope: proposal,
+    bound: bound,
+  }
+}
+
+fn source_binding_capture_inference(
+  fact_id: RecordedFactId,
+  fact: SourceBindingFact,
+  bound: RunKey,
+) -> SourceIntegrationEvidenceInference {
+  let claim = source_proposal_captured_claim(
+    proposal: fact.proposal,
+    bound: bound,
+  )
+  infer_probe_evidence(
+    fact: RecordedFact {
+      id: fact_id,
+      value: fact,
+    },
+    claim: claim,
+    direction: EvidenceSupports,
+    inference_rule: "decoded-binding-supports-capture-only",
+    authority: "dag-source-decoder",
+    provenance: EvidenceProvenance {
+      entity: "decoded-source-binding",
+      activity: "decode-authored-proposal",
+      agent: "dag-source-decoder",
+    },
+    freshness: EvidenceFreshness {
+      bound: bound,
+      basis: "binding was decoded for the named proposal attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: SourceProposalCaptured,
+      losses: [
+        "capture does not prove semantic compatibility",
+        "capture does not prove authorization or admission",
+      ],
+    },
+    probe: source_binding_capture_probe,
+    maximum_conclusion: claim,
+  )
+}
+
+data source_integration_evidence_humility_note: NonEmptyStr = "A decoded binding can support SourceProposalCaptured and no stronger conclusion. SourceProposalAdmissible remains neither supported nor challenged until semantic, authority, and policy evidence enters through its own claim links."

@@ -1,0 +1,182 @@
+module gunbc.provider_readiness_claim_evidence
+
+import std.types { NonEmptyStr, RunKey }
+import std.claim_evidence {
+  RecordedFactId,
+  RecordedFact,
+  Claim,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceChallenges,
+  EvidenceLink,
+  EvidenceInference,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderKind,
+  ProviderReadiness,
+  ProviderCredentialsRecordedUnverified,
+  ProviderRefreshFailed,
+  ProviderAuthenticated,
+  codex_cli_auth_external_authority,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeInert,
+}
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+
+type ProviderReadinessClaim = Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
+
+type ProviderReadinessEvidenceLink = EvidenceLink<ProviderReadiness, ProviderReadinessClaim, ExternalAuthority, RunKey, ProviderReadiness, ReadBackProbe>
+
+type ProviderReadinessEvidenceInference = EvidenceInference<ProviderReadinessEvidenceLink, ProviderReadiness, ProviderReadinessClaim, ReadBackProbe>
+
+data provider_login_status_probe: ReadBackProbe = ReadBackProbe {
+  label: "codex login status",
+  subject: "credential material is recorded for one provider instance",
+  effect_on_subject: ProbeInert,
+}
+
+data provider_live_request_probe: ReadBackProbe = ReadBackProbe {
+  label: "one live provider model request",
+  subject: "the provider accepts or refuses one request for this instance",
+  effect_on_subject: ProbeInert,
+}
+
+fn provider_credential_recorded_claim(
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessClaim {
+  Claim {
+    id: "provider-credential-recorded",
+    subject: provider,
+    target: provider,
+    proposition: ProviderCredentialsRecordedUnverified,
+    scope: provider.kind,
+    bound: bound,
+  }
+}
+
+fn provider_ready_claim(
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessClaim {
+  Claim {
+    id: "provider-live-request-ready",
+    subject: provider,
+    target: provider,
+    proposition: ProviderAuthenticated,
+    scope: provider.kind,
+    bound: bound,
+  }
+}
+
+fn provider_login_status_inference(
+  fact_id: RecordedFactId,
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: bound,
+  )
+  infer_probe_evidence(
+    fact: RecordedFact {
+      id: fact_id,
+      value: ProviderCredentialsRecordedUnverified,
+    },
+    claim: claim,
+    direction: EvidenceSupports,
+    inference_rule: "provider-login-status-records-credential-only",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-login-status-output",
+      activity: "provider-login-status-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      bound: bound,
+      basis: "captured inside the named provider attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [
+        "refresh acceptance is not exercised",
+        "live model request capability is not exercised",
+      ],
+    },
+    probe: provider_login_status_probe,
+    maximum_conclusion: claim,
+  )
+}
+
+fn provider_live_request_failed_inference(
+  fact_id: RecordedFactId,
+  provider: ProviderInstance,
+  bound: RunKey,
+  reason: NonEmptyStr,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_ready_claim(provider: provider, bound: bound)
+  infer_probe_evidence(
+    fact: RecordedFact {
+      id: fact_id,
+      value: ProviderRefreshFailed { reason: reason },
+    },
+    claim: claim,
+    direction: EvidenceChallenges,
+    inference_rule: "provider-live-request-refresh-refusal",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-live-request-refusal",
+      activity: "provider-model-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      bound: bound,
+      basis: "provider response belongs to the named request attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderRefreshFailed { reason: reason },
+      losses: [],
+    },
+    probe: provider_live_request_probe,
+    maximum_conclusion: claim,
+  )
+}
+
+fn provider_live_request_succeeded_inference(
+  fact_id: RecordedFactId,
+  provider: ProviderInstance,
+  bound: RunKey,
+) -> ProviderReadinessEvidenceInference {
+  let claim = provider_ready_claim(provider: provider, bound: bound)
+  infer_probe_evidence(
+    fact: RecordedFact {
+      id: fact_id,
+      value: ProviderAuthenticated,
+    },
+    claim: claim,
+    direction: EvidenceSupports,
+    inference_rule: "provider-live-request-succeeded",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "provider-live-request-success",
+      activity: "provider-model-request",
+      agent: "codex-cli",
+    },
+    freshness: EvidenceFreshness {
+      bound: bound,
+      basis: "provider response belongs to the named request attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderAuthenticated,
+      losses: [],
+    },
+    probe: provider_live_request_probe,
+    maximum_conclusion: claim,
+  )
+}

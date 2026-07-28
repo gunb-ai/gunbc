@@ -32,12 +32,7 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
   fidelity: EvidenceFidelity<FidelityBoundary>,
   probe: ReadBackProbe,
   maximum_conclusion: C,
-) -> EvidenceInference<
-  EvidenceLink<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe>,
-  F,
-  C,
-  ReadBackProbe
-> {
+) -> EvidenceInference<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe>, F, C, ReadBackProbe> {
   let direction_bits = evidence_direction_bits(direction: direction)
   if direction_bits.support && !readback_probe_is_independent(p: probe) {
     insufficient_evidence_inference(

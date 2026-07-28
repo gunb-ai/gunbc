@@ -126,10 +126,7 @@ type ClaimAssessment<C, L> {
 fn claim_assessment_from_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
   claim: C,
   links: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
-) -> ClaimAssessment<
-  C,
-  EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>
-> {
+) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
   ClaimAssessment {
     claim: claim,
     supporting: links
