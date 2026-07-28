@@ -44,7 +44,22 @@ import extdeps.tmux {
   shape_tmux_kill_session_argv,
   shape_tmux_list_panes_argv,
 }
-import extdeps.llm.cli { shape_claude_invoke_argv }
+import extdeps.llm.cli { shape_claude_invoke_argv, claude_cli_program }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ClaudeCliProvider,
+}
+import gunbc.worker_lifecycle {
+  WorkerObservation,
+  worker_observation_without_provider_probe,
+  AttemptEvidence,
+  WorktreeUnobserved,
+  ProviderEvidenceUnobserved,
+  ProcessIdentityUnobserved,
+  TranscriptUnobserved,
+  TerminalOutcomeUnobserved,
+}
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_layout { srv1_dispatch_worktree_root }
@@ -140,6 +155,35 @@ type DispatchLiveSession {
   node_id: String
   windows: Int
   lease_verdict: ObservationVerdict
+  worker: WorkerObservation
+}
+
+data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. Claude is the only dispatch provider today and its executable comes from extdeps.llm.cli.claude_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
+
+fn dispatch_provider_instance() -> ProviderInstance {
+  ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read host identity" as NonEmptyStr,
+    },
+    executable: claude_cli_program as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not execute the provider version probe" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect provider state" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect credential storage" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read process ownership" as NonEmptyStr,
+    },
+  }
+}
+
+fn dispatch_worker_observation() -> WorkerObservation {
+  worker_observation_without_provider_probe(instance: dispatch_provider_instance())
 }
 
 fn intricacy_label(i: Intricacy) -> String {
@@ -596,6 +640,7 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
     node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
     windows: entry.windows,
     lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: dispatch_worker_observation(),
   }
 }
 
@@ -610,12 +655,35 @@ fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
   entries |> map(e => dispatch_live_session_for_entry(entry: e))
 }
 
-data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
+data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
 
 type DispatchAttemptRef {
-  node_id: String
-  branch: String
+  node_id: NonEmptyStr
+  branch: NonEmptyStr
   attempt_key: String
+}
+
+fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> AttemptEvidence {
+  AttemptEvidence {
+    node_id: attempt.node_id,
+    attempt_key: attempt.attempt_key,
+    branch: attempt.branch,
+    worktree: WorktreeUnobserved {
+      reason: "branch observation does not inspect the attempt worktree" as NonEmptyStr,
+    },
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "branch observation does not identify the provider instance" as NonEmptyStr,
+    },
+    process_identity: ProcessIdentityUnobserved {
+      reason: "branch observation does not inspect PID, start time, or ownership" as NonEmptyStr,
+    },
+    transcript: TranscriptUnobserved {
+      reason: "branch observation does not locate a provider transcript" as NonEmptyStr,
+    },
+    terminal_outcome: TerminalOutcomeUnobserved {
+      reason: "branch existence does not imply a terminal outcome" as NonEmptyStr,
+    },
+  }
 }
 
 fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
@@ -627,13 +695,22 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
       let segs = split(s: rest, delimiter: "-a")
       let last = segs |> fold(init: "", f: (acc, x) => x)
       if count(segs) >= 2 && string_length(s: last) == 16 {
-        Present { value: DispatchAttemptRef {
-          node_id: substring(s: rest, start: 0, end: string_length(s: rest) - 18),
-          branch: line,
-          attempt_key: last,
-        } }
+        let node_id = substring(s: rest, start: 0, end: string_length(s: rest) - 18)
+        if node_id == "" {
+          none
+        } else {
+          Present { value: DispatchAttemptRef {
+            node_id: node_id as NonEmptyStr,
+            branch: line as NonEmptyStr,
+            attempt_key: last,
+          } }
+        }
       } else {
-        Present { value: DispatchAttemptRef { node_id: rest, branch: line, attempt_key: "" } }
+        Present { value: DispatchAttemptRef {
+          node_id: rest as NonEmptyStr,
+          branch: line as NonEmptyStr,
+          attempt_key: "",
+        } }
       }
     }
   } else {

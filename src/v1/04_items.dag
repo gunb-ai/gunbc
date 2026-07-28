@@ -135,4 +135,3 @@ fn item_kind(item: Node) -> ItemKind {
   }
   kind
 }
-

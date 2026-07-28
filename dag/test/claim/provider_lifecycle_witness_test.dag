@@ -1,0 +1,114 @@
+module test.claim.provider_lifecycle_witness
+
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ClaudeCliProvider,
+  ProviderReadiness,
+  ProviderCredentialsRecordedUnverified,
+  ProviderRefreshFailed,
+  ProviderAuthenticated,
+  ProviderSetupRequired,
+  ToolExecutionReadiness,
+  SandboxProbeFailed,
+  ToolExecutionReadinessUnobserved,
+  provider_readiness_label,
+  tool_execution_readiness_label,
+  provider_kind_label,
+  claude_cli_lifecycle_external_authority,
+}
+import extdeps.llm.cli { claude_cli_external_authority_anchor }
+import gunbc.worker_lifecycle {
+  WorkerObservation,
+  ProviderEvidenceUnobserved,
+  provider_evidence_label,
+  WorkerPhase,
+  WorkerPhaseUnobserved,
+  WorkerWaitingForHumanSetup,
+  WorkerTerminal,
+  WorkerTerminalCompleted,
+  WorkerTerminalFailed,
+  TerminalOutcomeObserved,
+  worker_phase_label,
+  worker_terminal_outcome_label,
+  terminal_outcome_evidence_label,
+}
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn claude_lifecycle_consumes_cli_authority() -> Bool {
+  claude_cli_lifecycle_external_authority.uri.locator == claude_cli_external_authority_anchor.uri.locator
+}
+
+fn fixture_instance() -> ProviderInstance {
+  ProviderInstance {
+    kind: ClaudeCliProvider,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    executable: "claude" as NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
+  let recorded = provider_readiness_label(readiness: ProviderCredentialsRecordedUnverified)
+  let failed = provider_readiness_label(readiness: ProviderRefreshFailed {
+    reason: "invalid_refresh_token" as NonEmptyStr,
+  })
+  recorded == "credentials recorded, unverified"
+    && failed == "authentication refresh failed"
+    && recorded != failed
+}
+
+test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
+  let observation = WorkerObservation {
+    configured_provider: fixture_instance(),
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "fixture process tree unobserved" as NonEmptyStr,
+    },
+    provider_readiness: ProviderAuthenticated,
+    tool_readiness: SandboxProbeFailed {
+      reason: "bwrap loopback RTM_NEWADDR refused" as NonEmptyStr,
+    },
+    phase: WorkerPhaseUnobserved {
+      reason: "no progress transcript" as NonEmptyStr,
+    },
+  }
+  provider_readiness_label(readiness: observation.provider_readiness) == "authenticated"
+    && tool_execution_readiness_label(readiness: observation.tool_readiness) == "sandbox unavailable"
+    && worker_phase_label(phase: observation.phase) == "phase unobserved"
+}
+
+test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
+  let observation = WorkerObservation {
+    configured_provider: fixture_instance(),
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "fixture process tree unobserved" as NonEmptyStr,
+    },
+    provider_readiness: ProviderSetupRequired,
+    tool_readiness: ToolExecutionReadinessUnobserved {
+      reason: "provider has not reached tool execution" as NonEmptyStr,
+    },
+    phase: WorkerWaitingForHumanSetup,
+  }
+  provider_readiness_label(readiness: observation.provider_readiness) == "setup required"
+    && provider_kind_label(kind: observation.configured_provider.kind) == "Claude"
+    && provider_evidence_label(evidence: observation.provider_instance) == "unobserved"
+    && worker_phase_label(phase: observation.phase) == "waiting for human setup"
+    && tool_execution_readiness_label(readiness: observation.tool_readiness) == "tool readiness unobserved"
+}
+
+test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
+  let completed_phase = WorkerTerminal { outcome: WorkerTerminalCompleted }
+  let failed_outcome = WorkerTerminalFailed {
+    reason: "provider exited nonzero" as NonEmptyStr,
+  }
+  worker_phase_label(phase: completed_phase) == "completed"
+    && worker_terminal_outcome_label(outcome: failed_outcome) == "failed"
+    && terminal_outcome_evidence_label(
+      evidence: TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
+}

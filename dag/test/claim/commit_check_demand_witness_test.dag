@@ -1,0 +1,682 @@
+module test.claim.commit_check_demand_witness
+
+import gunbc.commit_workflow {
+  CommitCheckKind,
+  CommitSpecGate,
+  CommitWitnessClaim,
+  CommitCargoFmtCheck,
+  CommitCheckEnrollment,
+  EntryDeclarationDiscovery,
+  DiscoveryComplete,
+  DiscoveryIncomplete,
+  EnrollmentWitnessDemand,
+  DemandQualified,
+  DemandMissing,
+  DemandAmbiguous,
+  DemandIncomplete,
+  DemandRosterAmbiguous,
+  commit_gate_roster,
+  commit_check_kind_eq,
+  demand_rows_match_roster,
+  declaration_ref_lists_eq,
+  project_enrollment_witness_demands,
+  project_enrollment_witness_demands_unchecked,
+  first_duplicate_commit_check,
+  DuplicateCommitCheckFound,
+  NoDuplicateCommitCheck,
+}
+import gunbc.ci_gate { EmitHostGate }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import std.realization_schedule {
+  CorpusWitnessKind,
+  ExecutionWitnessKind,
+  SpanUndeclared,
+}
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present, Absent }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn demand_decl(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr,
+    decl_name: decl_name as NonEmptyStr,
+    field: WholeDeclaration
+  }
+}
+
+fn complete_discovery(
+  entry: String,
+  module_path: String,
+  declaration_names: List<String>,
+) -> EntryDeclarationDiscovery {
+  DiscoveryComplete {
+    entry: entry,
+    module_path: module_path as NonEmptyStr,
+    declarations: map(
+      declaration_names,
+      name => demand_decl(module_path: module_path, decl_name: name)
+    )
+  }
+}
+
+fn synthetic_witness_check(
+  entry: String,
+  check_fns: List<String>,
+) -> CommitCheckKind {
+  CommitWitnessClaim {
+    entry: entry,
+    check_fns: check_fns,
+    kind: CorpusWitnessKind,
+    span: SpanUndeclared
+  }
+}
+
+fn synthetic_enrollment(check: CommitCheckKind) -> CommitCheckEnrollment {
+  CommitCheckEnrollment { check: check, surfaces: [] }
+}
+
+fn check_is_gate(check: CommitCheckKind) -> Bool {
+  match check {
+    CommitSpecGate { gate: _ } => true
+    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn check_is_witness(check: CommitCheckKind) -> Bool {
+  match check {
+    CommitSpecGate { gate: _ } => false
+    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn check_is_fmt(check: CommitCheckKind) -> Bool {
+  match check {
+    CommitSpecGate { gate: _ } => false
+    CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
+    CommitCargoFmtCheck => true
+  }
+}
+
+fn check_is_file_grain_witness(check: CommitCheckKind) -> Bool {
+  match check {
+    CommitWitnessClaim { entry: _, check_fns, kind: _, span: _ } =>
+      check_fns.count() == 0
+    CommitSpecGate { gate: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
+  [
+    complete_discovery(
+      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      module_path: "v2.test.execution.bind_eval_by_execution",
+      declaration_names: [
+        "bind_source_pipeline_admits_holds",
+        "bind_source_driven_executes_holds",
+        "bind_direct_runtime_holds",
+        "bind_value_perturbation_red_holds",
+        "bind_fixture_producer_holds",
+        "bind_fixture_wrong_value_red_holds",
+        "bind_census_ingested_executes_holds",
+        "bind_census_ingested_wrong_value_red_holds"
+      ]
+    ),
+    complete_discovery(
+      entry: "src/v2/test/claim/execution/loop_eval_by_execution_test.dag",
+      module_path: "v2.test.execution.loop_eval_by_execution",
+      declaration_names: [
+        "loop_source_pipeline_admits_holds",
+        "loop_source_driven_executes_holds",
+        "loop_source_driven_wrong_value_red_holds",
+        "loop_direct_runtime_holds",
+        "loop_value_perturbation_red_holds",
+        "loop_fixture_producer_holds",
+        "loop_fixture_wrong_value_red_holds",
+        "loop_census_ingested_executes_holds",
+        "loop_census_ingested_wrong_value_red_holds"
+      ]
+    ),
+    complete_discovery(
+      entry: "src/v2/test/claim/manual/bind_demand_driven_eval_test.dag",
+      module_path: "v2.test.manual.bind_demand_driven_eval",
+      declaration_names: [
+        "bind_eval_counted_value_body_holds",
+        "bind_eval_divergent_value_rejects_holds",
+        "bind_eval_bound_reference_reads_value_holds",
+        "bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds",
+        "bind_eval_minted_occurrence_equal_reference_reads_holds",
+        "bind_eval_unbound_reference_refuses_holds",
+        "bind_eval_unbound_reference_default_algebra_refuses_holds"
+      ]
+    ),
+    complete_discovery(
+      entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position_test.dag",
+      module_path: "v2.test.host_language_transport_script.lens_unit.transport_script_position",
+      declaration_names: [
+        "witness_computed_green",
+        "witness_bare_literal_red",
+        "witness_let_bound_red",
+        "witness_interp_literals_red",
+        "witness_lens_verdict_holds_on_computed",
+        "witness_lens_verdict_violation_on_bare_literal"
+      ]
+    ),
+    complete_discovery(
+      entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb_test.dag",
+      module_path: "v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb",
+      declaration_names: [
+        "witness_computed_facts_readback_holds",
+        "witness_literal_perturb_facts_readback_red"
+      ]
+    ),
+    complete_discovery(
+      entry: "dag/test/claim/orchestration_if_emit_test.dag",
+      module_path: "test.claim.orchestration_if_emit",
+      declaration_names: [
+        "orch_if_streq_empty_then_holds",
+        "orch_if_streq_empty_then_has_teeth_holds",
+        "orch_if_streq_else_holds",
+        "orch_if_exit_zero_negated_holds",
+        "orch_if_run_redirect_ignore_fail_holds",
+        "orch_if_log_matches_holds",
+        "orch_if_and_tests_holds"
+      ]
+    )
+  ]
+}
+
+fn discovery_entry_matches(
+  discovery: EntryDeclarationDiscovery,
+  entry: String,
+) -> Bool {
+  match discovery {
+    DiscoveryComplete { entry: candidate, module_path: _, declarations: _ } =>
+      candidate == entry
+    DiscoveryIncomplete { entry: candidate, cause: _ } => candidate == entry
+  }
+}
+
+fn demand_row_matches_complete_discovery(
+  row: EnrollmentWitnessDemand,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Bool {
+  match row.check {
+    CommitWitnessClaim { entry, check_fns: _, kind: _, span: _ } =>
+      let matching = filter(
+        discoveries,
+        discovery => discovery_entry_matches(discovery: discovery, entry: entry)
+      )
+      if matching.count() != 1 {
+        false
+      } else {
+        match matching.first() {
+          Absent => false
+          Present { value: discovery } =>
+            match discovery {
+              DiscoveryIncomplete { entry: _, cause: _ } => false
+              DiscoveryComplete { entry: _, module_path: _, declarations } =>
+                declaration_ref_lists_eq(
+                  left: row.declarations,
+                  right: declarations
+                )
+            }
+        }
+      }
+    CommitSpecGate { gate: _ } => false
+    CommitCargoFmtCheck => false
+  }
+}
+
+fn qualified_rows_match_complete_discoveries(
+  rows: List<EnrollmentWitnessDemand>,
+  discoveries: List<EntryDeclarationDiscovery>,
+) -> Bool {
+  rows.count() == discoveries.count()
+    && fold(rows, init: true, f: fn(acc, row) {
+      acc && demand_row_matches_complete_discovery(
+        row: row,
+        discoveries: discoveries
+      )
+    })
+}
+
+test fn commit_check_demand_live_roster_is_exactly_48_typed_rows() -> Bool {
+  let gates = filter(commit_gate_roster, row => check_is_gate(check: row.check))
+  let witnesses = filter(commit_gate_roster, row => check_is_witness(check: row.check))
+  let fmt = filter(commit_gate_roster, row => check_is_fmt(check: row.check))
+  commit_gate_roster.count() == 48
+    && gates.count() == 9
+    && witnesses.count() == 38
+    && fmt.count() == 1
+    && commit_gate_roster.count() == gates.count() + witnesses.count() + fmt.count()
+}
+
+test fn commit_check_demand_canonical_roster_refuses_empty_or_truncated_discovery() -> Bool {
+  match project_enrollment_witness_demands(discoveries: []) {
+    DemandMissing { check: _, cause: _ } =>
+      match project_enrollment_witness_demands(
+        discoveries: live_file_grain_discoveries()
+      ) {
+        DemandMissing { check: _, cause: _ } => true
+        DemandQualified { rows: _ } => false
+        DemandAmbiguous { check: _, cause: _ } => false
+        DemandIncomplete { check: _, cause: _ } => false
+        DemandRosterAmbiguous { cause: _ } => false
+      }
+    DemandQualified { rows: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_all_six_file_grain_rows_expand_complete_discoveries() -> Bool {
+  let roster = filter(
+    commit_gate_roster,
+    row => check_is_file_grain_witness(check: row.check)
+  )
+  let discoveries = live_file_grain_discoveries()
+  roster.count() == 6
+    && match project_enrollment_witness_demands_unchecked(
+      roster: roster,
+      discoveries: discoveries
+    ) {
+      DemandQualified { rows } =>
+        demand_rows_match_roster(roster: roster, rows: rows)
+          && qualified_rows_match_complete_discoveries(
+            rows: rows,
+            discoveries: discoveries
+          )
+      DemandMissing { check: _, cause: _ } => false
+      DemandAmbiguous { check: _, cause: _ } => false
+      DemandIncomplete { check: _, cause: _ } => false
+      DemandRosterAmbiguous { cause: _ } => false
+    }
+}
+
+test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invariant() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/synthetic_multi_test.dag",
+    check_fns: ["beta_holds", "alpha_holds"]
+  )
+  let roster = [synthetic_enrollment(check: check)]
+  let first = project_enrollment_witness_demands_unchecked(
+    roster: roster,
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/synthetic_multi_test.dag",
+        module_path: "test.claim.synthetic_multi",
+        declaration_names: ["alpha_holds", "extra_holds", "beta_holds"]
+      )
+    ]
+  )
+  let permuted = project_enrollment_witness_demands_unchecked(
+    roster: roster,
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/synthetic_multi_test.dag",
+        module_path: "test.claim.synthetic_multi",
+        declaration_names: ["beta_holds", "alpha_holds", "extra_holds"]
+      )
+    ]
+  )
+  match first {
+    DemandQualified { rows: left } =>
+      match permuted {
+        DemandQualified { rows: right } =>
+          left.count() == 1
+            && right.count() == 1
+            && left.first().declarations.count() == 2
+            && (left.first().declarations.first().decl_name as String) == "beta_holds"
+            && (left.first().declarations.skip(n: 1).first().decl_name as String) == "alpha_holds"
+            && declaration_ref_lists_eq(
+              left: left.first().declarations,
+              right: right.first().declarations
+            )
+        DemandMissing { check: _, cause: _ } => false
+        DemandAmbiguous { check: _, cause: _ } => false
+        DemandIncomplete { check: _, cause: _ } => false
+        DemandRosterAmbiguous { cause: _ } => false
+      }
+    DemandMissing { check: _, cause: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
+  let gate = CommitSpecGate { gate: EmitHostGate }
+  let fmt = CommitCargoFmtCheck
+  let roster = [
+    synthetic_enrollment(check: gate),
+    synthetic_enrollment(check: fmt)
+  ]
+  match project_enrollment_witness_demands_unchecked(roster: roster, discoveries: []) {
+    DemandQualified { rows } =>
+      rows.count() == 2
+        && rows.first().declarations.count() == 0
+        && rows.skip(n: 1).first().declarations.count() == 0
+        && commit_check_kind_eq(a: rows.first().check, b: gate)
+        && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
+    DemandMissing { check: _, cause: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
+  match project_enrollment_witness_demands(
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/unowned_test.dag",
+        module_path: "test.claim.unowned",
+        declaration_names: ["unowned_holds"]
+      )
+    ]
+  ) {
+    DemandRosterAmbiguous { cause } =>
+      cause == ("declaration discovery has no owning witness enrollment" as NonEmptyStr)
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_absent_named_declaration_is_missing() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/missing_test.dag",
+    check_fns: ["required_holds"]
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/missing_test.dag",
+        module_path: "test.claim.missing",
+        declaration_names: ["other_holds"]
+      )
+    ]
+  ) {
+    DemandMissing { check: failed, cause: _ } =>
+      commit_check_kind_eq(a: failed, b: check)
+    DemandQualified { rows: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/empty_test.dag",
+    check_fns: []
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/empty_test.dag",
+        module_path: "test.claim.empty",
+        declaration_names: []
+      )
+    ]
+  ) {
+    DemandMissing { check: failed, cause } =>
+      commit_check_kind_eq(a: failed, b: check)
+        && cause == ("complete witness discovery contains no declarations" as NonEmptyStr)
+    DemandQualified { rows: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_duplicate_discovery_entry_is_ambiguous() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/duplicate_entry_test.dag",
+    check_fns: ["holds"]
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/duplicate_entry_test.dag",
+        module_path: "test.claim.duplicate_entry",
+        declaration_names: ["holds"]
+      ),
+      complete_discovery(
+        entry: "dag/test/claim/duplicate_entry_test.dag",
+        module_path: "test.claim.duplicate_entry_other",
+        declaration_names: ["holds"]
+      )
+    ]
+  ) {
+    DemandAmbiguous { check: failed, cause: _ } =>
+      commit_check_kind_eq(a: failed, b: check)
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_duplicate_module_is_ambiguous() -> Bool {
+  let first = synthetic_witness_check(
+    entry: "dag/test/claim/module_a_test.dag",
+    check_fns: ["a_holds"]
+  )
+  let second = synthetic_witness_check(
+    entry: "dag/test/claim/module_b_test.dag",
+    check_fns: ["b_holds"]
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [
+      synthetic_enrollment(check: first),
+      synthetic_enrollment(check: second)
+    ],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/module_a_test.dag",
+        module_path: "test.claim.shared_module",
+        declaration_names: ["a_holds"]
+      ),
+      complete_discovery(
+        entry: "dag/test/claim/module_b_test.dag",
+        module_path: "test.claim.shared_module",
+        declaration_names: ["b_holds"]
+      )
+    ]
+  ) {
+    DemandAmbiguous { check: failed, cause: _ } =>
+      commit_check_kind_eq(a: failed, b: first)
+        || commit_check_kind_eq(a: failed, b: second)
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_duplicate_declaration_is_ambiguous() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/duplicate_decl_test.dag",
+    check_fns: ["same_holds"]
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/duplicate_decl_test.dag",
+        module_path: "test.claim.duplicate_decl",
+        declaration_names: ["same_holds", "same_holds"]
+      )
+    ]
+  ) {
+    DemandAmbiguous { check: failed, cause: _ } =>
+      commit_check_kind_eq(a: failed, b: check)
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/incomplete_test.dag",
+    check_fns: []
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      DiscoveryIncomplete {
+        entry: "dag/test/claim/incomplete_test.dag",
+        cause: "source scan refused" as NonEmptyStr
+      }
+    ]
+  ) {
+    DemandIncomplete { check: failed, cause } =>
+      commit_check_kind_eq(a: failed, b: check)
+        && cause == ("source scan refused" as NonEmptyStr)
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandAmbiguous { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_duplicate_roster_identity_is_ambiguous() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/duplicate_roster_test.dag",
+    check_fns: ["holds"]
+  )
+  let row = synthetic_enrollment(check: check)
+  match first_duplicate_commit_check(roster: [row, row]) {
+    DuplicateCommitCheckFound { check: failed } =>
+      commit_check_kind_eq(a: failed, b: check)
+    NoDuplicateCommitCheck => false
+  }
+}
+
+test fn commit_check_demand_overlapping_output_membership_is_ambiguous() -> Bool {
+  let first = synthetic_witness_check(
+    entry: "dag/test/claim/overlap_test.dag",
+    check_fns: ["same_holds"]
+  )
+  let second = CommitWitnessClaim {
+    entry: "dag/test/claim/overlap_test.dag",
+    check_fns: ["same_holds"],
+    kind: ExecutionWitnessKind,
+    span: SpanUndeclared
+  }
+  match project_enrollment_witness_demands_unchecked(
+    roster: [
+      synthetic_enrollment(check: first),
+      synthetic_enrollment(check: second)
+    ],
+    discoveries: [
+      complete_discovery(
+        entry: "dag/test/claim/overlap_test.dag",
+        module_path: "test.claim.overlap",
+        declaration_names: ["same_holds"]
+      )
+    ]
+  ) {
+    DemandAmbiguous { check: _, cause: _ } => true
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Bool {
+  let gate = CommitSpecGate { gate: EmitHostGate }
+  let fmt = CommitCargoFmtCheck
+  let roster = [
+    synthetic_enrollment(check: gate),
+    synthetic_enrollment(check: fmt)
+  ]
+  let gate_row = EnrollmentWitnessDemand { check: gate, declarations: [] }
+  let fmt_row = EnrollmentWitnessDemand { check: fmt, declarations: [] }
+  let complete = [
+    demand_decl(module_path: "test.claim.expansion", decl_name: "a_holds"),
+    demand_decl(module_path: "test.claim.expansion", decl_name: "b_holds")
+  ]
+  demand_rows_match_roster(roster: roster, rows: [gate_row, fmt_row])
+    && !demand_rows_match_roster(roster: roster, rows: [gate_row])
+    && !demand_rows_match_roster(roster: roster, rows: [gate_row, gate_row])
+    && !declaration_ref_lists_eq(left: complete, right: [complete.first()])
+    && !declaration_ref_lists_eq(
+      left: complete,
+      right: [complete.first(), complete.first()]
+    )
+    && !declaration_ref_lists_eq(
+      left: [complete.first(), complete.first(), complete.skip(n: 1).first()],
+      right: [complete.first(), complete.skip(n: 1).first(), complete.skip(n: 1).first()]
+    )
+}
+
+test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/wrong_identity_test.dag",
+    check_fns: ["holds"]
+  )
+  let wrong_field = DeclarationRef {
+    module_path: "test.claim.wrong_identity" as NonEmptyStr,
+    decl_name: "holds" as NonEmptyStr,
+    field: NamedField { field_name: "body" as NonEmptyStr }
+  }
+  declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
+    && match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      DiscoveryComplete {
+        entry: "dag/test/claim/wrong_identity_test.dag",
+        module_path: "test.claim.wrong_identity" as NonEmptyStr,
+        declarations: [wrong_field]
+      }
+    ]
+  ) {
+    DemandAmbiguous { check: _, cause: _ } => true
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}
+
+test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
+  let check = synthetic_witness_check(
+    entry: "dag/test/claim/wrong_module_test.dag",
+    check_fns: ["holds"]
+  )
+  let wrong_module = demand_decl(
+    module_path: "test.claim.other_module",
+    decl_name: "holds"
+  )
+  match project_enrollment_witness_demands_unchecked(
+    roster: [synthetic_enrollment(check: check)],
+    discoveries: [
+      DiscoveryComplete {
+        entry: "dag/test/claim/wrong_module_test.dag",
+        module_path: "test.claim.supplied_module" as NonEmptyStr,
+        declarations: [wrong_module]
+      }
+    ]
+  ) {
+    DemandAmbiguous { check: _, cause: _ } => true
+    DemandQualified { rows: _ } => false
+    DemandMissing { check: _, cause: _ } => false
+    DemandIncomplete { check: _, cause: _ } => false
+    DemandRosterAmbiguous { cause: _ } => false
+  }
+}

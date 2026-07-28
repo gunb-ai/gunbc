@@ -1,0 +1,252 @@
+module test.claim.terminal_wire_projection_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import std.symbols { Ascii }
+import std.render { RenderCapability, Overwrite, Append, Clear }
+import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
+import extdeps.render.ansi {
+  ansi_c0_controls,
+  ansi_c1_controls,
+  ansi_terminal_controls,
+  ansi_escape,
+  ansi_carriage_return,
+  ansi_line_feed,
+  ansi_erase_entire_line,
+}
+import extdeps.render.terminal {
+  DynamicLineState,
+  DynamicLineClosed,
+  DynamicLineOpen,
+  TerminalWriteProjection,
+  TerminalWriteProjected,
+  TerminalWriteRefused,
+  project_terminal_write,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "Terminal-wire acceptance for the observation P2 prerequisite. These rows discriminate exact ECMA-48 bytes and the next-state transition for every cursor action, including downgrade and contradiction arms. The renderer supplies text; project_terminal_write is the sole owner of CR, LF, and erase-line control spelling."
+
+fn addressable() -> RenderCapability {
+  RenderCapability { color: false, tier: Ascii, cursor_addressable: true }
+}
+
+fn nonaddressable() -> RenderCapability {
+  RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
+}
+
+fn projected_is(p: TerminalWriteProjection, bytes: String, next: DynamicLineState) -> Bool {
+  match p {
+    TerminalWriteProjected { bytes: b, next: n } => b == bytes && n == next
+    TerminalWriteRefused { cause: _ } => false
+  }
+}
+
+fn rendered_control_refuses(rendered: String) -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Append,
+    capability: addressable(),
+    rendered: rendered
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } =>
+      c == "rendered text cannot contain terminal cursor-control bytes"
+  }
+}
+
+type TerminalControlScan {
+  next_index: Int
+  first_failure: Int
+  carriage_return_refuses: Bool
+  line_feed_refuses: Bool
+  escape_refuses: Bool
+}
+
+fn terminal_control_scan() -> TerminalControlScan {
+  let roster_scan = fold(
+    ansi_terminal_controls,
+    init: TerminalControlScan {
+      next_index: 0,
+      first_failure: -1,
+      carriage_return_refuses: true,
+      line_feed_refuses: true,
+      escape_refuses: true
+    },
+    f: (acc, control) => {
+      let failure = if acc.first_failure >= 0 || rendered_control_refuses(rendered: concat("forged", control)) {
+        acc.first_failure
+      } else {
+        acc.next_index
+      }
+      TerminalControlScan {
+        next_index: acc.next_index + 1,
+        first_failure: failure,
+        carriage_return_refuses: acc.carriage_return_refuses,
+        line_feed_refuses: acc.line_feed_refuses,
+        escape_refuses: acc.escape_refuses
+      }
+    }
+  )
+  TerminalControlScan {
+    next_index: roster_scan.next_index,
+    first_failure: roster_scan.first_failure,
+    carriage_return_refuses: rendered_control_refuses(rendered: concat("forged", ansi_carriage_return)),
+    line_feed_refuses: rendered_control_refuses(rendered: concat("forged", ansi_line_feed)),
+    escape_refuses: rendered_control_refuses(rendered: concat("forged", ansi_escape))
+  }
+}
+
+test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Overwrite,
+      capability: addressable(),
+      rendered: "working"
+    ),
+    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working")),
+    next: DynamicLineOpen
+  ) &&
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineOpen,
+      requested: Overwrite,
+      capability: addressable(),
+      rendered: "still working"
+    ),
+    bytes: concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "still working")),
+    next: DynamicLineOpen
+  )
+}
+
+test fn w_append_from_open_erases_then_closes() -> Bool {
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineOpen,
+      requested: Append,
+      capability: addressable(),
+      rendered: "done"
+    ),
+    bytes: concat(
+      ansi_carriage_return,
+      concat(ansi_erase_entire_line(), concat("done", ansi_line_feed))
+    ),
+    next: DynamicLineClosed
+  )
+}
+
+test fn w_append_from_closed_is_plain_line() -> Bool {
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Append,
+      capability: addressable(),
+      rendered: "done"
+    ),
+    bytes: concat("done", ansi_line_feed),
+    next: DynamicLineClosed
+  )
+}
+
+test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool {
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineOpen,
+      requested: Clear,
+      capability: addressable(),
+      rendered: ""
+    ),
+    bytes: concat(ansi_carriage_return, ansi_erase_entire_line()),
+    next: DynamicLineClosed
+  ) &&
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Clear,
+      capability: addressable(),
+      rendered: ""
+    ),
+    bytes: "",
+    next: DynamicLineClosed
+  )
+}
+
+test fn w_clear_with_text_refuses() -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineClosed,
+    requested: Clear,
+    capability: addressable(),
+    rendered: "caller tried to own clear bytes"
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } => c == "Clear requires empty rendered text"
+  }
+}
+
+test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
+  let scan = terminal_control_scan()
+  scan.carriage_return_refuses &&
+  scan.line_feed_refuses &&
+  scan.escape_refuses &&
+  ansi_c0_controls.count() == 33 &&
+  ansi_c1_controls.count() == 32 &&
+  scan.next_index == 65 &&
+  scan.first_failure == -1
+}
+
+test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Overwrite,
+      capability: nonaddressable(),
+      rendered: "working"
+    ),
+    bytes: concat("working", ansi_line_feed),
+    next: DynamicLineClosed
+  ) &&
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Clear,
+      capability: nonaddressable(),
+      rendered: ""
+    ),
+    bytes: "",
+    next: DynamicLineClosed
+  )
+}
+
+test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool {
+  match project_terminal_write(
+    prior: DynamicLineOpen,
+    requested: Append,
+    capability: nonaddressable(),
+    rendered: "done"
+  ) {
+    TerminalWriteProjected { bytes: _, next: _ } => false
+    TerminalWriteRefused { cause: c } =>
+      c == "non-addressable terminal cannot continue an open dynamic line"
+  }
+}
+
+test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
+  let authoritative = concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working"))
+  let perturbed = concat(ansi_carriage_return, concat(ansi_escape, concat("]2K", "working")))
+  perturbation_consistent(
+    reading: BackwardDiffInDiffOut,
+    output_responded: authoritative != perturbed
+  ) &&
+  projected_is(
+    p: project_terminal_write(
+      prior: DynamicLineClosed,
+      requested: Overwrite,
+      capability: addressable(),
+      rendered: "working"
+    ),
+    bytes: authoritative,
+    next: DynamicLineOpen
+  )
+}
