@@ -27,8 +27,14 @@ fn source_roots_shell_flags(roots: List<String>, style: SourceRootShellStyle) ->
   fold(roots, init: "", f: (acc, r) => concat(acc, source_root_shell_flag(root: r, style: style)))
 }
 
+data release_bin_dir_rel: String = "target/release"
+
+fn release_bin_rel_path(bin_name: String) -> String {
+  concat(concat(release_bin_dir_rel, "/"), bin_name)
+}
+
 fn release_bin_shell_path(bin_name: String) -> String {
-  concat(concat("\"$ROOT/target/release/", bin_name), "\"")
+  concat(concat("\"$ROOT/", release_bin_rel_path(bin_name: bin_name)), "\"")
 }
 
 fn claim_executor_bin_shell() -> String {

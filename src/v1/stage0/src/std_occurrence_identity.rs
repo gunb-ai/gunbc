@@ -137,6 +137,24 @@ pub struct OccurrenceTransport {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIdentityConsumerRedDebt {
+    pub id: String,
+    pub required_receipt: String,
+    pub owner: String,
+    pub dissolve_on: String,
+}
+
+pub fn occurrence_identity_consumer_red_debts() -> Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>> = {
+            serde_json::from_value(serde_json::json!([{"id": "rebuilt-reference-identity-preservation", "required_receipt": "A production reference rebuild preserves the exact sidecar occurrence identity and containment path; dropping or reminting the occurrence must make the consumer RED.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the rebuilt-reference production RED executes through the sidecar-consuming canonical binding boundary; delete this row in the same PR."}, {"id": "one-occurrence-collector-dedupe", "required_receipt": "Two observations of one authored occurrence enter the collector once by exact occurrence identity, never by spelling, SourceSpan, or Node structure.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the occurrence-safe collector dedupe RED executes against the sidecar consumer; delete this row in the same PR."}, {"id": "structurally-equal-distinct-occurrences", "required_receipt": "Structurally equal and equally spelled authored occurrences with distinct IDs remain two collector entries.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the distinct-authored-occurrences collector RED executes against the sidecar consumer; delete this row in the same PR."}, {"id": "pattern-declaration-reachability", "required_receipt": "Authoritative collection reaches every parser-minted pattern declaration occurrence, including nested pattern binders.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the pattern-declaration reachability RED executes through the production occurrence collector; delete this row in the same PR."}, {"id": "inferred-target-anchor-identity", "required_receipt": "An inferred target projection remains anchored to the exact authored occurrence instead of a rebuilt shell Node, spelling, or SourceSpan.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the inferred-target anchor RED executes through the production sidecar consumer; delete this row in the same PR."}, {"id": "same-spelling-parser-declaration-isolation", "required_receipt": "Same-spelling declarations and references in sibling match arms, nested lets, lambdas, and parameters retain distinct authored identities and containment paths without overwrite.", "owner": "namespace-canonical-binding", "dissolve_on": "DISSOLVE-ON: the full same-spelling parser-to-binding RED matrix executes at the canonical binding boundary; delete this row in the same PR."}]))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<OccurrenceIdentityConsumerRedDebt>>>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceTransportRefusal {
     MissingAuthoredOccurrenceIdentity {

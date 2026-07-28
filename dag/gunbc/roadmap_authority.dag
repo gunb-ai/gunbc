@@ -34,6 +34,12 @@ import gunbc.roadmap_status {
   Signoff,
   Unsigned,
   SignedOff,
+  RedControlEvidence,
+  RedControlNotRun,
+  RedControlExecuted,
+  HandbackEvidence,
+  HandbackNotDelivered,
+  HandbackDelivered,
 }
 import std.markdown {
   MarkdownBlock,
@@ -46,7 +52,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
-fn signed(by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool) -> Signoff {
+fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool) -> Signoff {
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
@@ -279,6 +285,15 @@ fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification
   }
 }
 
+fn caret_parse_smoke_seed_growth_justification() -> SeedGrowthJustification {
+  SeedGrowthJustification {
+    reason: "The caret parser smoke test predates the later occurrence-transport ParseContext field expansion. Compiler-required None initializers in its existing context literal preserve compilation and add no capability; the inherited hand-maintained Rust file still needs one counted dissolution obligation.",
+    owning_dissolution_lane: nid(s: "v1-zero-hand-maintained-rust"),
+    trigger: "Migrate the caret smoke behavior to an emitted test whose cited .dag model is the authority, or delete the Rust test once equivalent discriminating .dag coverage is enrolled; then retire this row under v1-zero-hand-maintained-rust.",
+    current_boundary: "src/v1/stage0/tests/caret_parse_smoke.rs",
+  }
+}
+
 fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   fields(
     headline: "Justify the bounded scoped-run observation seed bridge",
@@ -298,6 +313,30 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
     out_of_scope: "No general seed-growth ledger, observation feature expansion, or implementation-status record.",
     handback: concat(
       "Return the five-file boundary receipt and carry this exact dissolution trigger into ",
+      j.owning_dissolution_lane as String,
+    ),
+  )
+}
+
+fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
+  fields(
+    headline: "Migrate or delete the retained caret parser smoke test",
+    boundary: concat(
+      "The seed-retained boundary is exactly ",
+      concat(j.current_boundary, "; this row admits no new test capability or additional hand-Rust file."),
+    ),
+    displaced_cost: concat("Reason: ", j.reason),
+    first_slice: concat("Execute the owning lane's migration trigger: ", j.trigger),
+    red_control: concat(
+      "If the file remains hand-maintained without exactly one row owned by ",
+      concat(
+        j.owning_dissolution_lane as String,
+        ", or the retained boundary grows beyond the named file, the frontier refuses acceptance.",
+      ),
+    ),
+    out_of_scope: "No caret-test, parser/compiler, or unrelated seed-file changes; no parallel prose ledger.",
+    handback: concat(
+      "Return the emitted-or-deleted file receipt and equivalent discriminating .dag coverage when behavior migrates, then retire this row from ",
       j.owning_dissolution_lane as String,
     ),
   )
@@ -721,6 +760,12 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return deletion diff plus complete execution and reachability receipts."
       )
     ),
+    active_small(
+      id: "caret-parse-smoke-seed-growth-justification",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: caret_parse_smoke_seed_growth_fields(j: caret_parse_smoke_seed_growth_justification())
+    ),
     active_large(
       id: "v1-zero-hand-maintained-rust",
       owner: "self-host",
@@ -960,6 +1005,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
     edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
