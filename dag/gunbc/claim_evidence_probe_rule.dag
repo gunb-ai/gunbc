@@ -1,0 +1,68 @@
+module gunbc.claim_evidence_probe_rule
+
+import std.types { NonEmptyStr }
+import std.claim_evidence {
+  RecordedFact,
+  InferenceRuleId,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceDirection,
+  EvidenceSupports,
+  EvidenceLink,
+  EvidenceInsufficiency,
+  EvidenceInference,
+  evidence_direction_bits,
+  applicable_evidence_inference,
+  insufficient_evidence_inference,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  readback_probe_is_independent,
+}
+
+fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
+  fact: RecordedFact<F>,
+  claim: C,
+  direction: EvidenceDirection,
+  inference_rule: InferenceRuleId,
+  authority: A,
+  provenance: EvidenceProvenance,
+  freshness: EvidenceFreshness<FreshBound>,
+  fidelity: EvidenceFidelity<FidelityBoundary>,
+  probe: ReadBackProbe,
+  maximum_conclusion: C,
+) -> EvidenceInference<
+  EvidenceLink<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe>,
+  F,
+  C,
+  ReadBackProbe
+> {
+  let direction_bits = evidence_direction_bits(direction: direction)
+  if direction_bits.support && !readback_probe_is_independent(p: probe) {
+    insufficient_evidence_inference(
+      insufficiency: EvidenceInsufficiency {
+        fact: fact,
+        claim: claim,
+        inference_rule: inference_rule,
+        probe_independence: probe,
+        reason: "a positive result from this probe may establish the subject it reports",
+      },
+    )
+  } else {
+    applicable_evidence_inference(
+      link: EvidenceLink {
+        fact: fact,
+        claim: claim,
+        direction: direction,
+        inference_rule: inference_rule,
+        authority: authority,
+        provenance: provenance,
+        freshness: freshness,
+        fidelity: fidelity,
+        probe_independence: probe,
+        maximum_conclusion: maximum_conclusion,
+      },
+    )
+  }
+}

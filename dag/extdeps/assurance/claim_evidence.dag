@@ -1,0 +1,27 @@
+module extdeps.assurance.claim_evidence
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.omg.org/spec/SACM/"
+  }
+}
+
+data sacm_claim_evidence_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data w3c_prov_dm_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/prov-dm/"
+  }
+}
+
+data belnap_four_valued_information_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doi.org/10.1007/978-94-010-1161-7_2"
+  }
+}

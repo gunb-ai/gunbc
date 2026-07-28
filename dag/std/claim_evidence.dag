@@ -1,0 +1,214 @@
+module std.claim_evidence
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.assurance.claim_evidence {
+  sacm_claim_evidence_authority,
+  w3c_prov_dm_authority,
+  belnap_four_valued_information_authority,
+}
+
+data claim_evidence_grounding_authorities: List<ExternalAuthority> = [
+  sacm_claim_evidence_authority,
+  w3c_prov_dm_authority,
+  belnap_four_valued_information_authority,
+]
+
+type RecordedFactId = NonEmptyStr where brand("RecordedFactId")
+type ClaimId = NonEmptyStr where brand("ClaimId")
+type InferenceRuleId = NonEmptyStr where brand("InferenceRuleId")
+type ProvEntityId = NonEmptyStr where brand("ProvEntityId")
+type ProvActivityId = NonEmptyStr where brand("ProvActivityId")
+type ProvAgentId = NonEmptyStr where brand("ProvAgentId")
+
+type RecordedFact<F> {
+  id: RecordedFactId
+  value: F
+}
+
+type Claim<S, T, P, Scope, Bound> {
+  id: ClaimId
+  subject: S
+  target: T
+  proposition: P
+  scope: Scope
+  bound: Bound
+}
+
+type EvidenceProvenance {
+  entity: ProvEntityId
+  activity: ProvActivityId
+  agent: ProvAgentId
+}
+
+type EvidenceFreshness<Bound> {
+  bound: Bound
+  basis: NonEmptyStr
+}
+
+type EvidenceFidelity<Boundary> {
+  boundary: Boundary
+  losses: List<NonEmptyStr>
+}
+
+type EvidenceDirection
+  = EvidenceSupports
+  | EvidenceChallenges
+
+type EvidenceDirectionBits {
+  support: Bool
+  challenge: Bool
+}
+
+fn evidence_direction_bits(direction: EvidenceDirection) -> EvidenceDirectionBits {
+  match direction {
+    EvidenceSupports => EvidenceDirectionBits {
+      support: true,
+      challenge: false,
+    }
+    EvidenceChallenges => EvidenceDirectionBits {
+      support: false,
+      challenge: true,
+    }
+  }
+}
+
+type EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence> {
+  fact: RecordedFact<F>
+  claim: C
+  direction: EvidenceDirection
+  inference_rule: InferenceRuleId
+  authority: A
+  provenance: EvidenceProvenance
+  freshness: EvidenceFreshness<FreshBound>
+  fidelity: EvidenceFidelity<FidelityBoundary>
+  probe_independence: Independence
+  maximum_conclusion: C
+}
+
+type EvidenceInsufficiency<F, C, Independence> {
+  fact: RecordedFact<F>
+  claim: C
+  inference_rule: InferenceRuleId
+  probe_independence: Independence
+  reason: NonEmptyStr
+}
+
+type EvidenceInference<L, F, C, Independence> {
+  applicable: List<L>
+  insufficient: List<EvidenceInsufficiency<F, C, Independence>>
+}
+
+fn applicable_evidence_inference<L, F, C, Independence>(
+  link: L,
+) -> EvidenceInference<L, F, C, Independence> {
+  EvidenceInference {
+    applicable: [link],
+    insufficient: [],
+  }
+}
+
+fn insufficient_evidence_inference<L, F, C, Independence>(
+  insufficiency: EvidenceInsufficiency<F, C, Independence>,
+) -> EvidenceInference<L, F, C, Independence> {
+  EvidenceInference {
+    applicable: [],
+    insufficient: [insufficiency],
+  }
+}
+
+type ClaimAssessment<C, L> {
+  claim: C
+  supporting: List<L>
+  challenging: List<L>
+}
+
+fn claim_assessment_from_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
+  claim: C,
+  links: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
+) -> ClaimAssessment<
+  C,
+  EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>
+> {
+  ClaimAssessment {
+    claim: claim,
+    supporting: links
+      |> filter(link =>
+        link.claim == claim
+          && evidence_direction_bits(direction: link.direction).support
+      ),
+    challenging: links
+      |> filter(link =>
+        link.claim == claim
+          && evidence_direction_bits(direction: link.direction).challenge
+      ),
+  }
+}
+
+type ClaimInformationState {
+  support: Bool
+  challenge: Bool
+}
+
+fn claim_information_state<C, L>(
+  assessment: ClaimAssessment<C, L>,
+) -> ClaimInformationState {
+  ClaimInformationState {
+    support: assessment.supporting.length() > 0,
+    challenge: assessment.challenging.length() > 0,
+  }
+}
+
+fn claim_assessment_supports_without_challenge<C, L>(
+  assessment: ClaimAssessment<C, L>,
+) -> Bool {
+  let state = claim_information_state(assessment: assessment)
+  state.support && !state.challenge
+}
+
+type ClaimReadinessPolicy<C> {
+  required: List<C>
+}
+
+type ClaimReadinessAssessment<C> {
+  satisfied: List<C>
+  blocking: List<C>
+}
+
+fn claim_readiness_assessment<C, L>(
+  policy: ClaimReadinessPolicy<C>,
+  assessments: List<ClaimAssessment<C, L>>,
+) -> ClaimReadinessAssessment<C> {
+  ClaimReadinessAssessment {
+    satisfied: policy.required
+      |> filter(required =>
+        assessments
+          |> any(assessment =>
+            assessment.claim == required
+              && claim_assessment_supports_without_challenge(
+                assessment: assessment,
+              )
+          )
+      ),
+    blocking: policy.required
+      |> filter(required =>
+        !(
+          assessments
+            |> any(assessment =>
+              assessment.claim == required
+                && claim_assessment_supports_without_challenge(
+                  assessment: assessment,
+                )
+            )
+        )
+      ),
+  }
+}
+
+fn claim_readiness_is_ready<C>(
+  assessment: ClaimReadinessAssessment<C>,
+) -> Bool {
+  assessment.blocking.length() == 0
+}
+
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. ClaimInformationState is the product of two independent bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."
