@@ -303,6 +303,18 @@ fn fixture_repository() -> MercurialRepositoryState? {
   }
 }
 
+fn mercurial_r0_fixture_expected_execution_receipt() -> String {
+  "node_width=40|local_revs=0,1,2|heads=2|bookmark=left|local_tag=right|branches=default,default,default|phases=public,draft,secret|copy=bin/run<-src/main.dag|flags=exec,symlink,regular|requirements=present|verify=ok"
+}
+
+test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool {
+  let receipt = mercurial_r0_fixture_expected_execution_receipt()
+  string_contains(s: receipt, pattern: "local_revs=0,1,2")
+    && string_contains(s: receipt, pattern: "heads=2")
+    && string_contains(s: receipt, pattern: "phases=public,draft,secret")
+    && string_contains(s: receipt, pattern: "copy=bin/run<-src/main.dag")
+}
+
 test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecodeRefused { cause: _ } => false
