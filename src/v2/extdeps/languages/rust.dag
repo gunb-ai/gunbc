@@ -6,6 +6,11 @@ import std.trait_derive_shape {
   ReprDerivePartialEq,
   ReprDeriveSerialize
 }
+import extdeps.languages.rust.derive_contracts {
+  rust_1_93_vec_trait_implementations_authority,
+  serde_1_0_228_vec_deserialize_authority,
+  serde_1_0_228_vec_serialize_authority
+}
 import v2.std.language_model { LanguageModel }
 import v2.std.grammar {
   StampClass,
@@ -194,8 +199,9 @@ import v2.std.compilers.target_model {
   target_reference_layer_tokens_node,
   TargetRepresentation,
   TargetRepresentationChoice,
-  TargetDeriveSupplementalGenericBoundContract,
-  TargetDeriveSupplementalGenericBoundRequirement,
+  TargetDeriveSupplementalGenericBoundContractAuthority,
+  TargetDeriveTraitKey,
+  TargetRepresentationParameterSlot,
   RequiredTraitWitness,
   TargetCollectionWitnessOrd,
   TargetCollectionWitnessHash,
@@ -206,10 +212,12 @@ import v2.std.compilers.target_model {
   TargetCollectionReprVec,
   target_collection_choice_field_representation_parameters,
   target_collection_choice_field_supplemental_generic_bound_contracts,
-  target_derive_supplemental_generic_bound_contract_field_derive_trait,
-  target_derive_supplemental_generic_bound_contract_field_requirements,
-  target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
-  target_derive_supplemental_generic_bound_requirement_field_required_trait,
+  target_derive_supplemental_generic_bound_contract_authorities_empty,
+  target_derive_supplemental_generic_bound_contract_authority_insert,
+  target_representation_choice_parameters_bundle_node,
+  target_representation_choice_supplemental_generic_bound_contracts_bundle_node,
+  target_representation_parameter_slot_empty,
+  target_representation_parameter_slots_empty,
   ReprGroundingDeriveTrait,
   target_type_expr_atom_emitted,
   target_type_expr_arrow_emitted,
@@ -1557,36 +1565,46 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
   }
 }
 
-data rust_vec_supplemental_generic_bound_contract_source: String = "Rust std::vec::Vec implementation contract: Debug, Clone, PartialEq, Serialize, and Deserialize require only the corresponding element trait, so the representation contributes zero additional bounds. The explicit empty rows preserve known-zero separately from an unknown/missing contract."
-
-fn rust_known_zero_supplemental_generic_bound_contract(
-  derive_trait: ReprGroundingDeriveTrait
-) -> TargetDeriveSupplementalGenericBoundContract {
-  TargetDeriveSupplementalGenericBoundContract {
-    derive_trait: derive_trait,
-    requirements: Empty
-  }
+fn rust_collection_representation_parameters(
+) -> Map<Symbol, TargetRepresentationParameterSlot> {
+  map_insert(
+    m: target_representation_parameter_slots_empty(),
+    key: ^target_collection_type_param_t,
+    value: target_representation_parameter_slot_empty()
+  )
 }
 
 fn rust_vec_supplemental_generic_bound_contracts(
-) -> List<TargetDeriveSupplementalGenericBoundContract> {
-  [
-    rust_known_zero_supplemental_generic_bound_contract(
-      derive_trait: ReprDeriveDebug
-    ),
-    rust_known_zero_supplemental_generic_bound_contract(
-      derive_trait: ReprDeriveClone
-    ),
-    rust_known_zero_supplemental_generic_bound_contract(
-      derive_trait: ReprDerivePartialEq
-    ),
-    rust_known_zero_supplemental_generic_bound_contract(
-      derive_trait: ReprDeriveSerialize
-    ),
-    rust_known_zero_supplemental_generic_bound_contract(
-      derive_trait: ReprDeriveDeserialize
+) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contract =
+    target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+      derive_trait: ReprDeriveDebug,
+      authority: rust_1_93_vec_trait_implementations_authority
     )
-  ]
+  let clone_contract =
+    target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: debug_contract,
+      derive_trait: ReprDeriveClone,
+      authority: rust_1_93_vec_trait_implementations_authority
+    )
+  let partial_eq_contract =
+    target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: clone_contract,
+      derive_trait: ReprDerivePartialEq,
+      authority: rust_1_93_vec_trait_implementations_authority
+    )
+  let serialize_contract =
+    target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: partial_eq_contract,
+      derive_trait: ReprDeriveSerialize,
+      authority: serde_1_0_228_vec_serialize_authority
+    )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: serialize_contract,
+    derive_trait: ReprDeriveDeserialize,
+    authority: serde_1_0_228_vec_deserialize_authority
+  )
 }
 
 fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
@@ -1595,11 +1613,11 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprBTreeSet,
       apply: rust_set_collection_apply_btree()
     },
-    representation_parameters: [^target_collection_type_param_t],
+    representation_parameters: rust_collection_representation_parameters(),
     constraints: [
       TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
     ],
-    supplemental_generic_bound_contracts: Empty
+    supplemental_generic_bound_contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
   }
 }
 
@@ -1609,12 +1627,12 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprHashSet,
       apply: rust_set_collection_apply_hash()
     },
-    representation_parameters: [^target_collection_type_param_t],
+    representation_parameters: rust_collection_representation_parameters(),
     constraints: [
       TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
       TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
     ],
-    supplemental_generic_bound_contracts: Empty
+    supplemental_generic_bound_contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
   }
 }
 
@@ -1631,7 +1649,7 @@ fn rust_free_monoid_collection_primary_choice() -> TargetRepresentationChoice {
       kind: TargetCollectionReprVec,
       apply: rust_free_monoid_collection_apply_vec()
     },
-    representation_parameters: [^target_collection_type_param_t],
+    representation_parameters: rust_collection_representation_parameters(),
     constraints: [],
     supplemental_generic_bound_contracts: rust_vec_supplemental_generic_bound_contracts()
   }
@@ -1729,47 +1747,6 @@ fn rust_collection_witness_bundle_node(witness: RequiredTraitWitness) -> Node {
   }
 }
 
-fn rust_derive_supplemental_generic_bound_requirement_bundle_node(
-  requirement: TargetDeriveSupplementalGenericBoundRequirement
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
-        target: rust_inhabitant_atom(id: requirement.representation_parameter)
-      ),
-      rust_named_edge(
-        name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
-        target: rust_inhabitant_atom(id: discriminant(v: requirement.required_trait))
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn rust_derive_supplemental_generic_bound_contract_bundle_node(
-  contract: TargetDeriveSupplementalGenericBoundContract
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait,
-        target: rust_inhabitant_atom(id: discriminant(v: contract.derive_trait))
-      ),
-      rust_named_edge(
-        name: ^target_derive_supplemental_generic_bound_contract_field_requirements,
-        target: fold_list_node(
-          xs: contract.requirements,
-          item_node: rust_derive_supplemental_generic_bound_requirement_bundle_node
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
 fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1780,9 +1757,8 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
       ),
       rust_named_edge(
         name: ^target_collection_choice_field_representation_parameters,
-        target: fold_list_node(
-          xs: choice.representation_parameters,
-          item_node: fn(parameter) { rust_inhabitant_atom(id: parameter) }
+        target: target_representation_choice_parameters_bundle_node(
+          choice: choice
         )
       ),
       rust_named_edge(
@@ -1794,9 +1770,8 @@ fn rust_collection_choice_bundle_node(choice: TargetRepresentationChoice) -> Nod
       ),
       rust_named_edge(
         name: ^target_collection_choice_field_supplemental_generic_bound_contracts,
-        target: fold_list_node(
-          xs: choice.supplemental_generic_bound_contracts,
-          item_node: rust_derive_supplemental_generic_bound_contract_bundle_node
+        target: target_representation_choice_supplemental_generic_bound_contracts_bundle_node(
+          choice: choice
         )
       )
     ],

@@ -103,8 +103,8 @@ import v2.std.compilers.target_model {
   TargetCollectionRealization,
   TargetTextCarrier,
   TargetRepresentationChoice,
-  target_derive_supplemental_generic_bound_contracts_from_node,
-  target_representation_choice_validate_supplemental_generic_bound_contracts,
+  target_derive_supplemental_generic_bound_contract_catalog_from_node,
+  target_representation_parameter_slots_from_node,
   target_collection_node_atom_identity,
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
@@ -1296,9 +1296,8 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
             ),
             f: fn(representation_parameters_node) {
               bind_outcome(
-                o: node_list_from_node(
-                  node: representation_parameters_node,
-                  decode_item: target_collection_node_atom_identity
+                o: target_representation_parameter_slots_from_node(
+                  node: representation_parameters_node
                 ),
                 f: fn(representation_parameters) {
                   bind_outcome(
@@ -1317,17 +1316,18 @@ fn target_collection_choice_from_node(node: Node) -> Outcome<TargetRepresentatio
                             ),
                             f: fn(contracts_node) {
                               bind_outcome(
-                                o: target_derive_supplemental_generic_bound_contracts_from_node(
-                                  node: contracts_node
+                                o: target_derive_supplemental_generic_bound_contract_catalog_from_node(
+                                  representation_parameters: representation_parameters,
+                                  node: contracts_node,
+                                  at: node
                                 ),
-                                f: fn(supplemental_generic_bound_contracts) {
-                                  target_representation_choice_validate_supplemental_generic_bound_contracts(
-                                    at: node,
-                                    choice: TargetRepresentationChoice {
+                                f: fn(supplemental_catalog) {
+                                  outcome_accepted(
+                                    TargetRepresentationChoice {
                                       form: form,
-                                      representation_parameters: representation_parameters,
+                                      representation_parameters: supplemental_catalog.representation_parameters,
                                       constraints: constraints,
-                                      supplemental_generic_bound_contracts: supplemental_generic_bound_contracts
+                                      supplemental_generic_bound_contracts: supplemental_catalog.contracts
                                     }
                                   )
                                 }
