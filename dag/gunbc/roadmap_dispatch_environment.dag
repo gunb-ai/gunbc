@@ -1,11 +1,12 @@
 module gunbc.roadmap_dispatch_environment
 
-import std.types { String, Bool, List, FilePath }
+import std.types { String, Bool, List, FilePath, NonEmptyStr }
 import std.upsert_decision {
   UpsertDecision,
   Noop,
   Apply,
   Refuse,
+  upsert_decision_label,
 }
 import std.realization_reconcile { reconciliation_converged }
 import gunbc.output_policy { OutcomeIsData }
@@ -45,11 +46,13 @@ import extdeps.languages.json.emit {
 import extdeps.gunbc
 import extdeps.shell
 
+data capability_ensure_receipt_decision_note: String = "review 44078. The receipt used to carry the Ensure decision as a raw String (\"noop\" | \"apply\" | \"refuse\") — a closed sum projected through an open carrier, so a fourth spelling was writable and nothing tied the field to the sum it came from. It now carries the UpsertDecision itself, which is the authority ensure_decide already produced, so there is no second sum to keep in step (DESIGN 3); the wire word exists once, at the JSON emit site, through upsert_decision_label."
+
 type CapabilityEnsureReceipt {
   capability: ExecutionCapability
   capability_label: String
   executable: String
-  decision: String
+  decision: UpsertDecision<String>
   grounded: Bool
   evidence: String
   reason: String
@@ -129,7 +132,7 @@ fn capability_ensure_receipt(
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
         executable: realization.executable as String,
-        decision: "noop",
+        decision: decision,
         grounded: reconciliation_converged(r: readback),
         evidence: ensure_observation_evidence(observation: observation),
         reason: if reconciliation_converged(r: readback) {
@@ -143,7 +146,7 @@ fn capability_ensure_receipt(
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
         executable: realization.executable as String,
-        decision: "apply",
+        decision: decision,
         grounded: false,
         evidence: ensure_observation_evidence(observation: observation),
         reason: "capability-specific apply is required before admission; no effect ran in the decision layer",
@@ -153,12 +156,19 @@ fn capability_ensure_receipt(
         capability: realization.capability,
         capability_label: execution_capability_label(capability: realization.capability),
         executable: realization.executable as String,
-        decision: "refuse",
+        decision: decision,
         grounded: false,
         evidence: ensure_observation_evidence(observation: observation),
         reason: reason as String,
       }
   }
+}
+
+fn missing_capability_reason(cap: ExecutionCapability) -> String {
+  join([
+    "host environment has no realization for required capability ",
+    execution_capability_label(capability: cap),
+  ], "")
 }
 
 fn missing_capability_receipt(
@@ -168,13 +178,12 @@ fn missing_capability_receipt(
     capability: cap,
     capability_label: execution_capability_label(capability: cap),
     executable: "",
-    decision: "refuse",
+    decision: Refuse {
+      reason: missing_capability_reason(cap: cap) as NonEmptyStr,
+    },
     grounded: false,
     evidence: "",
-    reason: join([
-      "host environment has no realization for required capability ",
-      execution_capability_label(capability: cap),
-    ], ""),
+    reason: missing_capability_reason(cap: cap),
   }
 }
 
@@ -338,7 +347,10 @@ fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue
   json_object(members: [
     json_kv(key: "capability", value: json_string(s: receipt.capability_label)),
     json_kv(key: "executable", value: json_string(s: receipt.executable)),
-    json_kv(key: "decision", value: json_string(s: receipt.decision)),
+    json_kv(
+      key: "decision",
+      value: json_string(s: upsert_decision_label(decision: receipt.decision)),
+    ),
     json_kv(key: "grounded", value: json_bool(b: receipt.grounded)),
     json_kv(key: "evidence", value: json_string(s: receipt.evidence)),
     json_kv(key: "reason", value: json_string(s: receipt.reason)),

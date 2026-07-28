@@ -19,3 +19,13 @@ type UpsertClassification<P> {
   verdict: ObservationVerdict
   decision: UpsertDecision<P>
 }
+
+data upsert_decision_label_note: String = "The one wire spelling of an UpsertDecision branch. It lives here, on the sum, because a consumer that wants the word in a receipt or a JSON document would otherwise re-spell it per site — and a re-spelling is a second representation of a closed sum (DESIGN 3). Callers keep the DECISION on their records and project here at the emit boundary; they do not store the label. Added for gunbc.roadmap_dispatch_environment's capability receipt (review 44078)."
+
+fn upsert_decision_label(decision: UpsertDecision<String>) -> String {
+  match decision {
+    Noop => "noop"
+    Apply { plan: _ } => "apply"
+    Refuse { reason: _ } => "refuse"
+  }
+}

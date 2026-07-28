@@ -25,6 +25,7 @@ import gunbc.roadmap_execution_contract {
   CapabilityRealization,
   execution_capability_label,
 }
+import std.upsert_decision { Noop, upsert_decision_label }
 import gunbc.roadmap_dispatch_environment {
   CapabilityEnsureReceipt,
   DispatchEnvironmentAdmission,
@@ -84,7 +85,7 @@ fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
     capability: cap,
     capability_label: execution_capability_label(capability: cap),
     executable: "/fixture/executable",
-    decision: "noop",
+    decision: Noop,
     grounded: true,
     evidence: "fixture identity evidence",
     reason: "",
@@ -149,7 +150,7 @@ test fn observe_only_absence_never_fabricates_apply() -> Bool {
     identity_matches: false,
   )
   !receipt.grounded
-    && receipt.decision == "refuse"
+    && upsert_decision_label(decision: receipt.decision) == "refuse"
     && string_contains(s: receipt.reason, pattern: "gunbc missing")
 }
 
@@ -167,7 +168,7 @@ test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
     identity_matches: false,
   )
   !receipt.grounded
-    && receipt.decision == "refuse"
+    && upsert_decision_label(decision: receipt.decision) == "refuse"
     && string_contains(s: receipt.reason, pattern: "generic Ensure cannot choose an installer")
 }
 
