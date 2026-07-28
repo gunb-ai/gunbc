@@ -2,26 +2,26 @@ module std.occurrence_identity
 
 import std.types { Bool, Int, String }
 
-data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped occurrence space. Production parsing assigns every source a disjoint authored-token ordinal range. Identity is the packed authored-token ordinal plus a typed edge role; filename, SourceSpan, authored name, structural Node equality, content hash, and module-local reset are forbidden identity inputs."
+data occurrence_identity_scope_law: String = "AuthoredOccurrenceId values are unique only inside one explicit graph-scoped occurrence space. Production parsing assigns every source a disjoint authored-token ordinal range. Identity is the packed authored-token ordinal plus a typed edge role; filename, SourceSpan, authored name, structural Node equality, content hash, and module-local reset are forbidden identity inputs."
 
 data occurrence_identity_constructor_spelling_note: String = "Shared NodeOccurrenceIdentity and its neutral constructors are collision-free because .dag type and variant names are closure-global and signatures cannot qualify a colliding type: legacy v2 NodeOccurrenceId/SyntheticOccurrence/MintedOccurrence and identically named shared declarations cannot coexist in one conversion closure. Spelling is representation; this shared carrier remains the sole semantic authority."
 
 data occurrence_identity_slots_per_authored_token: Int = 4
 
-type OccurrenceId {
+type AuthoredOccurrenceId {
   value: Int
 }
 
 type NodeOccurrenceIdentity
   = OccurrenceSynthetic
-  | OccurrenceMinted { id: OccurrenceId }
+  | OccurrenceMinted { id: AuthoredOccurrenceId }
 
 type DeclarationOccurrence {
-  identity: OccurrenceId
+  identity: AuthoredOccurrenceId
 }
 
 type ReferenceOccurrence {
-  identity: OccurrenceId
+  identity: AuthoredOccurrenceId
 }
 
 type AuthoredOccurrence
@@ -35,44 +35,49 @@ type AuthoredOccurrenceRole
 
 type DeclarationOccurrenceProjection
   = DeclarationOccurrenceAccepted { occurrence: DeclarationOccurrence }
-  | DeclarationOccurrenceWrongCategory { identity: OccurrenceId }
-  | DeclarationOccurrenceMalformed { identity: OccurrenceId }
+  | DeclarationOccurrenceWrongCategory { identity: AuthoredOccurrenceId }
+  | DeclarationOccurrenceMalformed { identity: AuthoredOccurrenceId }
 
 type ReferenceOccurrenceProjection
   = ReferenceOccurrenceAccepted { occurrence: ReferenceOccurrence }
-  | ReferenceOccurrenceWrongCategory { identity: OccurrenceId }
-  | ReferenceOccurrenceMalformed { identity: OccurrenceId }
+  | ReferenceOccurrenceWrongCategory { identity: AuthoredOccurrenceId }
+  | ReferenceOccurrenceMalformed { identity: AuthoredOccurrenceId }
 
-type OccurrenceIdAllocator {
+type AuthoredOccurrenceIdAllocator {
   next_id: Int
 }
 
-type OccurrenceIdAllocResult {
-  id: OccurrenceId
-  alloc: OccurrenceIdAllocator
+type AuthoredOccurrenceIdAllocResult {
+  id: AuthoredOccurrenceId
+  alloc: AuthoredOccurrenceIdAllocator
 }
 
-fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
-  OccurrenceIdAllocator { next_id: 0 }
+fn authored_occurrence_id_allocator_initial() -> AuthoredOccurrenceIdAllocator {
+  AuthoredOccurrenceIdAllocator { next_id: 0 }
 }
 
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
-  OccurrenceIdAllocResult {
-    id: OccurrenceId { value: alloc.next_id },
-    alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
+fn alloc_authored_occurrence_id(
+  alloc: AuthoredOccurrenceIdAllocator
+) -> AuthoredOccurrenceIdAllocResult {
+  AuthoredOccurrenceIdAllocResult {
+    id: AuthoredOccurrenceId { value: alloc.next_id },
+    alloc: AuthoredOccurrenceIdAllocator { next_id: alloc.next_id + 1 },
   }
 }
 
-fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
+fn authored_occurrence_id_eq(
+  left: AuthoredOccurrenceId,
+  right: AuthoredOccurrenceId
+) -> Bool {
   left.value == right.value
 }
 
-fn occurrence_id_allocator_advance_to(
-  alloc: OccurrenceIdAllocator,
+fn authored_occurrence_id_allocator_advance_to(
+  alloc: AuthoredOccurrenceIdAllocator,
   min_next: Int
-) -> OccurrenceIdAllocator {
+) -> AuthoredOccurrenceIdAllocator {
   if alloc.next_id < min_next {
-    OccurrenceIdAllocator { next_id: min_next }
+    AuthoredOccurrenceIdAllocator { next_id: min_next }
   } else {
     alloc
   }
@@ -89,8 +94,8 @@ fn authored_occurrence_role_slot(role: AuthoredOccurrenceRole) -> Int {
 fn authored_occurrence_identity(
   token_ordinal: Int,
   role: AuthoredOccurrenceRole
-) -> OccurrenceId {
-  OccurrenceId {
+) -> AuthoredOccurrenceId {
+  AuthoredOccurrenceId {
     value: (token_ordinal * occurrence_identity_slots_per_authored_token) + authored_occurrence_role_slot(role: role),
   }
 }
@@ -134,12 +139,12 @@ fn authored_reference_occurrence(
   AuthoredReferenceOccurrence { occurrence: occurrence }
 }
 
-fn occurrence_identity_slot(identity: OccurrenceId) -> Int {
+fn occurrence_identity_slot(identity: AuthoredOccurrenceId) -> Int {
   identity.value % occurrence_identity_slots_per_authored_token
 }
 
 fn declaration_occurrence_from_identity(
-  identity: OccurrenceId
+  identity: AuthoredOccurrenceId
 ) -> DeclarationOccurrenceProjection {
   if identity.value < 0 || occurrence_identity_slot(identity: identity) == 3 {
     DeclarationOccurrenceMalformed { identity: identity }
@@ -153,7 +158,7 @@ fn declaration_occurrence_from_identity(
 }
 
 fn reference_occurrence_from_identity(
-  identity: OccurrenceId
+  identity: AuthoredOccurrenceId
 ) -> ReferenceOccurrenceProjection {
   if identity.value < 0 || occurrence_identity_slot(identity: identity) == 3 {
     ReferenceOccurrenceMalformed { identity: identity }
@@ -166,10 +171,10 @@ fn reference_occurrence_from_identity(
   }
 }
 
-fn occurrence_node_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
+fn occurrence_node_minted(id: AuthoredOccurrenceId) -> NodeOccurrenceIdentity {
   OccurrenceMinted { id: id }
 }
 
 fn occurrence_node_minted_from_value(value: Int) -> NodeOccurrenceIdentity {
-  occurrence_node_minted(id: OccurrenceId { value: value })
+  occurrence_node_minted(id: AuthoredOccurrenceId { value: value })
 }

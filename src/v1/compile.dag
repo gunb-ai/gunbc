@@ -21,7 +21,7 @@ import v1.std.core {
 
 import v1.compiler.tokenize { tokenize }
 
-import v1.compiler.parse { parse_with_table, ParseResult }
+import v1.compiler.parse { parse_with_table_at, ParseResult }
 
 import v1.compiler.resolve { resolve_modules, ModuleGraph }
 
@@ -80,12 +80,14 @@ type FrontendResult {
   diagnostics: List<ErrorNode>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  next_occurrence_ordinal: Int
 }
 
 type FrontendAccum {
   parse_results: List<ParseResult>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  next_occurrence_ordinal: Int
 }
 
 type FrontendPrepared {
@@ -920,12 +922,18 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table, next_occurrence_ordinal: 0 }, f: (acc, p) =>
+    let parsed = parse_with_table_at(
+      tokens: p.tokens,
+      source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index),
+      intern_table: acc.intern_table,
+      occurrence_base: acc.next_occurrence_ordinal,
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      next_occurrence_ordinal: parsed.next_occurrence_ordinal
     }
   )
   let parse_results = parsed.parse_results
@@ -941,31 +949,42 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     graph: Present { value: graph },
     diagnostics: concat(parse_diagnostics, graph.diagnostics),
     newline_indices: newline_indices,
-    intern_table: parsed.intern_table
+    intern_table: parsed.intern_table,
+    next_occurrence_ordinal: parsed.next_occurrence_ordinal
   }
 }
 
 type CensusFillParse {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
-  diagnostics: List<ErrorNode>
+  diagnostics: List<ErrorNode>,
+  next_occurrence_ordinal: Int
 }
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
 
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+fn parse_census_fill_sources(
+  sources: List<SourceFile>,
+  occurrence_base: Int
+) -> CensusFillParse {
   let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table, next_occurrence_ordinal: occurrence_base }, f: (acc, p) =>
+    let parsed = parse_with_table_at(
+      tokens: p.tokens,
+      source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index),
+      intern_table: acc.intern_table,
+      occurrence_base: acc.next_occurrence_ordinal,
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      next_occurrence_ordinal: parsed.next_occurrence_ordinal
     }
   )
   let parse_results = parsed.parse_results
@@ -976,7 +995,8 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   CensusFillParse {
     modules: modules,
     newline_indices: parsed.newline_indices,
-    diagnostics: collect_diagnostics(parse_results: parse_results)
+    diagnostics: collect_diagnostics(parse_results: parse_results),
+    next_occurrence_ordinal: parsed.next_occurrence_ordinal
   }
 }
 
@@ -1076,7 +1096,10 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
-      let fill = parse_census_fill_sources(sources: options.census_only_sources)
+      let fill = parse_census_fill_sources(
+        sources: options.census_only_sources,
+        occurrence_base: frontend.next_occurrence_ordinal,
+      )
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
       let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")
