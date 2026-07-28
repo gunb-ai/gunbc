@@ -3608,6 +3608,13 @@ pub struct ModuleGraphFactsLive {
     // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
     // content-key's reference-derived import term) does not re-derive it per module.
     path_to_module: HashMap<String, String>,
+    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
+    // facts), and every observed path whose content read refused. The producers skip an
+    // unreadable file at scan time, so without these rows a vanished module is
+    // indistinguishable from an absent one — the fail-open undercount consumers like the
+    // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
+    observed_paths: HashSet<String>,
+    read_refusals: Vec<(String, String)>,
 }
 
 #[cfg(test)]
@@ -4092,7 +4099,8 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    let observation = import_resolution_facts_with_observation(&roots, &roots, EXCLUDE);
+    let edges = observation.facts;
     let nodes = module_declaration_facts(&roots);
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
     // reaches reads this one.
@@ -4125,6 +4133,8 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         declared_paths,
         reference_unaccounted,
         path_to_module,
+        observed_paths: observation.observed_paths,
+        read_refusals: observation.read_refusals,
     }
 }
 
@@ -13303,6 +13313,7 @@ pub fn discover_floor_witness_roster(
     // corpus scan is deleted; `v2.lens.module_graph` facts are the single
     // edge/declaration authority on this path).
     let facts = build_module_graph_facts_live(source_roots);
+    refuse_on_module_graph_read_refusals(&facts)?;
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
     let inert = inert_lens_modules(&rows, &facts);
     if !inert.is_empty() {
@@ -13343,6 +13354,9 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     let scan_dirs = witness_discovery_scan_dirs();
     let excludes = default_floor_lens_hygiene_excludes();
     let facts = build_module_graph_facts_live(&roots);
+    if refuse_on_module_graph_read_refusals(&facts).is_err() {
+        return -1;
+    }
     match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
         Ok(rows) => inert_lens_modules(&rows, &facts).len() as i64,
         Err(_) => -1,
@@ -13351,7 +13365,11 @@ pub fn inert_lens_unreached_module_count() -> i64 {
 
 /// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
 pub fn inert_lens_top_level_module_count() -> i64 {
-    build_module_graph_facts_live(&default_source_roots())
+    let facts = build_module_graph_facts_live(&default_source_roots());
+    if refuse_on_module_graph_read_refusals(&facts).is_err() {
+        return -1;
+    }
+    facts
         .nodes
         .iter()
         .filter(|n| is_top_level_lens_module(&n.module))
@@ -13492,6 +13510,31 @@ fn is_top_level_lens_module(module: &str) -> bool {
         Some(rest) => !rest.is_empty() && !rest.contains('.'),
         None => false,
     }
+}
+
+/// Fail-closed arm for every lens-census consumer of the module-graph facts
+/// (operator review 2026-07-28, PR #7384): the fact producers skip unreadable files at
+/// scan time, so an unreadable top-level lens would otherwise VANISH from both the
+/// lens universe (`inert_lens_top_level_module_count`) and the justification census —
+/// an absorbing fail-open undercount, not an over-flag. Any read refusal recorded by
+/// the single facts authority stops the census, typed and located (paths named),
+/// never narrowed.
+fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<(), String> {
+    if facts.read_refusals.is_empty() {
+        return Ok(());
+    }
+    let listed: Vec<String> = facts
+        .read_refusals
+        .iter()
+        .map(|(path, err)| format!("{path} ({err})"))
+        .collect();
+    Err(format!(
+        "module-graph facts read refusal (DESIGN §5 fail-closed): {} source path(s) \
+         under the scan roots could not be read, so the lens census cannot answer — an \
+         unreadable lens would silently vanish from the universe instead of flagging: {}",
+        listed.len(),
+        listed.join(", ")
+    ))
 }
 
 /// Reachability walk for the inert-lens hygiene census over the module-graph facts
@@ -20070,6 +20113,8 @@ mod inert_lens_hygiene_tests {
             declared_paths,
             reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
+            observed_paths: std::collections::HashSet::new(),
+            read_refusals: Vec::new(),
         }
     }
 
@@ -20302,6 +20347,90 @@ mod inert_lens_hygiene_tests {
             inert_severed, legacy,
             "severed-edge control must diverge from the legacy answer \
              (the equality receipt discriminates)"
+        );
+    }
+
+    // BLOCKER-1 RED (operator review 2026-07-28): a top-level lens PRESENT in the
+    // source inventory whose content cannot be read must surface as a counted read
+    // refusal — never vanish from the lens universe. The bad file is invalid UTF-8, so
+    // `read_to_string` refuses for every uid (a chmod-based probe would pass under
+    // root).
+    #[test]
+    fn unreadable_lens_is_a_read_refusal_not_an_absence() {
+        // Scratch root lives INSIDE the workspace (gitignored target/): the walk's
+        // path keys are workspace-anchored and an outside-tree root panics by design.
+        let scratch = workspace_root().join("target").join(format!(
+            "gunbc-unreadable-lens-{}",
+            std::process::id()
+        ));
+        let lens_dir = scratch.join("lens");
+        std::fs::create_dir_all(&lens_dir).expect("scratch dir");
+        std::fs::write(
+            lens_dir.join("good.dag"),
+            "module v2.lens.good_probe\n\ndata marker: String = \"x\"\n",
+        )
+        .expect("write good lens");
+        std::fs::write(lens_dir.join("bad_lens.dag"), [0xFFu8, 0xFE, 0x00, 0xC0])
+            .expect("write unreadable lens");
+        let root = scratch.to_string_lossy().into_owned();
+        let observation =
+            super::import_resolution_facts_with_observation(&[root.clone()], &[root], &[]);
+        std::fs::remove_dir_all(&scratch).ok();
+        let observed_bad = observation
+            .observed_paths
+            .iter()
+            .any(|p| p.ends_with("lens/bad_lens.dag"));
+        assert!(
+            observed_bad,
+            "the unreadable file must be in the source inventory (observed_paths)"
+        );
+        let refusal = observation
+            .read_refusals
+            .iter()
+            .find(|(p, _)| p.ends_with("lens/bad_lens.dag"));
+        assert!(
+            refusal.is_some(),
+            "the unreadable file must surface as a typed, located read refusal; got {:?}",
+            observation.read_refusals
+        );
+        assert!(
+            !observation
+                .facts
+                .iter()
+                .any(|f| f.path.ends_with("bad_lens.dag")),
+            "no facts may be fabricated for an unreadable file"
+        );
+    }
+
+    // The refusal arm itself: red on a recorded refusal (typed, path named), green on
+    // none — and green over the LIVE corpus (the no-refusal control that keeps the
+    // arm honest about today's tree).
+    #[test]
+    fn census_refuses_on_read_refusals_red_and_green() {
+        let mut facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
+        assert!(super::refuse_on_module_graph_read_refusals(&facts).is_ok());
+        facts.read_refusals.push((
+            "src/v2/lens/vanished.dag".to_string(),
+            "permission denied".to_string(),
+        ));
+        let err = super::refuse_on_module_graph_read_refusals(&facts)
+            .expect_err("a recorded read refusal must stop the census");
+        assert!(
+            err.contains("src/v2/lens/vanished.dag") && err.contains("fail-closed"),
+            "refusal must be typed and located: {err}"
+        );
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let live = build_module_graph_facts_live(&default_source_roots());
+        assert!(
+            super::refuse_on_module_graph_read_refusals(&live).is_ok(),
+            "live corpus must scan without read refusals: {:?}",
+            live.read_refusals
+        );
+        assert!(
+            !live.observed_paths.is_empty(),
+            "live corpus inventory must be non-empty (non-vacuity)"
         );
     }
 
@@ -21312,11 +21441,27 @@ pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
     MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-pub fn import_resolution_facts(
+/// The import-facts walk plus what it OBSERVED: every in-scope `.dag` path the walk
+/// saw on disk, and every path whose content read refused. The skip arm on an
+/// unreadable file used to be silent (`Err(_) => continue`), which made a vanished
+/// module indistinguishable from an absent one — the fail-open undercount the
+/// inert-lens census must refuse on (operator review 2026-07-28, PR #7384). One walk,
+/// projected two ways: `import_resolution_facts` stays the thin fact projection.
+pub(crate) struct ImportResolutionObservation {
+    pub(crate) facts: Vec<ImportResolutionFactRaw>,
+    /// Workspace-relative `.dag` paths seen by the importer walk (post-exclusion),
+    /// whether or not their content produced facts.
+    pub(crate) observed_paths: HashSet<String>,
+    /// (path, error) for every observed file whose content read refused — sorted by
+    /// walk order (deterministic: the walk sorts per root).
+    pub(crate) read_refusals: Vec<(String, String)>,
+}
+
+pub(crate) fn import_resolution_facts_with_observation(
     pool_roots: &[String],
     importer_roots: &[String],
     exclude_substrings: &[String],
-) -> Vec<ImportResolutionFactRaw> {
+) -> ImportResolutionObservation {
     #[cfg(test)]
     IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
@@ -21326,6 +21471,8 @@ pub fn import_resolution_facts(
         .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
+    let mut observed_paths: HashSet<String> = HashSet::new();
+    let mut read_refusals: Vec<(String, String)> = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
@@ -21339,9 +21486,13 @@ pub fn import_resolution_facts(
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
+            observed_paths.insert(workspace_relative_repo_path(&rel));
             let content = match std::fs::read_to_string(&file) {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(e) => {
+                    read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
+                    continue;
+                }
             };
             for import_module in extract_import_paths(&content) {
                 let target_declared = declared.contains(&import_module);
@@ -21353,7 +21504,19 @@ pub fn import_resolution_facts(
             }
         }
     }
-    out
+    ImportResolutionObservation {
+        facts: out,
+        observed_paths,
+        read_refusals,
+    }
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    import_resolution_facts_with_observation(pool_roots, importer_roots, exclude_substrings).facts
 }
 
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
