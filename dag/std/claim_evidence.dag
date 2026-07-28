@@ -209,9 +209,141 @@ fn claim_assessment_supports_without_challenge<F, C, A, FidelityBoundary, Indepe
   state.support && !state.challenge
 }
 
-type ClaimReadinessPolicy<C> {
+type EvidenceAdmissionPolicy<F, C, A, FidelityBoundary, Independence> {
+  fact_claim: fn(RecordedFact<F>, C) -> Bool
+  inference_rule_claim: fn(InferenceRuleId, C) -> Bool
+  authority_claim: fn(A, C) -> Bool
+  provenance_claim: fn(EvidenceProvenance, C) -> Bool
+  freshness_claim: fn(EvidenceFreshness<C>, C) -> Bool
+  fidelity_claim: fn(EvidenceFidelity<FidelityBoundary>, C) -> Bool
+  independence_claim: fn(Independence, C, EvidenceDirection) -> Bool
+  relation: fn(
+    EvidenceLink<F, C, A, FidelityBoundary, Independence>,
+    C,
+  ) -> Bool
+}
+
+type EvidenceAdmissionRefusal
+  = EvidenceConclusionMismatch
+  | EvidenceFactClaimRefused
+  | EvidenceInferenceRuleRefused
+  | EvidenceAuthorityRefused
+  | EvidenceProvenanceRefused
+  | EvidenceFreshnessRefused
+  | EvidenceFidelityRefused
+  | EvidenceIndependenceRefused
+  | EvidenceRelationRefused
+
+type EvidenceAdmissionAssessment<F, C, A, FidelityBoundary, Independence>
+  = EvidenceAdmitted {
+      link: EvidenceLink<F, C, A, FidelityBoundary, Independence>,
+    }
+  | EvidenceAdmissionRefused {
+      claim: C,
+      reason: EvidenceAdmissionRefusal,
+    }
+
+type EvidenceAdmissionAssessmentFold<F, C, A, FidelityBoundary, Independence, R> {
+  admitted: fn(
+    EvidenceLink<F, C, A, FidelityBoundary, Independence>,
+  ) -> R
+  refused: fn(C, EvidenceAdmissionRefusal) -> R
+}
+
+fn evidence_admission_assessment_fold<F, C, A, FidelityBoundary, Independence, R>(
+  assessment: EvidenceAdmissionAssessment<F, C, A, FidelityBoundary, Independence>,
+  fold: EvidenceAdmissionAssessmentFold<F, C, A, FidelityBoundary, Independence, R>,
+) -> R {
+  match assessment {
+    EvidenceAdmitted { link } => fold.admitted(link)
+    EvidenceAdmissionRefused { claim, reason } => fold.refused(claim, reason)
+  }
+}
+
+fn evidence_admission_assessment<F, C, A, FidelityBoundary, Independence>(
+  policy: EvidenceAdmissionPolicy<F, C, A, FidelityBoundary, Independence>,
+  claim: C,
+  link: EvidenceLink<F, C, A, FidelityBoundary, Independence>,
+) -> EvidenceAdmissionAssessment<F, C, A, FidelityBoundary, Independence> {
+  if link.freshness.maximum_conclusion != claim {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceConclusionMismatch,
+    }
+  } else if !policy.fact_claim(link.fact, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceFactClaimRefused,
+    }
+  } else if !policy.inference_rule_claim(link.inference_rule, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceInferenceRuleRefused,
+    }
+  } else if !policy.authority_claim(link.authority, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceAuthorityRefused,
+    }
+  } else if !policy.provenance_claim(link.provenance, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceProvenanceRefused,
+    }
+  } else if !policy.freshness_claim(link.freshness, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceFreshnessRefused,
+    }
+  } else if !policy.fidelity_claim(link.fidelity, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceFidelityRefused,
+    }
+  } else if !policy.independence_claim(
+    link.probe_independence,
+    claim,
+    link.direction,
+  ) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceIndependenceRefused,
+    }
+  } else if !policy.relation(link, claim) {
+    EvidenceAdmissionRefused {
+      claim: claim,
+      reason: EvidenceRelationRefused,
+    }
+  } else {
+    EvidenceAdmitted { link: link }
+  }
+}
+
+fn evidence_admitted_links<F, C, A, FidelityBoundary, Independence>(
+  policy: EvidenceAdmissionPolicy<F, C, A, FidelityBoundary, Independence>,
+  claim: C,
+  links: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+) -> List<EvidenceLink<F, C, A, FidelityBoundary, Independence>> {
+  links
+    |> flat_map(link =>
+      evidence_admission_assessment_fold(
+        assessment: evidence_admission_assessment(
+          policy: policy,
+          claim: claim,
+          link: link,
+        ),
+        fold: EvidenceAdmissionAssessmentFold {
+          admitted: fn(admitted) { [admitted] },
+          refused: fn(_, _) { [] },
+        },
+      )
+    )
+}
+
+type ClaimReadinessPolicy<F, C, A, FidelityBoundary, Independence> {
   first_required: C
   remaining_required: List<C>
+  evidence_admission: EvidenceAdmissionPolicy<F, C, A, FidelityBoundary, Independence>
 }
 
 type ClaimReadinessAssessment<C>
@@ -233,32 +365,38 @@ fn claim_readiness_assessment_fold<C, R>(
   }
 }
 
-fn claim_supported_without_challenge_across_assessments<F, C, A, FidelityBoundary, Independence>(
+fn claim_supported_without_challenge_after_admission<F, C, A, FidelityBoundary, Independence>(
   claim: C,
-  assessments: List<ClaimAssessment<F, C, A, FidelityBoundary, Independence>>,
+  links: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+  policy: EvidenceAdmissionPolicy<F, C, A, FidelityBoundary, Independence>,
 ) -> Bool {
-  let states = assessments
-    |> map(assessment =>
-      claim_information_state(
-        claim: claim,
-        assessment: assessment,
-      )
-    )
-  any(states, state => state.support)
-    && !any(states, state => state.challenge)
+  let admitted = evidence_admitted_links(
+    policy: policy,
+    claim: claim,
+    links: links,
+  )
+  let state = claim_information_state(
+    claim: claim,
+    assessment: claim_assessment_from_links(
+      claim: claim,
+      links: admitted,
+    ),
+  )
+  state.support && !state.challenge
 }
 
 fn claim_readiness_assessment<F, C, A, FidelityBoundary, Independence>(
-  policy: ClaimReadinessPolicy<C>,
-  assessments: List<ClaimAssessment<F, C, A, FidelityBoundary, Independence>>,
+  policy: ClaimReadinessPolicy<F, C, A, FidelityBoundary, Independence>,
+  links: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
 ) -> List<ClaimReadinessAssessment<C>> {
   append(
     [policy.first_required],
     items: policy.remaining_required,
   ) |> map(required =>
-    if claim_supported_without_challenge_across_assessments(
+    if claim_supported_without_challenge_after_admission(
       claim: required,
-      assessments: assessments,
+      links: links,
+      policy: policy.evidence_admission,
     ) {
       ClaimReadinessSatisfied { claim: required }
     } else {
@@ -282,4 +420,4 @@ fn claim_readiness_is_ready<C>(
     )
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment stores only canonical links, never caller-supplied support or challenge lists; every information-state and readiness query re-indexes those links by freshness.maximum_conclusion and consumes direction through the canonical fold. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact becomes descriptive claim evidence only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment is the four-valued information view and is not an admission receipt: final readiness consumes raw links and re-admits every link through the named domain EvidenceAdmissionPolicy, which must check fact relation, inference rule, authority, provenance, freshness, fidelity, probe independence, and their whole-link relation. A caller-authored EvidenceApplicable wrapper therefore cannot satisfy readiness. EvidenceAdmissionAssessment preserves the exact refused dimension. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only admitted support without admitted challenge; missing, conflicting, challenge-only, and metadata-refused evidence remain blocking."
