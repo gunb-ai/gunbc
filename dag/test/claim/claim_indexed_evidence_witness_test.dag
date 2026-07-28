@@ -215,11 +215,9 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     links: links,
   )
   let credential_state = claim_information_state(
-    claim: credential_claim,
     assessment: credential_assessment,
   )
   let ready_state = claim_information_state(
-    claim: ready_claim,
     assessment: ready_assessment,
   )
   let readiness = claim_readiness_assessment(
@@ -286,7 +284,6 @@ test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bo
     bound: provider_other_evidence_bound,
   )
   let other_state = claim_information_state(
-    claim: other_claim,
     assessment: claim_assessment_from_links(
       claim: other_claim,
       links: evidence_inference_links(inference: inference),
@@ -325,14 +322,12 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
     items: evidence_inference_links(inference: succeeded),
   )
   let both = claim_information_state(
-    claim: ready_claim,
     assessment: claim_assessment_from_links(
       claim: ready_claim,
       links: links,
     ),
   )
   let neither = claim_information_state(
-    claim: credential_claim,
     assessment: claim_assessment_from_links(
       claim: credential_claim,
       links: links,
@@ -524,14 +519,12 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
     bound: bound,
   )
   let boot = claim_information_state(
-    claim: boot_claim,
     assessment: claim_assessment_from_links(
       claim: boot_claim,
       links: evidence_inference_links(inference: inference),
     ),
   )
   let installed = claim_information_state(
-    claim: installed_claim,
     assessment: claim_assessment_from_links(
       claim: installed_claim,
       links: evidence_inference_links(inference: inference),
@@ -561,14 +554,12 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     fact: fact,
   )
   let captured = claim_information_state(
-    claim: captured_claim,
     assessment: claim_assessment_from_links(
       claim: captured_claim,
       links: evidence_inference_links(inference: inference),
     ),
   )
   let admissible = claim_information_state(
-    claim: admissible_claim,
     assessment: claim_assessment_from_links(
       claim: admissible_claim,
       links: evidence_inference_links(inference: inference),

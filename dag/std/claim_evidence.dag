@@ -171,11 +171,9 @@ type ClaimInformationState {
 }
 
 fn claim_information_state<F, C, A, FidelityBoundary, Independence>(
-  claim: C,
   assessment: ClaimAssessment<F, C, A, FidelityBoundary, Independence>,
 ) -> ClaimInformationState {
   let evidence = assessment.evidence
-    |> filter(link => link.freshness.maximum_conclusion == claim)
   ClaimInformationState {
     support: any(evidence, link =>
       evidence_direction_fold(
@@ -203,7 +201,6 @@ fn claim_assessment_supports_without_challenge<F, C, A, FidelityBoundary, Indepe
   assessment: ClaimAssessment<F, C, A, FidelityBoundary, Independence>,
 ) -> Bool {
   let state = claim_information_state(
-    claim: claim,
     assessment: assessment,
   )
   state.support && !state.challenge
@@ -376,7 +373,6 @@ fn claim_supported_without_challenge_after_admission<F, C, A, FidelityBoundary, 
     links: links,
   )
   let state = claim_information_state(
-    claim: claim,
     assessment: claim_assessment_from_links(
       claim: claim,
       links: admitted,
