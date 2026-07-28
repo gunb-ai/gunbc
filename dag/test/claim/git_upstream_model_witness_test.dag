@@ -1,0 +1,407 @@
+module test.claim.git_upstream_model_witness
+
+import extdeps.git {
+  GitAuthor,
+  BlobObj,
+  TagObj,
+}
+import extdeps.git.object_store {
+  GitPath,
+  GitObjectFormatSha1,
+  GitObjectFormatSha256,
+  GitObjectId,
+  Blob,
+  Tree,
+  Commit,
+  AnnotatedTag,
+  RegularBlobEntry,
+  ExecutableBlobEntry,
+  SymlinkEntry,
+  SubtreeEntry,
+  GitlinkEntry,
+  ObjectBlob,
+  ObjectTree,
+  ObjectCommit,
+  ObjectTag,
+  StoredObject,
+  GitPromisorObjectUnavailable,
+  GitRepositoryState,
+  GitRefRecord,
+  DirectTarget,
+  SymbolicTarget,
+  GitIndexEntry,
+  GitIndexStageNormal,
+  GitWorktreeRegular,
+  GitWorktreeSymlink,
+  GitWorktreeGitlink,
+  GitTreeWireEntry,
+  GitTreeDecoded,
+  GitTreeDecodeRefused,
+  GitProjected,
+  GitProjectionRefused,
+  GitReadBack,
+  GitReadBackRefused,
+  GitRefAdvanced,
+  GitRefAdvanceStale,
+  GitRefAdvanceSymbolic,
+  ObjectPromisorUnavailable,
+  GitAttributesTransformExecution,
+  GitCleanSmudgeFilterExecution,
+  GitPackDeltaTransport,
+  GitShallowFetchNegotiation,
+  GitMultiRefTransactionExecution,
+  git_decode_tree,
+  git_project_repository,
+  git_read_back_projection,
+  git_lookup_object,
+  git_update_ref_exact,
+  git_resolve_direct_ref,
+  store_object_kind,
+  git_r0_unsupported_boundary,
+}
+import std.measure { byte_size }
+
+data sha1_blob_regular: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "1111111111111111111111111111111111111111",
+}
+
+data sha1_blob_executable: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "2222222222222222222222222222222222222222",
+}
+
+data sha1_blob_symlink: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "3333333333333333333333333333333333333333",
+}
+
+data sha1_subtree: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "4444444444444444444444444444444444444444",
+}
+
+data sha1_gitlink: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "5555555555555555555555555555555555555555",
+}
+
+data sha1_root_tree: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "6666666666666666666666666666666666666666",
+}
+
+data sha1_parent_commit: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "7777777777777777777777777777777777777777",
+}
+
+data sha1_next_commit: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "8888888888888888888888888888888888888888",
+}
+
+data sha1_tag: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "9999999999999999999999999999999999999999",
+}
+
+data sha1_promisor_missing: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha1,
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+}
+
+data sha256_object: GitObjectId = GitObjectId {
+  format: GitObjectFormatSha256,
+  hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+}
+
+data fixture_author: GitAuthor = GitAuthor {
+  name: "A. U. Thor",
+  email: "author@example.invalid",
+  timestamp: "not-semantic-order",
+}
+
+data path_regular: GitPath = GitPath { octets: [114, 101, 97, 100, 109, 101] }
+data path_executable: GitPath = GitPath { octets: [98, 105, 110, 47, 114, 117, 110] }
+data path_symlink: GitPath = GitPath { octets: [108, 105, 110, 107] }
+data path_subtree: GitPath = GitPath { octets: [115, 114, 99] }
+data path_gitlink: GitPath = GitPath { octets: [118, 101, 110, 100, 111, 114] }
+data path_non_utf8: GitPath = GitPath { octets: [255, 46, 100, 97, 103] }
+
+fn fixture_wire_entries() -> List<GitTreeWireEntry> {
+  [
+    GitTreeWireEntry {
+      mode: "100644",
+      object_type: "blob",
+      oid: sha1_blob_regular,
+      path: path_non_utf8,
+    },
+    GitTreeWireEntry {
+      mode: "100755",
+      object_type: "blob",
+      oid: sha1_blob_executable,
+      path: path_executable,
+    },
+    GitTreeWireEntry {
+      mode: "120000",
+      object_type: "blob",
+      oid: sha1_blob_symlink,
+      path: path_symlink,
+    },
+    GitTreeWireEntry {
+      mode: "040000",
+      object_type: "tree",
+      oid: sha1_subtree,
+      path: path_subtree,
+    },
+    GitTreeWireEntry {
+      mode: "160000",
+      object_type: "commit",
+      oid: sha1_gitlink,
+      path: path_gitlink,
+    },
+  ]
+}
+
+fn fixture_tree() -> Tree {
+  match git_decode_tree(entries: fixture_wire_entries()) {
+    GitTreeDecoded { entries } => Tree { entries: entries }
+    GitTreeDecodeRefused { cause: _ } => Tree { entries: [] }
+  }
+}
+
+fn fixture_objects() -> List<StoredObject> {
+  [
+    StoredObject {
+      oid: sha1_blob_regular,
+      object: ObjectBlob {
+        blob: Blob { size: byte_size(count: 6), content: "source" as Bytes }
+      },
+    },
+    StoredObject {
+      oid: sha1_root_tree,
+      object: ObjectTree { tree: fixture_tree() },
+    },
+    StoredObject {
+      oid: sha1_parent_commit,
+      object: ObjectCommit {
+        commit: Commit {
+          tree: sha1_root_tree,
+          parents: [],
+          author: fixture_author,
+          committer: fixture_author,
+          message: "parent",
+        }
+      },
+    },
+    StoredObject {
+      oid: sha1_tag,
+      object: ObjectTag {
+        tag: AnnotatedTag {
+          target: sha1_parent_commit,
+          target_type: BlobObj,
+          name: "v0",
+          tagger: fixture_author,
+          message: "bounded annotated tag",
+        }
+      },
+    },
+  ]
+}
+
+fn fixture_repository() -> GitRepositoryState {
+  let decoded = fixture_tree()
+  GitRepositoryState {
+    object_format: GitObjectFormatSha1,
+    objects: fixture_objects(),
+    unavailable: [
+      GitPromisorObjectUnavailable {
+        oid: sha1_promisor_missing,
+        promisor: "origin",
+      },
+    ],
+    refs: [
+      GitRefRecord {
+        name: "refs/heads/main",
+        target: DirectTarget { oid: sha1_parent_commit },
+      },
+      GitRefRecord {
+        name: "HEAD",
+        target: SymbolicTarget { ref_name: "refs/heads/main" },
+      },
+    ],
+    index: [
+      GitIndexEntry {
+        path: path_regular,
+        entry: RegularBlobEntry { path: path_regular, oid: sha1_blob_regular },
+        stage: GitIndexStageNormal,
+      },
+    ],
+    worktree: [
+      GitWorktreeRegular {
+        path: path_regular,
+        executable: false,
+        content: "source" as Bytes,
+      },
+      GitWorktreeSymlink {
+        path: path_symlink,
+        target: "readme" as Bytes,
+      },
+      GitWorktreeGitlink {
+        path: path_gitlink,
+        checkout: sha1_gitlink,
+      },
+    ],
+  }
+}
+
+test fn witness_git_tree_modes_and_raw_paths_decode_without_collapse() -> Bool {
+  match git_decode_tree(entries: fixture_wire_entries()) {
+    GitTreeDecodeRefused { cause: _ } => false
+    GitTreeDecoded { entries } =>
+      count(entries) == 5
+        && match entries.first() {
+          Present { value: RegularBlobEntry { path, oid: _ } } => path == path_non_utf8
+          _ => false
+        }
+        && match entries.skip(n: 1).first() {
+          Present { value: ExecutableBlobEntry { path: _, oid: _ } } => true
+          _ => false
+        }
+        && match entries.skip(n: 2).first() {
+          Present { value: SymlinkEntry { path: _, oid: _ } } => true
+          _ => false
+        }
+        && match entries.skip(n: 3).first() {
+          Present { value: SubtreeEntry { path: _, oid: _ } } => true
+          _ => false
+        }
+        && match entries.skip(n: 4).first() {
+          Present { value: GitlinkEntry { path: _, oid: _ } } => true
+          _ => false
+        }
+  }
+}
+
+test fn witness_git_bounded_fixture_projects_and_independently_reads_back() -> Bool {
+  let repo = fixture_repository()
+  match git_project_repository(repo: repo, tree_oid: sha1_root_tree) {
+    GitProjectionRefused { cause: _ } => false
+    GitProjected { projection } =>
+      projection.object_format == GitObjectFormatSha1
+        && count(projection.tree_entries) == 5
+        && count(projection.tags) == 1
+        && count(projection.index) == 1
+        && count(projection.worktree) == 3
+        && match git_read_back_projection(projection: projection) {
+          GitReadBackRefused { cause: _ } => false
+          GitReadBack { state } =>
+            state.object_format == repo.object_format
+              && state.tree == fixture_tree()
+              && state.refs == repo.refs
+              && state.index == repo.index
+              && state.worktree == repo.worktree
+              && state.unavailable == repo.unavailable
+              && count(state.tags) == 1
+        }
+  }
+}
+
+test fn witness_git_mode_object_mismatch_refuses() -> Bool {
+  match git_decode_tree(entries: [
+    GitTreeWireEntry {
+      mode: "100755",
+      object_type: "commit",
+      oid: sha1_gitlink,
+      path: path_executable,
+    },
+  ]) {
+    GitTreeDecodeRefused { cause: _ } => true
+    GitTreeDecoded { entries: _ } => false
+  }
+}
+
+test fn witness_git_annotated_tag_remains_a_tag_object() -> Bool {
+  let tags = fixture_objects() |> filter(o => o.oid == sha1_tag)
+  match tags.first() {
+    Present { value } => store_object_kind(object: value.object) == TagObj
+    Absent => false
+  }
+}
+
+test fn witness_git_object_format_is_part_of_identity() -> Bool {
+  !(sha1_blob_regular == sha256_object)
+    && sha1_blob_regular.format == GitObjectFormatSha1
+    && sha256_object.format == GitObjectFormatSha256
+}
+
+test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
+  match git_lookup_object(repo: fixture_repository(), oid: sha1_promisor_missing) {
+    ObjectPromisorUnavailable { oid, promisor } =>
+      oid == sha1_promisor_missing && promisor == "origin"
+    _ => false
+  }
+}
+
+test fn witness_git_exact_old_oid_advance_and_readback() -> Bool {
+  match git_update_ref_exact(
+    repo: fixture_repository(),
+    name: "refs/heads/main",
+    new_oid: sha1_next_commit,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanced { repository, receipt } =>
+      receipt.expected_old == sha1_parent_commit
+        && receipt.new == sha1_next_commit
+        && receipt.read_back == sha1_next_commit
+        && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
+          RefResolved { oid } => oid == sha1_next_commit
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
+  let repo = fixture_repository()
+  match git_update_ref_exact(
+    repo: repo,
+    name: "refs/heads/main",
+    new_oid: sha1_next_commit,
+    expected_old: sha1_blob_regular,
+  ) {
+    GitRefAdvanceStale { repository, name: _, expected_old, observed } =>
+      expected_old == sha1_blob_regular
+        && observed == sha1_parent_commit
+        && repository == repo
+        && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
+          RefResolved { oid } => oid == sha1_parent_commit
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_git_symbolic_ref_is_not_silently_advanced_as_direct() -> Bool {
+  match git_update_ref_exact(
+    repo: fixture_repository(),
+    name: "HEAD",
+    new_oid: sha1_next_commit,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanceSymbolic { repository: _, name, target } =>
+      name == "HEAD" && target == "refs/heads/main"
+    _ => false
+  }
+}
+
+test fn witness_git_r0_declares_later_transport_boundaries() -> Bool {
+  git_r0_unsupported_boundary == [
+    GitAttributesTransformExecution,
+    GitCleanSmudgeFilterExecution,
+    GitPackDeltaTransport,
+    GitShallowFetchNegotiation,
+    GitMultiRefTransactionExecution,
+  ]
+}

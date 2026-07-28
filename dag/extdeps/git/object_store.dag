@@ -1,0 +1,477 @@
+module extdeps.git.object_store
+
+import std.types { NonEmptyStr }
+import std.integer { UInt8 }
+import std.measure { ByteSize }
+import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data git_objects_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/book/en/v2/Git-Internals-Git-Objects"
+  }
+}
+
+data git_ls_tree_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-tree"
+  }
+}
+
+data git_update_ref_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-update-ref"
+  }
+}
+
+data git_hash_transition_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/hash-function-transition"
+  }
+}
+
+data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/partial-clone"
+  }
+}
+
+// Git tree paths are byte strings. They are not FilePath/String because a valid Git
+// pathname is not required to be Unicode.
+type GitPath {
+  octets: List<UInt8>
+}
+
+type GitObjectFormat
+  = GitObjectFormatSha1
+  | GitObjectFormatSha256
+
+type GitObjectId {
+  format: GitObjectFormat
+  hex: NonEmptyStr
+}
+
+fn git_object_id_valid(oid: GitObjectId) -> Bool {
+  match oid.format {
+    GitObjectFormatSha1 => string_length(s: oid.hex as String) == 40
+    GitObjectFormatSha256 => string_length(s: oid.hex as String) == 64
+  }
+}
+
+type Blob {
+  size: ByteSize
+  content: Bytes
+}
+
+// The constructors carry the valid mode/object-type pairs. A mode token cannot
+// silently turn an executable, symlink, or gitlink into an ordinary blob.
+type TreeEntry
+  = RegularBlobEntry { path: GitPath, oid: GitObjectId }
+  | ExecutableBlobEntry { path: GitPath, oid: GitObjectId }
+  | SymlinkEntry { path: GitPath, oid: GitObjectId }
+  | SubtreeEntry { path: GitPath, oid: GitObjectId }
+  | GitlinkEntry { path: GitPath, oid: GitObjectId }
+
+type Tree {
+  entries: List<TreeEntry>
+}
+
+type Commit {
+  tree: GitObjectId
+  parents: List<GitObjectId>
+  author: GitAuthor
+  committer: GitAuthor
+  message: NonEmptyStr
+}
+
+type AnnotatedTag {
+  target: GitObjectId
+  target_type: ObjectType
+  name: NonEmptyStr
+  tagger: GitAuthor
+  message: NonEmptyStr
+}
+
+type StoreObject
+  = ObjectBlob { blob: Blob }
+  | ObjectTree { tree: Tree }
+  | ObjectCommit { commit: Commit }
+  | ObjectTag { tag: AnnotatedTag }
+
+type StoredObject {
+  oid: GitObjectId
+  object: StoreObject
+}
+
+type GitUnavailableObject
+  = GitPromisorObjectUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  | GitUnexpectedObjectMissing { oid: GitObjectId }
+  | GitCorruptObject { oid: GitObjectId, reason: NonEmptyStr }
+
+type ObjectLookupResult
+  = ObjectFound { stored: StoredObject }
+  | ObjectPromisorUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  | ObjectUnexpectedlyMissing { oid: GitObjectId }
+  | ObjectCorrupt { oid: GitObjectId, reason: NonEmptyStr }
+
+type GitRefName = NonEmptyStr where brand("GitRefName")
+
+type RefTarget
+  = DirectTarget { oid: GitObjectId }
+  | SymbolicTarget { ref_name: GitRefName }
+
+type GitRefRecord {
+  name: GitRefName
+  target: RefTarget
+}
+
+type RefResolutionResult
+  = RefResolved { oid: GitObjectId }
+  | RefNotFound { name: GitRefName }
+  | RefNotDirect { name: GitRefName, target: GitRefName }
+
+type GitIndexStage
+  = GitIndexStageNormal
+  | GitIndexStageBase
+  | GitIndexStageOurs
+  | GitIndexStageTheirs
+
+type GitIndexEntry {
+  path: GitPath
+  entry: TreeEntry
+  stage: GitIndexStage
+}
+
+type GitWorktreeEntry
+  = GitWorktreeRegular { path: GitPath, executable: Bool, content: Bytes }
+  | GitWorktreeSymlink { path: GitPath, target: Bytes }
+  | GitWorktreeGitlink { path: GitPath, checkout: GitObjectId }
+
+type GitRepositoryState {
+  object_format: GitObjectFormat
+  objects: List<StoredObject>
+  unavailable: List<GitUnavailableObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+}
+
+fn store_object_kind(object: StoreObject) -> ObjectType {
+  match object {
+    ObjectBlob { blob: _ } => BlobObj
+    ObjectTree { tree: _ } => TreeObj
+    ObjectCommit { commit: _ } => CommitObj
+    ObjectTag { tag: _ } => TagObj
+  }
+}
+
+fn git_find_stored_object(objects: List<StoredObject>, oid: GitObjectId) -> StoredObject? {
+  objects |> filter(o => o.oid == oid) |> first
+}
+
+fn git_find_unavailable(
+  unavailable: List<GitUnavailableObject>,
+  oid: GitObjectId,
+) -> GitUnavailableObject? {
+  unavailable |> filter(u => match u {
+    GitPromisorObjectUnavailable { oid: found, promisor: _ } => found == oid
+    GitUnexpectedObjectMissing { oid: found } => found == oid
+    GitCorruptObject { oid: found, reason: _ } => found == oid
+  }) |> first
+}
+
+fn git_lookup_object(repo: GitRepositoryState, oid: GitObjectId) -> ObjectLookupResult {
+  match git_find_stored_object(objects: repo.objects, oid: oid) {
+    Present { value: stored } => ObjectFound { stored: stored }
+    Absent => match git_find_unavailable(unavailable: repo.unavailable, oid: oid) {
+      Present { value: unavailable } => match unavailable {
+        GitPromisorObjectUnavailable { oid: missing, promisor } =>
+          ObjectPromisorUnavailable { oid: missing, promisor: promisor }
+        GitUnexpectedObjectMissing { oid: missing } =>
+          ObjectUnexpectedlyMissing { oid: missing }
+        GitCorruptObject { oid: corrupt, reason } =>
+          ObjectCorrupt { oid: corrupt, reason: reason }
+      }
+      Absent => ObjectUnexpectedlyMissing { oid: oid }
+    }
+  }
+}
+
+fn git_find_ref(refs: List<GitRefRecord>, name: GitRefName) -> GitRefRecord? {
+  refs |> filter(r => r.name == name) |> first
+}
+
+fn git_resolve_direct_ref(repo: GitRepositoryState, name: GitRefName) -> RefResolutionResult {
+  match git_find_ref(refs: repo.refs, name: name) {
+    Present { value: record } => match record.target {
+      DirectTarget { oid } => RefResolved { oid: oid }
+      SymbolicTarget { ref_name } => RefNotDirect { name: name, target: ref_name }
+    }
+    Absent => RefNotFound { name: name }
+  }
+}
+
+type GitTreeWireEntry {
+  mode: NonEmptyStr
+  object_type: NonEmptyStr
+  oid: GitObjectId
+  path: GitPath
+}
+
+type GitTreeDecodeRefusal
+  = GitTreeInvalidObjectId { oid: GitObjectId }
+  | GitTreeModeObjectMismatch {
+      mode: NonEmptyStr,
+      object_type: NonEmptyStr,
+      path: GitPath,
+    }
+
+type GitTreeDecodeOutcome
+  = GitTreeDecoded { entries: List<TreeEntry> }
+  | GitTreeDecodeRefused { cause: GitTreeDecodeRefusal }
+
+fn git_decode_tree_entry(entry: GitTreeWireEntry) -> TreeEntry? {
+  if !git_object_id_valid(oid: entry.oid) {
+    Absent
+  } else if entry.mode == "100644" && entry.object_type == "blob" {
+    Present { value: RegularBlobEntry { path: entry.path, oid: entry.oid } }
+  } else if entry.mode == "100755" && entry.object_type == "blob" {
+    Present { value: ExecutableBlobEntry { path: entry.path, oid: entry.oid } }
+  } else if entry.mode == "120000" && entry.object_type == "blob" {
+    Present { value: SymlinkEntry { path: entry.path, oid: entry.oid } }
+  } else if entry.mode == "040000" && entry.object_type == "tree" {
+    Present { value: SubtreeEntry { path: entry.path, oid: entry.oid } }
+  } else if entry.mode == "160000" && entry.object_type == "commit" {
+    Present { value: GitlinkEntry { path: entry.path, oid: entry.oid } }
+  } else {
+    Absent
+  }
+}
+
+fn git_decode_tree_step(
+  state: GitTreeDecodeOutcome,
+  wire: GitTreeWireEntry,
+) -> GitTreeDecodeOutcome {
+  match state {
+    GitTreeDecodeRefused { cause } => GitTreeDecodeRefused { cause: cause }
+    GitTreeDecoded { entries } => match git_decode_tree_entry(entry: wire) {
+      Present { value: entry } =>
+        GitTreeDecoded { entries: append(entries, items: [entry]) }
+      Absent =>
+        if !git_object_id_valid(oid: wire.oid) {
+          GitTreeDecodeRefused { cause: GitTreeInvalidObjectId { oid: wire.oid } }
+        } else {
+          GitTreeDecodeRefused {
+            cause: GitTreeModeObjectMismatch {
+              mode: wire.mode,
+              object_type: wire.object_type,
+              path: wire.path,
+            }
+          }
+        }
+    }
+  }
+}
+
+fn git_decode_tree(entries: List<GitTreeWireEntry>) -> GitTreeDecodeOutcome {
+  fold(entries, init: GitTreeDecoded { entries: [] }, f: git_decode_tree_step)
+}
+
+fn git_project_tree_entry(entry: TreeEntry) -> GitTreeWireEntry {
+  match entry {
+    RegularBlobEntry { path, oid } =>
+      GitTreeWireEntry { mode: "100644", object_type: "blob", oid: oid, path: path }
+    ExecutableBlobEntry { path, oid } =>
+      GitTreeWireEntry { mode: "100755", object_type: "blob", oid: oid, path: path }
+    SymlinkEntry { path, oid } =>
+      GitTreeWireEntry { mode: "120000", object_type: "blob", oid: oid, path: path }
+    SubtreeEntry { path, oid } =>
+      GitTreeWireEntry { mode: "040000", object_type: "tree", oid: oid, path: path }
+    GitlinkEntry { path, oid } =>
+      GitTreeWireEntry { mode: "160000", object_type: "commit", oid: oid, path: path }
+  }
+}
+
+fn git_project_tree(tree: Tree) -> List<GitTreeWireEntry> {
+  tree.entries |> map(entry => git_project_tree_entry(entry: entry))
+}
+
+type GitR0Projection {
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree_entries: List<GitTreeWireEntry>
+  tags: List<StoredObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
+}
+
+type GitProjectionOutcome
+  = GitProjected { projection: GitR0Projection }
+  | GitProjectionRefused { cause: ObjectLookupResult }
+
+fn git_tag_objects(objects: List<StoredObject>) -> List<StoredObject> {
+  objects |> filter(o => match o.object {
+    ObjectTag { tag: _ } => true
+    _ => false
+  })
+}
+
+fn git_project_repository(repo: GitRepositoryState, tree_oid: GitObjectId) -> GitProjectionOutcome {
+  match git_lookup_object(repo: repo, oid: tree_oid) {
+    ObjectFound { stored } => match stored.object {
+      ObjectTree { tree } => GitProjected {
+        projection: GitR0Projection {
+          object_format: repo.object_format,
+          tree_oid: tree_oid,
+          tree_entries: git_project_tree(tree: tree),
+          tags: git_tag_objects(objects: repo.objects),
+          refs: repo.refs,
+          index: repo.index,
+          worktree: repo.worktree,
+          unavailable: repo.unavailable,
+        }
+      }
+      _ => GitProjectionRefused { cause: ObjectFound { stored: stored } }
+    }
+    other => GitProjectionRefused { cause: other }
+  }
+}
+
+type GitR0ReadBack {
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree: Tree
+  tags: List<StoredObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
+}
+
+type GitReadBackOutcome
+  = GitReadBack { state: GitR0ReadBack }
+  | GitReadBackRefused { cause: GitTreeDecodeRefusal }
+
+fn git_read_back_projection(projection: GitR0Projection) -> GitReadBackOutcome {
+  match git_decode_tree(entries: projection.tree_entries) {
+    GitTreeDecoded { entries } => GitReadBack {
+      state: GitR0ReadBack {
+        object_format: projection.object_format,
+        tree_oid: projection.tree_oid,
+        tree: Tree { entries: entries },
+        tags: projection.tags,
+        refs: projection.refs,
+        index: projection.index,
+        worktree: projection.worktree,
+        unavailable: projection.unavailable,
+      }
+    }
+    GitTreeDecodeRefused { cause } => GitReadBackRefused { cause: cause }
+  }
+}
+
+type GitUpdateRefReceipt {
+  name: GitRefName
+  expected_old: GitObjectId
+  new: GitObjectId
+  read_back: GitObjectId
+}
+
+type GitUpdateRefOutcome
+  = GitRefAdvanced { repository: GitRepositoryState, receipt: GitUpdateRefReceipt }
+  | GitRefAdvanceStale {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      expected_old: GitObjectId,
+      observed: GitObjectId,
+    }
+  | GitRefAdvanceMissing { repository: GitRepositoryState, name: GitRefName }
+  | GitRefAdvanceSymbolic {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      target: GitRefName,
+    }
+  | GitRefAdvanceInvalidObjectId { repository: GitRepositoryState, oid: GitObjectId }
+
+fn git_replace_direct_ref(
+  refs: List<GitRefRecord>,
+  name: GitRefName,
+  new_oid: GitObjectId,
+) -> List<GitRefRecord> {
+  refs |> map(record =>
+    if record.name == name {
+      GitRefRecord { name: record.name, target: DirectTarget { oid: new_oid } }
+    } else {
+      record
+    }
+  )
+}
+
+fn git_update_ref_exact(
+  repo: GitRepositoryState,
+  name: GitRefName,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+) -> GitUpdateRefOutcome {
+  if !git_object_id_valid(oid: new_oid) {
+    GitRefAdvanceInvalidObjectId { repository: repo, oid: new_oid }
+  } else {
+    match git_find_ref(refs: repo.refs, name: name) {
+      Absent => GitRefAdvanceMissing { repository: repo, name: name }
+      Present { value: record } => match record.target {
+        SymbolicTarget { ref_name } =>
+          GitRefAdvanceSymbolic { repository: repo, name: name, target: ref_name }
+        DirectTarget { oid: observed } =>
+          if !(observed == expected_old) {
+            GitRefAdvanceStale {
+              repository: repo,
+              name: name,
+              expected_old: expected_old,
+              observed: observed,
+            }
+          } else {
+            let updated = GitRepositoryState {
+              object_format: repo.object_format,
+              objects: repo.objects,
+              unavailable: repo.unavailable,
+              refs: git_replace_direct_ref(refs: repo.refs, name: name, new_oid: new_oid),
+              index: repo.index,
+              worktree: repo.worktree,
+            }
+            GitRefAdvanced {
+              repository: updated,
+              receipt: GitUpdateRefReceipt {
+                name: name,
+                expected_old: expected_old,
+                new: new_oid,
+                read_back: new_oid,
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+type GitR0UnsupportedBoundary
+  = GitAttributesTransformExecution
+  | GitCleanSmudgeFilterExecution
+  | GitPackDeltaTransport
+  | GitShallowFetchNegotiation
+  | GitMultiRefTransactionExecution
+
+data git_r0_unsupported_boundary: List<GitR0UnsupportedBoundary> = [
+  GitAttributesTransformExecution,
+  GitCleanSmudgeFilterExecution,
+  GitPackDeltaTransport,
+  GitShallowFetchNegotiation,
+  GitMultiRefTransactionExecution,
+]
