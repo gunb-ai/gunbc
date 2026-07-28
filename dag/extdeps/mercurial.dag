@@ -61,9 +61,9 @@ data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVer
 
 data mercurial_upstream_version_note: NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
 
-type MercurialChangesetId = NonEmptyStr where brand("MercurialChangesetId")
-type MercurialManifestId = NonEmptyStr where brand("MercurialManifestId")
-type MercurialFileRevisionId = NonEmptyStr where brand("MercurialFileRevisionId")
+type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
+type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
+type MercurialNodeId = NonEmptyStr where brand("MercurialNodeId")
 
 type MercurialNodeIdentityRole
   = MercurialChangesetNodeIdentity
@@ -134,31 +134,31 @@ type MercurialCopyMetadata
   = MercurialNotCopied
   | MercurialCopiedFrom {
       path: MercurialPath,
-      file_revision: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
     }
 
 type MercurialManifestEntry {
   path: MercurialPath
-  file_revision: MercurialFileRevisionId
+  file_revision: MercurialNodeId
   flag: MercurialManifestFlag
 }
 
 type MercurialManifest {
-  node: MercurialManifestId
+  node: MercurialNodeId
   entries: List<MercurialManifestEntry>
 }
 
 type MercurialFileRevision {
-  node: MercurialFileRevisionId
-  parents: List<MercurialFileRevisionId>
+  node: MercurialNodeId
+  parents: List<MercurialNodeId>
   copy: MercurialCopyMetadata
   content: Bytes
 }
 
 type MercurialChangeset {
-  node: MercurialChangesetId
-  manifest: MercurialManifestId
-  parents: List<MercurialChangesetId>
+  node: MercurialNodeId
+  manifest: MercurialNodeId
+  parents: List<MercurialNodeId>
   branch: MercurialNamedBranchName
   user: NonEmptyStr
   authored_at: Timestamp
@@ -167,16 +167,16 @@ type MercurialChangeset {
 
 type MercurialLocalRevisionEntry {
   revision: MercurialLocalRevision
-  changeset: MercurialChangesetId
+  changeset: MercurialNodeId
 }
 
 type MercurialHead {
-  changeset: MercurialChangesetId
+  changeset: MercurialNodeId
 }
 
 type MercurialBookmark {
   name: MercurialBookmarkName
-  target: MercurialChangesetId
+  target: MercurialNodeId
 }
 
 type MercurialTagSource
@@ -185,7 +185,7 @@ type MercurialTagSource
 
 type MercurialTag {
   name: MercurialTagName
-  target: MercurialChangesetId
+  target: MercurialNodeId
   source: MercurialTagSource
 }
 
@@ -195,7 +195,7 @@ type MercurialPhase
   | MercurialSecret
 
 type MercurialPhaseEntry {
-  changeset: MercurialChangesetId
+  changeset: MercurialNodeId
   phase: MercurialPhase
 }
 
@@ -214,8 +214,8 @@ type MercurialSubrepository {
 }
 
 type MercurialObsolescenceMarker {
-  predecessor: MercurialChangesetId
-  successors: List<MercurialChangesetId>
+  predecessor: MercurialNodeId
+  successors: List<MercurialNodeId>
   operation: NonEmptyStr
 }
 
@@ -226,9 +226,9 @@ type MercurialEvolutionMetadata
 type MercurialRepositoryCompleteness
   = MercurialContentsComplete
   | MercurialContentsPartial {
-      missing_changesets: List<MercurialChangesetId>,
-      missing_manifests: List<MercurialManifestId>,
-      missing_file_revisions: List<MercurialFileRevisionId>,
+      missing_changesets: List<MercurialNodeId>,
+      missing_manifests: List<MercurialNodeId>,
+      missing_file_revisions: List<MercurialNodeId>,
     }
 
 type MercurialRepositoryRequirements {
@@ -256,9 +256,9 @@ type MercurialRepositoryState
     }
   | MercurialRepositoryStatePartial {
       contents: MercurialRepositoryContents,
-      missing_changesets: List<MercurialChangesetId>,
-      missing_manifests: List<MercurialManifestId>,
-      missing_file_revisions: List<MercurialFileRevisionId>,
+      missing_changesets: List<MercurialNodeId>,
+      missing_manifests: List<MercurialNodeId>,
+      missing_file_revisions: List<MercurialNodeId>,
     }
 
 fn mercurial_repository_contents(
@@ -296,17 +296,17 @@ fn mercurial_repository_completeness(
 
 type MercurialManifestWireEntry {
   path: MercurialPath
-  file_revision: MercurialFileRevisionId
+  file_revision: MercurialNodeId
   flag: String
 }
 
 type MercurialManifestWire {
-  node: MercurialManifestId
+  node: MercurialNodeId
   entries: List<MercurialManifestWireEntry>
 }
 
 type MercurialPhaseWireEntry {
-  changeset: MercurialChangesetId
+  changeset: MercurialNodeId
   phase: NonEmptyStr
 }
 
@@ -331,9 +331,9 @@ type MercurialRepositoryProjection
     }
   | MercurialPartialProjection {
       contents: MercurialRepositoryProjectionContents,
-      missing_changesets: List<MercurialChangesetId>,
-      missing_manifests: List<MercurialManifestId>,
-      missing_file_revisions: List<MercurialFileRevisionId>,
+      missing_changesets: List<MercurialNodeId>,
+      missing_manifests: List<MercurialNodeId>,
+      missing_file_revisions: List<MercurialNodeId>,
     }
   | MercurialInaccessibleProjection { reason: NonEmptyStr }
 
@@ -341,9 +341,9 @@ type MercurialRepositoryProjectionFold<R> {
   complete: fn(MercurialRepositoryProjectionContents) -> R
   partial: fn(
     MercurialRepositoryProjectionContents,
-    List<MercurialChangesetId>,
-    List<MercurialManifestId>,
-    List<MercurialFileRevisionId>,
+    List<MercurialNodeId>,
+    List<MercurialNodeId>,
+    List<MercurialNodeId>,
   ) -> R
   inaccessible: fn(NonEmptyStr) -> R
 }
@@ -411,55 +411,55 @@ type MercurialProjectionRefusal
       flag: String,
     }
   | MercurialUnknownPhase {
-      changeset: MercurialChangesetId,
+      changeset: MercurialNodeId,
       phase: NonEmptyStr,
     }
   | MercurialDuplicateLocalRevision { revision: MercurialLocalRevision }
-  | MercurialDuplicateChangesetNode { changeset: MercurialChangesetId }
-  | MercurialDuplicateManifestNode { manifest: MercurialManifestId }
-  | MercurialDuplicateFileRevisionNode { file_revision: MercurialFileRevisionId }
+  | MercurialDuplicateChangesetNode { changeset: MercurialNodeId }
+  | MercurialDuplicateManifestNode { manifest: MercurialNodeId }
+  | MercurialDuplicateFileRevisionNode { file_revision: MercurialNodeId }
   | MercurialMissingManifest {
-      changeset: MercurialChangesetId,
-      manifest: MercurialManifestId,
+      changeset: MercurialNodeId,
+      manifest: MercurialNodeId,
     }
   | MercurialMissingParent {
-      changeset: MercurialChangesetId,
-      parent: MercurialChangesetId,
+      changeset: MercurialNodeId,
+      parent: MercurialNodeId,
     }
   | MercurialMissingFileRevision {
-      manifest: MercurialManifestId,
+      manifest: MercurialNodeId,
       path: MercurialPath,
-      file_revision: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
     }
   | MercurialMissingFileRevisionParent {
-      file_revision: MercurialFileRevisionId,
-      parent: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
+      parent: MercurialNodeId,
     }
   | MercurialMissingCopySourceRevision {
-      file_revision: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
       source_path: MercurialPath,
-      source_revision: MercurialFileRevisionId,
+      source_revision: MercurialNodeId,
     }
   | MercurialMissingChangesetReference {
-      target: MercurialChangesetId,
+      target: MercurialNodeId,
       origin: MercurialChangesetReferenceOrigin,
     }
-  | MercurialMissingPhase { changeset: MercurialChangesetId }
-  | MercurialDuplicatePhase { changeset: MercurialChangesetId }
+  | MercurialMissingPhase { changeset: MercurialNodeId }
+  | MercurialDuplicatePhase { changeset: MercurialNodeId }
   | MercurialPhaseMonotonicityViolation {
-      parent: MercurialChangesetId,
+      parent: MercurialNodeId,
       parent_phase: MercurialPhase,
-      child: MercurialChangesetId,
+      child: MercurialNodeId,
       child_phase: MercurialPhase,
     }
   | MercurialChangesetPresentAndDeclaredMissing {
-      changeset: MercurialChangesetId,
+      changeset: MercurialNodeId,
     }
   | MercurialManifestPresentAndDeclaredMissing {
-      manifest: MercurialManifestId,
+      manifest: MercurialNodeId,
     }
   | MercurialFileRevisionPresentAndDeclaredMissing {
-      file_revision: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
     }
 
 type MercurialChangesetReferenceOrigin
@@ -469,10 +469,10 @@ type MercurialChangesetReferenceOrigin
   | MercurialTagTarget { name: MercurialTagName }
   | MercurialPhaseTarget
   | MercurialEvolutionPredecessor
-  | MercurialEvolutionSuccessor { predecessor: MercurialChangesetId }
+  | MercurialEvolutionSuccessor { predecessor: MercurialNodeId }
 
 type MercurialChangesetReference {
-  target: MercurialChangesetId
+  target: MercurialNodeId
   origin: MercurialChangesetReferenceOrigin
 }
 
@@ -675,7 +675,7 @@ type MercurialPhaseLookupOutcome
 
 fn mercurial_phase_for(
   phases: List<MercurialPhaseEntry>,
-  wanted: MercurialChangesetId,
+  wanted: MercurialNodeId,
 ) -> MercurialPhaseLookupOutcome {
   let matching = phases |> filter(entry => entry.changeset == wanted)
   if count(matching) == 0 {
@@ -700,21 +700,21 @@ fn mercurial_phase_rank(phase: MercurialPhase) -> NonNegativeInt {
 
 fn mercurial_changeset_exists(
   changesets: List<MercurialChangeset>,
-  wanted: MercurialChangesetId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   changesets |> any(c => c.node == wanted)
 }
 
 fn mercurial_manifest_exists(
   manifests: List<MercurialManifest>,
-  wanted: MercurialManifestId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   manifests |> any(m => m.node == wanted)
 }
 
 fn mercurial_file_revision_exists(
   file_revisions: List<MercurialFileRevision>,
-  wanted: MercurialFileRevisionId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   file_revisions |> any(file_revision => file_revision.node == wanted)
 }
@@ -722,7 +722,7 @@ fn mercurial_file_revision_exists(
 fn mercurial_changeset_known(
   changesets: List<MercurialChangeset>,
   completeness: MercurialRepositoryCompleteness,
-  wanted: MercurialChangesetId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_changeset_exists(changesets: changesets, wanted: wanted)
     || match completeness {
@@ -738,7 +738,7 @@ fn mercurial_changeset_known(
 fn mercurial_manifest_known(
   manifests: List<MercurialManifest>,
   completeness: MercurialRepositoryCompleteness,
-  wanted: MercurialManifestId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_manifest_exists(manifests: manifests, wanted: wanted)
     || match completeness {
@@ -754,7 +754,7 @@ fn mercurial_manifest_known(
 fn mercurial_file_revision_known(
   file_revisions: List<MercurialFileRevision>,
   completeness: MercurialRepositoryCompleteness,
-  wanted: MercurialFileRevisionId,
+  wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_file_revision_exists(file_revisions: file_revisions, wanted: wanted)
     || match completeness {
@@ -769,7 +769,7 @@ fn mercurial_file_revision_known(
 
 type MercurialDuplicateChangesetOutcome
   = MercurialChangesetNodesUnique
-  | MercurialDuplicateChangesetFound { changeset: MercurialChangesetId }
+  | MercurialDuplicateChangesetFound { changeset: MercurialNodeId }
 
 fn mercurial_duplicate_changeset(
   changesets: List<MercurialChangeset>,
@@ -789,7 +789,7 @@ fn mercurial_duplicate_changeset(
 
 type MercurialDuplicateManifestOutcome
   = MercurialManifestNodesUnique
-  | MercurialDuplicateManifestFound { manifest: MercurialManifestId }
+  | MercurialDuplicateManifestFound { manifest: MercurialNodeId }
 
 fn mercurial_duplicate_manifest(
   manifests: List<MercurialManifest>,
@@ -810,7 +810,7 @@ fn mercurial_duplicate_manifest(
 type MercurialDuplicateFileRevisionOutcome
   = MercurialFileRevisionNodesUnique
   | MercurialDuplicateFileRevisionFound {
-      file_revision: MercurialFileRevisionId,
+      file_revision: MercurialNodeId,
     }
 
 fn mercurial_duplicate_file_revision(
@@ -1242,9 +1242,9 @@ type MercurialDecodeOutcome
 
 fn mercurial_validate_partial_projection(
   projection: MercurialRepositoryProjectionContents,
-  missing_changesets: List<MercurialChangesetId>,
-  missing_manifests: List<MercurialManifestId>,
-  missing_file_revisions: List<MercurialFileRevisionId>,
+  missing_changesets: List<MercurialNodeId>,
+  missing_manifests: List<MercurialNodeId>,
+  missing_file_revisions: List<MercurialNodeId>,
 ) -> MercurialReferenceCheckOutcome {
   let changesets_checked = fold(
     projection.changesets,
@@ -1316,7 +1316,7 @@ fn mercurial_validate_partial_projection(
 }
 
 fn mercurial_changeset_node_identity(
-  changeset: MercurialChangesetId,
+  changeset: MercurialNodeId,
 ) -> MercurialNodeIdentityObservation {
   MercurialNodeIdentityObservation {
     role: MercurialChangesetNodeIdentity,
@@ -1325,7 +1325,7 @@ fn mercurial_changeset_node_identity(
 }
 
 fn mercurial_manifest_node_identity(
-  manifest: MercurialManifestId,
+  manifest: MercurialNodeId,
 ) -> MercurialNodeIdentityObservation {
   MercurialNodeIdentityObservation {
     role: MercurialManifestNodeIdentity,
@@ -1334,7 +1334,7 @@ fn mercurial_manifest_node_identity(
 }
 
 fn mercurial_file_revision_node_identity(
-  file_revision: MercurialFileRevisionId,
+  file_revision: MercurialNodeId,
 ) -> MercurialNodeIdentityObservation {
   MercurialNodeIdentityObservation {
     role: MercurialFileRevisionNodeIdentity,
@@ -1520,9 +1520,9 @@ fn mercurial_decode_complete_projection(
 
 fn mercurial_decode_partial_projection(
   contents: MercurialRepositoryProjectionContents,
-  missing_changesets: List<MercurialChangesetId>,
-  missing_manifests: List<MercurialManifestId>,
-  missing_file_revisions: List<MercurialFileRevisionId>,
+  missing_changesets: List<MercurialNodeId>,
+  missing_manifests: List<MercurialNodeId>,
+  missing_file_revisions: List<MercurialNodeId>,
 ) -> MercurialDecodeOutcome {
   match mercurial_validate_partial_projection(
     projection: contents,
@@ -1687,7 +1687,7 @@ fn mercurial_assess_read_back(
 
 fn mercurial_portable_history(
   repository: MercurialRepositoryState,
-) -> List<MercurialChangesetId> {
+) -> List<MercurialNodeId> {
   mercurial_repository_contents(repository: repository).changesets
     |> map(c => c.node)
 }
@@ -1695,7 +1695,7 @@ fn mercurial_portable_history(
 fn mercurial_named_branch_changesets(
   repository: MercurialRepositoryState,
   branch: MercurialNamedBranchName,
-) -> List<MercurialChangesetId> {
+) -> List<MercurialNodeId> {
   mercurial_repository_contents(repository: repository).changesets
     |> filter(c => c.branch == branch)
     |> map(c => c.node)

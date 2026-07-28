@@ -1,9 +1,9 @@
 module test.claim.mercurial_upstream_model_witness
 
 import extdeps.mercurial {
-  MercurialChangesetId,
-  MercurialManifestId,
-  MercurialFileRevisionId,
+  MercurialNodeId,
+  MercurialNodeId,
+  MercurialNodeId,
   MercurialNodeIdentityObservation,
   MercurialChangesetNodeIdentity,
   MercurialNodeIdentityWrongLength,
@@ -78,20 +78,20 @@ import extdeps.mercurial {
 }
 import std.bytes { octets_bytes }
 
-data hg_c0: MercurialChangesetId = "1111111111111111111111111111111111111111"
-data hg_c1: MercurialChangesetId = "2222222222222222222222222222222222222222"
-data hg_c2: MercurialChangesetId = "3333333333333333333333333333333333333333"
-data hg_missing_c: MercurialChangesetId = "4444444444444444444444444444444444444444"
-data hg_invalid_short: MercurialChangesetId = "x"
-data hg_invalid_non_hex: MercurialChangesetId = "gggggggggggggggggggggggggggggggggggggggg"
-data hg_invalid_uppercase: MercurialChangesetId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+data hg_c0: MercurialNodeId = "1111111111111111111111111111111111111111"
+data hg_c1: MercurialNodeId = "2222222222222222222222222222222222222222"
+data hg_c2: MercurialNodeId = "3333333333333333333333333333333333333333"
+data hg_missing_c: MercurialNodeId = "4444444444444444444444444444444444444444"
+data hg_invalid_short: MercurialNodeId = "x"
+data hg_invalid_non_hex: MercurialNodeId = "gggggggggggggggggggggggggggggggggggggggg"
+data hg_invalid_uppercase: MercurialNodeId = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-data hg_manifest: MercurialManifestId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data hg_file_regular: MercurialFileRevisionId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data hg_file_executable: MercurialFileRevisionId = "cccccccccccccccccccccccccccccccccccccccc"
-data hg_file_symlink: MercurialFileRevisionId = "dddddddddddddddddddddddddddddddddddddddd"
-data hg_file_missing: MercurialFileRevisionId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-data hg_file_undeclared: MercurialFileRevisionId = "ffffffffffffffffffffffffffffffffffffffff"
+data hg_manifest: MercurialNodeId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data hg_file_regular: MercurialNodeId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data hg_file_executable: MercurialNodeId = "cccccccccccccccccccccccccccccccccccccccc"
+data hg_file_symlink: MercurialNodeId = "dddddddddddddddddddddddddddddddddddddddd"
+data hg_file_missing: MercurialNodeId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+data hg_file_undeclared: MercurialNodeId = "ffffffffffffffffffffffffffffffffffffffff"
 
 data hg_path_regular: MercurialPath = MercurialPath {
   octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
@@ -417,7 +417,7 @@ fn projection_with_changesets(
 }
 
 fn projection_with_replaced_root_node(
-  node: MercurialChangesetId,
+  node: MercurialNodeId,
 ) -> MercurialRepositoryProjection {
   projection_with_changesets(
     projection: fixture_projection(),
