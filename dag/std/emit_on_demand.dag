@@ -7,6 +7,7 @@ import std.artifact_store {
   StoreHit, StoreMiss, store_get,
 }
 import std.realization { Materialization, Share, Recompute }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data emit_on_demand_module_note: String = "Witness-realization kernel (plan P3): the pure-spec authority for emit-on-demand native execution — closure ContentHash -> artifact store lookup -> cold (emit+build+run+put) | warm (run-only, compile skipped). Composes P2 std.artifact_store (ContentKeyed, eviction counted) and std.realization (Share on store hit). Source grain (toolchain: source-artifact) is the emit cache; native grain (toolchain: native-artifact) is the zero-compile warm path. The interpreter's surviving roles are named here with dissolution triggers (P3 ACCEPT (c)). Host transport: extdeps.realization.emit_on_demand_host; spine/realize_pack scheduling: v2.std.emit_on_demand. Serial kernel family: emit_host_add (#6879). Fan-out lane 2 (swift-stag-662): emit_host_field_access + emit_host_complement. Width-5 partition ratified on #6879 comment."
 
@@ -87,7 +88,103 @@ type InterpreterSurvivingRole {
   dissolution_trigger: String
 }
 
-data interpreter_surviving_roles: List<InterpreterSurvivingRole> = [
+type InterpreterWetSurfaceMembership
+  = NodeTreeDerived { authority: DeclarationRef }
+  | DeclaredFrontier {
+      authorities: List<DeclarationRef>,
+      reason: String,
+      dissolve_on: String
+    }
+
+type InterpreterWetSurface {
+  id: String
+  membership: InterpreterWetSurfaceMembership
+}
+
+fn wet_surface_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration
+  }
+}
+
+data interpreter_wet_surface_effect_family_authority: DeclarationRef = wet_surface_ref(
+  module_path: "v2.std.host_transport",
+  decl_name: "EmittedEffectFamily"
+)
+
+data interpreter_wet_surface_effect_family_note: String = "The five wet surfaces below are consumers of the existing ts-effects-providers authority v2.std.host_transport.EmittedEffectFamily (the closed FilesystemReadFamily | ShellExecRunFamily sum), not new effect families. Their shared surviving role records where the seed interpreter still dispatches live effects; it does not fork the effect-provider lane."
+
+data interpreter_wet_surface_decl_ref_frontier_note: String = "Every current member is DeclaredFrontier because field-granular declaration-Node enumeration does not yet exist (the std.decl_ref / gunbc#5364 wall-after-grounding). Each row still names the closest .dag authorities plus its own reason and dissolution route; none is silently omitted. A row graduates to NodeTreeDerived when the compile graph can resolve its exact declaration reference. interpreter_surviving_roles is derived from this membership and drops wet-effect-surfaces when the roster reaches zero."
+
+data gunbc_serve_wet_surface: InterpreterWetSurface = InterpreterWetSurface {
+  id: "gunbc-serve-accept-loop-and-belt-dispatch",
+  membership: DeclaredFrontier {
+    authorities: [
+      wet_surface_ref(module_path: "gunbc.roadmap_serve", decl_name: "roadmap_serve_handle"),
+      wet_surface_ref(module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_node")
+    ],
+    reason: "the in-process belt dispatch is modeled, but the gunbc serve socket accept-loop remains a seed Rust seam and exact declaration-Node resolution is unavailable",
+    dissolve_on: "emit-on-demand materializes the serve closure and its host accept-loop, then the seed handle_serve seam deletes"
+  }
+}
+
+data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
+  id: "main-wet-generated-artifact-emission",
+  membership: DeclaredFrontier {
+    authorities: [
+      wet_surface_ref(module_path: "tools.generated_artifact_gate", decl_name: "main_wet")
+    ],
+    reason: "main_wet is a .dag declaration, but its live Filesystem.Write dispatch still crosses the seed interpreter and exact declaration-Node resolution is unavailable",
+    dissolve_on: "generated-artifact emission runs through a v2-emitted per-grant HandlerBinding and the seed main_wet dispatch path deletes"
+  }
+}
+
+data gunbc_ci_emission_surface: InterpreterWetSurface = InterpreterWetSurface {
+  id: "gunbc-ci-emission",
+  membership: DeclaredFrontier {
+    authorities: [
+      wet_surface_ref(module_path: "tools.gunbc_ci", decl_name: "main")
+    ],
+    reason: "gunbc ci is modeled, but its shell Exec.Run realization still dispatches through the seed interpreter and exact declaration-Node resolution is unavailable",
+    dissolve_on: "the typed CI plan runs through the v2-emitted shell handler selected from its covering grant"
+  }
+}
+
+data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
+  id: "pre-push-transport",
+  membership: DeclaredFrontier {
+    authorities: [
+      wet_surface_ref(module_path: "gunbc.githooks_pre_push_cli", decl_name: "githooks_pre_push_cli_stage0_receiver_disposition"),
+      wet_surface_ref(module_path: "gunbc.githooks_pre_push_plan", decl_name: "pre_push_active_kinds")
+    ],
+    reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable",
+    dissolve_on: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers"
+  }
+}
+
+data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
+  id: "probe-bins",
+  membership: DeclaredFrontier {
+    authorities: [
+      wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins"),
+      wet_surface_ref(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_entries")
+    ],
+    reason: "the derived release pack and wet witness entries name the probe-bin surface, while the binaries themselves remain seed host transports and exact declaration-Node resolution is unavailable",
+    dissolve_on: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form"
+  }
+}
+
+data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
+  gunbc_serve_wet_surface,
+  main_wet_regen_surface,
+  gunbc_ci_emission_surface,
+  pre_push_transport_surface,
+  probe_bins_surface
+]
+
+data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
   InterpreterSurvivingRole {
     id: "bootstrap-receipts",
     purpose: "S1 parse census and seed-honesty receipts until native artifacts cover the corpus",
@@ -102,15 +199,31 @@ data interpreter_surviving_roles: List<InterpreterSurvivingRole> = [
     id: "terminal-bootstrap-kernel",
     purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
     dissolution_trigger: "v1_quarantine — seed crates frozen as bootstrap artifact only"
-  },
-  InterpreterSurvivingRole {
-    id: "wet-effect-surfaces",
-    purpose: "Wet/Record host-effect execution for the per-PR bin-witness and scheduled falsifier surfaces",
-    dissolution_trigger: "every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution"
   }
 ]
 
-data interpreter_surviving_roles_ceiling_note: String = "Policy ceiling (independent of current occupancy): bootstrap headroom for interpreter-surviving roles until witness_family_fanout lands (P3 ACCEPT (c); docs/plans/witness-realization-plan.md). Occupancy is count(interpreter_surviving_roles); the ceiling is an upper bound so roster growth is checked against declared headroom, never conflated with a hand count of current entries."
+fn interpreter_surviving_roles_from_wet_surfaces(
+  wet_surfaces: List<InterpreterWetSurface>
+) -> List<InterpreterSurvivingRole> {
+  if list_length(items: wet_surfaces) == 0 {
+    interpreter_base_surviving_roles
+  } else {
+    concat(
+      interpreter_base_surviving_roles,
+      [
+        InterpreterSurvivingRole {
+          id: "wet-effect-surfaces",
+          purpose: "Wet/Record live-effect dispatch for the countable interpreter_wet_surfaces membership",
+          dissolution_trigger: "interpreter_wet_surfaces reaches zero after every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution"
+        }
+      ]
+    )
+  }
+}
+
+data interpreter_surviving_roles: List<InterpreterSurvivingRole> = interpreter_surviving_roles_from_wet_surfaces(wet_surfaces: interpreter_wet_surfaces)
+
+data interpreter_surviving_roles_ceiling_note: String = "Policy ceiling (independent of current occupancy): bootstrap headroom for interpreter-surviving roles until witness_family_fanout lands (P3 ACCEPT (c); docs/plans/witness-realization-plan.md). Occupancy is count(interpreter_surviving_roles); wet-effect-surfaces is derived from nonempty interpreter_wet_surfaces membership and dissolves at zero. The ceiling is an upper bound so roster growth is checked against declared headroom, never conflated with a hand count of current entries."
 
 data interpreter_surviving_roles_ceiling: Int = 8
 

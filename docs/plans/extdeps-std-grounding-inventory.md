@@ -402,7 +402,7 @@ the width it encodes. Brief requires this class run over extdeps and gunbc too.
 
 | symbol | file:line | value | disposition | destination / basis |
 | --- | --- | --- | --- | --- |
-| `interpreter_surviving_roles_ceiling` | `dag/std/emit_on_demand.dag:115` | 8 | Add-basis-row | **Inventory corrected (operator 2026-07-26):** policy ceiling with bootstrap headroom — NOT `count(interpreter_surviving_roles)` (occupancy 4 today; deriving would tighten 8→4). Assertion: `interpreter_surviving_roles_occupancy_within_ceiling()` |
+| `interpreter_surviving_roles_ceiling` | `dag/std/emit_on_demand.dag:228` | 8 | Add-basis-row | **Inventory corrected (operator 2026-07-26):** policy ceiling with bootstrap headroom — NOT `count(interpreter_surviving_roles)` (occupancy 4 today; deriving would tighten 8→4). Assertion: `interpreter_surviving_roles_occupancy_within_ceiling()` |
 | `peano_literal_materialization_cap` | `dag/std/termination.dag:107` | 256 | Add-basis-row | Peano literal materialization bound (termination lane) |
 | `forever_iteration_bound` | `dag/std/computation.dag:130` | i64::MAX | Add-basis-row | Non-termination sentinel; cite boundedness policy |
 
