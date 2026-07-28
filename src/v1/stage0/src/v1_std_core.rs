@@ -293,7 +293,7 @@ pub enum ExprData {
 #[serde(tag = "_variant")]
 pub enum MatchPattern {
     Bind {
-        name: String,
+        declaration: Rc<Node>,
     },
     LitPattern {
         value: Rc<LiteralValue>,
@@ -888,6 +888,17 @@ pub fn make_named_expr_node(
         expr_data: expr_data.clone(),
         ident: None,
     })
+}
+
+pub fn make_pattern_binder_declaration_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
+    make_named_expr_node(
+        name.clone(),
+        Rc::new(ExprData::NoExprData),
+        Rc::new(vec![]),
+        None,
+        span.clone(),
+        span.clone(),
+    )
 }
 
 pub fn make_expr_error_node(

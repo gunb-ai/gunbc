@@ -31,7 +31,7 @@ import v1.compiler.infer_types {
 }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeEnvCache, empty_type_env_cache
+  TypeEnv, TypeEnvCache, NamespaceIdentityCapture, empty_type_env_cache
 }
 
 import v1.compiler.infer_sigs {
@@ -67,6 +67,7 @@ data typed_module_interface_body_dual_field_dissolution_trigger: String = "🟡 
 type TypedModule {
   module: Node
   items: List<Node>
+  namespace_identity: NamespaceIdentityCapture
   type_env: TypeEnv
   type_env_cache: TypeEnvCache
   interface: ModuleInterface
@@ -135,4 +136,3 @@ fn item_kind(item: Node) -> ItemKind {
   }
   kind
 }
-

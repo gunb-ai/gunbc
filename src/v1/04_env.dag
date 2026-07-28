@@ -5,6 +5,7 @@ import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_
 import std.types { SourceSpan, is_kernel_type }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+import std.algebra { FreeMonoid, Empty, Cons }
 
 
 type TypeEnv {
@@ -61,6 +62,42 @@ type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
+}
+
+type V1NodeContainmentPathCapture {
+  ancestors: FreeMonoid<Node>
+  terminal: Node
+}
+
+data v1_node_containment_path_capture_adapter_note: String = "Temporary v1 target adapter for the canonical std.occurrence_binding ContainmentPath<Node> fact. It preserves authored Node ancestry and the terminal Node. It defines no identifier, equality, candidate population, selection, deduplication, or resolution semantics."
+
+data v1_node_containment_path_capture_adapter_dissolve_on: String = "DISSOLVE-ON: when generic-carrier target emission can compile std.occurrence_binding.ContainmentPath<Node> directly, replace V1NodeContainmentPathCapture with that canonical specialization and delete this adapter without changing captured paths."
+
+type NamespaceIdentityCapture {
+  occurrences: FreeMonoid<V1NodeContainmentPathCapture>
+}
+
+fn empty_namespace_identity_capture() -> NamespaceIdentityCapture {
+  NamespaceIdentityCapture {
+    occurrences: Empty
+  }
+}
+
+fn concat_namespace_identity_capture(
+  left: NamespaceIdentityCapture,
+  right: NamespaceIdentityCapture
+) -> NamespaceIdentityCapture {
+  NamespaceIdentityCapture {
+    occurrences: concat(left.occurrences, right.occurrences)
+  }
+}
+
+fn namespace_identity_capture_singleton(
+  containment: V1NodeContainmentPathCapture
+) -> NamespaceIdentityCapture {
+  NamespaceIdentityCapture {
+    occurrences: Cons { head: containment, tail: Empty }
+  }
 }
 
 type Scope {
