@@ -234,7 +234,7 @@ test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
     && edge_exists(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality")
 }
 
-test fn witness_interpreter_delete_fan_in_is_explicit() -> Bool {
+test fn witness_interpreter_delete_and_repository_zero_hand_rust_fan_in_is_explicit() -> Bool {
   edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier")

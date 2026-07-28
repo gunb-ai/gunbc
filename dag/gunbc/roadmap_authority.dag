@@ -680,13 +680,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Reduce hand-maintained src/v1 and stage0 Rust to zero",
-        boundary: "After interpreter deletion, every remaining src/v1 and stage0 Rust source is emitted from cited .dag models or deleted; hand maintenance is a transitional frontier, never a terminus.",
+        headline: "Reduce repository-wide hand-maintained Rust to zero",
+        boundary: "After interpreter deletion, every tracked Rust source in the repository, including src/v1, stage0, and dag/tools, is emitted from cited .dag models or deleted; hand maintenance is a transitional frontier, never a terminus.",
         displaced_cost: "Removes the permanent tax and authority fork of maintaining bootstrap behavior separately from its substrate model.",
         first_slice: "Derive the live hand-maintained src/v1 and stage0 roster, then emit or delete the next complete retained family.",
-        red_control: "Any hand-maintained Rust file lacking an emitted authority and migration trigger blocks acceptance, and any newly added hand-maintained Rust reopens the roster.",
+        red_control: "Any tracked hand-maintained Rust file anywhere in the repository, including dag/tools, lacking an emitted authority and migration trigger blocks acceptance; any newly added hand-maintained Rust reopens the roster.",
         out_of_scope: "Do not delete emitted Rust realizations or claim ownership of rustc, the Rust standard library, the operating system, or other cited external trust.",
-        handback: "Return the zero hand-maintained roster, generated-authority bindings, and cold product, floor, and regeneration receipts."
+        handback: "Return the repository-wide zero hand-maintained roster including dag/tools, generated-authority bindings, and cold product, floor, and regeneration receipts."
       )
     ),
 
