@@ -6432,7 +6432,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
   } else {
   let has_structure = item.connective != NoConnective
   if has_structure {
-    let type_node = Node { authored_occurrence: none,
+    let type_node = Node { authored_occurrence: item.authored_occurrence,
       name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
@@ -6441,7 +6441,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
   } else if item.body != none && item.transport == none {
-    let fn_node = Node { authored_occurrence: none,
+    let fn_node = Node { authored_occurrence: item.authored_occurrence,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6450,7 +6450,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-    let alias_node = Node { authored_occurrence: none,
+    let alias_node = Node { authored_occurrence: item.authored_occurrence,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6459,10 +6459,13 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown } }
   } else if item.transport == none && item.children |> count > 0 {
-    let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+    let ref_node = node_preserve_authored_occurrence(
+      source: item,
+      rebuilt: nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span),
+    )
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
-    let bare_node = Node { authored_occurrence: none,
+    let bare_node = Node { authored_occurrence: item.authored_occurrence,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6471,7 +6474,12 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown } }
   } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-    Present { value: nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)) }
+    let binding = nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item))
+    Present { value: TypeBinding {
+      name: binding.name,
+      resolved: node_preserve_authored_occurrence(source: item, rebuilt: binding.resolved),
+      provenance: binding.provenance,
+    } }
   } else {
     none
   }
@@ -7200,16 +7208,24 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { authored_occurrence: none, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let type_node = Node { authored_occurrence: item.authored_occurrence, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { authored_occurrence: none, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = Node { authored_occurrence: item.authored_occurrence, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
-      let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
+      let ref_node = node_preserve_authored_occurrence(
+        source: item,
+        rebuilt: nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span),
+      )
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-      map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
+      let binding = nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item))
+      map_insert(acc, item_ident, TypeBinding {
+        name: binding.name,
+        resolved: node_preserve_authored_occurrence(source: item, rebuilt: binding.resolved),
+        provenance: binding.provenance,
+      })
     } else {
       acc
     }
