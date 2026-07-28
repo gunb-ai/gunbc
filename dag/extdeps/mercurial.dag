@@ -1328,42 +1328,58 @@ fn mercurial_decode_accessible_projection(
   }
 }
 
+fn mercurial_decode_complete_projection(
+  contents: MercurialRepositoryProjectionContents,
+) -> MercurialDecodeOutcome {
+  mercurial_decode_accessible_projection(
+    projection: contents,
+    completeness: MercurialContentsComplete,
+  )
+}
+
+fn mercurial_decode_partial_projection(
+  contents: MercurialRepositoryProjectionContents,
+  missing_changesets: List<MercurialChangesetId>,
+  missing_manifests: List<MercurialManifestId>,
+  missing_file_revisions: List<MercurialFileRevisionId>,
+) -> MercurialDecodeOutcome {
+  match mercurial_validate_partial_projection(
+    projection: contents,
+    missing_changesets: missing_changesets,
+    missing_manifests: missing_manifests,
+    missing_file_revisions: missing_file_revisions,
+  ) {
+    MercurialReferenceInvalid { cause } =>
+      MercurialDecodeRefused { cause: cause }
+    MercurialReferencesValid =>
+      mercurial_decode_accessible_projection(
+        projection: contents,
+        completeness: MercurialContentsPartial {
+          missing_changesets: missing_changesets,
+          missing_manifests: missing_manifests,
+          missing_file_revisions: missing_file_revisions,
+        },
+      )
+  }
+}
+
+fn mercurial_decode_inaccessible_projection(
+  reason: NonEmptyStr,
+) -> MercurialDecodeOutcome {
+  MercurialRepositoryUnavailable { reason: reason }
+}
+
 fn mercurial_decode_projection(
   projection: MercurialRepositoryProjection,
 ) -> MercurialDecodeOutcome {
-  match projection {
-    MercurialCompleteProjection { contents } =>
-      mercurial_decode_accessible_projection(
-        projection: contents,
-        completeness: MercurialContentsComplete,
-      )
-    MercurialPartialProjection {
-      contents,
-      missing_changesets,
-      missing_manifests,
-      missing_file_revisions,
-    } =>
-      match mercurial_validate_partial_projection(
-        projection: contents,
-        missing_changesets: missing_changesets,
-        missing_manifests: missing_manifests,
-        missing_file_revisions: missing_file_revisions,
-      ) {
-        MercurialReferenceInvalid { cause } =>
-          MercurialDecodeRefused { cause: cause }
-        MercurialReferencesValid =>
-          mercurial_decode_accessible_projection(
-            projection: contents,
-            completeness: MercurialContentsPartial {
-              missing_changesets: missing_changesets,
-              missing_manifests: missing_manifests,
-              missing_file_revisions: missing_file_revisions,
-            },
-          )
-      }
-    MercurialInaccessibleProjection { reason } =>
-      MercurialRepositoryUnavailable { reason: reason }
-  }
+  mercurial_repository_projection_fold(
+    projection: projection,
+    fold: MercurialRepositoryProjectionFold {
+      complete: mercurial_decode_complete_projection,
+      partial: mercurial_decode_partial_projection,
+      inaccessible: mercurial_decode_inaccessible_projection,
+    },
+  )
 }
 
 fn mercurial_manifest_flag_wire(flag: MercurialManifestFlag) -> String {
