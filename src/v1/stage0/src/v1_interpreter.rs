@@ -3120,7 +3120,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     if is_v4_std_node_query_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
             "coproduct_nullary_inhabitants" => {
-                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, &args)
+                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, node, &args)
             }
             _ => unreachable!("node_query bridge fn set mismatch"),
         };
