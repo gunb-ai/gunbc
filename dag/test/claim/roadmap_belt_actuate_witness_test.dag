@@ -551,13 +551,6 @@ fn codex_preflight_refused_step(p: BeltCodexPreflight) -> String {
   }
 }
 
-fn codex_preflight_ok(p: BeltCodexPreflight) -> Bool {
-  match p {
-    CodexPreflightOk { auth_method: _ } => true
-    CodexPreflightRefused { step: _, detail: _ } => false
-  }
-}
-
 test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
   codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
@@ -638,8 +631,10 @@ test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
   }
 }
 
+data codex_preflight_ok_dissolution_note: String = "review 44110. The codex_preflight_ok helper was a Bool fold over the two-variant BeltCodexPreflight — a variant test, the is_hermetic shape the 2026-07-12 predicate dissolution removed, and every sibling witness here already matches the coproduct directly. Matching in place also recovers what the Bool discarded: the accepted arm CARRIES the auth_method it derived, and asserting that it survives unparsed is the actual claim this witness makes about wording-independence."
+
 test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool {
-  codex_preflight_ok(p: belt_codex_preflight_decision_observed_for_home(
+  match belt_codex_preflight_decision_observed_for_home(
     codex_home: "/state/codex",
     codex_on_path: true,
     env_on_path: true,
@@ -649,7 +644,11 @@ test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording
     login_status_success: true,
     login_status_stdout: "future CLI auth method wording",
     login_status_stderr: "",
-  ))
+  ) {
+    CodexPreflightOk { auth_method } =>
+      string_contains(s: auth_method as String, pattern: "future CLI auth method wording")
+    CodexPreflightRefused { step: _, detail: _ } => false
+  }
 }
 
 test fn codex_provider_v0_preflight_keystone_holds() -> Bool {

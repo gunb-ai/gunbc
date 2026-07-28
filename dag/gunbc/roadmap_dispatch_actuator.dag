@@ -31,7 +31,12 @@ import gunbc.roadmap_model {
   Unsized,
 }
 import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
-import gunbc.dispatch_pipe_pane_emit { dispatch_event_pipe_command }
+import gunbc.dispatch_pipe_pane_emit {
+  PipePaneEmission,
+  PipeEmitted,
+  PipeEmitRefused,
+  dispatch_event_pipe_emission,
+}
 import gunbc.session_lease {
   ProcessPortScope,
   PortAbsent,
@@ -969,10 +974,10 @@ fn tmux_attempt_remain_argv_for_instance(
   )
 }
 
-fn tmux_attempt_pipe_argv_for_instance(
+fn tmux_attempt_pipe_argv_for_command(
   instance: HostDashboardInstance,
   session_name: String,
-  events_path: String,
+  command: TmuxPipeCommand,
 ) -> HostExecArgv {
   host_exec_argv(
     program: dispatch_capability_program(
@@ -982,14 +987,21 @@ fn tmux_attempt_pipe_argv_for_instance(
     args: shape_tmux_pipe_pane_argv_for(
       scope: instance.tmux_server,
       session_name: session_name,
-      command: dispatch_event_pipe_command(
-        tee_program: dispatch_capability_program(
-          environment: instance.execution_environment,
-          cap: TeeEventCaptureCapability,
-        ),
-        events_path: events_path,
-      ),
+      command: command,
     ),
+  )
+}
+
+fn dispatch_attempt_pipe_emission_for_instance(
+  instance: HostDashboardInstance,
+  events_path: String,
+) -> PipePaneEmission {
+  dispatch_event_pipe_emission(
+    tee_program: dispatch_capability_program(
+      environment: instance.execution_environment,
+      cap: TeeEventCaptureCapability,
+    ),
+    events_path: events_path,
   )
 }
 
@@ -1045,6 +1057,12 @@ fn tmux_kill_session_argv_for_instance(
   )
 }
 
+data dispatch_spawn_plan_note: String = "review 44113. Building the spawn plan can FAIL, so the builder returns a sum rather than a record it might have to fake. The one failure today is the tmux pipe-pane payload: it is emitted through the bash backend, and a serializer refusal has no honest command to put in tmux_event_pipe. Answering with a placeholder would make an un-emittable intent indistinguishable from a serialized one at the dispatch site (DESIGN 5). The refusal names the step that could not be built, and the belt maps it onto the SpawnFailed carrier it already has, so a plan that cannot be built never becomes a plan that gets run."
+
+type DispatchSpawnPlan
+  = DispatchSpawnReady { commands: DispatchSpawnCommands }
+  | DispatchSpawnRefused { step: NonEmptyStr, detail: String }
+
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
   attempt_state_prepare: HostExecArgv
@@ -1061,7 +1079,7 @@ fn dispatch_spawn_commands_for_provider(
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
-) -> DispatchSpawnCommands {
+) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_instance(
     instance: srv1_live_dashboard_instance(),
     node: node,
@@ -1077,7 +1095,7 @@ fn dispatch_spawn_commands_for_instance(
   session_uuid: String,
   attempt_key: String,
   provider: DispatchCliProvider,
-) -> DispatchSpawnCommands {
+) -> DispatchSpawnPlan {
   let fields = dispatch_brief_fields_for_environment(
     node: node,
     environment: instance.execution_environment,
@@ -1125,37 +1143,50 @@ fn dispatch_spawn_commands_for_instance(
     node_id: node.node,
     attempt_key: attempt_key,
   )
-  DispatchSpawnCommands {
-    worktree_add: worktree,
-    attempt_state_prepare: state_prepare,
-    attempt_current_pointer: attempt_current_pointer_argv_for_instance(
-      instance: instance,
-      node_id: node.node,
-      attempt_key: attempt_key,
-    ),
-    tmux_spawn: tmux,
-    tmux_default_shell: tmux_attempt_default_shell_argv_for_instance(
-      instance: instance,
-      session_name: session_name,
-    ),
-    tmux_remain_on_exit: tmux_attempt_remain_argv_for_instance(
-      instance: instance,
-      session_name: session_name,
-    ),
-    tmux_event_pipe: tmux_attempt_pipe_argv_for_instance(
-      instance: instance,
-      session_name: session_name,
-      events_path: events_path,
-    ),
-    provider_start: tmux_attempt_provider_start_argv_for_instance(
-      instance: instance,
-      session_name: session_name,
-      inner_argv: provider_inner,
-    ),
+  match dispatch_attempt_pipe_emission_for_instance(
+    instance: instance,
+    events_path: events_path,
+  ) {
+    PipeEmitRefused { detail } =>
+      DispatchSpawnRefused {
+        step: "tmux-event-pipe-emit" as NonEmptyStr,
+        detail: detail,
+      }
+    PipeEmitted { command } =>
+      DispatchSpawnReady {
+        commands: DispatchSpawnCommands {
+          worktree_add: worktree,
+          attempt_state_prepare: state_prepare,
+          attempt_current_pointer: attempt_current_pointer_argv_for_instance(
+            instance: instance,
+            node_id: node.node,
+            attempt_key: attempt_key,
+          ),
+          tmux_spawn: tmux,
+          tmux_default_shell: tmux_attempt_default_shell_argv_for_instance(
+            instance: instance,
+            session_name: session_name,
+          ),
+          tmux_remain_on_exit: tmux_attempt_remain_argv_for_instance(
+            instance: instance,
+            session_name: session_name,
+          ),
+          tmux_event_pipe: tmux_attempt_pipe_argv_for_command(
+            instance: instance,
+            session_name: session_name,
+            command: command,
+          ),
+          provider_start: tmux_attempt_provider_start_argv_for_instance(
+            instance: instance,
+            session_name: session_name,
+            inner_argv: provider_inner,
+          ),
+        },
+      }
   }
 }
 
-fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnCommands {
+fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String, attempt_key: String) -> DispatchSpawnPlan {
   dispatch_spawn_commands_for_instance(
     instance: srv1_live_dashboard_instance(),
     node: node,
