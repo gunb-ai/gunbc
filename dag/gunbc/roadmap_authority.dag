@@ -19,9 +19,12 @@ import gunbc.roadmap_model {
   section_prose,
 }
 import gunbc.roadmap_status {
+  AuthoredLine,
   TicketLine,
   TicketFields,
+  Signoff,
   Unsigned,
+  SignedOff,
 }
 import std.markdown {
   MarkdownBlock,
@@ -33,6 +36,21 @@ import std.markdown {
 import extdeps.languages.markdown { serialize_markdown_source }
 
 fn nid(s: String) -> RoadmapNodeId { s }
+
+fn signed(by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool) -> Signoff {
+  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
+}
+
+fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: AuthoredLine { done: done, content: content },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
 
 fn carrier(path: String) -> List<Pointer> {
   [Pointer { label: "authority", path: path }]
