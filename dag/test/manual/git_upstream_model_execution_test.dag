@@ -9,6 +9,7 @@ import extdeps.git.object_store {
   GitObjectId,
   GitSha1ObjectId,
   GitObjectFormatSha1,
+  GitRepositoryState,
   GitTreeWireEntry,
   GitRefRecord,
   DirectTarget,
@@ -26,10 +27,13 @@ import extdeps.git.object_store {
   GitR0ReadBackObservation,
   GitReadBackOutcome,
   GitReadBackVerified,
+  GitLsTreeZDecoded,
+  GitLsTreeZRefused,
   GitProjected,
   GitProjectionRefused,
   GitRefTransitionModeled,
   git_object_id_content_hash,
+  git_decode_ls_tree_z,
   git_model_update_ref_exact,
   git_project_repository,
   git_verify_independent_read_back,
@@ -55,7 +59,7 @@ import test.claim.git_upstream_model_witness {
   path_subtree_member,
   path_gitlink,
   path_non_ascii,
-  fixture_complete_repository,
+  fixture_repository,
 }
 import std.bytes { octets_bytes }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -70,53 +74,6 @@ type GitR0LiveFixtureOutcome
 
 fn observed_sha1_oid(stdout: String) -> GitObjectId {
   GitSha1ObjectId { digest: trim(s: stdout) as GitSha1Digest }
-}
-
-fn observed_tree_entries(
-  regular: GitObjectId,
-  executable: GitObjectId,
-  symlink: GitObjectId,
-  subtree: GitObjectId,
-  gitlink: GitObjectId,
-) -> List<GitTreeWireEntry> {
-  [
-    GitTreeWireEntry {
-      mode: "120000",
-      object_type: "blob",
-      oid: symlink,
-      path: path_symlink,
-    },
-    GitTreeWireEntry {
-      mode: "100644",
-      object_type: "blob",
-      oid: regular,
-      path: path_regular,
-    },
-    GitTreeWireEntry {
-      mode: "100755",
-      object_type: "blob",
-      oid: executable,
-      path: path_executable,
-    },
-    GitTreeWireEntry {
-      mode: "040000",
-      object_type: "tree",
-      oid: subtree,
-      path: path_subtree,
-    },
-    GitTreeWireEntry {
-      mode: "160000",
-      object_type: "commit",
-      oid: gitlink,
-      path: path_gitlink,
-    },
-    GitTreeWireEntry {
-      mode: "100644",
-      object_type: "blob",
-      oid: regular,
-      path: path_non_ascii,
-    },
-  ]
 }
 
 fn observed_index_entries(
@@ -187,6 +144,18 @@ fn observed_worktree_entries() -> List<GitWorktreeEntry> {
       target: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
     },
   ]
+}
+
+fn complete_fixture_repository() -> GitRepositoryState {
+  let repo = fixture_repository()
+  GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: [],
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
 }
 
 fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
@@ -478,14 +447,13 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         args: ["--version"],
         expect: ExpectSuccess,
       )
-      let tree_listing = gunbc.WitnessBin.Run(
+      let tree_wire = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
-          "-c",
-          "core.quotePath=false",
           "ls-tree",
-          "--format=%(objectmode) %(objecttype) %(objectname) %(path)",
+          "-z",
+          "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
           trim(s: root_tree.stdout),
         ],
         expect: ExpectSuccess,
@@ -575,7 +543,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && tag_oid.success
           && tag_type.success
           && git_version.success
-          && tree_listing.success
+          && tree_wire.success
           && modes.success
           && paths.success
           && index.success
@@ -604,7 +572,6 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && trim(s: sha256_format.stdout) == "sha256"
 
       let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
-          && count(split(s: trim(s: tree_listing.stdout), delimiter: "\n")) == 6
           && string_contains(s: modes.stdout, pattern: "100644")
           && string_contains(s: modes.stdout, pattern: "100755")
           && string_contains(s: modes.stdout, pattern: "120000")
@@ -627,22 +594,31 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         && content_addresses_grounded
         && tree_modes_grounded
         && read_back_grounded {
-        match git_model_update_ref_exact(
-          repo: fixture_complete_repository(),
-          name: "refs/heads/main",
-          new_oid: sha1_next_commit,
-          expected_old: sha1_parent_commit,
+        match git_decode_ls_tree_z(
+          text: tree_wire.stdout,
+          format: GitObjectFormatSha1,
         ) {
-          GitRefTransitionModeled { repository, transition: _ } =>
-            match git_project_repository(
-              repo: repository,
-              tree_oid: sha1_root_tree,
+          GitLsTreeZRefused { cause: _ } =>
+            GitR0LiveFixtureExecutionRefused {
+              diagnostic: "git-ls-tree-z-decode-refused",
+            }
+          GitLsTreeZDecoded { entries: observed_tree_entries } =>
+            match git_model_update_ref_exact(
+              repo: complete_fixture_repository(),
+              name: "refs/heads/main",
+              new_oid: sha1_next_commit,
+              expected_old: sha1_parent_commit,
             ) {
-              GitProjectionRefused { cause: _ } =>
-                GitR0LiveFixtureExecutionRefused {
-                  diagnostic: "modeled-projection-refused",
-                }
-              GitProjected { projection } =>
+              GitRefTransitionModeled { repository, transition: _ } =>
+                match git_project_repository(
+                  repo: repository,
+                  tree_oid: sha1_root_tree,
+                ) {
+                  GitProjectionRefused { cause: _ } =>
+                    GitR0LiveFixtureExecutionRefused {
+                      diagnostic: "modeled-projection-refused",
+                    }
+                  GitProjected { projection } =>
                 let observed_regular = observed_sha1_oid(stdout: regular_oid.stdout)
                 let observed_executable = observed_sha1_oid(
                   stdout: executable_oid.stdout,
@@ -660,13 +636,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                   git_version: trim(s: git_version.stdout),
                   object_format: GitObjectFormatSha1,
                   tree_oid: observed_sha1_oid(stdout: root_tree.stdout),
-                  tree_entries: observed_tree_entries(
-                    regular: observed_regular,
-                    executable: observed_executable,
-                    symlink: observed_symlink,
-                    subtree: observed_subtree,
-                    gitlink: observed_gitlink,
-                  ),
+                  tree_entries: observed_tree_entries,
                   tag_oids: [observed_sha1_oid(stdout: tag_oid.stdout)],
                   refs: [
                     GitRefRecord {
@@ -694,10 +664,11 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                     observation: observation,
                   ),
                 }
+                }
+              _ => GitR0LiveFixtureExecutionRefused {
+                diagnostic: "modeled-ref-transition-refused",
+              }
             }
-          _ => GitR0LiveFixtureExecutionRefused {
-            diagnostic: "modeled-ref-transition-refused",
-          }
         }
       } else {
         GitR0LiveFixtureExecutionRefused {

@@ -3,6 +3,7 @@ module extdeps.git.object_store
 import std.types { ContentHash, NonEmptyStr, Bytes }
 import std.integer { UInt8, NonNegativeInt }
 import std.measure { ByteSize }
+import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
 import extdeps.object_storage { ObjectContainer }
@@ -366,6 +367,265 @@ fn git_decode_tree_step(
 
 fn git_decode_tree(entries: List<GitTreeWireEntry>) -> GitTreeDecodeOutcome {
   fold(entries, init: GitTreeDecoded { entries: [] }, f: git_decode_tree_step)
+}
+
+type GitNulQuartet {
+  first: NonEmptyStr
+  second: NonEmptyStr
+  third: NonEmptyStr
+  fourth: NonEmptyStr
+}
+
+type GitNulQuartetPending
+  = GitNulQuartetAwaitFirst
+  | GitNulQuartetAwaitSecond { first: NonEmptyStr }
+  | GitNulQuartetAwaitThird {
+      first: NonEmptyStr,
+      second: NonEmptyStr,
+    }
+  | GitNulQuartetAwaitFourth {
+      first: NonEmptyStr,
+      second: NonEmptyStr,
+      third: NonEmptyStr,
+    }
+
+type GitNulQuartetRefusal
+  = GitNulQuartetMissingTerminator
+  | GitNulQuartetEmptyField
+  | GitNulQuartetIncompleteRecord { field_count: NonNegativeInt }
+
+type GitNulQuartetFoldState
+  = GitNulQuartetAccumulating {
+      pending: GitNulQuartetPending,
+      rows: List<GitNulQuartet>,
+      field_count: NonNegativeInt,
+    }
+  | GitNulQuartetFoldRefused { cause: GitNulQuartetRefusal }
+
+type GitNulQuartetDecodeOutcome
+  = GitNulQuartetsDecoded { rows: List<GitNulQuartet> }
+  | GitNulQuartetsRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_quartet_step(
+  state: GitNulQuartetFoldState,
+  field: String,
+) -> GitNulQuartetFoldState {
+  match state {
+    GitNulQuartetFoldRefused { cause } =>
+      GitNulQuartetFoldRefused { cause: cause }
+    GitNulQuartetAccumulating { pending, rows, field_count } =>
+      if field == "" {
+        GitNulQuartetFoldRefused { cause: GitNulQuartetEmptyField }
+      } else {
+        let value = field as NonEmptyStr
+        match pending {
+          GitNulQuartetAwaitFirst => GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitSecond { first: value },
+            rows: rows,
+            field_count: field_count + 1,
+          }
+          GitNulQuartetAwaitSecond { first } => GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitThird {
+              first: first,
+              second: value,
+            },
+            rows: rows,
+            field_count: field_count + 1,
+          }
+          GitNulQuartetAwaitThird { first, second } =>
+            GitNulQuartetAccumulating {
+              pending: GitNulQuartetAwaitFourth {
+                first: first,
+                second: second,
+                third: value,
+              },
+              rows: rows,
+              field_count: field_count + 1,
+            }
+          GitNulQuartetAwaitFourth { first, second, third } =>
+            GitNulQuartetAccumulating {
+              pending: GitNulQuartetAwaitFirst,
+              rows: append(rows, items: [
+                GitNulQuartet {
+                  first: first,
+                  second: second,
+                  third: third,
+                  fourth: value,
+                },
+              ]),
+              field_count: field_count + 1,
+            }
+        }
+      }
+  }
+}
+
+fn git_decode_nul_quartets(text: String) -> GitNulQuartetDecodeOutcome {
+  let fields_with_terminator = split(
+    s: text,
+    delimiter: from_code_point(0),
+  )
+  let field_count_with_terminator = count(fields_with_terminator)
+  if field_count_with_terminator == 0 {
+    GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
+  } else {
+    match fields_with_terminator
+      |> skip(n: field_count_with_terminator - 1)
+      |> first {
+      Absent => GitNulQuartetsRefused {
+        cause: GitNulQuartetMissingTerminator
+      }
+      Present { value: last } =>
+        if last != "" {
+          GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
+        } else {
+          let fields = fields_with_terminator.take(
+            n: field_count_with_terminator - 1,
+          )
+          match fold(
+            fields,
+            init: GitNulQuartetAccumulating {
+              pending: GitNulQuartetAwaitFirst,
+              rows: [],
+              field_count: 0,
+            },
+            f: git_nul_quartet_step,
+          ) {
+            GitNulQuartetFoldRefused { cause } =>
+              GitNulQuartetsRefused { cause: cause }
+            GitNulQuartetAccumulating { pending, rows, field_count } =>
+              match pending {
+                GitNulQuartetAwaitFirst => GitNulQuartetsDecoded { rows: rows }
+                _ => GitNulQuartetsRefused {
+                  cause: GitNulQuartetIncompleteRecord {
+                    field_count: field_count,
+                  }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+type GitObjectIdTextRefusal
+  = GitObjectIdTextWrongLength {
+      format: GitObjectFormat,
+      observed: NonNegativeInt,
+    }
+  | GitObjectIdTextNonHexadecimal
+
+type GitObjectIdTextDecodeOutcome
+  = GitObjectIdTextDecoded { oid: GitObjectId }
+  | GitObjectIdTextRefused { cause: GitObjectIdTextRefusal }
+
+fn git_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 70)
+    || (cp >= 97 && cp <= 102)
+}
+
+fn git_decode_object_id_text(
+  format: GitObjectFormat,
+  text: String,
+) -> GitObjectIdTextDecodeOutcome {
+  let expected_length = match format {
+    GitObjectFormatSha1 => 40
+    GitObjectFormatSha256 => 64
+  }
+  if text.length() != expected_length {
+    GitObjectIdTextRefused {
+      cause: GitObjectIdTextWrongLength {
+        format: format,
+        observed: text.length(),
+      }
+    }
+  } else if !all(chars(s: text), cp => git_hex_code_point(cp: cp)) {
+    GitObjectIdTextRefused { cause: GitObjectIdTextNonHexadecimal }
+  } else {
+    match format {
+      GitObjectFormatSha1 => GitObjectIdTextDecoded {
+        oid: GitSha1ObjectId { digest: text as GitSha1Digest }
+      }
+      GitObjectFormatSha256 => GitObjectIdTextDecoded {
+        oid: GitSha256ObjectId { digest: text as GitSha256Digest }
+      }
+    }
+  }
+}
+
+type GitLsTreeZRefusal
+  = GitLsTreeZFramingRefused { cause: GitNulQuartetRefusal }
+  | GitLsTreeZObjectIdRefused { cause: GitObjectIdTextRefusal }
+  | GitLsTreeZEntryRefused { cause: GitTreeDecodeRefusal }
+
+type GitLsTreeZDecodeOutcome
+  = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
+  | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
+
+fn git_path_from_utf8_observation(path: NonEmptyStr) -> GitPath {
+  GitPath {
+    octets: bytes_octets(b: utf8_encode_bytes(s: path as String)),
+  }
+}
+
+fn git_ls_tree_z_row_step(
+  state: GitLsTreeZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
+  match state {
+    GitLsTreeZRefused { cause } => GitLsTreeZRefused { cause: cause }
+    GitLsTreeZDecoded { entries } =>
+      match git_decode_object_id_text(
+        format: format,
+        text: row.third as String,
+      ) {
+        GitObjectIdTextRefused { cause } =>
+          GitLsTreeZRefused {
+            cause: GitLsTreeZObjectIdRefused { cause: cause }
+          }
+        GitObjectIdTextDecoded { oid } =>
+          let wire = GitTreeWireEntry {
+            mode: row.first,
+            object_type: row.second,
+            oid: oid,
+            path: git_path_from_utf8_observation(path: row.fourth),
+          }
+          match git_decode_tree_entry(entry: wire) {
+            GitTreeEntryDecodeRefused { cause } =>
+              GitLsTreeZRefused {
+                cause: GitLsTreeZEntryRefused { cause: cause }
+              }
+            GitTreeEntryDecoded { entry: _ } =>
+              GitLsTreeZDecoded {
+                entries: append(entries, items: [wire])
+              }
+          }
+      }
+  }
+}
+
+fn git_decode_ls_tree_z(
+  text: String,
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
+  match git_decode_nul_quartets(text: text) {
+    GitNulQuartetsRefused { cause } =>
+      GitLsTreeZRefused {
+        cause: GitLsTreeZFramingRefused { cause: cause }
+      }
+    GitNulQuartetsDecoded { rows } =>
+      fold(
+        rows,
+        init: GitLsTreeZDecoded { entries: [] },
+        f: (state, row) => git_ls_tree_z_row_step(
+          state: state,
+          row: row,
+          format: format,
+        ),
+      )
+  }
 }
 
 fn git_project_tree_entry(entry: TreeEntry) -> GitTreeWireEntry {

@@ -40,10 +40,11 @@ import extdeps.git.object_store {
   GitIndexStageNormal,
   GitWorktreeRegular,
   GitWorktreeSymlink,
-  GitWorktreeGitlink,
   GitTreeWireEntry,
   GitTreeDecoded,
   GitTreeDecodeRefused,
+  GitLsTreeZDecoded,
+  GitLsTreeZRefused,
   GitProjected,
   GitProjectionRefused,
   GitR0ReadBackObservation,
@@ -65,6 +66,7 @@ import extdeps.git.object_store {
   GitShallowFetchNegotiation,
   GitMultiRefTransactionExecution,
   git_decode_tree,
+  git_decode_ls_tree_z,
   git_project_repository,
   git_verify_independent_read_back,
   git_lookup_object,
@@ -502,6 +504,46 @@ test fn witness_git_tree_modes_and_raw_paths_decode_without_collapse() -> Bool {
   }
 }
 
+test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() -> Bool {
+  let nul = from_code_point(0)
+  let text = concat(
+    join(
+      [
+        "120000",
+        "blob",
+        git_object_id_content_hash(oid: sha1_blob_symlink) as String,
+        "link",
+        "100644",
+        "blob",
+        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        "readme",
+        "100755",
+        "blob",
+        git_object_id_content_hash(oid: sha1_blob_executable) as String,
+        "run",
+        "040000",
+        "tree",
+        git_object_id_content_hash(oid: sha1_subtree) as String,
+        "src",
+        "160000",
+        "commit",
+        git_object_id_content_hash(oid: sha1_gitlink) as String,
+        "vendor",
+        "100644",
+        "blob",
+        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+        concat(from_code_point(255), ".dag"),
+      ],
+      nul,
+    ),
+    nul,
+  )
+  match git_decode_ls_tree_z(text: text, format: GitObjectFormatSha1) {
+    GitLsTreeZDecoded { entries } => entries == fixture_wire_entries()
+    GitLsTreeZRefused { cause: _ } => false
+  }
+}
+
 test fn witness_git_bounded_fixture_projects_declared_fragment() -> Bool {
   let repo = fixture_repository()
   match git_project_repository(repo: repo, tree_oid: sha1_root_tree) {
@@ -512,18 +554,6 @@ test fn witness_git_bounded_fixture_projects_declared_fragment() -> Bool {
         && count(projection.tags) == 1
         && count(projection.index) == 6
         && count(projection.worktree) == 5
-  }
-}
-
-fn fixture_complete_repository() -> GitRepositoryState {
-  let repo = fixture_repository()
-  GitRepositoryState {
-    object_format: repo.object_format,
-    objects: repo.objects,
-    unavailable: [],
-    refs: repo.refs,
-    index: repo.index,
-    worktree: repo.worktree,
   }
 }
 
