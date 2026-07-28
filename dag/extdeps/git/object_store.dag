@@ -712,6 +712,7 @@ type GitObjectIdTextRefusal
       observed: NonNegativeInt,
     }
   | GitObjectIdTextNonHexadecimal
+  | GitObjectIdTextNonCanonicalUppercase
 
 type GitObjectIdTextDecodeOutcome
   = GitObjectIdTextDecoded { oid: GitObjectId }
@@ -740,6 +741,8 @@ fn git_decode_object_id_text(
     }
   } else if !all(chars(s: text), cp => git_hex_code_point(cp: cp)) {
     GitObjectIdTextRefused { cause: GitObjectIdTextNonHexadecimal }
+  } else if any(chars(s: text), cp => cp >= 65 && cp <= 70) {
+    GitObjectIdTextRefused { cause: GitObjectIdTextNonCanonicalUppercase }
   } else {
     match format {
       GitObjectFormatSha1 => GitObjectIdTextDecoded {

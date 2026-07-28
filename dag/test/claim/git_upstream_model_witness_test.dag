@@ -47,6 +47,9 @@ import extdeps.git.object_store {
   GitLsTreeZRefused,
   GitLsFilesStageZDecoded,
   GitLsFilesStageZRefused,
+  GitObjectIdTextDecoded,
+  GitObjectIdTextRefused,
+  GitObjectIdTextNonCanonicalUppercase,
   GitProjected,
   GitProjectionRefused,
   GitR0ReadBackObservation,
@@ -68,6 +71,7 @@ import extdeps.git.object_store {
   GitShallowFetchNegotiation,
   GitMultiRefTransactionExecution,
   git_decode_tree,
+  git_decode_object_id_text,
   git_decode_ls_tree_z,
   git_decode_ls_files_stage_z,
   git_project_repository,
@@ -546,6 +550,23 @@ test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
         },
       ]
     GitLsTreeZRefused { cause: _ } => false
+  }
+}
+
+test fn witness_git_object_id_text_has_one_canonical_spelling() -> Bool {
+  match git_decode_object_id_text(
+    format: GitObjectFormatSha1,
+    text: "1D3A06547C706BD0F75B130EDECF4832295BBA6B",
+  ) {
+    GitObjectIdTextRefused { cause: GitObjectIdTextNonCanonicalUppercase } =>
+      match git_decode_object_id_text(
+        format: GitObjectFormatSha1,
+        text: "1d3a06547c706bd0f75b130edecf4832295bba6b",
+      ) {
+        GitObjectIdTextDecoded { oid } => oid == sha1_blob_regular
+        GitObjectIdTextRefused { cause: _ } => false
+      }
+    _ => false
   }
 }
 
