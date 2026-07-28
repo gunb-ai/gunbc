@@ -242,6 +242,7 @@ test fn witness_interpreter_delete_fan_in_is_explicit() -> Bool {
     && edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
     && edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
     && edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
 }
 
 test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {

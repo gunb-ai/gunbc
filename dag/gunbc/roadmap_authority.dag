@@ -675,6 +675,20 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return deletion diff plus complete execution and reachability receipts."
       )
     ),
+    active_large(
+      id: "v1-zero-hand-maintained-rust",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Reduce hand-maintained src/v1 and stage0 Rust to zero",
+        boundary: "After interpreter deletion, every remaining src/v1 and stage0 Rust source is emitted from cited .dag models or deleted; hand maintenance is a transitional frontier, never a terminus.",
+        displaced_cost: "Removes the permanent tax and authority fork of maintaining bootstrap behavior separately from its substrate model.",
+        first_slice: "Derive the live hand-maintained src/v1 and stage0 roster, then emit or delete the next complete retained family.",
+        red_control: "Any hand-maintained Rust file lacking an emitted authority and migration trigger blocks acceptance, and any newly added hand-maintained Rust reopens the roster.",
+        out_of_scope: "Do not delete emitted Rust realizations or claim ownership of rustc, the Rust standard library, the operating system, or other cited external trust.",
+        handback: "Return the zero hand-maintained roster, generated-authority bindings, and cold product, floor, and regeneration receipts."
+      )
+    ),
 
     active_small(
       id: "shell-typed-invocation",
@@ -898,6 +912,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
     edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
