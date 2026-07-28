@@ -1,0 +1,103 @@
+module v2.test.manual.e0599_phase_a_body_evidence_probe
+
+data e0599pa_anchor: Symbol = ^e0599pa_anchor
+
+data e0599pa_note: String = "Phase A probe for the E0599 R1/R2/R3 lane (docs/plans/e0599-implementation-proposal.md §3 P-fn coverage audit). Answers the named-missing fact by EXECUTION: parse a real corpus file and count postfix method-projection steps by method symbol over the parsed tree. The P-fn carrier TraitBoundSiteMethodInvoke { method, receiver } can only be inhabited where such a step exists. Detector is body_lower_postfix_projection_step (v2.compiler.body_lowering_fold) — the same accessor the projection lowering uses, not a second walker. RED control: a fixture that DOES carry .clone()/.is_empty()/.iter() must count non-zero, so a zero on the corpus is a measurement and not a dead detector."
+
+fn e0599pa_parse_text_optional(source_text: String) -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(text: source_text, file: e0599pa_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: tree, diagnostics: _ } => optional_present(value: tree)
+      }
+  }
+}
+
+fn e0599pa_parse_path_optional(path: String) -> Optional<Node> {
+  e0599pa_parse_text_optional(source_text: filesystem_read(path: path).content)
+}
+
+fn e0599pa_step_matches(n: Node, target: Symbol) -> Int {
+  match body_lower_postfix_projection_step(repeat_elem: n) {
+    Present { value: method } => if method == target { 1 } else { 0 }
+    Absent => 0
+  }
+}
+
+fn e0599pa_count_method_in_tree(root: Node, target: Symbol) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n) { e0599pa_step_matches(n: n, target: target) },
+      step: fn(acc, e, child) { acc + child }
+    }
+  )
+}
+
+fn e0599pa_count_any_projection_in_tree(root: Node) -> Int {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(n) {
+        match body_lower_postfix_projection_step(repeat_elem: n) {
+          Present { value: _ } => 1
+          Absent => 0
+        }
+      },
+      step: fn(acc, e, child) { acc + child }
+    }
+  )
+}
+
+fn e0599pa_count_method_at_path(path: String, target: Symbol) -> Int {
+  match e0599pa_parse_path_optional(path: path) {
+    Absent => 0 - 1
+    Present { value: tree } => e0599pa_count_method_in_tree(root: tree, target: target)
+  }
+}
+
+fn e0599pa_count_any_projection_at_path(path: String) -> Int {
+  match e0599pa_parse_path_optional(path: path) {
+    Absent => 0 - 1
+    Present { value: tree } => e0599pa_count_any_projection_in_tree(root: tree)
+  }
+}
+
+data e0599pa_red_fixture: String = "src/v2/test/fixture/e0599_phase_a/carries_realization_methods.dag"
+
+fn e0599pa_red_clone_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_red_fixture, target: ^clone)
+}
+
+fn e0599pa_red_is_empty_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_red_fixture, target: ^is_empty)
+}
+
+fn e0599pa_red_iter_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_red_fixture, target: ^iter)
+}
+
+fn e0599pa_red_any_projection_count() -> Int {
+  e0599pa_count_any_projection_at_path(path: e0599pa_red_fixture)
+}
+
+data e0599pa_algebra_path: String = "src/v2/std/algebra.dag"
+
+fn e0599pa_algebra_clone_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^clone)
+}
+
+fn e0599pa_algebra_is_empty_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^is_empty)
+}
+
+fn e0599pa_algebra_iter_count() -> Int {
+  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^iter)
+}
+
+fn e0599pa_algebra_any_projection_count() -> Int {
+  e0599pa_count_any_projection_at_path(path: e0599pa_algebra_path)
+}
