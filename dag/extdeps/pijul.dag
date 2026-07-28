@@ -388,8 +388,7 @@ fn pijul_vertex_known_or_declared_missing(
   vertex: PijulVertexId,
 ) -> Bool {
   pijul_vertex_present(pristine: projection.pristine, vertex: vertex)
-    || projection.availability
-      |> pijul_missing_vertices
+    || pijul_missing_vertices(availability: projection.availability)
       |> filter(missing => missing == vertex)
       |> count > 0
 }
@@ -1004,6 +1003,10 @@ type PijulDeliveryDependencyIssue {
   dependency: PijulChangeHash
 }
 
+type PijulDeliveryUnavailableIssue {
+  change: PijulChangeHash
+}
+
 fn pijul_delivery_dependency_issue(
   repository: PijulRepositoryState,
   delivered: List<PijulChangeHash>,
@@ -1047,9 +1050,10 @@ fn pijul_plan_delivery(
             Absent => true
           }
         )
+        |> map(hash => PijulDeliveryUnavailableIssue { change: hash })
         |> first {
-        Present { value: unavailable } => PijulDeliveryRefused {
-          cause: PijulDeliveryChangeUnavailable { change: unavailable }
+        Present { value: issue } => PijulDeliveryRefused {
+          cause: PijulDeliveryChangeUnavailable { change: issue.change }
         }
         Absent => {
           let unique_delivered = fold(
