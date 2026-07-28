@@ -47,8 +47,20 @@ import v1.std.core {
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
-  field_access_base
+  field_access_base,
+  OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
+  OccurrenceTransport,
 }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  OccurrenceMinted,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+}
+import std.occurrence_binding { ContainmentPath }
+import std.algebra { FreeMonoid, Empty, Cons }
 
 import std.syntax {
   Add, BinOp, LitStr, LiteralValue,
@@ -93,6 +105,8 @@ fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
 type ParseContext {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator?
+  occurrence_index: OccurrenceIndex?
 }
 
 type ParseResult {
@@ -103,6 +117,42 @@ type ParseResult {
 type ParseWithTableResult {
   result: ParseResult
   intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator
+  occurrence_transport: OccurrenceTransport
+}
+
+type ParsedNodeStampResult {
+  node: Node
+  ctx: ParseContext
+}
+
+type ParsedNodeListStampResult {
+  nodes: List<Node>
+  ctx: ParseContext
+}
+
+type ParsedOptionalNodeStampResult {
+  node: Node?
+  ctx: ParseContext
+}
+
+type ParsedPatternStampResult {
+  pattern: MatchPattern?
+  ctx: ParseContext
+}
+
+fn parse_context_occurrence_allocator(ctx: ParseContext) -> OccurrenceIdAllocator {
+  match ctx.occurrence_allocator {
+    Present { value: allocator } => allocator
+    Absent => occurrence_id_allocator_initial()
+  }
+}
+
+fn parse_context_occurrence_index(ctx: ParseContext) -> OccurrenceIndex {
+  match ctx.occurrence_index {
+    Present { value: index } => index
+    Absent => OccurrenceIndex { entries: [] }
+  }
 }
 
 type AdvanceResult
@@ -835,21 +885,292 @@ fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -
   }
 }
 
-fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+fn occurrence_ancestors_push(
+  ancestors: FreeMonoid<OccurrenceId>,
+  occurrence: OccurrenceId
+) -> FreeMonoid<OccurrenceId> {
+  concat(ancestors, Cons { head: occurrence, tail: Empty })
+}
+
+fn stamp_parsed_node_list(
+  nodes: List<Node>,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedNodeListStampResult {
+  fold(
+    nodes,
+    init: ParsedNodeListStampResult { nodes: [], ctx: ctx },
+    f: (acc, node) =>
+      let stamped = stamp_parsed_node(
+        node: node,
+        ancestors: ancestors,
+        ctx: acc.ctx
+      )
+      ParsedNodeListStampResult {
+        nodes: list_push(acc.nodes, stamped.node),
+        ctx: stamped.ctx,
+      }
+  )
+}
+
+fn stamp_parsed_optional_node(
+  node: Node?,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedOptionalNodeStampResult {
+  match node {
+    Present { value: value } =>
+      let stamped = stamp_parsed_node(
+        node: value,
+        ancestors: ancestors,
+        ctx: ctx
+      )
+      ParsedOptionalNodeStampResult {
+        node: Present { value: stamped.node },
+        ctx: stamped.ctx,
+      }
+    Absent =>
+      ParsedOptionalNodeStampResult { node: none, ctx: ctx }
+  }
+}
+
+fn stamp_parsed_pattern(
+  pattern: MatchPattern?,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedPatternStampResult {
+  match pattern {
+    Present { value: Bind { declaration: declaration } } =>
+      let stamped = stamp_parsed_node(
+        node: declaration,
+        ancestors: ancestors,
+        ctx: ctx
+      )
+      ParsedPatternStampResult {
+        pattern: Present {
+          value: Bind { declaration: stamped.node },
+        },
+        ctx: stamped.ctx,
+      }
+    Present {
+      value: VariantPattern {
+        name: name,
+        parent_enum: parent_enum,
+        field_bindings: field_bindings,
+      },
+    } =>
+      let stamped = stamp_parsed_node_list(
+        nodes: field_bindings,
+        ancestors: ancestors,
+        ctx: ctx
+      )
+      ParsedPatternStampResult {
+        pattern: Present {
+          value: VariantPattern {
+            name: name,
+            parent_enum: parent_enum,
+            field_bindings: stamped.nodes,
+          },
+        },
+        ctx: stamped.ctx,
+      }
+    Present { value: other } =>
+      ParsedPatternStampResult {
+        pattern: Present { value: other },
+        ctx: ctx,
+      }
+    Absent =>
+      ParsedPatternStampResult { pattern: none, ctx: ctx }
+  }
+}
+
+fn stamp_parsed_inferred(
+  inferred: InferredNode?,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedOptionalNodeStampResult {
+  match inferred {
+    Present { value: Resolved { node: node } } =>
+      let stamped = stamp_parsed_node(
+        node: node,
+        ancestors: ancestors,
+        ctx: ctx
+      )
+      ParsedOptionalNodeStampResult {
+        node: Present { value: stamped.node },
+        ctx: stamped.ctx,
+      }
+    _ => ParsedOptionalNodeStampResult { node: none, ctx: ctx }
+  }
+}
+
+fn stamp_parsed_node(
+  node: Node,
+  ancestors: FreeMonoid<OccurrenceId>,
+  ctx: ParseContext
+) -> ParsedNodeStampResult {
+  let allocated = alloc_occurrence_id(
+    alloc: parse_context_occurrence_allocator(ctx: ctx)
+  )
+  let occurrence = allocated.id
+  let containment = ContainmentPath {
+    ancestors: ancestors,
+    terminal: occurrence,
+  }
+  let projection = OccurrenceProjection {
+    occurrence: occurrence,
+    authored_name: node.name,
+    diagnostic_span: node.span,
+  }
+  let indexed_ctx = with(ctx, {
+    occurrence_allocator: Present { value: allocated.alloc },
+    occurrence_index: Present { value: OccurrenceIndex {
+      entries: list_push(
+        parse_context_occurrence_index(ctx: ctx).entries,
+        OccurrenceIndexEntry {
+          projection: projection,
+          containment: containment,
+        }
+      ),
+    } },
+  })
+  let child_ancestors = occurrence_ancestors_push(
+    ancestors: ancestors,
+    occurrence: occurrence
+  )
+  let children = stamp_parsed_node_list(
+    nodes: node.children,
+    ancestors: child_ancestors,
+    ctx: indexed_ctx
+  )
+  let params = stamp_parsed_node_list(
+    nodes: node.params,
+    ancestors: child_ancestors,
+    ctx: children.ctx
+  )
+  let uses = stamp_parsed_node_list(
+    nodes: node.uses,
+    ancestors: child_ancestors,
+    ctx: params.ctx
+  )
+  let properties = stamp_parsed_node_list(
+    nodes: node.properties,
+    ancestors: child_ancestors,
+    ctx: uses.ctx
+  )
+  let body = stamp_parsed_optional_node(
+    node: node.body,
+    ancestors: child_ancestors,
+    ctx: properties.ctx
+  )
+  let transport = stamp_parsed_optional_node(
+    node: node.transport,
+    ancestors: child_ancestors,
+    ctx: body.ctx
+  )
+  let annotation = stamp_parsed_optional_node(
+    node: node.type_annotation,
+    ancestors: child_ancestors,
+    ctx: transport.ctx
+  )
+  let inferred = stamp_parsed_inferred(
+    inferred: node.inferred,
+    ancestors: child_ancestors,
+    ctx: annotation.ctx
+  )
+  let pattern = stamp_parsed_pattern(
+    pattern: node.match_pattern,
+    ancestors: child_ancestors,
+    ctx: inferred.ctx
+  )
+  let stamped_inferred = match node.inferred {
+    Present { value: Resolved { node: _ } } =>
+      match inferred.node {
+        Present { value: inferred_node } =>
+          Present { value: Resolved { node: inferred_node } }
+        Absent => node.inferred
+      }
+    _ => node.inferred
+  }
+  ParsedNodeStampResult {
+    node: with(node, {
+      occurrence_identity: Present {
+        value: OccurrenceMinted { id: occurrence },
+      },
+      children: children.nodes,
+      params: params.nodes,
+      uses: uses.nodes,
+      properties: properties.nodes,
+      body: body.node,
+      transport: transport.node,
+      type_annotation: annotation.node,
+      inferred: stamped_inferred,
+      match_pattern: pattern.pattern,
+    }),
+    ctx: pattern.ctx,
+  }
+}
+
+fn empty_occurrence_transport(index: OccurrenceIndex) -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: index,
+    declarations: [],
+    references: [],
+  }
+}
+
+fn parse_with_table_in_occurrence_scope(
+  tokens: List<Token>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable,
+  occurrence_allocator: OccurrenceIdAllocator
+) -> ParseWithTableResult {
   let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
-  let ctx = ParseContext { source_indices: source_indices, intern_table: pre_interned }
+  let ctx = ParseContext {
+    source_indices: source_indices,
+    intern_table: pre_interned,
+    occurrence_allocator: Present { value: occurrence_allocator },
+    occurrence_index: Present {
+      value: OccurrenceIndex { entries: [] },
+    },
+  }
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
     ParseWithTableResult {
       result: ParseResult { module: none, error: r.err },
-      intern_table: r.ctx.intern_table
+      intern_table: r.ctx.intern_table,
+      occurrence_allocator: parse_context_occurrence_allocator(ctx: r.ctx),
+      occurrence_transport: empty_occurrence_transport(
+        index: parse_context_occurrence_index(ctx: r.ctx)
+      ),
     }
   } else {
+    let stamped = stamp_parsed_node(
+      node: r.module,
+      ancestors: Empty,
+      ctx: r.ctx
+    )
     ParseWithTableResult {
-      result: ParseResult { module: Present { value: r.module }, error: none },
-      intern_table: r.ctx.intern_table
+      result: ParseResult {
+        module: Present { value: stamped.node },
+        error: none,
+      },
+      intern_table: stamped.ctx.intern_table,
+      occurrence_allocator: parse_context_occurrence_allocator(ctx: stamped.ctx),
+      occurrence_transport: empty_occurrence_transport(
+        index: parse_context_occurrence_index(ctx: stamped.ctx)
+      ),
     }
   }
+}
+
+fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ParseWithTableResult {
+  parse_with_table_in_occurrence_scope(
+    tokens: tokens,
+    source_indices: source_indices,
+    intern_table: intern_table,
+    occurrence_allocator: occurrence_id_allocator_initial()
+  )
 }
 
 fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> ParseResult {

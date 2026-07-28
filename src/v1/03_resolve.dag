@@ -2,12 +2,21 @@ module v1.compiler.resolve
 
 import std.types { kernel_type_set }
 
-import v1.std.core { Node, Connective, Conj, Disj, NoConnective, ErrorNode, make_error_node, UnresolvedImport, MissingExport, DuplicateModule, CircularDependency, no_span, module_node, import_node, import_is_all, import_specific_names_at, module_imports, module_items, NewlineIndex, authored_name_at }
+import v1.std.core {
+  Node, Connective, Conj, Disj, NoConnective,
+  ErrorNode, make_error_node,
+  UnresolvedImport, MissingExport, DuplicateModule, CircularDependency,
+  no_span, module_node, import_node, import_is_all,
+  import_specific_names_at, module_imports, module_items,
+  NewlineIndex, authored_name_at,
+  OccurrenceIndex, OccurrenceTransport,
+}
 
 
 type ModuleGraph {
   modules: List<ResolvedModule>
   diagnostics: List<ErrorNode>
+  occurrence_transport: OccurrenceTransport
 }
 
 type ResolvedModule {
@@ -40,7 +49,11 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
   }
 }
 
-fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> ModuleGraph {
+fn resolve_modules_with_occurrence_transport(
+  modules: List<Node>,
+  source_indices: Map<String, NewlineIndex>,
+  occurrence_transport: OccurrenceTransport
+) -> ModuleGraph {
 
   let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
@@ -97,8 +110,24 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
 
   ModuleGraph {
     modules: sorted_resolved,
-    diagnostics: concat(dup_diags, import_diags, topo_diags)
+    diagnostics: concat(dup_diags, import_diags, topo_diags),
+    occurrence_transport: occurrence_transport,
   }
+}
+
+fn resolve_modules(
+  modules: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> ModuleGraph {
+  resolve_modules_with_occurrence_transport(
+    modules: modules,
+    source_indices: source_indices,
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [] },
+      declarations: [],
+      references: [],
+    }
+  )
 }
 
 fn find_module(module_index: Map<String, Node>, path: String) -> Node? {

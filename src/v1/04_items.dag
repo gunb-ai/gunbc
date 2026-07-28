@@ -23,7 +23,8 @@ import v1.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
   node_name_span, no_span,
-  NewlineIndex, authored_name_at
+  NewlineIndex, authored_name_at,
+  OccurrenceTransport,
 }
 
 import v1.compiler.infer_types {
@@ -72,6 +73,7 @@ type TypedModule {
   interface: ModuleInterface
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
+  occurrence_transport: OccurrenceTransport?
 }
 
 type TypedGraph {
@@ -85,6 +87,7 @@ type ResolvedGraph {
   item_registry: Map<String, ItemInfo>
   diagnostics: List<ErrorNode>
   emit_graph_info: EmitGraphInfo
+  occurrence_transport: OccurrenceTransport
 }
 
 fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {

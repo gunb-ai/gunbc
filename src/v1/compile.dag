@@ -21,9 +21,21 @@ import v1.std.core {
 
 import v1.compiler.tokenize { tokenize }
 
-import v1.compiler.parse { parse_with_table, ParseResult }
+import v1.compiler.parse {
+  parse_with_table,
+  parse_with_table_in_occurrence_scope,
+  ParseResult,
+}
+import std.occurrence_identity {
+  OccurrenceIdAllocator,
+  occurrence_id_allocator_initial,
+}
 
-import v1.compiler.resolve { resolve_modules, ModuleGraph }
+import v1.compiler.resolve {
+  resolve_modules,
+  resolve_modules_with_occurrence_transport,
+  ModuleGraph,
+}
 
 import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
@@ -59,6 +71,10 @@ import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
 import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
+import v1.std.core {
+  OccurrenceIndex,
+  OccurrenceTransport,
+}
 
 
 type SourceFile {
@@ -80,17 +96,32 @@ type FrontendResult {
   diagnostics: List<ErrorNode>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  occurrence_transport: OccurrenceTransport
 }
 
 type FrontendAccum {
   parse_results: List<ParseResult>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator
+  occurrence_transports: List<OccurrenceTransport>
 }
 
 type FrontendPrepared {
   tokens: List<Token>
   newline_index: NewlineIndex
+}
+
+fn merge_occurrence_transports(
+  transports: List<OccurrenceTransport>
+) -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: transports |> flat_map(transport => transport.index.entries),
+    },
+    declarations: transports |> flat_map(transport => transport.declarations),
+    references: transports |> flat_map(transport => transport.references),
+  }
 }
 
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
@@ -920,12 +951,32 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum {
+    parse_results: [],
+    newline_indices: [],
+    intern_table: intern_table,
+    occurrence_allocator: occurrence_id_allocator_initial(),
+    occurrence_transports: [],
+  }, f: (acc, p) =>
+    let parsed = parse_with_table_in_occurrence_scope(
+      tokens: p.tokens,
+      source_indices: map_insert(
+        empty_map(),
+        p.newline_index.file,
+        p.newline_index
+      ),
+      intern_table: acc.intern_table,
+      occurrence_allocator: acc.occurrence_allocator
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      occurrence_allocator: parsed.occurrence_allocator,
+      occurrence_transports: list_push(
+        acc.occurrence_transports,
+        parsed.occurrence_transport
+      ),
     }
   )
   let parse_results = parsed.parse_results
@@ -936,12 +987,20 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     Absent => []
   })
   let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-  let graph = resolve_modules(modules: modules, source_indices: source_indices)
+  let occurrence_transport = merge_occurrence_transports(
+    transports: parsed.occurrence_transports
+  )
+  let graph = resolve_modules_with_occurrence_transport(
+    modules: modules,
+    source_indices: source_indices,
+    occurrence_transport: occurrence_transport
+  )
   FrontendResult {
     graph: Present { value: graph },
     diagnostics: concat(parse_diagnostics, graph.diagnostics),
     newline_indices: newline_indices,
-    intern_table: parsed.intern_table
+    intern_table: parsed.intern_table,
+    occurrence_transport: occurrence_transport
   }
 }
 
@@ -949,6 +1008,7 @@ type CensusFillParse {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
+  occurrence_transport: OccurrenceTransport
 }
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
@@ -960,12 +1020,32 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum {
+    parse_results: [],
+    newline_indices: [],
+    intern_table: intern_table,
+    occurrence_allocator: occurrence_id_allocator_initial(),
+    occurrence_transports: [],
+  }, f: (acc, p) =>
+    let parsed = parse_with_table_in_occurrence_scope(
+      tokens: p.tokens,
+      source_indices: map_insert(
+        empty_map(),
+        p.newline_index.file,
+        p.newline_index
+      ),
+      intern_table: acc.intern_table,
+      occurrence_allocator: acc.occurrence_allocator
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      occurrence_allocator: parsed.occurrence_allocator,
+      occurrence_transports: list_push(
+        acc.occurrence_transports,
+        parsed.occurrence_transport
+      ),
     }
   )
   let parse_results = parsed.parse_results
@@ -976,7 +1056,10 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   CensusFillParse {
     modules: modules,
     newline_indices: parsed.newline_indices,
-    diagnostics: collect_diagnostics(parse_results: parse_results)
+    diagnostics: collect_diagnostics(parse_results: parse_results),
+    occurrence_transport: merge_occurrence_transports(
+      transports: parsed.occurrence_transports
+    ),
   }
 }
 

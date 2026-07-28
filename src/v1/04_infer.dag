@@ -56,7 +56,9 @@ import v1.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
-  default_ident_span, node_name_span
+  default_ident_span, node_name_span,
+  OccurrenceIndex, OccurrenceTransport,
+  node_minted_occurrence_id,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
@@ -8218,12 +8220,66 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
   reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
 }
 
+fn occurrence_containment_has_root(
+  containment: std.occurrence_binding.ContainmentPath<std.occurrence_identity.OccurrenceId>,
+  root: std.occurrence_identity.OccurrenceId
+) -> Bool {
+  match containment.ancestors {
+    Empty => containment.terminal.value == root.value
+    Cons { head: head, tail: _ } => head.value == root.value
+  }
+}
+
+fn occurrence_transport_for_module(
+  transport: OccurrenceTransport,
+  module: Node
+) -> OccurrenceTransport? {
+  match node_minted_occurrence_id(node: module) {
+    Present { value: root } =>
+      Present { value: OccurrenceTransport {
+        index: OccurrenceIndex {
+          entries: transport.index.entries |> filter(entry =>
+            occurrence_containment_has_root(
+              containment: entry.containment,
+              root: root
+            )
+          ),
+        },
+        declarations: transport.declarations |> filter(declaration =>
+          occurrence_containment_has_root(
+            containment: declaration.containment,
+            root: root
+          )
+        ),
+        references: transport.references |> filter(reference =>
+          occurrence_containment_has_root(
+            containment: reference.containment,
+            root: root
+          )
+        ),
+      } }
+    Absent => none
+  }
+}
+
 fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
   let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
+  let modules = modules |> map(module => with(module, {
+    occurrence_transport: occurrence_transport_for_module(
+      transport: graph.occurrence_transport,
+      module: module.module
+    ),
+  }))
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: modules)
   let emit_info = build_emit_graph_info(modules: modules, has_v1_seed: has_v1_seed)
-  ResolvedGraph { modules: modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
+  ResolvedGraph {
+    modules: modules,
+    item_registry: typed.item_registry,
+    diagnostics: typed.diagnostics,
+    emit_graph_info: emit_info,
+    occurrence_transport: graph.occurrence_transport,
+  }
 }

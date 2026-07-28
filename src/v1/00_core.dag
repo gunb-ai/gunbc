@@ -8,6 +8,13 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.induction { SubValueRelation }
+import std.occurrence_identity {
+  OccurrenceId,
+  NodeOccurrenceIdentity,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
+}
+import std.occurrence_binding { ContainmentPath }
 
 type Token {
   text: String
@@ -116,6 +123,60 @@ type MatchPattern
   | LitPattern { value: LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
+
+type OccurrenceCategory
+  = LexicalValueOccurrence
+  | TypeOccurrence
+  | CallableOccurrence
+  | ConstructorOccurrence
+  | NamespaceSegmentOccurrence
+  | FieldOccurrence
+  | MethodOccurrence
+
+type OccurrenceProjection {
+  occurrence: OccurrenceId
+  authored_name: String
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceIndexEntry {
+  projection: OccurrenceProjection
+  containment: ContainmentPath<OccurrenceId>
+}
+
+type OccurrenceIndex {
+  entries: List<OccurrenceIndexEntry>
+}
+
+type DeclarationOccurrence {
+  occurrence: OccurrenceId
+  containment: ContainmentPath<OccurrenceId>
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type ReferenceOccurrence {
+  occurrence: OccurrenceId
+  containment: ContainmentPath<OccurrenceId>
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceTransport {
+  index: OccurrenceIndex
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportRefusal
+  = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
+  | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | WrongOccurrenceCategory {
+      occurrence: OccurrenceId,
+      expected: OccurrenceCategory,
+      observed: OccurrenceCategory,
+      diagnostic_span: SourceSpan,
+    }
 
 type UnaryOpKind = Not | Neg
 
@@ -268,6 +329,7 @@ type DeclaredFuncEnv {
 type Node {
   name: String
   ident: Int?
+  occurrence_identity: NodeOccurrenceIdentity?
   span: SourceSpan
   ident_span: SourceSpan?
   children: List<Node>
@@ -286,6 +348,20 @@ type Node {
 
   match_pattern: MatchPattern?
   expr_data: ExprData
+}
+
+fn node_occurrence_identity(node: Node) -> NodeOccurrenceIdentity {
+  match node.occurrence_identity {
+    Present { value: occurrence } => occurrence
+    Absent => OccurrenceSynthetic
+  }
+}
+
+fn node_minted_occurrence_id(node: Node) -> OccurrenceId? {
+  match node_occurrence_identity(node: node) {
+    OccurrenceMinted { id: id } => Present { value: id }
+    OccurrenceSynthetic => none
+  }
 }
 
 fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
