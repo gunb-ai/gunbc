@@ -7,7 +7,8 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, LexicalValueOccurrence,
 };
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
+    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
@@ -37,7 +38,7 @@ use std::rc::Rc;
 pub fn pattern_binder_declaration_node_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -510,6 +511,93 @@ pub fn w_production_frontend_refuses_wrong_occurrence_category() -> bool {
                             occurrence: observed,
                             expected: OccurrenceCategory::LexicalValueOccurrence,
                             observed: OccurrenceCategory::CallableOccurrence,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_index_terminal_mismatch() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 31 };
+        let mismatched_terminal = OccurrenceId { value: 32 };
+        let entry = transport_fixture_index_entry(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![Rc::new(OccurrenceIndexEntry {
+                        projection: entry.projection.clone(),
+                        containment: transport_fixture_path(mismatched_terminal.clone()),
+                    })]),
+                }),
+                declarations: Rc::new(vec![]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_ancestor_path_mismatch() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 33 };
+        let ancestor = OccurrenceId { value: 34 };
+        let declaration = transport_fixture_declaration(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![Rc::new(DeclarationOccurrence {
+                    occurrence: declaration.occurrence.clone(),
+                    containment: Rc::new(OccurrenceContainmentPath {
+                        ancestors: Rc::new(vec![ancestor.clone()]),
+                        terminal: occurrence.clone(),
+                    }),
+                    category: declaration.category.clone(),
+                    diagnostic_span: declaration.diagnostic_span.clone(),
+                })]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                            occurrence: observed,
                             diagnostic_span: span,
                             ..
                         } = refusal.as_ref()

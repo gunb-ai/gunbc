@@ -25,7 +25,8 @@ pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostSha
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
-    DuplicateAuthoredOccurrenceIdentity, MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
+    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
@@ -481,6 +482,10 @@ pub fn occurrence_transport_refusal_diagnostic_span(
             diagnostic_span: span,
             ..
         } => span.clone(),
+        OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
         OccurrenceTransportRefusal::WrongOccurrenceCategory {
             diagnostic_span: span,
             ..
@@ -492,22 +497,11 @@ pub fn occurrence_transport_refusal_diagnostic_message(
     refusal: Rc<OccurrenceTransportRefusal>,
 ) -> String {
     match (*refusal.clone()).clone() {
-        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-            diagnostic_span: _,
-            ..
-        } => "occurrence transport refused: missing authored occurrence identity".to_string(),
-        OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => {
-            v1_rt::concat(
-                "occurrence transport refused: duplicate authored occurrence identity ".to_string(),
-                (occurrence.value.clone()).to_string(),
-            )
-        }
-        OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat(
-            "occurrence transport refused: wrong category for authored occurrence identity "
-                .to_string(),
-            (occurrence.value.clone()).to_string(),
-        ),
-    }
+    OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: _, .. } => "occurrence transport refused: missing authored occurrence identity".to_string(),
+    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+}
 }
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {

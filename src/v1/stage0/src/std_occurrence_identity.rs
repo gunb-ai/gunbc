@@ -146,6 +146,10 @@ pub enum OccurrenceTransportRefusal {
         occurrence: OccurrenceId,
         diagnostic_span: Rc<SourceSpan>,
     },
+    InconsistentOccurrenceContainment {
+        occurrence: OccurrenceId,
+        diagnostic_span: Rc<SourceSpan>,
+    },
     WrongOccurrenceCategory {
         occurrence: OccurrenceId,
         expected: OccurrenceCategory,
@@ -161,6 +165,10 @@ impl OccurrenceTransportRefusal {
                 ..
             } => __val.clone(),
             OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
                 diagnostic_span: __val,
                 ..
             } => __val.clone(),
@@ -263,6 +271,21 @@ pub fn occurrence_transport_validation_complexity_law() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn occurrence_containment_matches_occurrence(
+    containment: Rc<OccurrenceContainmentPath>,
+    occurrence: OccurrenceId,
+) -> bool {
+    (containment.terminal.clone().value.clone() == occurrence.value.clone())
+}
+
+pub fn occurrence_containment_paths_equal(
+    left: Rc<OccurrenceContainmentPath>,
+    right: Rc<OccurrenceContainmentPath>,
+) -> bool {
+    ((left.ancestors.clone() == right.ancestors.clone())
+        && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportIndexBuild {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
@@ -295,14 +318,35 @@ pub fn occurrence_transport_index_build(
                         },
                     )),
                 }),
-                None => Rc::new(OccurrenceTransportIndexBuild {
-                    entries_by_id: v1_rt::rc_map_insert(
-                        build.entries_by_id.clone(),
-                        entry.projection.clone().occurrence.clone().value.clone(),
-                        entry.clone(),
-                    ),
-                    refusal: None,
-                }),
+                None => {
+                    if occurrence_containment_matches_occurrence(
+                        entry.containment.clone(),
+                        entry.projection.clone().occurrence.clone(),
+                    ) {
+                        Rc::new(OccurrenceTransportIndexBuild {
+                            entries_by_id: v1_rt::rc_map_insert(
+                                build.entries_by_id.clone(),
+                                entry.projection.clone().occurrence.clone().value.clone(),
+                                entry.clone(),
+                            ),
+                            refusal: None,
+                        })
+                    } else {
+                        Rc::new(OccurrenceTransportIndexBuild {
+                            entries_by_id: build.entries_by_id.clone(),
+                            refusal: Some(Rc::new(
+                                OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                                    occurrence: entry.projection.clone().occurrence.clone(),
+                                    diagnostic_span: entry
+                                        .projection
+                                        .clone()
+                                        .diagnostic_span
+                                        .clone(),
+                                },
+                            )),
+                        })
+                    }
+                }
             },
         },
     )
@@ -357,20 +401,34 @@ pub fn declaration_occurrence_refusal(
                 diagnostic_span: declaration.diagnostic_span.clone(),
             },
         )),
-        Some(_) => match v1_rt::map_get(
-            &references_by_id,
-            declaration.occurrence.clone().value.clone(),
-        ) {
-            Some(reference) => Some(Rc::new(
-                OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                    occurrence: declaration.occurrence.clone(),
-                    expected: declaration.category.clone(),
-                    observed: reference.category.clone(),
-                    diagnostic_span: declaration.diagnostic_span.clone(),
-                },
-            )),
-            None => None,
-        },
+        Some(entry) => {
+            if occurrence_containment_paths_equal(
+                declaration.containment.clone(),
+                entry.containment.clone(),
+            ) {
+                match v1_rt::map_get(
+                    &references_by_id,
+                    declaration.occurrence.clone().value.clone(),
+                ) {
+                    Some(reference) => Some(Rc::new(
+                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: declaration.occurrence.clone(),
+                            expected: declaration.category.clone(),
+                            observed: reference.category.clone(),
+                            diagnostic_span: declaration.diagnostic_span.clone(),
+                        },
+                    )),
+                    None => None,
+                }
+            } else {
+                Some(Rc::new(
+                    OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                        occurrence: declaration.occurrence.clone(),
+                        diagnostic_span: declaration.diagnostic_span.clone(),
+                    },
+                ))
+            }
+        }
     }
 }
 
@@ -385,20 +443,34 @@ pub fn reference_occurrence_refusal(
                 diagnostic_span: reference.diagnostic_span.clone(),
             },
         )),
-        Some(_) => match v1_rt::map_get(
-            &declarations_by_id,
-            reference.occurrence.clone().value.clone(),
-        ) {
-            Some(declaration) => Some(Rc::new(
-                OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                    occurrence: reference.occurrence.clone(),
-                    expected: reference.category.clone(),
-                    observed: declaration.category.clone(),
-                    diagnostic_span: reference.diagnostic_span.clone(),
-                },
-            )),
-            None => None,
-        },
+        Some(entry) => {
+            if occurrence_containment_paths_equal(
+                reference.containment.clone(),
+                entry.containment.clone(),
+            ) {
+                match v1_rt::map_get(
+                    &declarations_by_id,
+                    reference.occurrence.clone().value.clone(),
+                ) {
+                    Some(declaration) => Some(Rc::new(
+                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: reference.occurrence.clone(),
+                            expected: reference.category.clone(),
+                            observed: declaration.category.clone(),
+                            diagnostic_span: reference.diagnostic_span.clone(),
+                        },
+                    )),
+                    None => None,
+                }
+            } else {
+                Some(Rc::new(
+                    OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                        occurrence: reference.occurrence.clone(),
+                        diagnostic_span: reference.diagnostic_span.clone(),
+                    },
+                ))
+            }
+        }
     }
 }
 

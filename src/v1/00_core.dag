@@ -17,6 +17,7 @@ import std.occurrence_identity {
   OccurrenceTransportRefusal,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
+  InconsistentOccurrenceContainment,
   WrongOccurrenceCategory,
 }
 
@@ -187,6 +188,10 @@ fn occurrence_transport_refusal_diagnostic_span(
       occurrence: _,
       diagnostic_span: span,
     } => span
+    InconsistentOccurrenceContainment {
+      occurrence: _,
+      diagnostic_span: span,
+    } => span
     WrongOccurrenceCategory {
       occurrence: _,
       expected: _,
@@ -207,6 +212,13 @@ fn occurrence_transport_refusal_diagnostic_message(
       diagnostic_span: _,
     } => concat(
       "occurrence transport refused: duplicate authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    InconsistentOccurrenceContainment {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: inconsistent containment for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
     WrongOccurrenceCategory {

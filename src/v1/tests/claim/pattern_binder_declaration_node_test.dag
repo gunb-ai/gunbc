@@ -40,12 +40,13 @@ import std.occurrence_identity {
   CallableOccurrence,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
+  InconsistentOccurrenceContainment,
   WrongOccurrenceCategory,
   authored_token_ordinal_space_from_allocator,
   OccurrenceIdAllocator,
 }
 
-data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category"
+data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch"
 
 data pattern_binder_declaration_node_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
@@ -404,6 +405,91 @@ test fn w_production_frontend_refuses_wrong_occurrence_category() -> Bool {
             occurrence: observed,
             expected: LexicalValueOccurrence,
             observed: CallableOccurrence,
+            diagnostic_span: span,
+          },
+        } =>
+          observed.value == occurrence.value &&
+          span == transport_fixture_span()
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_production_frontend_refuses_index_terminal_mismatch() -> Bool {
+  let occurrence = OccurrenceId { value: 31 }
+  let mismatched_terminal = OccurrenceId { value: 32 }
+  let entry = transport_fixture_index_entry(occurrence: occurrence)
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          OccurrenceIndexEntry {
+            projection: entry.projection,
+            containment: transport_fixture_path(
+              occurrence: mismatched_terminal
+            ),
+          }
+        ],
+      },
+      declarations: [],
+      references: [],
+    }
+  )
+  result.graph == none &&
+  match result.diagnostics |> first {
+    Present { value: error } =>
+      match error.diagnostic {
+        OccurrenceTransportViolation {
+          refusal: InconsistentOccurrenceContainment {
+            occurrence: observed,
+            diagnostic_span: span,
+          },
+        } =>
+          observed.value == occurrence.value &&
+          span == transport_fixture_span()
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_production_frontend_refuses_ancestor_path_mismatch() -> Bool {
+  let occurrence = OccurrenceId { value: 33 }
+  let ancestor = OccurrenceId { value: 34 }
+  let declaration = transport_fixture_declaration(occurrence: occurrence)
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          transport_fixture_index_entry(occurrence: occurrence)
+        ],
+      },
+      declarations: [
+        DeclarationOccurrence {
+          occurrence: declaration.occurrence,
+          containment: OccurrenceContainmentPath {
+            ancestors: [ancestor],
+            terminal: occurrence,
+          },
+          category: declaration.category,
+          diagnostic_span: declaration.diagnostic_span,
+        }
+      ],
+      references: [],
+    }
+  )
+  result.graph == none &&
+  match result.diagnostics |> first {
+    Present { value: error } =>
+      match error.diagnostic {
+        OccurrenceTransportViolation {
+          refusal: InconsistentOccurrenceContainment {
+            occurrence: observed,
             diagnostic_span: span,
           },
         } =>

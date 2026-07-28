@@ -79,6 +79,10 @@ type OccurrenceTransport {
 type OccurrenceTransportRefusal
   = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
   | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | InconsistentOccurrenceContainment {
+      occurrence: OccurrenceId,
+      diagnostic_span: SourceSpan,
+    }
   | WrongOccurrenceCategory {
       occurrence: OccurrenceId,
       expected: OccurrenceCategory,
@@ -142,6 +146,21 @@ fn node_occurrence_identity_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
 
 data occurrence_transport_validation_complexity_law: String = "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence."
 
+fn occurrence_containment_matches_occurrence(
+  containment: OccurrenceContainmentPath,
+  occurrence: OccurrenceId
+) -> Bool {
+  containment.terminal.value == occurrence.value
+}
+
+fn occurrence_containment_paths_equal(
+  left: OccurrenceContainmentPath,
+  right: OccurrenceContainmentPath
+) -> Bool {
+  left.ancestors == right.ancestors &&
+  left.terminal.value == right.terminal.value
+}
+
 type OccurrenceTransportIndexBuild {
   entries_by_id: Map<Int, OccurrenceIndexEntry>
   refusal: OccurrenceTransportRefusal?
@@ -175,14 +194,29 @@ fn occurrence_transport_index_build(
                 },
               }
             Absent =>
-              OccurrenceTransportIndexBuild {
-                entries_by_id: map_insert(
-                  build.entries_by_id,
-                  entry.projection.occurrence.value,
-                  entry
-                ),
-                refusal: none,
-              },
+              if occurrence_containment_matches_occurrence(
+                containment: entry.containment,
+                occurrence: entry.projection.occurrence
+              ) {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: map_insert(
+                    build.entries_by_id,
+                    entry.projection.occurrence.value,
+                    entry
+                  ),
+                  refusal: none,
+                }
+              } else {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: build.entries_by_id,
+                  refusal: Present {
+                    value: InconsistentOccurrenceContainment {
+                      occurrence: entry.projection.occurrence,
+                      diagnostic_span: entry.projection.diagnostic_span,
+                    },
+                  },
+                }
+              }
           }
       }
   )
@@ -236,18 +270,30 @@ fn declaration_occurrence_refusal(
           diagnostic_span: declaration.diagnostic_span,
         },
       }
-    Present { value: _ } =>
-      match map_get(references_by_id, declaration.occurrence.value) {
-        Present { value: reference } =>
-          Present {
-            value: WrongOccurrenceCategory {
-              occurrence: declaration.occurrence,
-              expected: declaration.category,
-              observed: reference.category,
-              diagnostic_span: declaration.diagnostic_span,
-            },
-          }
-        Absent => none
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: declaration.containment,
+        right: entry.containment
+      ) {
+        match map_get(references_by_id, declaration.occurrence.value) {
+          Present { value: reference } =>
+            Present {
+              value: WrongOccurrenceCategory {
+                occurrence: declaration.occurrence,
+                expected: declaration.category,
+                observed: reference.category,
+                diagnostic_span: declaration.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
+        Present {
+          value: InconsistentOccurrenceContainment {
+            occurrence: declaration.occurrence,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        }
       }
   }
 }
@@ -259,23 +305,35 @@ fn reference_occurrence_refusal(
 ) -> OccurrenceTransportRefusal? {
   match map_get(index_by_id, reference.occurrence.value) {
     Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: reference.diagnostic_span,
+        },
+      }
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: reference.containment,
+        right: entry.containment
+      ) {
+        match map_get(declarations_by_id, reference.occurrence.value) {
+          Present { value: declaration } =>
+            Present {
+              value: WrongOccurrenceCategory {
+                occurrence: reference.occurrence,
+                expected: reference.category,
+                observed: declaration.category,
+                diagnostic_span: reference.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
         Present {
-          value: MissingAuthoredOccurrenceIdentity {
+          value: InconsistentOccurrenceContainment {
+            occurrence: reference.occurrence,
             diagnostic_span: reference.diagnostic_span,
           },
         }
-    Present { value: _ } =>
-      match map_get(declarations_by_id, reference.occurrence.value) {
-        Present { value: declaration } =>
-          Present {
-            value: WrongOccurrenceCategory {
-              occurrence: reference.occurrence,
-              expected: reference.category,
-              observed: declaration.category,
-              diagnostic_span: reference.diagnostic_span,
-            },
-          }
-        Absent => none
       }
   }
 }
