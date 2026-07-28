@@ -26,15 +26,9 @@ import gunbc.roadmap_model {
   section_prose,
 }
 import gunbc.roadmap_status {
-<<<<<<< HEAD
-  AuthoredLine,
-  DerivableLine,
-  SupersededLine,
-  TicketLine,
-  TicketFields,
-  Signoff,
-  Unsigned,
-  SignedOff,
+  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
+  TicketFields, TicketUpdate, SeedGrowthJustification, SeedGrowthJustificationLine,
+  Signoff, Unsigned, SignedOff,
 }
 import std.markdown {
   MarkdownBlock,
@@ -42,11 +36,6 @@ import std.markdown {
   ParagraphBlock,
   TextInline,
   H1,
-=======
-  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  TicketFields, TicketUpdate, SeedGrowthJustification, SeedGrowthJustificationLine,
-  Signoff, Unsigned, SignedOff,
->>>>>>> 7d77ed72a9d (WIP: SeedGrowthJustification row for scoped observation consumer bridge)
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 
@@ -126,8 +115,6 @@ fn authored_wi(
 }
 
 fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
-<<<<<<< HEAD
-=======
   RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
 }
 
@@ -164,7 +151,6 @@ fn ticket_pp(id: String, done: Bool, t: TicketFields, carriers: List<Pointer>) -
 }
 
 fn ticket_wi(id: String, done: Bool, t: TicketFields, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
->>>>>>> 7d77ed72a9d (WIP: SeedGrowthJustification row for scoped observation consumer bridge)
   RoadmapNode {
     node: nid(s: id),
     line: TicketLine { done: done, ticket: t },
@@ -1038,10 +1024,8 @@ fn active_section() -> RoadmapSection {
       section_prose(content: "The graph has eight chains: namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
-<<<<<<< HEAD
         nodes: active_roadmap_nodes(),
         edges: active_roadmap_edges()
-=======
         nodes: [
           ticket_row(id: "5-regen-cutover", done: true, t: TicketFields {
             headline: "regen-cutover cadence — closed by construction",
@@ -3917,7 +3901,6 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           RoadmapEdge { child: nid(s: "ts-seed-data-out"), parent: nid(s: "ts-seed-interim") },
           RoadmapEdge { child: nid(s: "ts-seed-intake"), parent: nid(s: "ts-seed-interim") },
         ],
->>>>>>> 7d77ed72a9d (WIP: SeedGrowthJustification row for scoped observation consumer bridge)
       ),
     ],
   }
