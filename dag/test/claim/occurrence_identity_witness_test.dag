@@ -5,14 +5,21 @@ import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
-  NodeOccurrenceId,
-  SyntheticOccurrence,
-  MintedOccurrence,
+  NodeOccurrenceIdentity,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
   occurrence_id_eq,
   occurrence_id_allocator_advance_to,
-  node_occurrence_minted,
+  node_occurrence_identity_minted,
+}
+import v2.std.node {
+  NodeOccurrenceId,
+  SyntheticOccurrence,
+  MintedOccurrence,
+  node_occurrence_id_to_shared,
+  node_occurrence_id_from_shared,
 }
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
@@ -41,16 +48,52 @@ test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
 }
 
 test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
-  let minted = node_occurrence_minted(id: OccurrenceId { value: 4 })
+  let minted = std.occurrence_identity.node_occurrence_identity_minted(
+    id: std.occurrence_identity.OccurrenceId { value: 4 }
+  )
   let minted_holds = match minted {
-    MintedOccurrence { id: id } =>
+    OccurrenceMinted { id: id } =>
       id.value == 4
     _ => false
   }
-  let synthetic: NodeOccurrenceId = SyntheticOccurrence
+  let synthetic: NodeOccurrenceIdentity = OccurrenceSynthetic
   let synthetic_holds = match synthetic {
-    SyntheticOccurrence => true
+    OccurrenceSynthetic => true
     _ => false
   }
   minted_holds && synthetic_holds
+}
+
+test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
+  let facade: NodeOccurrenceId = SyntheticOccurrence
+  match node_occurrence_id_from_shared(
+    occurrence: node_occurrence_id_to_shared(occurrence: facade)
+  ) {
+    SyntheticOccurrence => true
+    _ => false
+  }
+}
+
+test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
+  let facade: NodeOccurrenceId = MintedOccurrence {
+    id: std.occurrence_identity.OccurrenceId { value: 11 },
+  }
+  match node_occurrence_id_from_shared(
+    occurrence: node_occurrence_id_to_shared(occurrence: facade)
+  ) {
+    MintedOccurrence { id: id } => id.value == 11
+    _ => false
+  }
+}
+
+test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
+  let shared: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceMinted {
+    id: std.occurrence_identity.OccurrenceId { value: 12 },
+  }
+  match node_occurrence_id_to_shared(
+    occurrence: node_occurrence_id_from_shared(occurrence: shared)
+  ) {
+    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
+    _ => false
+  }
 }
