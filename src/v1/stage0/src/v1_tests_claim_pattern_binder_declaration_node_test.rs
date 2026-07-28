@@ -2,15 +2,34 @@
 // Source module: v1.tests.claim.pattern_binder_declaration_node_test
 
 use self::ParsedFixturePattern::*;
+pub use crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator;
+use crate::std_occurrence_identity::OccurrenceCategory::{
+    CallableOccurrence, LexicalValueOccurrence,
+};
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
+    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
+    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+};
+pub use crate::std_occurrence_identity::{
+    DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
+    OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
+};
+pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_compile::resolve_frontend_occurrence_transport;
 pub use crate::v1_compiler_parse::ParseContext;
-pub use crate::v1_compiler_parse::{parse_pattern, token_stream_new};
+pub use crate::v1_compiler_parse::{parse_pattern, parse_with_table, token_stream_new};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CompilerDiagnostic::OccurrenceTransportViolation;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::{build_newline_index, empty_intern_table, field_binding_pattern};
-pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
+pub use crate::v1_std_core::{
+    build_newline_index, empty_intern_table, field_binding_pattern,
+    intern_table_with_authored_token_ordinals, merge_intern_tables,
+};
+pub use crate::v1_std_core::{CompilerDiagnostic, ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -19,7 +38,7 @@ use std::rc::Rc;
 pub fn pattern_binder_declaration_node_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch,w_production_frontend_refuses_duplicate_declaration_rows,w_production_frontend_refuses_duplicate_reference_rows".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -64,6 +83,10 @@ pub fn parse_fixture_pattern(source: String) -> Rc<ParsedFixturePattern> {
                     index.clone(),
                 ),
                 intern_table: empty_intern_table(),
+                declaration_occurrences: None,
+                occurrence_allocator: None,
+                occurrence_index: None,
+                reference_occurrences: None,
             }),
         );
         match result.err.clone() {
@@ -115,6 +138,50 @@ pub fn parsed_pattern_has_one_binder(source: String, name: String) -> bool {
             (pattern_binder_named_count(pattern.clone(), name.clone()) == 1)
         }
     }
+}
+
+pub fn transport_fixture_span() -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+        file: "occurrence-transport-production.dag".to_string(),
+        start: 7,
+        end: 8,
+    })
+}
+
+pub fn transport_fixture_path(occurrence: OccurrenceId) -> Rc<OccurrenceContainmentPath> {
+    Rc::new(OccurrenceContainmentPath {
+        ancestors: Rc::new(vec![]),
+        terminal: occurrence.clone(),
+    })
+}
+
+pub fn transport_fixture_index_entry(occurrence: OccurrenceId) -> Rc<OccurrenceIndexEntry> {
+    Rc::new(OccurrenceIndexEntry {
+        projection: Rc::new(OccurrenceProjection {
+            occurrence: occurrence.clone(),
+            authored_name: "same".to_string(),
+            diagnostic_span: transport_fixture_span(),
+        }),
+        containment: transport_fixture_path(occurrence.clone()),
+    })
+}
+
+pub fn transport_fixture_declaration(occurrence: OccurrenceId) -> Rc<DeclarationOccurrence> {
+    Rc::new(DeclarationOccurrence {
+        occurrence: occurrence.clone(),
+        containment: transport_fixture_path(occurrence.clone()),
+        category: OccurrenceCategory::LexicalValueOccurrence,
+        diagnostic_span: transport_fixture_span(),
+    })
+}
+
+pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Rc<ReferenceOccurrence> {
+    Rc::new(ReferenceOccurrence {
+        occurrence: occurrence.clone(),
+        containment: transport_fixture_path(occurrence.clone()),
+        category: OccurrenceCategory::CallableOccurrence,
+        diagnostic_span: transport_fixture_span(),
+    })
 }
 
 pub fn w_pattern_parser_materializes_dedicated_declaration_nodes() -> bool {
@@ -175,5 +242,448 @@ pub fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> bool {
             }
             _ => false,
         },
+    }
+}
+
+pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool {
+    {
+        let first_file = "occurrence-sequential-first.dag".to_string();
+        let first_source =
+            "module occurrence.sequential_first\n\nfn same(x: Int) -> Int { x }\n".to_string();
+        let first = parse_with_table(
+            tokenize(first_source.clone(), first_file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                first_file.clone(),
+                build_newline_index(first_file.clone(), first_source.clone()),
+            ),
+            empty_intern_table(),
+        );
+        let second_file = "occurrence-sequential-second.dag".to_string();
+        let second_source =
+            "module occurrence.sequential_second\n\nfn same(x: Int) -> Int { x }\n".to_string();
+        let second = parse_with_table(
+            tokenize(second_source.clone(), second_file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                second_file.clone(),
+                build_newline_index(second_file.clone(), second_source.clone()),
+            ),
+            first.intern_table.clone(),
+        );
+        let disjoint = first
+            .occurrence_transport
+            .clone()
+            .index
+            .clone()
+            .entries
+            .clone()
+            .iter()
+            .cloned()
+            .fold(true, |outer_ok: bool, left: Rc<OccurrenceIndexEntry>| {
+                (outer_ok
+                    && second
+                        .occurrence_transport
+                        .clone()
+                        .index
+                        .clone()
+                        .entries
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(true, |inner_ok: bool, right: Rc<OccurrenceIndexEntry>| {
+                            (inner_ok
+                                && (left.projection.clone().occurrence.clone().value.clone()
+                                    != right.projection.clone().occurrence.clone().value.clone()))
+                        }))
+            });
+        let second_range_follows_first = second
+            .occurrence_transport
+            .clone()
+            .index
+            .clone()
+            .entries
+            .clone()
+            .iter()
+            .cloned()
+            .fold(true, |ok: bool, entry: Rc<OccurrenceIndexEntry>| {
+                (ok && (entry.projection.clone().occurrence.clone().value.clone()
+                    >= first.occurrence_allocator.clone().next_id.clone()))
+            });
+        let merged = merge_intern_tables(Rc::new(vec![
+            first.intern_table.clone(),
+            second.intern_table.clone(),
+        ]));
+        ((((((((((first.result.clone().error.clone() == None)
+            && (second.result.clone().error.clone() == None))
+            && ((first
+                .occurrence_transport
+                .clone()
+                .index
+                .clone()
+                .entries
+                .clone()
+                .len() as i64)
+                > 0))
+            && ((second
+                .occurrence_transport
+                .clone()
+                .index
+                .clone()
+                .entries
+                .clone()
+                .len() as i64)
+                > 0))
+            && disjoint.clone())
+            && second_range_follows_first.clone())
+            && (first
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .allocator
+                .clone()
+                .next_id
+                .clone()
+                == first.occurrence_allocator.clone().next_id.clone()))
+            && (second
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .allocator
+                .clone()
+                .next_id
+                .clone()
+                == second.occurrence_allocator.clone().next_id.clone()))
+            && (merged
+                .authored_token_ordinals
+                .clone()
+                .allocator
+                .clone()
+                .next_id
+                .clone()
+                == second.occurrence_allocator.clone().next_id.clone()))
+            && (second.occurrence_allocator.clone().next_id.clone()
+                > first.occurrence_allocator.clone().next_id.clone()))
+    }
+}
+
+pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
+    {
+        let file = "occurrence-error-space.dag".to_string();
+        let source = "module".to_string();
+        let seeded = intern_table_with_authored_token_ordinals(
+            empty_intern_table(),
+            authored_token_ordinal_space_from_allocator(OccurrenceIdAllocator { next_id: 41 }),
+        );
+        let parsed = parse_with_table(
+            tokenize(source.clone(), file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                file.clone(),
+                build_newline_index(file.clone(), source.clone()),
+            ),
+            seeded.clone(),
+        );
+        (((parsed.result.clone().error.clone() != None)
+            && (parsed.occurrence_allocator.clone().next_id.clone() >= 41))
+            && (parsed
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .allocator
+                .clone()
+                .next_id
+                .clone()
+                == parsed.occurrence_allocator.clone().next_id.clone()))
+    }
+}
+
+pub fn w_production_frontend_accepts_valid_occurrence_transport() -> bool {
+    {
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![]),
+                }),
+                declarations: Rc::new(vec![]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() != None) && ((result.diagnostics.clone().len() as i64) == 0))
+    }
+}
+
+pub fn w_production_frontend_refuses_missing_occurrence_identity() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 17 };
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        (span.clone() == transport_fixture_span())
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_duplicate_occurrence_identity() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 23 };
+        let entry = transport_fixture_index_entry(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![entry.clone(), entry.clone()]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_wrong_occurrence_category() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 29 };
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![transport_fixture_reference(occurrence.clone())]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: observed,
+                            expected: OccurrenceCategory::LexicalValueOccurrence,
+                            observed: OccurrenceCategory::CallableOccurrence,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_index_terminal_mismatch() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 31 };
+        let mismatched_terminal = OccurrenceId { value: 32 };
+        let entry = transport_fixture_index_entry(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![Rc::new(OccurrenceIndexEntry {
+                        projection: entry.projection.clone(),
+                        containment: transport_fixture_path(mismatched_terminal.clone()),
+                    })]),
+                }),
+                declarations: Rc::new(vec![]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_ancestor_path_mismatch() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 33 };
+        let ancestor = OccurrenceId { value: 34 };
+        let declaration = transport_fixture_declaration(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![Rc::new(DeclarationOccurrence {
+                    occurrence: declaration.occurrence.clone(),
+                    containment: Rc::new(OccurrenceContainmentPath {
+                        ancestors: Rc::new(vec![ancestor.clone()]),
+                        terminal: occurrence.clone(),
+                    }),
+                    category: declaration.category.clone(),
+                    diagnostic_span: declaration.diagnostic_span.clone(),
+                })]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_duplicate_declaration_rows() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 35 };
+        let declaration = transport_fixture_declaration(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![declaration.clone(), declaration.clone()]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_duplicate_reference_rows() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 36 };
+        let reference = transport_fixture_reference(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![]),
+                references: Rc::new(vec![reference.clone(), reference.clone()]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
     }
 }
