@@ -2,6 +2,8 @@ module gunbc.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
+import std.types { NonEmptyStr }
+
 data ticket_line_note: String = "The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow fields, references, and the item's whole history — so the page can only dump it, the dispatch brief can only stub its slots with the title, and every update concatenates into the blob because no time axis exists (ts-dispatch-elevate was the live specimen). TicketLine carries the fields as fields. The field set is the union of ts-wf-node-schema's list and the dispatch_brief_template slots — the template was always the spec of what dispatch needs — plus the updates thread. References reuse the node's carriers (Pointer is the existing ref concept; a ticket-local refs list would be a second one). AuthoredLine survives as the counted LEGACY frontier: every remaining prose row is burn-down for the mechanical migration (W2-bulk), and a new prose row where a ticket was possible is the review reject."
 
 type TicketUpdate {
@@ -35,14 +37,41 @@ type RoadmapItem
 
   | TicketLine { done: Bool, ticket: TicketFields }
 
+data signoff_evidence_note: String = "Acceptance was three hand-set Bools, so a row could be accepted by asserting works/scope_equivalent while its declared red_control never executed and its declared handback was never delivered — the DESIGN.md §5 shape where a check is satisfied by editing the declaration while the realization still lies. Each row already declares its own acceptance criteria in TicketFields.red_control and TicketFields.handback; nothing consumed them. works and scope_equivalent now carry evidence pointing at those two declared fields instead of asserting them, and the pointers are NonEmptyStr so an unnamed witness is unwritable rather than checked. as_expected stays a Bool because operator satisfaction is the genuinely unstructurable residue §5 reserves for post-hoc judgment. Unsigned remains the fail-closed default. Whether a named witness exists and is enrolled in the corpus is a separate reader over the same rows, not representable here."
+
+type RedControlEvidence
+  = RedControlNotRun
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
+
+type HandbackEvidence
+  = HandbackNotDelivered
+  | HandbackDelivered { artifacts: List<NonEmptyStr> }
+
 type Signoff
   = Unsigned
-  | SignedOff { by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool }
+  | SignedOff { by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool }
+
+fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
+  match e {
+    RedControlNotRun => false
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true
+  }
+}
+
+fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {
+  match e {
+    HandbackNotDelivered => false
+    HandbackDelivered { artifacts } => count(artifacts) > 0
+  }
+}
 
 fn signoff_accepts(s: Signoff) -> Bool {
   match s {
     Unsigned => false
-    SignedOff { by: _, works, scope_equivalent, as_expected } => works && scope_equivalent && as_expected
+    SignedOff { by: _, works, scope_equivalent, as_expected } =>
+      red_control_evidence_satisfied(e: works)
+        && handback_evidence_satisfied(e: scope_equivalent)
+        && as_expected
   }
 }
 
