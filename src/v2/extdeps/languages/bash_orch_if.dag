@@ -10,15 +10,239 @@ import v2.std.compilers.target_model {
   render_target_text
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
+import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or }
+import std.types { FilePathParts }
 import v2.std.text { String }
 import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
   bash_stmt_if_target_model,
-  bash_stmt_if_block_target_model
+  bash_stmt_if_block_target_model,
+  bash_stmt_negation_tokens,
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_source_text,
+  bash_stmt_negation_lex,
+  bash_stmt_negation_translation_rules_node,
+  bash_stmt_negation_binding_spellings,
+  bash_stmt_andor_tokens,
+  bash_stmt_andor_emitted,
+  bash_stmt_andor_source_text,
+  bash_stmt_andor_lex,
+  bash_stmt_andor_translation_rules_node,
+  bash_stmt_andor_binding_spellings
+}
+
+data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
+data bash_path_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+data bash_path_ident_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_0123456789"
+
+fn bash_path_ident_char_ok(ch: String, first: Bool) -> Bool {
+  if first {
+    string_length(s: ch) == 1 && string_contains(s: bash_path_ident_start_alphabet, pattern: ch)
+  } else {
+    string_length(s: ch) == 1 && string_contains(s: bash_path_ident_continue_alphabet, pattern: ch)
+  }
+}
+
+fn bash_path_ident_ok_at(name: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: name, pos: i)
+    if !bash_path_ident_char_ok(ch: ch, first: i == 0) {
+      false
+    } else {
+      bash_path_ident_ok_at(name: name, i: i + 1, n: n)
+    }
+  }
+}
+
+fn bash_path_ident_ok(name: String) -> Bool {
+  let n = string_length(s: name)
+  if n == 0 {
+    false
+  } else {
+    bash_path_ident_ok_at(name: name, i: 0, n: n)
+  }
+}
+
+fn bash_path_unquoted_ok_at(path: String, i: Int, n: Int) -> Bool {
+  if i >= n {
+    true
+  } else {
+    let ch = char_at(s: path, pos: i)
+    if string_length(s: ch) != 1 || !string_contains(s: bash_path_operand_unquoted_alphabet, pattern: ch) {
+      false
+    } else {
+      bash_path_unquoted_ok_at(path: path, i: i + 1, n: n)
+    }
+  }
+}
+
+fn bash_path_unquoted_ok(path: String) -> Bool {
+  let n = string_length(s: path)
+  if n == 0 {
+    false
+  } else {
+    bash_path_unquoted_ok_at(path: path, i: 0, n: n)
+  }
+}
+
+fn bash_relative_parts_text(parts: FilePathParts) -> String {
+  fold(parts.segments, init: "", f: fn(acc, seg) {
+    if acc == "" { seg } else { concat(acc, concat("/", seg)) }
+  })
+}
+
+fn bash_absolute_parts_text(parts: FilePathParts) -> String {
+  concat("/", bash_relative_parts_text(parts: parts))
+}
+
+fn bash_path_intent_text(path: PathIntent) -> Outcome<String> {
+  match path {
+    PathRef { name: n } =>
+      if !bash_path_ident_ok(name: n) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else {
+        outcome_accepted(concat("$", n))
+      }
+    PathLiteral { parts: p } =>
+      if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else {
+        outcome_accepted(bash_absolute_parts_text(parts: p))
+      }
+    PathJoin { base: b, suffix: s } =>
+      bind_outcome(
+        o: bash_path_intent_text(path: b),
+        f: fn(base_text) {
+          if !bash_path_unquoted_ok(path: bash_relative_parts_text(parts: s)) {
+            outcome_rejected(bash_path_intent_invalid_diagnostic())
+          } else {
+            outcome_accepted(concat(base_text, concat("/", bash_relative_parts_text(parts: s))))
+          }
+        }
+      )
+  }
+}
+
+fn bash_path_operand_quoted_text(path: PathIntent) -> Outcome<String> {
+  bind_outcome(
+    o: bash_path_intent_text(path: path),
+    f: fn(text) { outcome_accepted(concat("\"", concat(text, "\""))) }
+  )
+}
+
+fn bash_path_intent_invalid_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^bash_path_intent_operand_invalid,
+    at: port_locus(port: ^bash_path_intent_operand_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String> {
+  match predicate {
+    PathNonempty { path: p } =>
+      bind_outcome(
+        o: bash_path_operand_quoted_text(path: p),
+        f: fn(operand) {
+          outcome_accepted(concat("[ -n ", concat(operand, " ]")))
+        }
+      )
+    PathNotEq { lhs: l, rhs: r } =>
+      bind_outcome(
+        o: bash_path_operand_quoted_text(path: l),
+        f: fn(lhs) {
+          bind_outcome(
+            o: bash_path_operand_quoted_text(path: r),
+            f: fn(rhs) {
+              outcome_accepted(concat("[ ", concat(lhs, concat(" != ", concat(rhs, " ]")))))
+            }
+          )
+        }
+      )
+    PathEntryKind { path: p, kind: k } =>
+      bind_outcome(
+        o: bash_path_operand_quoted_text(path: p),
+        f: fn(operand) {
+          match k {
+            RegularFile => outcome_accepted(concat("[ -f ", concat(operand, " ]")))
+            Directory => outcome_accepted(concat("[ -d ", concat(operand, " ]")))
+            Missing => outcome_accepted(concat("[ ! -e ", concat(operand, " ]")))
+            Other => outcome_accepted(concat("[ -e ", concat(operand, " ]")))
+          }
+        }
+      )
+    Not { inner: i } =>
+      bind_outcome(
+        o: bash_path_predicate_target_model(predicate: i),
+        f: fn(inner) {
+          outcome_accepted(concat("! ", inner))
+        }
+      )
+    And { lhs: l, rhs: r } =>
+      bind_outcome(
+        o: bash_path_predicate_target_model(predicate: l),
+        f: fn(lhs) {
+          bind_outcome(
+            o: bash_path_predicate_target_model(predicate: r),
+            f: fn(rhs) {
+              outcome_accepted(concat(lhs, concat(" && ", rhs)))
+            }
+          )
+        }
+      )
+    Or { lhs: l, rhs: r } =>
+      bind_outcome(
+        o: bash_path_predicate_target_model(predicate: l),
+        f: fn(lhs) {
+          bind_outcome(
+            o: bash_path_predicate_target_model(predicate: r),
+            f: fn(rhs) {
+              outcome_accepted(concat(lhs, concat(" || ", rhs)))
+            }
+          )
+        }
+      )
+  }
+}
+
+fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<String> {
+  match ascent.path {
+    PathRef { name: n } =>
+      if !bash_path_ident_ok(name: n) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else {
+        outcome_accepted(concat(n, concat("=$(dirname \"$", concat(n, "\"))")))
+      }
+    PathLiteral { parts: p } =>
+      if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else {
+        outcome_accepted(concat("d=$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\"))"))
+      }
+    PathJoin { base: b, suffix: s } =>
+      bind_outcome(
+        o: bash_path_intent_text(path: PathJoin { base: b, suffix: s }),
+        f: fn(text) {
+          outcome_accepted(concat("d=$(dirname \"", concat(text, "\"))"))
+        }
+      )
+  }
 }
 
 fn bash_stmt_if_else_tokens() -> List<ConcreteSyntaxToken> {
