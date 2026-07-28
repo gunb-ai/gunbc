@@ -6,6 +6,8 @@ import extdeps.mercurial {
   MercurialFileRevisionId,
   MercurialLocalRevision,
   MercurialPath,
+  MercurialNotCopied,
+  MercurialCopiedFrom,
   MercurialFileRevision,
   MercurialManifestWire,
   MercurialManifestWireEntry,
@@ -27,16 +29,29 @@ import extdeps.mercurial {
   MercurialRepositoryState,
   MercurialDecoded,
   MercurialDecodeRefused,
+  MercurialMissingCopySourceRevision,
+  MercurialMissingPhase,
+  MercurialDuplicatePhase,
+  MercurialPhaseMonotonicityViolation,
   MercurialRegularFile,
   MercurialExecutableFile,
   MercurialSymlink,
   MercurialPublic,
   MercurialDraft,
   MercurialSecret,
+  MercurialPublishingServer,
+  MercurialNonPublishingServer,
+  MercurialExchangeWithheld,
+  MercurialExchangeVisible,
+  MercurialReadBackObservation,
+  MercurialReadBackMatches,
+  MercurialReadBackMismatch,
+  MercurialReadBackInvalid,
   MercurialConditionalAdvanceUnavailable,
   mercurial_decode_projection,
   mercurial_project_repository,
-  mercurial_read_back_projection,
+  mercurial_assess_read_back,
+  mercurial_exchange_disposition,
   mercurial_portable_history,
   mercurial_named_branch_changesets,
   mercurial_r0_conditional_advance,
@@ -53,6 +68,7 @@ data hg_file_regular: MercurialFileRevisionId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 data hg_file_executable: MercurialFileRevisionId = "cccccccccccccccccccccccccccccccccccccccc"
 data hg_file_symlink: MercurialFileRevisionId = "dddddddddddddddddddddddddddddddddddddddd"
 data hg_file_missing: MercurialFileRevisionId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+data hg_file_undeclared: MercurialFileRevisionId = "ffffffffffffffffffffffffffffffffffffffff"
 
 data hg_path_regular: MercurialPath = MercurialPath {
   octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
@@ -72,16 +88,22 @@ fn fixture_file_revisions() -> List<MercurialFileRevision> {
     MercurialFileRevision {
       node: hg_file_regular,
       parents: [],
+      copy: MercurialNotCopied,
       content: octets_bytes(o: [109, 97, 105, 110]),
     },
     MercurialFileRevision {
       node: hg_file_executable,
       parents: [hg_file_regular],
+      copy: MercurialCopiedFrom {
+        path: hg_path_regular,
+        file_revision: hg_file_regular,
+      },
       content: octets_bytes(o: [114, 117, 110]),
     },
     MercurialFileRevision {
       node: hg_file_symlink,
       parents: [],
+      copy: MercurialNotCopied,
       content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
     },
   ]
@@ -203,6 +225,7 @@ fn fixture_projection_with_local_revisions(
       MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
       MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
+    publishing: MercurialNonPublishingServer,
     subrepositories: [
       MercurialSubrepository {
         path: hg_path_subrepo,
@@ -231,6 +254,48 @@ fn fixture_projection() -> MercurialRepositoryProjection {
   fixture_projection_with_local_revisions(local_revisions: local_revisions_a())
 }
 
+fn projection_with_phases(
+  projection: MercurialRepositoryProjection,
+  phases: List<MercurialPhaseWireEntry>,
+) -> MercurialRepositoryProjection {
+  MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: phases,
+    publishing: projection.publishing,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+}
+
+fn projection_with_file_revisions(
+  projection: MercurialRepositoryProjection,
+  file_revisions: List<MercurialFileRevision>,
+) -> MercurialRepositoryProjection {
+  MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    publishing: projection.publishing,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+}
+
 fn fixture_repository() -> MercurialRepositoryState? {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecoded { repository } => Present { value: repository }
@@ -238,19 +303,58 @@ fn fixture_repository() -> MercurialRepositoryState? {
   }
 }
 
-test fn witness_mercurial_fixture_decodes_projects_and_independently_reads_back() -> Bool {
+test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecodeRefused { cause: _ } => false
     MercurialDecoded { repository } =>
       let projected = mercurial_project_repository(repository: repository)
-      match mercurial_read_back_projection(projection: projected) {
-        MercurialDecodeRefused { cause: _ } => false
-        MercurialDecoded { repository: read_back } =>
-          read_back == repository
-            && count(read_back.file_revisions) == 3
-            && count(read_back.manifests) == 1
-            && count(read_back.changesets) == 3
-            && count(read_back.subrepositories) == 1
+      match mercurial_assess_read_back(
+        expected: repository,
+        observation: MercurialReadBackObservation {
+          projection: projected,
+          observed_by: "bounded projection round-trip control",
+        },
+      ) {
+        MercurialReadBackMatches { observed_by: _ } =>
+          count(repository.file_revisions) == 3
+            && count(repository.manifests) == 1
+            && count(repository.changesets) == 3
+            && count(repository.subrepositories) == 1
+        _ => false
+      }
+  }
+}
+
+test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: repository } =>
+      let projected = mercurial_project_repository(repository: repository)
+      let perturbed = MercurialRepositoryProjection {
+        requirements: projected.requirements,
+        file_revisions: projected.file_revisions,
+        manifests: projected.manifests,
+        changesets: projected.changesets,
+        local_revisions: projected.local_revisions,
+        heads: projected.heads,
+        bookmarks: projected.bookmarks,
+        tags: projected.tags,
+        phases: projected.phases,
+        publishing: MercurialPublishingServer,
+        subrepositories: projected.subrepositories,
+        evolution: projected.evolution,
+        availability: projected.availability,
+      }
+      match mercurial_assess_read_back(
+        expected: repository,
+        observation: MercurialReadBackObservation {
+          projection: perturbed,
+          observed_by: "perturbed read-back RED",
+        },
+      ) {
+        MercurialReadBackMismatch { observed_by: _, expected: _, observed: _ } => true
+        MercurialReadBackMatches { observed_by: _ } => false
+        MercurialReadBackInvalid { observed_by: _, cause: _ } => false
       }
   }
 }
@@ -287,6 +391,88 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
                   }
               Absent => false
             }
+      }
+  }
+}
+
+test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: repository } =>
+      match repository.file_revisions.skip(n: 1).first() {
+        Absent => false
+        Present { value: file_revision } => match file_revision.copy {
+          MercurialNotCopied => false
+          MercurialCopiedFrom { path, file_revision: source_revision } =>
+            path == hg_path_regular && source_revision == hg_file_regular
+        }
+      }
+  }
+}
+
+test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
+  let projection = fixture_projection()
+  let broken = MercurialFileRevision {
+    node: hg_file_executable,
+    parents: [hg_file_regular],
+    copy: MercurialCopiedFrom {
+      path: hg_path_regular,
+      file_revision: hg_file_undeclared,
+    },
+    content: octets_bytes(o: [114, 117, 110]),
+  }
+  let invalid = projection_with_file_revisions(
+    projection: projection,
+    file_revisions: append(
+      projection.file_revisions
+        |> filter(file_revision => !(file_revision.node == hg_file_executable)),
+      items: [broken],
+    ),
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialMissingCopySourceRevision {
+        file_revision,
+        source_path,
+        source_revision,
+      },
+    } =>
+      file_revision == hg_file_executable
+        && source_path == hg_path_regular
+        && source_revision == hg_file_undeclared
+    _ => false
+  }
+}
+
+test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
+  let projection = fixture_projection()
+  let partial = MercurialFileRevision {
+    node: hg_file_executable,
+    parents: [hg_file_regular],
+    copy: MercurialCopiedFrom {
+      path: hg_path_regular,
+      file_revision: hg_file_missing,
+    },
+    content: octets_bytes(o: [114, 117, 110]),
+  }
+  let declared_partial = projection_with_file_revisions(
+    projection: projection,
+    file_revisions: append(
+      projection.file_revisions
+        |> filter(file_revision => !(file_revision.node == hg_file_executable)),
+      items: [partial],
+    ),
+  )
+  match mercurial_decode_projection(projection: declared_partial) {
+    MercurialDecodeRefused { cause: _ } => false
+    MercurialDecoded { repository } =>
+      match repository.file_revisions.skip(n: 2).first() {
+        Absent => false
+        Present { value: file_revision } => match file_revision.copy {
+          MercurialCopiedFrom { path: _, file_revision: source_revision } =>
+            source_revision == hg_file_missing
+          MercurialNotCopied => false
+        }
       }
   }
 }
@@ -353,6 +539,86 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
   }
 }
 
+test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct() -> Bool {
+  match mercurial_exchange_disposition(
+    publishing: MercurialPublishingServer,
+    phase: MercurialDraft,
+  ) {
+    MercurialExchangeVisible { resulting_phase: MercurialPublic } =>
+      match mercurial_exchange_disposition(
+        publishing: MercurialNonPublishingServer,
+        phase: MercurialDraft,
+      ) {
+        MercurialExchangeVisible { resulting_phase: MercurialDraft } =>
+          match mercurial_exchange_disposition(
+            publishing: MercurialPublishingServer,
+            phase: MercurialSecret,
+          ) {
+            MercurialExchangeWithheld => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_mercurial_missing_phase_refuses() -> Bool {
+  let invalid = projection_with_phases(
+    projection: fixture_projection(),
+    phases: [
+      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialMissingPhase { changeset },
+    } => changeset == hg_c2
+    _ => false
+  }
+}
+
+test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
+  let invalid = projection_with_phases(
+    projection: fixture_projection(),
+    phases: [
+      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+      MercurialPhaseWireEntry { changeset: hg_c1, phase: "secret" },
+      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialDuplicatePhase { changeset },
+    } => changeset == hg_c1
+    _ => false
+  }
+}
+
+test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
+  let invalid = projection_with_phases(
+    projection: fixture_projection(),
+    phases: [
+      MercurialPhaseWireEntry { changeset: hg_c0, phase: "draft" },
+      MercurialPhaseWireEntry { changeset: hg_c1, phase: "public" },
+      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialPhaseMonotonicityViolation {
+        parent,
+        parent_phase: MercurialDraft,
+        child,
+        child_phase: MercurialPublic,
+      },
+    } => parent == hg_c0 && child == hg_c1
+    _ => false
+  }
+}
+
 test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history() -> Bool {
   match fixture_repository() {
     Absent => false
@@ -367,6 +633,7 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
         bookmarks: with_evolution.bookmarks,
         tags: with_evolution.tags,
         phases: with_evolution.phases,
+        publishing: with_evolution.publishing,
         subrepositories: with_evolution.subrepositories,
         evolution: MercurialEvolutionNotEnabled,
         availability: with_evolution.availability,
@@ -399,6 +666,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
     bookmarks: projection.bookmarks,
     tags: projection.tags,
     phases: projection.phases,
+    publishing: projection.publishing,
     subrepositories: projection.subrepositories,
     evolution: projection.evolution,
     availability: projection.availability,
@@ -421,6 +689,7 @@ test fn witness_mercurial_unknown_phase_refuses() -> Bool {
     bookmarks: projection.bookmarks,
     tags: projection.tags,
     phases: [MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
+    publishing: projection.publishing,
     subrepositories: projection.subrepositories,
     evolution: projection.evolution,
     availability: projection.availability,
@@ -455,6 +724,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     bookmarks: projection.bookmarks,
     tags: projection.tags,
     phases: projection.phases,
+    publishing: projection.publishing,
     subrepositories: projection.subrepositories,
     evolution: projection.evolution,
     availability: projection.availability,
@@ -486,6 +756,7 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
     bookmarks: projection.bookmarks,
     tags: projection.tags,
     phases: projection.phases,
+    publishing: projection.publishing,
     subrepositories: projection.subrepositories,
     evolution: projection.evolution,
     availability: projection.availability,
