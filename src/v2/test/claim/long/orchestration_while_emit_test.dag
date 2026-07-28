@@ -6,18 +6,6 @@ import v2.extdeps.languages.bash_orch_if {
   bash_path_predicate_target_model,
   bash_dirname_ascent_target_model
 }
-import v2.workflow.ci_floor_peak_emit {
-  ci_floor_peak_cgroup_locate_pipeline,
-  ci_floor_peak_assign_cgroup_dir_command,
-  ci_floor_peak_while_cond_command,
-  ci_floor_peak_while_body_command,
-  ci_floor_peak_path_ref,
-  ci_floor_peak_root_path,
-  ci_floor_peak_memory_peak_path,
-  ci_floor_peak_while_predicate,
-  ci_floor_peak_while_ascent,
-  typed_ci_floor_peak_path_kind
-}
 import v2.std.orchestration {
   Do,
   ExitZero,
@@ -27,12 +15,12 @@ import v2.std.orchestration {
   Run,
   While
 }
-import std.path_intent { And, DirnameAscent, Not, PathEntryKind, PathJoin, PathLiteral, PathNonempty, PathNotEq, PathRef }
+import std.path_intent { And, DirnameAscent, Not, PathEntryKind, PathIntent, PathJoin, PathLiteral, PathNonempty, PathNotEq, PathRef }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.filesystem.types { RegularFile, Directory, Missing }
-import std.types { FilePathParts }
+import std.types { FilePathParts, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,10 +30,65 @@ data orch_while_golden_note: String = "Goldens are hand-authored bytes independe
 
 data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
 
+data orch_while_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
+
+data orch_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
+
+data orch_while_body_command: String = "d=$(dirname \"$d\")"
+
+fn orch_while_path_ref() -> PathIntent {
+  PathRef { name: "d" as NonEmptyStr }
+}
+
+fn orch_while_root_path() -> PathIntent {
+  PathLiteral {
+    parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
+  }
+}
+
+fn orch_while_memory_peak_path() -> PathIntent {
+  PathJoin {
+    base: orch_while_path_ref(),
+    suffix: FilePathParts { segments: ["memory.peak"] }
+  }
+}
+
+fn orch_while_predicate() -> std.path_intent.PathPredicate {
+  And {
+    lhs: PathNonempty { path: orch_while_path_ref() },
+    rhs: And {
+      lhs: PathNotEq {
+        lhs: orch_while_path_ref(),
+        rhs: orch_while_root_path()
+      },
+      rhs: Not {
+        inner: PathEntryKind {
+          path: orch_while_memory_peak_path(),
+          kind: RegularFile
+        }
+      }
+    }
+  }
+}
+
+fn orch_while_ascent() -> DirnameAscent {
+  DirnameAscent {
+    path: orch_while_path_ref(),
+    target: "d" as NonEmptyStr
+  }
+}
+
+fn typed_orch_while_path_kind(kind: std.filesystem.types.EntryKind) -> std.path_intent.PathPredicate {
+  PathEntryKind {
+    path: orch_while_memory_peak_path(),
+    kind: kind
+  }
+}
+
 test data orch_while_locate_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
-      command: ci_floor_peak_while_cond_command,
+      command: orch_while_cond_command,
       env: [],
       redirect: Absent,
       capture: Absent
@@ -55,7 +98,7 @@ test data orch_while_locate_intent: PipelineStep = While {
     steps: [
       Do {
         run: Run {
-          command: ci_floor_peak_while_body_command,
+          command: orch_while_body_command,
           env: [],
           redirect: Absent,
           capture: Absent
@@ -69,7 +112,7 @@ test data orch_while_locate_intent: PipelineStep = While {
 test data orch_while_locate_perturbed_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
-      command: concat(ci_floor_peak_while_cond_command, " # perturbed"),
+      command: concat(orch_while_cond_command, " # perturbed"),
       env: [],
       redirect: Absent,
       capture: Absent
@@ -79,7 +122,7 @@ test data orch_while_locate_perturbed_intent: PipelineStep = While {
     steps: [
       Do {
         run: Run {
-          command: ci_floor_peak_while_body_command,
+          command: orch_while_body_command,
           env: [],
           redirect: Absent,
           capture: Absent
@@ -93,7 +136,7 @@ test data orch_while_locate_perturbed_intent: PipelineStep = While {
 test data orch_while_locate_body_perturbed_intent: PipelineStep = While {
   cond: ExitZero {
     run: Run {
-      command: ci_floor_peak_while_cond_command,
+      command: orch_while_cond_command,
       env: [],
       redirect: Absent,
       capture: Absent
@@ -103,7 +146,7 @@ test data orch_while_locate_body_perturbed_intent: PipelineStep = While {
     steps: [
       Do {
         run: Run {
-          command: concat(ci_floor_peak_while_body_command, " # perturbed"),
+          command: concat(orch_while_body_command, " # perturbed"),
           env: [],
           redirect: Absent,
           capture: Absent
@@ -116,7 +159,20 @@ test data orch_while_locate_body_perturbed_intent: PipelineStep = While {
 
 test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
   match orch_emit_pipeline(
-    p: ci_floor_peak_cgroup_locate_pipeline(),
+    p: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_while_assign_cgroup_dir_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        },
+        orch_while_locate_intent
+      ],
+      on_failure: FailFast
+    },
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: source, diagnostics: dg } =>
@@ -131,7 +187,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
       steps: [
         Do {
           run: Run {
-            command: ci_floor_peak_assign_cgroup_dir_command,
+            command: orch_while_assign_cgroup_dir_command,
             env: [],
             redirect: Absent,
             capture: Absent
@@ -156,7 +212,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
     s: While {
       cond: ExitZero {
         run: Run {
-          command: concat(ci_floor_peak_while_cond_command, " # raw-while"),
+          command: concat(orch_while_cond_command, " # raw-while"),
           env: [],
           redirect: Absent,
           capture: Absent
@@ -166,7 +222,7 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
         steps: [
           Do {
             run: Run {
-              command: ci_floor_peak_while_body_command,
+              command: orch_while_body_command,
               env: [],
               redirect: Absent,
               capture: Absent
