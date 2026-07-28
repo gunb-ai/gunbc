@@ -476,15 +476,24 @@ fn sgb_hash_set_coverage_blocker_matches(
   authority: ExternalAuthority
 ) -> Bool {
   blocker.derive_trait == derive_trait
-    && blocker.representation_parameter == ^target_collection_type_param_t
     && blocker.authority == authority
     && blocker.coverage == rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
     && sgb_hash_set_coverage_disposition_matches(coverage: blocker.coverage)
-    && match blocker.unrepresentable_requirement {
-      TargetCollectionWitnessHash { type_param: type_param } =>
-        type_param == ^target_collection_type_param_t
-      _ => false
-    }
+    && blocker.requirements.member(
+      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
+    )
+    && blocker.requirements.member(
+      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessEq { type_param: ^sgb_unrelated_slot }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessHash { type_param: ^sgb_unrelated_slot }
+    )
 }
 
 fn sgb_hash_set_coverage_disposition_matches(

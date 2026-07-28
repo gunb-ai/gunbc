@@ -1686,28 +1686,41 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
   derive_trait: ReprGroundingDeriveTrait
-  representation_parameter: Symbol
-  unrepresentable_requirement: RequiredTraitWitness
+  requirements: Set<RequiredTraitWitness>
   authority: ExternalAuthority
   coverage: RustSupplementalGenericBoundContractCoverageDisposition
+}
+
+fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
+  representation_parameter: Symbol
+) -> Set<RequiredTraitWitness> {
+  Set {
+    member: fn(requirement) {
+      match requirement {
+        TargetCollectionWitnessEq { type_param: type_param } =>
+          type_param == representation_parameter
+        TargetCollectionWitnessHash { type_param: type_param } =>
+          type_param == representation_parameter
+        TargetCollectionWitnessOrd { type_param: _ } => false
+      }
+    }
+  }
 }
 
 data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupplementalGenericBoundContractCoverageBlocker> = [
   RustSupplementalGenericBoundContractCoverageBlocker {
     derive_trait: ReprDerivePartialEq,
-    representation_parameter: ^target_collection_type_param_t,
-    unrepresentable_requirement: TargetCollectionWitnessHash {
-      type_param: ^target_collection_type_param_t
-    },
+    requirements: rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
+      representation_parameter: ^target_collection_type_param_t
+    ),
     authority: rust_1_93_hash_set_trait_implementations_authority,
     coverage: rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
   },
   RustSupplementalGenericBoundContractCoverageBlocker {
     derive_trait: ReprDeriveDeserialize,
-    representation_parameter: ^target_collection_type_param_t,
-    unrepresentable_requirement: TargetCollectionWitnessHash {
-      type_param: ^target_collection_type_param_t
-    },
+    requirements: rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
+      representation_parameter: ^target_collection_type_param_t
+    ),
     authority: serde_1_0_228_hash_set_deserialize_authority,
     coverage: rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
   }
