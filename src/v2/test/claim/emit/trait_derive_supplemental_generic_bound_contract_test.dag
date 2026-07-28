@@ -33,7 +33,7 @@ import v2.std.compilers.target_model {
   target_derive_supplemental_generic_bound_contract_authorities_empty,
   target_derive_supplemental_generic_bound_contract_authority_insert,
   target_derive_supplemental_generic_bound_contract_lookup_in_realization,
-  target_derive_supplemental_generic_bound_contract_requirement_authority,
+  target_derive_supplemental_generic_bound_requirement_authority,
   target_derive_supplemental_generic_bound_contract_wire_node,
   target_derive_supplemental_generic_bound_requirement_wire_node,
   target_representation_parameter_slot_add_requirement,
@@ -140,29 +140,23 @@ fn sgb_vec_representation() -> TargetRepresentation {
   }
 }
 
-fn sgb_nested_contracts(
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts:
-        target_derive_supplemental_generic_bound_contract_authorities_empty(),
+fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: ReprDeriveDebug,
       authority: im_15_1_0_vector_trait_implementations_authority
     )
-  let partial_eq_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: debug_contract,
       derive_trait: ReprDerivePartialEq,
       authority: im_15_1_0_vector_trait_implementations_authority
     )
-  let serialize_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: partial_eq_contract,
       derive_trait: ReprDeriveSerialize,
       authority: im_15_1_0_vector_trait_implementations_authority
     )
-  let deserialize_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let deserialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: serialize_contract,
       derive_trait: ReprDeriveDeserialize,
       authority: im_15_1_0_vector_trait_implementations_authority
@@ -210,8 +204,7 @@ fn sgb_right_parameter_slot() -> TargetRepresentationParameterSlot {
   )
 }
 
-fn sgb_nested_representation_parameters(
-) -> Map<Symbol, TargetRepresentationParameterSlot> {
+fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationParameterSlot> {
   map_insert(
     m: map_insert(
       m: target_representation_parameter_slots_empty(),
@@ -225,8 +218,7 @@ fn sgb_nested_representation_parameters(
 
 fn sgb_choice(
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
-  contracts:
-    Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 ) -> TargetRepresentationChoice {
   TargetRepresentationChoice {
     form: sgb_vec_representation(),
@@ -239,8 +231,7 @@ fn sgb_choice(
 fn sgb_empty_choice() -> TargetRepresentationChoice {
   sgb_choice(
     representation_parameters: target_representation_parameter_slots_empty(),
-    contracts:
-      target_derive_supplemental_generic_bound_contract_authorities_empty()
+    contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
   )
 }
 
@@ -332,8 +323,7 @@ fn sgb_choice_matches_exact(
   sgb_representation_matches(left: choice.form, right: expected.form)
     && choice.representation_parameters == expected.representation_parameters
     && choice.constraints == expected.constraints
-    && choice.supplemental_generic_bound_contracts
-      == expected.supplemental_generic_bound_contracts
+    && choice.supplemental_generic_bound_contracts == expected.supplemental_generic_bound_contracts
 }
 
 fn sgb_requirement_authority_matches(
@@ -342,7 +332,7 @@ fn sgb_requirement_authority_matches(
   required_trait: ReprGroundingDeriveTrait,
   authority: ExternalAuthority
 ) -> Bool {
-  match target_derive_supplemental_generic_bound_contract_requirement_authority(
+  match target_derive_supplemental_generic_bound_requirement_authority(
     contract: contract,
     representation_parameter: representation_parameter,
     required_trait: required_trait
@@ -501,8 +491,7 @@ fn sgb_choice_bundle_with_parameter_nodes(
   let bundle = rust_collection_choice_bundle_node(
     choice: sgb_choice(
       representation_parameters: sgb_nested_representation_parameters(),
-      contracts:
-        target_derive_supplemental_generic_bound_contract_authorities_empty()
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
     )
   )
   match bundle.children {
@@ -640,8 +629,7 @@ test fn nested_generic_debug_requires_clone_on_exact_slot() -> Bool {
     Rejected { diagnostics: _ } => false
     Accepted { value: contract, diagnostics: _ } =>
       contract.derive_trait == ReprDeriveDebug
-        && contract.authority
-          == im_15_1_0_vector_trait_implementations_authority
+        && contract.authority == im_15_1_0_vector_trait_implementations_authority
         && sgb_contract_has_single_requirement(
           contract: contract,
           representation_parameter: ^sgb_left_slot,
@@ -716,14 +704,14 @@ test fn nested_generic_swap_red_rejects_swapped_slot_requirements() -> Bool {
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: contract, diagnostics: _ } =>
-      match target_derive_supplemental_generic_bound_contract_requirement_authority(
+      match target_derive_supplemental_generic_bound_requirement_authority(
         contract: contract,
         representation_parameter: ^sgb_right_slot,
         required_trait: ReprDeriveClone
       ) {
         Present { value: _ } => false
         Absent =>
-          match target_derive_supplemental_generic_bound_contract_requirement_authority(
+          match target_derive_supplemental_generic_bound_requirement_authority(
             contract: contract,
             representation_parameter: ^sgb_left_slot,
             required_trait: ReprDeriveOrd
@@ -749,7 +737,7 @@ test fn nested_generic_required_trait_red_rejects_derive_trait_echo() -> Bool {
         required_trait: ReprDeriveClone,
         authority: im_15_1_0_vector_trait_implementations_authority
       )
-        && match target_derive_supplemental_generic_bound_contract_requirement_authority(
+        && match target_derive_supplemental_generic_bound_requirement_authority(
           contract: contract,
           representation_parameter: ^sgb_left_slot,
           required_trait: ReprDeriveDebug
@@ -862,8 +850,7 @@ test fn rust_vec_serialize_contract_uses_serde_not_std_authority() -> Bool {
             derive_trait: ReprDeriveSerialize,
             authority: serde_1_0_228_vec_serialize_authority
           )
-            && contract.authority
-              != rust_1_93_vec_trait_implementations_authority
+            && contract.authority != rust_1_93_vec_trait_implementations_authority
       }
   }
 }

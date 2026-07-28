@@ -1565,8 +1565,7 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
   }
 }
 
-fn rust_collection_representation_parameters(
-) -> Map<Symbol, TargetRepresentationParameterSlot> {
+fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentationParameterSlot> {
   map_insert(
     m: target_representation_parameter_slots_empty(),
     key: ^target_collection_type_param_t,
@@ -1574,28 +1573,23 @@ fn rust_collection_representation_parameters(
   )
 }
 
-fn rust_vec_supplemental_generic_bound_contracts(
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
       derive_trait: ReprDeriveDebug,
       authority: rust_1_93_vec_trait_implementations_authority
     )
-  let clone_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: debug_contract,
       derive_trait: ReprDeriveClone,
       authority: rust_1_93_vec_trait_implementations_authority
     )
-  let partial_eq_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: clone_contract,
       derive_trait: ReprDerivePartialEq,
       authority: rust_1_93_vec_trait_implementations_authority
     )
-  let serialize_contract =
-    target_derive_supplemental_generic_bound_contract_authority_insert(
+  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: partial_eq_contract,
       derive_trait: ReprDeriveSerialize,
       authority: serde_1_0_228_vec_serialize_authority

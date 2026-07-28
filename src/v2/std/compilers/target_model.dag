@@ -9189,25 +9189,21 @@ fn target_grounding_derive_trait_key(
   target_grounding_derive_trait_discriminant(derive_trait: derive_trait)
 }
 
-fn target_derive_supplemental_generic_bound_requirement_set_empty(
-) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDeriveSupplementalGenericBoundRequirementSet {
   empty_map()
 }
 
-fn target_representation_parameter_slot_empty(
-) -> TargetRepresentationParameterSlot {
+fn target_representation_parameter_slot_empty() -> TargetRepresentationParameterSlot {
   TargetRepresentationParameterSlot {
     supplemental_requirements: empty_map()
   }
 }
 
-fn target_representation_parameter_slots_empty(
-) -> Map<Symbol, TargetRepresentationParameterSlot> {
+fn target_representation_parameter_slots_empty() -> Map<Symbol, TargetRepresentationParameterSlot> {
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_authorities_empty(
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   empty_map()
 }
 
@@ -9602,8 +9598,7 @@ fn target_derive_supplemental_generic_bound_wire_requirements_apply(
               let required_key = target_grounding_derive_trait_key(
                 derive_trait: requirement.required_trait
               )
-              let derive_requirements =
-                match slot.supplemental_requirements.lookup(derive_key) {
+              let derive_requirements = match slot.supplemental_requirements.lookup(derive_key) {
                   Present { value: existing } => existing
                   Absent =>
                     target_derive_supplemental_generic_bound_requirement_set_empty()
