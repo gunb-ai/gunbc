@@ -1,5 +1,6 @@
 module v2.test.claim.affected_set_universe
 
+import gunbc.ci_spec { gunbc_ci_falsifier_gates }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,7 +23,12 @@ fn identity_in(ps: List<RepoProcess>, sym: Symbol) -> Bool {
 test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   bag_eq(
     xs: process_identities(ps: ci_gate_processes()),
-    ys: gate_discriminants(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
+    ys: gate_discriminants(
+      gates: concat(
+        concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates),
+        gunbc_ci_falsifier_gates
+      )
+    ),
     eq: symbol_eq
   )
 }
