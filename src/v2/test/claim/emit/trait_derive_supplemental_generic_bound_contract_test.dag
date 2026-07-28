@@ -21,8 +21,7 @@ import v2.std.compilers.target_model {
   char_kernel_type_node,
   target_carrier_free_monoid_node,
   target_collection_free_monoid_no_representation_diagnostic,
-  target_derive_supplemental_generic_bound_contract_lookup_in_realization,
-  target_grounding_derive_trait_from_atom
+  target_derive_supplemental_generic_bound_contract_lookup_in_realization
 }
 import v2.compiler.translate {
   free_monoid_collection_realization_from_target,
@@ -927,17 +926,6 @@ test fn nested_generic_contract_round_trip_preserves_slot_rows() -> Bool {
   ) {
     Accepted { value: decoded, diagnostics: _ } =>
       sgb_choice_matches_exact(choice: decoded, expected: sgb_nested_choice())
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn derive_trait_atom_decoder_accepts_debug() -> Bool {
-  match target_grounding_derive_trait_from_atom(
-    id: ^ReprDeriveDebug,
-    at: sgb_nested_source_carrier_node()
-  ) {
-    Accepted { value: derive_trait, diagnostics: _ } =>
-      derive_trait == ReprDeriveDebug
     Rejected { diagnostics: _ } => false
   }
 }

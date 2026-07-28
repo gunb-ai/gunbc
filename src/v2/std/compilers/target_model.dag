@@ -98,7 +98,7 @@ import v2.std.node {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
-  coproduct_nullary_inhabitants,
+  coproduct_nullary_inhabitant_by_discriminant,
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
@@ -9145,76 +9145,6 @@ fn target_grounding_derive_trait_discriminant(
   discriminant(v: derive_trait)
 }
 
-type TargetGroundingDeriveTraitLookup
-  = TargetGroundingDeriveTraitMissing
-  | TargetGroundingDeriveTraitUnique { derive_trait: ReprGroundingDeriveTrait }
-  | TargetGroundingDeriveTraitDuplicate
-
-fn target_grounding_derive_trait_lookup_step(
-  id: Symbol,
-  acc: TargetGroundingDeriveTraitLookup,
-  candidate: ReprGroundingDeriveTrait
-) -> TargetGroundingDeriveTraitLookup {
-  if target_grounding_derive_trait_discriminant(derive_trait: candidate) == id {
-    match acc {
-      TargetGroundingDeriveTraitMissing =>
-        TargetGroundingDeriveTraitUnique { derive_trait: candidate }
-      TargetGroundingDeriveTraitUnique { derive_trait: _ } =>
-        TargetGroundingDeriveTraitDuplicate
-      TargetGroundingDeriveTraitDuplicate =>
-        TargetGroundingDeriveTraitDuplicate
-    }
-  } else {
-    acc
-  }
-}
-
-fn target_grounding_derive_trait_lookup_all(
-  id: Symbol,
-  inhabitants: List<ReprGroundingDeriveTrait>,
-  acc: TargetGroundingDeriveTraitLookup
-) -> TargetGroundingDeriveTraitLookup {
-  match inhabitants {
-    Empty => acc
-    Cons { head: candidate, tail: tail } =>
-      target_grounding_derive_trait_lookup_all(
-        id: id,
-        inhabitants: tail,
-        acc: target_grounding_derive_trait_lookup_step(
-          id: id,
-          acc: acc,
-          candidate: candidate
-        )
-      )
-  }
-}
-
-fn target_grounding_derive_trait_from_atom(
-  id: Symbol,
-  at: Node
-) -> Outcome<ReprGroundingDeriveTrait> {
-  bind_outcome(
-    o: coproduct_nullary_inhabitants(
-      type_name: ^ReprGroundingDeriveTrait,
-      discriminant_of: target_grounding_derive_trait_discriminant
-    ),
-    f: fn(inhabitants) {
-      match target_grounding_derive_trait_lookup_all(
-        id: id,
-        inhabitants: inhabitants,
-        acc: TargetGroundingDeriveTraitMissing
-      ) {
-        TargetGroundingDeriveTraitMissing =>
-          outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
-        TargetGroundingDeriveTraitUnique { derive_trait: derive_trait } =>
-          outcome_accepted(derive_trait)
-        TargetGroundingDeriveTraitDuplicate =>
-          outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
-      }
-    }
-  )
-}
-
 fn target_representation_choice_has_parameter(
   choice: TargetRepresentationChoice,
   representation_parameter: Symbol
@@ -9247,9 +9177,10 @@ fn target_derive_supplemental_generic_bound_requirement_from_node(
                 o: target_collection_node_atom_identity(node: required_trait_node),
                 f: fn(required_trait_id) {
                   bind_outcome(
-                    o: target_grounding_derive_trait_from_atom(
-                      id: required_trait_id,
-                      at: node
+                    o: coproduct_nullary_inhabitant_by_discriminant(
+                      type_name: ^ReprGroundingDeriveTrait,
+                      discriminant_of: target_grounding_derive_trait_discriminant,
+                      wanted: required_trait_id
                     ),
                     f: fn(required_trait) {
                       outcome_accepted(
@@ -9283,9 +9214,10 @@ fn target_derive_supplemental_generic_bound_contract_from_node(
         o: target_collection_node_atom_identity(node: derive_trait_node),
         f: fn(derive_trait_id) {
           bind_outcome(
-            o: target_grounding_derive_trait_from_atom(
-              id: derive_trait_id,
-              at: node
+            o: coproduct_nullary_inhabitant_by_discriminant(
+              type_name: ^ReprGroundingDeriveTrait,
+              discriminant_of: target_grounding_derive_trait_discriminant,
+              wanted: derive_trait_id
             ),
             f: fn(derive_trait) {
               bind_outcome(

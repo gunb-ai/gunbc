@@ -153,6 +153,98 @@ fn coproduct_nullary_inhabitants<T>(
   )
 }
 
+type CoproductNullaryInhabitantLookup<T>
+  = CoproductNullaryInhabitantMissing
+  | CoproductNullaryInhabitantUnique { value: T }
+  | CoproductNullaryInhabitantDuplicate
+
+fn coproduct_nullary_inhabitant_lookup_step<T>(
+  wanted: Symbol,
+  discriminant_of: fn(T) -> Symbol,
+  acc: CoproductNullaryInhabitantLookup<T>,
+  inhabitant: T
+) -> CoproductNullaryInhabitantLookup<T> {
+  if discriminant_of(inhabitant) == wanted {
+    match acc {
+      CoproductNullaryInhabitantMissing =>
+        CoproductNullaryInhabitantUnique { value: inhabitant }
+      CoproductNullaryInhabitantUnique { value: _ } =>
+        CoproductNullaryInhabitantDuplicate
+      CoproductNullaryInhabitantDuplicate =>
+        CoproductNullaryInhabitantDuplicate
+    }
+  } else {
+    acc
+  }
+}
+
+fn coproduct_nullary_inhabitant_lookup_all<T>(
+  wanted: Symbol,
+  discriminant_of: fn(T) -> Symbol,
+  inhabitants: List<T>,
+  acc: CoproductNullaryInhabitantLookup<T>
+) -> CoproductNullaryInhabitantLookup<T> {
+  match inhabitants {
+    Empty => acc
+    Cons { head: inhabitant, tail: tail } =>
+      coproduct_nullary_inhabitant_lookup_all(
+        wanted: wanted,
+        discriminant_of: discriminant_of,
+        inhabitants: tail,
+        acc: coproduct_nullary_inhabitant_lookup_step(
+          wanted: wanted,
+          discriminant_of: discriminant_of,
+          acc: acc,
+          inhabitant: inhabitant
+        )
+      )
+  }
+}
+
+fn coproduct_nullary_inhabitant_lookup_diagnostic(
+  type_name: Symbol,
+  reason: Symbol
+) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: resolve_type_node(type_name: type_name)),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn coproduct_nullary_inhabitant_by_discriminant<T>(
+  type_name: Symbol,
+  discriminant_of: fn(T) -> Symbol,
+  wanted: Symbol
+) -> Outcome<T> {
+  match coproduct_nullary_inhabitants(
+    type_name: type_name,
+    discriminant_of: discriminant_of
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      match coproduct_nullary_inhabitant_lookup_all(
+        wanted: wanted,
+        discriminant_of: discriminant_of,
+        inhabitants: inhabitants,
+        acc: CoproductNullaryInhabitantMissing
+      ) {
+        CoproductNullaryInhabitantMissing =>
+          outcome_rejected(coproduct_nullary_inhabitant_lookup_diagnostic(
+            type_name: type_name,
+            reason: ^coproduct_nullary_inhabitant_missing
+          ))
+        CoproductNullaryInhabitantUnique { value: inhabitant } =>
+          outcome_accepted(inhabitant)
+        CoproductNullaryInhabitantDuplicate =>
+          outcome_rejected(coproduct_nullary_inhabitant_lookup_diagnostic(
+            type_name: type_name,
+            reason: ^coproduct_nullary_inhabitant_duplicate
+          ))
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
