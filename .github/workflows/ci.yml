@@ -247,9 +247,7 @@ jobs:
         timeout-minutes: 15
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          git fetch --no-tags origin main
-          "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_gate.dag --function main
+          'git' 'fetch' '--no-tags' 'origin' 'main' && 'env' '-C' '.' 'target/release/gunbc' 'run' '--source-root' 'dag' '--entry' 'dag/tools/merge_admission_gate.dag' '--function' 'main'
         timeout-minutes: 5
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
