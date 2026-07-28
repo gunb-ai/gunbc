@@ -8,48 +8,111 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/topics/glossary"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/glossary.txt"
   }
 }
 
 data mercurial_revisions_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/topics/revisions"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/revisions.txt"
   }
 }
 
 data mercurial_manifest_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/commands/manifest"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-manifest"
   }
 }
 
 data mercurial_phases_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/topics/phases"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/phases.txt"
   }
 }
 
 data mercurial_evolution_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/topics/evolution"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/evolution.txt"
   }
 }
 
 data mercurial_subrepositories_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.mercurial-scm.org/help/topics/subrepos"
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/helptext/subrepos.txt"
   }
 }
+
+type MercurialUpstreamVersion {
+  major: NonNegativeInt
+  minor: NonNegativeInt
+  patch: NonNegativeInt
+}
+
+data mercurial_upstream_version: MercurialUpstreamVersion = MercurialUpstreamVersion {
+  major: 7
+  minor: 2
+  patch: 3
+}
+
+data mercurial_upstream_version_note: NonEmptyStr = "This R0 authority models Mercurial 7.2.3. Every external anchor above resolves into the immutable mercurial-7.2.3 release archive; mutable current-help pages are deliberately not the specification boundary."
 
 type MercurialChangesetId = NonEmptyStr where brand("MercurialChangesetId")
 type MercurialManifestId = NonEmptyStr where brand("MercurialManifestId")
 type MercurialFileRevisionId = NonEmptyStr where brand("MercurialFileRevisionId")
+
+type MercurialNodeIdentityRole
+  = MercurialChangesetNodeIdentity
+  | MercurialManifestNodeIdentity
+  | MercurialFileRevisionNodeIdentity
+
+type MercurialNodeIdentityObservation {
+  role: MercurialNodeIdentityRole
+  text: NonEmptyStr
+}
+
+type MercurialNodeIdentitySyntaxRefusal
+  = MercurialNodeIdentityWrongLength { observed: NonNegativeInt }
+  | MercurialNodeIdentityNonHexadecimal
+  | MercurialNodeIdentityNonCanonicalUppercase
+
+type MercurialNodeIdentitySyntaxOutcome
+  = MercurialNodeIdentitySyntaxAccepted
+  | MercurialNodeIdentitySyntaxRefused {
+      cause: MercurialNodeIdentitySyntaxRefusal,
+    }
+
+fn mercurial_node_identity_syntax(
+  observation: MercurialNodeIdentityObservation,
+) -> MercurialNodeIdentitySyntaxOutcome {
+  let text = observation.text as String
+  if text.length() != 40 {
+    MercurialNodeIdentitySyntaxRefused {
+      cause: MercurialNodeIdentityWrongLength { observed: text.length() },
+    }
+  } else if !all(
+    chars(s: text),
+    cp =>
+      (cp >= 48 && cp <= 57)
+        || (cp >= 65 && cp <= 70)
+        || (cp >= 97 && cp <= 102),
+  ) {
+    MercurialNodeIdentitySyntaxRefused {
+      cause: MercurialNodeIdentityNonHexadecimal,
+    }
+  } else if any(chars(s: text), cp => cp >= 65 && cp <= 70) {
+    MercurialNodeIdentitySyntaxRefused {
+      cause: MercurialNodeIdentityNonCanonicalUppercase,
+    }
+  } else {
+    MercurialNodeIdentitySyntaxAccepted
+  }
+}
+
 type MercurialBookmarkName = NonEmptyStr where brand("MercurialBookmarkName")
 type MercurialNamedBranchName = NonEmptyStr where brand("MercurialNamedBranchName")
 type MercurialTagName = NonEmptyStr where brand("MercurialTagName")
@@ -339,7 +402,11 @@ fn mercurial_projection_map_contents(
 }
 
 type MercurialProjectionRefusal
-  = MercurialUnknownManifestFlag {
+  = MercurialInvalidNodeIdentity {
+      observation: MercurialNodeIdentityObservation,
+      cause: MercurialNodeIdentitySyntaxRefusal,
+    }
+  | MercurialUnknownManifestFlag {
       path: MercurialPath,
       flag: String,
     }
@@ -1248,6 +1315,112 @@ fn mercurial_validate_partial_projection(
   }
 }
 
+fn mercurial_changeset_node_identity(
+  changeset: MercurialChangesetId,
+) -> MercurialNodeIdentityObservation {
+  MercurialNodeIdentityObservation {
+    role: MercurialChangesetNodeIdentity,
+    text: changeset as NonEmptyStr,
+  }
+}
+
+fn mercurial_manifest_node_identity(
+  manifest: MercurialManifestId,
+) -> MercurialNodeIdentityObservation {
+  MercurialNodeIdentityObservation {
+    role: MercurialManifestNodeIdentity,
+    text: manifest as NonEmptyStr,
+  }
+}
+
+fn mercurial_file_revision_node_identity(
+  file_revision: MercurialFileRevisionId,
+) -> MercurialNodeIdentityObservation {
+  MercurialNodeIdentityObservation {
+    role: MercurialFileRevisionNodeIdentity,
+    text: file_revision as NonEmptyStr,
+  }
+}
+
+fn mercurial_projection_node_identities(
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
+) -> List<MercurialNodeIdentityObservation> {
+  let present = concat(
+    projection.changesets
+      |> map(changeset =>
+        mercurial_changeset_node_identity(changeset: changeset.node)
+      ),
+    concat(
+      projection.manifests
+        |> map(manifest =>
+          mercurial_manifest_node_identity(manifest: manifest.node)
+        ),
+      projection.file_revisions
+        |> map(file_revision =>
+          mercurial_file_revision_node_identity(
+            file_revision: file_revision.node,
+          )
+        ),
+    ),
+  )
+  let declared_missing = match completeness {
+    MercurialContentsComplete => []
+    MercurialContentsPartial {
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } => concat(
+      missing_changesets
+        |> map(changeset =>
+          mercurial_changeset_node_identity(changeset: changeset)
+        ),
+      concat(
+        missing_manifests
+          |> map(manifest =>
+            mercurial_manifest_node_identity(manifest: manifest)
+          ),
+        missing_file_revisions
+          |> map(file_revision =>
+            mercurial_file_revision_node_identity(
+              file_revision: file_revision,
+            )
+          ),
+      ),
+    )
+  }
+  append(present, items: declared_missing)
+}
+
+fn mercurial_validate_node_identities(
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
+) -> MercurialReferenceCheckOutcome {
+  fold(
+    mercurial_projection_node_identities(
+      projection: projection,
+      completeness: completeness,
+    ),
+    init: MercurialReferencesValid,
+    f: fn(found, observation) {
+      match found {
+        MercurialReferenceInvalid { cause: _ } => found
+        MercurialReferencesValid =>
+          match mercurial_node_identity_syntax(observation: observation) {
+            MercurialNodeIdentitySyntaxAccepted => MercurialReferencesValid
+            MercurialNodeIdentitySyntaxRefused { cause } =>
+              MercurialReferenceInvalid {
+                cause: MercurialInvalidNodeIdentity {
+                  observation: observation,
+                  cause: cause,
+                },
+              }
+          }
+      }
+    },
+  )
+}
+
 fn mercurial_decode_accessible_projection(
   projection: MercurialRepositoryProjectionContents,
   completeness: MercurialRepositoryCompleteness,
@@ -1260,7 +1433,14 @@ fn mercurial_decode_accessible_projection(
         MercurialPhaseDecodeRefused { cause } =>
           MercurialDecodeRefused { cause: cause }
         MercurialPhasesDecoded { phases } =>
-          match mercurial_duplicate_manifest(manifests: manifests) {
+          match mercurial_validate_node_identities(
+            projection: projection,
+            completeness: completeness,
+          ) {
+            MercurialReferenceInvalid { cause } =>
+              MercurialDecodeRefused { cause: cause }
+            MercurialReferencesValid =>
+              match mercurial_duplicate_manifest(manifests: manifests) {
             MercurialDuplicateManifestFound { manifest: duplicate } =>
               MercurialDecodeRefused {
                 cause: MercurialDuplicateManifestNode { manifest: duplicate }
@@ -1323,6 +1503,7 @@ fn mercurial_decode_accessible_projection(
                     }
                   }
               }
+          }
           }
       }
   }
