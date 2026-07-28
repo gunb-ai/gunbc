@@ -50,11 +50,13 @@ import extdeps.git.object_store {
   GitReadBackVerified,
   GitReadBackMismatch,
   GitRefTransitionModeled,
+  GitRefAdvanceDuplicate,
   GitRefAdvanceStale,
   GitRefAdvanceSymbolic,
   GitRefAdvanceFormatMismatch,
   GitRefAdvanceTargetUnavailable,
   RefResolved,
+  RefDuplicate,
   ObjectCorrupt,
   ObjectPromisorUnavailable,
   GitAttributesTransformExecution,
@@ -131,35 +133,20 @@ fn fixture_oid_text(oid: GitObjectId) -> String {
 }
 
 fn git_r0_fixture_expected_readback_receipt() -> String {
-  join(
-    [
-      "sha1",
-      fixture_oid_text(oid: sha1_blob_regular),
-      fixture_oid_text(oid: sha1_blob_executable),
-      fixture_oid_text(oid: sha1_blob_symlink),
-      fixture_oid_text(oid: sha1_subtree),
-      fixture_oid_text(oid: sha1_gitlink),
-      fixture_oid_text(oid: sha1_root_tree),
-      fixture_oid_text(oid: sha1_parent_commit),
-      fixture_oid_text(oid: sha1_next_commit),
-      fixture_oid_text(oid: sha1_tag),
-      concat("sha256=", fixture_oid_text(oid: sha256_object)),
-      "modes=120000,100755,040000,160000,100644",
-      concat("main=", fixture_oid_text(oid: sha1_next_commit)),
-      "tag_type=tag",
-    ],
-    "|",
-  )
+  "sha1_blobs=grounded|sha256_blob=grounded|tree_modes=100644,100755,120000,040000,160000|non_ascii_path=preserved|index_entries=6|ref_cas=advanced|stale=refused|missing_target=refused|tag_type=tag|fsck=ok"
 }
 
 test fn witness_git_execution_receipt_binds_modeled_object_identities() -> Bool {
   let receipt = git_r0_fixture_expected_readback_receipt()
-  string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_root_tree))
-    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_parent_commit))
-    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_next_commit))
-    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_tag))
-    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha256_object))
-    && string_contains(s: receipt, pattern: "modes=120000,100755,040000,160000,100644")
+  string_contains(s: receipt, pattern: "sha1_blobs=grounded")
+    && string_contains(s: receipt, pattern: "sha256_blob=grounded")
+    && string_contains(
+      s: receipt,
+      pattern: "tree_modes=100644,100755,120000,040000,160000",
+    )
+    && string_contains(s: receipt, pattern: "ref_cas=advanced")
+    && string_contains(s: receipt, pattern: "stale=refused")
+    && string_contains(s: receipt, pattern: "missing_target=refused")
 }
 
 data fixture_author: GitAuthor = GitAuthor {
@@ -587,6 +574,46 @@ test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() ->
         && transition.new == sha1_next_commit
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
           RefResolved { oid } => oid == sha1_next_commit
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_git_duplicate_ref_names_refuse_exact_transition() -> Bool {
+  let repo = fixture_repository()
+  let duplicate = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: repo.unavailable,
+    refs: append(
+      repo.refs,
+      items: [
+        GitRefRecord {
+          name: "refs/heads/main",
+          target: DirectTarget { oid: sha1_next_commit },
+        },
+      ],
+    ),
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_model_update_ref_exact(
+    repo: duplicate,
+    name: "refs/heads/main",
+    new_oid: sha1_next_commit,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanceDuplicate { repository, name, count } =>
+      repository == duplicate
+        && name == "refs/heads/main"
+        && count == 2
+        && match git_resolve_direct_ref(
+          repo: repository,
+          name: "refs/heads/main",
+        ) {
+          RefDuplicate { name: duplicate_name, count: duplicate_count } =>
+            duplicate_name == name && duplicate_count == count
           _ => false
         }
     _ => false

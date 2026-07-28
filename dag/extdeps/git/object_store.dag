@@ -1,7 +1,7 @@
 module extdeps.git.object_store
 
 import std.types { ContentHash, NonEmptyStr, Bytes }
-import std.integer { UInt8 }
+import std.integer { UInt8, NonNegativeInt }
 import std.measure { ByteSize }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
@@ -170,6 +170,12 @@ type RefResolutionResult
   = RefResolved { oid: GitObjectId }
   | RefNotFound { name: GitRefName }
   | RefNotDirect { name: GitRefName, target: GitRefName }
+  | RefDuplicate { name: GitRefName, count: NonNegativeInt }
+
+type GitRefLookupResult
+  = GitRefLookupMissing { name: GitRefName }
+  | GitRefLookupUnique { record: GitRefRecord }
+  | GitRefLookupDuplicate { name: GitRefName, count: NonNegativeInt }
 
 type GitIndexStage
   = GitIndexStageNormal
@@ -262,17 +268,30 @@ fn git_lookup_object(repo: GitRepositoryState, oid: GitObjectId) -> ObjectLookup
   }
 }
 
-fn git_find_ref(refs: List<GitRefRecord>, name: GitRefName) -> GitRefRecord? {
-  refs |> filter(r => r.name == name) |> first
+fn git_lookup_ref(refs: List<GitRefRecord>, name: GitRefName) -> GitRefLookupResult {
+  let matching = refs |> filter(record => record.name == name)
+  let matching_count = count(matching)
+  if matching_count == 0 {
+    GitRefLookupMissing { name: name }
+  } else if matching_count > 1 {
+    GitRefLookupDuplicate { name: name, count: matching_count }
+  } else {
+    match matching.first() {
+      Present { value: record } => GitRefLookupUnique { record: record }
+      Absent => GitRefLookupMissing { name: name }
+    }
+  }
 }
 
 fn git_resolve_direct_ref(repo: GitRepositoryState, name: GitRefName) -> RefResolutionResult {
-  match git_find_ref(refs: repo.refs, name: name) {
-    Present { value: record } => match record.target {
+  match git_lookup_ref(refs: repo.refs, name: name) {
+    GitRefLookupUnique { record } => match record.target {
       DirectTarget { oid } => RefResolved { oid: oid }
       SymbolicTarget { ref_name } => RefNotDirect { name: name, target: ref_name }
     }
-    Absent => RefNotFound { name: name }
+    GitRefLookupMissing { name: missing } => RefNotFound { name: missing }
+    GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
+      RefDuplicate { name: duplicate, count: duplicate_count }
   }
 }
 
@@ -494,6 +513,11 @@ type GitUpdateRefOutcome
       observed: GitObjectId,
     }
   | GitRefAdvanceMissing { repository: GitRepositoryState, name: GitRefName }
+  | GitRefAdvanceDuplicate {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      count: NonNegativeInt,
+    }
   | GitRefAdvanceSymbolic {
       repository: GitRepositoryState,
       name: GitRefName,
@@ -562,9 +586,16 @@ fn git_model_update_ref_exact(
             object_type: store_object_kind(object: new_object.object),
           }
         } else {
-          match git_find_ref(refs: repo.refs, name: name) {
-            Absent => GitRefAdvanceMissing { repository: repo, name: name }
-            Present { value: record } => match record.target {
+          match git_lookup_ref(refs: repo.refs, name: name) {
+            GitRefLookupMissing { name: missing } =>
+              GitRefAdvanceMissing { repository: repo, name: missing }
+            GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
+              GitRefAdvanceDuplicate {
+                repository: repo,
+                name: duplicate,
+                count: duplicate_count,
+              }
+            GitRefLookupUnique { record } => match record.target {
               SymbolicTarget { ref_name } =>
                 GitRefAdvanceSymbolic { repository: repo, name: name, target: ref_name }
               DirectTarget { oid: observed } =>
