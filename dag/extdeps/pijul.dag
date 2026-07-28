@@ -927,6 +927,264 @@ fn pijul_channels_equivalent(
     )
 }
 
+type PijulLogHeadWire {
+  change: PijulChangeHash
+  state: PijulStateHash
+}
+
+type PijulLogWireRefusal
+  = PijulLogHeadChangeMissing
+  | PijulLogHeadChangeDuplicate
+  | PijulLogHeadStateMissing
+  | PijulLogHeadStateDuplicate
+  | PijulLogHashSetEmpty
+  | PijulLogHashSetDuplicate { change: PijulChangeHash }
+
+type PijulLogHeadDecodeOutcome
+  = PijulLogHeadDecoded { head: PijulLogHeadWire }
+  | PijulLogHeadDecodeRefused { cause: PijulLogWireRefusal }
+
+type PijulLogHashSetDecodeOutcome
+  = PijulLogHashSetDecoded { changes: List<PijulChangeHash> }
+  | PijulLogHashSetDecodeRefused { cause: PijulLogWireRefusal }
+
+type PijulPrefixedLine {
+  value: NonEmptyStr
+}
+
+fn pijul_prefixed_lines(
+  text: String,
+  prefix: NonEmptyStr,
+) -> List<PijulPrefixedLine> {
+  split(s: text, delimiter: "\n")
+    |> map(line => trim(s: line))
+    |> filter(line =>
+      starts_with(s: line, prefix: prefix)
+        && line.length() > prefix.length()
+    )
+    |> map(line => PijulPrefixedLine {
+      value: substring(
+        s: line,
+        start: prefix.length(),
+        end: line.length(),
+      ) as NonEmptyStr,
+    })
+}
+
+fn pijul_decode_log_head_plaintext(text: String) -> PijulLogHeadDecodeOutcome {
+  let changes = pijul_prefixed_lines(text: text, prefix: "Change ")
+  let states = pijul_prefixed_lines(text: text, prefix: "State: ")
+  if count(changes) == 0 {
+    PijulLogHeadDecodeRefused { cause: PijulLogHeadChangeMissing }
+  } else if count(changes) > 1 {
+    PijulLogHeadDecodeRefused { cause: PijulLogHeadChangeDuplicate }
+  } else if count(states) == 0 {
+    PijulLogHeadDecodeRefused { cause: PijulLogHeadStateMissing }
+  } else if count(states) > 1 {
+    PijulLogHeadDecodeRefused { cause: PijulLogHeadStateDuplicate }
+  } else {
+    match changes.first() {
+      Absent => PijulLogHeadDecodeRefused { cause: PijulLogHeadChangeMissing }
+      Present { value: change } => match states.first() {
+        Absent => PijulLogHeadDecodeRefused { cause: PijulLogHeadStateMissing }
+        Present { value: state } => PijulLogHeadDecoded {
+          head: PijulLogHeadWire {
+            change: change.value as PijulChangeHash,
+            state: state.value as PijulStateHash,
+          }
+        }
+      }
+    }
+  }
+}
+
+type PijulDuplicateHashLine {
+  change: PijulChangeHash
+}
+
+fn pijul_decode_hash_only_log(text: String) -> PijulLogHashSetDecodeOutcome {
+  let changes = split(s: text, delimiter: "\n")
+    |> map(line => trim(s: line))
+    |> filter(line => line != "")
+    |> map(line => line as PijulChangeHash)
+  let duplicates = changes
+    |> filter(change =>
+      pijul_hash_count(changes: changes, target: change) > 1
+    )
+    |> map(change => PijulDuplicateHashLine { change: change })
+  if count(changes) == 0 {
+    PijulLogHashSetDecodeRefused { cause: PijulLogHashSetEmpty }
+  } else if count(duplicates) > 0 {
+    match duplicates.first() {
+      Present { value: duplicate } => PijulLogHashSetDecodeRefused {
+        cause: PijulLogHashSetDuplicate { change: duplicate.change }
+      }
+      Absent => PijulLogHashSetDecodeRefused { cause: PijulLogHashSetEmpty }
+    }
+  } else {
+    PijulLogHashSetDecoded { changes: changes }
+  }
+}
+
+type PijulChannelLogObservation {
+  pijul_version: NonEmptyStr
+  channel: PijulChannelName
+  head: PijulLogHeadWire
+  changes: List<PijulChangeHash>
+}
+
+type PijulChannelLogDecodeOutcome
+  = PijulChannelLogObserved { observation: PijulChannelLogObservation }
+  | PijulChannelLogInvalid { cause: PijulLogWireRefusal }
+
+fn pijul_decode_channel_log_observation(
+  pijul_version: NonEmptyStr,
+  channel: PijulChannelName,
+  head_plaintext: String,
+  hash_only: String,
+) -> PijulChannelLogDecodeOutcome {
+  match pijul_decode_log_head_plaintext(text: head_plaintext) {
+    PijulLogHeadDecodeRefused { cause } =>
+      PijulChannelLogInvalid { cause: cause }
+    PijulLogHeadDecoded { head } =>
+      match pijul_decode_hash_only_log(text: hash_only) {
+        PijulLogHashSetDecodeRefused { cause } =>
+          PijulChannelLogInvalid { cause: cause }
+        PijulLogHashSetDecoded { changes } =>
+          if !pijul_hash_present(changes: changes, target: head.change) {
+            PijulChannelLogInvalid { cause: PijulLogHeadChangeMissing }
+          } else {
+            PijulChannelLogObserved {
+              observation: PijulChannelLogObservation {
+                pijul_version: pijul_version,
+                channel: channel,
+                head: head,
+                changes: changes,
+              }
+            }
+          }
+      }
+  }
+}
+
+type PijulChannelLogMismatchAxis
+  = PijulChannelLogStateMismatch
+  | PijulChannelLogChangeSetMismatch
+
+type PijulChannelLogReadBackOutcome
+  = PijulChannelLogReadBackMatches {
+      observation: PijulChannelLogObservation,
+    }
+  | PijulChannelLogReadBackMismatch {
+      axis: PijulChannelLogMismatchAxis,
+    }
+
+fn pijul_assess_channel_log_read_back(
+  expected: PijulChannelStateIdentity,
+  observation: PijulChannelLogObservation,
+) -> PijulChannelLogReadBackOutcome {
+  if !(expected.state == observation.head.state) {
+    PijulChannelLogReadBackMismatch { axis: PijulChannelLogStateMismatch }
+  } else if !pijul_change_sets_equal(
+    left: expected.changes,
+    right: observation.changes,
+  ) {
+    PijulChannelLogReadBackMismatch {
+      axis: PijulChannelLogChangeSetMismatch,
+    }
+  } else {
+    PijulChannelLogReadBackMatches { observation: observation }
+  }
+}
+
+type PijulRenderedOrderConflictObservation {
+  path: PijulPath
+  left: PijulChangeHash
+  right: PijulChangeHash
+  rendered_working_copy: String
+}
+
+type PijulRenderedConflictAssessment
+  = PijulRenderedOrderConflictGrounded {
+      path: PijulPath,
+      left: PijulChangeHash,
+      right: PijulChangeHash,
+    }
+  | PijulRenderedConflictNotGrounded
+
+fn pijul_assess_rendered_order_conflict(
+  observation: PijulRenderedOrderConflictObservation,
+) -> PijulRenderedConflictAssessment {
+  let left = observation.left as String
+  let right = observation.right as String
+  if left.length() < 8 || right.length() < 8 {
+    PijulRenderedConflictNotGrounded
+  } else if string_contains(
+    s: observation.rendered_working_copy,
+    pattern: ">>>>>>>",
+  )
+    && string_contains(s: observation.rendered_working_copy, pattern: "=======")
+    && string_contains(s: observation.rendered_working_copy, pattern: "<<<<<<<")
+    && string_contains(
+      s: observation.rendered_working_copy,
+      pattern: substring(s: left, start: 0, end: 8),
+    )
+    && string_contains(
+      s: observation.rendered_working_copy,
+      pattern: substring(s: right, start: 0, end: 8),
+    ) {
+    PijulRenderedOrderConflictGrounded {
+      path: observation.path,
+      left: observation.left,
+      right: observation.right,
+    }
+  } else {
+    PijulRenderedConflictNotGrounded
+  }
+}
+
+type PijulDependencyTextObservation {
+  change: PijulChangeHash
+  dependency: PijulChangeHash
+  change_text: String
+}
+
+type PijulDependencyTextAssessment
+  = PijulDependencyMentionGrounded {
+      change: PijulChangeHash,
+      dependency: PijulChangeHash,
+    }
+  | PijulDependencyMentionNotGrounded
+
+fn pijul_assess_dependency_text(
+  observation: PijulDependencyTextObservation,
+) -> PijulDependencyTextAssessment {
+  let pieces = split(s: observation.change_text, delimiter: "# Dependencies")
+  if count(pieces) != 2 {
+    PijulDependencyMentionNotGrounded
+  } else {
+    match pieces.skip(n: 1).first() {
+      Absent => PijulDependencyMentionNotGrounded
+      Present { value: after_heading } =>
+        match split(s: after_heading, delimiter: "# Hunks").first() {
+          Absent => PijulDependencyMentionNotGrounded
+          Present { value: dependency_section } =>
+            if string_contains(
+              s: dependency_section,
+              pattern: observation.dependency as String,
+            ) {
+              PijulDependencyMentionGrounded {
+                change: observation.change,
+                dependency: observation.dependency,
+              }
+            } else {
+              PijulDependencyMentionNotGrounded
+            }
+        }
+    }
+  }
+}
+
 type PijulReadBackObservation {
   pijul_version: NonEmptyStr
   projection: PijulRepositoryProjection
