@@ -255,7 +255,9 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
   }
 }
 
-test fn orch_while_raw_while_refuses_to_equal_golden_holds() -> Bool {
+data orch_while_raw_while_deferred_note: String = "Raw While construction refusal is deferred here: the current seam only proves emitted-bytes perturbation, because orch_emit_step routes While through the byte-emitting target model and does not expose a dedicated construction/lens refusal carrier yet. This witness only checks that changing the raw cond text changes the emitted bytes."
+
+test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
   match orch_emit_step(
     s: While {
       cond: ExitZero {
