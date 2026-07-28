@@ -20,7 +20,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import v2.std.filesystem.types { EntryKind }
+import std.filesystem.types { EntryKind }
 import v2.std.node { Node, Symbol }
 import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or }
 import std.types { FilePathParts }
@@ -34,8 +34,6 @@ import v2.extdeps.languages.bash {
   bash_stmt_if_block_target_model,
   bash_stmt_negation_target_model,
   bash_stmt_andor_target_model,
-  bash_test_str_eq_target_model,
-  bash_test_str_nonempty_target_model
 }
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
@@ -96,7 +94,8 @@ fn bash_path_unquoted_ok(path: String) -> Bool {
 
 fn bash_relative_parts_text(parts: FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {
-    if acc == "" { seg } else { concat(acc, concat("/", seg)) }
+    let seg_text = seg as String
+    if acc == "" { seg_text } else { concat(acc, concat("/", seg_text)) }
   })
 }
 
@@ -143,6 +142,7 @@ fn bash_test_path_kind_op(kind: EntryKind) -> String {
   match kind {
     RegularFile => "-f "
     Directory => "-d "
+    Symlink => "-L "
     Missing => "! -e "
     Other => "-e "
   }
