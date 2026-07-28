@@ -62,7 +62,10 @@ fn run_pipe_with_diagnostics(function: &str) -> Output {
         .current_dir(repo_root())
         .args(gunbc_args(&root, &entry, function))
         .env("GUNBC_RECOMPUTE_TRACE", "1")
-        .env("GUNBC_FLATTEN_SITE_DUMP_SECS", "1")
+        // Zero timeout is a deterministic fast-vs-timed control: once capture
+        // arms the producer, recv_timeout(0) can fire before the joined end dump.
+        .env("GUNBC_FLATTEN_SITE_DUMP_SECS", "0")
+        .env("GUNBC_SCOPED_PERIODIC_WITNESS", "1")
         .output()
         .expect("run scoped gunbc deferred-diagnostic capture");
     let _ = std::fs::remove_dir_all(root);
@@ -167,6 +170,21 @@ fn scoped_deferred_diagnostics_are_preserved_before_final() {
             && !stderr[final_line..].contains("--- free_monoid_to_vec"),
         "Final must remain the last stderr diagnostic: {stderr}"
     );
+    let ticks = stderr
+        .split("[scoped-periodic-ticks=")
+        .nth(1)
+        .and_then(|tail| tail.split(']').next())
+        .and_then(|count| count.parse::<usize>().ok())
+        .expect("deterministic periodic tick receipt");
+    assert!(
+        ticks > 0,
+        "timed producer did not fire under zero-timeout control: {stderr}"
+    );
+    let ticks_marker = stderr.find("[scoped-periodic-ticks=").expect("tick marker");
+    assert!(
+        ticks_marker < final_line,
+        "timed receipt must precede Final: {stderr}"
+    );
 }
 
 #[test]
@@ -189,6 +207,9 @@ fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
         .join(" ");
     let status = Command::new("script")
         .current_dir(repo_root())
+        // TERM=dumb downgrades emoji capability while the PTY remains
+        // addressable; exact CR+EL2 proves cursor capability is independent.
+        .env("TERM", "dumb")
         .args(["-qefc", &command])
         .arg(&transcript)
         .status()

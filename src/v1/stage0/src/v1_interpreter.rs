@@ -1260,7 +1260,7 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
-    selected_function_identities: HashMap<String, SelectedFunctionIdentity>,
+    ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1416,7 +1416,6 @@ impl InterpContext {
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
-        let mut selected_function_identities = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
@@ -1426,25 +1425,9 @@ impl InterpContext {
                 if !name.is_empty() {
                     *bare_name_counts.entry(name.clone()).or_default() += 1;
                     fn_nodes.insert(name.clone(), item.clone());
-                    selected_function_identities.insert(
-                        name.clone(),
-                        SelectedFunctionIdentity {
-                            module_path: module_path.clone(),
-                            decl_name: name.clone(),
-                            bare_name_ambiguous: false,
-                        },
-                    );
                     if !module_path.is_empty() {
                         let qualified = format!("{}.{}", module_path, name);
                         fn_nodes.insert(qualified.clone(), item.clone());
-                        selected_function_identities.insert(
-                            qualified,
-                            SelectedFunctionIdentity {
-                                module_path: module_path.clone(),
-                                decl_name: name.clone(),
-                                bare_name_ambiguous: false,
-                            },
-                        );
                     }
                 }
                 // Service-item detection is node-local: the item node carries the
@@ -1474,19 +1457,16 @@ impl InterpContext {
                 }
             }
         }
-        for (name, count) in bare_name_counts {
-            if count > 1 {
-                if let Some(identity) = selected_function_identities.get_mut(&name) {
-                    identity.bare_name_ambiguous = true;
-                }
-            }
-        }
+        let ambiguous_bare_function_names = bare_name_counts
+            .into_iter()
+            .filter_map(|(name, count)| (count > 1).then_some(name))
+            .collect();
         InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
-            selected_function_identities,
+            ambiguous_bare_function_names,
             service_ops,
             execution_mode,
             fixture_store,
@@ -1616,10 +1596,25 @@ impl InterpContext {
         self.fn_nodes.get(name)
     }
 
-    /// Identity captured alongside the exact fn_nodes entry used by lookup_fn.
-    /// This is observational only: it does not select, resolve, or alter lookup.
-    pub fn selected_function_identity(&self, name: &str) -> Option<&SelectedFunctionIdentity> {
-        self.selected_function_identities.get(name)
+    /// Report identity from the exact fn_nodes entry used by lookup_fn. The
+    /// module path comes from the existing collision-checked module index; this
+    /// accessor does not select, resolve, traverse the graph, or alter lookup.
+    pub fn selected_function_identity(
+        &self,
+        name: &str,
+        module_path_index: &HashMap<String, String>,
+    ) -> Option<SelectedFunctionIdentity> {
+        let node = self.lookup_fn(name)?;
+        let file = node.span.file.as_str();
+        let module_path = module_path_index.iter().find_map(|(module, path)| {
+            (path == file || file.ends_with(path)).then(|| module.clone())
+        })?;
+        Some(SelectedFunctionIdentity {
+            module_path,
+            decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
+            bare_name_ambiguous: !name.contains('.')
+                && self.ambiguous_bare_function_names.contains(name),
+        })
     }
 }
 

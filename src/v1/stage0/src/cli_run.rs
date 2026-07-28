@@ -10650,6 +10650,7 @@ struct ScopedRunObservation {
     emoji: bool,
     open: bool,
     started: std::time::Instant,
+    last_wall_ns: u128,
 }
 
 impl ScopedRunObservation {
@@ -10682,6 +10683,7 @@ impl ScopedRunObservation {
                 && std::env::var("TERM").map_or(true, |term| term != "dumb"),
             open: false,
             started,
+            last_wall_ns: 0,
         })
     }
 
@@ -10712,10 +10714,12 @@ impl ScopedRunObservation {
             args.push((Some(name.to_string()), Value::Str(value.to_string())));
         }
         if measured {
-            args.push((
-                Some("wall_ns".to_string()),
-                Value::Int(self.started.elapsed().as_nanos() as i64),
-            ));
+            let wall_ns = self.started.elapsed().as_nanos();
+            if wall_ns < self.last_wall_ns {
+                return Err("scoped run monotonic Nanosecond wall regressed".to_string());
+            }
+            self.last_wall_ns = wall_ns;
+            args.push((Some("wall_ns".to_string()), Value::Int(wall_ns as i64)));
         }
         args.extend([
             (
@@ -11008,7 +11012,8 @@ pub fn handle_run_with_options(
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     let scoped_identity = entry_file.as_ref().map(|_| {
-        ctx.selected_function_identity(&function)
+        let module_path_index = build_module_path_index(&source_roots);
+        ctx.selected_function_identity(&function, &module_path_index)
             .filter(|identity| !identity.bare_name_ambiguous || function.contains('.'))
             .unwrap_or_else(|| {
                 eprintln!(
@@ -11046,25 +11051,34 @@ pub fn handle_run_with_options(
         let mut run = || {
             if let Some(secs) = scoped_periodic_secs {
                 let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+                let periodic_ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                let tick_count = periodic_ticks.clone();
                 let handle = std::thread::spawn(move || loop {
                     match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
                         Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             dump_residual_hunt_instrumentation()
                         }
                     }
                 });
-                scoped_periodic_dump = Some((stop_tx, handle));
+                scoped_periodic_dump = Some((stop_tx, handle, periodic_ticks));
             }
             let outcome =
                 v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
+            if let Some((stop, handle, periodic_ticks)) = scoped_periodic_dump.take() {
+                let _ = stop.send(());
+                let _ = handle.join();
+                if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some() {
+                    eprintln!(
+                        "[scoped-periodic-ticks={}]",
+                        periodic_ticks.load(std::sync::atomic::Ordering::Relaxed)
+                    );
+                }
+            }
             v1_interpreter::print_eval_recompute_trace(&ctx);
             if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
                 dump_residual_hunt_instrumentation();
-            }
-            if let Some((stop, handle)) = scoped_periodic_dump.take() {
-                let _ = stop.send(());
-                let _ = handle.join();
             }
             outcome
         };
