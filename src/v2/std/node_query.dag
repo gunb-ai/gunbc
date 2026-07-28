@@ -143,8 +143,14 @@ fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPai
   )
 }
 
-fn coproduct_nullary_inhabitants(type_name: Symbol) -> Outcome<List<Behavior>> {
-  coproduct_nullary_inhabitants(type_name: type_name)
+fn coproduct_nullary_inhabitants<T>(
+  type_name: Symbol,
+  discriminant_of: fn(T) -> Symbol
+) -> Outcome<List<T>> {
+  coproduct_nullary_inhabitants(
+    type_name: type_name,
+    discriminant_of: discriminant_of
+  )
 }
 
 fn node_positional_child_targets(node: Node) -> List<Node> {

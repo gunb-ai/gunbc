@@ -83,7 +83,7 @@ fn gate_arm_symbols(gates: List<Gate>) -> List<Symbol> {
   })
 }
 
-fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
+fn nullary_inhabitant_discriminants(inhabitants: List<Gate>) -> List<Symbol> {
   fold(inhabitants, init: [], f: fn(acc, v) {
     list_snoc_item(xs: acc, item: discriminant(v: v))
   })
@@ -91,7 +91,10 @@ fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol>
 
 test fn witness_gate_roster_matches_coproduct_arms() -> Bool {
   let arm_keys = coproduct_arm_keys(type_name: reflect_gate_type)
-  match coproduct_nullary_inhabitants(type_name: reflect_gate_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_gate_type,
+    discriminant_of: gate_arm_symbol
+  ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       bag_eq(
         xs: gate_arm_symbols(gates: concat(concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates), gunbc_ci_falsifier_gates)),
