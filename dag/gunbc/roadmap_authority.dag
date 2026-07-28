@@ -615,7 +615,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
     active(
       id: "roadmap-runtime-identity-join",
       owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-as-workspace-design.md",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
         headline: "Join roadmap node, branch, pull request, and attempt by typed identity",
         boundary: "Runtime state attaches through one typed relation over node, branch, pull request, and attempt identities; titles and timing never establish identity.",
@@ -629,7 +629,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
     active(
       id: "roadmap-runtime-ready-override",
       owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-as-workspace-design.md",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
         headline: "Model Ready as an explicit operator override",
         boundary: "Dependency readiness is derived from accepted parents; the only override is a typed operator decision with scope and provenance.",
@@ -643,7 +643,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
     active(
       id: "roadmap-runtime-dispatch-consumer",
       owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-as-workspace-design.md",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
         headline: "Dispatch only from the typed runtime join",
         boundary: "The actuator consumes a spawnable active node, accepted dependencies or Ready override, and an idempotent attempt identity.",
@@ -657,7 +657,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
     active(
       id: "roadmap-runtime-readback",
       owner: "roadmap-runtime",
-      path: "docs/plans/roadmap-as-workspace-design.md",
+      path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
         headline: "Read back lifecycle facts without inferring readiness",
         boundary: "The served workspace independently observes session presence, provider/tool readiness, attempt outcome, and pull-request linkage after dispatch.",
@@ -686,7 +686,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
     active(
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",
-      path: "docs/runbooks/altrad8ud-bmc-fan-control.md",
+      path: "docs/runbooks/bmc-redfish-operator-access.md",
       t: fields(
         headline: "Converge the fleet BMC firmware and thermal policy",
         boundary: "Observe firmware, board, controller, fan topology, thermal limits, and policy; plan/apply/read back with rollback on unsafe or mismatched state.",
