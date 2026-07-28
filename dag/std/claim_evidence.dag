@@ -152,50 +152,17 @@ fn evidence_inference_insufficiencies<F, C, A, FreshBound, FidelityBoundary, Ind
   )
 }
 
-type ClaimAssessment<C, L> {
-  claim: C
-  supporting: List<L>
-  challenging: List<L>
-}
-
-fn claim_assessment_add_link<F, C, A, FreshBound, FidelityBoundary, Independence>(
-  assessment: ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
-  link: EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
-) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
-  if !(link.maximum_conclusion == assessment.claim) {
-    assessment
-  } else {
-    evidence_direction_fold(
-      direction: link.direction,
-      fold: EvidenceDirectionFold {
-        supports: ClaimAssessment {
-          claim: assessment.claim,
-          supporting: append(assessment.supporting, items: [link]),
-          challenging: assessment.challenging,
-        },
-        challenges: ClaimAssessment {
-          claim: assessment.claim,
-          supporting: assessment.supporting,
-          challenging: append(assessment.challenging, items: [link]),
-        },
-      },
-    )
-  }
+type ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence> {
+  evidence: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>
 }
 
 fn claim_assessment_from_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
   claim: C,
   links: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
-) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
-  fold(
-    links,
-    init: ClaimAssessment {
-      claim: claim,
-      supporting: [],
-      challenging: [],
-    },
-    f: claim_assessment_add_link,
-  )
+) -> ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence> {
+  ClaimAssessment {
+    evidence: links |> filter(link => link.maximum_conclusion == claim),
+  }
 }
 
 type ClaimInformationState {
@@ -203,19 +170,42 @@ type ClaimInformationState {
   challenge: Bool
 }
 
-fn claim_information_state<C, L>(
-  assessment: ClaimAssessment<C, L>,
+fn claim_information_state<F, C, A, FreshBound, FidelityBoundary, Independence>(
+  claim: C,
+  assessment: ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>,
 ) -> ClaimInformationState {
+  let evidence = assessment.evidence
+    |> filter(link => link.maximum_conclusion == claim)
   ClaimInformationState {
-    support: assessment.supporting.length() > 0,
-    challenge: assessment.challenging.length() > 0,
+    support: any(evidence, link =>
+      evidence_direction_fold(
+        direction: link.direction,
+        fold: EvidenceDirectionFold {
+          supports: true,
+          challenges: false,
+        },
+      )
+    ),
+    challenge: any(evidence, link =>
+      evidence_direction_fold(
+        direction: link.direction,
+        fold: EvidenceDirectionFold {
+          supports: false,
+          challenges: true,
+        },
+      )
+    ),
   }
 }
 
-fn claim_assessment_supports_without_challenge<C, L>(
-  assessment: ClaimAssessment<C, L>,
+fn claim_assessment_supports_without_challenge<F, C, A, FreshBound, FidelityBoundary, Independence>(
+  claim: C,
+  assessment: ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>,
 ) -> Bool {
-  let state = claim_information_state(assessment: assessment)
+  let state = claim_information_state(
+    claim: claim,
+    assessment: assessment,
+  )
   state.support && !state.challenge
 }
 
@@ -242,20 +232,24 @@ fn claim_readiness_assessment_fold<C, R>(
   }
 }
 
-fn claim_supported_without_challenge_across_assessments<C, L>(
+fn claim_supported_without_challenge_across_assessments<F, C, A, FreshBound, FidelityBoundary, Independence>(
   claim: C,
-  assessments: List<ClaimAssessment<C, L>>,
+  assessments: List<ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>>,
 ) -> Bool {
   let states = assessments
-    |> filter(assessment => assessment.claim == claim)
-    |> map(assessment => claim_information_state(assessment: assessment))
+    |> map(assessment =>
+      claim_information_state(
+        claim: claim,
+        assessment: assessment,
+      )
+    )
   any(states, state => state.support)
     && !any(states, state => state.challenge)
 }
 
-fn claim_readiness_assessment<C, L>(
+fn claim_readiness_assessment<F, C, A, FreshBound, FidelityBoundary, Independence>(
   policy: ClaimReadinessPolicy<C>,
-  assessments: List<ClaimAssessment<C, L>>,
+  assessments: List<ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>>,
 ) -> List<ClaimReadinessAssessment<C>> {
   policy.required |> map(required =>
     if claim_supported_without_challenge_across_assessments(
@@ -283,4 +277,4 @@ fn claim_readiness_is_ready<C>(
   )
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. The link's one claim identity is maximum_conclusion, so no independently writable stronger claim can bypass that bound. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. ClaimAssessment stores only canonical links, never caller-supplied support or challenge lists; every information-state and readiness query re-indexes those links by maximum_conclusion and consumes direction through the canonical fold. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."
