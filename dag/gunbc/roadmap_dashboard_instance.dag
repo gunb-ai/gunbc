@@ -188,13 +188,6 @@ fn dashboard_provision_transport_label(transport: DashboardProvisionTransport) -
   }
 }
 
-fn dashboard_instance_can_actuate(instance: HostDashboardInstance) -> Bool {
-  match instance.actuation {
-    DashboardObserveOnly => false
-    DashboardActuating => true
-  }
-}
-
 fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
   NamedTmuxServer { socket_name: instance_id }
 }

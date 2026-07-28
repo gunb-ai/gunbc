@@ -98,7 +98,6 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
-  dashboard_instance_can_actuate,
 }
 import gunbc.roadmap_dispatch_environment {
   EnvironmentAdmitted,
@@ -1623,13 +1622,14 @@ fn belt_stop_node_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
 ) -> BeltStopResult {
-  if !dashboard_instance_can_actuate(instance: instance) {
+  match instance.actuation {
+    DashboardObserveOnly =>
     StopDisabled {
       node_id: node_id,
       instance_id: instance.instance_id as String,
       reason: "dashboard instance is observe-only; stop refused before tmux observation",
     }
-  } else {
+    DashboardActuating => {
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
@@ -1685,6 +1685,7 @@ fn belt_stop_node_for_instance(
           }
       }
     }
+  }
   }
   }
 }
@@ -1892,13 +1893,14 @@ fn belt_dispatch_node_for_instance(
   instance: HostDashboardInstance,
   node_id: String,
 ) -> BeltDispatchResult {
-  if !dashboard_instance_can_actuate(instance: instance) {
+  match instance.actuation {
+    DashboardObserveOnly =>
     DispatchDisabled {
       node_id: node_id,
       instance_id: instance.instance_id as String,
       reason: "dashboard instance is observe-only; dispatch refused before observation, provider preflight, or worktree creation",
     }
-  } else {
+    DashboardActuating => {
   match belt_lookup_node(node_id: node_id) {
     NodeMissing => DispatchNodeNotFound { node_id: node_id }
     NodeFound { node: node } =>
@@ -1937,6 +1939,7 @@ fn belt_dispatch_node_for_instance(
             }
         }
       }
+  }
   }
   }
 }

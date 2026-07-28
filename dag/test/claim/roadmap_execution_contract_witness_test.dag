@@ -17,7 +17,6 @@ import gunbc.roadmap_execution_contract {
   execution_contract_required_capabilities,
   dispatch_platform_required_capabilities,
   dispatch_required_capabilities,
-  execution_contract_is_specified,
   gunbc_claim_execution_contract,
   validation_operation_command,
 }
@@ -126,14 +125,29 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
   }
 }
 
-test fn unspecified_contract_is_an_admission_refusal_state() -> Bool {
-  !execution_contract_is_specified(contract: ExecutionContractUnspecified)
-    && execution_contract_is_specified(
-      contract: gunbc_claim_execution_contract(
-        entry: "dag/test/claim/example_test.dag" as FilePath,
-        function: "example_holds" as NonEmptyStr,
-      ),
-    )
+data unspecified_refusal_homed_note: String = "The 'unspecified is a refusal state' claim moved to where the decision lives: roadmap_dispatch_environment_witness_test proves ExecutionContractUnspecified and an empty-validation contract each refuse with their own located reason. Restating it here through the deleted execution_contract_is_specified predicate only re-asserted the coproduct's own shape, and rewriting it as a match of a literal against itself would have been vacuous. What is worth pinning here is the CONSTRUCTOR's output, which nothing else covers."
+
+test fn claim_contract_declares_exactly_one_claim_validation() -> Bool {
+  match gunbc_claim_execution_contract(
+    entry: "dag/test/claim/example_test.dag" as FilePath,
+    function: "example_holds" as NonEmptyStr,
+  ) {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities } =>
+      count(validations) == 1
+        && count(extra_capabilities) == 0
+        && match validations.first() {
+          Absent => false
+          Present { value: v } =>
+            match v {
+              GunbcClaimValidation { entry, function } =>
+                (entry as String) == "dag/test/claim/example_test.dag"
+                  && (function as String) == "example_holds"
+              CargoTestValidation { filter: _ } => false
+              CargoFmtValidation => false
+            }
+        }
+  }
 }
 
 test fn roadmap_execution_contract_keystone_holds() -> Bool {
@@ -142,5 +156,5 @@ test fn roadmap_execution_contract_keystone_holds() -> Bool {
     && cargo_fmt_derives_cargo_and_rustfmt_not_rustc()
     && dispatch_platform_capabilities_join_at_admission_only()
     && claim_validation_projects_exact_typed_argv()
-    && unspecified_contract_is_an_admission_refusal_state()
+    && claim_contract_declares_exactly_one_claim_validation()
 }

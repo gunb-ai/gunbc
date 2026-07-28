@@ -194,8 +194,24 @@ test fn admission_receipt_is_structured_and_located() -> Bool {
     && string_contains(s: wire, pattern: "\"grounded\": true")
 }
 
+data empty_validation_contract_refusal_note: String = "review 44043 predicate dissolution. execution_contract_is_specified collapsed the WorkItemExecutionContract coproduct to a Bool, and its two false cases carried ONE refusal reason: an unspecified contract and a specified contract declaring zero validations are different states with different remedies (declare a contract vs. fix the one you declared). The decision now matches the coproduct directly and each state gets its own located diagnostic. This is the arm that had no witness at all before, because the predicate hid it."
+
+test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
+  match dispatch_environment_admission_decision(
+    contract: ExecutionContract { validations: [], extra_capabilities: [] },
+    receipts: [],
+    validation_summary: "",
+  ) {
+    EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    EnvironmentRefused { receipts: _, validation_summary: _, reason } =>
+      string_contains(s: reason, pattern: "declares no validation operations")
+        && !string_contains(s: reason, pattern: "will not guess")
+  }
+}
+
 test fn roadmap_dispatch_environment_keystone_holds() -> Bool {
-  all_required_grounded_receipts_admit()
+  empty_validation_contract_refuses_with_its_own_reason()
+    && all_required_grounded_receipts_admit()
     && missing_capability_realization_refuses()
     && observe_only_absence_never_fabricates_apply()
     && may_apply_without_a_typed_plan_still_refuses()

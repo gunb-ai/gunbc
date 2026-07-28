@@ -10,6 +10,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   HostExecArgv,
@@ -34,6 +35,9 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
+  belt_dispatch_node_for_instance,
+  belt_stop_node_for_instance,
+  BeltStopResult, StopDisabled,
   BeltNodeLookup, NodeFound, NodeMissing,
   belt_find_node_in,
   belt_node_session_live,
@@ -673,3 +677,29 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
 }
 
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
+
+data observe_only_posture_behavioral_note: String = "review 44039/44043 predicate dissolution. dashboard_instance_can_actuate was a Bool nickname for a two-variant coproduct test, so both belt entrypoints now match DashboardActuationPosture directly. Deleting the predicate would have deleted its only assertions with it, and those assertions never proved the wiring anyway — they restated the posture field. This proves the behaviour instead: an observe-only instance REFUSES at both entrypoints, before any observation, provider preflight, or worktree creation. Only the refusing arm is exercised because it short-circuits; the actuating arm would reach live tmux."
+
+test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
+  let preview = srv2_preview_dashboard_instance()
+  let dispatched = belt_dispatch_node_for_instance(
+    instance: preview,
+    node_id: "namespace-canonical-binding",
+  )
+  let stopped = belt_stop_node_for_instance(
+    instance: preview,
+    node_id: "namespace-canonical-binding",
+  )
+  match dispatched {
+    DispatchDisabled { node_id, instance_id, reason: _ } =>
+      node_id == "namespace-canonical-binding"
+        && instance_id == (preview.instance_id as String)
+    _ => false
+  }
+    && match stopped {
+      StopDisabled { node_id, instance_id, reason: _ } =>
+        node_id == "namespace-canonical-binding"
+          && instance_id == (preview.instance_id as String)
+      _ => false
+    }
+}

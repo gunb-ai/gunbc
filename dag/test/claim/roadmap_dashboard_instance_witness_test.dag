@@ -39,7 +39,6 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_ownership_marker_path,
-  dashboard_instance_can_actuate,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -70,9 +69,6 @@ test fn dashboard_actuation_posture_is_instance_data() -> Bool {
   live.actuation == DashboardActuating
     && lab.actuation == DashboardActuating
     && preview.actuation == DashboardObserveOnly
-    && dashboard_instance_can_actuate(instance: live)
-    && dashboard_instance_can_actuate(instance: lab)
-    && !dashboard_instance_can_actuate(instance: preview)
 }
 
 test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {

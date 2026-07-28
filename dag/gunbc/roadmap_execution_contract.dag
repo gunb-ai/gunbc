@@ -167,16 +167,6 @@ fn dispatch_required_capabilities(
   }
 }
 
-fn execution_contract_is_specified(
-  contract: WorkItemExecutionContract,
-) -> Bool {
-  match contract {
-    ExecutionContractUnspecified => false
-    ExecutionContract { validations, extra_capabilities: _ } =>
-      count(validations) > 0
-  }
-}
-
 fn gunbc_claim_execution_contract(
   entry: FilePath,
   function: NonEmptyStr,

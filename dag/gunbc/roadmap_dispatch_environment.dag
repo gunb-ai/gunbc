@@ -22,12 +22,13 @@ import gunbc.ensure {
 import gunbc.roadmap_execution_contract {
   ExecutionCapability,
   WorkItemExecutionContract,
+  ExecutionContractUnspecified,
+  ExecutionContract,
   CapabilityRealization,
   DispatchHostEnvironment,
   execution_capability_label,
   execution_capability_equal,
   dispatch_required_capabilities,
-  execution_contract_is_specified,
   dispatch_host_realization,
   execution_contract_validation_summary,
 }
@@ -266,11 +267,19 @@ fn dispatch_environment_admission_decision(
               receipt_matches_requirement(receipt: receipt, cap: cap)),
         ) == 1,
     )
-  if !execution_contract_is_specified(contract: contract) {
+  match contract {
+    ExecutionContractUnspecified =>
     EnvironmentRefused {
       receipts: receipts,
       validation_summary: validation_summary,
       reason: "work item execution contract is unspecified; dispatch will not guess validation or dependencies",
+    }
+    ExecutionContract { validations, extra_capabilities: _ } =>
+    if count(validations) == 0 {
+    EnvironmentRefused {
+      receipts: receipts,
+      validation_summary: validation_summary,
+      reason: "work item execution contract declares no validation operations; a contract that closes nothing cannot admit dispatch",
     }
   } else if !exact_coverage {
     EnvironmentRefused {
@@ -289,6 +298,7 @@ fn dispatch_environment_admission_decision(
       receipts: receipts,
       validation_summary: validation_summary,
     }
+  }
   }
 }
 
