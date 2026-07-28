@@ -30,10 +30,11 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data pijul_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Pijul R0 fixture. The typed effect graph creates an isolated PIJUL_CONFIG_DIR and ephemeral SSH agent/key, records one base and two concurrent signed changes with Pijul 1.0.0-beta.20, applies the changes in both orders, and independently decodes each real `pijul log --state`/`--hash-only` read-back through extdeps.pijul. The receipt proves channel state and change-set invariance, duplicate-delivery idempotence, channel-independent change identity, an observed dependency section, a clean pristine-to-working-copy projection, and a retained rendered order conflict. It does not infer the conflict's unobserved internal vertex and does not promote Pijul conditional advance. Local recipe: put `pijul` 1.0.0-beta.20 on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/pijul_upstream_model_execution_test.dag --function witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict."
+data pijul_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Pijul R0 fixture. The typed effect graph creates an isolated PIJUL_CONFIG_DIR and ephemeral SSH agent/key, observes the Root add change created by Pijul initialization, records one base and two concurrent signed changes with Pijul 1.0.0-beta.20, applies the changes in both orders, and independently decodes each real `pijul log --state`/`--hash-only` read-back through extdeps.pijul. The receipt proves channel state and change-set invariance, duplicate-delivery idempotence, channel-independent change identity, an observed dependency section, a clean pristine-to-working-copy projection, and a retained rendered order conflict. It does not infer the conflict's unobserved internal vertex and does not promote Pijul conditional advance. Local recipe: put `pijul` 1.0.0-beta.20 on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/pijul_upstream_model_execution_test.dag --function witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict."
 
 type PijulR0LiveReceipt {
   state: PijulStateHash
+  root: PijulChangeHash
   base: PijulChangeHash
   left: PijulChangeHash
   right: PijulChangeHash
@@ -180,6 +181,16 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             config_dir: config_dir,
             agent_socket: agent_socket,
             args: ["init", repo_dir],
+          ),
+          expect: ExpectSuccess,
+        )
+        let root_hash = gunbc.WitnessBin.Run(
+          workdir: repo_dir,
+          bin_path: "/usr/bin/env",
+          args: pijul_env_args(
+            config_dir: config_dir,
+            agent_socket: agent_socket,
+            args: ["log", "--channel", "main", "--hash-only", "--limit", "1"],
           ),
           expect: ExpectSuccess,
         )
@@ -567,6 +578,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           && version.success
           && identity_created.success
           && initialized.success
+          && root_hash.success
           && base_written.success
           && base_added.success
           && base_recorded.success
@@ -613,6 +625,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                 concat("version_err=", version.stderr),
                 concat("identity_err=", identity_created.stderr),
                 concat("init_err=", initialized.stderr),
+                concat("root_err=", root_hash.stderr),
                 concat("base_err=", base_recorded.stderr),
                 concat("left_err=", left_recorded.stderr),
                 concat("right_err=", right_recorded.stderr),
@@ -659,6 +672,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                     diagnostic: "reverse-log-decode-refused",
                   }
                 PijulChannelLogObserved { observation: reverse } =>
+                  let root = trim(s: root_hash.stdout) as PijulChangeHash
                   let base = trim(s: base_hash.stdout) as PijulChangeHash
                   let left = trim(s: left_hash.stdout) as PijulChangeHash
                   let right = trim(s: right_hash.stdout) as PijulChangeHash
@@ -712,6 +726,10 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                             } =>
                               if pijul_hash_count(
                                 changes: forward.changes,
+                                target: root,
+                              ) == 1
+                                && pijul_hash_count(
+                                  changes: forward.changes,
                                 target: base,
                               ) == 1
                                 && pijul_hash_count(
@@ -725,6 +743,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                                 PijulR0LiveVerified {
                                   receipt: PijulR0LiveReceipt {
                                     state: forward.head.state,
+                                    root: root,
                                     base: base,
                                     left: left,
                                     right: right,
@@ -751,6 +770,13 @@ test fn witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict() -> 
     PijulR0LiveRefused { diagnostic: _ } => false
     PijulR0LiveVerified { receipt } =>
       count(receipt.changes) == 4
+        && pijul_hash_count(
+          changes: receipt.changes,
+          target: receipt.root,
+        ) == 1
+        && !(receipt.root == receipt.base)
+        && !(receipt.root == receipt.left)
+        && !(receipt.root == receipt.right)
         && !(receipt.base == receipt.left)
         && !(receipt.base == receipt.right)
         && !(receipt.left == receipt.right)
