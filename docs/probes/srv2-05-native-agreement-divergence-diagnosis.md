@@ -39,11 +39,15 @@ Evidence supporting R2 stale-artifact over cold-cache miss:
 
 The fix retains the outer computation key but appends a derived
 `artifact_realization_digest` over the exact materialized workspace paths/texts
-and structured build argv. The marker now belongs to that realization child.
+and structured build argv, followed by a host-observed resolved-build-toolchain
+digest over the actual executable bytes/version (and Cargo's selected rustc).
+The marker now belongs to that input-and-toolchain realization child.
 The executable `family_crate_dispatch_change_cold_rebuild_holds` control holds
 the inferred trees and emitted member source constant, changes only the family
 dispatcher, and requires cold → cold → warm. Before the fix its second leg was
-a warm stale hit.
+a warm stale hit. The pure
+`native_realization_toolchain_change_cold_rebuild_holds` control holds files and
+build argv constant and changes only the resolved toolchain identity.
 
 ## Rejected alternatives
 

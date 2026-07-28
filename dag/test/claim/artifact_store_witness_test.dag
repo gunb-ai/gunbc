@@ -9,16 +9,20 @@ import std.materialization_ladder {
   ScopeExit, SpacePacked, provider_row,
 }
 import std.artifact_store {
-  ArtifactKey, artifact_key_hash,
+  ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
   ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider,
   StoreHit, StoreMiss, store_get,
   StorePutReceipt, store_put, store_bytes_used,
+}
+import extdeps.realization.emit_on_demand_host {
+  native_cache_realization_workspace_root,
+  native_cache_resolved_toolchain_workspace_root,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
+data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
 
 data spacepacked_provider: CacheProvider = provider_row(
   id: "artifact-store-test",
@@ -77,6 +81,32 @@ test fn store_hit_and_stale_never_served_holds() -> Bool {
     StoreMiss { store: _ } => true
   }
   hit && mutated_input_misses && (k1 == k2) == false
+}
+
+test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
+  let fixed_inputs: List<ArtifactRealizationInput> = [
+    ArtifactRealizationInput {
+      identity: "workspace:src/main.rs",
+      content_digest: content_hash_atom(value: "fn main() {}")
+    },
+    ArtifactRealizationInput {
+      identity: "build-argv",
+      content_digest: content_hash_atom(value: "cargo build --release")
+    },
+  ]
+  let fixed_realization = native_cache_realization_workspace_root(
+    workspace_root: "/tmp/gunbc_toolchain_identity/outer-key",
+    realization_digest: artifact_realization_digest(inputs: fixed_inputs)
+  )
+  let before = native_cache_resolved_toolchain_workspace_root(
+    realization_workspace_root: fixed_realization,
+    resolved_toolchain_identity: content_hash_atom(value: "cargo 1.93.0 + rustc 1.93.0")
+  )
+  let after = native_cache_resolved_toolchain_workspace_root(
+    realization_workspace_root: fixed_realization,
+    resolved_toolchain_identity: content_hash_atom(value: "cargo 1.94.0 + rustc 1.94.0")
+  )
+  before != after
 }
 
 test fn store_budget_evicts_least_recent_counted_holds() -> Bool {

@@ -327,7 +327,7 @@ fn emit_host_build_realization_inputs(
   }
 }
 
-fn emit_host_realization_digest(
+fn emit_host_input_realization_digest(
   files: List<MaterializedWorkspaceFile>,
   builds: List<List<String>>
 ) -> ContentHash {
@@ -451,7 +451,7 @@ fn run_host_process_admitted(
               admission: admission,
               workspace_dir: native_cache_realization_workspace_root(
                 workspace_root: workspace_dir,
-                realization_digest: emit_host_realization_digest(
+                realization_digest: emit_host_input_realization_digest(
                   files: files,
                   builds: builds
                 )

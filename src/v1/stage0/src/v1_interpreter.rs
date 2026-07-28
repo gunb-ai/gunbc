@@ -8090,12 +8090,14 @@ fn eval_emit_host_run_transport_builtin(
 /// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists workspace under workspace_dir and
-/// skips build when `.native_ready` is present. workspace_dir is the pre-composed
-/// path (native_cache_workspace_root(cache_root, key)); callers must not pass the
-/// cache parent alone. Workspace reuse is keyed by the caller's content-derived
-/// path (emit_on_demand_key closure_digest); a different closure MUST land in a
-/// different workspace dir — file set is assumed a pure function of that digest
-/// (benign-by-identity on partial writes before `.native_ready`). `.native_ready`
+/// skips build when `.native_ready` is present. workspace_dir carries the caller's
+/// computation and input-realization segments; this boundary derives the actual
+/// resolved build-toolchain identity and appends it before consulting the marker
+/// (the effective path modeled by
+/// extdeps.realization.emit_on_demand_host.native_cache_resolved_toolchain_workspace_root).
+/// A different closure, materialized input, build argv, or resolved compiler MUST
+/// therefore land in a different workspace (benign-by-identity on partial writes
+/// before `.native_ready`). `.native_ready`
 /// is written only after a successful run (not after build alone): the P3 kernel's
 /// warm boundary is build+run proof, so a transient run failure must not skip
 /// rebuild on retry. Registered in 04_method.dag as
@@ -8271,8 +8273,9 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
+    let resolved_toolchain_identity = emit_host_resolved_build_toolchain_identity(&build_argvs)?;
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
-    let workspace = std::path::PathBuf::from(&workspace_dir);
+    let workspace = std::path::PathBuf::from(&workspace_dir).join(resolved_toolchain_identity);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
@@ -8299,8 +8302,9 @@ fn resolve_host_tool_program(name: &str) -> String {
     }
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
-            if !dir.is_empty() && std::path::Path::new(dir).join(name).is_file() {
-                return name.to_string();
+            let candidate = std::path::Path::new(dir).join(name);
+            if !dir.is_empty() && candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
             }
         }
     }
@@ -8317,6 +8321,96 @@ fn resolve_host_tool_program(name: &str) -> String {
         }
     }
     name.to_string()
+}
+
+/// Observe the host tools which will realize a cached build. This is deliberately
+/// inside the existing wet host-transport boundary: the `.dag` substrate owns the
+/// effective path shape, while only the host can resolve PATH/rustup shims and read
+/// executable bytes. Failure to resolve, read, or execute a version probe refuses
+/// the cached realization; substituting a nominal label would recreate srv2-05.
+///
+/// Cargo is a driver, not the compiler identity. Its observation is therefore
+/// paired with the rustc selected by the same process environment. The transport
+/// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
+/// intentionally not part of this identity.
+fn emit_host_resolved_build_toolchain_identity(
+    build_argvs: &[Vec<String>],
+) -> InterpResult<String> {
+    fn observe_tool(requested: &str, version_args: &[&str]) -> InterpResult<String> {
+        let resolved = resolve_host_tool_program(requested);
+        let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: resolve build tool {requested:?} \
+                     ({resolved:?}) failed: {e}"
+            ),
+        })?;
+        let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
+                canonical.display()
+            ),
+        })?;
+        let output = std::process::Command::new(&resolved)
+            .args(version_args)
+            .env_remove("RUSTC_WRAPPER")
+            .env_remove("RUSTC_WORKSPACE_WRAPPER")
+            .output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
+                ),
+            })?;
+        if !output.status.success() {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: version probe for {requested:?} \
+                     exited {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            });
+        }
+
+        let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
+        for field in [
+            v1_rt::atom_identity_hash(requested.to_string()),
+            v1_rt::atom_identity_hash(canonical.to_string_lossy().into_owned()),
+            v1_rt::bytes_identity_hash(&executable),
+            v1_rt::bytes_identity_hash(&output.stdout),
+            v1_rt::bytes_identity_hash(&output.stderr),
+        ] {
+            digest = v1_rt::hash_combine(digest, field);
+        }
+        Ok(digest)
+    }
+
+    let mut identity =
+        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string());
+    for argv in build_argvs {
+        let requested = argv.first().ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: empty build argv".to_string(),
+        })?;
+        let requested_name = std::path::Path::new(requested)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(requested);
+        let version_args: &[&str] = if requested_name == "cargo" {
+            &["-Vv"]
+        } else {
+            &["--version"]
+        };
+        identity = v1_rt::hash_combine(identity, observe_tool(requested, version_args)?);
+
+        if requested_name == "cargo" {
+            let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+            identity = v1_rt::hash_combine(identity, observe_tool(&rustc, &["-vV"])?);
+            identity = v1_rt::hash_combine(
+                identity,
+                v1_rt::atom_identity_hash(std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default()),
+            );
+        }
+    }
+    Ok(identity)
 }
 
 fn emit_host_run_transport_cached_in_workspace(

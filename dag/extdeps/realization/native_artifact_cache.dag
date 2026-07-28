@@ -29,7 +29,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data native_artifact_cache_note: String = "The durable native-artifact cache (witness-realization P3 warm tier made DECLARED): effective cargo workspace = root / emit_on_demand_key / artifact_realization_digest(materialized workspace files + build argv), warm-skipped by the child workspace's .native_ready marker. The inner digest closes the srv2-05 cross-branch stale-hit class: a changed emitter output, dispatcher suffix, toolchain manifest, or build invocation cannot read the prior realization's marker even when the inferred-tree closure key is unchanged. Self-hosted runners wipe only RUNNER_TEMP, so the root persists across recurring CI invocations. Cold control forces full cold rebuilds, widen-only. HONEST SCOPE: eviction remains Manual; nothing enforces a byte cap on the persistent tier. Dissolve-on: the P2 store budget realization reaches this tier, then eviction upgrades to SizeBounded."
+data native_artifact_cache_note: String = "The durable native-artifact cache (witness-realization P3 warm tier made DECLARED): effective cargo workspace = root / emit_on_demand_key / artifact_realization_digest(materialized workspace files + build argv) / resolved_build_toolchain_identity, warm-skipped by the child workspace's .native_ready marker. The two inner digests close the srv2-05 cross-branch stale-hit class: a changed emitter output, dispatcher suffix, toolchain manifest, build invocation, or actually resolved compiler cannot read the prior realization's marker even when the inferred-tree closure key is unchanged. Self-hosted runners wipe only RUNNER_TEMP, so the root persists across recurring CI invocations. Cold control forces full cold rebuilds, widen-only. HONEST SCOPE: eviction remains Manual; nothing enforces a byte cap on the persistent tier. Dissolve-on: the P2 store budget realization reaches this tier, then eviction upgrades to SizeBounded."
 
 data native_artifact_cache_id: CacheInterfaceId = "native_artifact_cache"
 
@@ -71,7 +71,7 @@ data native_artifact_cache_facts: CacheInterfaceCatalogFacts = {
     {
       field: "key_inputs"
       evidence: OperatorObserved {
-        note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest. The latter covers exact workspace paths+texts and structured build argv; family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child"
+        note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest / resolved_build_toolchain_identity. The input digest covers exact workspace paths+texts and structured build argv; the host boundary observes the resolved build executable bytes/version and Cargo's selected rustc before consulting .native_ready. family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child; native_realization_toolchain_change_cold_rebuild_holds holds files+argv constant and changes only the resolved toolchain"
         observed_at: 0
       }
     },
