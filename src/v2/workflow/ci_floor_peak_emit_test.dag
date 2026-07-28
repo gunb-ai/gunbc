@@ -33,10 +33,9 @@ import v2.std.orchestration {
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol }
 import std.filesystem.types { RegularFile, Directory, Missing }
 import std.path_intent { And, Not, PathEntryKind, PathLiteral, PathNonempty, PathNotEq, PathRef }
-import std.types { FilePathParts }
+import std.types { FilePathParts, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -207,7 +206,7 @@ test fn ci_floor_peak_path_kind_discriminates_regular_directory_missing_holds() 
 test fn ci_floor_peak_path_predicate_refuses_unsafe_operand_holds() -> Bool {
   match bash_path_predicate_target_model(
     predicate: And {
-      lhs: PathNonempty { path: PathRef { name: "d;rm -rf /" as Symbol } },
+      lhs: PathNonempty { path: PathRef { name: "d;rm -rf /" as NonEmptyStr } },
       rhs: PathNonempty { path: ci_floor_peak_path_ref() }
     }
   ) {
