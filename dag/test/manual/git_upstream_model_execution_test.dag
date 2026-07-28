@@ -59,7 +59,7 @@ import test.claim.git_upstream_model_witness {
   path_non_ascii,
   fixture_repository,
 }
-import std.bytes { octets_bytes }
+import std.bytes { octets_bytes, utf8_encode_bytes }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -598,7 +598,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         && tree_modes_grounded
         && read_back_grounded {
         match git_decode_ls_tree_z(
-          text: tree_wire.stdout,
+          payload: utf8_encode_bytes(s: tree_wire.stdout),
           format: GitObjectFormatSha1,
         ) {
           GitLsTreeZRefused { cause: _ } =>

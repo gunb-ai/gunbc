@@ -345,8 +345,7 @@ fn git_stored_object_receipt_valid(
 ) -> Bool {
   stored.content_address.object_type == store_object_kind(object: stored.object)
     && stored.content_address.canonical_subject == stored.object
-    && stored.content_address.canonical_size
-      == git_store_object_canonical_size(object: stored.object)
+    && stored.content_address.canonical_size == git_store_object_canonical_size(object: stored.object)
     && git_store_object_internal_size_valid(object: stored.object)
     && git_content_address_producer_format(producer: stored.content_address.producer) == git_object_id_format(oid: stored.content_address.oid)
     && git_object_id_format(oid: stored.content_address.oid) == repository_format
@@ -709,6 +708,7 @@ fn git_decode_object_id_text(
 
 type GitLsTreeZRefusal
   = GitLsTreeZFramingRefused { cause: GitNulQuartetRefusal }
+  | GitLsTreeZHeaderNonAscii { field: NonEmptyStr }
   | GitLsTreeZObjectIdRefused { cause: GitObjectIdTextRefusal }
   | GitLsTreeZEntryRefused { cause: GitTreeDecodeRefusal }
 
@@ -716,9 +716,16 @@ type GitLsTreeZDecodeOutcome
   = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
   | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
 
-fn git_path_from_utf8_observation(path: NonEmptyStr) -> GitPath {
-  GitPath {
-    octets: bytes_octets(b: utf8_encode_bytes(s: path as String)),
+fn git_ascii_field_text(octets: List<UInt8>) -> NonEmptyStr? {
+  if all(octets, octet => octet > 0 && octet < 128) {
+    Present {
+      value: join(
+        octets |> map(octet => from_code_point(octet)),
+        "",
+      ) as NonEmptyStr,
+    }
+  } else {
+    none
   }
 }
 
@@ -730,40 +737,58 @@ fn git_ls_tree_z_row_step(
   match state {
     GitLsTreeZRefused { cause } => GitLsTreeZRefused { cause: cause }
     GitLsTreeZDecoded { entries } =>
-      match git_decode_object_id_text(
-        format: format,
-        text: row.third as String,
-      ) {
-        GitObjectIdTextRefused { cause } =>
-          GitLsTreeZRefused {
-            cause: GitLsTreeZObjectIdRefused { cause: cause }
+      match git_ascii_field_text(octets: row.first) {
+        Absent => GitLsTreeZRefused {
+          cause: GitLsTreeZHeaderNonAscii { field: "mode" }
+        }
+        Present { value: mode } =>
+          match git_ascii_field_text(octets: row.second) {
+            Absent => GitLsTreeZRefused {
+              cause: GitLsTreeZHeaderNonAscii { field: "object-type" }
+            }
+            Present { value: object_type } =>
+              match git_ascii_field_text(octets: row.third) {
+                Absent => GitLsTreeZRefused {
+                  cause: GitLsTreeZHeaderNonAscii { field: "object-id" }
+                }
+                Present { value: object_id_text } =>
+                  match git_decode_object_id_text(
+                    format: format,
+                    text: object_id_text as String,
+                  ) {
+                    GitObjectIdTextRefused { cause } =>
+                      GitLsTreeZRefused {
+                        cause: GitLsTreeZObjectIdRefused { cause: cause }
+                      }
+                    GitObjectIdTextDecoded { oid } =>
+                      let wire = GitTreeWireEntry {
+                        mode: mode,
+                        object_type: object_type,
+                        oid: oid,
+                        path: GitPath { octets: row.fourth },
+                      }
+                      match git_decode_tree_entry(entry: wire) {
+                        GitTreeEntryDecodeRefused { cause } =>
+                          GitLsTreeZRefused {
+                            cause: GitLsTreeZEntryRefused { cause: cause }
+                          }
+                        GitTreeEntryDecoded { entry: _ } =>
+                          GitLsTreeZDecoded {
+                            entries: append(entries, items: [wire])
+                          }
+                      }
+                  }
           }
-        GitObjectIdTextDecoded { oid } =>
-          let wire = GitTreeWireEntry {
-            mode: row.first,
-            object_type: row.second,
-            oid: oid,
-            path: git_path_from_utf8_observation(path: row.fourth),
-          }
-          match git_decode_tree_entry(entry: wire) {
-            GitTreeEntryDecodeRefused { cause } =>
-              GitLsTreeZRefused {
-                cause: GitLsTreeZEntryRefused { cause: cause }
-              }
-            GitTreeEntryDecoded { entry: _ } =>
-              GitLsTreeZDecoded {
-                entries: append(entries, items: [wire])
-              }
-          }
-      }
+  }
+}
   }
 }
 
 fn git_decode_ls_tree_z(
-  text: String,
+  payload: Bytes,
   format: GitObjectFormat,
 ) -> GitLsTreeZDecodeOutcome {
-  match git_decode_nul_quartets(text: text) {
+  match git_decode_nul_quartets(payload: payload) {
     GitNulQuartetsRefused { cause } =>
       GitLsTreeZRefused {
         cause: GitLsTreeZFramingRefused { cause: cause }

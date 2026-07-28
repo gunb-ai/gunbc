@@ -2,7 +2,6 @@ module test.claim.git_upstream_model_witness
 
 import extdeps.git {
   GitAuthor,
-  ObjectType,
   BlobObj,
   TreeObj,
   CommitObj,
@@ -28,6 +27,7 @@ import extdeps.git.object_store {
   ObjectTree,
   ObjectCommit,
   ObjectTag,
+  StoreObject,
   GitContentAddressReceipt,
   GitHashObjectObserved,
   StoredObject,
@@ -73,14 +73,15 @@ import extdeps.git.object_store {
   git_model_update_ref_exact,
   git_resolve_direct_ref,
   store_object_kind,
+  git_store_object_canonical_size,
   stored_object_oid,
   git_object_id_format,
   git_object_id_content_hash,
   git_r0_unsupported_boundary,
 }
-import std.measure { ByteSize, byte_size }
+import std.measure { byte_size }
 import std.types { Bytes }
-import std.bytes { octets_bytes }
+import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 
 data sha1_blob_regular: GitObjectId = GitSha1ObjectId {
   digest: "1d3a06547c706bd0f75b130edecf4832295bba6b",
@@ -230,13 +231,13 @@ fn fixture_tree() -> Tree {
 
 fn fixture_content_address(
   oid: GitObjectId,
-  object_type: ObjectType,
-  canonical_size: ByteSize,
+  object: StoreObject,
 ) -> GitContentAddressReceipt {
   GitContentAddressReceipt {
     oid: oid,
-    object_type: object_type,
-    canonical_size: canonical_size,
+    object_type: store_object_kind(object: object),
+    canonical_size: git_store_object_canonical_size(object: object),
+    canonical_subject: object,
     producer: GitHashObjectObserved {
       git_version: "git version 2.39.5",
       object_format: GitObjectFormatSha1,
@@ -244,53 +245,47 @@ fn fixture_content_address(
   }
 }
 
+fn fixture_stored_object(
+  oid: GitObjectId,
+  object: StoreObject,
+) -> StoredObject {
+  StoredObject {
+    content_address: fixture_content_address(oid: oid, object: object),
+    object: object,
+  }
+}
+
 fn fixture_objects() -> List<StoredObject> {
   [
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_blob_regular,
-        object_type: BlobObj,
-        canonical_size: byte_size(count: 6),
-      ),
+    fixture_stored_object(
+      oid: sha1_blob_regular,
       object: ObjectBlob {
         blob: Blob {
           size: byte_size(count: 6),
           content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_blob_executable,
-        object_type: BlobObj,
-        canonical_size: byte_size(count: 3),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_blob_executable,
       object: ObjectBlob {
         blob: Blob {
           size: byte_size(count: 3),
           content: octets_bytes(o: [114, 117, 110]),
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_blob_symlink,
-        object_type: BlobObj,
-        canonical_size: byte_size(count: 6),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_blob_symlink,
       object: ObjectBlob {
         blob: Blob {
           size: byte_size(count: 6),
           content: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_subtree,
-        object_type: TreeObj,
-        canonical_size: byte_size(count: 32),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_subtree,
       object: ObjectTree {
         tree: Tree {
           entries: [
@@ -301,34 +296,22 @@ fn fixture_objects() -> List<StoredObject> {
           ],
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_empty_blob,
-        object_type: BlobObj,
-        canonical_size: byte_size(count: 0),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_empty_blob,
       object: ObjectBlob {
         blob: Blob {
           size: byte_size(count: 0),
           content: octets_bytes(o: []),
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_empty_tree,
-        object_type: TreeObj,
-        canonical_size: byte_size(count: 0),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_empty_tree,
       object: ObjectTree { tree: Tree { entries: [] } },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_gitlink,
-        object_type: CommitObj,
-        canonical_size: byte_size(count: 176),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_gitlink,
       object: ObjectCommit {
         commit: Commit {
           tree: sha1_empty_tree,
@@ -338,21 +321,13 @@ fn fixture_objects() -> List<StoredObject> {
           message: "gitlink",
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_root_tree,
-        object_type: TreeObj,
-        canonical_size: byte_size(count: 195),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_root_tree,
       object: ObjectTree { tree: fixture_tree() },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_parent_commit,
-        object_type: CommitObj,
-        canonical_size: byte_size(count: 175),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_parent_commit,
       object: ObjectCommit {
         commit: Commit {
           tree: sha1_root_tree,
@@ -362,13 +337,9 @@ fn fixture_objects() -> List<StoredObject> {
           message: "parent",
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_next_commit,
-        object_type: CommitObj,
-        canonical_size: byte_size(count: 221),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_next_commit,
       object: ObjectCommit {
         commit: Commit {
           tree: sha1_root_tree,
@@ -378,13 +349,9 @@ fn fixture_objects() -> List<StoredObject> {
           message: "next",
         }
       },
-    },
-    StoredObject {
-      content_address: fixture_content_address(
-        oid: sha1_tag,
-        object_type: TagObj,
-        canonical_size: byte_size(count: 149),
-      ),
+    ),
+    fixture_stored_object(
+      oid: sha1_tag,
       object: ObjectTag {
         tag: AnnotatedTag {
           target: sha1_parent_commit,
@@ -394,7 +361,7 @@ fn fixture_objects() -> List<StoredObject> {
           message: "bounded annotated tag",
         }
       },
-    },
+    ),
   ]
 }
 
@@ -538,8 +505,47 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
     ),
     nul,
   )
-  match git_decode_ls_tree_z(text: text, format: GitObjectFormatSha1) {
+  match git_decode_ls_tree_z(
+    payload: utf8_encode_bytes(s: text),
+    format: GitObjectFormatSha1,
+  ) {
     GitLsTreeZDecoded { entries } => entries == fixture_wire_entries()
+    GitLsTreeZRefused { cause: _ } => false
+  }
+}
+
+test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
+  let nul = from_code_point(0)
+  let header = concat(
+    join(
+      [
+        "100644",
+        "blob",
+        git_object_id_content_hash(oid: sha1_blob_regular) as String,
+      ],
+      nul,
+    ),
+    nul,
+  )
+  let payload = octets_bytes(
+    o: append(
+      bytes_octets(b: utf8_encode_bytes(s: header)),
+      items: [255, 46, 100, 97, 103, 0],
+    ),
+  )
+  match git_decode_ls_tree_z(
+    payload: payload,
+    format: GitObjectFormatSha1,
+  ) {
+    GitLsTreeZDecoded { entries } =>
+      entries == [
+        GitTreeWireEntry {
+          mode: "100644",
+          object_type: "blob",
+          oid: sha1_blob_regular,
+          path: path_non_utf8,
+        },
+      ]
     GitLsTreeZRefused { cause: _ } => false
   }
 }
@@ -636,18 +642,25 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
 
 test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
   let repo = fixture_repository()
+  let object = ObjectBlob {
+    blob: Blob {
+      size: byte_size(count: 6),
+      content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
+    }
+  }
+  let observed = fixture_content_address(
+    oid: sha1_blob_regular,
+    object: object,
+  )
   let forged = StoredObject {
-    content_address: fixture_content_address(
-      oid: sha1_blob_regular,
+    content_address: GitContentAddressReceipt {
+      oid: observed.oid,
       object_type: TagObj,
-      canonical_size: byte_size(count: 6),
-    ),
-    object: ObjectBlob {
-      blob: Blob {
-        size: byte_size(count: 6),
-        content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
-      }
+      canonical_size: observed.canonical_size,
+      canonical_subject: observed.canonical_subject,
+      producer: observed.producer,
     },
+    object: object,
   }
   let invalid = GitRepositoryState {
     object_format: repo.object_format,
@@ -664,6 +677,69 @@ test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
   }
   match git_lookup_object(repo: invalid, oid: sha1_blob_regular) {
     ObjectCorrupt { oid, reason: _ } => oid == sha1_blob_regular
+    _ => false
+  }
+}
+
+test fn witness_git_content_address_binds_subject_and_canonical_size() -> Bool {
+  let repo = fixture_repository()
+  let observed_subject = ObjectBlob {
+    blob: Blob {
+      size: byte_size(count: 6),
+      content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
+    }
+  }
+  let receipt = fixture_content_address(
+    oid: sha1_blob_regular,
+    object: observed_subject,
+  )
+  let different_object = ObjectBlob {
+    blob: Blob {
+      size: byte_size(count: 3),
+      content: octets_bytes(o: [114, 117, 110]),
+    }
+  }
+  let subject_mismatch = StoredObject {
+    content_address: receipt,
+    object: different_object,
+  }
+  let size_mismatch = StoredObject {
+    content_address: GitContentAddressReceipt {
+      oid: receipt.oid,
+      object_type: receipt.object_type,
+      canonical_size: byte_size(count: 99),
+      canonical_subject: receipt.canonical_subject,
+      producer: receipt.producer,
+    },
+    object: observed_subject,
+  }
+  let without_original = repo.objects |> filter(object =>
+    !(stored_object_oid(stored: object) == sha1_blob_regular)
+  )
+  let subject_repo = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: append(without_original, items: [subject_mismatch]),
+    unavailable: repo.unavailable,
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  let size_repo = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: append(without_original, items: [size_mismatch]),
+    unavailable: repo.unavailable,
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_lookup_object(repo: subject_repo, oid: sha1_blob_regular) {
+    ObjectCorrupt { oid, reason: _ } =>
+      oid == sha1_blob_regular
+        && match git_lookup_object(repo: size_repo, oid: sha1_blob_regular) {
+          ObjectCorrupt { oid: sized_oid, reason: _ } =>
+            sized_oid == sha1_blob_regular
+          _ => false
+        }
     _ => false
   }
 }
