@@ -2,7 +2,7 @@ module extdeps.git.object_store
 
 import std.types { ContentHash, NonEmptyStr, Bytes }
 import std.integer { UInt8, NonNegativeInt }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
@@ -129,6 +129,7 @@ type GitContentAddressReceipt {
   oid: GitObjectId
   object_type: ObjectType
   canonical_size: ByteSize
+  canonical_subject: StoreObject
   producer: GitContentAddressProducer
 }
 
@@ -213,6 +214,127 @@ fn store_object_kind(object: StoreObject) -> ObjectType {
   }
 }
 
+fn git_object_id_raw_size(oid: GitObjectId) -> NonNegativeInt {
+  match oid {
+    GitSha1ObjectId { digest: _ } => 20
+    GitSha256ObjectId { digest: _ } => 32
+  }
+}
+
+fn git_utf8_octet_count(text: String) -> NonNegativeInt {
+  count(bytes_octets(b: utf8_encode_bytes(s: text)))
+}
+
+fn git_object_type_wire_name(object_type: ObjectType) -> String {
+  match object_type {
+    BlobObj => "blob"
+    TreeObj => "tree"
+    CommitObj => "commit"
+    TagObj => "tag"
+  }
+}
+
+fn git_tree_entry_canonical_payload_size(entry: TreeEntry) -> NonNegativeInt {
+  match entry {
+    RegularBlobEntry { path, oid } =>
+      6 + 1 + count(path.octets) + 1 + git_object_id_raw_size(oid: oid)
+    ExecutableBlobEntry { path, oid } =>
+      6 + 1 + count(path.octets) + 1 + git_object_id_raw_size(oid: oid)
+    SymlinkEntry { path, oid } =>
+      6 + 1 + count(path.octets) + 1 + git_object_id_raw_size(oid: oid)
+    SubtreeEntry { path, oid } =>
+      5 + 1 + count(path.octets) + 1 + git_object_id_raw_size(oid: oid)
+    GitlinkEntry { path, oid } =>
+      6 + 1 + count(path.octets) + 1 + git_object_id_raw_size(oid: oid)
+  }
+}
+
+fn git_author_wire_line(role: String, author: GitAuthor) -> String {
+  join(
+    [
+      role,
+      " ",
+      author.name,
+      " <",
+      author.email as String,
+      "> ",
+      author.timestamp as String,
+      "\n",
+    ],
+    "",
+  )
+}
+
+fn git_store_object_canonical_size(object: StoreObject) -> ByteSize {
+  match object {
+    ObjectBlob { blob } =>
+      byte_size(count: count(bytes_octets(b: blob.content)))
+    ObjectTree { tree } =>
+      byte_size(
+        count: fold(
+          tree.entries,
+          init: 0,
+          f: (total, entry) =>
+            total + git_tree_entry_canonical_payload_size(entry: entry),
+        ),
+      )
+    ObjectCommit { commit } =>
+      let parent_lines = commit.parents
+        |> map(parent => join(
+          [
+            "parent ",
+            git_object_id_content_hash(oid: parent) as String,
+            "\n",
+          ],
+          "",
+        ))
+        |> join(separator: "")
+      let payload = join(
+        [
+          "tree ",
+          git_object_id_content_hash(oid: commit.tree) as String,
+          "\n",
+          parent_lines,
+          git_author_wire_line(role: "author", author: commit.author),
+          git_author_wire_line(role: "committer", author: commit.committer),
+          "\n",
+          commit.message as String,
+          "\n",
+        ],
+        "",
+      )
+      byte_size(count: git_utf8_octet_count(text: payload))
+    ObjectTag { tag } =>
+      let payload = join(
+        [
+          "object ",
+          git_object_id_content_hash(oid: tag.target) as String,
+          "\n",
+          "type ",
+          git_object_type_wire_name(object_type: tag.target_type),
+          "\n",
+          "tag ",
+          tag.name as String,
+          "\n",
+          git_author_wire_line(role: "tagger", author: tag.tagger),
+          "\n",
+          tag.message as String,
+          "\n",
+        ],
+        "",
+      )
+      byte_size(count: git_utf8_octet_count(text: payload))
+  }
+}
+
+fn git_store_object_internal_size_valid(object: StoreObject) -> Bool {
+  match object {
+    ObjectBlob { blob } =>
+      blob.size == byte_size(count: count(bytes_octets(b: blob.content)))
+    _ => true
+  }
+}
+
 fn stored_object_oid(stored: StoredObject) -> GitObjectId {
   stored.content_address.oid
 }
@@ -222,6 +344,10 @@ fn git_stored_object_receipt_valid(
   repository_format: GitObjectFormat,
 ) -> Bool {
   stored.content_address.object_type == store_object_kind(object: stored.object)
+    && stored.content_address.canonical_subject == stored.object
+    && stored.content_address.canonical_size
+      == git_store_object_canonical_size(object: stored.object)
+    && git_store_object_internal_size_valid(object: stored.object)
     && git_content_address_producer_format(producer: stored.content_address.producer) == git_object_id_format(oid: stored.content_address.oid)
     && git_object_id_format(oid: stored.content_address.oid) == repository_format
 }
@@ -370,23 +496,23 @@ fn git_decode_tree(entries: List<GitTreeWireEntry>) -> GitTreeDecodeOutcome {
 }
 
 type GitNulQuartet {
-  first: NonEmptyStr
-  second: NonEmptyStr
-  third: NonEmptyStr
-  fourth: NonEmptyStr
+  first: List<UInt8>
+  second: List<UInt8>
+  third: List<UInt8>
+  fourth: List<UInt8>
 }
 
 type GitNulQuartetPending
   = GitNulQuartetAwaitFirst
-  | GitNulQuartetAwaitSecond { first: NonEmptyStr }
+  | GitNulQuartetAwaitSecond { first: List<UInt8> }
   | GitNulQuartetAwaitThird {
-      first: NonEmptyStr,
-      second: NonEmptyStr,
+      first: List<UInt8>,
+      second: List<UInt8>,
     }
   | GitNulQuartetAwaitFourth {
-      first: NonEmptyStr,
-      second: NonEmptyStr,
-      third: NonEmptyStr,
+      first: List<UInt8>,
+      second: List<UInt8>,
+      third: List<UInt8>,
     }
 
 type GitNulQuartetRefusal
@@ -408,26 +534,25 @@ type GitNulQuartetDecodeOutcome
 
 fn git_nul_quartet_step(
   state: GitNulQuartetFoldState,
-  field: String,
+  field: List<UInt8>,
 ) -> GitNulQuartetFoldState {
   match state {
     GitNulQuartetFoldRefused { cause } =>
       GitNulQuartetFoldRefused { cause: cause }
     GitNulQuartetAccumulating { pending, rows, field_count } =>
-      if field == "" {
+      if count(field) == 0 {
         GitNulQuartetFoldRefused { cause: GitNulQuartetEmptyField }
       } else {
-        let value = field as NonEmptyStr
         match pending {
           GitNulQuartetAwaitFirst => GitNulQuartetAccumulating {
-            pending: GitNulQuartetAwaitSecond { first: value },
+            pending: GitNulQuartetAwaitSecond { first: field },
             rows: rows,
             field_count: field_count + 1,
           }
           GitNulQuartetAwaitSecond { first } => GitNulQuartetAccumulating {
             pending: GitNulQuartetAwaitThird {
               first: first,
-              second: value,
+              second: field,
             },
             rows: rows,
             field_count: field_count + 1,
@@ -437,7 +562,7 @@ fn git_nul_quartet_step(
               pending: GitNulQuartetAwaitFourth {
                 first: first,
                 second: second,
-                third: value,
+                third: field,
               },
               rows: rows,
               field_count: field_count + 1,
@@ -450,7 +575,7 @@ fn git_nul_quartet_step(
                   first: first,
                   second: second,
                   third: third,
-                  fourth: value,
+                  fourth: field,
                 },
               ]),
               field_count: field_count + 1,
@@ -460,51 +585,79 @@ fn git_nul_quartet_step(
   }
 }
 
-fn git_decode_nul_quartets(text: String) -> GitNulQuartetDecodeOutcome {
-  let fields_with_terminator = split(
-    s: text,
-    delimiter: from_code_point(0),
-  )
-  let field_count_with_terminator = count(fields_with_terminator)
-  if field_count_with_terminator == 0 {
-    GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
-  } else {
-    match fields_with_terminator
-      |> skip(n: field_count_with_terminator - 1)
-      |> first {
-      Absent => GitNulQuartetsRefused {
-        cause: GitNulQuartetMissingTerminator
-      }
-      Present { value: last } =>
-        if last != "" {
-          GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
+type GitNulFieldFoldState
+  = GitNulFieldsAccumulating {
+      current: List<UInt8>,
+      fields: List<List<UInt8>>,
+      terminated: Bool,
+    }
+  | GitNulFieldsRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_field_octet_step(
+  state: GitNulFieldFoldState,
+  octet: UInt8,
+) -> GitNulFieldFoldState {
+  match state {
+    GitNulFieldsRefused { cause } => GitNulFieldsRefused { cause: cause }
+    GitNulFieldsAccumulating { current, fields, terminated: _ } =>
+      if octet == 0 {
+        if count(current) == 0 {
+          GitNulFieldsRefused { cause: GitNulQuartetEmptyField }
         } else {
-          let fields = fields_with_terminator.take(
-            n: field_count_with_terminator - 1,
-          )
-          match fold(
-            fields,
-            init: GitNulQuartetAccumulating {
-              pending: GitNulQuartetAwaitFirst,
-              rows: [],
-              field_count: 0,
-            },
-            f: git_nul_quartet_step,
-          ) {
-            GitNulQuartetFoldRefused { cause } =>
-              GitNulQuartetsRefused { cause: cause }
-            GitNulQuartetAccumulating { pending, rows, field_count } =>
-              match pending {
-                GitNulQuartetAwaitFirst => GitNulQuartetsDecoded { rows: rows }
-                _ => GitNulQuartetsRefused {
-                  cause: GitNulQuartetIncompleteRecord {
-                    field_count: field_count,
-                  }
-                }
-              }
+          GitNulFieldsAccumulating {
+            current: [],
+            fields: append(fields, items: [current]),
+            terminated: true,
           }
         }
-    }
+      } else {
+        GitNulFieldsAccumulating {
+          current: append(current, items: [octet]),
+          fields: fields,
+          terminated: false,
+        }
+      }
+  }
+}
+
+fn git_decode_nul_quartets(payload: Bytes) -> GitNulQuartetDecodeOutcome {
+  match fold(
+    bytes_octets(b: payload),
+    init: GitNulFieldsAccumulating {
+      current: [],
+      fields: [],
+      terminated: false,
+    },
+    f: git_nul_field_octet_step,
+  ) {
+    GitNulFieldsRefused { cause } =>
+      GitNulQuartetsRefused { cause: cause }
+    GitNulFieldsAccumulating { current: _, fields, terminated } =>
+      if !terminated {
+        GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
+      } else {
+        match fold(
+          fields,
+          init: GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitFirst,
+            rows: [],
+            field_count: 0,
+          },
+          f: git_nul_quartet_step,
+        ) {
+          GitNulQuartetFoldRefused { cause } =>
+            GitNulQuartetsRefused { cause: cause }
+          GitNulQuartetAccumulating { pending, rows, field_count } =>
+            match pending {
+              GitNulQuartetAwaitFirst => GitNulQuartetsDecoded { rows: rows }
+              _ => GitNulQuartetsRefused {
+                cause: GitNulQuartetIncompleteRecord {
+                  field_count: field_count,
+                }
+              }
+            }
+        }
+      }
   }
 }
 
