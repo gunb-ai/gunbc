@@ -10,6 +10,7 @@ import std.occurrence_identity {
 
 import v1.std.core {
   Node,
+  Resolved,
   MatchPattern,
   Bind,
   LitPattern,
@@ -451,8 +452,28 @@ fn collector_reaches_pattern_declaration() -> Bool {
   map_has(slots, dag_node_key(node: declaration))
 }
 
+fn collector_anchor_key_uses_authored_target() -> Bool {
+  let target = reference_node_at(
+    name: "T",
+    id: 905,
+    start: 202,
+    end: 203,
+  )
+  let shell = with(
+    leaf_node_with_span(
+      name: "identity",
+      span: make_span(start: 192, end: 200),
+    ),
+    { inferred: Present { value: Resolved { node: target } } },
+  )
+  let slots = collector_insert(node: shell, slots: empty_map())
+  dag_node_key(node: shell) == dag_node_key(node: target) &&
+  map_has(slots, dag_node_key(node: shell))
+}
+
 test fn occurrence_transport_collector_is_occurrence_safe() -> Bool {
   collector_dedupes_one_occurrence() &&
   collector_keeps_structurally_equal_occurrences() &&
-  collector_reaches_pattern_declaration()
+  collector_reaches_pattern_declaration() &&
+  collector_anchor_key_uses_authored_target()
 }

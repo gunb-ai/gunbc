@@ -73,11 +73,11 @@ fn dag_authored_occurrence_key(occurrence: AuthoredOccurrence) -> String {
 }
 
 fn dag_node_key(node: Node) -> String {
-  match node.authored_occurrence {
+  let anchor = dag_node_collection_anchor(node: node)
+  match anchor.authored_occurrence {
     Present { value: occurrence } =>
       dag_authored_occurrence_key(occurrence: occurrence)
     Absent =>
-      let anchor = dag_node_collection_anchor(node: node)
       if anchor.span.start == 0 && anchor.span.end == 0 {
         concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
       } else {
