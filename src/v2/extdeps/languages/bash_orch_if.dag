@@ -148,44 +148,59 @@ fn bash_test_path_kind_op(kind: EntryKind) -> String {
   }
 }
 
-fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<TargetModel> {
-  let tokens = [
+fn bash_test_path_kind_tokens() -> List<ConcreteSyntaxToken> {
+  [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_op },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_operand },
     FixedToken { token_class: ^bash_token_test_rbracket }
   ]
-  let binding_spellings = map_insert(
+}
+
+data bash_test_path_kind_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_test_path_kind_tokens()
+)
+
+fn bash_test_path_kind_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "[ ", class: ^bash_token_test_lbracket),
+    span(text: " ]", class: ^bash_token_test_rbracket)
+  ]))
+}
+
+fn bash_test_path_kind_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_test_path_kind,
+    lhs: ^bash_production_test_path_kind,
+    tokens: bash_test_path_kind_tokens(),
+    emitted: bash_test_path_kind_emitted
+  )
+}
+
+fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<Symbol, String> {
+  map_insert(
     map_insert(empty_map(), ^bash_test_path_kind_op, op),
     ^bash_test_path_kind_operand, operand
   )
+}
+
+fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
-      tokens: tokens,
-      lex: phrase_to_lex_rules(p: phrase([
-        span(text: "[ ", class: ^bash_token_test_lbracket),
-        span(text: " ]", class: ^bash_token_test_rbracket)
-      ])),
-      binding_spellings: binding_spellings
+      tokens: bash_test_path_kind_tokens(),
+      lex: bash_test_path_kind_lex(),
+      binding_spellings: bash_test_path_kind_binding_spellings(op: op, operand: operand)
     ),
     f: fn(source_text) {
       outcome_accepted(
         bash_make_bound_tokens_target_model(
-          rules: bash_relation_translation_rules_node(
-            rule_name: ^bash_relation_rule_test_path_kind,
-            lhs: ^bash_production_test_path_kind,
-            tokens: tokens,
-            emitted: bash_conj_emitted_from_tokens(tokens: tokens)
-          ),
+          rules: bash_test_path_kind_translation_rules_node(),
           source_literal: ^bash_test_path_kind_source_literal,
           production_name: ^bash_production_test_path_kind,
-          tokens: tokens,
+          tokens: bash_test_path_kind_tokens(),
           source_text: render_target_text(t: source_text),
-          lex: phrase_to_lex_rules(p: phrase([
-            span(text: "[ ", class: ^bash_token_test_lbracket),
-            span(text: " ]", class: ^bash_token_test_rbracket)
-          ])),
-          binding_spellings: binding_spellings
+          lex: bash_test_path_kind_lex(),
+          binding_spellings: bash_test_path_kind_binding_spellings(op: op, operand: operand)
         )
       )
     }
@@ -295,6 +310,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
             value: concat("$(dirname \"", concat(concat("$", n), "\"))")
           )
         )
+        )
       }
     PathLiteral { parts: p } =>
       if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
@@ -305,6 +321,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
             name: "d",
             value: concat("$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\"))")
           )
+        )
         )
       }
     PathJoin { base: b, suffix: s } =>
@@ -317,7 +334,8 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
               value: concat("$(dirname \"", concat(text, "\"))")
             )
           )
-        }
+        )
+      }
       )
   }
 }
