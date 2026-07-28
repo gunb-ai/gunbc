@@ -11,24 +11,28 @@ import gunbc.roadmap_workflow_progress {
   AttemptProcessAlive,
   AttemptProcessExited,
   AttemptProcessAbsent,
+  AttemptProcessObservation,
   WorkflowAttemptEvidence,
+  workflow_attempt_progress,
+  workflow_attempt_progress_json_value,
+}
+import gunbc.roadmap_workflow_stage {
   WorkflowSegment,
-  WorkflowSegmentComplete,
-  WorkflowSegmentPending,
-  WorkflowSegmentRefused,
   EnvironmentWorkflowSegment,
   WorkspaceWorkflowSegment,
   AgentWorkflowSegment,
   VerificationWorkflowSegment,
-  workflow_attempt_progress,
-  workflow_attempt_progress_json_value,
+  PublicationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
   workflow_segment_kind_key,
   workflow_segment_state_key,
 }
+import gunbc.workflow_reconcile { workflow_reconcile_status_key }
 
 fn fixture_evidence(
   events: String,
-  process: gunbc.roadmap_workflow_progress.AttemptProcessObservation,
+  process: AttemptProcessObservation,
 ) -> WorkflowAttemptEvidence {
   WorkflowAttemptEvidence {
     node_id: "node-1",
@@ -65,12 +69,20 @@ test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
     process: AttemptProcessAlive { command: "node" },
   ))
-  count(progress.segments) == 5
+  count(progress.segments) == 7
     && segment_state(progress.segments, "environment") == "complete"
     && segment_state(progress.segments, "workspace") == "complete"
     && segment_state(progress.segments, "agent") == "active"
     && segment_state(progress.segments, "verify") == "pending"
+    && segment_state(progress.segments, "publish") == "pending"
     && segment_state(progress.segments, "review") == "pending"
+    && segment_state(progress.segments, "audit") == "pending"
+    && progress.reconciliation.desired_count == 7
+    && progress.reconciliation.observed_count == 3
+    && progress.reconciliation.remaining_count == 5
+    && progress.reconciliation.observed_failure_count == 0
+    && progress.reconciliation.observed_refusal_count == 0
+    && progress.reconciliation.plan_refusal_count == 0
 }
 
 test fn provider_completion_cannot_fabricate_verification() -> Bool {
@@ -94,6 +106,10 @@ test fn nonzero_exit_without_terminal_event_is_failed() -> Bool {
   match progress.provider {
     ProviderFailed { activity: _, detail } =>
       string_contains(s: detail, pattern: "exited 7")
+        && progress.reconciliation.observed_failure_count == 1
+        && workflow_reconcile_status_key(
+          report: progress.reconciliation,
+        ) == "failed"
     _ => false
   }
 }
@@ -106,6 +122,10 @@ test fn zero_exit_without_terminal_event_is_refused() -> Bool {
   match progress.provider {
     ProviderEventsRefused { activity: _, detail } =>
       string_contains(s: detail, pattern: "without turn.completed")
+        && progress.reconciliation.observed_refusal_count == 1
+        && workflow_reconcile_status_key(
+          report: progress.reconciliation,
+        ) == "refused"
     _ => false
   }
 }
@@ -169,6 +189,7 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     ProviderEventsRefused { activity: "legacy attempt", detail: _ } =>
       segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "workspace") == "refused"
+        && progress.reconciliation.observed_refusal_count == 3
     _ => false
   }
 }
@@ -197,6 +218,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     ProviderEventsRefused { activity: "environment admission refused", detail: _ } =>
       segment_state(progress.segments, "environment") == "refused"
         && segment_state(progress.segments, "agent") == "refused"
+        && progress.reconciliation.observed_refusal_count == 2
     _ => false
   }
 }
@@ -214,6 +236,14 @@ test fn workflow_json_exposes_segment_and_provider_facts() -> Bool {
     && string_contains(s: wire, pattern: "\"state\": \"complete\"")
     && string_contains(s: wire, pattern: "\"kind\": \"verify\"")
     && string_contains(s: wire, pattern: "\"state\": \"pending\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"publish\"")
+    && string_contains(s: wire, pattern: "\"kind\": \"audit\"")
+    && string_contains(s: wire, pattern: "\"workflow_status\": \"not_converged\"")
+    && string_contains(s: wire, pattern: "\"desired_obligations\": 7")
+    && string_contains(s: wire, pattern: "\"observed_obligations\": 3")
+    && string_contains(s: wire, pattern: "\"remaining_obligations\": 4")
+    && string_contains(s: wire, pattern: "\"failed_obligations\": 0")
+    && string_contains(s: wire, pattern: "\"refused_obligations\": 0")
 }
 
 test fn roadmap_workflow_progress_keystone_holds() -> Bool {

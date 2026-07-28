@@ -399,7 +399,7 @@ fn serve_attempts_response() -> ServeHttpResponse {
   serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, Codex events, retained process exit, and the node's declared validation contract. It never upgrades provider completion into verification or review. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
+data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, Codex events, retained process exit, and the node's declared validation contract. The observed facts reconcile by fold against the shared desired obligation roster and expose desired/observed/remaining counts plus distinct observed-failure, observed-refusal, and unsafe-plan-refusal counts; they never upgrade provider completion into verification, publication, review, or goal audit. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
 
 fn serve_workflow_response_for_instance(
   instance: HostDashboardInstance,

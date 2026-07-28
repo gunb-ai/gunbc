@@ -9,6 +9,10 @@ import gunbc.client_observation_state {
   ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
   client_observation_state_key,
 }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind,
+  roadmap_attempt_workflow_segment_kinds,
+}
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
   IdleState, RequestedState, TerminalState,
@@ -344,39 +348,14 @@ data workflow_lamp_data_attribute: String = "data-workflow-lamp"
 data workflow_observation_data_attribute: String = "data-observation"
 data workflow_lamp_label_data_attribute: String = "data-label"
 
-type WorkflowProgressStage
-  = EnvironmentProgressStage
-  | WorkspaceProgressStage
-  | AgentProgressStage
-  | VerificationProgressStage
-  | ReviewProgressStage
+data workflow_progress_stages: List<WorkflowSegmentKind> = roadmap_attempt_workflow_segment_kinds
 
-data workflow_progress_stages: List<WorkflowProgressStage> = [
-  EnvironmentProgressStage,
-  WorkspaceProgressStage,
-  AgentProgressStage,
-  VerificationProgressStage,
-  ReviewProgressStage,
-]
-
-fn workflow_progress_stage_key(stage: WorkflowProgressStage) -> String {
-  match stage {
-    EnvironmentProgressStage => "environment"
-    WorkspaceProgressStage => "workspace"
-    AgentProgressStage => "agent"
-    VerificationProgressStage => "verify"
-    ReviewProgressStage => "review"
-  }
+fn workflow_progress_stage_key(stage: WorkflowSegmentKind) -> String {
+  gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: stage)
 }
 
-fn workflow_progress_stage_label(stage: WorkflowProgressStage) -> String {
-  match stage {
-    EnvironmentProgressStage => "Env"
-    WorkspaceProgressStage => "Worktree"
-    AgentProgressStage => "Agent"
-    VerificationProgressStage => "Verify"
-    ReviewProgressStage => "Review"
-  }
+fn workflow_progress_stage_label(stage: WorkflowSegmentKind) -> String {
+  gunbc.roadmap_workflow_stage.workflow_segment_kind_short_label(kind: stage)
 }
 
 data workflow_progress_class: String = "workflow-progress"
@@ -385,7 +364,7 @@ data workflow_activity_class: String = "workflow-activity"
 data workflow_stage_data_attribute: String = "data-workflow-stage"
 data workflow_segment_state_data_attribute: String = "data-state"
 
-data workflow_progress_note: String = "The five-segment attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Live/Attempted facts. Environment and Worktree are constructive publication receipts; Agent comes from provider events reconciled with process exit; Verify and Review remain visibly pending until their own producers exist. The static row declares stage order once, while the client writes only each segment's observed state/detail from the route. A provider turn completing cannot move Verify or Review."
+data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Live/Attempted facts. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with process exit; Verify, Publish, Review, and Audit remain visibly pending until their own producers exist. Both markup and server desired facts consume roadmap_attempt_workflow_segment_kinds, while the client writes only each segment's observed state/detail from the route. A provider turn completing cannot move downstream obligations."
 
 data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26): Live and Attempted are two independent projections over the existing /sessions.json and /attempts.json observations. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
 
@@ -2015,25 +1994,47 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
           left: ts_member(object: ts_ident(name: "wp"), property: "title"),
           op: "=",
           right: ts_binop(
-            left: ts_member(
-              object: ts_ident(name: "attempt"),
-              property: "provider_status",
+            left: ts_binop(
+              left: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "workflow_status",
+                ),
+                op: "+",
+                right: ts_lit_str(value: " · "),
+              ),
+              op: "+",
+              right: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "remaining_obligations",
+              ),
             ),
             op: "+",
-            right: ts_cond(
-              test: ts_member(
-                object: ts_ident(name: "attempt"),
-                property: "provider_detail",
-              ),
-              consequent: ts_binop(
-                left: ts_lit_str(value: " — "),
-                op: "+",
-                right: ts_member(
+            right: ts_binop(
+              left: ts_lit_str(value: " remaining — "),
+              op: "+",
+              right: ts_binop(
+                left: ts_member(
                   object: ts_ident(name: "attempt"),
-                  property: "provider_detail",
+                  property: "provider_status",
+                ),
+                op: "+",
+                right: ts_cond(
+                  test: ts_member(
+                    object: ts_ident(name: "attempt"),
+                    property: "provider_detail",
+                  ),
+                  consequent: ts_binop(
+                    left: ts_lit_str(value: " — "),
+                    op: "+",
+                    right: ts_member(
+                      object: ts_ident(name: "attempt"),
+                      property: "provider_detail",
+                    ),
+                  ),
+                  alternate: ts_lit_str(value: ""),
                 ),
               ),
-              alternate: ts_lit_str(value: ""),
             ),
           ),
         )),
@@ -2047,9 +2048,20 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
             ts_binop(
               left: ts_lit_str(value: "Workflow: "),
               op: "+",
-              right: ts_member(
-                object: ts_ident(name: "attempt"),
-                property: "provider_status",
+              right: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "workflow_status",
+                ),
+                op: "+",
+                right: ts_binop(
+                  left: ts_lit_str(value: " · "),
+                  op: "+",
+                  right: ts_member(
+                    object: ts_ident(name: "attempt"),
+                    property: "remaining_obligations",
+                  ),
+                ),
               ),
             ),
           ],

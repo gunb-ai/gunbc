@@ -4,6 +4,7 @@ import std.types { String, Int, Bool, List }
 import extdeps.languages.json.emit {
   JsonValue,
   json_string,
+  json_int,
   json_array,
   json_object,
   json_kv,
@@ -22,32 +23,49 @@ import gunbc.roadmap_provider_events {
   provider_execution_detail,
   parse_codex_jsonl,
 }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind,
+  EnvironmentWorkflowSegment,
+  WorkspaceWorkflowSegment,
+  AgentWorkflowSegment,
+  VerificationWorkflowSegment,
+  PublicationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+  WorkflowSegmentState,
+  WorkflowSegmentPending,
+  WorkflowSegmentActive,
+  WorkflowSegmentComplete,
+  WorkflowSegmentFailed,
+  WorkflowSegmentRefused,
+  WorkflowSegment,
+  roadmap_attempt_workflow_segment_kinds,
+  workflow_segment_kind_key,
+  workflow_segment_kind_label,
+  workflow_segment_intent_revision,
+  workflow_segment_state_key,
+}
+import gunbc.workflow_reconcile {
+  WorkflowFactState,
+  WorkflowFactPending,
+  WorkflowFactActive,
+  WorkflowFactSatisfied,
+  WorkflowFactFailed,
+  WorkflowFactRefused,
+  WorkflowFactKey,
+  WorkflowFact,
+  WorkflowFactTree,
+  WorkflowFactLeaf,
+  WorkflowReconcileReport,
+  workflow_reconcile_report,
+  workflow_reconcile_status_key,
+}
 
 type AttemptProcessObservation
   = AttemptProcessAlive { command: String }
   | AttemptProcessExited { exit_code: Int, command: String }
   | AttemptProcessAbsent
   | AttemptProcessObservationRefused { reason: String }
-
-type WorkflowSegmentKind
-  = EnvironmentWorkflowSegment
-  | WorkspaceWorkflowSegment
-  | AgentWorkflowSegment
-  | VerificationWorkflowSegment
-  | ReviewWorkflowSegment
-
-type WorkflowSegmentState
-  = WorkflowSegmentPending
-  | WorkflowSegmentActive
-  | WorkflowSegmentComplete
-  | WorkflowSegmentFailed
-  | WorkflowSegmentRefused
-
-type WorkflowSegment {
-  kind: WorkflowSegmentKind
-  state: WorkflowSegmentState
-  detail: String
-}
 
 type WorkflowAttemptEvidence {
   node_id: String
@@ -73,9 +91,10 @@ type WorkflowAttemptProgress {
   provider: ProviderExecutionState
   validation_summary: String
   segments: List<WorkflowSegment>
+  reconciliation: WorkflowReconcileReport
 }
 
-data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection also requires the internally emitted admission schema and admitted verdict, so a corrupted or refused receipt cannot paint Environment complete. Codex JSONL supplies agent activity and provider terminal events; retained tmux pane state supplies process presence and exit. Reconciliation is fail-closed: nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, and contradictory turn.completed plus nonzero process exit is refused. Verification and review remain pending until their own authoritative receipts exist; provider completion cannot fabricate either."
+data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection also requires the internally emitted admission schema and admitted verdict, so a corrupted or refused receipt cannot paint Environment complete. Codex JSONL supplies agent activity and provider terminal events; retained tmux pane state supplies process presence and exit. Reconciliation is fail-closed: nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, and contradictory turn.completed plus nonzero process exit is refused. The ordered desired facts derive from roadmap_attempt_workflow_segment_kinds; only non-pending evidence projections enter the observed fact forest, so Pending in the row means an absent observation rather than a fabricated pending receipt. The two forests reconcile through gunbc.workflow_reconcile, making observed count, remaining work, and overall convergence fold results rather than another hand-authored status. Verification, publication, review, and goal audit remain pending until their own authoritative receipts exist; provider completion cannot fabricate them."
 
 fn environment_admission_receipt_is_admitted(receipt: String) -> Bool {
   string_contains(
@@ -192,36 +211,6 @@ fn workflow_provider_from_evidence(
   }
 }
 
-fn workflow_segment_kind_key(kind: WorkflowSegmentKind) -> String {
-  match kind {
-    EnvironmentWorkflowSegment => "environment"
-    WorkspaceWorkflowSegment => "workspace"
-    AgentWorkflowSegment => "agent"
-    VerificationWorkflowSegment => "verify"
-    ReviewWorkflowSegment => "review"
-  }
-}
-
-fn workflow_segment_kind_label(kind: WorkflowSegmentKind) -> String {
-  match kind {
-    EnvironmentWorkflowSegment => "Environment"
-    WorkspaceWorkflowSegment => "Workspace"
-    AgentWorkflowSegment => "Agent"
-    VerificationWorkflowSegment => "Verify"
-    ReviewWorkflowSegment => "Review"
-  }
-}
-
-fn workflow_segment_state_key(state: WorkflowSegmentState) -> String {
-  match state {
-    WorkflowSegmentPending => "pending"
-    WorkflowSegmentActive => "active"
-    WorkflowSegmentComplete => "complete"
-    WorkflowSegmentFailed => "failed"
-    WorkflowSegmentRefused => "refused"
-  }
-}
-
 fn provider_workflow_segment(
   provider: ProviderExecutionState,
 ) -> WorkflowSegment {
@@ -304,25 +293,16 @@ fn verification_segment(
   }
 }
 
-fn workflow_attempt_progress(
+fn workflow_segment_from_evidence(
+  kind: WorkflowSegmentKind,
   evidence: WorkflowAttemptEvidence,
-) -> WorkflowAttemptProgress {
-  let provider = workflow_provider_from_evidence(evidence: evidence)
-  let admitted = evidence.modeled_state_present
-    && evidence.admission_receipt_readable
-    && environment_admission_receipt_is_admitted(
-      receipt: evidence.admission_receipt,
-    )
-  WorkflowAttemptProgress {
-    node_id: evidence.node_id,
-    attempt_key: evidence.attempt_key,
-    branch: evidence.branch,
-    admission_receipt: evidence.admission_receipt,
-    provider: provider,
-    validation_summary: evidence.validation_summary,
-    segments: [
+  provider: ProviderExecutionState,
+  admitted: Bool,
+) -> WorkflowSegment {
+  match kind {
+    EnvironmentWorkflowSegment =>
       WorkflowSegment {
-        kind: EnvironmentWorkflowSegment,
+        kind: kind,
         state: if admitted {
           WorkflowSegmentComplete
         } else {
@@ -335,9 +315,10 @@ fn workflow_attempt_progress(
         } else {
           "environment admission receipt unavailable"
         },
-      },
+      }
+    WorkspaceWorkflowSegment =>
       WorkflowSegment {
-        kind: WorkspaceWorkflowSegment,
+        kind: kind,
         state: if evidence.modeled_state_present {
           WorkflowSegmentComplete
         } else {
@@ -348,18 +329,165 @@ fn workflow_attempt_progress(
         } else {
           "legacy branch has no modeled workspace publication receipt"
         },
-      },
-      provider_workflow_segment(provider: provider),
+      }
+    AgentWorkflowSegment =>
+      provider_workflow_segment(provider: provider)
+    VerificationWorkflowSegment =>
       verification_segment(
         provider: provider,
         validation_summary: evidence.validation_summary,
-      ),
+      )
+    PublicationWorkflowSegment =>
       WorkflowSegment {
-        kind: ReviewWorkflowSegment,
+        kind: kind,
         state: WorkflowSegmentPending,
-        detail: "awaiting an attempt-to-PR binding and review verdict",
-      },
-    ],
+        detail: "awaiting a verified change-set, publication intent, remote branch read-back, and pull-request binding",
+      }
+    ReviewWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentPending,
+        detail: "awaiting an exact-head pull-request binding and review verdict",
+      }
+    GoalAuditWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentPending,
+        detail: "awaiting an independent audit of the exact candidate against the current approved goal",
+      }
+  }
+}
+
+fn workflow_fact_state_from_segment_state(
+  state: WorkflowSegmentState,
+) -> WorkflowFactState {
+  match state {
+    WorkflowSegmentPending => WorkflowFactPending
+    WorkflowSegmentActive => WorkflowFactActive
+    WorkflowSegmentComplete => WorkflowFactSatisfied
+    WorkflowSegmentFailed => WorkflowFactFailed
+    WorkflowSegmentRefused => WorkflowFactRefused
+  }
+}
+
+fn workflow_attempt_id(
+  node_id: String,
+  attempt_key: String,
+) -> String {
+  join([node_id, ":", attempt_key], "")
+}
+
+fn workflow_desired_fact(
+  workflow_id: String,
+  kind: WorkflowSegmentKind,
+) -> WorkflowFact {
+  WorkflowFact {
+    key: WorkflowFactKey {
+      workflow_id: workflow_id,
+      obligation_id: workflow_segment_kind_key(kind: kind),
+    },
+    intent_revision: workflow_segment_intent_revision(kind: kind),
+    state: WorkflowFactSatisfied,
+    detail: workflow_segment_kind_label(kind: kind),
+  }
+}
+
+fn workflow_observed_fact(
+  workflow_id: String,
+  segment: WorkflowSegment,
+) -> WorkflowFact {
+  WorkflowFact {
+    key: WorkflowFactKey {
+      workflow_id: workflow_id,
+      obligation_id: workflow_segment_kind_key(kind: segment.kind),
+    },
+    intent_revision: workflow_segment_intent_revision(kind: segment.kind),
+    state: workflow_fact_state_from_segment_state(state: segment.state),
+    detail: segment.detail,
+  }
+}
+
+fn workflow_desired_fact_forest(
+  workflow_id: String,
+) -> List<WorkflowFactTree> {
+  map(
+    roadmap_attempt_workflow_segment_kinds,
+    kind => WorkflowFactLeaf {
+      fact: workflow_desired_fact(
+        workflow_id: workflow_id,
+        kind: kind,
+      ),
+    },
+  )
+}
+
+fn workflow_observed_fact_forest(
+  workflow_id: String,
+  segments: List<WorkflowSegment>,
+) -> List<WorkflowFactTree> {
+  flat_map(
+    segments,
+    segment => match segment.state {
+      WorkflowSegmentPending => []
+      _ => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+    },
+  )
+}
+
+fn workflow_attempt_reconciliation(
+  evidence: WorkflowAttemptEvidence,
+  segments: List<WorkflowSegment>,
+) -> WorkflowReconcileReport {
+  let workflow_id = workflow_attempt_id(
+    node_id: evidence.node_id,
+    attempt_key: evidence.attempt_key,
+  )
+  workflow_reconcile_report(
+    desired: workflow_desired_fact_forest(workflow_id: workflow_id),
+    observed: workflow_observed_fact_forest(
+      workflow_id: workflow_id,
+      segments: segments,
+    ),
+  )
+}
+
+fn workflow_attempt_progress(
+  evidence: WorkflowAttemptEvidence,
+) -> WorkflowAttemptProgress {
+  let provider = workflow_provider_from_evidence(evidence: evidence)
+  let admitted = evidence.modeled_state_present
+    && evidence.admission_receipt_readable
+    && environment_admission_receipt_is_admitted(
+      receipt: evidence.admission_receipt,
+    )
+  let segments = map(
+    roadmap_attempt_workflow_segment_kinds,
+    kind => workflow_segment_from_evidence(
+      kind: kind,
+      evidence: evidence,
+      provider: provider,
+      admitted: admitted,
+    ),
+  )
+  WorkflowAttemptProgress {
+    node_id: evidence.node_id,
+    attempt_key: evidence.attempt_key,
+    branch: evidence.branch,
+    admission_receipt: evidence.admission_receipt,
+    provider: provider,
+    validation_summary: evidence.validation_summary,
+    segments: segments,
+    reconciliation: workflow_attempt_reconciliation(
+      evidence: evidence,
+      segments: segments,
+    ),
   }
 }
 
@@ -407,6 +535,36 @@ fn workflow_attempt_progress_json_value(
     json_kv(
       key: "admission_receipt",
       value: json_string(s: progress.admission_receipt),
+    ),
+    json_kv(
+      key: "workflow_status",
+      value: json_string(s: workflow_reconcile_status_key(
+        report: progress.reconciliation,
+      )),
+    ),
+    json_kv(
+      key: "desired_obligations",
+      value: json_int(n: progress.reconciliation.desired_count),
+    ),
+    json_kv(
+      key: "observed_obligations",
+      value: json_int(n: progress.reconciliation.observed_count),
+    ),
+    json_kv(
+      key: "remaining_obligations",
+      value: json_int(n: progress.reconciliation.remaining_count),
+    ),
+    json_kv(
+      key: "failed_obligations",
+      value: json_int(n: progress.reconciliation.observed_failure_count),
+    ),
+    json_kv(
+      key: "refused_obligations",
+      value: json_int(n: progress.reconciliation.observed_refusal_count),
+    ),
+    json_kv(
+      key: "reconciliation_refusals",
+      value: json_int(n: progress.reconciliation.plan_refusal_count),
     ),
     json_kv(
       key: "segments",
