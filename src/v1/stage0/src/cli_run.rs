@@ -11162,7 +11162,7 @@ pub fn handle_run_with_options(
                 let witness = std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some();
                 let handle = std::thread::spawn(move || loop {
                     if witness && secs == 0 {
-                        if let std::sync::mpsc::RecvTimeoutError::Timeout =
+                        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
                             stop_rx.recv_timeout(std::time::Duration::ZERO)
                         {
                             tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
