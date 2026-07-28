@@ -386,48 +386,9 @@ type MercurialRepositoryContents {
   evolution: MercurialEvolutionMetadata
 }
 
-type MercurialRepositoryState
-  = MercurialRepositoryStateComplete {
-      contents: MercurialRepositoryContents,
-    }
-  | MercurialRepositoryStatePartial {
-      contents: MercurialRepositoryContents,
-      missing_changesets: List<MercurialNodeId>,
-      missing_manifests: List<MercurialNodeId>,
-      missing_file_revisions: List<MercurialNodeId>,
-    }
-
-fn mercurial_repository_contents(
-  repository: MercurialRepositoryState,
-) -> MercurialRepositoryContents {
-  match repository {
-    MercurialRepositoryStateComplete { contents } => contents
-    MercurialRepositoryStatePartial {
-      contents,
-      missing_changesets: _,
-      missing_manifests: _,
-      missing_file_revisions: _,
-    } => contents
-  }
-}
-
-fn mercurial_repository_completeness(
-  repository: MercurialRepositoryState,
-) -> MercurialRepositoryCompleteness {
-  match repository {
-    MercurialRepositoryStateComplete { contents: _ } =>
-      MercurialContentsComplete
-    MercurialRepositoryStatePartial {
-      contents: _,
-      missing_changesets,
-      missing_manifests,
-      missing_file_revisions,
-    } => MercurialContentsPartial {
-      missing_changesets: missing_changesets,
-      missing_manifests: missing_manifests,
-      missing_file_revisions: missing_file_revisions,
-    }
-  }
+type MercurialRepositoryState {
+  contents: MercurialRepositoryContents
+  completeness: MercurialRepositoryCompleteness
 }
 
 type MercurialManifestWireEntry {
@@ -606,26 +567,6 @@ type MercurialChangesetReferenceOrigin
 type MercurialChangesetReference {
   target: MercurialNodeId
   origin: MercurialChangesetReferenceOrigin
-}
-
-fn mercurial_repository_state_from_contents(
-  contents: MercurialRepositoryContents,
-  completeness: MercurialRepositoryCompleteness,
-) -> MercurialRepositoryState {
-  match completeness {
-    MercurialContentsComplete =>
-      MercurialRepositoryStateComplete { contents: contents }
-    MercurialContentsPartial {
-      missing_changesets,
-      missing_manifests,
-      missing_file_revisions,
-    } => MercurialRepositoryStatePartial {
-      contents: contents,
-      missing_changesets: missing_changesets,
-      missing_manifests: missing_manifests,
-      missing_file_revisions: missing_file_revisions,
-    }
-  }
 }
 
 type MercurialManifestDecodeOutcome
@@ -1516,10 +1457,10 @@ fn mercurial_decode_accessible_projection(
                                 evolution: projection.evolution,
                               }
                               MercurialDecoded {
-                                repository: mercurial_repository_state_from_contents(
+                                repository: MercurialRepositoryState {
                                   contents: contents,
                                   completeness: completeness,
-                                ),
+                                },
                               }
                           }
                     }
@@ -1627,7 +1568,7 @@ fn mercurial_project_phase(entry: MercurialPhaseEntry) -> MercurialPhaseWireEntr
 fn mercurial_project_repository(
   repository: MercurialRepositoryState,
 ) -> MercurialRepositoryProjection {
-  let contents = mercurial_repository_contents(repository: repository)
+  let contents = repository.contents
   let projection_contents = MercurialRepositoryProjectionContents {
     requirements: contents.requirements,
     file_revisions: contents.file_revisions,
@@ -1642,7 +1583,7 @@ fn mercurial_project_repository(
     subrepositories: contents.subrepositories,
     evolution: contents.evolution,
   }
-  match mercurial_repository_completeness(repository: repository) {
+  match repository.completeness {
     MercurialContentsComplete =>
       MercurialCompleteProjection { contents: projection_contents }
     MercurialContentsPartial {
@@ -1709,7 +1650,7 @@ fn mercurial_assess_read_back(
 fn mercurial_portable_history(
   repository: MercurialRepositoryState,
 ) -> List<MercurialNodeId> {
-  mercurial_repository_contents(repository: repository).changesets
+  repository.contents.changesets
     |> map(c => c.node)
 }
 
@@ -1717,7 +1658,7 @@ fn mercurial_named_branch_changesets(
   repository: MercurialRepositoryState,
   branch: MercurialNamedBranchName,
 ) -> List<MercurialNodeId> {
-  mercurial_repository_contents(repository: repository).changesets
+  repository.contents.changesets
     |> filter(c => c.branch == branch)
     |> map(c => c.node)
 }

@@ -65,7 +65,6 @@ import extdeps.mercurial {
   mercurial_exchange_disposition,
   mercurial_portable_history,
   mercurial_named_branch_changesets,
-  mercurial_repository_contents,
   mercurial_projection_map_contents,
   mercurial_r0_conditional_advance,
   mercurial_decode_node_identity,
@@ -626,7 +625,7 @@ test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
     MercurialDecodeRefused { cause: _ } => false
     MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       let projected = mercurial_project_repository(repository: repository)
       match mercurial_assess_read_back(
         expected: repository,
@@ -673,7 +672,7 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       match contents.manifests.first() {
         Absent => false
         Present { value: manifest } =>
@@ -710,7 +709,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       match contents.file_revisions.skip(n: 1).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
@@ -781,7 +780,7 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
     MercurialDecodeRefused { cause: _ } => false
     MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       match contents.file_revisions.skip(n: 2).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
@@ -807,8 +806,8 @@ test fn witness_mercurial_clone_local_revision_can_change_without_identity_chang
       MercurialDecodeRefused { cause: _ } => false
       MercurialRepositoryUnavailable { reason: _ } => false
       MercurialDecoded { repository: repo_b } =>
-        let contents_a = mercurial_repository_contents(repository: repo_a)
-        let contents_b = mercurial_repository_contents(repository: repo_b)
+        let contents_a = repo_a.contents
+        let contents_b = repo_b.contents
         mercurial_portable_history(repository: repo_a) == mercurial_portable_history(repository: repo_b)
           && !(contents_a.local_revisions == contents_b.local_revisions)
     }
@@ -819,7 +818,7 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
         && contents.heads == [
           MercurialHead { changeset: hg_c1 },
@@ -835,7 +834,7 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      let contents = mercurial_repository_contents(repository: repository)
+      let contents = repository.contents
       count(contents.phases) == 3
         && match contents.phases.first() {
           Present { value: entry } => match entry.phase {
