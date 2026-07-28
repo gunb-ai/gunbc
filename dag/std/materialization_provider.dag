@@ -16,13 +16,13 @@ import std.computation_identity {
 import std.artifact_store { ArtifactStore, store_put }
 import std.disposition { Disposition, Terminal }
 
-data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity-unshareable refusal on lookup; admitted-with-counted-evictions, incomplete-write refusal, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
+data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
 
-data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). This contract's key equality is exactly the StructurallyIdentical corner — equal content over (kind, subject, declared inputs) — so a caller serving on key match passes StructurallyIdentical. Richer grades (NormalizedIdentical, ExtensionallyIdentical) may only arrive FROM the spine's qualifier, and IdentityUnknown is refused fail-closed at serve time with its located cause carried through: the bottom of the lattice is never served as a hit."
+data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). THIS SLICE ACCEPTS ONLY StructurallyIdentical (operator rework ruling, PR 7385 blocker 3): the contract's key is the exact structural content key, and that is the only sharing this key JUSTIFIES. NormalizedIdentical and ExtensionallyIdentical are refused TYPED (ProviderRefusedIdentityGradeUnsupported) rather than silently run through the structural check — advertising extensional sharing while executing structural equality would be a fabricated capability. Dissolve-on: the spine's qualifier supplies the canonical/alias key those grades justify (a normalizer-canonicalized key for NormalizedIdentical, a declared-bound equivalence table for ExtensionallyIdentical), at which point identity_gate widens one grade at a time with its own witness. IdentityUnknown is refused fail-closed with its located cause carried through: the bottom of the lattice is never served as a hit."
 
-data materialization_provider_backend_seam_note: String = "Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3): CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide serve or typed refusal under the request's correctness demands (declared-input key, content verification, artifact completeness, identity grade). Backend faults stay in CacheRejectReason at the transport and are deliberately not restated here; a transport that cannot probe refuses at its own layer and no ProviderProbe is fabricated."
+data materialization_provider_backend_seam_note: String = "Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3): CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide serve or typed refusal under the request's correctness demands (declared-input key, artifact kind, content verification, artifact completeness, identity grade). Backend faults stay in CacheRejectReason at the transport and are deliberately not restated here; a transport that cannot probe refuses at its own layer and no ProviderProbe is fabricated."
 
-data materialization_provider_completeness_note: String = "The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped its diagnostics would green a red, which is the fabricated-plausible-output arm section 5 forbids. Completeness is enforced on BOTH doors: provider_admit refuses to write an artifact missing a required output (construction — the incomplete artifact is unadmittable), and provider_serve refuses to serve one that got in anyway (validation backstop for pre-contract artifacts). FIRST NAMED CONSUMER TARGET: extdeps.realization.resolved_graph's disk-hit refusal (resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger) — v1 disk artifacts carry graph+source_indices only, so cross-process hits are refused today; under this contract that hand-rolled refuse arm becomes ProviderRefusedIncomplete { missing: [compile_clean_diagnostic_union] }, and it dissolves when the artifact FORMAT_VERSION persists the union and the artifact satisfies resolve_closure_request's required_outputs."
+data materialization_provider_completeness_note: String = "The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped its diagnostics would green a red, which is the fabricated-plausible-output arm section 5 forbids. Completeness is enforced on BOTH doors, and BOTH doors derive every obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened obligation list is UNWRITABLE at the admission door by construction — and checks kind, request key, content digest, completeness, and identity grade before any byte enters the store; provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract artifacts already on disk. FIRST NAMED CONSUMER TARGET: extdeps.realization.resolved_graph's disk-hit refusal (resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger) — v1 disk artifacts carry graph+source_indices only, so cross-process hits are refused today; under this contract that hand-rolled refuse arm becomes ProviderRefusedIncomplete { missing: [compile_clean_diagnostic_union] }, and it dissolves when the artifact FORMAT_VERSION persists the union and the artifact satisfies resolve_closure_request's required_outputs."
 
 data materialization_provider_key_order_note: String = "Declared-input order is part of the key: declared_inputs_digest folds in list order, so the REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows below, which fix an order by construction."
 
@@ -97,6 +97,51 @@ fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<Artifac
   }
 }
 
+data materialization_provider_binding_note: String = "request_artifact_binding is the ONE authority for the request-to-artifact obligations, consumed by BOTH doors (serve and admit) so they cannot drift apart: kind must match (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact and exactly what the validation backstop exists to catch), the artifact's recorded request_key must equal the request's derived key, the read-back digest must equal the recorded content digest, and the carried outputs must cover the request's required outputs. Checks run cheapest-semantic first; the first failure is the verdict, typed and located."
+
+type RequestArtifactBinding
+  = BindingOk
+  | BindingKindMismatch { requested: ArtifactKindId, found: ArtifactKindId }
+  | BindingWrongArtifact { key: ContentHash, found_key: ContentHash }
+  | BindingWrongContent { recorded: ContentHash, observed: ContentHash }
+  | BindingIncomplete { missing: List<ArtifactOutputId> }
+
+fn request_artifact_binding(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> RequestArtifactBinding {
+  let key = request_key(req: req)
+  if (artifact.kind == req.kind) == false {
+    BindingKindMismatch { requested: req.kind, found: artifact.kind }
+  } else if (artifact.request_key == key) == false {
+    BindingWrongArtifact { key: key, found_key: artifact.request_key }
+  } else if (observed_digest == artifact.content_digest) == false {
+    BindingWrongContent { recorded: artifact.content_digest, observed: observed_digest }
+  } else {
+    match artifact_completeness(required: req.required_outputs, carried: artifact.carried_outputs) {
+      ArtifactComplete => BindingOk
+      ArtifactMissingOutputs { missing: m } => BindingIncomplete { missing: m }
+    }
+  }
+}
+
+type IdentityGate
+  = IdentityAccepted
+  | IdentityRefusedUnknown { cause: IdentityUnknownCause }
+  | IdentityRefusedGradeUnsupported { grade: ComputationIdentity }
+
+fn identity_gate(identity: ComputationIdentity) -> IdentityGate {
+  match identity {
+    StructurallyIdentical => IdentityAccepted
+    NormalizedIdentical { normalizer: n } =>
+      IdentityRefusedGradeUnsupported { grade: NormalizedIdentical { normalizer: n } }
+    ExtensionallyIdentical { bound: b } =>
+      IdentityRefusedGradeUnsupported { grade: ExtensionallyIdentical { bound: b } }
+    IdentityUnknown { cause: c } => IdentityRefusedUnknown { cause: c }
+  }
+}
+
 type ProviderProbe
   = ProbeAbsent
   | ProbeFound { artifact: MaterializedArtifact, observed_digest: ContentHash }
@@ -104,59 +149,80 @@ type ProviderProbe
 type ProviderLookup
   = ProviderHit { artifact: MaterializedArtifact }
   | ProviderMiss { key: ContentHash }
+  | ProviderRefusedKindMismatch { key: ContentHash, requested: ArtifactKindId, found: ArtifactKindId }
   | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
   | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
   | ProviderRefusedIdentityUnshareable { key: ContentHash, cause: IdentityUnknownCause }
+  | ProviderRefusedIdentityGradeUnsupported { key: ContentHash, grade: ComputationIdentity }
 
-fn provider_serve_shareable(req: ArtifactRequest, probe: ProviderProbe, key: ContentHash) -> ProviderLookup {
+fn provider_serve_bound(req: ArtifactRequest, probe: ProviderProbe, key: ContentHash) -> ProviderLookup {
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
     ProbeFound { artifact: a, observed_digest: obs } =>
-      if (a.request_key == key) == false {
-        ProviderRefusedWrongArtifact { key: key, found_key: a.request_key }
-      } else if (obs == a.content_digest) == false {
-        ProviderRefusedWrongContent { key: key, recorded: a.content_digest, observed: obs }
-      } else {
-        match artifact_completeness(required: req.required_outputs, carried: a.carried_outputs) {
-          ArtifactComplete => ProviderHit { artifact: a }
-          ArtifactMissingOutputs { missing: m } => ProviderRefusedIncomplete { key: key, missing: m }
-        }
+      match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
+        BindingOk => ProviderHit { artifact: a }
+        BindingKindMismatch { requested: rk, found: fk } =>
+          ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
+        BindingWrongArtifact { key: k, found_key: fk } =>
+          ProviderRefusedWrongArtifact { key: k, found_key: fk }
+        BindingWrongContent { recorded: r, observed: o } =>
+          ProviderRefusedWrongContent { key: key, recorded: r, observed: o }
+        BindingIncomplete { missing: m } =>
+          ProviderRefusedIncomplete { key: key, missing: m }
       }
   }
 }
 
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe, identity: ComputationIdentity) -> ProviderLookup {
   let key = request_key(req: req)
-  match identity {
-    IdentityUnknown { cause: c } => ProviderRefusedIdentityUnshareable { key: key, cause: c }
-    StructurallyIdentical => provider_serve_shareable(req: req, probe: probe, key: key)
-    NormalizedIdentical { normalizer: _ } => provider_serve_shareable(req: req, probe: probe, key: key)
-    ExtensionallyIdentical { bound: _ } => provider_serve_shareable(req: req, probe: probe, key: key)
+  match identity_gate(identity: identity) {
+    IdentityAccepted => provider_serve_bound(req: req, probe: probe, key: key)
+    IdentityRefusedUnknown { cause: c } => ProviderRefusedIdentityUnshareable { key: key, cause: c }
+    IdentityRefusedGradeUnsupported { grade: g } =>
+      ProviderRefusedIdentityGradeUnsupported { key: key, grade: g }
   }
 }
 
 type ProviderAdmission
   = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
+  | ProviderRefusedKindMismatchWrite { requested: ArtifactKindId, found: ArtifactKindId }
+  | ProviderRefusedWrongArtifactWrite { key: ContentHash, found_key: ContentHash }
+  | ProviderRefusedWrongContentWrite { recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
+  | ProviderRefusedIdentityUnshareableWrite { cause: IdentityUnknownCause }
+  | ProviderRefusedIdentityGradeUnsupportedWrite { grade: ComputationIdentity }
   | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
+
+fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
+  if measure_count(m: artifact.artifact_bytes) > measure_count(m: store.budget) {
+    ProviderBudgetExhausted { needed: artifact.artifact_bytes, budget: store.budget }
+  } else {
+    let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: artifact.artifact_bytes)
+    ProviderAdmitted { store: receipt.store, evicted: receipt.evicted }
+  }
+}
 
 fn provider_admit(
   store: ArtifactStore,
+  req: ArtifactRequest,
   artifact: MaterializedArtifact,
-  required_outputs: List<ArtifactOutputId>
+  observed_digest: ContentHash,
+  identity: ComputationIdentity
 ) -> ProviderAdmission {
-  match artifact_completeness(required: required_outputs, carried: artifact.carried_outputs) {
-    ArtifactMissingOutputs { missing: m } => ProviderRefusedIncompleteWrite { missing: m }
-    ArtifactComplete =>
-      if measure_count(m: artifact.artifact_bytes) > measure_count(m: store.budget) {
-        ProviderBudgetExhausted {
-          needed: artifact.artifact_bytes,
-          budget: store.budget
-        }
-      } else {
-        let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: artifact.artifact_bytes)
-        ProviderAdmitted { store: receipt.store, evicted: receipt.evicted }
+  match identity_gate(identity: identity) {
+    IdentityRefusedUnknown { cause: c } => ProviderRefusedIdentityUnshareableWrite { cause: c }
+    IdentityRefusedGradeUnsupported { grade: g } => ProviderRefusedIdentityGradeUnsupportedWrite { grade: g }
+    IdentityAccepted =>
+      match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
+        BindingKindMismatch { requested: rk, found: fk } =>
+          ProviderRefusedKindMismatchWrite { requested: rk, found: fk }
+        BindingWrongArtifact { key: k, found_key: fk } =>
+          ProviderRefusedWrongArtifactWrite { key: k, found_key: fk }
+        BindingWrongContent { recorded: r, observed: o } =>
+          ProviderRefusedWrongContentWrite { recorded: r, observed: o }
+        BindingIncomplete { missing: m } => ProviderRefusedIncompleteWrite { missing: m }
+        BindingOk => provider_admit_bound(store: store, artifact: artifact)
       }
   }
 }
@@ -206,10 +272,12 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
   match l {
     ProviderHit { artifact: _ } => true
     ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
     ProviderRefusedIncomplete { key: _, missing: _ } => false
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
   }
 }
 
@@ -217,10 +285,25 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
   match l {
     ProviderHit { artifact: _ } => false
     ProviderMiss { key: _ } => true
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
     ProviderRefusedIncomplete { key: _, missing: _ } => false
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
+  }
+}
+
+fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
+  match l {
+    ProviderHit { artifact: _ } => false
+    ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => true
+    ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
+    ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
+    ProviderRefusedIncomplete { key: _, missing: _ } => false
+    ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
   }
 }
 
@@ -228,10 +311,12 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
   match l {
     ProviderHit { artifact: _ } => false
     ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => true
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
     ProviderRefusedIncomplete { key: _, missing: _ } => false
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
   }
 }
 
@@ -239,10 +324,12 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
   match l {
     ProviderHit { artifact: _ } => false
     ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => true
     ProviderRefusedIncomplete { key: _, missing: _ } => false
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
   }
 }
 
@@ -250,10 +337,12 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
   match l {
     ProviderHit { artifact: _ } => []
     ProviderMiss { key: _ } => []
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => []
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => []
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => []
     ProviderRefusedIncomplete { key: _, missing: m } => m
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => []
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => []
   }
 }
 
@@ -261,17 +350,37 @@ fn lookup_is_refused_identity_unshareable(l: ProviderLookup) -> Bool {
   match l {
     ProviderHit { artifact: _ } => false
     ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
     ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
     ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
     ProviderRefusedIncomplete { key: _, missing: _ } => false
     ProviderRefusedIdentityUnshareable { key: _, cause: _ } => true
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => false
+  }
+}
+
+fn lookup_is_refused_identity_grade_unsupported(l: ProviderLookup) -> Bool {
+  match l {
+    ProviderHit { artifact: _ } => false
+    ProviderMiss { key: _ } => false
+    ProviderRefusedKindMismatch { key: _, requested: _, found: _ } => false
+    ProviderRefusedWrongArtifact { key: _, found_key: _ } => false
+    ProviderRefusedWrongContent { key: _, recorded: _, observed: _ } => false
+    ProviderRefusedIncomplete { key: _, missing: _ } => false
+    ProviderRefusedIdentityUnshareable { key: _, cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupported { key: _, grade: _ } => true
   }
 }
 
 fn admission_is_admitted(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => true
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
     ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
     ProviderBudgetExhausted { needed: _, budget: _ } => false
   }
 }
@@ -279,7 +388,12 @@ fn admission_is_admitted(a: ProviderAdmission) -> Bool {
 fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
   match a {
     ProviderAdmitted { store: _, evicted: e } => e
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => []
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => []
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => []
     ProviderRefusedIncompleteWrite { missing: _ } => []
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => []
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => []
     ProviderBudgetExhausted { needed: _, budget: _ } => []
   }
 }
@@ -287,7 +401,12 @@ fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
 fn admission_store(a: ProviderAdmission, fallback: ArtifactStore) -> ArtifactStore {
   match a {
     ProviderAdmitted { store: s, evicted: _ } => s
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => fallback
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => fallback
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => fallback
     ProviderRefusedIncompleteWrite { missing: _ } => fallback
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => fallback
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => fallback
     ProviderBudgetExhausted { needed: _, budget: _ } => fallback
   }
 }
@@ -295,15 +414,103 @@ fn admission_store(a: ProviderAdmission, fallback: ArtifactStore) -> ArtifactSto
 fn admission_is_budget_exhausted(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
     ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
     ProviderBudgetExhausted { needed: _, budget: _ } => true
+  }
+}
+
+fn admission_refused_incomplete_missing(a: ProviderAdmission) -> List<ArtifactOutputId> {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => []
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => []
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => []
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => []
+    ProviderRefusedIncompleteWrite { missing: m } => m
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => []
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => []
+    ProviderBudgetExhausted { needed: _, budget: _ } => []
+  }
+}
+
+fn admission_is_refused_kind_mismatch_write(a: ProviderAdmission) -> Bool {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => true
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
+    ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
+  }
+}
+
+fn admission_is_refused_wrong_artifact_write(a: ProviderAdmission) -> Bool {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => true
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
+    ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
+  }
+}
+
+fn admission_is_refused_wrong_content_write(a: ProviderAdmission) -> Bool {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => true
+    ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
   }
 }
 
 fn admission_is_refused_incomplete_write(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
     ProviderRefusedIncompleteWrite { missing: _ } => true
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
+  }
+}
+
+fn admission_is_refused_identity_unshareable_write(a: ProviderAdmission) -> Bool {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
+    ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => true
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
+  }
+}
+
+fn admission_is_refused_identity_grade_unsupported_write(a: ProviderAdmission) -> Bool {
+  match a {
+    ProviderAdmitted { store: _, evicted: _ } => false
+    ProviderRefusedKindMismatchWrite { requested: _, found: _ } => false
+    ProviderRefusedWrongArtifactWrite { key: _, found_key: _ } => false
+    ProviderRefusedWrongContentWrite { recorded: _, observed: _ } => false
+    ProviderRefusedIncompleteWrite { missing: _ } => false
+    ProviderRefusedIdentityUnshareableWrite { cause: _ } => false
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: _ } => true
     ProviderBudgetExhausted { needed: _, budget: _ } => false
   }
 }

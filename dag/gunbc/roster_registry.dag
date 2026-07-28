@@ -248,7 +248,7 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "extdeps.realization.materialization_provider_targets", decl_name: "materialization_provider_targets"),
+    roster: roster_decl(module_path: "gunbc.materialization_provider_targets", decl_name: "materialization_provider_targets"),
     unit_kind: "ad-hoc cache consumer target (CacheInterfaceId) of the std.materialization_provider contract",
     membership: DeclaredFrontier {
       reason: "each row names an existing cited cache row that today answers lookups through an ad-hoc carrier and later consumes the contract's typed provider_serve/provider_admit outcomes; per-row reason and dissolve_on live in the ProviderContractTarget rows (parent mandate 6B, model-only — targets declared, no consumer flips)",
