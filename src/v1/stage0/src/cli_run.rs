@@ -10644,6 +10644,7 @@ fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter:
 struct ScopedRunObservation {
     ctx: v1_interpreter::InterpContext,
     entry_file: String,
+    module_path: String,
     function: String,
     addressable: bool,
     emoji: bool,
@@ -10651,7 +10652,7 @@ struct ScopedRunObservation {
 }
 
 impl ScopedRunObservation {
-    fn resolve(entry_file: &str, function: &str) -> Result<Self, String> {
+    fn resolve(entry_file: &str, module_path: &str, function: &str) -> Result<Self, String> {
         use std::io::IsTerminal;
         let authority = "dag/gunbc/observation_seed_render.dag";
         let authority_roots = witness_layer_roots();
@@ -10662,6 +10663,7 @@ impl ScopedRunObservation {
         Ok(Self {
             ctx: make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
             entry_file: entry_file.to_string(),
+            module_path: module_path.to_string(),
             function: function.to_string(),
             addressable: std::io::stderr().is_terminal(),
             emoji: std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
@@ -10677,6 +10679,10 @@ impl ScopedRunObservation {
             (
                 Some("entry_file".to_string()),
                 Value::Str(self.entry_file.clone()),
+            ),
+            (
+                Some("module_path".to_string()),
+                Value::Str(self.module_path.clone()),
             ),
             (
                 Some("function".to_string()),
@@ -10710,10 +10716,18 @@ impl ScopedRunObservation {
         };
         if self.ctx.sym_eq(*variant_name, "ScopedRunWriteRefused") {
             let cause = match self.ctx.field(fields, "cause") {
-                Some(Value::Str(cause)) => cause,
-                _ => "typed refusal without a String cause",
+                Some(Value::Str(cause)) => cause.clone(),
+                _ => "typed refusal without a String cause".to_string(),
             };
-            return Err(format!("scoped run observation refused: {cause}"));
+            if projection != "scoped_run_projection_refusal_write" {
+                return self.emit(
+                    "scoped_run_projection_refusal_write",
+                    Some(("diagnostic", &cause)),
+                );
+            }
+            return Err(format!(
+                "scoped run observation refusal projection refused: {cause}"
+            ));
         }
         if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
             return Err("scoped run observation returned an unknown projection arm".to_string());
@@ -10747,6 +10761,89 @@ impl ScopedRunObservation {
     fn failed(&mut self, cause: &str) -> Result<(), String> {
         self.emit("scoped_run_failed_write", Some(("error", cause)))
     }
+}
+
+#[cfg(unix)]
+fn capture_scoped_run_stderr<T>(f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    use std::os::raw::c_int;
+
+    unsafe extern "C" {
+        fn pipe(fds: *mut c_int) -> c_int;
+        fn dup(fd: c_int) -> c_int;
+        fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
+        fn close(fd: c_int) -> c_int;
+    }
+
+    struct RestoreStderr(c_int);
+    impl Drop for RestoreStderr {
+        fn drop(&mut self) {
+            unsafe {
+                dup2(self.0, 2);
+                close(self.0);
+            }
+        }
+    }
+
+    std::io::stderr()
+        .flush()
+        .map_err(|e| format!("flush before scoped stderr capture: {e}"))?;
+    let mut fds = [-1, -1];
+    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(format!(
+            "open scoped stderr capture pipe: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let saved = unsafe { dup(2) };
+    if saved < 0 || unsafe { dup2(fds[1], 2) } < 0 {
+        unsafe {
+            close(fds[0]);
+            close(fds[1]);
+            if saved >= 0 {
+                close(saved);
+            }
+        }
+        return Err(format!(
+            "redirect scoped stderr capture: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    unsafe {
+        close(fds[1]);
+    }
+    let restore = RestoreStderr(saved);
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut file = unsafe { File::from_raw_fd(fds[0]) };
+        file.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let value = f();
+    std::io::stderr()
+        .flush()
+        .map_err(|e| format!("flush scoped stderr capture: {e}"))?;
+    drop(restore);
+    let bytes = reader
+        .join()
+        .map_err(|_| "scoped stderr capture reader panicked".to_string())?
+        .map_err(|e| format!("read scoped stderr capture: {e}"))?;
+    Ok((value, bytes))
+}
+
+#[cfg(not(unix))]
+fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
+    Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
+}
+
+fn replay_scoped_run_stderr(bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    use std::io::Write;
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
 }
 
 pub fn handle_run_with_options(
@@ -10788,12 +10885,14 @@ pub fn handle_run_with_options(
     install_output_policy(&source_roots);
     install_group_syntax(&source_roots);
 
-    if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
-        if let Ok(secs) = secs.parse::<u64>() {
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_secs(secs));
-                dump_residual_hunt_instrumentation();
-            });
+    if entry_file.is_none() {
+        if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
+            if let Ok(secs) = secs.parse::<u64>() {
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(secs));
+                    dump_residual_hunt_instrumentation();
+                });
+            }
         }
     }
 
@@ -10856,8 +10955,19 @@ pub fn handle_run_with_options(
         }
     };
 
+    let scoped_module_path = entry_file.as_deref().and_then(|entry| {
+        graph
+            .modules
+            .iter()
+            .find(|module| module.module.span.file == entry)
+            .map(|module| authored_name_at(result.source_indices.clone(), module.module.clone()))
+    });
     let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        ScopedRunObservation::resolve(entry, &function).unwrap_or_else(|cause| {
+        let module_path = scoped_module_path.as_deref().unwrap_or_else(|| {
+            eprintln!("error: scoped run entry `{entry}` has no resolved module identity");
+            std::process::exit(1);
+        });
+        ScopedRunObservation::resolve(entry, module_path, &function).unwrap_or_else(|cause| {
             eprintln!("error: {cause}");
             std::process::exit(1);
         })
@@ -10880,25 +10990,44 @@ pub fn handle_run_with_options(
     v1_interpreter::with_active_context(&ctx, || {
         // One path, not two: with an empty `--arg` list this is byte-identical
         // to `run_in_context`, which passes the same empty slice.
-        let run_outcome =
-            v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
-        v1_interpreter::print_eval_recompute_trace(&ctx);
+        let run = || {
+            let outcome =
+                v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
+            v1_interpreter::print_eval_recompute_trace(&ctx);
+            if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
+                dump_residual_hunt_instrumentation();
+            }
+            outcome
+        };
+        let (run_outcome, deferred_stderr) = if scoped_observation.is_some() {
+            capture_scoped_run_stderr(run).unwrap_or_else(|cause| {
+                if let Some(observation) = scoped_observation.as_mut() {
+                    observation
+                        .failed(&cause)
+                        .unwrap_or_else(|projection_cause| {
+                            eprintln!("error: {projection_cause}");
+                            std::process::exit(1);
+                        });
+                }
+                std::process::exit(1);
+            })
+        } else {
+            (run(), Vec::new())
+        };
         match run_outcome {
             Ok(val) => {
-                if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
-                    dump_residual_hunt_instrumentation();
-                }
                 if claim_run {
                     match &val {
                         v1_interpreter::Value::Bool(false) => {
                             if let Some(observation) = scoped_observation.as_mut() {
-                                observation.refused("claim returned false").unwrap_or_else(
+                                observation.failed("claim returned false").unwrap_or_else(
                                     |cause| {
                                         eprintln!("error: {cause}");
                                         std::process::exit(1);
                                     },
                                 );
                             }
+                            replay_scoped_run_stderr(&deferred_stderr);
                             println!("{}", val);
                             std::process::exit(1)
                         }
@@ -10909,6 +11038,7 @@ pub fn handle_run_with_options(
                                     std::process::exit(1);
                                 });
                             }
+                            replay_scoped_run_stderr(&deferred_stderr);
                             println!("{}", val);
                             return;
                         }
@@ -10924,7 +11054,14 @@ pub fn handle_run_with_options(
                                         eprintln!("error: {projection_cause}");
                                         std::process::exit(1);
                                     });
+                            } else {
+                                eprintln!(
+                                    "error: function `{}` returned `{}`, not `Bool`. \
+                                     With --claim-run the entry must return Bool (false → exit 1).",
+                                    function, other
+                                );
                             }
+                            replay_scoped_run_stderr(&deferred_stderr);
                             println!("{}", val);
                             std::process::exit(2);
                         }
@@ -10940,7 +11077,9 @@ pub fn handle_run_with_options(
                         }
                     }
                     ExitClass::Failure { code, reason } => {
-                        let cause = reason.unwrap_or_else(|| format!("process exited {code}"));
+                        let cause = reason
+                            .clone()
+                            .unwrap_or_else(|| format!("process exited {code}"));
                         if let Some(observation) = scoped_observation.as_mut() {
                             observation
                                 .failed(&cause)
@@ -10948,7 +11087,10 @@ pub fn handle_run_with_options(
                                     eprintln!("error: {projection_cause}");
                                     std::process::exit(1);
                                 });
+                        } else if let Some(message) = &reason {
+                            eprintln!("{message}");
                         }
+                        replay_scoped_run_stderr(&deferred_stderr);
                         println!("{}", val);
                         std::process::exit(code);
                     }
@@ -10964,11 +11106,22 @@ pub fn handle_run_with_options(
                                     eprintln!("error: {projection_cause}");
                                     std::process::exit(1);
                                 });
+                        } else {
+                            eprintln!(
+                                "error: function `{}` returned `{}`, not `ProcessExit`. \
+                                 Functions invoked via `dag run` must return std/process.dag's \
+                                 ProcessExit so the host can map success/failure to an exit code. \
+                                 Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
+                                 --claim-run for Bool witness entry points under src/v2.",
+                                function, type_name
+                            );
                         }
+                        replay_scoped_run_stderr(&deferred_stderr);
                         println!("{}", val);
                         std::process::exit(2);
                     }
                 }
+                replay_scoped_run_stderr(&deferred_stderr);
                 println!("{}", val);
             }
             Err(e) => {
@@ -10977,7 +11130,10 @@ pub fn handle_run_with_options(
                         eprintln!("error: {cause}");
                         std::process::exit(1);
                     });
+                } else {
+                    eprintln!("runtime error: {}", e);
                 }
+                replay_scoped_run_stderr(&deferred_stderr);
                 std::process::exit(1);
             }
         }

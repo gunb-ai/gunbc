@@ -7,3 +7,11 @@ fn claim_true() -> Bool {
 fn claim_false() -> Bool {
   false
 }
+
+type ProcessExit
+  = ExitSuccess
+  | ExitFailure { code: Int, reason: String }
+
+fn exit_failure() -> ProcessExit {
+  ExitFailure { code: 7, reason: "legacy failure reason" }
+}
