@@ -974,9 +974,14 @@ fn stamp_parsed_pattern(
         },
         ctx: stamped.ctx,
       }
-    Present { value: other } =>
+    Present { value: LitPattern { value: value } } =>
       ParsedPatternStampResult {
-        pattern: Present { value: other },
+        pattern: Present { value: LitPattern { value: value } },
+        ctx: ctx,
+      }
+    Present { value: Wildcard } =>
+      ParsedPatternStampResult {
+        pattern: Present { value: Wildcard },
         ctx: ctx,
       }
     Absent =>

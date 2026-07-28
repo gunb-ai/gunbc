@@ -1,5 +1,7 @@
 module v1.compiler.infer
 
+import std.occurrence_binding { ContainmentPath }
+import std.occurrence_identity { OccurrenceId }
 import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
@@ -8221,8 +8223,8 @@ fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
 }
 
 fn occurrence_containment_has_root(
-  containment: std.occurrence_binding.ContainmentPath<std.occurrence_identity.OccurrenceId>,
-  root: std.occurrence_identity.OccurrenceId
+  containment: ContainmentPath<OccurrenceId>,
+  root: OccurrenceId
 ) -> Bool {
   match containment.ancestors {
     Empty => containment.terminal.value == root.value
