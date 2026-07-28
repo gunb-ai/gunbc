@@ -185,6 +185,7 @@ test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
     && string_contains(s: js, pattern: "workflow_status")
     && string_contains(s: js, pattern: "remaining_obligations")
     && string_contains(s: js, pattern: "attempt.segments.forEach")
+    && string_contains(s: js, pattern: "gunbcRefreshWorkflow().finally")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
     && !string_contains(s: js, pattern: "j.ok")

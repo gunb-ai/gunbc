@@ -9,6 +9,7 @@ import gunbc.roadmap_provider_events {
   ProviderFailed,
   ProviderEventsRefused,
   parse_codex_jsonl,
+  parse_codex_jsonl_with_line_budget,
   provider_execution_state,
   provider_execution_state_label,
   provider_execution_detail,
@@ -124,6 +125,33 @@ test fn braced_but_invalid_json_cannot_fabricate_terminal_success() -> Bool {
   }
 }
 
+test fn oversized_event_refuses_without_echoing_payload() -> Bool {
+  let secret = "large-command-output-must-stay-in-the-attempt-evidence-file"
+  let oversized = join([
+    "{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"aggregated_output\":\"",
+    secret,
+    "\"}}\n",
+  ], "")
+  match parse_codex_jsonl_with_line_budget(
+    text: oversized,
+    max_line_chars: 48,
+  ) {
+    CodexEventsParsed { events: _ } => false
+    CodexEventsRefused {
+      events_before_refusal,
+      line_number,
+      raw,
+      reason,
+    } =>
+      count(events_before_refusal) == 0
+        && line_number == 1
+        && string_contains(s: raw, pattern: "oversized")
+        && !string_contains(s: raw, pattern: secret)
+        && string_contains(s: reason, pattern: "observation line budget 48")
+        && string_contains(s: reason, pattern: "full raw remains")
+  }
+}
+
 test fn roadmap_provider_events_keystone_holds() -> Bool {
   codex_stream_classifies_running_activity()
     && codex_completed_is_terminal_only_from_provider_event()
@@ -134,4 +162,5 @@ test fn roadmap_provider_events_keystone_holds() -> Bool {
     && unknown_event_refuses_instead_of_guessing_progress()
     && nested_type_token_cannot_fabricate_terminal_success()
     && braced_but_invalid_json_cannot_fabricate_terminal_success()
+    && oversized_event_refuses_without_echoing_payload()
 }
