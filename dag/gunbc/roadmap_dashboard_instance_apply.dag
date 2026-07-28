@@ -1,6 +1,6 @@
 module gunbc.roadmap_dashboard_instance_apply
 
-import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, GitRef, CommitSha }
+import std.types { String, NonEmptyStr, Bool, Int, Seconds, List, FilePath, GitRef, CommitSha }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
@@ -48,7 +48,10 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_probe_over_ssh,
 }
+import extdeps.uri { Uri, Http, uri_wire }
+import extdeps.languages.json.grammar { json_text_parseable }
 import gunbc.roadmap_dashboard_instance {
+  dashboard_instance_health_identity_prefix,
   DashboardProvisionTransport,
   DashboardLocalProvision,
   DashboardSshProvision,
@@ -536,7 +539,7 @@ fn dashboard_read_instance_health(
   )
 }
 
-data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_serve.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
+data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
 
 fn dashboard_health_names_instance(
   instance: HostDashboardInstance,

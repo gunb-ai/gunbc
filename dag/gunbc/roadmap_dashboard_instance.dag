@@ -3,6 +3,11 @@ module gunbc.roadmap_dashboard_instance
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import extdeps.languages.json.emit {
+  json_kv,
+  json_string,
+  serialize_json_object_prefix,
+}
 import gunbc.roadmap_execution_contract {
   GitWorkspaceCapability,
   TmuxSessionCapability,
@@ -186,6 +191,17 @@ fn dashboard_provision_transport_label(transport: DashboardProvisionTransport) -
     DashboardLocalProvision => "local"
     DashboardSshProvision { host } => join(["ssh:", host as String], "")
   }
+}
+
+data dashboard_instance_health_schema: String = "roadmap-dashboard-instance/v1"
+
+data dashboard_instance_health_identity_note: String = "The served health document leads with schema then instance_id, so a reader can identify it POSITIONALLY instead of scanning the body — the same rule dispatch_environment_receipt_identity_prefix states for the admission receipt. A health reader that scanned for an instance_id fragment would accept any document carrying it in any nested value, which is how a foreign or stale server on the polled port fabricates a converged apply."
+
+fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
+  serialize_json_object_prefix(members: [
+    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
+    json_kv(key: "instance_id", value: json_string(s: instance_id)),
+  ])
 }
 
 fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {

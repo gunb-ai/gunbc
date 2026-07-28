@@ -53,6 +53,7 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_bootstrap_preflight_decision,
   dashboard_required_target_executables,
 }
+import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
 
 data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes."
@@ -266,24 +267,33 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     )
 }
 
+data dashboard_health_identity_witness_note: String = "review 44058. The served document is the oracle, so the green arm feeds dashboard_instance_json's real output rather than a hand-spelled stub — a stub is exactly what let the previous scan look correct while accepting anything. The REDs are the two ways a wrong server passes a scan but must fail positional identity: a different instance, and a document that merely MENTIONS the wanted id in a nested value."
+
+fn health_result(body: String) -> DashboardExecResult {
+  DashboardExecResult { success: true, stdout: body, stderr: "" }
+}
+
 test fn dashboard_health_requires_intended_instance_identity() -> Bool {
   let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  let mentions_lab_id_in_a_nested_value = join([
+    "{\"schema\": \"roadmap-dashboard-instance/v1\", \"instance_id\": \"srv1-live\", ",
+    "\"note\": \"\\\"instance_id\\\": \\\"",
+    lab.instance_id as String,
+    "\\\"\"}",
+  ], "")
   dashboard_instance_health_url(instance: lab) == "http://127.0.0.1:18081/instance.json"
     && dashboard_health_names_instance(
       instance: lab,
-      result: DashboardExecResult {
-        success: true,
-        stdout: "{\"instance_id\": \"srv1-lab-codex-feedback-v0\"}",
-        stderr: "",
-      },
+      result: health_result(body: dashboard_instance_json(instance: lab)),
     )
     && !dashboard_health_names_instance(
       instance: lab,
-      result: DashboardExecResult {
-        success: true,
-        stdout: "{\"instance_id\": \"srv1-live\"}",
-        stderr: "",
-      },
+      result: health_result(body: dashboard_instance_json(instance: live)),
+    )
+    && !dashboard_health_names_instance(
+      instance: lab,
+      result: health_result(body: mentions_lab_id_in_a_nested_value),
     )
 }
 
