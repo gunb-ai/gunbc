@@ -263,14 +263,6 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
 
-type RoadmapDispatchGate {
-  required_join: RoadmapNodeId
-}
-
-fn active_roadmap_dispatch_gate() -> RoadmapDispatchGate {
-  RoadmapDispatchGate { required_join: nid(s: "roadmap-runtime-identity-join") }
-}
-
 fn active_roadmap_nodes() -> List<RoadmapNode> {
   [
     active(
@@ -774,13 +766,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Model Ready as an explicit operator override",
-        boundary: "Dependency readiness is derived from accepted parents; the only override is a typed operator decision with scope and provenance.",
-        displaced_cost: "Prevents mutable UI state or implementation evidence from silently unblocking work.",
-        first_slice: "Apply an override to one otherwise blocked fixture without changing acceptance facts.",
-        red_control: "Absent, stale, wrong-node, or revoked override leaves the node blocked.",
-        out_of_scope: "Merged code and green CI are not acceptance or readiness overrides.",
-        handback: "Return derived-ready and four override refusal receipts."
+        headline: "Model Ready as an explicit operator scheduling override",
+        boundary: "Only after every dependency edge is accepted and the typed identity join succeeds may a scoped operator decision promote an otherwise queued eligible node into scheduling.",
+        displaced_cost: "Prevents mutable UI state or implementation evidence from silently unblocking work while preserving dependency refusals.",
+        first_slice: "Apply a scheduling override to one queued fixture whose dependencies are already accepted, without changing acceptance facts.",
+        red_control: "An unaccepted parent, missing or mismatched join, dependency refusal, absent, stale, wrong-node, or revoked override leaves the node blocked.",
+        out_of_scope: "Ready never overrides dependency acceptance, the identity join, or any refusal; merged code and green CI are not overrides.",
+        handback: "Return accepted-dependency scheduling and the dependency, join, and override refusal matrix."
       )
     ),
     active(
@@ -789,10 +781,10 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
         headline: "Dispatch only from the typed runtime join",
-        boundary: "The actuator consumes a spawnable active node, accepted dependencies or Ready override, and an idempotent attempt identity.",
+        boundary: "The actuator consumes a spawnable active node whose dependencies are accepted, an optional scheduling override, and an idempotent attempt identity from the typed join.",
         displaced_cost: "Prevents duplicate workers, dispatch from parked rows, and title-based routing.",
         first_slice: "Dispatch one eligible fixture and re-submit the same attempt idempotently.",
-        red_control: "Queued, parked, blocked, duplicate, and identity-mismatched nodes refuse dispatch.",
+        red_control: "Unaccepted-parent, queued-without-override, parked, blocked, duplicate, and identity-mismatched nodes refuse dispatch.",
         out_of_scope: "The authority graph stores no session, attempt, or pull-request state.",
         handback: "Return accepted/idempotent dispatch and refusal matrix."
       )
@@ -942,7 +934,7 @@ fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. It carries no accepted or superseded history and no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. This authority is not admitted as a live dispatch source until the typed node-to-lease identity join is implemented. Once admitted, dispatch readiness requires every dependency to be accepted or covered by an explicit Ready override. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
     ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM/source-intent design](docs/plans/dag-scm-design.md) · [SCM product strategy](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }
