@@ -768,9 +768,9 @@ fn git_ls_tree_z_row_step(
                           }
                       }
                   }
+              }
           }
-  }
-}
+      }
   }
 }
 
