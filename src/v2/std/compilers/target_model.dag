@@ -1,7 +1,7 @@
 module v2.std.compilers.target_model
 
 import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, any, filter, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v2.std.algebra { Equal, Greater, Less, Ordering, TailAbsent, TailFound, any, fold_list, fold_list_node, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v2.std.collection {
   List,
   Map,
@@ -9145,6 +9145,30 @@ fn target_grounding_derive_trait_discriminant(
   discriminant(v: derive_trait)
 }
 
+type TargetGroundingDeriveTraitLookup
+  = TargetGroundingDeriveTraitMissing
+  | TargetGroundingDeriveTraitUnique { derive_trait: ReprGroundingDeriveTrait }
+  | TargetGroundingDeriveTraitDuplicate
+
+fn target_grounding_derive_trait_lookup_step(
+  id: Symbol,
+  acc: TargetGroundingDeriveTraitLookup,
+  candidate: ReprGroundingDeriveTrait
+) -> TargetGroundingDeriveTraitLookup {
+  if target_grounding_derive_trait_discriminant(derive_trait: candidate) == id {
+    match acc {
+      TargetGroundingDeriveTraitMissing =>
+        TargetGroundingDeriveTraitUnique { derive_trait: candidate }
+      TargetGroundingDeriveTraitUnique { derive_trait: _ } =>
+        TargetGroundingDeriveTraitDuplicate
+      TargetGroundingDeriveTraitDuplicate =>
+        TargetGroundingDeriveTraitDuplicate
+    }
+  } else {
+    acc
+  }
+}
+
 fn target_grounding_derive_trait_from_atom(
   id: Symbol,
   at: Node
@@ -9155,19 +9179,23 @@ fn target_grounding_derive_trait_from_atom(
       discriminant_of: target_grounding_derive_trait_discriminant
     ),
     f: fn(inhabitants) {
-      match filter(
+      match fold(
         xs: inhabitants,
-        predicate: fn(inhabitant) {
-          target_grounding_derive_trait_discriminant(derive_trait: inhabitant) == id
+        init: TargetGroundingDeriveTraitMissing,
+        f: fn(acc, candidate) {
+          target_grounding_derive_trait_lookup_step(
+            id: id,
+            acc: acc,
+            candidate: candidate
+          )
         }
       ) {
-        Empty => outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
-        Cons { head: inhabitant, tail: tail } =>
-          match tail {
-            Empty => outcome_accepted(inhabitant)
-            Cons { head: _, tail: _ } =>
-              outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
-          }
+        TargetGroundingDeriveTraitMissing =>
+          outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
+        TargetGroundingDeriveTraitUnique { derive_trait: derive_trait } =>
+          outcome_accepted(derive_trait)
+        TargetGroundingDeriveTraitDuplicate =>
+          outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))
       }
     }
   )
