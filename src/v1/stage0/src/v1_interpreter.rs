@@ -56,12 +56,13 @@ mod selected_identity_path_tests {
 
     #[test]
     fn selected_function_identity_refuses_suffix_collision_on_actual_node() {
-        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(vec![Rc::new(
-            SourceFile {
-                path: "workspace/src/common.dag".to_string(),
-                content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
-            },
-        )]));
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/common.dag".to_string(),
+                    content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
+                },
+            )]));
         let graph = result.graph.as_ref().expect("fixture graph");
         let ctx = InterpContext::new(
             graph,
