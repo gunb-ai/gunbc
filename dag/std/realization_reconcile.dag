@@ -2,6 +2,13 @@ module std.realization_reconcile
 
 import std.types { String, Bool }
 import std.disposition { Disposition, Terminal }
+import std.state_durability {
+  StateDurabilityQualification,
+  StateDurabilityRefusal,
+  StateDurabilityQualified,
+  StateDurabilityRefused,
+  StateDurabilityVerdict,
+}
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }
@@ -10,6 +17,21 @@ type ShowEffectiveRead<R>
 type Grounding<E>
   = Grounds { evidence: E }
   | DoesNotGround { reason: String }
+
+type DurabilityGroundingRefusal<Target, ReadbackSubject>
+  = EffectiveStateDoesNotGround { reason: String }
+  | DeclaredLifetimeDoesNotGround {
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
+    }
+
+type DurabilityQualifiedGrounding<E, Target, ReadbackSubject>
+  = DurabilityGrounds {
+      effective_state_evidence: E,
+      durability_evidence: StateDurabilityQualification<Target, ReadbackSubject>,
+    }
+  | DurabilityDoesNotGround {
+      cause: DurabilityGroundingRefusal<Target, ReadbackSubject>,
+    }
 
 type Reconciliation<A, E>
   = Converged { evidence: E, applied: A }
@@ -38,5 +60,29 @@ fn reconciliation_converged<A, E>(r: Reconciliation<A, E>) -> Bool {
   match r {
     Converged { evidence: _, applied: _ } => true
     NotConverged { reason: _, applied: _ } => false
+  }
+}
+
+fn grounding_qualified_by_durability<E, Target, ReadbackSubject>(
+  grounding: Grounding<E>,
+  durability: StateDurabilityVerdict<Target, ReadbackSubject>,
+) -> DurabilityQualifiedGrounding<E, Target, ReadbackSubject> {
+  match grounding {
+    DoesNotGround { reason: reason } =>
+      DurabilityDoesNotGround {
+        cause: EffectiveStateDoesNotGround { reason: reason },
+      }
+    Grounds { evidence: evidence } =>
+      match durability {
+        StateDurabilityQualified { qualification: qualification } =>
+          DurabilityGrounds {
+            effective_state_evidence: evidence,
+            durability_evidence: qualification,
+          }
+        StateDurabilityRefused { cause: cause } =>
+          DurabilityDoesNotGround {
+            cause: DeclaredLifetimeDoesNotGround { cause: cause },
+          }
+      }
   }
 }
