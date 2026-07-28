@@ -31,6 +31,7 @@ import extdeps.languages.json.emit {
   json_string,
   json_int,
   json_array,
+  serialize_json_object_prefix,
 }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
 import gunbc.roadmap_component {
@@ -252,10 +253,21 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
   )
 }
 
+data dashboard_instance_health_schema: String = "roadmap-dashboard-instance/v1"
+
+data dashboard_instance_health_identity_note: String = "The served health document leads with schema then instance_id, so a reader can identify it POSITIONALLY instead of scanning the body — the same rule dispatch_environment_receipt_identity_prefix states for the admission receipt. A health reader that scanned for an instance_id fragment would accept any document carrying it in any nested value, which is how a foreign or stale server on the polled port fabricates a converged apply."
+
+fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
+  serialize_json_object_prefix(members: [
+    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
+    json_kv(key: "instance_id", value: json_string(s: instance_id)),
+  ])
+}
+
 fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
   let plan = dashboard_instance_provision_plan_rows(instance: instance)
   serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-dashboard-instance/v1")),
+    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
     json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
     json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
     json_kv(

@@ -506,8 +506,24 @@ fn dashboard_ensure_service(
   }
 }
 
+data dashboard_health_loopback_host: String = "127.0.0.1"
+
+data dashboard_health_path: String = "/instance.json"
+
+fn dashboard_instance_health_uri(instance: HostDashboardInstance) -> Uri {
+  Uri {
+    scheme: Http,
+    locator: join([
+      dashboard_health_loopback_host,
+      ":",
+      to_string(instance.listen_port),
+      dashboard_health_path,
+    ], "") as NonEmptyStr,
+  }
+}
+
 fn dashboard_instance_health_url(instance: HostDashboardInstance) -> String {
-  join(["http://127.0.0.1:", to_string(instance.listen_port), "/instance.json"], "")
+  uri_wire(uri: dashboard_instance_health_uri(instance: instance)) as String
 }
 
 fn dashboard_read_instance_health(
@@ -520,23 +536,24 @@ fn dashboard_read_instance_health(
   )
 }
 
+data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_serve.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
+
 fn dashboard_health_names_instance(
   instance: HostDashboardInstance,
   result: DashboardExecResult,
 ) -> Bool {
   result.success
-    && string_contains(
+    && json_text_parseable(s: result.stdout)
+    && starts_with(
       s: result.stdout,
-      pattern: join([
-        "\"instance_id\": \"",
-        instance.instance_id as String,
-        "\"",
-      ], ""),
+      prefix: dashboard_instance_health_identity_prefix(
+        instance_id: instance.instance_id as String,
+      ),
     )
 }
 
 data dashboard_health_poll_attempts: Int = 31
-data dashboard_health_poll_seconds: Int = 2
+data dashboard_health_poll_seconds: Seconds = 2 as Seconds
 
 fn dashboard_verify_health_after_attempts(
   instance: HostDashboardInstance,
@@ -562,7 +579,7 @@ fn dashboard_verify_health_after_attempts(
     let delay = dashboard_local_exec(
       workdir: dashboard_instance_controller_workdir(instance: instance),
       program: "/usr/bin/sleep" as FilePath,
-      args: [to_string(dashboard_health_poll_seconds)],
+      args: [to_string(dashboard_health_poll_seconds as Int)],
     )
     if delay.success {
       dashboard_verify_health_after_attempts(
