@@ -2,7 +2,7 @@ module v2.test.manual.e0599_phase_a_body_evidence_probe
 
 data e0599pa_anchor: Symbol = ^e0599pa_anchor
 
-data e0599pa_note: String = "Phase A probe for the E0599 R1/R2/R3 lane (docs/plans/e0599-implementation-proposal.md §3 P-fn coverage audit). Answers the named-missing fact by EXECUTION: parse a real corpus file and count postfix method-projection steps by method symbol over the parsed tree. The P-fn carrier TraitBoundSiteMethodInvoke { method, receiver } can only be inhabited where such a step exists. Detector is body_lower_postfix_projection_step (v2.compiler.body_lowering_fold) — the same accessor the projection lowering uses, not a second walker. RED control: a fixture that DOES carry .clone()/.is_empty()/.iter() must count non-zero, so a zero on the corpus is a measurement and not a dead detector."
+data e0599pa_note: String = "Phase A probe for the E0599 R1/R2/R3 lane (docs/plans/e0599-implementation-proposal.md §3 P-fn coverage audit). Answers the named-missing fact by EXECUTION: parse a real corpus file and count postfix method-projection steps by method symbol over the parsed tree. The P-fn carrier TraitBoundSiteMethodInvoke { method, receiver } can only be inhabited where such a step exists. Detector is body_lower_postfix_projection_step (v2.compiler.body_lowering_fold) — the same accessor the projection lowering uses, not a second walker. RED control: inline source text that DOES carry .clone()/.is_empty()/.iter() must count non-zero, so a zero on the corpus is a measurement and not a dead detector. A parse/read failure yields -1, never 0 — an unreadable file must not be indistinguishable from a file with no projections."
 
 fn e0599pa_parse_text_optional(source_text: String) -> Optional<Node> {
   let lm = dag_language_model()
@@ -96,20 +96,45 @@ fn e0599pa_red_any_projection_count() -> Int {
   }
 }
 
-data e0599pa_algebra_path: String = "src/v2/std/algebra.dag"
+data e0599pa_site_bearing_note: String = "The R1/R2/R3 census population does NOT live in the seven entry modules: keyed by emitted file over the kept cargo logs, 421 R1/R2/R3 diagnostics land in v2_std_algebra.rs (295), v2_std_diagnostic.rs (80), v2_std_optional.rs (12), v2_std_node.rs (10), v2_std_collection.rs (4) and v2_std_witness.rs (4) — the shared import closure, recompiled once per entry module. These are the source files whose fn bodies the P-fn carrier would have to witness."
 
-fn e0599pa_algebra_clone_count() -> Int {
-  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^clone)
+fn e0599pa_file_report(path: String) -> List<Int> {
+  match e0599pa_parse_path_optional(path: path) {
+    Absent => [0 - 1, 0 - 1, 0 - 1, 0 - 1]
+    Present { value: tree } =>
+      [
+        e0599pa_count_any_projection_in_tree(root: tree),
+        e0599pa_count_method_in_tree(root: tree, target: ^clone),
+        e0599pa_count_method_in_tree(root: tree, target: ^is_empty),
+        e0599pa_count_method_in_tree(root: tree, target: ^iter)
+      ]
+  }
 }
 
-fn e0599pa_algebra_is_empty_count() -> Int {
-  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^is_empty)
+fn e0599pa_site_bearing_paths() -> List<String> {
+  [
+    "src/v2/std/algebra.dag",
+    "src/v2/std/diagnostic.dag",
+    "src/v2/std/optional.dag",
+    "src/v2/std/node.dag",
+    "src/v2/std/collection.dag",
+    "src/v2/std/witness.dag"
+  ]
 }
 
-fn e0599pa_algebra_iter_count() -> Int {
-  e0599pa_count_method_at_path(path: e0599pa_algebra_path, target: ^iter)
+fn e0599pa_site_bearing_report() -> List<Int> {
+  fold_list(
+    xs: e0599pa_site_bearing_paths(),
+    empty: std.algebra.Empty,
+    cons: fn(acc, path) { list_append(left: acc, right: e0599pa_file_report(path: path)) }
+  )
 }
 
-fn e0599pa_algebra_any_projection_count() -> Int {
-  e0599pa_count_any_projection_at_path(path: e0599pa_algebra_path)
+fn e0599pa_red_report() -> List<Int> {
+  [
+    e0599pa_red_any_projection_count(),
+    e0599pa_red_clone_count(),
+    e0599pa_red_is_empty_count(),
+    e0599pa_red_iter_count()
+  ]
 }
