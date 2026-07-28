@@ -161,13 +161,13 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
   match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 1), addressable: false, emoji: false, prior: DynamicLineClosed) {
     ScopedRunMeasuredRefused { cause: _ } => false
-    ScopedRunMeasuredProjected { bytes: one, next: one_open, wall: one_wall } =>
+    ScopedRunMeasuredProjected { bytes: one, next: one_state, wall: one_wall } =>
       match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 999999), addressable: false, emoji: false, prior: DynamicLineClosed) {
         ScopedRunMeasuredRefused { cause: _ } => false
-        ScopedRunMeasuredProjected { bytes: sub_ms, next: sub_ms_open, wall: sub_ms_wall } =>
+        ScopedRunMeasuredProjected { bytes: sub_ms, next: sub_ms_state, wall: sub_ms_wall } =>
           match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 1000000), addressable: false, emoji: false, prior: DynamicLineClosed) {
             ScopedRunMeasuredRefused { cause: _ } => false
-            ScopedRunMeasuredProjected { bytes: one_ms, next: one_ms_open, wall: one_ms_wall } =>
+            ScopedRunMeasuredProjected { bytes: one_ms, next: one_ms_state, wall: one_ms_wall } =>
               one_state == DynamicLineClosed && sub_ms_state == DynamicLineClosed && one_ms_state == DynamicLineClosed &&
               nanosecond_count(n: one_wall) == 1 && nanosecond_count(n: sub_ms_wall) == 999999 && nanosecond_count(n: one_ms_wall) == 1000000
           }
@@ -178,7 +178,7 @@ test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
 test fn scoped_run_clean_final_is_unmeasured_and_end_receipt_is_typed() -> Bool {
   match scoped_run_final_write(entry_file: entry(), module_path: module_path(), function: function(), addressable: false, emoji: false, prior: DynamicLineClosed) {
     ScopedRunWriteRefused { cause: _ } => false
-    ScopedRunWriteProjected { bytes: _, next: final_open } =>
+    ScopedRunWriteProjected { bytes: _, next: final_state } =>
       match scoped_run_timing_receipt(wall: nanosecond(count: 1000000), seed_resolution: nanosecond(count: 999999)) {
         ScopedRunTimingProjected { wall: wall, seed_resolution: seed } =>
           final_state == DynamicLineClosed && nanosecond_count(n: wall) == 1000000 && nanosecond_count(n: seed) == 999999
