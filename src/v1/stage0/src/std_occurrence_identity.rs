@@ -35,7 +35,7 @@ pub fn authored_token_ordinal_typed_bridge_note() -> String {
 pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string()
+            "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -254,190 +254,190 @@ pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIde
     Rc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
 }
 
-pub fn occurrence_id_matches(left: OccurrenceId, right: OccurrenceId) -> bool {
-    (left.value.clone() == right.value.clone())
+pub fn occurrence_transport_validation_complexity_law() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_index_population(
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceTransportIndexBuild {
+    pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    pub refusal: Option<Rc<OccurrenceTransportRefusal>>,
+}
+
+pub fn occurrence_transport_index_build(
     index: Rc<OccurrenceIndex>,
-    occurrence: OccurrenceId,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for entry in index.entries.clone().iter().cloned() {
-            if occurrence_id_matches(
-                entry.projection.clone().occurrence.clone(),
-                occurrence.clone(),
+) -> Rc<OccurrenceTransportIndexBuild> {
+    index.entries.clone().iter().cloned().fold(
+        Rc::new(OccurrenceTransportIndexBuild {
+            entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
+            refusal: None,
+        }),
+        |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
+            .refusal
+            .clone()
+        {
+            Some(_) => build.clone(),
+            None => match v1_rt::map_get(
+                &build.entries_by_id.clone(),
+                entry.projection.clone().occurrence.clone().value.clone(),
             ) {
-                __result.push(entry);
-            }
-        }
-        __result
-    })
+                Some(existing) => Rc::new(OccurrenceTransportIndexBuild {
+                    entries_by_id: build.entries_by_id.clone(),
+                    refusal: Some(Rc::new(
+                        OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                            occurrence: existing.projection.clone().occurrence.clone(),
+                            diagnostic_span: existing.projection.clone().diagnostic_span.clone(),
+                        },
+                    )),
+                }),
+                None => Rc::new(OccurrenceTransportIndexBuild {
+                    entries_by_id: v1_rt::rc_map_insert(
+                        build.entries_by_id.clone(),
+                        entry.projection.clone().occurrence.clone().value.clone(),
+                        entry.clone(),
+                    ),
+                    refusal: None,
+                }),
+            },
+        },
+    )
 }
 
-pub fn occurrence_transport_index_refusal(
-    transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            None,
-            |refusal: _, entry: Rc<OccurrenceIndexEntry>| match refusal.clone() {
-                Some(_) => refusal.clone(),
-                None => {
-                    if ((occurrence_index_population(
-                        transport.index.clone(),
-                        entry.projection.clone().occurrence.clone(),
-                    )
-                    .len() as i64)
-                        > 1)
-                    {
-                        Some(Rc::new(
-                            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                                occurrence: entry.projection.clone().occurrence.clone(),
-                                diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
-                            },
-                        ))
-                    } else {
-                        None
-                    }
-                }
-            },
-        )
+pub fn declaration_occurrences_by_id(
+    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+) -> Rc<HashMap<i64, Rc<DeclarationOccurrence>>> {
+    declarations.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
+        |by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
+         declaration: Rc<DeclarationOccurrence>| match v1_rt::map_get(
+            &by_id,
+            declaration.occurrence.clone().value.clone(),
+        ) {
+            Some(_) => by_id.clone(),
+            None => v1_rt::rc_map_insert(
+                by_id.clone(),
+                declaration.occurrence.clone().value.clone(),
+                declaration.clone(),
+            ),
+        },
+    )
+}
+
+pub fn reference_occurrences_by_id(
+    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+) -> Rc<HashMap<i64, Rc<ReferenceOccurrence>>> {
+    references.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
+        |by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
+            match v1_rt::map_get(&by_id, reference.occurrence.clone().value.clone()) {
+                Some(_) => by_id.clone(),
+                None => v1_rt::rc_map_insert(
+                    by_id.clone(),
+                    reference.occurrence.clone().value.clone(),
+                    reference.clone(),
+                ),
+            }
+        },
+    )
 }
 
 pub fn declaration_occurrence_refusal(
-    transport: Rc<OccurrenceTransport>,
+    index_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
     declaration: Rc<DeclarationOccurrence>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
-    {
-        let population =
-            occurrence_index_population(transport.index.clone(), declaration.occurrence.clone());
-        if ((population.clone().len() as i64) == 0) {
-            Some(Rc::new(
-                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+    match v1_rt::map_get(&index_by_id, declaration.occurrence.clone().value.clone()) {
+        None => Some(Rc::new(
+            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                diagnostic_span: declaration.diagnostic_span.clone(),
+            },
+        )),
+        Some(_) => match v1_rt::map_get(
+            &references_by_id,
+            declaration.occurrence.clone().value.clone(),
+        ) {
+            Some(reference) => Some(Rc::new(
+                OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    occurrence: declaration.occurrence.clone(),
+                    expected: declaration.category.clone(),
+                    observed: reference.category.clone(),
                     diagnostic_span: declaration.diagnostic_span.clone(),
                 },
-            ))
-        } else {
-            if ((population.clone().len() as i64) > 1) {
-                Some(Rc::new(
-                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                        occurrence: declaration.occurrence.clone(),
-                        diagnostic_span: declaration.diagnostic_span.clone(),
-                    },
-                ))
-            } else {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for reference in transport.references.clone().iter().cloned() {
-                        if occurrence_id_matches(
-                            reference.occurrence.clone(),
-                            declaration.occurrence.clone(),
-                        ) {
-                            __result.push(reference);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(reference) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                            occurrence: declaration.occurrence.clone(),
-                            expected: declaration.category.clone(),
-                            observed: reference.category.clone(),
-                            diagnostic_span: declaration.diagnostic_span.clone(),
-                        },
-                    )),
-                    None => None,
-                }
-            }
-        }
+            )),
+            None => None,
+        },
     }
 }
 
 pub fn reference_occurrence_refusal(
-    transport: Rc<OccurrenceTransport>,
+    index_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
-    {
-        let population =
-            occurrence_index_population(transport.index.clone(), reference.occurrence.clone());
-        if ((population.clone().len() as i64) == 0) {
-            Some(Rc::new(
-                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+    match v1_rt::map_get(&index_by_id, reference.occurrence.clone().value.clone()) {
+        None => Some(Rc::new(
+            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                diagnostic_span: reference.diagnostic_span.clone(),
+            },
+        )),
+        Some(_) => match v1_rt::map_get(
+            &declarations_by_id,
+            reference.occurrence.clone().value.clone(),
+        ) {
+            Some(declaration) => Some(Rc::new(
+                OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                    occurrence: reference.occurrence.clone(),
+                    expected: reference.category.clone(),
+                    observed: declaration.category.clone(),
                     diagnostic_span: reference.diagnostic_span.clone(),
                 },
-            ))
-        } else {
-            if ((population.clone().len() as i64) > 1) {
-                Some(Rc::new(
-                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                        occurrence: reference.occurrence.clone(),
-                        diagnostic_span: reference.diagnostic_span.clone(),
-                    },
-                ))
-            } else {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for declaration in transport.declarations.clone().iter().cloned() {
-                        if occurrence_id_matches(
-                            declaration.occurrence.clone(),
-                            reference.occurrence.clone(),
-                        ) {
-                            __result.push(declaration);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(declaration) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                            occurrence: reference.occurrence.clone(),
-                            expected: reference.category.clone(),
-                            observed: declaration.category.clone(),
-                            diagnostic_span: reference.diagnostic_span.clone(),
-                        },
-                    )),
-                    None => None,
-                }
-            }
-        }
+            )),
+            None => None,
+        },
     }
 }
 
 pub fn occurrence_transport_refusal(
     transport: Rc<OccurrenceTransport>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
-    match occurrence_transport_index_refusal(transport.clone()) {
-        Some(refusal) => Some(refusal.clone()),
-        None => {
-            let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
-                None,
-                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
-                    Some(_) => refusal.clone(),
-                    None => declaration_occurrence_refusal(transport.clone(), declaration.clone()),
-                },
-            );
-            match declaration_refusal.clone() {
-                Some(refusal) => Some(refusal.clone()),
-                None => transport.references.clone().iter().cloned().fold(
+    {
+        let index_build = occurrence_transport_index_build(transport.index.clone());
+        match index_build.refusal.clone() {
+            Some(refusal) => Some(refusal.clone()),
+            None => {
+                let declarations_by_id =
+                    declaration_occurrences_by_id(transport.declarations.clone());
+                let references_by_id = reference_occurrences_by_id(transport.references.clone());
+                let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
                     None,
-                    |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                    |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
                         Some(_) => refusal.clone(),
-                        None => reference_occurrence_refusal(transport.clone(), reference.clone()),
+                        None => declaration_occurrence_refusal(
+                            index_build.entries_by_id.clone(),
+                            references_by_id.clone(),
+                            declaration.clone(),
+                        ),
                     },
-                ),
+                );
+                match declaration_refusal.clone() {
+                    Some(refusal) => Some(refusal.clone()),
+                    None => transport.references.clone().iter().cloned().fold(
+                        None,
+                        |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                            Some(_) => refusal.clone(),
+                            None => reference_occurrence_refusal(
+                                index_build.entries_by_id.clone(),
+                                declarations_by_id.clone(),
+                                reference.clone(),
+                            ),
+                        },
+                    ),
+                }
             }
         }
     }

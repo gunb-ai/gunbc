@@ -53,6 +53,32 @@ fn fixture_index_entry(
   }
 }
 
+fn fixture_unique_index_entries(
+  next: Int,
+  remaining: Int
+) -> List<OccurrenceIndexEntry> {
+  if remaining <= 0 {
+    []
+  } else {
+    let occurrence = std.occurrence_identity.OccurrenceId { value: next }
+    list_push(
+      fixture_unique_index_entries(
+        next: next + 1,
+        remaining: remaining - 1
+      ),
+      fixture_index_entry(
+        occurrence: occurrence,
+        authored_name: "same",
+        span: fixture_span(
+          file: "occurrence-validator-scale.dag",
+          start: next,
+          end: next + 1
+        )
+      )
+    )
+  }
+}
+
 test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool {
   let first = alloc_occurrence_id(
     alloc: occurrence_id_allocator_initial()
@@ -182,4 +208,25 @@ test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bo
       }
     _ => false
   }
+}
+
+test fn namespace_occurrence_validator_large_population_holds() -> Bool {
+  let small = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: fixture_unique_index_entries(next: 0, remaining: 256),
+    },
+    declarations: [],
+    references: [],
+  }
+  let large = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: fixture_unique_index_entries(next: 256, remaining: 512),
+    },
+    declarations: [],
+    references: [],
+  }
+  occurrence_transport_refusal(transport: small) == none &&
+  occurrence_transport_refusal(transport: large) == none &&
+  (small.index.entries |> count) == 256 &&
+  (large.index.entries |> count) == 512
 }

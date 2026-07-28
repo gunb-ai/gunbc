@@ -3,19 +3,32 @@
 
 use self::ParsedFixturePattern::*;
 pub use crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator;
-pub use crate::std_occurrence_identity::{OccurrenceIdAllocator, OccurrenceIndexEntry};
+use crate::std_occurrence_identity::OccurrenceCategory::{
+    CallableOccurrence, LexicalValueOccurrence,
+};
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
+    DuplicateAuthoredOccurrenceIdentity, MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+};
+pub use crate::std_occurrence_identity::{
+    DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
+    OccurrenceTransport, OccurrenceTransportRefusal, ReferenceOccurrence,
+};
+pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_compile::resolve_frontend_occurrence_transport;
 pub use crate::v1_compiler_parse::ParseContext;
 pub use crate::v1_compiler_parse::{parse_pattern, parse_with_table, token_stream_new};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::CompilerDiagnostic::OccurrenceTransportViolation;
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
     build_newline_index, empty_intern_table, field_binding_pattern,
     intern_table_with_authored_token_ordinals, merge_intern_tables,
 };
-pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
+pub use crate::v1_std_core::{CompilerDiagnostic, ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -24,7 +37,7 @@ use std::rc::Rc;
 pub fn pattern_binder_declaration_node_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -124,6 +137,50 @@ pub fn parsed_pattern_has_one_binder(source: String, name: String) -> bool {
             (pattern_binder_named_count(pattern.clone(), name.clone()) == 1)
         }
     }
+}
+
+pub fn transport_fixture_span() -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+        file: "occurrence-transport-production.dag".to_string(),
+        start: 7,
+        end: 8,
+    })
+}
+
+pub fn transport_fixture_path(occurrence: OccurrenceId) -> Rc<OccurrenceContainmentPath> {
+    Rc::new(OccurrenceContainmentPath {
+        ancestors: Rc::new(vec![]),
+        terminal: occurrence.clone(),
+    })
+}
+
+pub fn transport_fixture_index_entry(occurrence: OccurrenceId) -> Rc<OccurrenceIndexEntry> {
+    Rc::new(OccurrenceIndexEntry {
+        projection: Rc::new(OccurrenceProjection {
+            occurrence: occurrence.clone(),
+            authored_name: "same".to_string(),
+            diagnostic_span: transport_fixture_span(),
+        }),
+        containment: transport_fixture_path(occurrence.clone()),
+    })
+}
+
+pub fn transport_fixture_declaration(occurrence: OccurrenceId) -> Rc<DeclarationOccurrence> {
+    Rc::new(DeclarationOccurrence {
+        occurrence: occurrence.clone(),
+        containment: transport_fixture_path(occurrence.clone()),
+        category: OccurrenceCategory::LexicalValueOccurrence,
+        diagnostic_span: transport_fixture_span(),
+    })
+}
+
+pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Rc<ReferenceOccurrence> {
+    Rc::new(ReferenceOccurrence {
+        occurrence: occurrence.clone(),
+        containment: transport_fixture_path(occurrence.clone()),
+        category: OccurrenceCategory::CallableOccurrence,
+        diagnostic_span: transport_fixture_span(),
+    })
 }
 
 pub fn w_pattern_parser_materializes_dedicated_declaration_nodes() -> bool {
@@ -340,5 +397,131 @@ pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
                 .next_id
                 .clone()
                 == parsed.occurrence_allocator.clone().next_id.clone()))
+    }
+}
+
+pub fn w_production_frontend_accepts_valid_occurrence_transport() -> bool {
+    {
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![]),
+                }),
+                declarations: Rc::new(vec![]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() != None) && ((result.diagnostics.clone().len() as i64) == 0))
+    }
+}
+
+pub fn w_production_frontend_refuses_missing_occurrence_identity() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 17 };
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        (span.clone() == transport_fixture_span())
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_duplicate_occurrence_identity() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 23 };
+        let entry = transport_fixture_index_entry(occurrence.clone());
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![entry.clone(), entry.clone()]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                            occurrence: observed,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
+    }
+}
+
+pub fn w_production_frontend_refuses_wrong_occurrence_category() -> bool {
+    {
+        let occurrence = OccurrenceId { value: 29 };
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+            Rc::new(OccurrenceTransport {
+                index: Rc::new(OccurrenceIndex {
+                    entries: Rc::new(vec![transport_fixture_index_entry(occurrence.clone())]),
+                }),
+                declarations: Rc::new(vec![transport_fixture_declaration(occurrence.clone())]),
+                references: Rc::new(vec![transport_fixture_reference(occurrence.clone())]),
+            }),
+        );
+        ((result.graph.clone() == None)
+            && match result.diagnostics.clone().first().cloned() {
+                Some(error) => match (*error.diagnostic.clone()).clone() {
+                    CompilerDiagnostic::OccurrenceTransportViolation { ref refusal, .. } => {
+                        let OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: observed,
+                            expected: OccurrenceCategory::LexicalValueOccurrence,
+                            observed: OccurrenceCategory::CallableOccurrence,
+                            diagnostic_span: span,
+                            ..
+                        } = refusal.as_ref()
+                        else {
+                            unreachable!()
+                        };
+                        ((observed.value.clone() == occurrence.value.clone())
+                            && (span.clone() == transport_fixture_span()))
+                    }
+                    _ => false,
+                },
+                None => false,
+            })
     }
 }

@@ -3,11 +3,13 @@ module v1.tests.claim.pattern_binder_declaration_node_test
 import v1.std.core {
   Node,
   NewlineIndex,
+  SourceSpan,
   MatchPattern,
   Bind,
   LitPattern,
   VariantPattern,
   Wildcard,
+  OccurrenceTransportViolation,
   NoExprData,
   field_binding_pattern,
   build_newline_index,
@@ -22,13 +24,28 @@ import v1.compiler.parse {
   parse_pattern,
   parse_with_table,
 }
+import v1.compiler.compile {
+  resolve_frontend_occurrence_transport,
+}
 import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceProjection,
+  OccurrenceContainmentPath,
   OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  LexicalValueOccurrence,
+  CallableOccurrence,
+  MissingAuthoredOccurrenceIdentity,
+  DuplicateAuthoredOccurrenceIdentity,
+  WrongOccurrenceCategory,
   authored_token_ordinal_space_from_allocator,
   OccurrenceIdAllocator,
 }
 
-data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space"
+data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category"
 
 data pattern_binder_declaration_node_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
@@ -86,6 +103,58 @@ fn parsed_pattern_has_one_binder(
     ParsedFixturePatternRefused => false
     ParsedFixturePatternReady { pattern: pattern } =>
       pattern_binder_named_count(pattern: pattern, name: name) == 1
+  }
+}
+
+fn transport_fixture_span() -> std.types.SourceSpan {
+  std.types.SourceSpan {
+    file: "occurrence-transport-production.dag",
+    start: 7,
+    end: 8,
+  }
+}
+
+fn transport_fixture_path(
+  occurrence: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: [],
+    terminal: occurrence,
+  }
+}
+
+fn transport_fixture_index_entry(
+  occurrence: OccurrenceId
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: "same",
+      diagnostic_span: transport_fixture_span(),
+    },
+    containment: transport_fixture_path(occurrence: occurrence),
+  }
+}
+
+fn transport_fixture_declaration(
+  occurrence: OccurrenceId
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: transport_fixture_path(occurrence: occurrence),
+    category: LexicalValueOccurrence,
+    diagnostic_span: transport_fixture_span(),
+  }
+}
+
+fn transport_fixture_reference(
+  occurrence: OccurrenceId
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: transport_fixture_path(occurrence: occurrence),
+    category: CallableOccurrence,
+    diagnostic_span: transport_fixture_span(),
   }
 }
 
@@ -231,4 +300,117 @@ test fn w_parse_error_preserves_authored_token_ordinal_space() -> Bool {
   parsed.occurrence_allocator.next_id >= 41 &&
   parsed.intern_table.authored_token_ordinals.allocator.next_id ==
     parsed.occurrence_allocator.next_id
+}
+
+test fn w_production_frontend_accepts_valid_occurrence_transport() -> Bool {
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [] },
+      declarations: [],
+      references: [],
+    }
+  )
+  result.graph != none &&
+  (result.diagnostics |> count) == 0
+}
+
+test fn w_production_frontend_refuses_missing_occurrence_identity() -> Bool {
+  let occurrence = OccurrenceId { value: 17 }
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [] },
+      declarations: [
+        transport_fixture_declaration(occurrence: occurrence)
+      ],
+      references: [],
+    }
+  )
+  result.graph == none &&
+  match result.diagnostics |> first {
+    Present { value: error } =>
+      match error.diagnostic {
+        OccurrenceTransportViolation {
+          refusal: MissingAuthoredOccurrenceIdentity {
+            diagnostic_span: span,
+          },
+        } => span == transport_fixture_span()
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_production_frontend_refuses_duplicate_occurrence_identity() -> Bool {
+  let occurrence = OccurrenceId { value: 23 }
+  let entry = transport_fixture_index_entry(occurrence: occurrence)
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex { entries: [entry, entry] },
+      declarations: [
+        transport_fixture_declaration(occurrence: occurrence)
+      ],
+      references: [],
+    }
+  )
+  result.graph == none &&
+  match result.diagnostics |> first {
+    Present { value: error } =>
+      match error.diagnostic {
+        OccurrenceTransportViolation {
+          refusal: DuplicateAuthoredOccurrenceIdentity {
+            occurrence: observed,
+            diagnostic_span: span,
+          },
+        } =>
+          observed.value == occurrence.value &&
+          span == transport_fixture_span()
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_production_frontend_refuses_wrong_occurrence_category() -> Bool {
+  let occurrence = OccurrenceId { value: 29 }
+  let result = resolve_frontend_occurrence_transport(
+    module_inputs: [],
+    source_indices: empty_map(),
+    occurrence_transport: OccurrenceTransport {
+      index: OccurrenceIndex {
+        entries: [
+          transport_fixture_index_entry(occurrence: occurrence)
+        ],
+      },
+      declarations: [
+        transport_fixture_declaration(occurrence: occurrence)
+      ],
+      references: [
+        transport_fixture_reference(occurrence: occurrence)
+      ],
+    }
+  )
+  result.graph == none &&
+  match result.diagnostics |> first {
+    Present { value: error } =>
+      match error.diagnostic {
+        OccurrenceTransportViolation {
+          refusal: WrongOccurrenceCategory {
+            occurrence: observed,
+            expected: LexicalValueOccurrence,
+            observed: CallableOccurrence,
+            diagnostic_span: span,
+          },
+        } =>
+          observed.value == occurrence.value &&
+          span == transport_fixture_span()
+        _ => false
+      }
+    Absent => false
+  }
 }

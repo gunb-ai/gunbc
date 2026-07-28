@@ -7,7 +7,7 @@ data occurrence_identity_scope_law: String = "OccurrenceId values are unique onl
 
 data authored_token_ordinal_typed_bridge_note: String = "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure."
 
-data authored_token_ordinal_typed_bridge_dissolve_on: String = "DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows."
+data authored_token_ordinal_typed_bridge_dissolve_on: String = "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows."
 
 type AuthoredTokenOrdinalSpace {
   allocator: OccurrenceIdAllocator
@@ -140,143 +140,161 @@ fn node_occurrence_identity_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
   OccurrenceMinted { id: id }
 }
 
-fn occurrence_id_matches(left: OccurrenceId, right: OccurrenceId) -> Bool {
-  left.value == right.value
+data occurrence_transport_validation_complexity_law: String = "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence."
+
+type OccurrenceTransportIndexBuild {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  refusal: OccurrenceTransportRefusal?
 }
 
-fn occurrence_index_population(
-  index: OccurrenceIndex,
-  occurrence: OccurrenceId
-) -> List<OccurrenceIndexEntry> {
-  index.entries |> filter(entry =>
-    occurrence_id_matches(
-      left: entry.projection.occurrence,
-      right: occurrence
-    )
-  )
-}
-
-fn occurrence_transport_index_refusal(
-  transport: OccurrenceTransport
-) -> OccurrenceTransportRefusal? {
+fn occurrence_transport_index_build(
+  index: OccurrenceIndex
+) -> OccurrenceTransportIndexBuild {
   fold(
-    transport.index.entries,
-    init: none,
-    f: (refusal, entry) =>
-      match refusal {
-        Present { value: _ } => refusal
+    index.entries,
+    init: OccurrenceTransportIndexBuild {
+      entries_by_id: empty_map(),
+      refusal: none,
+    },
+    f: (build, entry) =>
+      match build.refusal {
+        Present { value: _ } => build
         Absent =>
-          if occurrence_index_population(
-            index: transport.index,
-            occurrence: entry.projection.occurrence
-          ) |> count > 1 {
-            Present {
-              value: DuplicateAuthoredOccurrenceIdentity {
-                occurrence: entry.projection.occurrence,
-                diagnostic_span: entry.projection.diagnostic_span,
+          match map_get(
+            build.entries_by_id,
+            entry.projection.occurrence.value
+          ) {
+            Present { value: existing } =>
+              OccurrenceTransportIndexBuild {
+                entries_by_id: build.entries_by_id,
+                refusal: Present {
+                  value: DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: existing.projection.occurrence,
+                    diagnostic_span: existing.projection.diagnostic_span,
+                  },
+                },
+              }
+            Absent =>
+              OccurrenceTransportIndexBuild {
+                entries_by_id: map_insert(
+                  build.entries_by_id,
+                  entry.projection.occurrence.value,
+                  entry
+                ),
+                refusal: none,
               },
-            }
-          } else {
-            none
           }
       }
   )
 }
 
+fn declaration_occurrences_by_id(
+  declarations: List<DeclarationOccurrence>
+) -> Map<Int, DeclarationOccurrence> {
+  fold(
+    declarations,
+    init: empty_map(),
+    f: (by_id, declaration) =>
+      match map_get(by_id, declaration.occurrence.value) {
+        Present { value: _ } => by_id
+        Absent => map_insert(
+          by_id,
+          declaration.occurrence.value,
+          declaration
+        )
+      }
+  )
+}
+
+fn reference_occurrences_by_id(
+  references: List<ReferenceOccurrence>
+) -> Map<Int, ReferenceOccurrence> {
+  fold(
+    references,
+    init: empty_map(),
+    f: (by_id, reference) =>
+      match map_get(by_id, reference.occurrence.value) {
+        Present { value: _ } => by_id
+        Absent => map_insert(
+          by_id,
+          reference.occurrence.value,
+          reference
+        )
+      }
+  )
+}
+
 fn declaration_occurrence_refusal(
-  transport: OccurrenceTransport,
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  references_by_id: Map<Int, ReferenceOccurrence>,
   declaration: DeclarationOccurrence
 ) -> OccurrenceTransportRefusal? {
-  let population = occurrence_index_population(
-    index: transport.index,
-    occurrence: declaration.occurrence
-  )
-  if population |> count == 0 {
-    Present {
-      value: MissingAuthoredOccurrenceIdentity {
-        diagnostic_span: declaration.diagnostic_span,
-      },
-    }
-  } else if population |> count > 1 {
-    Present {
-      value: DuplicateAuthoredOccurrenceIdentity {
-        occurrence: declaration.occurrence,
-        diagnostic_span: declaration.diagnostic_span,
-      },
-    }
-  } else {
-    match transport.references
-      |> filter(reference =>
-        occurrence_id_matches(
-          left: reference.occurrence,
-          right: declaration.occurrence
-        )
-      )
-      |> first {
-      Present { value: reference } =>
-        Present {
-          value: WrongOccurrenceCategory {
-            occurrence: declaration.occurrence,
-            expected: declaration.category,
-            observed: reference.category,
-            diagnostic_span: declaration.diagnostic_span,
-          },
-        }
-      Absent => none
-    }
+  match map_get(index_by_id, declaration.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: declaration.diagnostic_span,
+        },
+      }
+    Present { value: _ } =>
+      match map_get(references_by_id, declaration.occurrence.value) {
+        Present { value: reference } =>
+          Present {
+            value: WrongOccurrenceCategory {
+              occurrence: declaration.occurrence,
+              expected: declaration.category,
+              observed: reference.category,
+              diagnostic_span: declaration.diagnostic_span,
+            },
+          }
+        Absent => none
+      }
   }
 }
 
 fn reference_occurrence_refusal(
-  transport: OccurrenceTransport,
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  declarations_by_id: Map<Int, DeclarationOccurrence>,
   reference: ReferenceOccurrence
 ) -> OccurrenceTransportRefusal? {
-  let population = occurrence_index_population(
-    index: transport.index,
-    occurrence: reference.occurrence
-  )
-  if population |> count == 0 {
-    Present {
-      value: MissingAuthoredOccurrenceIdentity {
-        diagnostic_span: reference.diagnostic_span,
-      },
-    }
-  } else if population |> count > 1 {
-    Present {
-      value: DuplicateAuthoredOccurrenceIdentity {
-        occurrence: reference.occurrence,
-        diagnostic_span: reference.diagnostic_span,
-      },
-    }
-  } else {
-    match transport.declarations
-      |> filter(declaration =>
-        occurrence_id_matches(
-          left: declaration.occurrence,
-          right: reference.occurrence
-        )
-      )
-      |> first {
-      Present { value: declaration } =>
+  match map_get(index_by_id, reference.occurrence.value) {
+    Absent =>
         Present {
-          value: WrongOccurrenceCategory {
-            occurrence: reference.occurrence,
-            expected: reference.category,
-            observed: declaration.category,
+          value: MissingAuthoredOccurrenceIdentity {
             diagnostic_span: reference.diagnostic_span,
           },
         }
-      Absent => none
-    }
+    Present { value: _ } =>
+      match map_get(declarations_by_id, reference.occurrence.value) {
+        Present { value: declaration } =>
+          Present {
+            value: WrongOccurrenceCategory {
+              occurrence: reference.occurrence,
+              expected: reference.category,
+              observed: declaration.category,
+              diagnostic_span: reference.diagnostic_span,
+            },
+          }
+        Absent => none
+      }
   }
 }
 
 fn occurrence_transport_refusal(
   transport: OccurrenceTransport
 ) -> OccurrenceTransportRefusal? {
-  match occurrence_transport_index_refusal(transport: transport) {
+  let index_build = occurrence_transport_index_build(
+    index: transport.index
+  )
+  match index_build.refusal {
     Present { value: refusal } => Present { value: refusal }
     Absent =>
+      let declarations_by_id = declaration_occurrences_by_id(
+        declarations: transport.declarations
+      )
+      let references_by_id = reference_occurrences_by_id(
+        references: transport.references
+      )
       let declaration_refusal = fold(
         transport.declarations,
         init: none,
@@ -284,7 +302,8 @@ fn occurrence_transport_refusal(
           match refusal {
             Present { value: _ } => refusal
             Absent => declaration_occurrence_refusal(
-              transport: transport,
+              index_by_id: index_build.entries_by_id,
+              references_by_id: references_by_id,
               declaration: declaration
             )
           }
@@ -299,7 +318,8 @@ fn occurrence_transport_refusal(
               match refusal {
                 Present { value: _ } => refusal
                 Absent => reference_occurrence_refusal(
-                  transport: transport,
+                  index_by_id: index_build.entries_by_id,
+                  declarations_by_id: declarations_by_id,
                   reference: reference
                 )
               }
