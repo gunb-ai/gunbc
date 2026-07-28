@@ -168,10 +168,9 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "probe-bins",
   membership: DeclaredFrontier {
     authorities: [
-      wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins"),
-      wet_surface_ref(module_path: "gunbc.ci_layer_roots", decl_name: "bin_witness_wet_entries")
+      wet_surface_ref(module_path: "gunbc.ci_release_bins", decl_name: "witness_declared_release_bins")
     ],
-    reason: "the derived release pack and wet witness entries name the probe-bin surface, while the binaries themselves remain seed host transports and exact declaration-Node resolution is unavailable",
+    reason: "witness_declared_release_bins is the exact production WitnessBin transport-name frontier; the binaries remain seed host transports and exact declaration-Node resolution is unavailable",
     dissolve_on: "probe-bin consumers migrate to v2-emitted execution surfaces and witness_declared_release_bins reaches its host-census-derived form"
   }
 }
