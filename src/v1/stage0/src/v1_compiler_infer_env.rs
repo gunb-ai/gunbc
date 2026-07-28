@@ -117,62 +117,6 @@ pub struct SymbolIndex {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct V1NodeContainmentPathCapture {
-    pub ancestors: Rc<Vec<Rc<Node>>>,
-    pub terminal: Rc<Node>,
-}
-
-pub fn v1_node_containment_path_capture_adapter_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Temporary v1 target adapter for the canonical std.occurrence_binding ContainmentPath<Node> fact. It preserves authored Node ancestry and the terminal Node. It defines no identifier, equality, candidate population, selection, deduplication, or resolution semantics.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn v1_node_containment_path_capture_adapter_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "DISSOLVE-ON: when generic-carrier target emission can compile std.occurrence_binding.ContainmentPath<Node> directly, replace V1NodeContainmentPathCapture with that canonical specialization and delete this adapter without changing captured paths.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct NamespaceIdentityCapture {
-    pub occurrences: Rc<Vec<Rc<V1NodeContainmentPathCapture>>>,
-}
-
-pub fn empty_namespace_identity_capture() -> Rc<NamespaceIdentityCapture> {
-    Rc::new(NamespaceIdentityCapture {
-        occurrences: Rc::new(vec![]),
-    })
-}
-
-pub fn concat_namespace_identity_capture(
-    left: Rc<NamespaceIdentityCapture>,
-    right: Rc<NamespaceIdentityCapture>,
-) -> Rc<NamespaceIdentityCapture> {
-    Rc::new(NamespaceIdentityCapture {
-        occurrences: v1_rt::concat(left.occurrences.clone(), right.occurrences.clone()),
-    })
-}
-
-pub fn namespace_identity_capture_singleton(
-    containment: Rc<V1NodeContainmentPathCapture>,
-) -> Rc<NamespaceIdentityCapture> {
-    Rc::new(NamespaceIdentityCapture {
-        occurrences: Rc::new({
-            let mut __cons_v = (*Rc::new(vec![])).clone();
-            __cons_v.insert(0, containment.clone());
-            __cons_v
-        }),
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Scope {
     pub locals: Rc<HashMap<String, Rc<ScopeBinding>>>,
 }
