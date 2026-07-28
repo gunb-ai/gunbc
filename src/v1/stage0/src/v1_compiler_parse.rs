@@ -2215,8 +2215,14 @@ pub fn stamp_parsed_pattern(
                 ctx: stamped.ctx.clone(),
             })
         }
-        Some(other) => Rc::new(ParsedPatternStampResult {
-            pattern: Some(other.clone()),
+        Some(MatchPattern::LitPattern { value: value, .. }) => Rc::new(ParsedPatternStampResult {
+            pattern: Some(Rc::new(MatchPattern::LitPattern {
+                value: value.clone(),
+            })),
+            ctx: ctx.clone(),
+        }),
+        Some(MatchPattern::Wildcard) => Rc::new(ParsedPatternStampResult {
+            pattern: Some(Rc::new(MatchPattern::Wildcard)),
             ctx: ctx.clone(),
         }),
         None => Rc::new(ParsedPatternStampResult {
