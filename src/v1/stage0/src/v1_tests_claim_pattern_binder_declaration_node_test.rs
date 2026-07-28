@@ -10,7 +10,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{build_newline_index, empty_intern_table, field_binding_pattern};
-pub use crate::v1_std_core::{ExprData, MatchPattern};
+pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
