@@ -1,0 +1,56 @@
+module test.claim.occurrence_identity_witness_test
+
+import std.types { Bool }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  NodeOccurrenceId,
+  SyntheticOccurrence,
+  MintedOccurrence,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+  occurrence_id_eq,
+  occurrence_id_allocator_advance_to,
+  node_occurrence_minted,
+}
+
+test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
+  occurrence_id_allocator_initial().next_id == 0
+}
+
+test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
+  let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
+  let second = alloc_occurrence_id(alloc: first.alloc)
+  first.id.value == 0
+    && second.id.value == 1
+    && !occurrence_id_eq(left: first.id, right: second.id)
+}
+
+test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
+  let initial = occurrence_id_allocator_initial()
+  let advanced = occurrence_id_allocator_advance_to(
+    alloc: initial,
+    min_next: 7,
+  )
+  let unchanged = occurrence_id_allocator_advance_to(
+    alloc: advanced,
+    min_next: 3,
+  )
+  advanced.next_id == 7 && unchanged.next_id == 7
+}
+
+test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
+  let minted = node_occurrence_minted(id: OccurrenceId { value: 4 })
+  let minted_holds = match minted {
+    MintedOccurrence { id: id } =>
+      id.value == 4
+    _ => false
+  }
+  let synthetic: NodeOccurrenceId = SyntheticOccurrence
+  let synthetic_holds = match synthetic {
+    SyntheticOccurrence => true
+    _ => false
+  }
+  minted_holds && synthetic_holds
+}

@@ -2,21 +2,17 @@ module v2.std.node
 
 import std.types { ContentHash }
 import std.content_hash { content_hash_atom, content_hash_combine }
+import std.occurrence_identity {
+  SyntheticOccurrence,
+  MintedOccurrence,
+  node_occurrence_minted,
+}
 
 type Symbol
 type Hash = ContentHash
 
-type OccurrenceId {
-  value: Int
-}
-
-type NodeOccurrenceId
-  = SyntheticOccurrence
-  | MintedOccurrence { id: OccurrenceId }
-
-fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
-  MintedOccurrence { id: id }
-}
+type OccurrenceId = std.occurrence_identity.OccurrenceId
+type NodeOccurrenceId = std.occurrence_identity.NodeOccurrenceId
 
 type Connective
   = Atom { identity: Symbol }

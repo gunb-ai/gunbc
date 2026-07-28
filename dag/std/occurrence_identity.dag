@@ -1,0 +1,52 @@
+module std.occurrence_identity
+
+import std.types { Bool, Int, String }
+
+data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
+
+type OccurrenceId {
+  value: Int
+}
+
+type NodeOccurrenceId
+  = SyntheticOccurrence
+  | MintedOccurrence { id: OccurrenceId }
+
+type OccurrenceIdAllocator {
+  next_id: Int
+}
+
+type OccurrenceIdAllocResult {
+  id: OccurrenceId
+  alloc: OccurrenceIdAllocator
+}
+
+fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: 0 }
+}
+
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
+  OccurrenceIdAllocResult {
+    id: OccurrenceId { value: alloc.next_id },
+    alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
+  }
+}
+
+fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
+  left.value == right.value
+}
+
+fn occurrence_id_allocator_advance_to(
+  alloc: OccurrenceIdAllocator,
+  min_next: Int
+) -> OccurrenceIdAllocator {
+  if alloc.next_id < min_next {
+    OccurrenceIdAllocator { next_id: min_next }
+  } else {
+    alloc
+  }
+}
+
+fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
+  MintedOccurrence { id: id }
+}
