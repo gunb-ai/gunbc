@@ -442,9 +442,16 @@ mod compiler_tests {
         assert!(
             matches!(
                 &*typed_error_reference.expr_data,
-                crate::v1_std_core::ExprData::ExprError { .. }
+                crate::v1_std_core::ExprData::ExprVar { binding_kind: None }
             ),
-            "missing-name reference must exercise the semantic error path",
+            "missing-name reference must remain the authored reference on the semantic error path",
+        );
+        assert!(
+            graph.diagnostics.iter().any(|error| {
+                crate::v1_std_core::diagnostic_to_message(error.diagnostic.clone())
+                    .contains("undefined variable 'missing'")
+            }),
+            "missing-name reference must emit the semantic error diagnostic",
         );
 
         let module_json = serde_json::to_string(&*module).expect("serialize TypedModule");
