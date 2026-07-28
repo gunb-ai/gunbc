@@ -50,10 +50,11 @@ test fn enforcement_gating_scaffold_is_tracked() -> Bool {
   }
 }
 
-test fn ci_gate_step_scaffold_is_tracked() -> Bool {
+test fn ci_gate_step_scaffold_dissolved_to_terminal() -> Bool {
   match merge_admission_ci_gate_step_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: reason } =>
+      string_contains(s: reason as String, pattern: "foreign executor")
   }
 }
 

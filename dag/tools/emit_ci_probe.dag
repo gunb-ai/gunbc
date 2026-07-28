@@ -1,0 +1,3 @@
+module tools.emit_ci_probe
+import gunbc.ci_yaml_emit { expected_ci_yml }
+fn main() -> String { expected_ci_yml() }
