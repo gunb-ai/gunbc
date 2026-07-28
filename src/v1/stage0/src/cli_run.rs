@@ -13298,14 +13298,13 @@ pub fn discover_floor_witness_roster(
     crate::test_module_hygiene::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    let FloorLensImportGraph {
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    } = build_floor_lens_import_graph(source_roots)?;
+    // ONE module-graph facts build serves effect-reach, the inert-lens reach, and the
+    // justification census (6A repoint: `build_floor_lens_import_graph`'s second
+    // corpus scan is deleted; `v2.lens.module_graph` facts are the single
+    // edge/declaration authority on this path).
     let facts = build_module_graph_facts_live(source_roots);
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
+    let inert = inert_lens_modules(&rows, &facts);
     if !inert.is_empty() {
         return Err(format!(
             "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
@@ -13316,7 +13315,8 @@ pub fn discover_floor_witness_roster(
             inert.join(", ")
         ));
     }
-    let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
+    let (lens_module_to_path, lens_with_justification) = lens_justification_census(&facts)?;
+    let unjustified = unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
     if !unjustified.is_empty() {
         return Err(format!(
             "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
@@ -13332,54 +13332,6 @@ pub fn discover_floor_witness_roster(
     Ok(rows)
 }
 
-struct FloorLensImportGraph {
-    path_imports: std::collections::HashMap<String, Vec<String>>,
-    module_to_path: std::collections::HashMap<String, String>,
-    lens_with_justification: std::collections::BTreeSet<String>,
-}
-
-fn build_floor_lens_import_graph(source_roots: &[String]) -> Result<FloorLensImportGraph, String> {
-    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    let mut module_to_path: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut lens_with_justification: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            let rel = repo_relative_dag_path(&entry);
-            if let Some(m) = extract_module_path(&content) {
-                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
-                    lens_with_justification.insert(m.clone());
-                }
-                module_to_path.insert(m, rel.clone());
-            }
-            path_imports.insert(rel, extract_import_paths(&content));
-        }
-    }
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &[]),
-        true,
-    ) {
-        let importer = repo_relative_dag_path(&edge.path);
-        let entry = path_imports.entry(importer).or_default();
-        if !entry.contains(&edge.import_module) {
-            entry.push(edge.import_module);
-        }
-    }
-    Ok(FloorLensImportGraph {
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    })
-}
-
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
     witness_exclusion_substrings()
 }
@@ -13390,27 +13342,20 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     let roots = default_source_roots();
     let scan_dirs = witness_discovery_scan_dirs();
     let excludes = default_floor_lens_hygiene_excludes();
-    match build_floor_lens_import_graph(&roots) {
-        Ok(graph) => match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
-            Ok(rows) => {
-                inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len() as i64
-            }
-            Err(_) => -1,
-        },
+    let facts = build_module_graph_facts_live(&roots);
+    match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
+        Ok(rows) => inert_lens_modules(&rows, &facts).len() as i64,
         Err(_) => -1,
     }
 }
 
 /// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
 pub fn inert_lens_top_level_module_count() -> i64 {
-    match build_floor_lens_import_graph(&default_source_roots()) {
-        Ok(graph) => graph
-            .module_to_path
-            .keys()
-            .filter(|m| is_top_level_lens_module(m))
-            .count() as i64,
-        Err(_) => -1,
-    }
+    build_module_graph_facts_live(&default_source_roots())
+        .nodes
+        .iter()
+        .filter(|n| is_top_level_lens_module(&n.module))
+        .count() as i64
 }
 
 fn declares_construction_justification(content: &str) -> bool {
