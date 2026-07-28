@@ -233,16 +233,7 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetM
         f: fn(lhs) {
           bind_outcome(
             o: bash_path_operand_quoted_text(path: r),
-            f: fn(rhs) {
-              bind_outcome(
-                o: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs),
-                f: fn(eq_model) {
-                  outcome_accepted(
-                    bash_stmt_negation_target_model(inner: eq_model.authority_source_text)
-                  )
-                }
-              )
-            }
+            f: fn(rhs) { bash_test_str_not_eq_target_model(lhs: lhs, rhs: rhs) }
           )
         }
       )
@@ -541,6 +532,67 @@ fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
           source_text: render_target_text(t: source_text),
           lex: bash_test_str_eq_lex(),
           binding_spellings: bash_test_str_eq_binding_spellings(lhs: lhs, rhs: rhs)
+        )
+      )
+    }
+  )
+}
+
+fn bash_test_str_not_eq_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_test_lbracket },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_lhs },
+    FixedToken { token_class: ^bash_token_test_eq },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_rhs },
+    FixedToken { token_class: ^bash_token_test_rbracket }
+  ]
+}
+
+data bash_test_str_not_eq_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_test_str_not_eq_tokens()
+)
+
+fn bash_test_str_not_eq_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "[ ", class: ^bash_token_test_lbracket),
+    span(text: " != ", class: ^bash_token_test_eq),
+    span(text: " ]", class: ^bash_token_test_rbracket)
+  ]))
+}
+
+fn bash_test_str_not_eq_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_test_str_not_eq,
+    lhs: ^bash_production_test_str_not_eq,
+    tokens: bash_test_str_not_eq_tokens(),
+    emitted: bash_test_str_not_eq_emitted
+  )
+}
+
+fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_test_str_not_eq_lhs, lhs),
+    ^bash_test_str_not_eq_rhs, rhs
+  )
+}
+
+fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: bash_test_str_not_eq_tokens(),
+      lex: bash_test_str_not_eq_lex(),
+      binding_spellings: bash_test_str_not_eq_binding_spellings(lhs: lhs, rhs: rhs)
+    ),
+    f: fn(source_text) {
+      outcome_accepted(
+        bash_make_bound_tokens_target_model(
+          rules: bash_test_str_not_eq_translation_rules_node(),
+          source_literal: ^bash_test_str_not_eq_source_literal,
+          production_name: ^bash_production_test_str_not_eq,
+          tokens: bash_test_str_not_eq_tokens(),
+          source_text: render_target_text(t: source_text),
+          lex: bash_test_str_not_eq_lex(),
+          binding_spellings: bash_test_str_not_eq_binding_spellings(lhs: lhs, rhs: rhs)
         )
       )
     }
