@@ -37,7 +37,7 @@ fn family_subject(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-fn retained_parity_open(
+fn retained_no_cached_carrier(
   subject: DeclarationRef,
   entry: String,
   f: String
@@ -48,12 +48,12 @@ fn retained_parity_open(
     agreement_function: f,
     disposition: InterpretedRetained {
       reason: "no_cached_no_evict_carrier",
-      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) AND its parity window is green per v2.compiler.self_host.parity_window; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run"
+      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)"
     }
   }
 }
 
-data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms — so this is a genuine native-vs-eval divergence or member-run failure, NOT a cold cache. The frontier worked as designed: the revert is this one data edit, the investigation proceeds off the merge-critical path, and the falsifier cold control keeps exercising both legs. Named loudness gap to close BEFORE re-flipping: the agreement fn's false carries no located member and no value pair — a divergence receipt must NAME which member and both answers (DESIGN 5: typed, located). routed_via_family_crate below is retained as the re-flip constructor."
+data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms — so this is a genuine native-vs-eval divergence or member-run failure, NOT a cold cache. The frontier worked as designed: the revert is this one data edit, the investigation proceeds off the merge-critical path, and the falsifier cold control keeps exercising both legs. Named loudness gap to close BEFORE re-flipping: the agreement fn's false carries no located member and no value pair — a divergence receipt must NAME which member and both answers (DESIGN 5: typed, located). routed_via_family_crate below is retained as the re-flip constructor. DEMOTION RECEIPT (2026-07-28): both families had SATISFIED the pre-flip parity streak (three green srv1 probe windows) and this red happened anyway — so the streak gate was not the operative protection, this revert mechanism was; parity_window is accordingly demoted to post-flip monitoring (parity_window_note), whose ParityRevertRequired verdict is exactly the demand this incident answered by hand."
 
 fn routed_via_family_crate(subject: DeclarationRef) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
@@ -65,7 +65,7 @@ fn routed_via_family_crate(subject: DeclarationRef) -> NativeRoutingFrontierRow 
 }
 
 data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.manual.rust_add_emit_translate",
       decl_name: "rust_add_inferred_tree"
@@ -73,7 +73,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     f: "emit_host_add_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_field_access_equals_eval",
       decl_name: "emit_field_eval_subgraph_node"
@@ -93,7 +93,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
       dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
     }
   },
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
@@ -101,7 +101,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
     f: "emit_host_match_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.complexity_gate.table_fixture_loop_subject_producer",
       decl_name: "table_fixture_loop_arrow_with_body"
@@ -109,7 +109,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
     f: "emit_host_loop_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.emit.fold_call_closure_fixture",
       decl_name: "fold_fixture_param_call_body"
@@ -129,7 +129,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
       dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
     }
   },
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
       decl_name: "emit_variant_construct_eval_subgraph_node"
@@ -137,7 +137,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
     f: "emit_host_variant_construct_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_classical_not_ingested_equals_eval",
       decl_name: "ingested_classical_not_source"
@@ -145,7 +145,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_filesystem_read_family_target_model_staging"
@@ -153,7 +153,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
     f: "emit_host_filesystem_read_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_shell_exec_run_family_target_model_staging"

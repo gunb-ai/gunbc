@@ -2,13 +2,13 @@ module v2.test.claim.self_host.parity_window_test
 
 import v2.compiler.self_host.parity_window {
   ParityWindowReceipt,
-  ParityVerdict,
-  ParityFlipPermitted,
-  ParityFlipRefused,
-  parity_verdict_for,
-  parity_flip_permitted,
-  trailing_consecutive_green,
-  required_consecutive_green_windows
+  ParityMonitorVerdict,
+  ParityHolding,
+  ParityRevertRequired,
+  ParityUnobserved,
+  parity_monitor_verdict,
+  parity_holding,
+  parity_revert_required
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -41,55 +41,49 @@ fn cold_receipt(id: String) -> ParityWindowReceipt {
   }
 }
 
-test fn witness_three_greens_permit() -> Bool {
-  parity_flip_permitted(
+test fn witness_trailing_greens_hold_with_streak() -> Bool {
+  match parity_monitor_verdict(
     family: "add",
     receipts: [green_receipt(id: "w1"), green_receipt(id: "w2"), green_receipt(id: "w3")]
-  )
-}
-
-test fn witness_red_resets_streak() -> Bool {
-  let refused = parity_flip_permitted(
-    family: "add",
-    receipts: [
-      green_receipt(id: "w1"),
-      red_receipt(id: "w2"),
-      green_receipt(id: "w3"),
-      green_receipt(id: "w4")
-    ]
-  )
-  refused == false
-}
-
-test fn witness_cold_divergence_resets_streak() -> Bool {
-  let refused = parity_flip_permitted(
-    family: "add",
-    receipts: [
-      green_receipt(id: "w1"),
-      green_receipt(id: "w2"),
-      cold_receipt(id: "w3")
-    ]
-  )
-  refused == false
-}
-
-test fn witness_empty_receipts_refuse() -> Bool {
-  parity_flip_permitted(family: "add", receipts: []) == false
-}
-
-test fn witness_refusal_carries_streak_and_required() -> Bool {
-  match parity_verdict_for(
-    family: "add",
-    receipts: [green_receipt(id: "w1"), green_receipt(id: "w2")]
   ) {
-    ParityFlipRefused { family: _, consecutive_green: streak, required: req } =>
-      streak == 2 && req == required_consecutive_green_windows
-    ParityFlipPermitted { family: _, consecutive_green: _ } => false
+    ParityHolding { family: f, consecutive_green: n } => (f == "add") && (n == 3)
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
   }
 }
 
+test fn witness_latest_red_demands_revert_naming_window() -> Bool {
+  match parity_monitor_verdict(
+    family: "add",
+    receipts: [green_receipt(id: "w1"), green_receipt(id: "w2"), red_receipt(id: "w3")]
+  ) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: f, red_window_id: w } => (f == "add") && (w == "w3")
+    ParityUnobserved { family: _ } => false
+  }
+}
+
+test fn witness_cold_divergence_demands_revert() -> Bool {
+  parity_revert_required(
+    family: "add",
+    receipts: [green_receipt(id: "w1"), cold_receipt(id: "w2")]
+  )
+}
+
+test fn witness_empty_history_is_unobserved_not_holding() -> Bool {
+  let unobserved = match parity_monitor_verdict(family: "add", receipts: []) {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: f } => f == "add"
+  }
+  unobserved
+    && (parity_holding(family: "add", receipts: []) == false)
+    && (parity_revert_required(family: "add", receipts: []) == false)
+}
+
 test fn witness_streak_counts_trailing_only() -> Bool {
-  let streak = trailing_consecutive_green(
+  match parity_monitor_verdict(
+    family: "add",
     receipts: [
       green_receipt(id: "w1"),
       green_receipt(id: "w2"),
@@ -97,7 +91,16 @@ test fn witness_streak_counts_trailing_only() -> Bool {
       red_receipt(id: "w4"),
       green_receipt(id: "w5")
     ]
-  )
-  streak == 1
+  ) {
+    ParityHolding { family: _, consecutive_green: n } => n == 1
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+  }
 }
 
+test fn witness_red_control_holding_rejects_trailing_red() -> Bool {
+  parity_holding(
+    family: "add",
+    receipts: [green_receipt(id: "w1"), red_receipt(id: "w2")]
+  ) == false
+}
