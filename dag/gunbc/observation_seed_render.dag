@@ -290,7 +290,7 @@ fn scoped_run_failed_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, fu
   )
 }
 
-fn scoped_run_timed_out_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, budget_ms: Nat, elapsed_ms: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_timed_out_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, budget: Millisecond, elapsed: Millisecond, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
   scoped_run_project(
     event: scoped_run_event(
       entry_file: entry_file,
@@ -298,8 +298,8 @@ fn scoped_run_timed_out_write(entry_file: NonEmptyStr, module_path: NonEmptyStr,
       function: function,
       transition: Concluded {
         outcome: TimedOut {
-          budget: millisecond(count: budget_ms),
-          elapsed: millisecond(count: elapsed_ms)
+          budget: budget,
+          elapsed: elapsed
         }
       }
     ),

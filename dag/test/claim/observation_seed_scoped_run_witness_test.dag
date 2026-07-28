@@ -112,8 +112,8 @@ test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
     entry_file: entry(),
     module_path: module_path(),
     function: function(),
-    budget_ms: 10,
-    elapsed_ms: 11,
+    budget: millisecond(count: 10),
+    elapsed: millisecond(count: 11),
     addressable: true,
     emoji: false,
     prior_open: false
