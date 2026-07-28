@@ -5,6 +5,8 @@ import gunbc.roadmap_authority {
   active_roadmap_edges,
   roadmap_authority,
   authored_merged_prs,
+  active_roadmap_dispatch_gate,
+  roadmap_dispatch_gate_is_open,
 }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
@@ -53,6 +55,10 @@ fn id_count(id: RoadmapNodeId) -> Int {
 
 fn edge_exists(child: String, parent: String) -> Bool {
   edges() |> any(e => e.child == child && e.parent == parent)
+}
+
+fn node_has_carrier_path(path: String) -> Bool {
+  nodes() |> any(n => n.carriers |> any(p => p.path == path))
 }
 
 fn mechanical_graph() -> CallGraph {
@@ -254,13 +260,37 @@ test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
     && edge_exists(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene")
 }
 
-test fn witness_runtime_identity_lease_join_gates_dispatchable_roots() -> Bool {
-  edge_exists(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join")
-    && edge_exists(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join")
-    && edge_exists(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join")
-    && edge_exists(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join")
-    && edge_exists(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join")
-    && edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
+test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
+  !edge_exists(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-hygiene-producer-retirement", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-materialization-kernel", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-hand-queue-drain", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-migration", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-seed-honesty-decision", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
+}
+
+test fn witness_runtime_dispatch_gate_remains_closed() -> Bool {
+  !roadmap_dispatch_gate_is_open(gate: active_roadmap_dispatch_gate())
+}
+
+test fn witness_scm_context_is_reachable_but_cannot_spawn() -> Bool {
+  let out = serialize_markdown_source(
+    doc: project_roadmap_to_markdown(
+      doc: roadmap_authority(),
+      merged: authored_merged_prs()
+    )
+  )
+  string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
+    && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
+    && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
+    && !node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
+    && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
 }
 
 test fn witness_projection_is_active_only() -> Bool {
