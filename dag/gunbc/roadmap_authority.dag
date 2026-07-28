@@ -1,158 +1,767 @@
 module gunbc.roadmap_authority
 
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
+import gunbc.roadmap_document {
+  RoadmapDocument,
+  RoadmapSection,
+  project_roadmap_to_markdown,
+}
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
-  Acceptance, PrsMerged, ManualAcceptance,
-  NodeSizing, Unsized, Sized,
-  SectionElement, section_prose, section_group,
+  RoadmapNode,
+  RoadmapEdge,
+  Pointer,
+  RoadmapNodeId,
+  IntricacyMedium,
+  VolumeMedium,
+  Sized,
+  Unsized,
+  PrsMerged,
+  section_group,
+  section_prose,
 }
 import gunbc.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  TicketFields, TicketUpdate,
-  Signoff, Unsigned, SignedOff,
+  TicketLine,
+  TicketFields,
+  Unsigned,
 }
-import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
+import std.markdown {
+  MarkdownBlock,
+  HeadingBlock,
+  ParagraphBlock,
+  TextInline,
+  H1,
+}
 import extdeps.languages.markdown { serialize_markdown_source }
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
-fn ptr(label: String, path: String) -> Pointer { Pointer { label: label, path: path } }
-fn plan_ptr(path: String) -> List<Pointer> { [Pointer { label: "plan", path: path }] }
-
-fn unsigned() -> Signoff { Unsigned }
-
-fn signed(by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool) -> Signoff {
-  SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
+fn carrier(path: String) -> List<Pointer> {
+  [Pointer { label: "authority", path: path }]
 }
 
-fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+fn fields(
+  headline: String,
+  boundary: String,
+  displaced_cost: String,
+  first_slice: String,
+  red_control: String,
+  out_of_scope: String,
+  handback: String
+) -> TicketFields {
+  TicketFields {
+    headline: headline,
+    brief: boundary,
+    displaced_cost: displaced_cost,
+    current_state: "Remaining committed deliverable. Implementation evidence is reviewed separately from acceptance.",
+    first_slice: first_slice,
+    red_control: red_control,
+    out_of_scope: out_of_scope,
+    handback: handback,
+    updates: [],
+    authored_on: "",
+    last_verified_on: "",
+  }
 }
 
-fn authored_doc(id: String, done: Bool, content: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
-}
-
-fn authored_pp(id: String, done: Bool, content: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: AuthoredLine { done: done, content: content }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
-}
-
-fn plain(id: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: PlainLine { content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
-}
-
-fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
-}
-fn derivable_doc(id: String, prs: List<Int>, title: String, description: String, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
-}
-fn derivable_pp(id: String, prs: List<Int>, title: String, description: String, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: DerivableLine { prs: prs, title: title, description: description }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
-}
-
-fn derivable_wi(id: String, prs: List<Int>, title: String, description: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+fn active(
+  id: String,
+  owner: String,
+  path: String,
+  t: TicketFields
+) -> RoadmapNode {
   RoadmapNode {
     node: nid(s: id),
-    line: DerivableLine { prs: prs, title: title, description: description },
-    carriers: [],
-    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: PrsMerged },
-    owner: "",
+    line: TicketLine { done: false, ticket: t },
+    carriers: carrier(path: path),
+    sizing: Sized {
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: PrsMerged,
+    },
+    owner: owner,
     signoff: Unsigned,
   }
 }
 
-fn authored_wi(id: String, done: Bool, content: String, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
+fn queued(
+  id: String,
+  owner: String,
+  path: String,
+  t: TicketFields
+) -> RoadmapNode {
   RoadmapNode {
     node: nid(s: id),
-    line: AuthoredLine { done: done, content: content },
-    carriers: [],
-    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
-    owner: "",
+    line: TicketLine { done: false, ticket: t },
+    carriers: carrier(path: path),
+    sizing: Unsized,
+    owner: owner,
     signoff: Unsigned,
   }
 }
 
-fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
+fn edge(child: String, parent: String) -> RoadmapEdge {
+  RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
 
-data ticket_write_interface_note: String = "Recorded at the operator's question mid-bulk (2026-07-25): is the migration a consumer for a programmatic read/write interface? Assessed — the READ side exists and is proven at this grain (non_fold_residue_units_from_module_source reads typed record rows from module source; ingest parses any module to a Node tree), the WRITE side exists only as emission (authority -> projection via main_wet; dag is a registered emit target), and there is no in-place source editor — the Node-tree read/write seam is what gunbc#5364 gates. VERDICT: the one-time migration is NOT the right first consumer (its hard half is editorial judgment no interface removes; its mechanical half is already execution-verified per tranche — a harness for the remainder is the purity trap, section 6). The RECURRING consumer is typed TicketUpdate APPEND: belt verdicts landing on the sheet (ts-wf-shape / ts-dispatch-verdict), sessions writing back at close (ts-doc-anchor), typed dissolution triggers firing (ts-group-dissolve-typed) — bounded, typed, append-only writes to the updates axis the migration created. When the write interface lands, the updates axis is its first API and those three rows are its first consumers."
+fn active_roadmap_nodes() -> List<RoadmapNode> {
+  [
+    active(
+      id: "namespace-occurrence-transport",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Carry exact typed declaration and reference occurrences",
+        boundary: "Transport the compact declaration Node and exact reference ContainmentPath needed to identify one authored occurrence; this is identity transport, not binding policy.",
+        displaced_cost: "Removes erased names and reconstructed identity from the compiler boundary.",
+        first_slice: "Thread one ordinary type occurrence and its declaration path through inference without snapshotting a parallel identity.",
+        red_control: "Two authored occurrences with the same leaf name remain distinct; a missing or synthetic path refuses.",
+        out_of_scope: "No nearest-name lookup, global-unique fallback, or consumer-specific resolution rule.",
+        handback: "Return the typed transport plus an executed same-leaf/different-path discriminator."
+      )
+    ),
+    active(
+      id: "namespace-canonical-binding",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Bind every occurrence through one canonical fold",
+        boundary: "Enumerate admissible candidates from the occurrence's containment chain and call occurrence_binding_from_candidates exactly once.",
+        displaced_cost: "Deletes competing lookup policies that silently select different declarations.",
+        first_slice: "Bind ordinary type, value, and callee occurrences from full containment paths.",
+        red_control: "Zero candidates is Unbound and two distinct on-chain candidates is Ambiguous; neither selects a declaration.",
+        out_of_scope: "No policy switch, direct-import retry, or bare-name pool.",
+        handback: "Return the executed unique, unbound, ambiguous, and duplicate-identical-path matrix."
+      )
+    ),
+    active(
+      id: "namespace-bound-only-consumers",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Make compiler consumers project only OccurrenceBound",
+        boundary: "Inference, call lookup, and arity checks consume a Bound declaration after the canonical fold; refusal arms never fabricate a continuation.",
+        displaced_cost: "Removes downstream selection retries and conflicting declaration interpretations.",
+        first_slice: "Move one production inference consumer to the Bound-only projection.",
+        red_control: "Unbound and Ambiguous inputs stop before type or call inference.",
+        out_of_scope: "No compatibility arm for legacy SymbolIndex lookup.",
+        handback: "Return the consumer receipt and the refusal that proves no legacy fallback ran."
+      )
+    ),
+    active(
+      id: "namespace-legacy-choice-retirement",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Retire parallel namespace choice authorities",
+        boundary: "Delete the declaration-choice roles of string bindings, parent walks, global-bare pools, direct-import retries, and LexicalLookup after all ordinary consumers use the canonical fold.",
+        displaced_cost: "One declaration occurrence can no longer receive divergent answers from parallel mechanisms.",
+        first_slice: "Census every remaining declaration-selecting consumer and retire one complete family.",
+        red_control: "The census refuses any unclassified declaration-choice call site and reaches zero before closure.",
+        out_of_scope: "Containment storage that does not choose a declaration remains.",
+        handback: "Return the zero-residue census and compiler behavior receipt."
+      )
+    ),
 
+    active(
+      id: "pderive-typesafe-nullary-reflection",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Make nullary coproduct reflection type-safe",
+        boundary: "Reflection derives inhabitants from the actual coproduct type; an erased Symbol plus unconstrained return type cannot select a different type.",
+        displaced_cost: "Closes the wrong-type escape that makes reflected derive contracts unsound.",
+        first_slice: "Replace the erased nullary-inhabitant bridge with a type-carrying projection and migrate its first caller.",
+        red_control: "Reflecting Gate while requesting Behavior is unrepresentable or refuses.",
+        out_of_scope: "No derive-specific policy belongs in the reflection primitive.",
+        handback: "Return direct and wrong-type executed controls."
+      )
+    ),
+    active(
+      id: "pderive-static-supplemental-contract",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Model the target-static supplemental derive-bound contract",
+        boundary: "Each selected target representation declares derive-specific required traits by representation-parameter slot; missing and explicit-empty contracts remain distinct.",
+        displaced_cost: "Replaces inferred or fabricated generic bounds with one target-model authority.",
+        first_slice: "Round-trip one multi-slot representation's contracts through the target bundle.",
+        red_control: "Missing, malformed, duplicate, wrong-slot, and wrong-trait rows refuse; explicit empty survives.",
+        out_of_scope: "No source declaration binding or emitter edit in the model slice.",
+        handback: "Return lossless round-trip and refusal receipts."
+      )
+    ),
+    active(
+      id: "pderive-source-slot-binding",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Bind exact source declarations to representation slots",
+        boundary: "Map the selected representation's static slots to exact source declaration Nodes after namespace binding, without storing source declarations in the target contract.",
+        displaced_cost: "Prevents slot order or leaf-name coincidence from attaching a bound to the wrong generic.",
+        first_slice: "Bind one nested generic source declaration list to one selected target representation.",
+        red_control: "Swapped, missing, duplicate, or non-Bound source declarations refuse.",
+        out_of_scope: "No target contract may acquire source-specific identity.",
+        handback: "Return exact-node/slot correspondence plus a swap discriminator."
+      )
+    ),
+    active(
+      id: "pderive-single-emitter",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Emit supplemental bounds through the one Rust emitter",
+        boundary: "The Rust realization consumes the bound contract and exact slot binding through the existing emitter fold.",
+        displaced_cost: "Deletes per-shape derive patches and hand-maintained template exceptions.",
+        first_slice: "Emit one previously failing nested generic declaration through the shared derive path.",
+        red_control: "Removing or swapping one required contract changes the emitted bound or refuses, never silently cargo-greens.",
+        out_of_scope: "No new Rust template authority.",
+        handback: "Return emitted source and cargo execution for the discriminating fixture."
+      )
+    ),
+    active(
+      id: "pderive-error-movement-receipt",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Measure compiler-error movement after P-derive",
+        boundary: "Re-run the fixed deep-module corpus and classify the error histogram after the one emitter consumes the contract.",
+        displaced_cost: "Prevents a locally green fixture from masquerading as progress on the self-host frontier.",
+        first_slice: "Measure the exact before/after corpus without changing unrelated emit behavior.",
+        red_control: "The named generic-bound class must fall and no replacement class may be hidden by a first-error-only report.",
+        out_of_scope: "No acceptance based only on typecheck or golden text.",
+        handback: "Return full histograms, emitted builds, and any newly exposed class."
+      )
+    ),
 
-data ticket_carrier_constructors_note: String = "ticket_doc / ticket_pp (W2-bulk): the carrier-preserving ticket constructors, the exact siblings authored_doc/authored_pp are to authored. Without them, migrating a pointer-carrying prose row through ticket_row would silently DROP its carriers — the doc-graph's inbound links — which is content loss the migration's own honesty rules forbid and the orphan witness may red on. References reuse the node's carriers per ticket_line_note; these constructors are that reuse, not a new refs concept."
+    active(
+      id: "observation-scoped-run-consumer",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "Run scoped gunbc commands through the TTY/pipe observation consumer",
+        boundary: "gunbc run emits Begin and one terminal Outcome through the density-aware terminal projection while preserving pipe-safe append semantics.",
+        displaced_cost: "Removes raw progress printing and makes interactive state truthful.",
+        first_slice: "Wire one entry-scoped run without changing the evaluated entry graph.",
+        red_control: "PTY overwrite, pipe append, terminal refusal, and missing attention basis discriminate independently.",
+        out_of_scope: "No generic raw-print cleanup before a real scoped consumer executes.",
+        handback: "Return the PTY/pipe byte matrix and real gunbc run receipt."
+      )
+    ),
+    active(
+      id: "observation-ci-event-grouping",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "Project CI work into semantic event groups",
+        boundary: "CI rows use stable subjects and Begin/Outcome events; grouping is derived from subject containment, not log adjacency.",
+        displaced_cost: "Makes the operator view one logical unit instead of an unstructured line stream.",
+        first_slice: "Group one production floor family with its member outcomes.",
+        red_control: "Reordering event arrival preserves grouping while a mismatched subject does not join.",
+        out_of_scope: "No stored display group or mutable progress percentage.",
+        handback: "Return the grouping receipt over production-shaped events."
+      )
+    ),
+    active(
+      id: "observation-collapse-watchdog-restatement",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "Collapse green groups, watchdog orphaned begins, restate failures",
+        boundary: "Presentation collapses completed green groups, keeps failures persistent, and synthesizes no success for a Begin lacking a terminal Outcome.",
+        displaced_cost: "Cuts status noise while making stalls and failures impossible to scroll away.",
+        first_slice: "Apply collapse, watchdog, and final restatement to one CI group.",
+        red_control: "An orphaned Begin times out visibly and a refused child keeps its group expanded and red.",
+        out_of_scope: "No inference of completion from process exit or absent output.",
+        handback: "Return green-collapse, orphan-watchdog, and refusal-restatement receipts."
+      )
+    ),
+    active(
+      id: "observation-raw-print-retirement",
+      owner: "ci-observation",
+      path: "docs/plans/progress-observation-design.md",
+      t: fields(
+        headline: "Retire raw progress-print producers",
+        boundary: "Census production print sites after scoped run and CI consumers exist; each site migrates to an ObservationEvent or is classified as terminal user output.",
+        displaced_cost: "Eliminates duplicate status channels and formatting policy embedded in callers.",
+        first_slice: "Classify the complete production raw-print census and migrate one family.",
+        red_control: "A newly introduced unclassified progress print reds the census.",
+        out_of_scope: "Program stdout/stderr that is the requested result remains outside progress observation.",
+        handback: "Return the classified zero-residue progress census."
+      )
+    ),
 
-fn ticket_doc(id: String, done: Bool, t: TicketFields, path: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: plan_ptr(path: path), sizing: Unsized, owner: "", signoff: Unsigned }
+    active(
+      id: "placement-live-roster-preflight",
+      owner: "ci-placement",
+      path: "docs/plans/ci-two-tier-placement-redesign.md",
+      t: fields(
+        headline: "Preflight the complete live CI placement roster",
+        boundary: "Join all 48 enrolled rows by stable identity and refuse missing, duplicate, or unmeasured placement facts.",
+        displaced_cost: "Prevents a partial roster from producing a confident placement decision.",
+        first_slice: "Derive the total roster and its host qualification inputs in one execution.",
+        red_control: "Dropping or duplicating one row refuses the preflight.",
+        out_of_scope: "No hand-maintained count may become the roster authority.",
+        handback: "Return the derived totality and per-row identity receipt."
+      )
+    ),
+    active(
+      id: "placement-two-host-warm-qualification",
+      owner: "ci-placement",
+      path: "docs/plans/ci-two-tier-placement-redesign.md",
+      t: fields(
+        headline: "Qualify both fleet hosts with warm execution receipts",
+        boundary: "Each placement class earns eligibility from measured warm cost and resource receipts on both candidate hosts.",
+        displaced_cost: "Replaces assumed host equivalence with observed qualification.",
+        first_slice: "Run the same bounded roster packet on both hosts.",
+        red_control: "A missing, stale, or over-budget host receipt leaves that host unqualified.",
+        out_of_scope: "No extrapolation from one host or cold-only timing.",
+        handback: "Return the two-host warm qualification packet."
+      )
+    ),
+    active(
+      id: "placement-shadow-equality",
+      owner: "ci-placement",
+      path: "docs/plans/ci-two-tier-placement-redesign.md",
+      t: fields(
+        headline: "Shadow the proposed placement against the live path",
+        boundary: "Run proposed and current decisions over the same roster and require semantic equality before authority flips.",
+        displaced_cost: "Exposes selection or scheduling divergence before it changes CI behavior.",
+        first_slice: "Shadow one full live packet without controlling execution.",
+        red_control: "Any row, host, or tier disagreement is a located refusal.",
+        out_of_scope: "Shadow output cannot route jobs.",
+        handback: "Return total per-row equality and any explained divergence."
+      )
+    ),
+    active(
+      id: "placement-atomic-authority-flip",
+      owner: "ci-placement",
+      path: "docs/plans/ci-two-tier-placement-redesign.md",
+      t: fields(
+        headline: "Flip CI placement authority atomically",
+        boundary: "One change makes the qualified model the sole placement projection and removes the shadow/legacy selector together.",
+        displaced_cost: "Ends the dual-decision window and makes placement receipts authoritative.",
+        first_slice: "Flip the complete 48-row roster after equality and both-host qualification.",
+        red_control: "A mixed legacy/model decision surface is rejected by the authority census.",
+        out_of_scope: "No partial-row or host-by-host flip.",
+        handback: "Return the post-flip live receipt and zero dual-authority census."
+      )
+    ),
+
+    active(
+      id: "v1-test-hygiene-producer-retirement",
+      owner: "self-host",
+      path: "docs/plans/v2-self-hosting.md",
+      t: fields(
+        headline: "Retire the hand-Rust test-module hygiene producer",
+        boundary: "Move the hygiene decision into .dag with behavioral equivalence, then delete the seed producer rather than preserving two authorities.",
+        displaced_cost: "Shrinks the v1 test/tooling surface and removes a dual implementation.",
+        first_slice: "Execute the .dag hygiene fold over the existing discriminating corpus.",
+        red_control: "A malformed test module changes both old and new verdicts before the old producer is removed.",
+        out_of_scope: "No census ratchet satisfied by cementing Rust into templates.",
+        handback: "Return equivalence, producer deletion readiness, and frontier update."
+      )
+    ),
+    active(
+      id: "v1-interpreter-role-frontier",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Close the explicit v1 interpreter role frontier",
+        boundary: "Every live interpreter consumer is a typed retained role with a deletion trigger or is migrated to native realization.",
+        displaced_cost: "Turns hidden interpreter dependence into a finite deletion obligation.",
+        first_slice: "Re-derive the consumer roster and close one complete role family.",
+        red_control: "An unregistered interpreter import or execution path reds the frontier.",
+        out_of_scope: "Hand-maintained Rust outside interpreter roles is tracked separately.",
+        handback: "Return the complete role roster and migrated family receipt."
+      )
+    ),
+    active(
+      id: "v1-materialization-kernel",
+      owner: "self-host",
+      path: "docs/plans/witness-realization-plan.md",
+      t: fields(
+        headline: "Make native materialization the shared execution kernel",
+        boundary: "Witness and compiler execution consult one content-keyed materialization provider with bounded storage and typed miss/refusal behavior.",
+        displaced_cost: "Replaces pay-every-run interpretation and one-off caches with shared artifacts.",
+        first_slice: "Serve one native witness family through a durable budgeted provider.",
+        red_control: "Wrong content, missing artifact, and exhausted budget refuse rather than fall back silently to interpretation.",
+        out_of_scope: "No existence-keyed cache or unbounded store.",
+        handback: "Return cold miss, warm hit, integrity, and eviction receipts."
+      )
+    ),
+    active(
+      id: "v1-interpreter-quarantine",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Build and run products with the v1 interpreter omitted",
+        boundary: "The deletion rehearsal omits the interpreter at link grain and runs required products and the floor cold and warm.",
+        displaced_cost: "Proves source-inaccessible code is also absent from the artifact.",
+        first_slice: "Produce one quarantine artifact and run the required execution matrix.",
+        red_control: "Any linked or runtime interpreter consumer breaks the quarantine build or census.",
+        out_of_scope: "A feature flag that still links the interpreter is not quarantine.",
+        handback: "Return artifact inspection, product runs, floor receipts, and zero-consumer census."
+      )
+    ),
+    active(
+      id: "v1-interpreter-delete",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Delete the v1 interpreter",
+        boundary: "Delete the interpreter only after the role frontier, materialization kernel, quarantine, namespace retirement, and P-derive compiler receipt are green.",
+        displaced_cost: "Removes the pay-every-run semantic fork and advances the substrate as compiler authority.",
+        first_slice: "Delete the interpreter and all now-unreachable glue in one atomic change.",
+        red_control: "Products, floor, cold/warm parity, and the no-consumer census all execute without the deleted module.",
+        out_of_scope: "This is not the terminal deletion of all src/v1 or all emitted Rust.",
+        handback: "Return deletion diff plus complete execution and reachability receipts."
+      )
+    ),
+
+    active(
+      id: "shell-typed-invocation",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "Represent remaining shell invocations as typed intent",
+        boundary: "Callers construct typed operations and arguments; no caller supplies an opaque command body as business intent.",
+        displaced_cost: "Removes shell syntax from policy and operation call sites.",
+        first_slice: "Migrate one currently retained invocation family onto an existing extdeps operation shape.",
+        red_control: "Invalid arguments or unavailable operation handlers refuse before shell emission.",
+        out_of_scope: "Irreducible shell leaf syntax remains in the Bash realization.",
+        handback: "Return typed intent, execution equivalence, and deleted raw construction site."
+      )
+    ),
+    active(
+      id: "shell-effectplan-to-bash",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "Lower EffectPlan to Bash through one realization",
+        boundary: "The selected shell handler serializes typed EffectPlan nodes through the shared Bash grammar and preserves effects, ordering, capture, and refusal.",
+        displaced_cost: "Deletes per-workflow shell emitters and concat-built transport programs.",
+        first_slice: "Lower one multi-step typed plan with capture or retry through the shared realization.",
+        red_control: "Unsupported fidelity refuses; reordering or dropping one effect changes the execution oracle.",
+        out_of_scope: "No parallel ShellProgram sidecar or second serializer.",
+        handback: "Return emitted program, execution receipt, and fidelity refusal."
+      )
+    ),
+    active(
+      id: "shell-gate-migration",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "Migrate CI and commit gates onto typed shell plans",
+        boundary: "Gate policy selects typed operations and the Bash handler realizes them; inline workflow shell stops being a second authority.",
+        displaced_cost: "Makes gate behavior testable before rendering and reusable outside GitHub Actions.",
+        first_slice: "Move one active gate family end to end through EffectPlan-to-Bash.",
+        red_control: "Changing the typed plan changes the generated workflow and a malformed plan refuses regeneration.",
+        out_of_scope: "No zero-shell mandate for foreign executor boundaries.",
+        handback: "Return typed gate execution and generated-artifact fixed-point receipts."
+      )
+    ),
+    active(
+      id: "shell-residue-zero",
+      owner: "shell",
+      path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
+      t: fields(
+        headline: "Close the production shell-intent residue census",
+        boundary: "Every remaining raw or computed shell construction is an irreducible realization leaf or a typed, owned migration row.",
+        displaced_cost: "Stops unmarked shell workarounds from recreating opaque policy.",
+        first_slice: "Re-run the construction-site census and migrate the next owned family.",
+        red_control: "A new unclassified production construction site reds the census.",
+        out_of_scope: "Prose, frozen fixtures, absence witnesses, and literal shell leaf tokens are classified, not blindly deleted.",
+        handback: "Return hit-by-hit zero unowned construction sites."
+      )
+    ),
+
+    active(
+      id: "roadmap-runtime-identity-join",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-as-workspace-design.md",
+      t: fields(
+        headline: "Join roadmap node, branch, pull request, and attempt by typed identity",
+        boundary: "Runtime state attaches through one typed relation over node, branch, pull request, and attempt identities; titles and timing never establish identity.",
+        displaced_cost: "Removes lossy string joins and contradictory dashboard lamps.",
+        first_slice: "Join one real attempt from node through branch and pull request.",
+        red_control: "Missing, duplicate, or mismatched identities remain separate and refuse a confident join.",
+        out_of_scope: "Runtime facts do not enter roadmap authority.",
+        handback: "Return the four-identity join matrix with mismatch controls."
+      )
+    ),
+    active(
+      id: "roadmap-runtime-ready-override",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-as-workspace-design.md",
+      t: fields(
+        headline: "Model Ready as an explicit operator override",
+        boundary: "Dependency readiness is derived from accepted parents; the only override is a typed operator decision with scope and provenance.",
+        displaced_cost: "Prevents mutable UI state or implementation evidence from silently unblocking work.",
+        first_slice: "Apply an override to one otherwise blocked fixture without changing acceptance facts.",
+        red_control: "Absent, stale, wrong-node, or revoked override leaves the node blocked.",
+        out_of_scope: "Merged code and green CI are not acceptance or readiness overrides.",
+        handback: "Return derived-ready and four override refusal receipts."
+      )
+    ),
+    active(
+      id: "roadmap-runtime-dispatch-consumer",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-as-workspace-design.md",
+      t: fields(
+        headline: "Dispatch only from the typed runtime join",
+        boundary: "The actuator consumes a spawnable active node, accepted dependencies or Ready override, and an idempotent attempt identity.",
+        displaced_cost: "Prevents duplicate workers, dispatch from parked rows, and title-based routing.",
+        first_slice: "Dispatch one eligible fixture and re-submit the same attempt idempotently.",
+        red_control: "Queued, parked, blocked, duplicate, and identity-mismatched nodes refuse dispatch.",
+        out_of_scope: "The authority graph stores no session, attempt, or pull-request state.",
+        handback: "Return accepted/idempotent dispatch and refusal matrix."
+      )
+    ),
+    active(
+      id: "roadmap-runtime-readback",
+      owner: "roadmap-runtime",
+      path: "docs/plans/roadmap-as-workspace-design.md",
+      t: fields(
+        headline: "Read back lifecycle facts without inferring readiness",
+        boundary: "The served workspace independently observes session presence, provider/tool readiness, attempt outcome, and pull-request linkage after dispatch.",
+        displaced_cost: "Replaces optimistic accepted-equals-running and session-equals-ready projections.",
+        first_slice: "Poll one dispatched attempt and render independent four-state facts.",
+        red_control: "An accepted POST with no observed session never renders running, ready, or complete.",
+        out_of_scope: "Readback cannot mutate authority or acceptance.",
+        handback: "Return the observed lifecycle matrix and stale-state repaint control."
+      )
+    ),
+
+    active(
+      id: "fleet-state-frontier",
+      owner: "fleet",
+      path: "docs/plans/host-converge-inventory.md",
+      t: fields(
+        headline: "Declare the owned host and BMC state frontier",
+        boundary: "Every state dependency is Derived, OwnedMember, or ForeignWithContract; unclassified state refuses.",
+        displaced_cost: "Shrinks the host permutations that workflows must reason about.",
+        first_slice: "Classify one complete host-touching workflow and its BMC boundary.",
+        red_control: "An undeclared file, service, credential, or device dependency refuses before mutation.",
+        out_of_scope: "No observe-everything inventory.",
+        handback: "Return the classified frontier and one unclassified-state refusal."
+      )
+    ),
+    active(
+      id: "fleet-bmc-policy-convergence",
+      owner: "fleet",
+      path: "docs/runbooks/altrad8ud-bmc-fan-control.md",
+      t: fields(
+        headline: "Converge the fleet BMC firmware and thermal policy",
+        boundary: "Observe firmware, board, controller, fan topology, thermal limits, and policy; plan/apply/read back with rollback on unsafe or mismatched state.",
+        displaced_cost: "Replaces one-off fan tuning with a reproducible safety-checked lifecycle.",
+        first_slice: "Converge the supported host and refuse unsupported firmware before mutation.",
+        red_control: "Wrong firmware, board, topology, sensor, failsafe, or readback triggers refusal or rollback.",
+        out_of_scope: "No firmware update without approved image, digest, recovery, and return proof.",
+        handback: "Return apply, no-op, rollback, reboot-persistence, and unsupported-host receipts."
+      )
+    ),
+    active(
+      id: "fleet-closed-loop-converge",
+      owner: "fleet",
+      path: "docs/plans/host-effect-orchestration.md",
+      t: fields(
+        headline: "Run one host converge hunk closed-loop",
+        boundary: "Typed desired state is observed, diffed, applied, independently read back, and only then marked converged.",
+        displaced_cost: "Turns inert infrastructure declarations into changeable, re-runnable control.",
+        first_slice: "Close one narrow service or host knob end to end.",
+        red_control: "Apply success without independent readback remains NotConverged.",
+        out_of_scope: "No broad host subsumption before one narrow loop proves the spine.",
+        handback: "Return apply, no-op, retract, and failed-readback receipts."
+      )
+    ),
+    active(
+      id: "fleet-anti-entropy-hygiene",
+      owner: "fleet",
+      path: "docs/plans/fleet-acceptance-criteria.md",
+      t: fields(
+        headline: "Schedule anti-entropy and owned-subtree hygiene",
+        boundary: "A periodic consumer re-observes every enrolled member and detects unowned state inside owned subtrees.",
+        displaced_cost: "Finds leaked configuration and stale processes before the next deploy incident.",
+        first_slice: "Enroll one converged workflow in periodic observation and residue detection.",
+        red_control: "A removed member, stale process, or foreign file inside an owned subtree creates a located divergence.",
+        out_of_scope: "Foreign state outside declared ownership is not deleted.",
+        handback: "Return cadence execution and three divergence controls."
+      )
+    ),
+    active(
+      id: "fleet-receipt-qualified-control",
+      owner: "fleet",
+      path: "docs/plans/fleet-acceptance-criteria.md",
+      t: fields(
+        headline: "Qualify fleet control by live apply and periodic receipts",
+        boundary: "Fleet work closes only when the live actuator, independent readback, safe re-run, retract path, and periodic consumer all execute.",
+        displaced_cost: "Prevents modeled algebra or a one-time apply from being mistaken for operable infrastructure.",
+        first_slice: "Promote one closed-loop converge item from live apply to periodic enforcement.",
+        red_control: "Missing readback, unsafe re-run, failed retract, or missed cadence blocks qualification.",
+        out_of_scope: "No acceptance from fixture-only evidence.",
+        handback: "Return the T4/T5 receipt packet and operator-checkable fleet state."
+      )
+    ),
+
+    queued(
+      id: "product-scm-git-upstream",
+      owner: "product",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Queue the independent Git upstream model and fixture",
+        boundary: "Model Git's real snapshot, ref, object, publication, and compare-and-advance semantics independently before extracting a common SCM shape.",
+        displaced_cost: "Prevents the first adoption realization from becoming the universal interface by accident.",
+        first_slice: "A bounded cited Git fixture over import, proposal, and exact-parent advance.",
+        red_control: "Git-only facts cannot appear in the later common kernel without an explicit adapter.",
+        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
+        handback: "Return cited upstream rows and fixture only after promotion."
+      )
+    ),
+    queued(
+      id: "product-scm-mercurial-upstream",
+      owner: "product",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Queue the independent Mercurial upstream model and fixture",
+        boundary: "Model Mercurial identity, phases, bookmarks, and publication semantics on their own terms.",
+        displaced_cost: "Falsifies Git-shaped identity and publication assumptions.",
+        first_slice: "A bounded cited Mercurial fixture that stresses identity and publication metadata.",
+        red_control: "The fixture must fail a Git-ref-shaped compatibility assumption.",
+        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
+        handback: "Return cited upstream rows and fixture only after promotion."
+      )
+    ),
+    queued(
+      id: "product-scm-pijul-upstream",
+      owner: "product",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Queue the independent Pijul upstream model and fixture",
+        boundary: "Model first-class changes, dependencies, and set-valued channels independently.",
+        displaced_cost: "Falsifies commit/single-head assumptions before they enter the common shape.",
+        first_slice: "A bounded cited Pijul fixture over change dependencies and channel state.",
+        red_control: "The fixture must fail a linear commit/ref-shaped compatibility assumption.",
+        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
+        handback: "Return cited upstream rows and fixture only after promotion."
+      )
+    ),
+    queued(
+      id: "product-scm-common-shape",
+      owner: "product",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Queue common SCM realization roles after three falsifiers",
+        boundary: "DFS the three independent fixtures and extract only their proven common import, proposal, transition, and projection roles.",
+        displaced_cost: "Avoids N adapters to a Git-shaped nickname interface.",
+        first_slice: "Extract the minimal witnessed common shape and keep provider facts behind adapters.",
+        red_control: "Adding a fourth SCM requires only a new adapter and rows, never a core vendor arm.",
+        out_of_scope: "No common shape is authorized before all three upstream fixtures execute.",
+        handback: "Return the DFS map, reduced shape, and fourth-provider discriminator after promotion."
+      )
+    ),
+    queued(
+      id: "product-source-intent-kernel",
+      owner: "product",
+      path: "docs/plans/dag-scm-design.md",
+      t: fields(
+        headline: "Queue the bounded source-intent landing kernel",
+        boundary: "Compose authenticated authored transformations, claim-indexed evidence, admission, exact transition, readback, and projection into Landed, ChoiceRequired, or CouldNotLand.",
+        displaced_cost: "Moves replay, integration mechanics, and machine-answerable repair out of the user's workflow.",
+        first_slice: "Run one Git-compatible proposal through the bounded kernel without vendor switches.",
+        red_control: "Unclosed semantics, stale parent, unauthorized effect, or failed readback cannot project Landed.",
+        out_of_scope: "No hosted authority, storage service, or customer mutation before product promotion.",
+        handback: "Return bounded closure, refusal partitions, and exact-parent transition receipts after promotion."
+      )
+    ),
+    queued(
+      id: "product-agent-landing-benchmark",
+      owner: "product",
+      path: "docs/plans/dag-scm-product-strategy.md",
+      t: fields(
+        headline: "Queue the fixed-contract agent landing benchmark",
+        boundary: "Compare ordinary Git integration and the source-intent kernel under one fixed safety contract before any design-partner shadow or hosted promotion.",
+        displaced_cost: "Tests whether semantic landing displaces real replay, CI, and judgment cost.",
+        first_slice: "Run the benchmark on gunbc with reversible Git output.",
+        red_control: "Ordinary queue, rebase, or cache improvements that erase the claimed advantage stop or narrow the product lane.",
+        out_of_scope: "No customer source access, ref write authority, hosting, or adjacent product grant.",
+        handback: "Return public checkable receipts and a promote, narrow, or stop disposition after operator promotion."
+      )
+    ),
+  ]
 }
 
-fn ticket_pp(id: String, done: Bool, t: TicketFields, carriers: List<Pointer>) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: TicketLine { done: done, ticket: t }, carriers: carriers, sizing: Unsized, owner: "", signoff: Unsigned }
-}
+fn active_roadmap_edges() -> List<RoadmapEdge> {
+  [
+    edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
+    edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-bound-only-consumers"),
 
-fn ticket_wi(id: String, done: Bool, t: TicketFields, intricacy: Intricacy, volume: Volume, repo: String) -> RoadmapNode {
-  RoadmapNode {
-    node: nid(s: id),
-    line: TicketLine { done: done, ticket: t },
-    carriers: [],
-    sizing: Sized { intricacy: intricacy, volume: volume, repo: repo, acceptance: ManualAcceptance },
-    owner: "",
-    signoff: Unsigned,
-  }
-}
+    edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
+    edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
+    edge(child: "pderive-source-slot-binding", parent: "namespace-occurrence-transport"),
+    edge(child: "pderive-single-emitter", parent: "pderive-source-slot-binding"),
+    edge(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter"),
 
-fn superseded(id: String, by: String, content: String) -> RoadmapNode {
-  RoadmapNode { node: nid(s: id), line: SupersededLine { by: by, content: content }, carriers: [], sizing: Unsized, owner: "", signoff: Unsigned }
-}
+    edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
+    edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
+    edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
-fn owned(rn: RoadmapNode, owner: String) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: owner, signoff: rn.signoff }
-}
+    edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
+    edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
+    edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
 
-fn with_plan(rn: RoadmapNode, path: String) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: concat(rn.carriers, plan_ptr(path: path)), sizing: rn.sizing, owner: rn.owner, signoff: rn.signoff }
-}
+    edge(child: "v1-interpreter-role-frontier", parent: "v1-test-hygiene-producer-retirement"),
+    edge(child: "v1-materialization-kernel", parent: "v1-interpreter-role-frontier"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-materialization-kernel"),
+    edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
+    edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
 
-fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
-  RoadmapNode { node: rn.node, line: rn.line, carriers: rn.carriers, sizing: rn.sizing, owner: rn.owner, signoff: s }
+    edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
+    edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
+    edge(child: "shell-residue-zero", parent: "shell-gate-migration"),
+
+    edge(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join"),
+    edge(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override"),
+    edge(child: "roadmap-runtime-readback", parent: "roadmap-runtime-dispatch-consumer"),
+
+    edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
+    edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
+    edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
+    edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
+
+    edge(child: "product-scm-common-shape", parent: "product-scm-git-upstream"),
+    edge(child: "product-scm-common-shape", parent: "product-scm-mercurial-upstream"),
+    edge(child: "product-scm-common-shape", parent: "product-scm-pijul-upstream"),
+    edge(child: "product-source-intent-kernel", parent: "product-scm-common-shape"),
+    edge(child: "product-source-intent-kernel", parent: "namespace-canonical-binding"),
+    edge(child: "product-agent-landing-benchmark", parent: "product-source-intent-kernel"),
+  ]
 }
 
 fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
+<<<<<<< Updated upstream
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for *why*. This is the **shape of the work** — a scannable, dependency-ordered checklist. A checkbox or merged PR is implementation evidence ready for review; `RoadmapNode.signoff` is the separate work-item acceptance step. **PR != work item**: merged evidence does not close a node, remove its dispatch action, or unblock its children. Detail lives in linked plan docs — don't restate it here (no dual representations)." }] },
     ParagraphBlock { inlines: [TextInline { text: "Legend: `[x]` checklist-closed by accepting operator sign-off or authored supersession · `[ ]` not accepted · `⏳ awaiting sign-off` implementation evidence present but acceptance absent · page status `done` = accepting sign-off only · ~~struck~~ **superseded →** successor (the named carrier/lane now owns the territory; the row is kept as the pointer, never dispatched) · **indentation = one presentation dependency; `requires all` names the complete prerequisite set for every multi-parent node and all of them gate dispatch**. Edge order chooses presentation placement only; it never weakens or prioritizes a dependency. Each section opens with a **◆ Milestones** spine — the *verifiable* checkpoints in dependency order (`✓` reached · `▸` now · `○` ahead); the checklist below is the work toward them. Read L→R = the path." }] },
     ParagraphBlock { inlines: [TextInline { text: "**Reset 2026-07-01 (operator-directed).** The roadmap is collapsed to **two pillars** — **§1 get off v1** and **§2 own the compute fabric** — plus **§3 the floor + audit**: the walls that keep both pillars honest, and an execution-grounded audit of what the existing machinery *actually does* (green by execution, red by perturbation). Everything else is **§4 shelved**: parked, not deleted — plan docs and carriers stay, no work dispatches from it, and un-shelving is a PR that moves a node into §1–§3 with a displaced-cost justification (DESIGN §6). The prior roadmap with full detail is in git history. Priority order, top = now." }] },
+=======
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. It carries no accepted or superseded history and no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Sized rows are dispatchable when their dependencies are accepted. Unsized product rows are queued context and are not spawnable until an operator explicitly promotes and sizes them. Parked plans remain reachable through their existing documentation graph but are not active roadmap rows." }] },
+>>>>>>> Stashed changes
   ]
 }
 
-fn section_0() -> RoadmapSection {
+fn active_section() -> RoadmapSection {
   RoadmapSection {
-    title: "0. Priorities — current execution order (rearranged 2026-07-06)",
+    title: "Active deliverables — dependency order",
     elements: [
-      section_prose(content: "The two pillars — §1 get off v1, §2 own the compute fabric — stand as the strategic goal. This section is the **current priority ordering** over them and the walls that keep them honest, rearranged 2026-07-06 to **frontload the compile wall and complexity enforcement**: fix what blocks CI now, then make the regression classes *unwritable* before they recur (construction over after-the-fact catching, DESIGN §5). Each item points into the detailed lane; work dispatches from the lane, not from the pointer. Lanes marked *un-shelved* here are moved out of §4 by this ordering."),
-      section_prose(content: "**① Compile wall** — the acute blocker. The `.dag` compile-clean floor runs **100+min** (#6239), past the CI job kills, so every PR is red on the floor and the rust-gate timeout thrash (the 10-min-drift #6339 + witness #6342, 2026-07-06) is a *downstream symptom* of the wall outgrowing the step budgets. Levers, in leverage order: affected-set-scope the compile-clean to the changed node-closure (→ ③), cross-run resolve memoization, per-module shard so `spawn_width` finally applies to the dominant node. Detail: §2 *kill the serial compile-clean wall*."),
-      section_prose(content: "**② Complexity enforcement, whole codebase** *(frontloaded — un-shelved from §4)*. Make the regression classes unwritable, not caught-after: the **repo-wide complexity budget**, the **enforcement-intent gate** (`StandingIntent` ⇄ `LensContract` ⇄ `CoverageReceipt`, fail-closed — a mechanism *claiming* enforcement is complete only when the gate proves it from receipts), **intent-linearity** (model the axioms A1–A3 and enforce the syllogism — every claim a consequence-chain back to an axiom, no orphan and no cycle; [draft](docs/plans/intent-linearity-design-draft.md)), and the **gap analysis** — which regression classes *cannot* be caught yet (the expressibility frontier: wall vs lens vs review; [frontier](docs/plans/expressibility-frontier.md)). Detail: §3 *enforcement intent + model-quality walls*; §4 *complexity budget whole-codebase* + *fail-closed meta band* (promoted here)."),
-      section_prose(content: "**③ Affected set live in CI** — per-PR selection that shrinks the floor to the changed node-closure and returns witness enrollment to affected-set-shrunk discovery (today enrollment is opt-in *because* selection is not live — itself a compile-wall multiplier). Obligations: soundness (a skipped-but-affected witness is the fail-open catastrophe), effectiveness receipts on real scoped diffs, fail-closed default on a provenance gap. Detail: §2 *affected-set de-fork*; §3 *affected-set lens*."),
-      section_prose(content: "**④ Realization** — inhabit the content-addressed carrier so caching, memoization, and provisioning all *derive* from one content-hash instead of N hand-rolled caches (v2 still hand-rolls `ParseTable`; floor shared-compute memoization is a Realization arm; DESIGN §2). Includes the **dag↔v2 de-fork grounding** — the fixed point must be well-defined over ONE algebra. Includes **execution-as-realization** (operator-affirmed 2026-07-07): `run ≜ realize ∘ materialize ∘ dependency_view` ([spine](docs/plans/execution-spine-design.md)) — interpreted-vs-compiled is a per-node realization *policy*, not an architecture. The interpreter is the pay-every-run realizer; the emitted native artifact is the pay-once-per-content-hash one, so **emit-on-demand** (emit closure → build → run, artifact `Share`d by content-hash) is the canonical execution path for a closed static substrate — no bytecode VM, no JIT (nothing dynamic left to profile; DESIGN §4). The tree-walker's surviving roles (bootstrap S1 receipts · compile-time eval) are bounded scaffolds dissolving with §1 self-hosting. **Materialization placement is derived, never hand-added (operator, 2026-07-09 — the state×decision ladder, `std.materialization_ladder`):** demand is read off ONE *nested* DependencyView — scopes nest eval → plan → process → emitted shell → CI run, a 'run' at any layer being a frame one scope up, never a different kind of thing (every layer is emitted from the same substrate, so the qualifier reaches all of them: it injects a content-hash skip into emitted shell as readily as a `Share` inside the plan). The law: plurality of demand per identity per frame decides — 0×pure = dead code, 0×effect = the effect is the use, 1 = Recompute, ≥2 with shared-state LCA = authored duplication (ERROR, rewire), ≥2 across isolation = memo obligation at the LCA that MUST be discharged by a covering content-keyed provider with declared eviction (`ScopeExit` scoped / `SpacePacked` persistent — dropping pure facts is always sound); *declared-emergent* frames (retry replay, unbounded siblings: server loops, CI-runs-over-time) obligate UP FRONT — expected emergent redundancy unprepared-for is an error, unexpected emergence is typed acceptance that converts to a declared row next run; an `ExistenceKeyed` provider is refused (existence ≠ identity — the build-if-absent red, #6352); a redundant `WorldRead` without a declared staleness envelope is refused (a TTL is a confession: unmodeled dependency or undeclared staleness). Un-shelves §4 *caching completion*'s 'one Materialization kernel'; subsumes ①'s 'cross-run resolve memoization' and §2's 'NOT cross-run caching' into per-node derived verdicts; §3-convergence: `v1.compiler.ownership`'s `binding_fan_out` is the eval-frame instance (Threaded-excluded plurality; SoleOwner/SharedError), retiring with the seed. Displaced cost already paid: the 9 GB retain-forever resolve store · build-if-absent stale binary · the ~275s double-resolve · the 3× CI release build. Detail: [duplicate-work](docs/plans/duplicate-work-graph-lens-design.md). Detail: §1 *de-fork grounding cluster* + *emit-on-demand execution*; §2 shared-compute memoization."),
-      section_prose(content: "**⑤ Everything linear / efficient / minimal — dev UX** *(un-shelved from §4)*. The authoring experience is minimal and non-redundant: **fold-ergonomics** (inert-abstraction lens, non-fold-residue audit, ban source comments), **namespace-only resolution** (minimal naming, delete `import`, no ambiguity — operator-signed 2026-07-06, its two rules *are* the §2/§4 minimality + no-ambiguity walls; gated on the `SymbolIndex` substrate; [design](docs/plans/namespace-resolution-design.md)), and local iteration speed. Detail: §4 *fold-ergonomics lane* (promoted); the namespace-only lane."),
-      section_prose(content: "**In-flight lane snapshot (2026-07-22, silent-ibex-417 — effect-grants):** dissolving the forked `Hermetic | Wet | Record` bit into the (frame × verb × subtree) grant model (DESIGN open thread; not a pillar item). P-A/P-B landed; **P-C slice 1 MERGED (#6987)** (derived axes + presets), **P-C slice 2 in review (#7071)** (per-grant `HandlerBinding` selection — 2 approvals, mergeable, CI running). Remaining: `LiveTreeDisposition` stamp-retire (blocked on an operator path-A/B decision), `Hermetic|Wet|Record` enum deletion (gated on slice 2 + stamp-retire), hermetic-native run + network isolation (deferred behind a target-env trigger). Full PR ledger + blockers: [effect-namespace-grants §4](docs/plans/effect-namespace-grants.md)."),
-    ],
-  }
-}
-
-fn section_1() -> RoadmapSection {
-  RoadmapSection {
-    title: "1. Get off v1 — v2 self-hosts (TERMINAL: `src/v1` deleted)",
-    elements: [
-      section_prose(content: "Anchor (do not flip-flop): `.dag` = truth; v2 emits its own seed (no stage0 hand-edits); the trust chain is discharged by execution; then the hand-written seed is deleted. Terminal is **hand-written compiler logic → 0**, not zero bytes of Rust: a pinned v2-emitted bootstrap kernel (~8–15k LOC — `claim_executor`, evaluator host-physics, the regen oracle) survives as the content-addressed seed. → [plan](docs/plans/v2-self-hosting.md) · [de-fork audit](docs/plans/dag-v2-defork-audit.md) · [seed census](docs/plans/seed-shrink-census.md)"),
-      section_prose(content: "Ground truth (2026-07-05): `src/v1` = ~174k hand-written `.rs` LOC (the ~154k figure in older docs is stale) + 44 `.dag` files of v1's own modeling; `src/v2` = 874 `.dag`, zero `.rs`. HAND_MAINTAINED roster went 24 → 7 files and has REGROWN to 25 (re-measured 2026-07-23: native-routing shims + governor/pre-push seeds, each with its own dissolution trigger) + `module_path_index` (~22.3k LOC: the three lens projections drained #6158/#6211/#6212; `phase_profile.rs` ADDED 2026-07-04 with its own dissolution trigger); `patch_*` is fully dead in-tree; the `dag_collect` pair briefly went HAND-only in #6262's regen unbreak, then RETURNED to GENERATED in #6239 (registry authority verified 2026-07-05: `regen_stage0.rs` GENERATED includes the pair, HAND count 7, witness pins 92). The regen gate now proves fresh-vs-committed byte-identity unconditionally in CI (#6957/#6958, 98/98 files), so emitter improvements are no longer latent and cargo-green is continuous by composition (see 5-regen-cutover / 5-cargo-green-continuous, closed 2026-07-23) — today's walls are that identity + well-typed emit. INTERIM (operator-accepted, 2026-07-05): the CI floor's compile-clean step cannot complete inside its 10-minute step budget (#6232; restructured #6273 so a breach fails the STEP loudly instead of cancelling the job silently, and `rust_tests` fits at 30min) while compile-clean runs ~40+min, — DISCHARGED since (2026-07-23): compile-clean is CI-scoped per import closure and regen `--verify` is a required CI step, so the walls are CI-proven now."),
-      section_prose(content: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473) · emitted crate cargo-green, 0 rustc errors ✓ (#5777/#5873, re-verified #6099; fresh emit re-greened and byte-identical to the committed seed since #6958) · `regen --verify` in CI ✓ (#5873) · interim fixpoint gate, 2-of-92 roster ✓ (#6009) · full-roster 92-file byte-fold + host-grounded digest ✓ (#6218) · v1 self-resolution: #6235 arm fixed ✓ (#6250) · #6241 `get`-registry arm ✓ (#6255, operator-resolved collision) · #6242 comment/registry break ✓ (#6262 — third dark-regen break in four days) · emitter mass fix ✓ (#6243 merged 2026-07-05: the 1667-error fresh-emit red root-caused to ONE `field_is_boxed` predicate bug = 1482 of 1667, plus the 139-error alias-brand/use-line import class; #6266 = byte-identical template hygiene) → regen `--verify` required in CI ✓ (#6957/#6958 — 98/98 byte-identical fresh-vs-committed) → **▸ NOW: the three-gate v1-deletion bar (dag/gunbc/v1_deletion_plan.dag — emitter fixed point · honest frontier · ledger green)** → seed-honesty (DDC — see the prereq-drift flag on 5-collapse-v1) → **TERMINAL: `src/v1` deleted**"),
+      section_prose(content: "The graph has nine chains: namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene · queued product. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
+<<<<<<< Updated upstream
         nodes: [
           ticket_row(id: "5-regen-cutover", done: true, t: TicketFields {
             headline: "regen-cutover cadence — closed by construction",
@@ -3018,6 +3627,10 @@ fn task_sheet_lead_lane() -> RoadmapSection {
           RoadmapEdge { child: nid(s: "ts-seed-data-out"), parent: nid(s: "ts-seed-interim") },
           RoadmapEdge { child: nid(s: "ts-seed-intake"), parent: nid(s: "ts-seed-interim") },
         ],
+=======
+        nodes: active_roadmap_nodes(),
+        edges: active_roadmap_edges()
+>>>>>>> Stashed changes
       ),
     ],
   }
@@ -3026,17 +3639,20 @@ fn task_sheet_lead_lane() -> RoadmapSection {
 fn roadmap_authority() -> RoadmapDocument {
   RoadmapDocument {
     preamble: preamble(),
-    lead_lanes: [task_sheet_lead_lane()],
-    sections: [section_0(), section_1(), section_2(), section_3(), section_4()],
+    lead_lanes: [],
+    sections: [active_section()],
   }
 }
 
-fn authored_merged_prs() -> List<Int> {
-  [5873, 6009, 6061, 6097, 6099, 6104, 6106, 6107, 6224, 6479]
-}
+fn authored_merged_prs() -> List<Int> { [] }
 
 fn expected_roadmap_md() -> String {
-  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: authored_merged_prs()))
+  serialize_markdown_source(
+    doc: project_roadmap_to_markdown(
+      doc: roadmap_authority(),
+      merged: authored_merged_prs()
+    )
+  )
 }
 
 fn roadmap_drifted(committed: String) -> Bool {
