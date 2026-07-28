@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_kernel_witness
 
 import std.logic { Bool }
-import std.types { ContentHash, String }
+import std.types { ContentHash, String, any }
 import std.content_hash { content_hash_atom }
 import std.measure { ByteSize, byte_size }
 import std.materialization_ladder {
@@ -19,7 +19,7 @@ import std.emit_on_demand {
   SourceArtifact, NativeArtifact,
   emit_on_demand_key, emit_on_demand_lookup,
   materialization_for_lookup, EmitOnDemandHit, EmitOnDemandMiss,
-  interpreter_surviving_roles_bounded,
+  interpreter_surviving_roles, interpreter_surviving_roles_bounded,
 }
 import v2.std.emit_on_demand { witness_family_realize_width }
 import extdeps.realization.emit_on_demand_host {
@@ -148,6 +148,13 @@ test fn emit_on_demand_materialize_recompute_on_miss_holds() -> Bool {
 
 test fn emit_on_demand_interpreter_roles_bounded_holds() -> Bool {
   interpreter_surviving_roles_bounded()
+}
+
+test fn emit_on_demand_wet_effect_surfaces_role_enrolled_holds() -> Bool {
+  any(
+    interpreter_surviving_roles,
+    role => role.id == "wet-effect-surfaces"
+  )
 }
 
 test fn emit_on_demand_schedule_refuses_unreadable_budget_holds() -> Bool {
@@ -315,4 +322,3 @@ test fn emit_on_demand_kernel_native_one_build_holds() -> Bool {
       )
   }
 }
-

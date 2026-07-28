@@ -102,6 +102,11 @@ data interpreter_surviving_roles: List<InterpreterSurvivingRole> = [
     id: "terminal-bootstrap-kernel",
     purpose: "claim_executor host physics (pinned HAND roster — recorded_fixture, resolved_graph_cache)",
     dissolution_trigger: "v1_quarantine — seed crates frozen as bootstrap artifact only"
+  },
+  InterpreterSurvivingRole {
+    id: "wet-effect-surfaces",
+    purpose: "Wet/Record host-effect execution for the per-PR bin-witness and scheduled falsifier surfaces",
+    dissolution_trigger: "every effect dispatch selects HandlerBinding from covering_grant + ci_floor_cutover on v2-emitted execution"
   }
 ]
 
