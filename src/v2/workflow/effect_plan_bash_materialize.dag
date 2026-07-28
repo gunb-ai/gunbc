@@ -39,7 +39,9 @@ import v2.std.operation_argv {
 import v2.std.optional {
   Absent,
   Optional,
-  Present
+  Present,
+  optional_absent,
+  optional_present
 }
 import v2.std.orchestration {
   Continue,
@@ -108,11 +110,11 @@ fn effect_plan_bash_argv_nul_index(
   match list_at_optional(xs: argv, index: index) {
     Present { value: argument } =>
       if string_contains(s: argument, pattern: "\u{0000}") {
-        Present { value: index }
+        optional_present(value: index)
       } else {
         effect_plan_bash_argv_nul_index(argv: argv, index: index + 1)
       }
-    Absent => Absent
+    Absent => optional_absent()
   }
 }
 

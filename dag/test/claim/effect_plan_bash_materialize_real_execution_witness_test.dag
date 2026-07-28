@@ -1,0 +1,113 @@
+module test.claim.effect_plan_bash_materialize_real_execution_witness
+
+import extdeps.shell.exec { TransportScript }
+import v2.std.effect_plan { Do, EffectPlan, EffectPlanStep }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.operation_argv {
+  BoundOperationInvocation,
+  OperationInputBinding,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text
+}
+import v2.std.orchestration { FailFast }
+import v2.workflow.effect_plan_bash_materialize {
+  EffectPlanBashMaterialization,
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  effect_plan_bash_materialize
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data effect_plan_bash_real_execution_note: String = "Wet model witness only, not a production consumer. It executes the emitted carrier through Bash to prove two typed declared operations run, metachar/newline arguments stay one word, and grammar-owned && enforces FailFast by preventing the observable second command after the first fails."
+
+fn wet_ref(path: String, service: String, operation: String) -> OperationRef {
+  OperationRef { path: path, service: service, operation: operation }
+}
+
+fn wet_invocation(
+  path: String,
+  service: String,
+  operation: String,
+  bindings: List<OperationInputBinding>
+) -> BoundOperationInvocation {
+  bind_operation_invocation(
+    at: wet_ref(path: path, service: service, operation: operation),
+    bindings: bindings
+  )
+}
+
+fn wet_test_path(operation: String, path: String) -> BoundOperationInvocation {
+  wet_invocation(
+    path: "dag/extdeps/shell.dag",
+    service: "shell.Test",
+    operation: operation,
+    bindings: [operation_argv_bind_text(name: "path", text: path)]
+  )
+}
+
+fn wet_id_uid() -> BoundOperationInvocation {
+  wet_invocation(
+    path: "dag/extdeps/tools/id.dag",
+    service: "os.Id",
+    operation: "Uid",
+    bindings: []
+  )
+}
+
+fn wet_plan(
+  steps: List<EffectPlanStep<BoundOperationInvocation>>
+) -> EffectPlan<BoundOperationInvocation> {
+  EffectPlan { steps: steps, on_failure: FailFast }
+}
+
+fn wet_exec_succeeds_with_output(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => {
+      let result = shell.Exec.Run(script: source as TransportScript)
+      result.success && string_length(s: trim(s: result.stdout)) > 0
+    }
+    EffectPlanBashMaterializationRefused { refusal: _ } => false
+  }
+}
+
+fn wet_exec_fails_without_output(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => {
+      let result = shell.Exec.Run(script: source as TransportScript)
+      !result.success && trim(s: result.stdout) == ""
+    }
+    EffectPlanBashMaterializationRefused { refusal: _ } => false
+  }
+}
+
+test fn effect_plan_bash_two_declared_operations_execute() -> Bool {
+  wet_exec_succeeds_with_output(plan: wet_plan(steps: [
+    Do { effect: wet_test_path(operation: "IsExecutable", path: "/bin/sh") },
+    Do { effect: wet_id_uid() }
+  ]))
+}
+
+test fn effect_plan_bash_fail_fast_prevents_later_operation_execution() -> Bool {
+  wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Do { effect: wet_test_path(operation: "IsFile", path: "/gunbc-wave-a-definitely-absent") },
+    Do { effect: wet_id_uid() }
+  ]))
+}
+
+test fn effect_plan_bash_metachar_and_newline_cannot_open_a_statement() -> Bool {
+  let metachar = wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Do { effect: wet_test_path(
+      operation: "IsFile",
+      path: "/tmp/absent; printf PWN"
+    ) }
+  ]))
+  let newline = wet_exec_fails_without_output(plan: wet_plan(steps: [
+    Do { effect: wet_test_path(
+      operation: "IsFile",
+      path: "/tmp/absent\nid -u"
+    ) }
+  ]))
+  metachar && newline
+}
