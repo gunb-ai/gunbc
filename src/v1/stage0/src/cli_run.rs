@@ -10652,7 +10652,7 @@ struct ScopedRunObservation {
     function: String,
     addressable: bool,
     emoji: bool,
-    open: bool,
+    state: v1_interpreter::Value,
     started: std::time::Instant,
     last_wall_ns: u128,
     seed_resolution_ns: u128,
@@ -10679,6 +10679,11 @@ impl ScopedRunObservation {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
         let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let state = v1_interpreter::Value::Variant {
+            type_name: ctx.sym("DynamicLineState"),
+            variant_name: ctx.sym("DynamicLineClosed"),
+            fields: Rc::new(vec![]),
+        };
         Ok(Self {
             ctx,
             entry_file: entry_file.to_string(),
@@ -10687,7 +10692,7 @@ impl ScopedRunObservation {
             addressable: std::io::stderr().is_terminal(),
             emoji: std::io::stderr().is_terminal()
                 && std::env::var("TERM").map_or(true, |term| term != "dumb"),
-            open: false,
+            state,
             started,
             last_wall_ns: 0,
             seed_resolution_ns: 0,
@@ -10740,18 +10745,7 @@ impl ScopedRunObservation {
                 Value::Bool(self.addressable),
             ),
             (Some("emoji".to_string()), Value::Bool(self.emoji)),
-            (
-                Some("prior".to_string()),
-                Value::Variant {
-                    type_name: self.ctx.sym("DynamicLineState"),
-                    variant_name: self.ctx.sym(if self.open {
-                        "DynamicLineOpen"
-                    } else {
-                        "DynamicLineClosed"
-                    }),
-                    fields: Rc::new(vec![]),
-                },
-            ),
+            (Some("prior".to_string()), self.state.clone()),
         ]);
         let projected =
             v1_interpreter::run_in_context_with_args(&self.ctx, projection, &args, false)
@@ -10809,16 +10803,19 @@ impl ScopedRunObservation {
             Some(Value::Str(bytes)) => bytes,
             _ => return Err("scoped run observation projected non-String bytes".to_string()),
         };
-        let next_open = match self.ctx.field(fields, "next") {
-            Some(Value::Variant { variant_name, .. })
-                if self.ctx.sym_eq(*variant_name, "DynamicLineOpen") =>
+        let next_state = match self.ctx.field(fields, "next") {
+            Some(
+                state @ Value::Variant {
+                    type_name,
+                    variant_name,
+                    fields: next_fields,
+                },
+            ) if self.ctx.sym_eq(*type_name, "DynamicLineState")
+                && (self.ctx.sym_eq(*variant_name, "DynamicLineOpen")
+                    || self.ctx.sym_eq(*variant_name, "DynamicLineClosed"))
+                && next_fields.is_empty() =>
             {
-                true
-            }
-            Some(Value::Variant { variant_name, .. })
-                if self.ctx.sym_eq(*variant_name, "DynamicLineClosed") =>
-            {
-                false
+                state.clone()
             }
             _ => return Err("scoped run observation projected non-canonical state".to_string()),
         };
@@ -10838,7 +10835,7 @@ impl ScopedRunObservation {
             .write_all(bytes.as_bytes())
             .and_then(|_| stderr.flush())
             .map_err(|e| format!("scoped run observation stderr write failed: {e}"))?;
-        self.open = next_open;
+        self.state = next_state;
         if measured && std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
             eprintln!(
                 "[scoped-observation-measured-receipt wall_ns={} seed_resolution_ns={}]",
