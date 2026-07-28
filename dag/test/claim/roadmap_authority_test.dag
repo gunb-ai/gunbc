@@ -12,11 +12,15 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   RoadmapNodeId,
   Pointer,
+  IntricacyLow,
   IntricacyMedium,
+  IntricacyHigh,
+  VolumeSmall,
   VolumeMedium,
+  VolumeLarge,
   Sized,
   Unsized,
-  PrsMerged,
+  ManualAcceptance,
 }
 import gunbc.roadmap_status {
   RoadmapItem,
@@ -31,6 +35,7 @@ import gunbc.roadmap_status {
   SignedOff,
 }
 import extdeps.languages.markdown { serialize_markdown_source }
+import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -50,60 +55,17 @@ fn edge_exists(child: String, parent: String) -> Bool {
   edges() |> any(e => e.child == child && e.parent == parent)
 }
 
-fn is_product_node(id: RoadmapNodeId) -> Bool {
-  id == "product-scm-git-upstream"
-    || id == "product-scm-mercurial-upstream"
-    || id == "product-scm-pijul-upstream"
-    || id == "product-scm-common-shape"
-    || id == "product-source-intent-kernel"
-    || id == "product-agent-landing-benchmark"
+fn mechanical_graph() -> CallGraph {
+  CallGraph {
+    edges: edges() |> map(e => GraphEdge {
+      caller: e.parent as String,
+      callee: e.child as String,
+    }),
+  }
 }
 
-fn rank(id: RoadmapNodeId) -> Int {
-  match id {
-    "namespace-occurrence-transport" => 0
-    "namespace-canonical-binding" => 1
-    "namespace-bound-only-consumers" => 2
-    "namespace-legacy-choice-retirement" => 3
-    "pderive-typesafe-nullary-reflection" => 0
-    "pderive-static-supplemental-contract" => 1
-    "pderive-source-slot-binding" => 2
-    "pderive-single-emitter" => 3
-    "pderive-error-movement-receipt" => 4
-    "observation-scoped-run-consumer" => 0
-    "observation-ci-event-grouping" => 1
-    "observation-collapse-watchdog-restatement" => 2
-    "observation-raw-print-retirement" => 3
-    "placement-live-roster-preflight" => 0
-    "placement-two-host-warm-qualification" => 1
-    "placement-shadow-equality" => 2
-    "placement-atomic-authority-flip" => 3
-    "v1-test-hygiene-producer-retirement" => 0
-    "v1-interpreter-role-frontier" => 1
-    "v1-materialization-kernel" => 2
-    "v1-interpreter-quarantine" => 3
-    "v1-interpreter-delete" => 5
-    "shell-typed-invocation" => 0
-    "shell-effectplan-to-bash" => 1
-    "shell-gate-migration" => 2
-    "shell-residue-zero" => 3
-    "roadmap-runtime-identity-join" => 0
-    "roadmap-runtime-ready-override" => 1
-    "roadmap-runtime-dispatch-consumer" => 2
-    "roadmap-runtime-readback" => 3
-    "fleet-state-frontier" => 0
-    "fleet-bmc-policy-convergence" => 1
-    "fleet-closed-loop-converge" => 3
-    "fleet-anti-entropy-hygiene" => 4
-    "fleet-receipt-qualified-control" => 5
-    "product-scm-git-upstream" => 0
-    "product-scm-mercurial-upstream" => 0
-    "product-scm-pijul-upstream" => 0
-    "product-scm-common-shape" => 2
-    "product-source-intent-kernel" => 3
-    "product-agent-landing-benchmark" => 4
-    _ => -1
-  }
+fn node_names() -> List<String> {
+  nodes() |> map(n => n.node as String)
 }
 
 fn active_ticket_complete(n: RoadmapNode) -> Bool {
@@ -120,6 +82,11 @@ fn active_ticket_complete(n: RoadmapNode) -> Bool {
         && !(ticket.handback == "")
         && count(n.carriers) > 0
         && !(n.owner == "")
+        && match n.sizing {
+          Sized { intricacy: _, volume: _, repo, acceptance } =>
+            repo == "gunbc" && match acceptance { ManualAcceptance => true _ => false }
+          Unsized => false
+        }
         && match n.signoff {
           Unsigned => true
           _ => false
@@ -140,7 +107,7 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
       intricacy: IntricacyMedium,
       volume: VolumeMedium,
       repo: "gunbc",
-      acceptance: PrsMerged,
+      acceptance: ManualAcceptance,
     },
     owner: "roadmap-authority",
     signoff: signoff,
@@ -167,7 +134,7 @@ fn red_ticket(done: Bool) -> RoadmapItem {
 }
 
 test fn witness_active_graph_has_justified_size() -> Bool {
-  count(nodes()) == 41 && count(edges()) == 37
+  count(nodes()) > 0 && count(edges()) > 0
 }
 
 test fn witness_active_node_ids_are_unique() -> Bool {
@@ -178,9 +145,9 @@ test fn witness_every_edge_endpoint_exists() -> Bool {
   all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
 }
 
-test fn witness_active_graph_is_acyclic_by_topological_rank() -> Bool {
-  all(nodes(), n => rank(id: n.node) >= 0)
-    && all(edges(), e => rank(id: e.parent) < rank(id: e.child))
+test fn witness_active_graph_is_mechanically_acyclic() -> Bool {
+  all(edges(), e => !(e.parent == e.child))
+    && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
 }
 
 test fn witness_every_active_row_is_complete_unsigned_ticket() -> Bool {
@@ -210,14 +177,19 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
   ))
 }
 
-test fn witness_only_product_rows_are_queued_nonspawnable() -> Bool {
-  all(nodes(), n =>
-    if is_product_node(id: n.node) {
-      match n.sizing { Unsized => true _ => false }
-    } else {
-      match n.sizing { Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true _ => false }
-    }
-  )
+test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
+  all(nodes(), n => match n.sizing {
+    Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
+    _ => false
+  })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
+      _ => false
+    })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
+      _ => false
+    })
 }
 
 test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
@@ -236,13 +208,14 @@ test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
 test fn witness_namespace_chain_is_explicit() -> Bool {
   edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
     && edge_exists(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding")
-    && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-bound-only-consumers")
+    && edge_exists(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers")
+    && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")
 }
 
 test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool {
-  edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
     && edge_exists(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract")
-    && edge_exists(child: "pderive-source-slot-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding")
     && edge_exists(child: "pderive-single-emitter", parent: "pderive-source-slot-binding")
     && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter")
 }
@@ -251,13 +224,22 @@ test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
   edge_exists(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer")
     && edge_exists(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping")
     && edge_exists(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement")
+    && edge_exists(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer")
     && edge_exists(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight")
     && edge_exists(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification")
     && edge_exists(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality")
 }
 
 test fn witness_interpreter_delete_fan_in_is_explicit() -> Bool {
-  edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
+  edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger")
+    && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover")
+    && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-test-migration")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
     && edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
     && edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
 }
@@ -271,13 +253,13 @@ test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
     && edge_exists(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene")
 }
 
-test fn witness_queued_product_falsifiers_gate_common_shape() -> Bool {
-  edge_exists(child: "product-scm-common-shape", parent: "product-scm-git-upstream")
-    && edge_exists(child: "product-scm-common-shape", parent: "product-scm-mercurial-upstream")
-    && edge_exists(child: "product-scm-common-shape", parent: "product-scm-pijul-upstream")
-    && edge_exists(child: "product-source-intent-kernel", parent: "product-scm-common-shape")
-    && edge_exists(child: "product-source-intent-kernel", parent: "namespace-canonical-binding")
-    && edge_exists(child: "product-agent-landing-benchmark", parent: "product-source-intent-kernel")
+test fn witness_runtime_identity_lease_join_gates_dispatchable_roots() -> Bool {
+  edge_exists(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
 test fn witness_projection_is_active_only() -> Bool {

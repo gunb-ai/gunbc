@@ -259,22 +259,6 @@ fn active_large(id: String, owner: String, path: String, t: TicketFields) -> Roa
   )
 }
 
-fn queued(
-  id: String,
-  owner: String,
-  path: String,
-  t: TicketFields
-) -> RoadmapNode {
-  RoadmapNode {
-    node: nid(s: id),
-    line: TicketLine { done: false, ticket: t },
-    carriers: carrier(path: path),
-    sizing: Unsized,
-    owner: owner,
-    signoff: Unsigned,
-  }
-}
-
 fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
