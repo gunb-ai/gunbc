@@ -24,10 +24,11 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_occurrence_identity::AuthoredTokenOrdinalSpace;
 pub use crate::std_occurrence_identity::{
-    authored_token_ordinal_space_advance_to, authored_token_ordinal_space_initial,
+    authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
+    occurrence_id_allocator_advance_to,
 };
+pub use crate::std_occurrence_identity::{AuthoredTokenOrdinalSpace, OccurrenceIdAllocator};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -3711,7 +3712,7 @@ pub struct InternTable {
     pub strings: Rc<Vec<String>>,
     pub index: Rc<HashMap<String, i64>>,
     pub next_id: i64,
-    pub authored_token_ordinals: AuthoredTokenOrdinalSpace,
+    pub authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3729,18 +3730,15 @@ pub fn empty_intern_table() -> Rc<InternTable> {
     })
 }
 
-pub fn intern_table_advance_authored_token_ordinals(
+pub fn intern_table_with_authored_token_ordinals(
     table: Rc<InternTable>,
-    min_next: i64,
+    authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 ) -> Rc<InternTable> {
     Rc::new(InternTable {
         strings: table.strings.clone(),
         index: table.index.clone(),
         next_id: table.next_id.clone(),
-        authored_token_ordinals: authored_token_ordinal_space_advance_to(
-            table.authored_token_ordinals.clone(),
-            min_next.clone(),
-        ),
+        authored_token_ordinals: authored_token_ordinals.clone(),
     })
 }
 
@@ -3790,9 +3788,13 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.clone().iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            let merged = intern_table_advance_authored_token_ordinals(
+            let merged_allocator = occurrence_id_allocator_advance_to(
+                merged.authored_token_ordinals.clone().allocator.clone(),
+                t.authored_token_ordinals.clone(),
+            );
+            let merged = intern_table_with_authored_token_ordinals(
                 merged.clone(),
-                t.authored_token_ordinals.clone().next_ordinal.clone(),
+                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),

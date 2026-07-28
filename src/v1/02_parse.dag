@@ -47,10 +47,11 @@ import v1.std.core {
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
-  intern_table_advance_authored_token_ordinals,
+  intern_table_with_authored_token_ordinals,
   field_access_base,
 }
 import std.occurrence_identity {
+  AuthoredTokenOrdinalSpace,
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
@@ -68,6 +69,7 @@ import std.occurrence_identity {
   NamespaceSegmentOccurrence,
   FieldOccurrence,
   MethodOccurrence,
+  authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
   occurrence_id_allocator_advance_to,
   alloc_occurrence_id,
@@ -1370,11 +1372,11 @@ fn parse_with_table_at(
   tokens: List<Token>,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
-  occurrence_base: Int
+  occurrence_base: AuthoredTokenOrdinalSpace
 ) -> ParseWithTableResult {
   let occurrence_allocator = occurrence_id_allocator_advance_to(
-    alloc: OccurrenceIdAllocator { next_id: occurrence_base },
-    min_next: intern_table.authored_token_ordinals.next_ordinal
+    alloc: occurrence_base.allocator,
+    min_next: intern_table.authored_token_ordinals
   )
   let pre_interned = pre_intern_tokens(tokens: tokens, table: intern_table)
   let ctx = ParseContext {
@@ -1395,9 +1397,11 @@ fn parse_with_table_at(
     let occurrence_allocator = parse_context_occurrence_allocator(ctx: r.ctx)
     ParseWithTableResult {
       result: ParseResult { module: none, error: r.err },
-      intern_table: intern_table_advance_authored_token_ordinals(
+      intern_table: intern_table_with_authored_token_ordinals(
         table: r.ctx.intern_table,
-        min_next: occurrence_allocator.next_id
+        authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+          alloc: occurrence_allocator
+        )
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
@@ -1416,9 +1420,11 @@ fn parse_with_table_at(
         module: Present { value: stamped.node },
         error: none,
       },
-      intern_table: intern_table_advance_authored_token_ordinals(
+      intern_table: intern_table_with_authored_token_ordinals(
         table: stamped.ctx.intern_table,
-        min_next: occurrence_allocator.next_id
+        authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+          alloc: occurrence_allocator
+        )
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
@@ -1436,7 +1442,9 @@ fn parse_with_table_in_occurrence_scope(
     tokens: tokens,
     source_indices: source_indices,
     intern_table: intern_table,
-    occurrence_base: occurrence_allocator.next_id
+    occurrence_base: authored_token_ordinal_space_from_allocator(
+      alloc: occurrence_allocator
+    )
   )
 }
 
@@ -1445,7 +1453,7 @@ fn parse_with_table(tokens: List<Token>, source_indices: Map<String, NewlineInde
     tokens: tokens,
     source_indices: source_indices,
     intern_table: intern_table,
-    occurrence_base: intern_table.authored_token_ordinals.next_ordinal
+    occurrence_base: intern_table.authored_token_ordinals
   )
 }
 

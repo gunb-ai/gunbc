@@ -11,7 +11,9 @@ import std.induction { SubValueRelation }
 import std.occurrence_identity {
   AuthoredTokenOrdinalSpace,
   authored_token_ordinal_space_initial,
-  authored_token_ordinal_space_advance_to,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_advance_to,
+  OccurrenceIdAllocator,
 }
 
 type Token {
@@ -1340,18 +1342,15 @@ fn empty_intern_table() -> InternTable {
   }
 }
 
-fn intern_table_advance_authored_token_ordinals(
+fn intern_table_with_authored_token_ordinals(
   table: InternTable,
-  min_next: Int
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
 ) -> InternTable {
   InternTable {
     strings: table.strings,
     index: table.index,
     next_id: table.next_id,
-    authored_token_ordinals: authored_token_ordinal_space_advance_to(
-      space: table.authored_token_ordinals,
-      min_next: min_next
-    ),
+    authored_token_ordinals: authored_token_ordinals,
   }
 }
 
@@ -1395,9 +1394,15 @@ fn intern_find_or_empty(table: InternTable, s: String) -> Int {
 
 fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   tables |> fold(init: empty_intern_table(), f: (merged, t) =>
-    let merged = intern_table_advance_authored_token_ordinals(
+    let merged_allocator = occurrence_id_allocator_advance_to(
+      alloc: merged.authored_token_ordinals.allocator,
+      min_next: t.authored_token_ordinals
+    )
+    let merged = intern_table_with_authored_token_ordinals(
       table: merged,
-      min_next: t.authored_token_ordinals.next_ordinal
+      authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+        alloc: merged_allocator
+      )
     )
     t.strings |> fold(init: merged, f: (m, s) =>
       if s == "" { m } else { intern(table: m, s: s).table }

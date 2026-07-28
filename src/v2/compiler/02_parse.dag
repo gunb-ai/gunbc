@@ -49,6 +49,7 @@ import v2.std.node {
 }
 import v2.std.occurrence_id {
   alloc_occurrence_id,
+  authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_advance_to,
   occurrence_id_allocator_initial
 }
@@ -570,7 +571,9 @@ fn parse_prov_merge(
   ParseProvenanceState {
     alloc: occurrence_id_allocator_advance_to(
       alloc: base.alloc,
-      min_next: incoming.alloc.next_id
+      min_next: authored_token_ordinal_space_from_allocator(
+        alloc: incoming.alloc
+      )
     ),
     index: span_index_merge(base: base.index, incoming: incoming.index)
   }

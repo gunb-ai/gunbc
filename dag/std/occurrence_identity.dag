@@ -5,22 +5,17 @@ import std.types { Bool, Int, String, SourceSpan }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
+data authored_token_ordinal_typed_bridge_note: String = "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure."
+
+data authored_token_ordinal_typed_bridge_dissolve_on: String = "DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows."
+
 type AuthoredTokenOrdinalSpace {
-  next_ordinal: Int
+  allocator: OccurrenceIdAllocator
 }
 
 fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
-  AuthoredTokenOrdinalSpace { next_ordinal: 0 }
-}
-
-fn authored_token_ordinal_space_advance_to(
-  space: AuthoredTokenOrdinalSpace,
-  min_next: Int
-) -> AuthoredTokenOrdinalSpace {
-  if space.next_ordinal < min_next {
-    AuthoredTokenOrdinalSpace { next_ordinal: min_next }
-  } else {
-    space
+  AuthoredTokenOrdinalSpace {
+    allocator: occurrence_id_allocator_initial()
   }
 }
 
@@ -123,12 +118,21 @@ fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
 
 fn occurrence_id_allocator_advance_to(
   alloc: OccurrenceIdAllocator,
-  min_next: Int
+  min_next: AuthoredTokenOrdinalSpace
 ) -> OccurrenceIdAllocator {
-  if alloc.next_id < min_next {
-    OccurrenceIdAllocator { next_id: min_next }
+  let min_next_value = min_next.allocator.next_id
+  if alloc.next_id < min_next_value {
+    OccurrenceIdAllocator { next_id: min_next_value }
   } else {
     alloc
+  }
+}
+
+fn authored_token_ordinal_space_from_allocator(
+  alloc: OccurrenceIdAllocator
+) -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace {
+    allocator: alloc
   }
 }
 

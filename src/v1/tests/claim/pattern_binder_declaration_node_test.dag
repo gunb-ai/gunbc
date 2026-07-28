@@ -12,7 +12,7 @@ import v1.std.core {
   field_binding_pattern,
   build_newline_index,
   empty_intern_table,
-  intern_table_advance_authored_token_ordinals,
+  intern_table_with_authored_token_ordinals,
   merge_intern_tables,
 }
 import v1.compiler.tokenize { tokenize }
@@ -22,7 +22,11 @@ import v1.compiler.parse {
   parse_pattern,
   parse_with_table,
 }
-import std.occurrence_identity { OccurrenceIndexEntry }
+import std.occurrence_identity {
+  OccurrenceIndexEntry,
+  authored_token_ordinal_space_from_allocator,
+  OccurrenceIdAllocator,
+}
 
 data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space"
 
@@ -196,11 +200,11 @@ test fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> Bool
   (second.occurrence_transport.index.entries |> count) > 0 &&
   disjoint &&
   second_range_follows_first &&
-  first.intern_table.authored_token_ordinals.next_ordinal ==
+  first.intern_table.authored_token_ordinals.allocator.next_id ==
     first.occurrence_allocator.next_id &&
-  second.intern_table.authored_token_ordinals.next_ordinal ==
+  second.intern_table.authored_token_ordinals.allocator.next_id ==
     second.occurrence_allocator.next_id &&
-  merged.authored_token_ordinals.next_ordinal ==
+  merged.authored_token_ordinals.allocator.next_id ==
     second.occurrence_allocator.next_id &&
   second.occurrence_allocator.next_id > first.occurrence_allocator.next_id
 }
@@ -208,9 +212,11 @@ test fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> Bool
 test fn w_parse_error_preserves_authored_token_ordinal_space() -> Bool {
   let file = "occurrence-error-space.dag"
   let source = "module"
-  let seeded = intern_table_advance_authored_token_ordinals(
+  let seeded = intern_table_with_authored_token_ordinals(
     table: empty_intern_table(),
-    min_next: 41
+    authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 41 }
+    )
   )
   let parsed = parse_with_table(
     tokens: tokenize(source: source, file: file),
@@ -223,6 +229,6 @@ test fn w_parse_error_preserves_authored_token_ordinal_space() -> Bool {
   )
   parsed.result.error != none &&
   parsed.occurrence_allocator.next_id >= 41 &&
-  parsed.intern_table.authored_token_ordinals.next_ordinal ==
+  parsed.intern_table.authored_token_ordinals.allocator.next_id ==
     parsed.occurrence_allocator.next_id
 }

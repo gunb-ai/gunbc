@@ -2,7 +2,8 @@
 // Source module: v1.tests.claim.pattern_binder_declaration_node_test
 
 use self::ParsedFixturePattern::*;
-pub use crate::std_occurrence_identity::OccurrenceIndexEntry;
+pub use crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator;
+pub use crate::std_occurrence_identity::{OccurrenceIdAllocator, OccurrenceIndexEntry};
 pub use crate::v1_compiler_parse::ParseContext;
 pub use crate::v1_compiler_parse::{parse_pattern, parse_with_table, token_stream_new};
 pub use crate::v1_compiler_tokenize::tokenize;
@@ -12,7 +13,7 @@ use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
     build_newline_index, empty_intern_table, field_binding_pattern,
-    intern_table_advance_authored_token_ordinals, merge_intern_tables,
+    intern_table_with_authored_token_ordinals, merge_intern_tables,
 };
 pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
@@ -282,7 +283,9 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
                 .clone()
                 .authored_token_ordinals
                 .clone()
-                .next_ordinal
+                .allocator
+                .clone()
+                .next_id
                 .clone()
                 == first.occurrence_allocator.clone().next_id.clone()))
             && (second
@@ -290,10 +293,18 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
                 .clone()
                 .authored_token_ordinals
                 .clone()
-                .next_ordinal
+                .allocator
+                .clone()
+                .next_id
                 .clone()
                 == second.occurrence_allocator.clone().next_id.clone()))
-            && (merged.authored_token_ordinals.clone().next_ordinal.clone()
+            && (merged
+                .authored_token_ordinals
+                .clone()
+                .allocator
+                .clone()
+                .next_id
+                .clone()
                 == second.occurrence_allocator.clone().next_id.clone()))
             && (second.occurrence_allocator.clone().next_id.clone()
                 > first.occurrence_allocator.clone().next_id.clone()))
@@ -304,7 +315,10 @@ pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
     {
         let file = "occurrence-error-space.dag".to_string();
         let source = "module".to_string();
-        let seeded = intern_table_advance_authored_token_ordinals(empty_intern_table(), 41);
+        let seeded = intern_table_with_authored_token_ordinals(
+            empty_intern_table(),
+            authored_token_ordinal_space_from_allocator(OccurrenceIdAllocator { next_id: 41 }),
+        );
         let parsed = parse_with_table(
             tokenize(source.clone(), file.clone()),
             v1_rt::rc_map_insert(
@@ -321,7 +335,9 @@ pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
                 .clone()
                 .authored_token_ordinals
                 .clone()
-                .next_ordinal
+                .allocator
+                .clone()
+                .next_id
                 .clone()
                 == parsed.occurrence_allocator.clone().next_id.clone()))
     }

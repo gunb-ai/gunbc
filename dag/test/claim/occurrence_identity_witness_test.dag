@@ -8,6 +8,7 @@ import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceSynthetic,
   OccurrenceMinted,
+  authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
   occurrence_id_eq,
@@ -38,13 +39,40 @@ test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
   let initial = occurrence_id_allocator_initial()
   let advanced = occurrence_id_allocator_advance_to(
     alloc: initial,
-    min_next: 7,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 7 }
+    ),
   )
   let unchanged = occurrence_id_allocator_advance_to(
     alloc: advanced,
-    min_next: 3,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 3 }
+    ),
   )
   advanced.next_id == 7 && unchanged.next_id == 7
+}
+
+fn occurrence_identity_typed_ordinal_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinaltyped\n\nimport std.occurrence_identity { OccurrenceIdAllocator, authored_token_ordinal_space_from_allocator, occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: authored_token_ordinal_space_from_allocator(\n      alloc: OccurrenceIdAllocator { next_id: 7 }\n    )\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinaltyped.rs",
+    [],
+    []
+  )
+}
+
+fn occurrence_identity_raw_scalar_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinalraw\n\nimport std.occurrence_identity { occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: 7\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinalraw.rs",
+    [],
+    []
+  )
+}
+
+test fn occurrence_identity_typed_ordinal_boundary_refuses_raw_scalar_holds() -> Bool {
+  occurrence_identity_typed_ordinal_advance_compiles()
+    && !occurrence_identity_raw_scalar_advance_compiles()
 }
 
 test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {

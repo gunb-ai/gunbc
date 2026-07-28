@@ -23,26 +23,33 @@ pub fn occurrence_identity_scope_law() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AuthoredTokenOrdinalSpace {
-    pub next_ordinal: i64,
-}
-
-pub fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
-    AuthoredTokenOrdinalSpace { next_ordinal: 0 }
-}
-
-pub fn authored_token_ordinal_space_advance_to(
-    space: AuthoredTokenOrdinalSpace,
-    min_next: i64,
-) -> AuthoredTokenOrdinalSpace {
-    if (space.next_ordinal.clone() < min_next.clone()) {
-        AuthoredTokenOrdinalSpace {
-            next_ordinal: min_next.clone(),
-        }
-    } else {
-        space
+pub fn authored_token_ordinal_typed_bridge_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn authored_token_ordinal_typed_bridge_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredTokenOrdinalSpace {
+    pub allocator: OccurrenceIdAllocator,
+}
+
+pub fn authored_token_ordinal_space_initial() -> Rc<AuthoredTokenOrdinalSpace> {
+    Rc::new(AuthoredTokenOrdinalSpace {
+        allocator: occurrence_id_allocator_initial(),
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -221,15 +228,26 @@ pub fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> bool {
 
 pub fn occurrence_id_allocator_advance_to(
     alloc: OccurrenceIdAllocator,
-    min_next: i64,
+    min_next: Rc<AuthoredTokenOrdinalSpace>,
 ) -> OccurrenceIdAllocator {
-    if (alloc.next_id.clone() < min_next.clone()) {
-        OccurrenceIdAllocator {
-            next_id: min_next.clone(),
+    {
+        let min_next_value = min_next.allocator.clone().next_id.clone();
+        if (alloc.next_id.clone() < min_next_value.clone()) {
+            OccurrenceIdAllocator {
+                next_id: min_next_value.clone(),
+            }
+        } else {
+            alloc
         }
-    } else {
-        alloc
     }
+}
+
+pub fn authored_token_ordinal_space_from_allocator(
+    alloc: OccurrenceIdAllocator,
+) -> Rc<AuthoredTokenOrdinalSpace> {
+    Rc::new(AuthoredTokenOrdinalSpace {
+        allocator: alloc.clone(),
+    })
 }
 
 pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIdentity> {

@@ -4,6 +4,7 @@ import v2.std.node { OccurrenceId }
 import std.occurrence_identity {
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
+  authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
   occurrence_id_eq,
