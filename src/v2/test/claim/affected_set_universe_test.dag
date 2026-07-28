@@ -1,5 +1,26 @@
 module v2.test.claim.affected_set_universe
 
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+import v2.std.algebra { bag_eq, list_snoc_item }
+import v2.lens.affected_set {
+  RepoProcess,
+  RepoProcessUniverse,
+  UniverseComplete,
+  UniverseIncomplete,
+  ci_gate_processes,
+  meta_processes,
+  repo_process_universe,
+  repo_process_universe_from
+}
+import gunbc.ci_spec {
+  Gate,
+  gunbc_ci_gates,
+  gunbc_ci_regen_floor_gates,
+  gunbc_ci_falsifier_gates
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,7 +43,12 @@ fn identity_in(ps: List<RepoProcess>, sym: Symbol) -> Bool {
 test fn affected_set_universe_gate_processes_match_declared_gates() -> Bool {
   bag_eq(
     xs: process_identities(ps: ci_gate_processes()),
-    ys: gate_discriminants(gates: concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates)),
+    ys: gate_discriminants(
+      gates: concat(
+        concat(gunbc_ci_gates, gunbc_ci_regen_floor_gates),
+        gunbc_ci_falsifier_gates
+      )
+    ),
     eq: symbol_eq
   )
 }
