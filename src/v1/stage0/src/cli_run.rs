@@ -10740,7 +10740,18 @@ impl ScopedRunObservation {
                 Value::Bool(self.addressable),
             ),
             (Some("emoji".to_string()), Value::Bool(self.emoji)),
-            (Some("prior_open".to_string()), Value::Bool(self.open)),
+            (
+                Some("prior".to_string()),
+                Value::Variant {
+                    type_name: self.ctx.sym("DynamicLineState"),
+                    variant_name: self.ctx.sym(if self.open {
+                        "DynamicLineOpen"
+                    } else {
+                        "DynamicLineClosed"
+                    }),
+                    fields: Rc::new(vec![]),
+                },
+            ),
         ]);
         let projected =
             v1_interpreter::run_in_context_with_args(&self.ctx, projection, &args, false)
@@ -10798,9 +10809,18 @@ impl ScopedRunObservation {
             Some(Value::Str(bytes)) => bytes,
             _ => return Err("scoped run observation projected non-String bytes".to_string()),
         };
-        let next_open = match self.ctx.field(fields, "next_open") {
-            Some(Value::Bool(next_open)) => *next_open,
-            _ => return Err("scoped run observation projected non-Bool state".to_string()),
+        let next_open = match self.ctx.field(fields, "next") {
+            Some(Value::Variant { variant_name, .. })
+                if self.ctx.sym_eq(*variant_name, "DynamicLineOpen") =>
+            {
+                true
+            }
+            Some(Value::Variant { variant_name, .. })
+                if self.ctx.sym_eq(*variant_name, "DynamicLineClosed") =>
+            {
+                false
+            }
+            _ => return Err("scoped run observation projected non-canonical state".to_string()),
         };
         if let Some(projected_wall_ns) = measured_wall_ns {
             let expected = self.last_wall_ns;
