@@ -1,0 +1,482 @@
+module test.claim.mercurial_upstream_model_witness
+
+import extdeps.mercurial {
+  MercurialChangesetId,
+  MercurialManifestId,
+  MercurialFileRevisionId,
+  MercurialLocalRevision,
+  MercurialPath,
+  MercurialFileRevision,
+  MercurialManifestWire,
+  MercurialManifestWireEntry,
+  MercurialChangeset,
+  MercurialLocalRevisionEntry,
+  MercurialHead,
+  MercurialBookmark,
+  MercurialTag,
+  MercurialVersionedTag,
+  MercurialLocalTag,
+  MercurialPhaseWireEntry,
+  MercurialSubrepository,
+  MercurialObsolescenceMarker,
+  MercurialEvolutionNotEnabled,
+  MercurialEvolutionMarkers,
+  MercurialRepositoryRequirements,
+  MercurialRepositoryPartial,
+  MercurialRepositoryProjection,
+  MercurialRepositoryState,
+  MercurialDecoded,
+  MercurialDecodeRefused,
+  MercurialRegularFile,
+  MercurialExecutableFile,
+  MercurialSymlink,
+  MercurialPublic,
+  MercurialDraft,
+  MercurialSecret,
+  MercurialConditionalAdvanceUnavailable,
+  mercurial_decode_projection,
+  mercurial_project_repository,
+  mercurial_read_back_projection,
+  mercurial_portable_history,
+  mercurial_named_branch_changesets,
+  mercurial_r0_conditional_advance,
+}
+import std.bytes { octets_bytes }
+
+data hg_c0: MercurialChangesetId = "1111111111111111111111111111111111111111"
+data hg_c1: MercurialChangesetId = "2222222222222222222222222222222222222222"
+data hg_c2: MercurialChangesetId = "3333333333333333333333333333333333333333"
+data hg_missing_c: MercurialChangesetId = "4444444444444444444444444444444444444444"
+
+data hg_manifest: MercurialManifestId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data hg_file_regular: MercurialFileRevisionId = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data hg_file_executable: MercurialFileRevisionId = "cccccccccccccccccccccccccccccccccccccccc"
+data hg_file_symlink: MercurialFileRevisionId = "dddddddddddddddddddddddddddddddddddddddd"
+data hg_file_missing: MercurialFileRevisionId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+data hg_path_regular: MercurialPath = MercurialPath {
+  octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
+}
+data hg_path_executable: MercurialPath = MercurialPath {
+  octets: [98, 105, 110, 47, 114, 117, 110]
+}
+data hg_path_symlink: MercurialPath = MercurialPath {
+  octets: [255, 46, 108, 105, 110, 107]
+}
+data hg_path_subrepo: MercurialPath = MercurialPath {
+  octets: [118, 101, 110, 100, 111, 114]
+}
+
+fn fixture_file_revisions() -> List<MercurialFileRevision> {
+  [
+    MercurialFileRevision {
+      node: hg_file_regular,
+      parents: [],
+      content: octets_bytes(o: [109, 97, 105, 110]),
+    },
+    MercurialFileRevision {
+      node: hg_file_executable,
+      parents: [hg_file_regular],
+      content: octets_bytes(o: [114, 117, 110]),
+    },
+    MercurialFileRevision {
+      node: hg_file_symlink,
+      parents: [],
+      content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
+    },
+  ]
+}
+
+fn fixture_manifest_wire() -> MercurialManifestWire {
+  MercurialManifestWire {
+    node: hg_manifest,
+    entries: [
+      MercurialManifestWireEntry {
+        path: hg_path_regular,
+        file_revision: hg_file_regular,
+        flag: "",
+      },
+      MercurialManifestWireEntry {
+        path: hg_path_executable,
+        file_revision: hg_file_executable,
+        flag: "x",
+      },
+      MercurialManifestWireEntry {
+        path: hg_path_symlink,
+        file_revision: hg_file_symlink,
+        flag: "l",
+      },
+    ],
+  }
+}
+
+fn fixture_changesets() -> List<MercurialChangeset> {
+  [
+    MercurialChangeset {
+      node: hg_c0,
+      manifest: hg_manifest,
+      parents: [],
+      branch: "default",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-0",
+      description: "root",
+    },
+    MercurialChangeset {
+      node: hg_c1,
+      manifest: hg_manifest,
+      parents: [hg_c0],
+      branch: "default",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-1",
+      description: "left",
+    },
+    MercurialChangeset {
+      node: hg_c2,
+      manifest: hg_manifest,
+      parents: [hg_c0],
+      branch: "default",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-2",
+      description: "right",
+    },
+  ]
+}
+
+fn local_revisions_a() -> List<MercurialLocalRevisionEntry> {
+  [
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 0 },
+      changeset: hg_c0,
+    },
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 1 },
+      changeset: hg_c1,
+    },
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 2 },
+      changeset: hg_c2,
+    },
+  ]
+}
+
+fn local_revisions_b() -> List<MercurialLocalRevisionEntry> {
+  [
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 17 },
+      changeset: hg_c0,
+    },
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 4 },
+      changeset: hg_c1,
+    },
+    MercurialLocalRevisionEntry {
+      revision: MercurialLocalRevision { value: 9 },
+      changeset: hg_c2,
+    },
+  ]
+}
+
+fn fixture_projection_with_local_revisions(
+  local_revisions: List<MercurialLocalRevisionEntry>,
+) -> MercurialRepositoryProjection {
+  MercurialRepositoryProjection {
+    requirements: MercurialRepositoryRequirements {
+      tokens: ["revlogv1", "store", "fncache", "dotencode"],
+    },
+    file_revisions: fixture_file_revisions(),
+    manifests: [fixture_manifest_wire()],
+    changesets: fixture_changesets(),
+    local_revisions: local_revisions,
+    heads: [
+      MercurialHead { changeset: hg_c1 },
+      MercurialHead { changeset: hg_c2 },
+    ],
+    bookmarks: [
+      MercurialBookmark { name: "main", target: hg_c1 },
+    ],
+    tags: [
+      MercurialTag { name: "v0", target: hg_c0, source: MercurialVersionedTag },
+      MercurialTag { name: "scratch", target: hg_c2, source: MercurialLocalTag },
+    ],
+    phases: [
+      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+    ],
+    subrepositories: [
+      MercurialSubrepository {
+        path: hg_path_subrepo,
+        source: "https://example.invalid/vendor",
+        revision: "portable-upstream-revision",
+      },
+    ],
+    evolution: MercurialEvolutionMarkers {
+      markers: [
+        MercurialObsolescenceMarker {
+          predecessor: hg_c1,
+          successors: [hg_c2],
+          operation: "rebase",
+        },
+      ],
+    },
+    availability: MercurialRepositoryPartial {
+      missing_changesets: [],
+      missing_file_revisions: [hg_file_missing],
+    },
+  }
+}
+
+fn fixture_projection() -> MercurialRepositoryProjection {
+  fixture_projection_with_local_revisions(local_revisions: local_revisions_a())
+}
+
+fn fixture_repository() -> MercurialRepositoryState? {
+  match mercurial_decode_projection(projection: fixture_projection()) {
+    MercurialDecoded { repository } => Present { value: repository }
+    MercurialDecodeRefused { cause: _ } => Absent
+  }
+}
+
+test fn witness_mercurial_fixture_decodes_projects_and_independently_reads_back() -> Bool {
+  match mercurial_decode_projection(projection: fixture_projection()) {
+    MercurialDecodeRefused { cause: _ } => false
+    MercurialDecoded { repository } =>
+      let projected = mercurial_project_repository(repository: repository)
+      match mercurial_read_back_projection(projection: projected) {
+        MercurialDecodeRefused { cause: _ } => false
+        MercurialDecoded { repository: read_back } =>
+          read_back == repository
+            && count(read_back.file_revisions) == 3
+            && count(read_back.manifests) == 1
+            && count(read_back.changesets) == 3
+            && count(read_back.subrepositories) == 1
+      }
+  }
+}
+
+test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: repository } =>
+      let entries = repository.manifests.first().entries
+      count(entries) == 3
+        && match entries.first().flag {
+          MercurialRegularFile => true
+          _ => false
+        }
+        && match entries.skip(n: 1).first().flag {
+          MercurialExecutableFile => true
+          _ => false
+        }
+        && match entries.skip(n: 2).first() {
+          Present { value: entry } =>
+            entry.path == hg_path_symlink
+              && match entry.flag {
+                MercurialSymlink => true
+                _ => false
+              }
+          Absent => false
+        }
+  }
+}
+
+test fn witness_mercurial_clone_local_revision_can_change_without_identity_change() -> Bool {
+  let a = mercurial_decode_projection(
+    projection: fixture_projection_with_local_revisions(local_revisions: local_revisions_a()),
+  )
+  let b = mercurial_decode_projection(
+    projection: fixture_projection_with_local_revisions(local_revisions: local_revisions_b()),
+  )
+  match a {
+    MercurialDecodeRefused { cause: _ } => false
+    MercurialDecoded { repository: repo_a } => match b {
+      MercurialDecodeRefused { cause: _ } => false
+      MercurialDecoded { repository: repo_b } =>
+        mercurial_portable_history(repository: repo_a) == mercurial_portable_history(repository: repo_b)
+          && !(repo_a.local_revisions == repo_b.local_revisions)
+    }
+  }
+}
+
+test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: repository } =>
+      mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
+        && repository.heads == [
+          MercurialHead { changeset: hg_c1 },
+          MercurialHead { changeset: hg_c2 },
+        ]
+        && repository.bookmarks == [
+          MercurialBookmark { name: "main", target: hg_c1 },
+        ]
+  }
+}
+
+test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: repository } =>
+      count(repository.phases) == 3
+        && match repository.phases.first().phase {
+          MercurialPublic => true
+          _ => false
+        }
+        && match repository.phases.skip(n: 1).first().phase {
+          MercurialDraft => true
+          _ => false
+        }
+        && match repository.phases.skip(n: 2).first().phase {
+          MercurialSecret => true
+          _ => false
+        }
+  }
+}
+
+test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history() -> Bool {
+  match fixture_repository() {
+    Absent => false
+    Present { value: with_evolution } =>
+      let without_evolution = MercurialRepositoryState {
+        requirements: with_evolution.requirements,
+        file_revisions: with_evolution.file_revisions,
+        manifests: with_evolution.manifests,
+        changesets: with_evolution.changesets,
+        local_revisions: with_evolution.local_revisions,
+        heads: with_evolution.heads,
+        bookmarks: with_evolution.bookmarks,
+        tags: with_evolution.tags,
+        phases: with_evolution.phases,
+        subrepositories: with_evolution.subrepositories,
+        evolution: MercurialEvolutionNotEnabled,
+        availability: with_evolution.availability,
+      }
+      mercurial_portable_history(repository: with_evolution) == mercurial_portable_history(repository: without_evolution)
+        && !(with_evolution == without_evolution)
+  }
+}
+
+test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
+  let projection = fixture_projection()
+  let invalid = MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: [
+      MercurialManifestWire {
+        node: hg_manifest,
+        entries: [
+          MercurialManifestWireEntry {
+            path: hg_path_regular,
+            file_revision: hg_file_regular,
+            flag: "git-executable",
+          },
+        ],
+      },
+    ],
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused { cause: _ } => true
+    MercurialDecoded { repository: _ } => false
+  }
+}
+
+test fn witness_mercurial_unknown_phase_refuses() -> Bool {
+  let projection = fixture_projection()
+  let invalid = MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: [MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused { cause: _ } => true
+    MercurialDecoded { repository: _ } => false
+  }
+}
+
+test fn witness_mercurial_missing_parent_refuses() -> Bool {
+  let projection = fixture_projection()
+  let broken = MercurialChangeset {
+    node: hg_c2,
+    manifest: hg_manifest,
+    parents: [hg_missing_c],
+    branch: "default",
+    user: "author@example.invalid",
+    authored_at: "provenance-only-2",
+    description: "right",
+  }
+  let invalid = MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: [projection.changesets.first(), projection.changesets.skip(n: 1).first(), broken],
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused { cause: _ } => true
+    MercurialDecoded { repository: _ } => false
+  }
+}
+
+test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
+  let projection = fixture_projection()
+  let invalid = MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: [
+      MercurialLocalRevisionEntry {
+        revision: MercurialLocalRevision { value: 0 },
+        changeset: hg_c0,
+      },
+      MercurialLocalRevisionEntry {
+        revision: MercurialLocalRevision { value: 0 },
+        changeset: hg_c1,
+      },
+    ],
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: projection.availability,
+  }
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused { cause: _ } => true
+    MercurialDecoded { repository: _ } => false
+  }
+}
+
+test fn witness_mercurial_r0_write_capability_stays_unavailable() -> Bool {
+  match mercurial_r0_conditional_advance {
+    MercurialConditionalAdvanceUnavailable { reason } =>
+      string_contains(s: reason, pattern: "no executing transaction transport")
+    _ => false
+  }
+}
