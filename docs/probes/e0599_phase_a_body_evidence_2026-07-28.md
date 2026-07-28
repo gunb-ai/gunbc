@@ -129,8 +129,13 @@ second walker.
 Two honest gaps, neither counted as evidence-present:
 
 * `src/v2/std/node.dag` **refused** — `parse_module` returned `Rejected`, so the probe
-  yields the `−1` sentinel rather than a fabricated `0` (14 diagnostics). Why that file
-  fails to reparse standalone is a real, separate question this probe does not answer.
+  yields the `−1` sentinel rather than a fabricated `0` (14 diagnostics). The file
+  parses fine inside the normal pipeline, so a standalone refusal is a real signal, not
+  a property of the source. It is also the **largest** file in the roster (1568 lines
+  vs algebra's 783), which makes a fuel/recursion/memo bound the leading hypothesis over
+  a syntax gap — **stated as a hypothesis, not a finding**; this probe does not close
+  it. Named follow-up, not folded into the P-fn verdict: the refusal changes no
+  disposition, because a file that cannot be read cannot supply evidence-present.
 * Three files carrying 21 diagnostics
   (`extdeps_communication_fidelity_carriers`, `v2_compiler_translate`,
   `v2_std_staging`) are outside the probe roster.
