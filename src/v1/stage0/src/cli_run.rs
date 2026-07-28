@@ -10651,6 +10651,7 @@ struct ScopedRunObservation {
     open: bool,
     started: std::time::Instant,
     last_wall_ns: u128,
+    seed_resolution_ns: u128,
 }
 
 impl ScopedRunObservation {
@@ -10673,6 +10674,7 @@ impl ScopedRunObservation {
             resolve_entry_graph_shared(&authority_roots, &authority).map_err(|e| {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
+        let seed_resolution_ns = started.elapsed().as_nanos();
         Ok(Self {
             ctx: make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
             entry_file: entry_file.to_string(),
@@ -10684,6 +10686,7 @@ impl ScopedRunObservation {
             open: false,
             started,
             last_wall_ns: 0,
+            seed_resolution_ns,
         })
     }
 
@@ -10776,6 +10779,12 @@ impl ScopedRunObservation {
             .and_then(|_| stderr.flush())
             .map_err(|e| format!("scoped run observation stderr write failed: {e}"))?;
         self.open = next_open;
+        if measured && std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
+            eprintln!(
+                "[scoped-observation-receipt wall_ns={} seed_resolution_ns={}]",
+                self.last_wall_ns, self.seed_resolution_ns
+            );
+        }
         Ok(())
     }
 
@@ -11057,8 +11066,14 @@ pub fn handle_run_with_options(
                     match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
                         Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            dump_residual_hunt_instrumentation()
+                            let tick =
+                                tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            dump_residual_hunt_instrumentation();
+                            if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some()
+                                && tick == 0
+                            {
+                                break;
+                            }
                         }
                     }
                 });

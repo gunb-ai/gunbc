@@ -1606,9 +1606,23 @@ impl InterpContext {
     ) -> Option<SelectedFunctionIdentity> {
         let node = self.lookup_fn(name)?;
         let file = node.span.file.as_str();
-        let module_path = module_path_index.iter().find_map(|(module, path)| {
-            (path == file || file.ends_with(path)).then(|| module.clone())
-        })?;
+        let exact: Vec<_> = module_path_index
+            .iter()
+            .filter(|(_, path)| path.as_str() == file)
+            .map(|(module, _)| module.clone())
+            .collect();
+        let module_path = if exact.len() == 1 {
+            exact.into_iter().next().expect("one exact module path")
+        } else if exact.is_empty() {
+            let suffix: Vec<_> = module_path_index
+                .iter()
+                .filter(|(_, path)| file.ends_with(path.as_str()))
+                .map(|(module, _)| module.clone())
+                .collect();
+            (suffix.len() == 1).then(|| suffix.into_iter().next().expect("one suffix"))?
+        } else {
+            return None;
+        };
         Some(SelectedFunctionIdentity {
             module_path,
             decl_name: authored_name_at(self.source_indices.clone(), node.clone()),

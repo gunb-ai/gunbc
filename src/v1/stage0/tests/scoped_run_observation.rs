@@ -66,6 +66,7 @@ fn run_pipe_with_diagnostics(function: &str) -> Output {
         // arms the producer, recv_timeout(0) can fire before the joined end dump.
         .env("GUNBC_FLATTEN_SITE_DUMP_SECS", "0")
         .env("GUNBC_SCOPED_PERIODIC_WITNESS", "1")
+        .env("GUNBC_SCOPED_OBSERVATION_RECEIPT", "1")
         .output()
         .expect("run scoped gunbc deferred-diagnostic capture");
     let _ = std::fs::remove_dir_all(root);
@@ -106,6 +107,10 @@ fn scoped_run_pipe_keeps_stdout_for_value_and_stderr_control_free() {
     assert!(!output.stderr.contains(&b'\r'), "{:?}", output.stderr);
     assert!(!output.stderr.contains(&0x1b), "{:?}", output.stderr);
     let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(
+        !stderr.contains("scoped-periodic-ticks="),
+        "fast control armed a timed producer: {stderr}"
+    );
     assert!(
         stderr.contains("◐ started decl=test.fixtures.scoped_run_observation::claim_true#whole\n"),
         "{stderr}"
@@ -184,6 +189,25 @@ fn scoped_deferred_diagnostics_are_preserved_before_final() {
     assert!(
         ticks_marker < final_line,
         "timed receipt must precede Final: {stderr}"
+    );
+    let receipt = stderr
+        .split("[scoped-observation-receipt wall_ns=")
+        .nth(1)
+        .and_then(|tail| tail.split(']').next())
+        .expect("exact Nanosecond production receipt");
+    let mut receipt_parts = receipt.split(" seed_resolution_ns=");
+    let wall_ns = receipt_parts
+        .next()
+        .and_then(|value| value.parse::<u128>().ok())
+        .expect("wall Nanosecond receipt");
+    let seed_ns = receipt_parts
+        .next()
+        .and_then(|value| value.parse::<u128>().ok())
+        .expect("seed-resolution overhead receipt");
+    assert!(seed_ns > 0 && wall_ns >= seed_ns, "{stderr}");
+    assert!(
+        wall_ns % 1_000_000 != 0,
+        "Nanosecond receipt was truncated to milliseconds: {stderr}"
     );
 }
 
