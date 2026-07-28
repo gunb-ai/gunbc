@@ -15,6 +15,7 @@ import gunbc.roadmap_execution_contract {
   DispatchHostEnvironment,
   execution_capability_label,
   execution_contract_required_capabilities,
+  dispatch_platform_required_capabilities,
   dispatch_required_capabilities,
   execution_contract_is_specified,
   gunbc_claim_execution_contract,
@@ -96,9 +97,10 @@ test fn dispatch_platform_capabilities_join_at_admission_only() -> Bool {
     function: "example_holds" as NonEmptyStr,
   )
   let task = execution_contract_required_capabilities(contract: contract)
+  let platform = dispatch_platform_required_capabilities()
   let dispatch = dispatch_required_capabilities(contract: contract)
   count(task) == 1
-    && count(dispatch) == 8
+    && count(dispatch) == count(platform) + count(task)
     && any(
       dispatch,
       cap => execution_capability_label(capability: cap) == "git-workspace",

@@ -31,6 +31,7 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_serve_argv,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan_rows,
+  dashboard_instance_dispatch_platform_executables,
 }
 import gunbc.roadmap_dashboard_instance_apply {
   DashboardExecResult,
@@ -53,6 +54,8 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_required_target_executables,
 }
 import extdeps.languages.json.emit { serialize_json }
+
+data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes."
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   let lab = srv1_lab_dashboard_instance()
@@ -237,10 +240,13 @@ test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
 }
 
 test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
-  let required = dashboard_required_target_executables(
-    instance: srv1_lab_dashboard_instance(),
+  let lab = srv1_lab_dashboard_instance()
+  let required = dashboard_required_target_executables(instance: lab)
+  all(
+    dashboard_instance_dispatch_platform_executables(instance: lab),
+    platform_path => any(required, path => path == platform_path),
   )
-  count(required) == 14
+    && count(required) == 15
     && any(required, path => path == ("/usr/bin/sh" as FilePath))
     && any(required, path => path == ("/usr/bin/tee" as FilePath))
     && any(required, path => path == ("/usr/bin/env" as FilePath))
