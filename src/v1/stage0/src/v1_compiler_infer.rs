@@ -16777,6 +16777,7 @@ pub fn typecheck_module(
                         parents: Rc::new(vec![]),
                     }),
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                    occurrence_transport: Some(resolved.occurrence_transport.clone()),
                 }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
                 binding_forks: env_result.binding_forks.clone(),
@@ -16930,6 +16931,7 @@ pub fn typecheck_module(
                 ),
                 func_env: updated_func_env.clone(),
                 item_registry: ctx.item_registry.clone(),
+                occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
             diagnostics: v1_rt::concat(
                 v1_rt::concat(
@@ -18029,6 +18031,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }
@@ -18337,6 +18340,7 @@ pub fn rewire_type_env_parent_links(
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }
@@ -18394,6 +18398,7 @@ pub fn rewire_func_env_parent_links(
                             parents: flatten_parent_envs(parents.clone()),
                         }),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }

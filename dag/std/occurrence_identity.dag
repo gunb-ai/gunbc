@@ -1,0 +1,443 @@
+module std.occurrence_identity
+
+import std.algebra { FreeMonoid }
+import std.types { Bool, Int, String, SourceSpan }
+
+data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
+
+data authored_token_ordinal_typed_bridge_note: String = "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure."
+
+data authored_token_ordinal_typed_bridge_dissolve_on: String = "feature:occurrence-ordinal-value-measure — DISSOLVE-ON: std.nat converges on the modeled Nat inhabitant and Measure<Count, One, Nat> has a compiled faithful/HostNative serde projection; then replace the allocator-backed space payload with that canonical measure and delete both typed-bridge rows."
+
+type AuthoredTokenOrdinalSpace {
+  allocator: OccurrenceIdAllocator
+}
+
+fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace {
+    allocator: occurrence_id_allocator_initial()
+  }
+}
+
+type OccurrenceId {
+  value: Int
+}
+
+data occurrence_containment_storage_projection_note: String = "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because the generic carrier cannot yet be emitted by the v1 stage0 backend without invented generic derive and match-clone obligations."
+
+data occurrence_containment_storage_projection_dissolve_on: String = "DISSOLVE-ON: generic stage0 emission accepts std.occurrence_binding.ContainmentPath<OccurrenceId> without supplemental derive bounds or match clones; then replace this projection with the canonical generic carrier and delete both storage-projection rows."
+
+type OccurrenceContainmentPath {
+  ancestors: FreeMonoid<OccurrenceId>
+  terminal: OccurrenceId
+}
+
+type OccurrenceCategory
+  = LexicalValueOccurrence
+  | TypeOccurrence
+  | CallableOccurrence
+  | ConstructorOccurrence
+  | NamespaceSegmentOccurrence
+  | FieldOccurrence
+  | MethodOccurrence
+
+type OccurrenceProjection {
+  occurrence: OccurrenceId
+  authored_name: String
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceIndexEntry {
+  projection: OccurrenceProjection
+  containment: OccurrenceContainmentPath
+}
+
+type OccurrenceIndex {
+  entries: List<OccurrenceIndexEntry>
+}
+
+type DeclarationOccurrence {
+  occurrence: OccurrenceId
+  containment: OccurrenceContainmentPath
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type ReferenceOccurrence {
+  occurrence: OccurrenceId
+  containment: OccurrenceContainmentPath
+  category: OccurrenceCategory
+  diagnostic_span: SourceSpan
+}
+
+type OccurrenceTransport {
+  index: OccurrenceIndex
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportRefusal
+  = MissingAuthoredOccurrenceIdentity { diagnostic_span: SourceSpan }
+  | DuplicateAuthoredOccurrenceIdentity { occurrence: OccurrenceId, diagnostic_span: SourceSpan }
+  | InconsistentOccurrenceContainment {
+      occurrence: OccurrenceId,
+      diagnostic_span: SourceSpan,
+    }
+  | WrongOccurrenceCategory {
+      occurrence: OccurrenceId,
+      expected: OccurrenceCategory,
+      observed: OccurrenceCategory,
+      diagnostic_span: SourceSpan,
+    }
+
+data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
+
+type NodeOccurrenceIdentity
+  = OccurrenceSynthetic
+  | OccurrenceMinted { id: OccurrenceId }
+
+type OccurrenceIdAllocator {
+  next_id: Int
+}
+
+type OccurrenceIdAllocResult {
+  id: OccurrenceId
+  alloc: OccurrenceIdAllocator
+}
+
+fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
+  OccurrenceIdAllocator { next_id: 0 }
+}
+
+fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
+  OccurrenceIdAllocResult {
+    id: OccurrenceId { value: alloc.next_id },
+    alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 },
+  }
+}
+
+fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
+  left.value == right.value
+}
+
+fn occurrence_id_allocator_advance_to(
+  alloc: OccurrenceIdAllocator,
+  min_next: AuthoredTokenOrdinalSpace
+) -> OccurrenceIdAllocator {
+  let min_next_value = min_next.allocator.next_id
+  if alloc.next_id < min_next_value {
+    OccurrenceIdAllocator { next_id: min_next_value }
+  } else {
+    alloc
+  }
+}
+
+fn authored_token_ordinal_space_from_allocator(
+  alloc: OccurrenceIdAllocator
+) -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace {
+    allocator: alloc
+  }
+}
+
+fn node_occurrence_identity_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
+  OccurrenceMinted { id: id }
+}
+
+data occurrence_transport_validation_complexity_law: String = "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence."
+
+fn occurrence_containment_matches_occurrence(
+  containment: OccurrenceContainmentPath,
+  occurrence: OccurrenceId
+) -> Bool {
+  containment.terminal.value == occurrence.value
+}
+
+fn occurrence_containment_paths_equal(
+  left: OccurrenceContainmentPath,
+  right: OccurrenceContainmentPath
+) -> Bool {
+  left.ancestors == right.ancestors &&
+  left.terminal.value == right.terminal.value
+}
+
+type OccurrenceTransportIndexBuild {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  refusal: OccurrenceTransportRefusal?
+}
+
+fn occurrence_transport_index_build(
+  index: OccurrenceIndex
+) -> OccurrenceTransportIndexBuild {
+  fold(
+    index.entries,
+    init: OccurrenceTransportIndexBuild {
+      entries_by_id: empty_map(),
+      refusal: none,
+    },
+    f: (build, entry) =>
+      match build.refusal {
+        Present { value: _ } => build
+        Absent =>
+          match map_get(
+            build.entries_by_id,
+            entry.projection.occurrence.value
+          ) {
+            Present { value: existing } =>
+              OccurrenceTransportIndexBuild {
+                entries_by_id: build.entries_by_id,
+                refusal: Present {
+                  value: DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: existing.projection.occurrence,
+                    diagnostic_span: existing.projection.diagnostic_span,
+                  },
+                },
+              }
+            Absent =>
+              if occurrence_containment_matches_occurrence(
+                containment: entry.containment,
+                occurrence: entry.projection.occurrence
+              ) {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: map_insert(
+                    build.entries_by_id,
+                    entry.projection.occurrence.value,
+                    entry
+                  ),
+                  refusal: none,
+                }
+              } else {
+                OccurrenceTransportIndexBuild {
+                  entries_by_id: build.entries_by_id,
+                  refusal: Present {
+                    value: InconsistentOccurrenceContainment {
+                      occurrence: entry.projection.occurrence,
+                      diagnostic_span: entry.projection.diagnostic_span,
+                    },
+                  },
+                }
+              }
+          }
+      }
+  )
+}
+
+type OccurrenceTransportRoleIndexBuild {
+  declarations_by_id: Map<Int, DeclarationOccurrence>
+  references_by_id: Map<Int, ReferenceOccurrence>
+  refusal: OccurrenceTransportRefusal?
+}
+
+fn occurrence_transport_role_index_build(
+  declarations: List<DeclarationOccurrence>,
+  references: List<ReferenceOccurrence>
+) -> OccurrenceTransportRoleIndexBuild {
+  let declaration_build = fold(
+    declarations,
+    init: OccurrenceTransportRoleIndexBuild {
+      declarations_by_id: empty_map(),
+      references_by_id: empty_map(),
+      refusal: none,
+    },
+    f: (build, declaration) =>
+      match build.refusal {
+        Present { value: _ } => build
+        Absent =>
+          match map_get(
+            build.declarations_by_id,
+            declaration.occurrence.value
+          ) {
+            Present { value: existing } =>
+              OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: build.declarations_by_id,
+                references_by_id: build.references_by_id,
+                refusal: Present {
+                  value: DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: existing.occurrence,
+                    diagnostic_span: existing.diagnostic_span,
+                  },
+                },
+              }
+            Absent =>
+              OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: map_insert(
+                  build.declarations_by_id,
+                  declaration.occurrence.value,
+                  declaration
+                ),
+                references_by_id: build.references_by_id,
+                refusal: none,
+              }
+          }
+      }
+  )
+  match declaration_build.refusal {
+    Present { value: _ } => declaration_build
+    Absent =>
+      fold(
+        references,
+        init: declaration_build,
+        f: (build, reference) =>
+          match build.refusal {
+            Present { value: _ } => build
+            Absent =>
+              match map_get(
+                build.references_by_id,
+                reference.occurrence.value
+              ) {
+                Present { value: existing } =>
+                  OccurrenceTransportRoleIndexBuild {
+                    declarations_by_id: build.declarations_by_id,
+                    references_by_id: build.references_by_id,
+                    refusal: Present {
+                      value: DuplicateAuthoredOccurrenceIdentity {
+                        occurrence: existing.occurrence,
+                        diagnostic_span: existing.diagnostic_span,
+                      },
+                    },
+                  }
+                Absent =>
+                  OccurrenceTransportRoleIndexBuild {
+                    declarations_by_id: build.declarations_by_id,
+                    references_by_id: map_insert(
+                      build.references_by_id,
+                      reference.occurrence.value,
+                      reference
+                    ),
+                    refusal: none,
+                  }
+              }
+          }
+      )
+  }
+}
+
+fn declaration_occurrence_refusal(
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  references_by_id: Map<Int, ReferenceOccurrence>,
+  declaration: DeclarationOccurrence
+) -> OccurrenceTransportRefusal? {
+  match map_get(index_by_id, declaration.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: declaration.diagnostic_span,
+        },
+      }
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: declaration.containment,
+        right: entry.containment
+      ) {
+        match map_get(references_by_id, declaration.occurrence.value) {
+          Present { value: reference } =>
+            Present {
+              value: WrongOccurrenceCategory {
+                occurrence: declaration.occurrence,
+                expected: declaration.category,
+                observed: reference.category,
+                diagnostic_span: declaration.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
+        Present {
+          value: InconsistentOccurrenceContainment {
+            occurrence: declaration.occurrence,
+            diagnostic_span: declaration.diagnostic_span,
+          },
+        }
+      }
+  }
+}
+
+fn reference_occurrence_refusal(
+  index_by_id: Map<Int, OccurrenceIndexEntry>,
+  declarations_by_id: Map<Int, DeclarationOccurrence>,
+  reference: ReferenceOccurrence
+) -> OccurrenceTransportRefusal? {
+  match map_get(index_by_id, reference.occurrence.value) {
+    Absent =>
+      Present {
+        value: MissingAuthoredOccurrenceIdentity {
+          diagnostic_span: reference.diagnostic_span,
+        },
+      }
+    Present { value: entry } =>
+      if occurrence_containment_paths_equal(
+        left: reference.containment,
+        right: entry.containment
+      ) {
+        match map_get(declarations_by_id, reference.occurrence.value) {
+          Present { value: declaration } =>
+            Present {
+              value: WrongOccurrenceCategory {
+                occurrence: reference.occurrence,
+                expected: reference.category,
+                observed: declaration.category,
+                diagnostic_span: reference.diagnostic_span,
+              },
+            }
+          Absent => none
+        }
+      } else {
+        Present {
+          value: InconsistentOccurrenceContainment {
+            occurrence: reference.occurrence,
+            diagnostic_span: reference.diagnostic_span,
+          },
+        }
+      }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  let index_build = occurrence_transport_index_build(
+    index: transport.index
+  )
+  match index_build.refusal {
+    Present { value: refusal } => Present { value: refusal }
+    Absent =>
+      let role_index_build = occurrence_transport_role_index_build(
+        declarations: transport.declarations,
+        references: transport.references
+      )
+      match role_index_build.refusal {
+        Present { value: refusal } => Present { value: refusal }
+        Absent =>
+          let declaration_refusal = fold(
+            transport.declarations,
+            init: none,
+            f: (refusal, declaration) =>
+              match refusal {
+                Present { value: _ } => refusal
+                Absent => declaration_occurrence_refusal(
+                  index_by_id: index_build.entries_by_id,
+                  references_by_id: role_index_build.references_by_id,
+                  declaration: declaration
+                )
+              }
+          )
+          match declaration_refusal {
+            Present { value: refusal } => Present { value: refusal }
+            Absent =>
+              fold(
+                transport.references,
+                init: none,
+                f: (refusal, reference) =>
+                  match refusal {
+                    Present { value: _ } => refusal
+                    Absent => reference_occurrence_refusal(
+                      index_by_id: index_build.entries_by_id,
+                      declarations_by_id: role_index_build.declarations_by_id,
+                      reference: reference
+                    )
+                  }
+              )
+          }
+      }
+  }
+}
