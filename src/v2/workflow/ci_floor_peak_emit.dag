@@ -71,7 +71,10 @@ fn ci_floor_peak_while_predicate() -> std.path_intent.PathPredicate {
 }
 
 fn ci_floor_peak_while_ascent() -> DirnameAscent {
-  DirnameAscent { path: ci_floor_peak_path_ref() }
+  DirnameAscent {
+    path: ci_floor_peak_path_ref(),
+    target: "d" as NonEmptyStr
+  }
 }
 
 fn typed_ci_floor_peak_path_kind(kind: EntryKind) -> std.path_intent.PathPredicate {

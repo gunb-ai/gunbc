@@ -141,13 +141,13 @@ fn bash_path_operand_quoted_text(path: PathIntent) -> Outcome<String> {
   )
 }
 
-fn bash_test_path_kind_op(kind: EntryKind) -> String {
+fn bash_test_path_kind_op(kind: EntryKind) -> Outcome<String> {
   match kind {
-    RegularFile => "-f "
-    Directory => "-d "
-    Symlink => "-L "
-    Missing => "! -e "
-    Other => "-e "
+    RegularFile => outcome_accepted("-f ")
+    Directory => outcome_accepted("-d ")
+    Symlink => outcome_accepted("-L ")
+    Missing => outcome_accepted("! -e ")
+    Other => outcome_rejected(bash_path_intent_invalid_diagnostic())
   }
 }
 
@@ -241,7 +241,10 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetM
       bind_outcome(
         o: bash_path_operand_quoted_text(path: p),
         f: fn(operand) {
-          bash_test_path_kind_target_model(op: bash_test_path_kind_op(kind: k), operand: operand)
+          bind_outcome(
+            o: bash_test_path_kind_op(kind: k),
+            f: fn(op) { bash_test_path_kind_target_model(op: op, operand: operand) }
+          )
         }
       )
     Not { inner: i } =>
@@ -300,7 +303,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
       } else {
         outcome_accepted(
           orch_cmdsubst_assign_raw_target_model(
-            name: n,
+            name: ascent.target,
             body: concat("dirname \"", concat(concat("$", n as String), "\""))
           )
         )
@@ -311,7 +314,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
       } else {
         outcome_accepted(
           orch_cmdsubst_assign_raw_target_model(
-            name: "d",
+            name: ascent.target,
             body: concat("dirname \"", concat(bash_absolute_parts_text(parts: p), "\""))
           )
         )
@@ -322,7 +325,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         f: fn(text) {
           outcome_accepted(
             orch_cmdsubst_assign_raw_target_model(
-              name: "d",
+              name: ascent.target,
               body: concat("dirname \"", concat(text, "\""))
             )
           )

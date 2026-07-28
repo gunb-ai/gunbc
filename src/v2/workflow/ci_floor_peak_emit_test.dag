@@ -203,6 +203,15 @@ test fn ci_floor_peak_path_kind_discriminates_regular_directory_missing_holds() 
     && (directory != missing)
 }
 
+test fn ci_floor_peak_path_kind_other_refuses_holds() -> Bool {
+  match bash_path_predicate_target_model(
+    predicate: typed_ci_floor_peak_path_kind(kind: Other)
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn ci_floor_peak_path_predicate_refuses_unsafe_operand_holds() -> Bool {
   match bash_path_predicate_target_model(
     predicate: And {

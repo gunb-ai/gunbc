@@ -18,6 +18,7 @@ type PathPredicate
 
 type DirnameAscent {
   path: PathIntent
+  target: NonEmptyStr
 }
 
 fn path_intent_ref(name: NonEmptyStr) -> PathIntent {
@@ -32,6 +33,6 @@ fn path_intent_join(base: PathIntent, suffix: FilePathParts) -> PathIntent {
   PathJoin { base: base, suffix: suffix }
 }
 
-fn dirname_ascent(path: PathIntent) -> DirnameAscent {
-  DirnameAscent { path: path }
+fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
+  DirnameAscent { path: path, target: target }
 }
