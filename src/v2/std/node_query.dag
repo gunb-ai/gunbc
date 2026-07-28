@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v2.std.algebra { TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.node {
@@ -184,21 +184,18 @@ fn coproduct_nullary_inhabitant_lookup_all<T>(
   inhabitants: List<T>,
   acc: CoproductNullaryInhabitantLookup<T>
 ) -> CoproductNullaryInhabitantLookup<T> {
-  match inhabitants {
-    Empty => acc
-    Cons { head: inhabitant, tail: tail } =>
-      coproduct_nullary_inhabitant_lookup_all(
+  fold_list(
+    xs: inhabitants,
+    empty: acc,
+    cons: fn(current, inhabitant) {
+      coproduct_nullary_inhabitant_lookup_step(
         wanted: wanted,
         discriminant_of: discriminant_of,
-        inhabitants: tail,
-        acc: coproduct_nullary_inhabitant_lookup_step(
-          wanted: wanted,
-          discriminant_of: discriminant_of,
-          acc: acc,
-          inhabitant: inhabitant
-        )
+        acc: current,
+        inhabitant: inhabitant
       )
-  }
+    }
+  )
 }
 
 fn coproduct_nullary_inhabitant_lookup_diagnostic(
