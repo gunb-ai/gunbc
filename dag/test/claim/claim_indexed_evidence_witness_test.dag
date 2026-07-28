@@ -2,6 +2,7 @@ module test.claim.claim_indexed_evidence_witness
 
 import std.types { Bool, NonEmptyStr, RunKey }
 import std.claim_evidence {
+  RecordedFactId,
   RecordedFact,
   ClaimReadinessPolicy,
   EvidenceProvenance,
@@ -22,10 +23,15 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstanceFieldUnobserved,
   CodexCliProvider,
   ProviderCredentialsRecordedUnverified,
+  ProviderRefreshFailed,
+  ProviderAuthenticated,
   codex_cli_auth_external_authority,
 }
 import gunbc.provider_readiness_claim_evidence {
   ProviderReadinessEvidenceLink,
+  ProviderReadinessObservation,
+  ProviderLoginStatusObserved,
+  ProviderLiveRequestObserved,
   provider_credential_recorded_claim,
   provider_ready_claim,
   provider_login_status_inference,
@@ -85,18 +91,63 @@ fn provider_evidence_fixture() -> ProviderInstance {
 
 data provider_evidence_bound: RunKey = "provider-attempt-1"
 
+fn provider_login_status_fact(
+  id: RecordedFactId,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderLoginStatusObserved {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      readiness: ProviderCredentialsRecordedUnverified,
+      response: "Logged in using ChatGPT",
+    },
+  }
+}
+
+fn provider_live_request_failed_fact(
+  id: RecordedFactId,
+  reason: NonEmptyStr,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderLiveRequestObserved {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      readiness: ProviderRefreshFailed { reason: reason },
+      response: reason,
+    },
+  }
+}
+
+fn provider_live_request_succeeded_fact(
+  id: RecordedFactId,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderLiveRequestObserved {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      readiness: ProviderAuthenticated,
+      response: "provider returned a model response",
+    },
+  }
+}
+
 test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
   let provider = provider_evidence_fixture()
   let login = provider_login_status_inference(
-    fact_id: "provider-login-status-fact",
+    observed_fact: provider_login_status_fact(id: "provider-login-status-fact"),
     provider: provider,
     bound: provider_evidence_bound,
   )
   let failed = provider_live_request_failed_inference(
-    fact_id: "provider-live-request-failed-fact",
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-fact",
+      reason: "invalid refresh token",
+    ),
     provider: provider,
     bound: provider_evidence_bound,
-    reason: "invalid refresh token",
   )
   let links = append(
     evidence_inference_links(inference: login),
@@ -135,16 +186,40 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     && !claim_readiness_is_ready(assessment: readiness)
 }
 
+test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool {
+  let provider = provider_evidence_fixture()
+  let login_claiming_authenticated = RecordedFact {
+    id: "provider-login-status-cannot-be-live-success",
+    value: ProviderLoginStatusObserved {
+      provider: provider,
+      bound: provider_evidence_bound,
+      readiness: ProviderAuthenticated,
+      response: "Logged in using ChatGPT",
+    },
+  }
+  let inference = provider_live_request_succeeded_inference(
+    observed_fact: login_claiming_authenticated,
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  evidence_inference_links(inference: inference).length() == 0
+    && evidence_inference_insufficiencies(inference: inference).length() == 1
+}
+
 test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
   let provider = provider_evidence_fixture()
   let failed = provider_live_request_failed_inference(
-    fact_id: "provider-live-request-failed-both",
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-both",
+      reason: "refresh refused",
+    ),
     provider: provider,
     bound: provider_evidence_bound,
-    reason: "refresh refused",
   )
   let succeeded = provider_live_request_succeeded_inference(
-    fact_id: "provider-live-request-succeeded-both",
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-succeeded-both",
+    ),
     provider: provider,
     bound: provider_evidence_bound,
   )
@@ -181,13 +256,17 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
 test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool {
   let provider = provider_evidence_fixture()
   let failed = provider_live_request_failed_inference(
-    fact_id: "provider-live-request-failed-split",
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-split",
+      reason: "refresh refused",
+    ),
     provider: provider,
     bound: provider_evidence_bound,
-    reason: "refresh refused",
   )
   let succeeded = provider_live_request_succeeded_inference(
-    fact_id: "provider-live-request-succeeded-split",
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-succeeded-split",
+    ),
     provider: provider,
     bound: provider_evidence_bound,
   )
