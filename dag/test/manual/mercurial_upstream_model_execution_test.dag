@@ -1,0 +1,687 @@
+module test.manual.mercurial_upstream_model_execution
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.gunbc
+import gunbc.output_policy { ExpectSuccess }
+import extdeps.mercurial {
+  MercurialNodeId,
+  MercurialNodeIdentityRole,
+  MercurialNodeIdentityObservation,
+  MercurialChangesetNodeIdentity,
+  MercurialManifestNodeIdentity,
+  MercurialFileRevisionNodeIdentity,
+  MercurialNodeIdentityDecoded,
+  mercurial_decode_node_identity,
+  MercurialPath,
+  MercurialNotCopied,
+  MercurialCopiedFrom,
+  MercurialFileRevision,
+  MercurialManifestWire,
+  MercurialManifestWireEntry,
+  MercurialChangeset,
+  MercurialLocalRevision,
+  MercurialLocalRevisionEntry,
+  MercurialHead,
+  MercurialBookmark,
+  MercurialTag,
+  MercurialLocalTag,
+  MercurialPhaseWireEntry,
+  MercurialNonPublishingServer,
+  MercurialEvolutionNotEnabled,
+  MercurialRepositoryRequirements,
+  MercurialRepositoryProjectionContents,
+  MercurialCompleteProjection,
+  MercurialRegularFile,
+  MercurialExecutableFile,
+  MercurialSymlink,
+  MercurialDecoded,
+  mercurial_decode_projection,
+}
+import test.claim.mercurial_upstream_model_witness {
+  mercurial_r0_fixture_expected_execution_receipt,
+}
+import std.bytes { octets_bytes }
+import std.types { NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data mercurial_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Mercurial R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp/Mkdir/Test/Remove, Filesystem.Write, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. A real Mercurial CLI creates three changesets on two heads, observes portable node identities separately from clone-local revision numbers, reads a bookmark and local tag, checks public/draft/secret phases, copy metadata, manifest executable/symlink flags, repository requirements, and runs `hg verify`. Changeset identities are computed by Mercurial and checked as distinct 40-character upstream identities rather than embedded constants. Local recipe: put a real `hg` on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/mercurial_upstream_model_execution_test.dag --function witness_mercurial_cli_fixture_projects_and_independently_reads_back."
+
+fn mercurial_decode_live_node_ids_step(
+  state: List<MercurialNodeId>?,
+  text: String,
+  role: MercurialNodeIdentityRole,
+) -> List<MercurialNodeId>? {
+  match state {
+    Absent => none
+    Present { value: nodes } =>
+      match mercurial_decode_node_identity(
+        observation: MercurialNodeIdentityObservation {
+          role: role,
+          text: trim(s: text),
+        },
+      ) {
+        MercurialNodeIdentityDecoded { node } =>
+          Present { value: append(nodes, items: [node]) }
+        _ => none
+      }
+  }
+}
+
+fn mercurial_decode_live_node_ids(
+  texts: List<String>,
+  role: MercurialNodeIdentityRole,
+) -> List<MercurialNodeId>? {
+  fold(
+    texts,
+    init: Present { value: [] },
+    f: (state, text) => mercurial_decode_live_node_ids_step(
+      state: state,
+      text: text,
+      role: role,
+    ),
+  )
+}
+
+fn mercurial_requirement_tokens(text: String) -> List<NonEmptyStr> {
+  split(s: text, delimiter: "\n")
+    |> filter(token => token.length() > 0)
+    |> map(token => token as NonEmptyStr)
+}
+
+data live_path_source: MercurialPath = MercurialPath {
+  octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
+}
+
+data live_path_executable: MercurialPath = MercurialPath {
+  octets: [98, 105, 110, 47, 114, 117, 110]
+}
+
+data live_path_symlink: MercurialPath = MercurialPath {
+  octets: [108, 105, 110, 107]
+}
+
+fn mercurial_live_projection_decodes(
+  changeset_texts: List<String>,
+  manifest_texts: List<String>,
+  file_revision_texts: List<String>,
+  requirement_text: String,
+) -> Bool {
+  match mercurial_decode_live_node_ids(
+    texts: changeset_texts,
+    role: MercurialChangesetNodeIdentity,
+  ) {
+    Absent => false
+    Present { value: changesets } =>
+      match mercurial_decode_live_node_ids(
+        texts: manifest_texts,
+        role: MercurialManifestNodeIdentity,
+      ) {
+        Absent => false
+        Present { value: manifests } =>
+          match mercurial_decode_live_node_ids(
+            texts: file_revision_texts,
+            role: MercurialFileRevisionNodeIdentity,
+          ) {
+            Absent => false
+            Present { value: files } =>
+              let c0 = changesets.first()
+              let c1 = changesets.skip(n: 1).first()
+              let c2 = changesets.skip(n: 2).first()
+              let m0 = manifests.first()
+              let m1 = manifests.skip(n: 1).first()
+              let m2 = manifests.skip(n: 2).first()
+              let f0 = files.first()
+              let fl = files.skip(n: 1).first()
+              let fbin = files.skip(n: 2).first()
+              let f2 = files.skip(n: 3).first()
+              let projection = MercurialCompleteProjection {
+                contents: MercurialRepositoryProjectionContents {
+                  requirements: MercurialRepositoryRequirements {
+                    tokens: mercurial_requirement_tokens(
+                      text: requirement_text,
+                    ),
+                  },
+                  file_revisions: [
+                    MercurialFileRevision {
+                      node: f0,
+                      parents: [],
+                      copy: MercurialNotCopied,
+                      content: octets_bytes(o: [109, 97, 105, 110]),
+                    },
+                    MercurialFileRevision {
+                      node: fl,
+                      parents: [],
+                      copy: MercurialNotCopied,
+                      content: octets_bytes(
+                        o: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103],
+                      ),
+                    },
+                    MercurialFileRevision {
+                      node: fbin,
+                      parents: [f0],
+                      copy: MercurialCopiedFrom {
+                        path: live_path_source,
+                        file_revision: f0,
+                      },
+                      content: octets_bytes(o: [114, 117, 110]),
+                    },
+                    MercurialFileRevision {
+                      node: f2,
+                      parents: [f0],
+                      copy: MercurialNotCopied,
+                      content: octets_bytes(
+                        o: [109, 97, 105, 110, 115, 105, 100, 101],
+                      ),
+                    },
+                  ],
+                  manifests: [
+                    MercurialManifestWire {
+                      node: m0,
+                      entries: [
+                        MercurialManifestWireEntry {
+                          path: live_path_source,
+                          file_revision: f0,
+                          flag: "",
+                        },
+                        MercurialManifestWireEntry {
+                          path: live_path_symlink,
+                          file_revision: fl,
+                          flag: "l",
+                        },
+                      ],
+                    },
+                    MercurialManifestWire {
+                      node: m1,
+                      entries: [
+                        MercurialManifestWireEntry {
+                          path: live_path_source,
+                          file_revision: f0,
+                          flag: "",
+                        },
+                        MercurialManifestWireEntry {
+                          path: live_path_symlink,
+                          file_revision: fl,
+                          flag: "l",
+                        },
+                        MercurialManifestWireEntry {
+                          path: live_path_executable,
+                          file_revision: fbin,
+                          flag: "x",
+                        },
+                      ],
+                    },
+                    MercurialManifestWire {
+                      node: m2,
+                      entries: [
+                        MercurialManifestWireEntry {
+                          path: live_path_source,
+                          file_revision: f2,
+                          flag: "",
+                        },
+                        MercurialManifestWireEntry {
+                          path: live_path_symlink,
+                          file_revision: fl,
+                          flag: "l",
+                        },
+                      ],
+                    },
+                  ],
+                  changesets: [
+                    MercurialChangeset {
+                      node: c0,
+                      manifest: m0,
+                      parents: [],
+                      branch: "default",
+                      user: "author@example.invalid",
+                      authored_at: "0 0",
+                      description: "root",
+                    },
+                    MercurialChangeset {
+                      node: c1,
+                      manifest: m1,
+                      parents: [c0],
+                      branch: "default",
+                      user: "author@example.invalid",
+                      authored_at: "1 0",
+                      description: "left",
+                    },
+                    MercurialChangeset {
+                      node: c2,
+                      manifest: m2,
+                      parents: [c0],
+                      branch: "default",
+                      user: "author@example.invalid",
+                      authored_at: "2 0",
+                      description: "right",
+                    },
+                  ],
+                  local_revisions: [
+                    MercurialLocalRevisionEntry {
+                      revision: MercurialLocalRevision { value: 0 },
+                      changeset: c0,
+                    },
+                    MercurialLocalRevisionEntry {
+                      revision: MercurialLocalRevision { value: 1 },
+                      changeset: c1,
+                    },
+                    MercurialLocalRevisionEntry {
+                      revision: MercurialLocalRevision { value: 2 },
+                      changeset: c2,
+                    },
+                  ],
+                  heads: [
+                    MercurialHead { changeset: c1 },
+                    MercurialHead { changeset: c2 },
+                  ],
+                  bookmarks: [
+                    MercurialBookmark { name: "main", target: c1 },
+                  ],
+                  tags: [
+                    MercurialTag {
+                      name: "scratch",
+                      target: c2,
+                      source: MercurialLocalTag,
+                    },
+                  ],
+                  phases: [
+                    MercurialPhaseWireEntry {
+                      changeset: c0,
+                      phase: "public",
+                    },
+                    MercurialPhaseWireEntry {
+                      changeset: c1,
+                      phase: "draft",
+                    },
+                    MercurialPhaseWireEntry {
+                      changeset: c2,
+                      phase: "secret",
+                    },
+                  ],
+                  publishing: MercurialNonPublishingServer,
+                  subrepositories: [],
+                  evolution: MercurialEvolutionNotEnabled,
+                }
+              }
+              match mercurial_decode_projection(projection: projection) {
+                MercurialDecoded { repository: _ } =>
+                  count(changesets) == 3
+                    && count(manifests) == 3
+                    && count(files) == 4
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+fn mercurial_r0_typed_execution_read_back() -> String {
+  let fixture = shell.Mktemp.Dir()
+  if !fixture.success {
+    "fixture-mktemp-refused"
+  } else {
+    let src_dir = concat(fixture.path, "/src")
+    let bin_dir = concat(fixture.path, "/bin")
+    let source_path = concat(src_dir, "/main.dag")
+    let link_path = concat(fixture.path, "/link")
+    let run_path = concat(bin_dir, "/run")
+    let requires_path = concat(fixture.path, "/.hg/requires")
+
+    let initialized = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["init", "."],
+      expect: ExpectSuccess,
+    )
+    let src_created = shell.Mkdir.Parents(path: src_dir)
+    let bin_created = shell.Mkdir.Parents(path: bin_dir)
+    let source_written = Filesystem.Write(path: source_path, content: "main")
+    let link_created = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "/bin/ln",
+      args: ["-s", "src/main.dag", "link"],
+      expect: ExpectSuccess,
+    )
+    let root_added = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["add", "src/main.dag", "link"],
+      expect: ExpectSuccess,
+    )
+    let root_committed = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "--config",
+        "ui.username=author@example.invalid",
+        "commit",
+        "-d",
+        "0 0",
+        "-m",
+        "root",
+      ],
+      expect: ExpectSuccess,
+    )
+    let c0 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", ".", "-T", "\{node}"],
+      expect: ExpectSuccess,
+    )
+    let root_published = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["phase", "--force", "--public", "-r", trim(s: c0.stdout)],
+      expect: ExpectSuccess,
+    )
+
+    let copied = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["copy", "src/main.dag", "bin/run"],
+      expect: ExpectSuccess,
+    )
+    let run_written = Filesystem.Write(path: run_path, content: "run")
+    let run_executable = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "/bin/chmod",
+      args: ["+x", "bin/run"],
+      expect: ExpectSuccess,
+    )
+    let executable_recorded = shell.Test.IsExecutable(path: run_path)
+    let left_committed = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "--config",
+        "ui.username=author@example.invalid",
+        "commit",
+        "-d",
+        "1 0",
+        "-m",
+        "left",
+      ],
+      expect: ExpectSuccess,
+    )
+    let c1 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", ".", "-T", "\{node}"],
+      expect: ExpectSuccess,
+    )
+    let bookmark_created = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["bookmark", "-r", trim(s: c1.stdout), "main"],
+      expect: ExpectSuccess,
+    )
+
+    let root_updated = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["update", "-q", "-r", trim(s: c0.stdout)],
+      expect: ExpectSuccess,
+    )
+    let source_changed = Filesystem.Write(path: source_path, content: "mainside")
+    let right_committed = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "--config",
+        "ui.username=author@example.invalid",
+        "commit",
+        "-d",
+        "2 0",
+        "-m",
+        "right",
+      ],
+      expect: ExpectSuccess,
+    )
+    let c2 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", ".", "-T", "\{node}"],
+      expect: ExpectSuccess,
+    )
+    let right_secret = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["phase", "--force", "--secret", "-r", trim(s: c2.stdout)],
+      expect: ExpectSuccess,
+    )
+    let local_tag_created = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["tag", "--local", "-r", trim(s: c2.stdout), "scratch"],
+      expect: ExpectSuccess,
+    )
+
+    let m0 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", trim(s: c0.stdout), "-T", "\{manifest.node}"],
+      expect: ExpectSuccess,
+    )
+    let m1 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", trim(s: c1.stdout), "-T", "\{manifest.node}"],
+      expect: ExpectSuccess,
+    )
+    let m2 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", trim(s: c2.stdout), "-T", "\{manifest.node}"],
+      expect: ExpectSuccess,
+    )
+    let f0 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "manifest",
+        "-r",
+        trim(s: c0.stdout),
+        "-T",
+        "\{ifeq(path, 'src/main.dag', hash)}",
+      ],
+      expect: ExpectSuccess,
+    )
+    let fl = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "manifest",
+        "-r",
+        trim(s: c0.stdout),
+        "-T",
+        "\{ifeq(path, 'link', hash)}",
+      ],
+      expect: ExpectSuccess,
+    )
+    let fbin = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "manifest",
+        "-r",
+        trim(s: c1.stdout),
+        "-T",
+        "\{ifeq(path, 'bin/run', hash)}",
+      ],
+      expect: ExpectSuccess,
+    )
+    let f2 = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: [
+        "manifest",
+        "-r",
+        trim(s: c2.stdout),
+        "-T",
+        "\{ifeq(path, 'src/main.dag', hash)}",
+      ],
+      expect: ExpectSuccess,
+    )
+
+    let local_revisions = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", "all()", "-T", "\{rev},"],
+      expect: ExpectSuccess,
+    )
+    let heads = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["heads", "-T", "\{node}\n"],
+      expect: ExpectSuccess,
+    )
+    let bookmark = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", "bookmark(main)", "-T", "\{node}"],
+      expect: ExpectSuccess,
+    )
+    let local_tag = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", "tag(scratch)", "-T", "\{node}"],
+      expect: ExpectSuccess,
+    )
+    let branches = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", "all()", "-T", "\{branch},"],
+      expect: ExpectSuccess,
+    )
+    let phases = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", "all()", "-T", "\{phase},"],
+      expect: ExpectSuccess,
+    )
+    let copy_metadata = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["log", "-r", trim(s: c1.stdout), "-T", "\{file_copies}"],
+      expect: ExpectSuccess,
+    )
+    let manifest = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["manifest", "-v", "-r", trim(s: c1.stdout)],
+      expect: ExpectSuccess,
+    )
+    let verified = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "hg",
+      args: ["verify"],
+      expect: ExpectSuccess,
+    )
+    let requires_present = shell.Test.IsNonEmpty(path: requires_path)
+    let requires_read = Filesystem.Read(path: requires_path)
+    let symlink_present = gunbc.WitnessBin.Run(
+      workdir: fixture.path,
+      bin_path: "/usr/bin/test",
+      args: ["-L", link_path],
+      expect: ExpectSuccess,
+    )
+
+    let cleaned = shell.Remove.RecursiveForce(path: fixture.path)
+
+    let all_operations_succeeded = initialized.success
+      && src_created.success
+      && bin_created.success
+      && source_written.success
+      && link_created.success
+      && root_added.success
+      && root_committed.success
+      && c0.success
+      && root_published.success
+      && copied.success
+      && run_written.success
+      && run_executable.success
+      && executable_recorded.executable
+      && left_committed.success
+      && c1.success
+      && bookmark_created.success
+      && root_updated.success
+      && source_changed.success
+      && right_committed.success
+      && c2.success
+      && right_secret.success
+      && local_tag_created.success
+      && m0.success
+      && m1.success
+      && m2.success
+      && f0.success
+      && fl.success
+      && fbin.success
+      && f2.success
+      && local_revisions.success
+      && heads.success
+      && bookmark.success
+      && local_tag.success
+      && branches.success
+      && phases.success
+      && copy_metadata.success
+      && manifest.success
+      && verified.success
+      && requires_present.nonempty
+      && requires_read.success
+      && symlink_present.success
+      && cleaned.success
+
+    let identities_grounded = mercurial_live_projection_decodes(
+      changeset_texts: [c0.stdout, c1.stdout, c2.stdout],
+      manifest_texts: [m0.stdout, m1.stdout, m2.stdout],
+      file_revision_texts: [f0.stdout, fl.stdout, fbin.stdout, f2.stdout],
+      requirement_text: requires_read.content,
+    )
+      && !(trim(s: c0.stdout) == trim(s: c1.stdout))
+      && !(trim(s: c0.stdout) == trim(s: c2.stdout))
+      && !(trim(s: c1.stdout) == trim(s: c2.stdout))
+
+    let topology_grounded = trim(s: local_revisions.stdout) == "0,1,2,"
+      && count(split(s: trim(s: heads.stdout), delimiter: "\n")) == 2
+      && trim(s: bookmark.stdout) == trim(s: c1.stdout)
+      && trim(s: local_tag.stdout) == trim(s: c2.stdout)
+      && trim(s: branches.stdout) == "default,default,default,"
+      && trim(s: phases.stdout) == "public,draft,secret,"
+
+    let file_facts_grounded = trim(s: copy_metadata.stdout) == "bin/run (src/main.dag)"
+        && string_contains(s: manifest.stdout, pattern: "755 * bin/run")
+        && string_contains(s: manifest.stdout, pattern: "644 @ link")
+        && string_contains(s: manifest.stdout, pattern: "644   src/main.dag")
+
+    if all_operations_succeeded
+      && identities_grounded
+      && topology_grounded
+      && file_facts_grounded {
+      mercurial_r0_fixture_expected_execution_receipt()
+    } else {
+      join(
+        [
+          concat("all=", to_string(all_operations_succeeded)),
+          concat("identities=", to_string(identities_grounded)),
+          concat("topology=", to_string(topology_grounded)),
+          concat("files=", to_string(file_facts_grounded)),
+          concat("root_err=", root_committed.stderr),
+          concat("left_err=", left_committed.stderr),
+          concat("right_err=", right_committed.stderr),
+          concat("phases=", phases.stdout),
+          concat("heads=", heads.stdout),
+          concat("copies=", copy_metadata.stdout),
+          concat("manifest=", manifest.stdout),
+          concat("verify_err=", verified.stderr),
+        ],
+        "|",
+      )
+    }
+  }
+}
+
+test fn witness_mercurial_cli_fixture_projects_and_independently_reads_back() -> Bool {
+  mercurial_r0_typed_execution_read_back() == mercurial_r0_fixture_expected_execution_receipt()
+}
