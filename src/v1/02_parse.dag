@@ -218,7 +218,7 @@ fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
   Node {
     name: node.name,
     ident: Present { value: ident },
-    occurrence_identity: node.occurrence_identity,
+    occurrence_identity: none,
     span: node.span,
     ident_span: node.ident_span,
     children: node.children,
