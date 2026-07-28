@@ -1,9 +1,7 @@
 module test.claim.namespace_occurrence_transport_test
 
 import std.algebra { Empty }
-import std.types { SourceSpan }
 import std.occurrence_identity {
-  OccurrenceId,
   OccurrenceContainmentPath,
   OccurrenceProjection,
   OccurrenceIndexEntry,
@@ -23,13 +21,13 @@ import std.occurrence_identity {
 
 data namespace_occurrence_transport_shared_witness_note: String = "Shared-authority claims only: this normal dag/src-v2 witness proves graph-scoped allocation, equal-text identity independence, typed occurrence categories, and missing/duplicate/wrong-category refusal. Parser, inference, ModuleGraph-to-TypedModule preservation, serde, and linear resource receipts live in the v1 Rust production-path test."
 
-fn fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: file, start: start, end: end }
+fn fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
+  std.types.SourceSpan { file: file, start: start, end: end }
 }
 
 fn fixture_path(
-  ancestors: List<OccurrenceId>,
-  terminal: OccurrenceId
+  ancestors: List<std.occurrence_identity.OccurrenceId>,
+  terminal: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath {
     ancestors: ancestors,
@@ -38,9 +36,9 @@ fn fixture_path(
 }
 
 fn fixture_index_entry(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
-  span: SourceSpan
+  span: std.types.SourceSpan
 ) -> OccurrenceIndexEntry {
   OccurrenceIndexEntry {
     projection: OccurrenceProjection {
@@ -92,7 +90,7 @@ test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
 }
 
 test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool {
-  let occurrence = OccurrenceId { value: 4 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 4 }
   let span = fixture_span(file: "typed.dag", start: 7, end: 8)
   let transport = OccurrenceTransport {
     index: OccurrenceIndex {
@@ -141,7 +139,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
 }
 
 test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bool {
-  let occurrence = OccurrenceId { value: 9 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 9 }
   let span = fixture_span(file: "refusal.dag", start: 2, end: 3)
   let declaration = DeclarationOccurrence {
     occurrence: occurrence,
