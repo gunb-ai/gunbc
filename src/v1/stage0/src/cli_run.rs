@@ -11002,7 +11002,7 @@ pub fn handle_run_with_options(
     v1_interpreter::with_active_context(&ctx, || {
         // One path, not two: with an empty `--arg` list this is byte-identical
         // to `run_in_context`, which passes the same empty slice.
-        let run = || {
+        let mut run = || {
             let outcome =
                 v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
             v1_interpreter::print_eval_recompute_trace(&ctx);

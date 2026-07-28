@@ -15,6 +15,7 @@ import gunbc.observation_seed_render {
   scoped_run_failed_write,
   scoped_run_timed_out_write,
   scoped_run_routine_measured_without_basis,
+  scoped_run_close_before_deferred_write,
 }
 
 fn entry() -> NonEmptyStr {
@@ -163,5 +164,20 @@ test fn scoped_run_propagates_terminal_state_refusal() -> Bool {
     ScopedRunWriteProjected { bytes: _, next_open: _ } => false
     ScopedRunWriteRefused { cause: c } =>
       c == "non-addressable terminal cannot continue an open dynamic line"
+  }
+}
+
+test fn scoped_run_closes_before_deferred_diagnostics() -> Bool {
+  match scoped_run_close_before_deferred_write(
+    entry_file: entry(),
+    module_path: module_path(),
+    function: function(),
+    addressable: true,
+    emoji: false,
+    prior_open: true
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      b == concat(ansi_carriage_return, ansi_erase_entire_line()) && !n
   }
 }

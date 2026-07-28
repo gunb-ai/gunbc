@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-const ENTRY: &str = "src/v1/stage0/tests/fixtures/scoped_run_observation.dag";
+static FIXTURE_ID: AtomicUsize = AtomicUsize::new(0);
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -10,43 +11,83 @@ fn repo_root() -> PathBuf {
         .expect("repo root")
 }
 
-fn gunbc_args(function: &str) -> Vec<&str> {
+fn primary_fixture() -> (PathBuf, PathBuf) {
+    let root = std::env::temp_dir().join(format!(
+        "gunbc-scoped-run-primary-{}-{}",
+        std::process::id(),
+        FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&root).expect("create primary fixture root");
+    let entry = root.join("scoped_run_observation.dag");
+    std::fs::write(
+        &entry,
+        "module test.fixtures.scoped_run_observation\n\
+         fn claim_true() -> Bool { true }\n\
+         fn claim_false() -> Bool { false }\n\
+         fn claim_non_bool() -> String { \"not a claim verdict\" }\n\
+         type ProcessExit = ExitSuccess | ExitFailure { code: Int, reason: String }\n\
+         fn exit_failure() -> ProcessExit { ExitFailure { code: 7, reason: \"legacy failure reason\" } }\n",
+    )
+    .expect("write primary fixture");
+    (root, entry)
+}
+
+fn gunbc_args(root: &Path, entry: &Path, function: &str) -> Vec<String> {
     vec![
-        "run",
-        "--source-root",
-        "src/v1/stage0/tests/fixtures",
-        "--entry",
-        ENTRY,
-        "--function",
-        function,
-        "--claim-run",
+        "run".to_string(),
+        "--source-root".to_string(),
+        root.to_string_lossy().into_owned(),
+        "--entry".to_string(),
+        entry.to_string_lossy().into_owned(),
+        "--function".to_string(),
+        function.to_string(),
+        "--claim-run".to_string(),
     ]
 }
 
 fn run_pipe(function: &str) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_gunbc"))
+    let (root, entry) = primary_fixture();
+    let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
-        .args(gunbc_args(function))
+        .args(gunbc_args(&root, &entry, function))
         .output()
-        .expect("run scoped gunbc pipe capture")
+        .expect("run scoped gunbc pipe capture");
+    let _ = std::fs::remove_dir_all(root);
+    output
+}
+
+fn run_pipe_with_diagnostics(function: &str) -> Output {
+    let (root, entry) = primary_fixture();
+    let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args(gunbc_args(&root, &entry, function))
+        .env("GUNBC_RECOMPUTE_TRACE", "1")
+        .env("GUNBC_FLATTEN_SITE_DUMP_SECS", "1")
+        .output()
+        .expect("run scoped gunbc deferred-diagnostic capture");
+    let _ = std::fs::remove_dir_all(root);
+    output
 }
 
 fn run_unscoped(function: &str, claim_run: bool) -> Output {
+    let (root, _) = primary_fixture();
     let mut args = vec![
-        "run",
-        "--source-root",
-        "src/v1/stage0/tests/fixtures",
-        "--function",
-        function,
+        "run".to_string(),
+        "--source-root".to_string(),
+        root.to_string_lossy().into_owned(),
+        "--function".to_string(),
+        function.to_string(),
     ];
     if claim_run {
-        args.push("--claim-run");
+        args.push("--claim-run".to_string());
     }
-    Command::new(env!("CARGO_BIN_EXE_gunbc"))
+    let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
         .args(args)
         .output()
-        .expect("run unscoped gunbc control")
+        .expect("run unscoped gunbc control");
+    let _ = std::fs::remove_dir_all(root);
+    output
 }
 
 #[test]
@@ -100,6 +141,30 @@ fn scoped_non_bool_claim_is_refused_persistent_and_nonzero() {
 }
 
 #[test]
+fn scoped_deferred_diagnostics_are_preserved_before_final() {
+    let output = run_pipe_with_diagnostics("claim_true");
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"true\n");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    let recompute = stderr
+        .find("[recompute-trace]")
+        .expect("recompute trace kept");
+    let periodic = stderr
+        .find("--- free_monoid_to_vec by call site")
+        .expect("periodic/end instrumentation kept");
+    let final_line = stderr
+        .rfind("finished with 0 problems shown")
+        .expect("modeled Final kept");
+    assert!(recompute < final_line, "{stderr}");
+    assert!(periodic < final_line, "{stderr}");
+    assert!(
+        !stderr[final_line..].contains("[recompute-trace]")
+            && !stderr[final_line..].contains("--- free_monoid_to_vec"),
+        "Final must remain the last stderr diagnostic: {stderr}"
+    );
+}
+
+#[test]
 fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
     let script = Command::new("script").arg("--version").output();
     if script.is_err() {
@@ -111,8 +176,10 @@ fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
         std::process::id(),
         std::thread::current().name().unwrap_or("test")
     ));
+    let (root, entry) = primary_fixture();
     let command = std::iter::once(env!("CARGO_BIN_EXE_gunbc"))
-        .chain(gunbc_args("claim_true"))
+        .map(str::to_string)
+        .chain(gunbc_args(&root, &entry, "claim_true"))
         .collect::<Vec<_>>()
         .join(" ");
     let status = Command::new("script")
@@ -124,6 +191,7 @@ fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
     assert!(status.success());
     let bytes = std::fs::read(&transcript).expect("read PTY transcript");
     let _ = std::fs::remove_file(&transcript);
+    let _ = std::fs::remove_dir_all(root);
     assert!(
         bytes
             .windows(b"\r\x1b[2K\xe2\x97\x90 started decl=test.fixtures.scoped_run_observation::claim_true#whole".len())
@@ -168,4 +236,82 @@ fn unscoped_diagnostics_remain_byte_stable() {
         String::from_utf8_lossy(&runtime_error.stderr).contains("runtime error:"),
         "{runtime_error:?}"
     );
+}
+
+#[test]
+fn scoped_declaration_identity_follows_the_selected_function_node() {
+    let fixture_root =
+        std::env::temp_dir().join(format!("gunbc-scoped-run-identity-{}", std::process::id()));
+    std::fs::create_dir_all(&fixture_root).expect("create identity fixture root");
+    let imported = fixture_root.join("imported.dag");
+    let entry = fixture_root.join("entry.dag");
+    std::fs::write(
+        &imported,
+        "module test.scoped_identity.imported\n\nfn imported_claim() -> Bool { true }\n",
+    )
+    .expect("write imported fixture");
+    std::fs::write(
+        &entry,
+        "module test.scoped_identity.entry\n\nimport test.scoped_identity.imported { imported_claim }\n",
+    )
+    .expect("write entry fixture");
+    let output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args([
+            "run",
+            "--source-root",
+            fixture_root.to_str().expect("fixture root utf8"),
+            "--entry",
+            entry.to_str().expect("entry utf8"),
+            "--function",
+            "imported_claim",
+            "--claim-run",
+        ])
+        .output()
+        .expect("run imported scoped function");
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(
+        stderr.contains("decl=test.scoped_identity.imported::imported_claim#whole"),
+        "{stderr}"
+    );
+
+    let left = fixture_root.join("left.dag");
+    let right = fixture_root.join("right.dag");
+    let ambiguous = fixture_root.join("ambiguous.dag");
+    std::fs::write(
+        &left,
+        "module test.scoped_identity.left\n\nfn same_claim() -> Bool { true }\n",
+    )
+    .expect("write left fixture");
+    std::fs::write(
+        &right,
+        "module test.scoped_identity.right\n\nfn same_claim() -> Bool { true }\n",
+    )
+    .expect("write right fixture");
+    std::fs::write(
+        &ambiguous,
+        "module test.scoped_identity.ambiguous\n\nimport test.scoped_identity.left { same_claim }\nimport test.scoped_identity.right { same_claim }\n",
+    )
+    .expect("write ambiguous fixture");
+    let ambiguous_output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args([
+            "run",
+            "--source-root",
+            fixture_root.to_str().expect("fixture root utf8"),
+            "--entry",
+            ambiguous.to_str().expect("ambiguous entry utf8"),
+            "--function",
+            "same_claim",
+            "--claim-run",
+        ])
+        .output()
+        .expect("run ambiguous scoped function");
+    assert!(!ambiguous_output.status.success(), "{ambiguous_output:?}");
+    assert!(
+        !String::from_utf8_lossy(&ambiguous_output.stderr).contains("started decl="),
+        "an ambiguous function must not mint an observation identity: {ambiguous_output:?}"
+    );
+    let _ = std::fs::remove_dir_all(&fixture_root);
 }
