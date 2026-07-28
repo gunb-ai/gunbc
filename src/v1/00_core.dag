@@ -1092,7 +1092,7 @@ fn transport_env(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Nod
 }
 
 fn map_children(node: Node, transform: fn(Node) -> Node) -> Node {
-  Node { authored_occurrence: none,
+  Node {
     name: node.name, ident: node.ident, span: node.span,
     ident_span: node.ident_span,
     authored_occurrence: node.authored_occurrence,
@@ -1422,7 +1422,7 @@ fn pre_intern_tokens(tokens: List<Token>, table: InternTable) -> InternTable {
 }
 
 fn with_optional_cardinality(n: Node) -> Node {
-  Node { authored_occurrence: none,
+  Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     authored_occurrence: n.authored_occurrence,
     children: n.children, connective: n.connective,
@@ -1437,7 +1437,7 @@ fn with_optional_cardinality(n: Node) -> Node {
 }
 
 fn with_required_cardinality(n: Node) -> Node {
-  Node { authored_occurrence: none,
+  Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     authored_occurrence: n.authored_occurrence,
     children: n.children, connective: n.connective,

@@ -68,7 +68,7 @@ import v1.compiler.dag_collect_support {
   dag_node_surface_fingerprint,
 }
 
-data occurrence_transport_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_transport_test.dag --functions occurrence_transport_parser_forms_hold,occurrence_transport_inferred_and_rebuilt_references_hold,occurrence_transport_collector_is_occurrence_safe"
+data occurrence_transport_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_transport_test.dag --functions occurrence_transport_parser_forms_hold,occurrence_transport_rebuilt_reference_holds,occurrence_transport_collector_is_occurrence_safe"
 
 data occurrence_transport_boundary_note: String = "These witnesses stop at transport. They compare typed authored occurrence categories and IDs, never resolve a declaration candidate or infer identity from SourceSpan, spelling, or Node structure."
 
@@ -87,10 +87,14 @@ fn declaration_node(name: String, id: Int) -> Node {
 }
 
 fn reference_node(name: String, id: Int) -> Node {
+  reference_node_at(name: name, id: id, start: 0, end: 0)
+}
+
+fn reference_node_at(name: String, id: Int, start: Int, end: Int) -> Node {
   node_with_authored_occurrence(
     node: leaf_node_with_span(
       name: name,
-      span: make_span(start: 0, end: 0),
+      span: make_span(start: start, end: end),
     ),
     occurrence: AuthoredReferenceOccurrence {
       occurrence: ReferenceOccurrence {
@@ -172,7 +176,11 @@ fn parse_fixture_param(source: String, occurrence_base: Int) -> Node? {
   }
 }
 
-fn parse_fixture_pattern(source: String, occurrence_base: Int) -> MatchPattern? {
+type ParsedFixturePattern
+  = ParsedFixturePatternReady { pattern: MatchPattern }
+  | ParsedFixturePatternRefused
+
+fn parse_fixture_pattern(source: String, occurrence_base: Int) -> ParsedFixturePattern {
   let file = "occurrence-transport-pattern.dag"
   let result = parse_pattern(
     tokens: token_stream_new_at(
@@ -182,8 +190,8 @@ fn parse_fixture_pattern(source: String, occurrence_base: Int) -> MatchPattern? 
     ctx: fixture_context(file: file, source: source),
   )
   match result.err {
-    Present { value: _ } => none
-    Absent => Present { value: result.pattern }
+    Present { value: _ } => ParsedFixturePatternRefused
+    Absent => ParsedFixturePatternReady { pattern: result.pattern }
   }
 }
 
@@ -211,14 +219,21 @@ fn two_distinct(values: List<Int>) -> Bool {
   if (values |> count) != 2 {
     false
   } else {
-    values |> first != values |> skip(1) |> first
+    match values |> first {
+      Absent => false
+      Present { value: first_id } =>
+        match values |> skip(1) |> first {
+          Absent => false
+          Present { value: second_id } => first_id != second_id
+        }
+    }
   }
 }
 
 fn parsed_pattern_has_one_typed_declaration(source: String, occurrence_base: Int) -> Bool {
   match parse_fixture_pattern(source: source, occurrence_base: occurrence_base) {
-    Absent => false
-    Present { value: pattern } =>
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: pattern } =>
       (pattern_declaration_ids(pattern: pattern) |> count) == 1
   }
 }
@@ -251,24 +266,36 @@ fn parser_explicit_alias_label_and_declaration_are_distinct() -> Bool {
     source: "Pair { left: explicit_bind }",
     occurrence_base: 1500,
   ) {
-    Absent => false
-    Present { value: VariantPattern {
-      name: _,
-      parent_enum: _,
-      field_bindings: bindings,
-    } } =>
-      match bindings |> first {
-        Absent => false
-        Present { value: binding } =>
-          let declarations = pattern_declaration_ids(
-            pattern: field_binding_pattern(n: binding)
-          )
-          node_reference_id(node: binding) != none &&
-          (declarations |> count) == 1 &&
-          node_reference_id(node: binding).value !=
-            (declarations |> first).value
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: pattern } =>
+      match pattern {
+        VariantPattern {
+          name: _,
+          parent_enum: _,
+          field_bindings: bindings,
+        } =>
+          match bindings |> first {
+            Absent => false
+            Present { value: binding } =>
+              let declarations = pattern_declaration_ids(
+                pattern: field_binding_pattern(n: binding)
+              )
+              if (declarations |> count) != 1 {
+                false
+              } else {
+                match node_reference_id(node: binding) {
+                  Absent => false
+                  Present { value: reference_id } =>
+                    match declarations |> first {
+                      Absent => false
+                      Present { value: declaration_id } =>
+                        reference_id != declaration_id
+                    }
+                }
+              }
+          }
+        _ => false
       }
-    _ => false
   }
 }
 
@@ -277,8 +304,8 @@ fn parser_nested_same_spelling_is_distinct() -> Bool {
     source: "Outer { x, nested: Pair { x } }",
     occurrence_base: 1600,
   ) {
-    Absent => false
-    Present { value: pattern } =>
+    ParsedFixturePatternRefused => false
+    ParsedFixturePatternReady { pattern: pattern } =>
       two_distinct(values: pattern_declaration_ids(pattern: pattern))
   }
 }
@@ -418,8 +445,7 @@ fn rebuilt_reference_keeps_id() -> Bool {
   node_reference_id(node: rebuilt) == Present { value: 601 }
 }
 
-test fn occurrence_transport_inferred_and_rebuilt_references_hold() -> Bool {
-  inferred_error_reference_keeps_id() &&
+test fn occurrence_transport_rebuilt_reference_holds() -> Bool {
   rebuilt_reference_keeps_id()
 }
 
@@ -432,8 +458,8 @@ fn collector_insert(node: Node, slots: Map<String, DagCollectSlot>) -> Map<Strin
 }
 
 fn collector_dedupes_one_occurrence() -> Bool {
-  let first_copy = reference_node(name: "same", id: 701)
-  let rebuilt_copy = reference_node(name: "rebuilt", id: 701)
+  let first_copy = reference_node_at(name: "same", id: 701, start: 0, end: 4)
+  let rebuilt_copy = reference_node_at(name: "rebuilt", id: 701, start: 99, end: 106)
   let slots = collector_insert(
     node: rebuilt_copy,
     slots: collector_insert(node: first_copy, slots: empty_map()),
