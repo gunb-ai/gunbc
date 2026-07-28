@@ -8421,10 +8421,8 @@ fn emit_host_resolved_build_toolchain_identity(
 
         if requested_name == "cargo" {
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            identity = v1_rt::hash_combine(
-                identity,
-                observe_tool(&rustc, &["-vV"], probe_workspace)?,
-            );
+            identity =
+                v1_rt::hash_combine(identity, observe_tool(&rustc, &["-vV"], probe_workspace)?);
             identity = v1_rt::hash_combine(
                 identity,
                 v1_rt::atom_identity_hash(std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default()),

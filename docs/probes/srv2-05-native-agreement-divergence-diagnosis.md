@@ -41,6 +41,8 @@ The fix retains the outer computation key but appends a derived
 `artifact_realization_digest` over the exact materialized workspace paths/texts
 and structured build argv, followed by a host-observed resolved-build-toolchain
 digest over the actual executable bytes/version (and Cargo's selected rustc).
+The host probe runs from the materialized input-realization root, so the same
+workspace `rust-toolchain.toml` selection that governs Cargo governs the probe.
 The marker now belongs to that input-and-toolchain realization child.
 The executable `family_crate_dispatch_change_cold_rebuild_holds` control holds
 the inferred trees and emitted member source constant, changes only the family

@@ -71,7 +71,7 @@ data native_artifact_cache_facts: CacheInterfaceCatalogFacts = {
     {
       field: "key_inputs"
       evidence: OperatorObserved {
-        note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest / resolved_build_toolchain_identity. The input digest covers exact workspace paths+texts and structured build argv; the host boundary observes the resolved build executable bytes/version and Cargo's selected rustc before consulting .native_ready. family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child; native_realization_toolchain_change_cold_rebuild_holds holds files+argv constant and changes only the resolved toolchain"
+        note: "effective workspace identity is emit_on_demand_key / artifact_realization_digest / resolved_build_toolchain_identity. The input digest covers exact workspace paths+texts and structured build argv; the host boundary materializes those files at the input-realization root, then observes resolved build executable bytes/version and Cargo's selected rustc from that root before consulting .native_ready. family_crate_dispatch_change_cold_rebuild_holds proves a target runtime-row change with an unchanged inferred tree selects a cold child; native_realization_toolchain_change_cold_rebuild_holds holds files+argv constant and changes only the resolved toolchain"
         observed_at: 0
       }
     },
