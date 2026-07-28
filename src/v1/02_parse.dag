@@ -835,11 +835,11 @@ fn parser_result_witness(expr: Node, source_indices: Map<String, NewlineIndex>) 
 }
 
 fn leaf_type_node(name: String, span: SourceSpan) -> Node {
-  Node { name: name, span: span, ident_span: if name == "" { none } else { Present { value: span } }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { authored_occurrence: none, name: name, span: span, ident_span: if name == "" { none } else { Present { value: span } }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn literal_width_nat_type_node(value: Int, span: SourceSpan) -> Node {
-  Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLiteral { value: LitInt { value: value } } }
+  Node { authored_occurrence: none, name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprLiteral { value: LitInt { value: value } } }
 }
 
 fn parse_type_angle_arg(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
@@ -972,7 +972,7 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
 
   let mod_ir = intern(table: ctx.intern_table, s: mod_name)
   let ctx = with(ctx, { intern_table: mod_ir.table })
-  let base_mod = Node {
+  let base_mod = Node { authored_occurrence: none,
     name: mod_name, span: start_span,
     ident_span: Present { value: mod_name_span },
     children: items, connective: NoConnective,
@@ -1104,7 +1104,7 @@ fn parse_item(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
         err: result.err,
       }
     }
-    Absent => ItemResult { item: Node { name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
+    Absent => ItemResult { item: Node { authored_occurrence: none, name: "<unknown>", span: span, ident_span: Present { value: span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "expected item declaration (alias, type, fn, func, service, resource, data, extern, pattern, interface)", span: span) } }
   }
 }
 
@@ -1157,7 +1157,7 @@ fn parse_item_prefix(tokens: TokenStream, ctx: ParseContext, form: ItemForm) -> 
 
 fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: ItemForm) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: form.keyword })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let tokens = r.tokens
@@ -1195,7 +1195,7 @@ fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -
     Present { value: key } => [make_field_init_node(name: "from_key", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: key } }, children: [], inferred: none, span: field.span), span: field.span, name_span: no_span())]
     Absent => []
   }
-  Node { name: field_node_name_at(n: field, source_indices: source_indices), span: field.span, ident_span: field.ident_span,
+  Node { authored_occurrence: none, name: field_node_name_at(n: field, source_indices: source_indices), span: field.span, ident_span: field.ident_span,
     children: [], connective: NoConnective,
     params: [], inferred: Present { value: Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
     uses: [], body: field_node_default_value(n: field),
@@ -1206,7 +1206,7 @@ fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -
 fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let fields = variant_node_fields(n: variant)
   let children = fields |> map(f => field_to_child_node(field: f, source_indices: source_indices))
-  Node { name: variant_node_name_at(n: variant, source_indices: source_indices), span: variant.span, ident_span: variant.ident_span,
+  Node { authored_occurrence: none, name: variant_node_name_at(n: variant, source_indices: source_indices), span: variant.span, ident_span: variant.ident_span,
     children: children,
     connective: if fields |> count > 0 { Conj } else { NoConnective },
     params: [], inferred: none, return_cardinality: Required,
@@ -1217,7 +1217,7 @@ fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex
 
 fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
   if outputs |> count > 0 {
-    Present { value: Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
+    Present { value: Resolved { node: Node { authored_occurrence: none, name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
   } else {
     none
   }
@@ -1225,7 +1225,7 @@ fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Ma
 
 fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, response_props: List<Node>, mock_props: List<Node>, exit_props: List<Node>, modifier_props: List<Node>, transport: Node?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
   let all_props = concat(modifier_props, response_props, exit_props, mock_props)
-  Node { name: name, span: span, ident_span: ident_span,
+  Node { authored_occurrence: none, name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
       name: field_node_name_at(n: f, source_indices: source_indices), type_expr: field_node_type_expr(n: f),
@@ -1239,7 +1239,7 @@ fn make_operation_node(name: String, ident_span: SourceSpan?, inputs: List<Node>
 }
 
 fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node>, outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> Node {
-  Node { name: name, span: span, ident_span: ident_span,
+  Node { authored_occurrence: none, name: name, span: span, ident_span: ident_span,
     children: [],
     params: inputs |> map(f => make_param_node(
       name: field_node_name_at(n: f, source_indices: source_indices), type_expr: field_node_type_expr(n: f),
@@ -1254,14 +1254,14 @@ fn make_capability_node(name: String, ident_span: SourceSpan?, inputs: List<Node
 
 fn parse_type_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "type" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_type_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -1279,7 +1279,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   match eat(tokens: tokens, expected: ExpectLBrace) {
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_field_list(tokens: skip_newlines(tokens: __ec), ctx: ctx)
-    let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let tokens = skip_newlines(tokens: r.tokens)
     let ctx = r.ctx
@@ -1287,7 +1287,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
     let sole_ctor_prop = if is_sole_constructor { [make_field_init_node(name: "sole_constructor", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())] } else { [] }
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
@@ -1295,7 +1295,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
@@ -1306,7 +1306,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   let name_span = prefix.name_span
   let type_params = prefix.type_params
   let ctx = prefix.ctx
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let raw_tokens = skip_newlines(tokens: prefix.tokens)
   let is_sole_constructor = tok_is_ident_text(tok: token_stream_first(stream: raw_tokens), text: "sole_constructor")
   let tokens = type_body_tokens_after_modifiers(tokens: raw_tokens)
@@ -1321,7 +1321,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: ctx, err: r2.err } }
     let type_children = r.fields |> map(f => field_to_child_node(field: f, source_indices: ctx.source_indices))
     let sole_ctor_prop = if is_sole_constructor { [make_field_init_node(name: "sole_constructor", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())] } else { [] }
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
@@ -1329,14 +1329,14 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
 }
 
 fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>) -> ItemResult {
-  let dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   match eat(tokens: tokens, expected: ExpectPipe) {
   EatConsumed { token: _, tokens: __lead } =>
@@ -1351,7 +1351,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     let rest = parse_more_variants_acc(tokens: rv.tokens, ctx: rv.ctx, acc: [rv.variant])
     if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
     let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: rest.ctx, err: none }
   EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
@@ -1369,14 +1369,14 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       if has_err(err: rest.err) { return ItemResult { item: dummy, tokens: rest.tokens, ctx: rest.ctx, err: rest.err } }
       let variants = rest.variants
       let type_children = variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
-      let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: rest.ctx, err: none }
     } else {
       let r = finish_type_expr_from_name(tokens: tokens, ctx: ctx, type_name: first_name, start_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-      let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
     }
   } else {
@@ -1384,7 +1384,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
   }
   }
@@ -1396,8 +1396,8 @@ fn try_where_clause(tokens: TokenStream, ctx: ParseContext, base_te: Node, start
       AdvanceOk { token: _, tokens: rest } =>
         let r = parse_predicates(tokens: rest, ctx: ctx)
         if has_err(err: r.err) { return TypeResult { type_expr: base_te, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-        let predicate_node = Node { name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        let refined = Node { name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Present { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let predicate_node = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: r.predicates, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let refined = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [base_te], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: Present { value: predicate_node }, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         TypeResult { type_expr: refined, tokens: r.tokens, ctx: r.ctx, err: none }
       AdvanceEof => TypeResult { type_expr: base_te, tokens: tokens, ctx: ctx, err: none }
     }
@@ -1611,7 +1611,7 @@ fn parse_type_expr(tokens: TokenStream, ctx: ParseContext) -> TypeResult {
       let tokens = skip_newlines(tokens: r.tokens)
       let r2 = expect(tokens: tokens, expected: ExpectRBrace)
       if has_err(err: r2.err) { return TypeResult { type_expr: leaf_type_node(name: "", span: span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-      let te = Node { name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let te = Node { authored_occurrence: none, name: "", span: span, ident_span: none, children: map(r.fields, f => field_to_child_node(field: f, source_indices: ctx.source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       TypeResult { type_expr: te, tokens: r2.tokens, ctx: r.ctx, err: none }
     }
     Present { value: ShKeyword } => {
@@ -1671,7 +1671,7 @@ fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: 
   let ret = parse_type_expr(tokens: r3.tokens, ctx: params_result.ctx)
   if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
 
-  let te = Node { name: "Callable", span: start_span, ident_span: Present { value: start_span }, children: [], connective: Arrow, params: params_result.params, inferred: Present { value: Resolved { node: ret.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let te = Node { authored_occurrence: none, name: "Callable", span: start_span, ident_span: Present { value: start_span }, children: [], connective: Arrow, params: params_result.params, inferred: Present { value: Resolved { node: ret.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   maybe_optional(tokens: ret.tokens, ctx: ret.ctx, te: te, start_span: start_span)
 }
 
@@ -1706,7 +1706,7 @@ fn finish_type_expr_from_name(tokens: TokenStream, ctx: ParseContext, type_name:
     if has_err(err: type_args.err) { return TypeResult { type_expr: dummy_te, tokens: type_args.tokens, ctx: type_args.ctx, err: type_args.err } }
     let r3 = expect(tokens: type_args.tokens, expected: ExpectGt)
     if has_err(err: r3.err) { return TypeResult { type_expr: dummy_te, tokens: r3.tokens, ctx: type_args.ctx, err: r3.err } }
-    let te = Node { name: type_name, span: start_span, ident_span: Present { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let te = Node { authored_occurrence: none, name: type_name, span: start_span, ident_span: Present { value: start_span }, children: type_args.args, connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     maybe_optional(tokens: r3.tokens, ctx: type_args.ctx, te: te, start_span: start_span)
   EatUnchanged { tokens: __eu } =>
     let te = leaf_type_node(name: type_name, span: start_span)
@@ -1769,7 +1769,7 @@ fn collect_type_args(tokens: TokenStream, ctx: ParseContext, args: List<Node>) -
 fn maybe_optional(tokens: TokenStream, ctx: ParseContext, te: Node, start_span: SourceSpan) -> TypeResult {
   match eat(tokens: tokens, expected: ExpectQuestion) {
   EatConsumed { token: _, tokens: __ec } =>
-    let ote = Node { name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
+    let ote = Node { authored_occurrence: none, name: te.name, span: te.span, ident_span: te.ident_span, children: te.children, connective: te.connective, params: te.params, inferred: te.inferred, return_cardinality: CardOptional, uses: te.uses, body: te.body, transport: te.transport, properties: te.properties, type_annotation: te.type_annotation, is_self_recursive: te.is_self_recursive, has_non_tail_self_call: te.has_non_tail_self_call, match_pattern: te.match_pattern, expr_data: te.expr_data }
     TypeResult { type_expr: ote, tokens: __ec, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     TypeResult { type_expr: te, tokens: tokens, ctx: ctx, err: none }
@@ -1870,21 +1870,21 @@ fn parse_optional_from_key(tokens: TokenStream, ctx: ParseContext) -> FromKeyRes
 
 fn parse_fn_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "fn" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_fn_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   let tokens = r.tokens
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = parse_params(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1902,7 +1902,7 @@ fn parse_fn_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceS
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
@@ -1919,7 +1919,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   let ctx = prefix.ctx
 
   let all_params = concat(type_params, params)
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let tokens = skip_newlines(tokens: prefix.tokens)
   let body_result = if tok_is_eq(tok: token_stream_first(stream: tokens)) {
@@ -1935,7 +1935,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
   if has_err(err: body_result.err) { return ItemResult { item: named_dummy, tokens: body_result.tokens, ctx: body_result.ctx, err: body_result.err } }
   let body = body_result.expr
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: all_params,
     inferred: inferred, return_cardinality: Required, uses: [],
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
@@ -1945,7 +1945,7 @@ fn parse_fn_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -
 
 fn parse_func_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kw = tok_keyword_text(tok: token_stream_first(stream: tokens))
   let r = if kw == "func" { expect(tokens: tokens, expected: ExpectKeyword { text: "func" }) }
     else if kw == "pattern" { expect(tokens: tokens, expected: ExpectKeyword { text: "pattern" }) }
@@ -1960,14 +1960,14 @@ fn parse_func_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
 }
 
 fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan, form: ItemForm) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
   let tokens = r.tokens
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = parse_params(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -1992,7 +1992,7 @@ fn parse_block_item_after_kw(tokens: TokenStream, ctx: ParseContext, start_span:
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: uses,
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
@@ -2007,13 +2007,13 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
   let inferred = prefix.inferred
   let uses = prefix.uses
   let ctx = prefix.ctx
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = parse_block(tokens: skip_newlines(tokens: prefix.tokens), ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let body = r.expr
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: params,
     inferred: inferred, return_cardinality: Required, uses: uses,
     body: Present { value: body }, connective: NoConnective, transport: none,
     properties: [], type_annotation: none,
@@ -2022,7 +2022,7 @@ fn parse_block_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan
 }
 
 fn parse_no_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan) -> ItemResult {
-  let item = Node {
+  let item = Node { authored_occurrence: none,
     name: prefix.name, span: start_span, ident_span: Present { value: prefix.name_span }, children: [],
     params: prefix.params, inferred: prefix.inferred, return_cardinality: Required, uses: prefix.uses,
     body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none,
@@ -2084,7 +2084,7 @@ fn parse_uses_entry(tokens: TokenStream, ctx: ParseContext) -> ResUseResult {
     if has_err(err: ar.err) { return ResUseResult { resource_use: dummy, tokens: ar.tokens, ctx: ar.ctx, err: ar.err } }
     let r4 = expect(tokens: ar.tokens, expected: ExpectRParen)
     if has_err(err: r4.err) { return ResUseResult { resource_use: dummy, tokens: r4.tokens, ctx: ar.ctx, err: r4.err } }
-    let res_node = Node { name: r3.type_expr.name, span: r3.type_expr.span, ident_span: r3.type_expr.ident_span, children: r3.type_expr.children,
+    let res_node = Node { authored_occurrence: none, name: r3.type_expr.name, span: r3.type_expr.span, ident_span: r3.type_expr.ident_span, children: r3.type_expr.children,
       params: r3.type_expr.params, inferred: r3.type_expr.inferred, return_cardinality: r3.type_expr.return_cardinality,
       uses: r3.type_expr.uses, body: r3.type_expr.body,       connective: r3.type_expr.connective, transport: r3.type_expr.transport,
       properties: ar.fields, type_annotation: r3.type_expr.type_annotation,
@@ -2139,14 +2139,14 @@ fn parse_optional_inferred(tokens: TokenStream, ctx: ParseContext) -> OptRetResu
 
 fn parse_service_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "service" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_service_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r_ns = expect_name(tokens: tokens)
   if has_err(err: r_ns.err) { return ItemResult { item: dummy, tokens: r_ns.tokens, ctx: ctx, err: r_ns.err } }
@@ -2154,7 +2154,7 @@ fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: So
   let r = parse_dotted_ident_rest(tokens: r_ns.tokens, acc: namespace_root, span: r_ns.span)
   let name = r.name
   let svc_name_span = r.span
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: svc_name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2172,7 +2172,7 @@ fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: So
     Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
     Absent => []
   }
-  let item = Node { name: name, span: start_span, ident_span: Present { value: svc_name_span },
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: svc_name_span },
     children: r.operations,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
     transport: Present { value: r.transport }, properties: concat([ns_prop], svc_props),
@@ -2894,20 +2894,20 @@ fn parse_mock_response_entries_acc(tokens: TokenStream, ctx: ParseContext, acc: 
 
 fn parse_resource_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "resource" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_resource_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_resource_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2918,7 +2918,7 @@ fn parse_resource_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: S
   let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
   if has_err(err: r2.err) { return ItemResult { item: named_dummy, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span },
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span },
     children: r.capabilities,
     params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective,
     transport: none, properties: r.properties,
@@ -3078,20 +3078,20 @@ fn parse_io_blocks_acc(tokens: TokenStream, ctx: ParseContext, inputs: List<Node
 
 fn parse_data_def(tokens: TokenStream, ctx: ParseContext) -> ItemResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let r = expect(tokens: tokens, expected: ExpectKeyword { text: "data" })
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   parse_data_after_kw(tokens: r.tokens, ctx: ctx, start_span: start_span)
 }
 
 fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3112,7 +3112,7 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
     name_span: no_span()
   )
 
-  let item = Node {
+  let item = Node { authored_occurrence: none,
     name: name, span: start_span, ident_span: Present { value: name_span }, children: [],
     params: [], inferred: none, return_cardinality: Required, uses: [],
     body: none, connective: NoConnective, transport: none,
@@ -3123,13 +3123,13 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
 }
 
 fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
-  let dummy = Node { name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let dummy = Node { authored_occurrence: none, name: "", span: start_span, ident_span: none, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect_ident(tokens: tokens)
   if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
   let name_span = r.span
-  let named_dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let named_dummy = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [], inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   let r = expect(tokens: r.tokens, expected: ExpectColon)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3144,7 +3144,7 @@ fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   let r = parse_expr(tokens: r.tokens, ctx: ctx)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
-  let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [],
+  let item = Node { authored_occurrence: none, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: [],
     inferred: none, return_cardinality: Required, uses: [],
     body: Present { value: r.expr }, connective: NoConnective, transport: none,
     properties: [], type_annotation: Present { value: te },
@@ -3354,7 +3354,7 @@ fn parse_constrained_assignment(tokens: TokenStream, ctx: ParseContext) -> ExprR
   let r3 = parse_expr(tokens: r2.tokens, ctx: cr.ctx)
   if has_err(err: r3.err) { return r3 }
   let node = make_named_expr_node(name: name, expr_data: ExprLet, children: [r3.expr], inferred: none, span: span, name_span: name_span)
-  let node = Node { name: node.name, span: node.span, ident_span: node.ident_span, children: node.children,
+  let node = Node { authored_occurrence: none, name: node.name, span: node.span, ident_span: node.ident_span, children: node.children,
     params: node.params, inferred: node.inferred, return_cardinality: node.return_cardinality,
     uses: node.uses, body: node.body,
     connective: node.connective, transport: node.transport, properties: cr.constraints,
@@ -3394,7 +3394,7 @@ fn parse_node_decl(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   if has_err(err: ret.err) { return ExprResult { expr: dummy_expr, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
   let type_ann = match e_colon { EatConsumed { token: _, tokens: _ } => Present { value: r3.expr }  EatUnchanged { tokens: _ } => none }
   let node = with_declaration_occurrence(
-    node: Node { name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
+    node: Node { authored_occurrence: none, name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
       connective: NoConnective,    params: [], inferred: ret.inferred, return_cardinality: Required,
       uses: [], body: none, transport: none, properties: cr.constraints,
       type_annotation: type_ann, is_self_recursive: false,
@@ -4457,7 +4457,7 @@ fn parse_let(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     let r3 = parse_expr(tokens: r2.tokens, ctx: tr.ctx)
     if has_err(err: r3.err) { return r3 }
     let node = with_declaration_occurrence(
-      node: Node {
+      node: Node { authored_occurrence: none,
         name: name, span: span, ident_span: Present { value: name_span }, children: [r3.expr],
         connective: NoConnective, params: [], inferred: none, return_cardinality: Required,
         uses: [], body: none, transport: none, properties: [],
