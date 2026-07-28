@@ -7,15 +7,19 @@ import std.occurrence_identity {
   OccurrenceIndexEntry,
   OccurrenceIndex,
   OccurrenceTransport,
+  OccurrenceCategory,
   DeclarationOccurrence,
   ReferenceOccurrence,
   LexicalValueOccurrence,
   CallableOccurrence,
+  FieldOccurrence,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
   InconsistentOccurrenceContainment,
   WrongOccurrenceCategory,
   occurrence_id_allocator_initial,
+  occurrence_id_allocator_advance_to,
+  authored_token_ordinal_space_from_allocator,
   alloc_occurrence_id,
   occurrence_transport_refusal,
 }
@@ -398,4 +402,452 @@ test fn namespace_occurrence_validator_large_population_holds() -> Bool {
   occurrence_transport_refusal(transport: large) == none &&
   (small.index.entries |> count) == 256 &&
   (large.index.entries |> count) == 512
+}
+
+data namespace_occurrence_transport_superseded_extract_note: String = "Extracted from superseded PR 7383 (session/valiant-cat-127), re-expressed at this file's shared-authority layer per namespace_occurrence_transport_shared_witness_note: the parser realization of these claims lives in v1.tests.claim.pattern_binder_declaration_node_test, and the serde round-trip plus linear resource receipts live in src/v1/stage0/tests/namespace_occurrence_serde.rs. The residue carried here: a populated declarations-plus-references transport that validates green, equal-text minting at four occurrences, allocator-scope continuation through occurrence_id_allocator_advance_to over AuthoredTokenOrdinalSpace, and green nonempty-ancestor containment for every pattern binder form."
+
+type OccurrenceIdDistinctness {
+  seen: Map<Int, Bool>
+  distinct: Bool
+}
+
+fn occurrence_id_values_all_distinct(values: List<Int>) -> Bool {
+  let build = fold(
+    values,
+    init: OccurrenceIdDistinctness { seen: empty_map(), distinct: true },
+    f: (acc, value) =>
+      match map_get(acc.seen, value) {
+        Present { value: _ } =>
+          OccurrenceIdDistinctness { seen: acc.seen, distinct: false }
+        Absent =>
+          OccurrenceIdDistinctness {
+            seen: map_insert(acc.seen, value, true),
+            distinct: acc.distinct,
+          }
+      }
+  )
+  build.distinct
+}
+
+fn lexical_declaration_count(
+  declarations: List<DeclarationOccurrence>
+) -> Int {
+  fold(
+    declarations,
+    init: 0,
+    f: (total, declaration) =>
+      match declaration.category {
+        LexicalValueOccurrence => total + 1
+        _ => total
+      }
+  )
+}
+
+fn field_declaration_count(
+  declarations: List<DeclarationOccurrence>
+) -> Int {
+  fold(
+    declarations,
+    init: 0,
+    f: (total, declaration) =>
+      match declaration.category {
+        FieldOccurrence => total + 1
+        _ => total
+      }
+  )
+}
+
+fn lexical_reference_count(
+  references: List<ReferenceOccurrence>
+) -> Int {
+  fold(
+    references,
+    init: 0,
+    f: (total, reference) =>
+      match reference.category {
+        LexicalValueOccurrence => total + 1
+        _ => total
+      }
+  )
+}
+
+fn callable_reference_count(
+  references: List<ReferenceOccurrence>
+) -> Int {
+  fold(
+    references,
+    init: 0,
+    f: (total, reference) =>
+      match reference.category {
+        CallableOccurrence => total + 1
+        _ => total
+      }
+  )
+}
+
+fn equal_text_span(
+  occurrence: std.occurrence_identity.OccurrenceId
+) -> std.types.SourceSpan {
+  fixture_span(
+    file: "occurrence-equal-text.dag",
+    start: occurrence.value,
+    end: occurrence.value + 1
+  )
+}
+
+fn fixture_declaration(
+  occurrence: std.occurrence_identity.OccurrenceId,
+  category: OccurrenceCategory,
+  span: std.types.SourceSpan
+) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: fixture_path(ancestors: Empty, terminal: occurrence),
+    category: category,
+    diagnostic_span: span,
+  }
+}
+
+fn fixture_reference(
+  occurrence: std.occurrence_identity.OccurrenceId,
+  category: OccurrenceCategory,
+  span: std.types.SourceSpan
+) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: fixture_path(ancestors: Empty, terminal: occurrence),
+    category: category,
+    diagnostic_span: span,
+  }
+}
+
+test fn w_namespace_occurrence_transport_mints_distinct_equal_text() -> Bool {
+  let left_decl = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
+  let left_param = alloc_occurrence_id(alloc: left_decl.alloc)
+  let left_body = alloc_occurrence_id(alloc: left_param.alloc)
+  let right_decl = alloc_occurrence_id(alloc: left_body.alloc)
+  let right_param = alloc_occurrence_id(alloc: right_decl.alloc)
+  let right_callee = alloc_occurrence_id(alloc: right_param.alloc)
+  let right_arg = alloc_occurrence_id(alloc: right_callee.alloc)
+  let transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: left_decl.id,
+          authored_name: "left",
+          span: equal_text_span(occurrence: left_decl.id)
+        ),
+        fixture_index_entry(
+          occurrence: left_param.id,
+          authored_name: "x",
+          span: equal_text_span(occurrence: left_param.id)
+        ),
+        fixture_index_entry(
+          occurrence: left_body.id,
+          authored_name: "x",
+          span: equal_text_span(occurrence: left_body.id)
+        ),
+        fixture_index_entry(
+          occurrence: right_decl.id,
+          authored_name: "right",
+          span: equal_text_span(occurrence: right_decl.id)
+        ),
+        fixture_index_entry(
+          occurrence: right_param.id,
+          authored_name: "x",
+          span: equal_text_span(occurrence: right_param.id)
+        ),
+        fixture_index_entry(
+          occurrence: right_callee.id,
+          authored_name: "left",
+          span: equal_text_span(occurrence: right_callee.id)
+        ),
+        fixture_index_entry(
+          occurrence: right_arg.id,
+          authored_name: "x",
+          span: equal_text_span(occurrence: right_arg.id)
+        )
+      ],
+    },
+    declarations: [
+      fixture_declaration(
+        occurrence: left_decl.id,
+        category: CallableOccurrence,
+        span: equal_text_span(occurrence: left_decl.id)
+      ),
+      fixture_declaration(
+        occurrence: left_param.id,
+        category: LexicalValueOccurrence,
+        span: equal_text_span(occurrence: left_param.id)
+      ),
+      fixture_declaration(
+        occurrence: right_decl.id,
+        category: CallableOccurrence,
+        span: equal_text_span(occurrence: right_decl.id)
+      ),
+      fixture_declaration(
+        occurrence: right_param.id,
+        category: LexicalValueOccurrence,
+        span: equal_text_span(occurrence: right_param.id)
+      )
+    ],
+    references: [
+      fixture_reference(
+        occurrence: left_body.id,
+        category: LexicalValueOccurrence,
+        span: equal_text_span(occurrence: left_body.id)
+      ),
+      fixture_reference(
+        occurrence: right_callee.id,
+        category: CallableOccurrence,
+        span: equal_text_span(occurrence: right_callee.id)
+      ),
+      fixture_reference(
+        occurrence: right_arg.id,
+        category: LexicalValueOccurrence,
+        span: equal_text_span(occurrence: right_arg.id)
+      )
+    ],
+  }
+  let equal_text_x = transport.index.entries
+    |> filter(entry => entry.projection.authored_name == "x")
+  occurrence_id_values_all_distinct(
+    values: transport.index.entries
+      |> map(entry => entry.projection.occurrence.value)
+  ) &&
+  (equal_text_x |> count) == 4 &&
+  occurrence_id_values_all_distinct(
+    values: equal_text_x
+      |> map(entry => entry.projection.occurrence.value)
+  ) &&
+  lexical_declaration_count(declarations: transport.declarations) == 2 &&
+  lexical_reference_count(references: transport.references) == 2 &&
+  callable_reference_count(references: transport.references) == 1 &&
+  occurrence_transport_refusal(transport: transport) == none
+}
+
+test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool {
+  let first_a = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
+  let first_b = alloc_occurrence_id(alloc: first_a.alloc)
+  let continued = occurrence_id_allocator_advance_to(
+    alloc: occurrence_id_allocator_initial(),
+    min_next: authored_token_ordinal_space_from_allocator(alloc: first_b.alloc)
+  )
+  let second_a = alloc_occurrence_id(alloc: continued)
+  let second_b = alloc_occurrence_id(alloc: second_a.alloc)
+  let already_ahead = occurrence_id_allocator_advance_to(
+    alloc: second_b.alloc,
+    min_next: authored_token_ordinal_space_from_allocator(alloc: first_b.alloc)
+  )
+  occurrence_id_values_all_distinct(values: [
+    first_a.id.value,
+    first_b.id.value,
+    second_a.id.value,
+    second_b.id.value
+  ]) &&
+  second_a.id.value == first_b.alloc.next_id &&
+  already_ahead.next_id == second_b.alloc.next_id
+}
+
+type AncestoredDeclarationFixture {
+  entry: OccurrenceIndexEntry
+  declaration: DeclarationOccurrence
+}
+
+fn fixture_ancestored_declaration(
+  occurrence: std.occurrence_identity.OccurrenceId,
+  ancestors: List<std.occurrence_identity.OccurrenceId>,
+  authored_name: String,
+  category: OccurrenceCategory,
+  span: std.types.SourceSpan
+) -> AncestoredDeclarationFixture {
+  let containment = fixture_path(ancestors: ancestors, terminal: occurrence)
+  AncestoredDeclarationFixture {
+    entry: OccurrenceIndexEntry {
+      projection: OccurrenceProjection {
+        occurrence: occurrence,
+        authored_name: authored_name,
+        diagnostic_span: span,
+      },
+      containment: containment,
+    },
+    declaration: DeclarationOccurrence {
+      occurrence: occurrence,
+      containment: containment,
+      category: category,
+      diagnostic_span: span,
+    },
+  }
+}
+
+fn pattern_binder_span(base: Int, offset: Int) -> std.types.SourceSpan {
+  fixture_span(
+    file: "pattern-binder-fixture.dag",
+    start: base + offset,
+    end: base + offset + 1
+  )
+}
+
+fn direct_binder_pattern_transport(base: Int) -> OccurrenceTransport {
+  let arm = std.occurrence_identity.OccurrenceId { value: base }
+  let binder = fixture_ancestored_declaration(
+    occurrence: std.occurrence_identity.OccurrenceId { value: base + 1 },
+    ancestors: [arm],
+    authored_name: "direct_bind",
+    category: LexicalValueOccurrence,
+    span: pattern_binder_span(base: base, offset: 1)
+  )
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: arm,
+          authored_name: "arm",
+          span: pattern_binder_span(base: base, offset: 0)
+        ),
+        binder.entry
+      ],
+    },
+    declarations: [binder.declaration],
+    references: [],
+  }
+}
+
+fn field_binder_pattern_transport(
+  base: Int,
+  field_name: String,
+  binder_name: String
+) -> OccurrenceTransport {
+  let arm = std.occurrence_identity.OccurrenceId { value: base }
+  let field_id = std.occurrence_identity.OccurrenceId { value: base + 1 }
+  let field = fixture_ancestored_declaration(
+    occurrence: field_id,
+    ancestors: [arm],
+    authored_name: field_name,
+    category: FieldOccurrence,
+    span: pattern_binder_span(base: base, offset: 1)
+  )
+  let binder = fixture_ancestored_declaration(
+    occurrence: std.occurrence_identity.OccurrenceId { value: base + 2 },
+    ancestors: [arm, field_id],
+    authored_name: binder_name,
+    category: LexicalValueOccurrence,
+    span: pattern_binder_span(base: base, offset: 2)
+  )
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: arm,
+          authored_name: "arm",
+          span: pattern_binder_span(base: base, offset: 0)
+        ),
+        field.entry,
+        binder.entry
+      ],
+    },
+    declarations: [field.declaration, binder.declaration],
+    references: [],
+  }
+}
+
+fn nested_binder_pattern_transport(base: Int) -> OccurrenceTransport {
+  let arm = std.occurrence_identity.OccurrenceId { value: base }
+  let pair_id = std.occurrence_identity.OccurrenceId { value: base + 1 }
+  let left_id = std.occurrence_identity.OccurrenceId { value: base + 2 }
+  let pair_field = fixture_ancestored_declaration(
+    occurrence: pair_id,
+    ancestors: [arm],
+    authored_name: "pair",
+    category: FieldOccurrence,
+    span: pattern_binder_span(base: base, offset: 1)
+  )
+  let left_field = fixture_ancestored_declaration(
+    occurrence: left_id,
+    ancestors: [arm, pair_id],
+    authored_name: "left",
+    category: FieldOccurrence,
+    span: pattern_binder_span(base: base, offset: 2)
+  )
+  let binder = fixture_ancestored_declaration(
+    occurrence: std.occurrence_identity.OccurrenceId { value: base + 3 },
+    ancestors: [arm, pair_id, left_id],
+    authored_name: "nested_bind",
+    category: LexicalValueOccurrence,
+    span: pattern_binder_span(base: base, offset: 3)
+  )
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: arm,
+          authored_name: "arm",
+          span: pattern_binder_span(base: base, offset: 0)
+        ),
+        pair_field.entry,
+        left_field.entry,
+        binder.entry
+      ],
+    },
+    declarations: [
+      pair_field.declaration,
+      left_field.declaration,
+      binder.declaration
+    ],
+    references: [],
+  }
+}
+
+fn pattern_fixture_has_roles(
+  transport: OccurrenceTransport,
+  lexical_minimum: Int,
+  field_minimum: Int
+) -> Bool {
+  lexical_declaration_count(
+    declarations: transport.declarations
+  ) >= lexical_minimum &&
+  field_declaration_count(
+    declarations: transport.declarations
+  ) >= field_minimum &&
+  occurrence_transport_refusal(transport: transport) == none
+}
+
+test fn w_namespace_occurrence_transport_covers_pattern_binder_forms() -> Bool {
+  pattern_fixture_has_roles(
+    transport: direct_binder_pattern_transport(base: 0),
+    lexical_minimum: 1,
+    field_minimum: 0
+  ) &&
+  pattern_fixture_has_roles(
+    transport: field_binder_pattern_transport(
+      base: 10,
+      field_name: "left",
+      binder_name: "explicit_bind"
+    ),
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    transport: field_binder_pattern_transport(
+      base: 20,
+      field_name: "shorthand_only",
+      binder_name: "shorthand_only"
+    ),
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    transport: field_binder_pattern_transport(
+      base: 30,
+      field_name: "positional_slot",
+      binder_name: "positional_bind"
+    ),
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    transport: nested_binder_pattern_transport(base: 40),
+    lexical_minimum: 1,
+    field_minimum: 2
+  )
 }
