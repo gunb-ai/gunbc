@@ -36,53 +36,36 @@ data orch_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/c
 
 data orch_while_body_command: String = "d=$(dirname \"$d\")"
 
-fn orch_while_path_ref() -> PathIntent {
-  PathRef { name: "d" as NonEmptyStr }
+test data orch_while_path_ref: PathIntent = PathRef { name: "d" as NonEmptyStr }
+
+test data orch_while_root_path: PathIntent = PathLiteral {
+  parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
 }
 
-fn orch_while_root_path() -> PathIntent {
-  PathLiteral {
-    parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
-  }
+test data orch_while_memory_peak_path: PathIntent = PathJoin {
+  base: orch_while_path_ref,
+  suffix: FilePathParts { segments: ["memory.peak"] }
 }
 
-fn orch_while_memory_peak_path() -> PathIntent {
-  PathJoin {
-    base: orch_while_path_ref(),
-    suffix: FilePathParts { segments: ["memory.peak"] }
-  }
-}
-
-fn orch_while_predicate() -> std.path_intent.PathPredicate {
-  And {
-    lhs: PathNonempty { path: orch_while_path_ref() },
-    rhs: And {
-      lhs: PathNotEq {
-        lhs: orch_while_path_ref(),
-        rhs: orch_while_root_path()
-      },
-      rhs: Not {
-        inner: PathEntryKind {
-          path: orch_while_memory_peak_path(),
-          kind: RegularFile
-        }
+test data orch_while_predicate: std.path_intent.PathPredicate = And {
+  lhs: PathNonempty { path: orch_while_path_ref },
+  rhs: And {
+    lhs: PathNotEq {
+      lhs: orch_while_path_ref,
+      rhs: orch_while_root_path
+    },
+    rhs: Not {
+      inner: PathEntryKind {
+        path: orch_while_memory_peak_path,
+        kind: RegularFile
       }
     }
   }
 }
 
-fn orch_while_ascent() -> DirnameAscent {
-  DirnameAscent {
-    path: orch_while_path_ref(),
-    target: "d" as NonEmptyStr
-  }
-}
-
-fn typed_orch_while_path_kind(kind: std.filesystem.types.EntryKind) -> std.path_intent.PathPredicate {
-  PathEntryKind {
-    path: orch_while_memory_peak_path(),
-    kind: kind
-  }
+test data orch_while_ascent: DirnameAscent = DirnameAscent {
+  path: orch_while_path_ref,
+  target: "d" as NonEmptyStr
 }
 
 test data orch_while_locate_intent: PipelineStep = While {
@@ -238,4 +221,40 @@ test fn orch_while_raw_while_perturbation_changes_bytes_holds() -> Bool {
       source.carried != orch_while_locate_golden
     Rejected { diagnostics: _ } => false
   }
+}
+
+test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
+  let regular = match bash_path_predicate_target_model(
+    predicate: PathEntryKind {
+      path: orch_while_memory_peak_path,
+      kind: RegularFile
+    }
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    Rejected { diagnostics: _ } => ""
+  }
+  let directory = match bash_path_predicate_target_model(
+    predicate: PathEntryKind {
+      path: orch_while_memory_peak_path,
+      kind: Directory
+    }
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    Rejected { diagnostics: _ } => ""
+  }
+  let missing = match bash_path_predicate_target_model(
+    predicate: PathEntryKind {
+      path: orch_while_memory_peak_path,
+      kind: Missing
+    }
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
+    Rejected { diagnostics: _ } => ""
+  }
+  (regular == "[ -f \"$d/memory.peak\" ]")
+    && (directory == "[ -d \"$d/memory.peak\" ]")
+    && (missing == "[ ! -e \"$d/memory.peak\" ]")
+    && (regular != directory)
+    && (regular != missing)
+    && (directory != missing)
 }
