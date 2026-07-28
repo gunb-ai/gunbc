@@ -1696,13 +1696,16 @@ fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
 ) -> Set<RequiredTraitWitness> {
   Set {
     member: fn(requirement) {
-      match requirement {
-        TargetCollectionWitnessEq { type_param: type_param } =>
-          type_param == representation_parameter
-        TargetCollectionWitnessHash { type_param: type_param } =>
-          type_param == representation_parameter
-        TargetCollectionWitnessOrd { type_param: _ } => false
-      }
+      fold_list(
+        xs: [
+          TargetCollectionWitnessEq { type_param: representation_parameter },
+          TargetCollectionWitnessHash { type_param: representation_parameter }
+        ],
+        empty: false,
+        cons: fn(found, expected) {
+          found || requirement == expected
+        }
+      )
     }
   }
 }
