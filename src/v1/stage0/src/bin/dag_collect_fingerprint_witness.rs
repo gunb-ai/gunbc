@@ -50,6 +50,7 @@ fn shell_node(
     Rc::new(Node {
         name: name.to_string(),
         ident: None,
+        occurrence_identity: None,
         span: synth_span(),
         ident_span: None,
         children: Rc::new(children.into()),
