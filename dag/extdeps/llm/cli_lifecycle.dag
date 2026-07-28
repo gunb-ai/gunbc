@@ -1,0 +1,97 @@
+module extdeps.llm.cli_lifecycle
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.llm.cli { claude_cli_external_authority_anchor }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.chatgpt.com/docs/agent-approvals-security"
+  }
+}
+
+data codex_cli_auth_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.chatgpt.com/docs/auth"
+  }
+}
+
+data claude_cli_lifecycle_external_authority: ExternalAuthority = claude_cli_external_authority_anchor
+
+type ProviderKind
+  = ClaudeCliProvider
+  | CodexCliProvider
+
+fn provider_kind_label(kind: ProviderKind) -> String {
+  match kind {
+    ClaudeCliProvider => "Claude"
+    CodexCliProvider => "Codex"
+  }
+}
+
+type ProviderInstanceField
+  = ProviderInstanceFieldObserved { value: NonEmptyStr }
+  | ProviderInstanceFieldUnobserved { reason: NonEmptyStr }
+
+type ProviderInstance {
+  kind: ProviderKind
+  host: ProviderInstanceField
+  executable: NonEmptyStr
+  observed_version: ProviderInstanceField
+  state_directory: ProviderInstanceField
+  credential_storage_method: ProviderInstanceField
+  service_identity: ProviderInstanceField
+}
+
+type ProviderReadiness
+  = ProviderReadinessUnobserved { reason: NonEmptyStr }
+  | ProviderExecutableMissing
+  | ProviderVersionDrift { observed: NonEmptyStr, expected: NonEmptyStr }
+  | ProviderSetupRequired
+  | ProviderCredentialsAbsent
+  | ProviderCredentialsRecordedUnverified
+  | ProviderAccessTokenExpired
+  | ProviderRefreshFailed { reason: NonEmptyStr }
+  | ProviderAuthenticated
+  | ProviderQuotaExhausted
+  | ProviderRateLimited
+  | ProviderRequestRefused { reason: NonEmptyStr }
+
+fn provider_readiness_label(readiness: ProviderReadiness) -> String {
+  match readiness {
+    ProviderReadinessUnobserved { reason: _ } => "readiness unobserved"
+    ProviderExecutableMissing => "executable missing"
+    ProviderVersionDrift { observed: _, expected: _ } => "version drift"
+    ProviderSetupRequired => "setup required"
+    ProviderCredentialsAbsent => "credentials absent"
+    ProviderCredentialsRecordedUnverified => "credentials recorded, unverified"
+    ProviderAccessTokenExpired => "access token expired"
+    ProviderRefreshFailed { reason: _ } => "authentication refresh failed"
+    ProviderAuthenticated => "authenticated"
+    ProviderQuotaExhausted => "quota exhausted"
+    ProviderRateLimited => "rate limited"
+    ProviderRequestRefused { reason: _ } => "request refused"
+  }
+}
+
+type ToolExecutionReadiness
+  = ToolExecutionReadinessUnobserved { reason: NonEmptyStr }
+  | SandboxHandlerMissing
+  | SandboxOsPolicyMissing
+  | SandboxProbeFailed { reason: NonEmptyStr }
+  | SandboxShellSucceeded
+
+fn tool_execution_readiness_label(readiness: ToolExecutionReadiness) -> String {
+  match readiness {
+    ToolExecutionReadinessUnobserved { reason: _ } => "tool readiness unobserved"
+    SandboxHandlerMissing => "sandbox handler missing"
+    SandboxOsPolicyMissing => "sandbox OS policy missing"
+    SandboxProbeFailed { reason: _ } => "sandbox unavailable"
+    SandboxShellSucceeded => "sandbox shell ready"
+  }
+}
+
+data cli_lifecycle_fact_separation_note: String = "CLI-provider lifecycle facts are upstream-shaped and independent. ProviderInstance identifies WHICH installation and credential chain an observation belongs to. ProviderReadiness answers whether that installation can obtain a model response; a recorded login is deliberately distinct from ProviderAuthenticated because a real request can still refuse on refresh. ToolExecutionReadiness answers the later sandbox/tool question; a successful model response cannot imply SandboxShellSucceeded. No stdout/stderr classifier lands until a real CLI transcript supplies its exact wire signal. Unknown evidence stays typed as Unobserved, never widened to a healthy state."

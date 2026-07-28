@@ -9,6 +9,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parent_id: RoadmapNodeId = "invert-hand-maintained"
+data second_parent_id: RoadmapNodeId = "model-before-implement"
 data child_id: RoadmapNodeId = "pr-checkbox-status"
 
 fn parent_node() -> RoadmapNode {
@@ -87,6 +88,22 @@ test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
+test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
+  let es = [
+    RoadmapEdge { child: child_id, parent: parent_id },
+    RoadmapEdge { child: child_id, parent: second_parent_id },
+  ]
+  let out = serialize_markdown_source(doc: project_roadmap_section(
+    title: "6. Expansion",
+    elements: [section_group(label: "", nodes: nodes(), edges: es)],
+    merged: [],
+  ))
+  string_contains(
+    s: out,
+    pattern: "requires all: invert-hand-maintained, model-before-implement",
+  )
+}
+
 fn superseded_child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
@@ -103,4 +120,3 @@ test fn witness_superseded_checked_struck_no_signoff_suffix() -> Bool {
   string_contains(s: out, pattern: "[x] ~~**PR-checkbox status**~~ **superseded →** successor-lane")
     && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
-
