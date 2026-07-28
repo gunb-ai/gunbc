@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
+    use crate::v1_rt::VecCompat;
     use im::HashMap;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
