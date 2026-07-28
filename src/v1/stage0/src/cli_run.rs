@@ -10722,7 +10722,13 @@ impl ScopedRunObservation {
                 return Err("scoped run monotonic Nanosecond wall regressed".to_string());
             }
             self.last_wall_ns = wall_ns;
-            args.push((Some("wall_ns".to_string()), Value::Int(wall_ns as i64)));
+            args.push((
+                Some("wall".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(self.ctx.sym("count"), Value::Int(wall_ns as i64))]),
+                },
+            ));
         }
         args.extend([
             (
@@ -10843,12 +10849,24 @@ impl ScopedRunObservation {
         use v1_interpreter::Value;
         let args = vec![
             (
-                Some("wall_ns".to_string()),
-                Value::Int(self.last_wall_ns as i64),
+                Some("wall".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(
+                        self.ctx.sym("count"),
+                        Value::Int(self.last_wall_ns as i64),
+                    )]),
+                },
             ),
             (
-                Some("seed_resolution_ns".to_string()),
-                Value::Int(self.seed_resolution_ns as i64),
+                Some("seed_resolution".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(
+                        self.ctx.sym("count"),
+                        Value::Int(self.seed_resolution_ns as i64),
+                    )]),
+                },
             ),
         ];
         let receipt = v1_interpreter::run_in_context_with_args(
