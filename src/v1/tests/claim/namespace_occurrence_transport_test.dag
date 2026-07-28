@@ -147,6 +147,10 @@ fn pattern_occurrence_fixture(source: String) -> PatternOccurrenceFixture {
     ctx: ParseContext {
       source_indices: source_indices,
       intern_table: empty_intern_table(),
+      occurrence_allocator: none,
+      occurrence_index: none,
+      declaration_occurrences: none,
+      reference_occurrences: none,
     }
   )
   match parsed.err {
