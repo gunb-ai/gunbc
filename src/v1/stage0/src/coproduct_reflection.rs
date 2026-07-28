@@ -7,6 +7,7 @@ use crate::cli_run::{
     collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
 };
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
@@ -1277,8 +1278,42 @@ fn typed_nullary_coproduct_item_from_call(call: &Rc<Node>) -> InterpResult<Rc<No
     Ok(item)
 }
 
-fn same_type_declaration(left: &Rc<Node>, right: &Rc<Node>) -> bool {
-    left.span == right.span && left.ident_span == right.ident_span
+fn syntax_tree_contains_call(root: &Rc<Node>, call: &Rc<Node>) -> bool {
+    Rc::ptr_eq(root, call)
+        || root
+            .children
+            .iter()
+            .any(|child| syntax_tree_contains_call(child, call))
+        || root
+            .body
+            .as_ref()
+            .is_some_and(|body| syntax_tree_contains_call(body, call))
+}
+
+fn requested_declaration_from_call(
+    ctx: &InterpContext,
+    call: &Rc<Node>,
+    type_name: &str,
+) -> InterpResult<Rc<Node>> {
+    let module = ctx
+        .modules
+        .iter()
+        .find(|module| {
+            module
+                .items
+                .iter()
+                .any(|item| syntax_tree_contains_call(item, call))
+        })
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: typed call owner missing".to_string(),
+        })?;
+    lookup_binding_by_name(module.type_env.clone(), type_name.to_string())
+        .map(|binding| binding.resolved.clone())
+        .filter(|node| node.connective == Connective::Disj)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: requested type is not a visible closed coproduct"
+                .to_string(),
+        })
 }
 
 pub fn eval_coproduct_nullary_inhabitants(
@@ -1290,23 +1325,23 @@ pub fn eval_coproduct_nullary_inhabitants(
         args.first().map(|(_, v)| v),
         "coproduct_nullary_inhabitants",
     )?;
-    let (item, _) = type_item_by_name(ctx, type_name)?;
+    let requested_declaration = requested_declaration_from_call(ctx, call, type_name)?;
     let typed_item = typed_nullary_coproduct_item_from_call(call)?;
-    if !same_type_declaration(item, &typed_item) {
+    if !Rc::ptr_eq(&requested_declaration, &typed_item) {
         return Ok(outcome_rejected_value(
             ctx,
             "coproduct_nullary_inhabitants: requested type does not match typed discriminator",
         ));
     }
-    if item.connective != Connective::Disj {
+    if requested_declaration.connective != Connective::Disj {
         return Err(InterpError::TypeError {
             msg: "coproduct_nullary_inhabitants: not a closed coproduct".to_string(),
         });
     }
     let si = ctx.source_indices();
-    let reflected_type_name = authored_name_at(si.clone(), typed_item);
-    let mut inhabitants = Vec::with_capacity(item.children.len());
-    for variant in item.children.iter() {
+    let reflected_type_name = authored_name_at(si.clone(), requested_declaration.clone());
+    let mut inhabitants = Vec::with_capacity(requested_declaration.children.len());
+    for variant in requested_declaration.children.iter() {
         if !variant_is_nullary(variant) {
             return Ok(outcome_rejected_value(
                 ctx,
