@@ -52,6 +52,8 @@ import gunbc.roadmap_dashboard_instance_apply {
   dashboard_apply_preflight_json_value,
   dashboard_bootstrap_preflight_decision,
   dashboard_required_target_executables,
+  dashboard_health_poll_seconds,
+  dashboard_health_poll_attempts,
 }
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
@@ -265,6 +267,14 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
       required,
       path => path == ("/home/briansrls/.cargo/bin/rustfmt" as FilePath),
     )
+}
+
+data dashboard_poll_interval_witness_note: String = "This witness exists because a data row can typecheck and still fail to EVALUATE: dashboard_health_poll_seconds was authored as `2 as Seconds` and no single-entry witness run forced the row, so it went green locally and reded only in CI's affected-set re-eval leg, which evaluates changed data items (`cannot cast Int to Seconds` — the interpreter has no cast into a branded scalar; the corpus idiom is a bare literal, as in srv3_install_hang_no_installer_progress_ms: Milliseconds). Reading the value here forces the evaluation locally, so the same authoring mistake reds in the witness run rather than 15 minutes into the floor."
+
+test fn dashboard_poll_interval_is_a_usable_duration() -> Bool {
+  dashboard_health_poll_seconds == 2
+    && to_string(dashboard_health_poll_seconds) == "2"
+    && dashboard_health_poll_attempts == 31
 }
 
 data dashboard_health_identity_witness_note: String = "review 44058. The served document is the oracle, so the green arm feeds dashboard_instance_json's real output rather than a hand-spelled stub — a stub is exactly what let the previous scan look correct while accepting anything. The REDs are the two ways a wrong server passes a scan but must fail positional identity: a different instance, and a document that merely MENTIONS the wanted id in a nested value."
@@ -520,4 +530,5 @@ test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
     && dashboard_refusal_receipt_is_typed_and_located()
     && dashboard_dirty_controller_source_refuses_before_apply()
     && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
+    && dashboard_poll_interval_is_a_usable_duration()
 }

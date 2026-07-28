@@ -1,6 +1,7 @@
 module test.claim.roadmap_provider_events_witness_test
 
 import std.types { Bool, String }
+import std.measure { character_count, character_count_value }
 import gunbc.roadmap_provider_events {
   CodexEventsParsed,
   CodexEventsRefused,
@@ -10,6 +11,10 @@ import gunbc.roadmap_provider_events {
   ProviderEventsRefused,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
+  codex_provider_event_line_observation_budget,
+  codex_provider_projection_type_budget,
+  codex_provider_projection_detail_budget,
+  codex_provider_event_projection_filter,
   provider_execution_state,
   provider_execution_state_label,
   provider_execution_detail,
@@ -134,7 +139,7 @@ test fn oversized_event_refuses_without_echoing_payload() -> Bool {
   ], "")
   match parse_codex_jsonl_with_line_budget(
     text: oversized,
-    max_line_chars: 48,
+    line_budget: character_count(count: 48),
   ) {
     CodexEventsParsed { events: _ } => false
     CodexEventsRefused {
@@ -158,7 +163,7 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
       "{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
       "{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"aggregated_output\":\"payload too large\"}}\n",
     ], ""),
-    max_line_chars: 80,
+    line_budget: character_count(count: 80),
   )
   match provider_execution_state(parsed: parsed) {
     ProviderEventsRefused { activity, detail } =>
@@ -166,6 +171,18 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
         && string_contains(s: detail, pattern: "observation line budget 80")
     _ => false
   }
+}
+
+data codex_budget_row_evaluation_witness_note: String = "Forces the three CharacterCount budget rows to EVALUATE, not merely typecheck. A data row can pass every single-entry witness and still fail in CI's affected-set re-eval leg, which evaluates changed data items — that is exactly how `2 as Seconds` shipped green from this branch. Reading the values here makes an unevaluable budget row red locally."
+
+test fn codex_character_budgets_are_measured_counts() -> Bool {
+  character_count_value(c: codex_provider_event_line_observation_budget) == 65536
+    && character_count_value(c: codex_provider_projection_type_budget) == 128
+    && character_count_value(c: codex_provider_projection_detail_budget) == 4096
+    && string_contains(
+      s: codex_provider_event_projection_filter as String,
+      pattern: "[0:128]",
+    )
 }
 
 data codex_item_activity_anchor_witness_note: String = "review 44058. The activity read used to scan the WHOLE projected line for a \"type\":\"…\" fragment, so a sibling or nested object carrying another item type reclassified the pane — the same shape the top-level classifier is already anchored against (nested_type_token_cannot_fabricate_terminal_success, right above). The pair is discriminating in both directions: the forged line puts item.type = agent_message beside a sibling object spelling file_change, and the old scan answered \"editing files\" on it because file_change is tested before agent_message; the genuine line proves the anchored walk still finds a real file_change rather than having simply stopped working. Reachability: today the projector emits only a top-level type plus an item object carrying only its own type, so the sibling shape arrives on projector drift or on any future direct read of the raw stream — this is the defense-in-depth the top-level anchor already carries, applied to the member beneath it."

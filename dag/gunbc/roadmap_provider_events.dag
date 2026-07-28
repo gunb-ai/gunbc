@@ -1,6 +1,12 @@
 module gunbc.roadmap_provider_events
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure {
+  CharacterCount,
+  character_count,
+  character_count_value,
+  measure_le,
+}
 import extdeps.languages.json.grammar {
   JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
   json_text_parseable,
@@ -61,22 +67,24 @@ type ProviderExecutionState
   | ProviderFailed { activity: String, detail: String }
   | ProviderEventsRefused { activity: String, detail: String }
 
-data codex_provider_event_line_observation_budget_chars: Int = 65536
+data codex_character_budget_note: String = "review 44089. These are budgets measured in CHARACTERS — a count of a unit, not a bare scalar — so they consume std.measure's CharacterCount on the same Measure<Count, One, Nat> axis HardwareThreadCount instantiates, and the oversize test is measure_le rather than a raw >. The wire spellings (the jq slice bounds and the refusal text) project the count at the boundary; the budgets themselves never travel as Int."
 
-data codex_provider_projection_type_chars: Int = 128
-data codex_provider_projection_detail_chars: Int = 4096
+data codex_provider_event_line_observation_budget: CharacterCount = character_count(count: 65536)
+
+data codex_provider_projection_type_budget: CharacterCount = character_count(count: 128)
+data codex_provider_projection_detail_budget: CharacterCount = character_count(count: 4096)
 
 data codex_provider_event_projection_filter: NonEmptyStr = join([
   "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
-  to_string(codex_provider_projection_type_chars),
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
   "] else \"unknown\" end; def item_type: if (.item.type | type) == \"string\" then .item.type[0:",
-  to_string(codex_provider_projection_type_chars),
+  to_string(character_count_value(c: codex_provider_projection_type_budget)),
   "] else \"unknown\" end; def bounded_text: if . == null then \"\" elif type == \"string\" then .[0:",
-  to_string(codex_provider_projection_detail_chars),
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
   "] elif type == \"object\" and (.message | type) == \"string\" then .message[0:",
-  to_string(codex_provider_projection_detail_chars),
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
   "] else tostring[0:",
-  to_string(codex_provider_projection_detail_chars),
+  to_string(character_count_value(c: codex_provider_projection_detail_budget)),
   "] end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then {\"type\":$type,\"item\":{\"type\":item_type}} elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} else {\"type\":$type} end",
 ], "") as NonEmptyStr
 
@@ -286,7 +294,7 @@ fn codex_event_from_complete_line(
 fn codex_parse_fold_line(
   state: CodexParseFold,
   line: String,
-  max_line_chars: Int,
+  line_budget: CharacterCount,
 ) -> CodexParseFold {
   if state.refused {
     CodexParseFold {
@@ -300,7 +308,7 @@ fn codex_parse_fold_line(
     }
   } else {
     let raw = trim(line)
-    let raw_chars = string_length(s: raw)
+    let raw_chars = character_count(count: string_length(s: raw))
     let is_trailing_empty = raw == ""
       && state.next_line_number == state.total_lines
     if is_trailing_empty {
@@ -313,7 +321,7 @@ fn codex_parse_fold_line(
         refused_raw: "",
         refused_reason: "",
       }
-    } else if raw_chars > max_line_chars {
+    } else if !measure_le(a: raw_chars, b: line_budget) {
       CodexParseFold {
         events: state.events,
         next_line_number: state.next_line_number + 1,
@@ -322,12 +330,12 @@ fn codex_parse_fold_line(
         refused_line_number: state.next_line_number,
         refused_raw: join([
           "<oversized Codex JSONL event elided: ",
-          to_string(raw_chars),
+          to_string(character_count_value(c: raw_chars)),
           " chars>",
         ], ""),
         refused_reason: join([
           "Codex JSONL event exceeds observation line budget ",
-          to_string(max_line_chars),
+          to_string(character_count_value(c: line_budget)),
           " chars; full raw remains in attempt evidence",
         ], ""),
       }
@@ -383,7 +391,7 @@ fn codex_parse_fold_line(
 
 fn parse_codex_jsonl_with_line_budget(
   text: String,
-  max_line_chars: Int,
+  line_budget: CharacterCount,
 ) -> CodexEventParse {
   if text == "" {
     CodexEventsParsed { events: [] }
@@ -404,7 +412,7 @@ fn parse_codex_jsonl_with_line_budget(
         codex_parse_fold_line(
           state: acc,
           line: line,
-          max_line_chars: max_line_chars,
+          line_budget: line_budget,
         )
       },
     )
@@ -424,7 +432,7 @@ fn parse_codex_jsonl_with_line_budget(
 fn parse_codex_jsonl(text: String) -> CodexEventParse {
   parse_codex_jsonl_with_line_budget(
     text: text,
-    max_line_chars: codex_provider_event_line_observation_budget_chars,
+    line_budget: codex_provider_event_line_observation_budget,
   )
 }
 
