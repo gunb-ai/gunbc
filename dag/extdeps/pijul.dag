@@ -394,21 +394,32 @@ fn pijul_vertex_known_or_declared_missing(
       |> count > 0
 }
 
+type PijulDuplicateChangeIssue {
+  change: PijulChangeHash
+}
+
 fn pijul_duplicate_change(
   changes: List<PijulRecordedChange>,
-) -> PijulChangeHash? {
+) -> PijulDuplicateChangeIssue? {
   let hashes = pijul_change_hashes(changes: changes)
-  hashes |> filter(hash => pijul_hash_count(changes: hashes, target: hash) > 1) |> first
+  hashes
+    |> filter(hash => pijul_hash_count(changes: hashes, target: hash) > 1)
+    |> map(hash => PijulDuplicateChangeIssue { change: hash })
+    |> first
+}
+
+type PijulDuplicateChannelIssue {
+  channel: PijulChannelName
 }
 
 fn pijul_duplicate_channel(
   channels: List<PijulChannel>,
-) -> PijulChannelName? {
+) -> PijulDuplicateChannelIssue? {
   channels
     |> filter(channel =>
       channels |> filter(other => other.name == channel.name) |> count > 1
     )
-    |> map(channel => channel.name)
+    |> map(channel => PijulDuplicateChannelIssue { channel: channel.name })
     |> first
 }
 
@@ -464,16 +475,22 @@ fn pijul_missing_dependency_issue(
     |> first
 }
 
+type PijulSelfDependencyIssue {
+  change: PijulChangeHash
+}
+
 fn pijul_self_dependency(
   changes: List<PijulRecordedChange>,
-) -> PijulChangeHash? {
+) -> PijulSelfDependencyIssue? {
   changes
     |> filter(change =>
       change.dependencies
         |> filter(dependency => dependency.change == pijul_change_hash(change: change))
         |> count > 0
     )
-    |> map(change => pijul_change_hash(change: change))
+    |> map(change => PijulSelfDependencyIssue {
+      change: pijul_change_hash(change: change)
+    })
     |> first
 }
 
@@ -518,45 +535,61 @@ fn pijul_missing_context_issue(
     |> first
 }
 
+type PijulDuplicateVertexIssue {
+  vertex: PijulVertexId
+}
+
 fn pijul_duplicate_vertex(
   pristine: PijulPristineState,
-) -> PijulVertexId? {
+) -> PijulDuplicateVertexIssue? {
   pristine.vertices
     |> filter(vertex =>
       pristine.vertices |> filter(other => other.id == vertex.id) |> count > 1
     )
-    |> map(vertex => vertex.id)
+    |> map(vertex => PijulDuplicateVertexIssue { vertex: vertex.id })
     |> first
 }
 
-fn pijul_duplicate_tree_path(tree: PijulTree) -> PijulPath? {
+type PijulDuplicateTreePathIssue {
+  path: PijulPath
+}
+
+fn pijul_duplicate_tree_path(tree: PijulTree) -> PijulDuplicateTreePathIssue? {
   tree.entries
     |> filter(entry =>
       tree.entries |> filter(other => other.path == entry.path) |> count > 1
     )
-    |> map(entry => entry.path)
+    |> map(entry => PijulDuplicateTreePathIssue { path: entry.path })
     |> first
 }
 
-fn pijul_duplicate_tree_inode(tree: PijulTree) -> PijulInode? {
+type PijulDuplicateTreeInodeIssue {
+  inode: PijulInode
+}
+
+fn pijul_duplicate_tree_inode(tree: PijulTree) -> PijulDuplicateTreeInodeIssue? {
   tree.entries
     |> filter(entry =>
       tree.entries |> filter(other => other.inode == entry.inode) |> count > 1
     )
-    |> map(entry => entry.inode)
+    |> map(entry => PijulDuplicateTreeInodeIssue { inode: entry.inode })
     |> first
+}
+
+type PijulDuplicateWorkingCopyPathIssue {
+  path: PijulPath
 }
 
 fn pijul_duplicate_working_copy_path(
   working_copy: PijulWorkingCopy,
-) -> PijulPath? {
+) -> PijulDuplicateWorkingCopyPathIssue? {
   working_copy.entries
     |> filter(entry =>
       working_copy.entries
         |> filter(other => other.path == entry.path)
         |> count > 1
     )
-    |> map(entry => entry.path)
+    |> map(entry => PijulDuplicateWorkingCopyPathIssue { path: entry.path })
     |> first
 }
 
@@ -710,11 +743,15 @@ fn pijul_decode_projection(
       cause: PijulInaccessible { reason: reason }
     }
     _ => match pijul_duplicate_change(changes: projection.changes) {
-      Present { value: change } =>
-        PijulDecodeRefused { cause: PijulDuplicateChange { change: change } }
+      Present { value: issue } =>
+        PijulDecodeRefused {
+          cause: PijulDuplicateChange { change: issue.change }
+        }
       Absent => match pijul_duplicate_channel(channels: projection.channels) {
-        Present { value: channel } =>
-          PijulDecodeRefused { cause: PijulDuplicateChannel { channel: channel } }
+        Present { value: issue } =>
+          PijulDecodeRefused {
+            cause: PijulDuplicateChannel { channel: issue.channel }
+          }
         Absent => match pijul_duplicate_channel_member(channels: projection.channels) {
           Present { value: issue } => PijulDecodeRefused {
             cause: PijulDuplicateChannelMember {
@@ -723,23 +760,29 @@ fn pijul_decode_projection(
             }
           }
           Absent => match pijul_duplicate_vertex(pristine: projection.pristine) {
-            Present { value: vertex } =>
-              PijulDecodeRefused { cause: PijulDuplicateVertex { vertex: vertex } }
+            Present { value: issue } =>
+              PijulDecodeRefused {
+                cause: PijulDuplicateVertex { vertex: issue.vertex }
+              }
             Absent => match pijul_duplicate_tree_path(tree: projection.tree) {
-              Present { value: path } =>
-                PijulDecodeRefused { cause: PijulDuplicateTreePath { path: path } }
+              Present { value: issue } =>
+                PijulDecodeRefused {
+                  cause: PijulDuplicateTreePath { path: issue.path }
+                }
               Absent => match pijul_duplicate_tree_inode(tree: projection.tree) {
-                Present { value: inode } =>
-                  PijulDecodeRefused { cause: PijulDuplicateTreeInode { inode: inode } }
+                Present { value: issue } =>
+                  PijulDecodeRefused {
+                    cause: PijulDuplicateTreeInode { inode: issue.inode }
+                  }
                 Absent => match pijul_duplicate_working_copy_path(
                   working_copy: projection.working_copy,
                 ) {
-                  Present { value: path } => PijulDecodeRefused {
-                    cause: PijulDuplicateWorkingCopyPath { path: path }
+                  Present { value: issue } => PijulDecodeRefused {
+                    cause: PijulDuplicateWorkingCopyPath { path: issue.path }
                   }
                   Absent => match pijul_self_dependency(changes: projection.changes) {
-                    Present { value: change } => PijulDecodeRefused {
-                      cause: PijulSelfDependency { change: change }
+                    Present { value: issue } => PijulDecodeRefused {
+                      cause: PijulSelfDependency { change: issue.change }
                     }
                     Absent => match pijul_missing_dependency_issue(projection: projection) {
                       Present { value: issue } => PijulDecodeRefused {
