@@ -213,8 +213,7 @@ fn scoped_deferred_diagnostics_are_preserved_before_final() {
 fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
     let script = Command::new("script").arg("--version").output();
     if script.is_err() {
-        eprintln!("skipping PTY capture: util-linux script is unavailable");
-        return;
+        panic!("PTY capture prerequisite unavailable: util-linux script");
     }
     let transcript = std::env::temp_dir().join(format!(
         "gunbc-scoped-run-observation-{}-{}.typescript",
