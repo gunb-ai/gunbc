@@ -52,20 +52,6 @@ fn e0599pa_count_any_projection_in_tree(root: Node) -> Int {
   )
 }
 
-fn e0599pa_count_method_at_path(path: String, target: Symbol) -> Int {
-  match e0599pa_parse_path_optional(path: path) {
-    Absent => 0 - 1
-    Present { value: tree } => e0599pa_count_method_in_tree(root: tree, target: target)
-  }
-}
-
-fn e0599pa_count_any_projection_at_path(path: String) -> Int {
-  match e0599pa_parse_path_optional(path: path) {
-    Absent => 0 - 1
-    Present { value: tree } => e0599pa_count_any_projection_in_tree(root: tree)
-  }
-}
-
 data e0599pa_red_control_note: String = "The RED control is carried as inline source TEXT, not as a corpus fixture file: a .dag file whose bodies call .clone()/.is_empty()/.iter() has no resolvable callee and would break the whole-tree corpus load for every source-root consumer. Parsing the same text through the same tokenize/parse_module path exercises the detector identically without contaminating the compiled corpus."
 
 data e0599pa_red_source: String = "module v2.test.manual.e0599pa_red\n\nfn e0599pa_red_clone_site(xs: FreeMonoid<Int>) -> FreeMonoid<Int> {\n  xs.clone()\n}\n\nfn e0599pa_red_is_empty_site(xs: FreeMonoid<Int>) -> Bool {\n  xs.is_empty()\n}\n\nfn e0599pa_red_iter_site(xs: FreeMonoid<Int>) -> FreeMonoid<Int> {\n  xs.iter()\n}\n"
