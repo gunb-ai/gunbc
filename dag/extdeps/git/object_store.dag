@@ -394,153 +394,141 @@ fn git_tree_canonical_payload_step(
   }
 }
 
-fn git_store_object_references_canonical(object: StoreObject) -> Bool {
-  match object {
-    ObjectBlob { blob: _ } => true
-    ObjectTree { tree } =>
-      all(
-        tree.entries,
-        entry => match git_object_id_raw_octets(
-          oid: git_tree_entry_canonical_parts(entry: entry).oid,
-        ) {
-          Present { value: _ } => true
-          Absent => false
-        },
-      )
-    ObjectCommit { commit } =>
-      match git_object_id_raw_octets(oid: commit.tree) {
-        Absent => false
-        Present { value: _ } =>
-          all(
-            commit.parents,
-            parent => match git_object_id_raw_octets(oid: parent) {
-              Present { value: _ } => true
-              Absent => false
-            },
-          )
-      }
-    ObjectTag { tag } =>
-      match git_object_id_raw_octets(oid: tag.target) {
-        Present { value: _ } => true
-        Absent => false
-      }
-  }
+fn git_store_object_references(object: StoreObject) -> List<GitObjectId> {
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: fn(_) { [] },
+      tree: fn(tree) {
+        tree.entries
+          |> map(entry => git_tree_entry_canonical_parts(entry: entry).oid)
+      },
+      commit: fn(commit) {
+        append([commit.tree], items: commit.parents)
+      },
+      tag: fn(tag) { [tag.target] },
+    },
+  )
 }
 
 fn git_store_object_references_format(
   object: StoreObject,
   format: GitObjectFormat,
 ) -> Bool {
-  match object {
-    ObjectBlob { blob: _ } => true
-    ObjectTree { tree } =>
-      all(
-        tree.entries,
-        entry =>
-          git_object_id_format(
-            oid: git_tree_entry_canonical_parts(entry: entry).oid,
-          ) == format,
-      )
-    ObjectCommit { commit } =>
-      git_object_id_format(oid: commit.tree) == format
-        && all(
-          commit.parents,
-          parent => git_object_id_format(oid: parent) == format,
-        )
-    ObjectTag { tag } => git_object_id_format(oid: tag.target) == format
+  all(
+    git_store_object_references(object: object),
+    oid => git_object_id_format(oid: oid) == format,
+  )
+}
+
+fn git_blob_canonical_payload(
+  blob: Blob,
+) -> GitCanonicalHashInputOutcome {
+  GitCanonicalHashInputReady { bytes: blob.content }
+}
+
+fn git_tree_canonical_payload(
+  tree: Tree,
+) -> GitCanonicalHashInputOutcome {
+  fold(
+    tree.entries,
+    init: GitCanonicalHashInputReady {
+      bytes: octets_bytes(o: []),
+    },
+    f: git_tree_canonical_payload_step,
+  )
+}
+
+fn git_commit_canonical_payload(
+  commit: Commit,
+) -> GitCanonicalHashInputOutcome {
+  let parent_lines = commit.parents
+    |> map(parent => join(
+      [
+        "parent ",
+        git_object_id_content_hash(oid: parent) as String,
+        "\n",
+      ],
+      "",
+    ))
+    |> join(separator: "")
+  let payload = join(
+    [
+      "tree ",
+      git_object_id_content_hash(oid: commit.tree) as String,
+      "\n",
+      parent_lines,
+      git_author_wire_line(role: "author", author: commit.author),
+      git_author_wire_line(role: "committer", author: commit.committer),
+      "\n",
+      commit.message as String,
+      "\n",
+    ],
+    "",
+  )
+  let invalid = append([commit.tree], items: commit.parents)
+    |> filter(
+      oid => match git_object_id_raw_octets(oid: oid) {
+        Present { value: _ } => false
+        Absent => true
+      },
+    )
+    |> first
+  match invalid {
+    Absent =>
+      GitCanonicalHashInputReady {
+        bytes: utf8_encode_bytes(s: payload)
+      }
+    Present { value: oid } => GitCanonicalHashInputRefused {
+      cause: GitCanonicalHashInputInvalidObjectId { oid: oid }
+    }
+  }
+}
+
+fn git_tag_canonical_payload(
+  tag: AnnotatedTag,
+) -> GitCanonicalHashInputOutcome {
+  let payload = join(
+    [
+      "object ",
+      git_object_id_content_hash(oid: tag.target) as String,
+      "\n",
+      "type ",
+      git_object_type_wire_name(object_type: tag.target_type),
+      "\n",
+      "tag ",
+      tag.name as String,
+      "\n",
+      git_author_wire_line(role: "tagger", author: tag.tagger),
+      "\n",
+      tag.message as String,
+      "\n",
+    ],
+    "",
+  )
+  match git_object_id_raw_octets(oid: tag.target) {
+    Present { value: _ } =>
+      GitCanonicalHashInputReady {
+        bytes: utf8_encode_bytes(s: payload)
+      }
+    Absent => GitCanonicalHashInputRefused {
+      cause: GitCanonicalHashInputInvalidObjectId { oid: tag.target }
+    }
   }
 }
 
 fn git_store_object_canonical_payload(
   object: StoreObject,
 ) -> GitCanonicalHashInputOutcome {
-  match object {
-    ObjectBlob { blob } =>
-      GitCanonicalHashInputReady { bytes: blob.content }
-    ObjectTree { tree } =>
-      fold(
-        tree.entries,
-        init: GitCanonicalHashInputReady {
-          bytes: octets_bytes(o: []),
-        },
-        f: git_tree_canonical_payload_step,
-      )
-    ObjectCommit { commit } =>
-      let parent_lines = commit.parents
-        |> map(parent => join(
-          [
-            "parent ",
-            git_object_id_content_hash(oid: parent) as String,
-            "\n",
-          ],
-          "",
-        ))
-        |> join(separator: "")
-      let payload = join(
-        [
-          "tree ",
-          git_object_id_content_hash(oid: commit.tree) as String,
-          "\n",
-          parent_lines,
-          git_author_wire_line(role: "author", author: commit.author),
-          git_author_wire_line(role: "committer", author: commit.committer),
-          "\n",
-          commit.message as String,
-          "\n",
-        ],
-        "",
-      )
-      if git_store_object_references_canonical(object: object) {
-        GitCanonicalHashInputReady {
-          bytes: utf8_encode_bytes(s: payload)
-        }
-      } else {
-        let invalid = append([commit.tree], items: commit.parents)
-          |> filter(
-            oid => match git_object_id_raw_octets(oid: oid) {
-              Present { value: _ } => false
-              Absent => true
-            },
-          )
-          |> first
-        match invalid {
-          Present { value: oid } => GitCanonicalHashInputRefused {
-            cause: GitCanonicalHashInputInvalidObjectId { oid: oid }
-          }
-          Absent => GitCanonicalHashInputRefused {
-            cause: GitCanonicalHashInputInvalidObjectId { oid: commit.tree }
-          }
-        }
-      }
-    ObjectTag { tag } =>
-      let payload = join(
-        [
-          "object ",
-          git_object_id_content_hash(oid: tag.target) as String,
-          "\n",
-          "type ",
-          git_object_type_wire_name(object_type: tag.target_type),
-          "\n",
-          "tag ",
-          tag.name as String,
-          "\n",
-          git_author_wire_line(role: "tagger", author: tag.tagger),
-          "\n",
-          tag.message as String,
-          "\n",
-        ],
-        "",
-      )
-      match git_object_id_raw_octets(oid: tag.target) {
-        Present { value: _ } =>
-          GitCanonicalHashInputReady {
-            bytes: utf8_encode_bytes(s: payload)
-          }
-        Absent => GitCanonicalHashInputRefused {
-          cause: GitCanonicalHashInputInvalidObjectId { oid: tag.target }
-        }
-      }
-  }
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: git_blob_canonical_payload,
+      tree: git_tree_canonical_payload,
+      commit: git_commit_canonical_payload,
+      tag: git_tag_canonical_payload,
+    },
+  )
 }
 
 fn git_store_object_canonical_hash_input(
