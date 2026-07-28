@@ -8,36 +8,10 @@ import v2.std.algebra { any, filter, length }
 import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
 import gunbc.commit_workflow {
   CommitCheckEnrollment,
-  CommitCheckKind,
   CommitWorkflowSurface,
-  CommitSpecGate,
-  CommitWitnessClaim,
-  CommitCargoFmtCheck,
   commit_gate_roster,
-  commit_workflow_surface_eq
-}
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate,
-  CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate,
-  DagCompileCleanGate,
-  GeneratedArtifactDriftGate,
-  SourceRootIngestGate,
-  RegenVerifyGate,
-  SelfHostReadsRealBytesGate,
-  SelfHostStalenessGate
-}
-import std.realization_schedule {
-  WitnessKind,
-  CorpusWitnessKind,
-  ExecutionWitnessKind,
-  WitnessSpan,
-  WitnessSeam,
-  SpanUndeclared,
-  SpanSeams,
-  witness_kind_eq,
-  string_list_eq
+  commit_workflow_surface_eq,
+  commit_check_kind_eq
 }
 
 data ci_placement_law_note: String = "The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check rides the PR path iff its measured warm cost is within the fast-lane budget OR its cost is proportional to the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction: PrTier is admissible ONLY with (a) a measured warm-cost receipt within the fast-lane budget and (b) a hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold is REUSED from the single fast-lane authority (gunbc_ci_fast_lane_eval_budget_ms, v2.workflow.ci_floor_plan gunbc_ci_fast_lane_rule_note), never a second 5s definition. The roster of real checks and their PrTier flips are FILLED from the D2 warm-cost probe on fleet srv hardware; until a check has a measured receipt it stays Gauntlet, so this mechanism is correct-by-construction with an empty PrTier set. Wiring the placement onto the live check rows (gates, ci-job steps, floor batches) and the Gauntlet workflow split ride PR-1 (D3b)."
@@ -116,77 +90,8 @@ fn commit_workflow_surface_present(surface: CommitWorkflowSurface, surfaces: Lis
   any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
 }
 
-fn gate_eq(a: Gate, b: Gate) -> Bool {
-  match a {
-    EmitHostGate => match b { EmitHostGate => true  _ => false }
-    CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
-    ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
-    DagCompileCleanGate => match b { DagCompileCleanGate => true  _ => false }
-    GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
-    SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
-    RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
-    SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }
-    SelfHostStalenessGate => match b { SelfHostStalenessGate => true  _ => false }
-  }
-}
-
-fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
-  (a.producer == b.producer) && (a.consumer == b.consumer)
-}
-
-fn witness_seam_list_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> Bool {
-  (length(xs: left) == length(xs: right))
-    && !any(xs: left, predicate: fn(seam) { !witness_seam_present(seam: seam, seams: right) })
-    && !any(xs: right, predicate: fn(seam) { !witness_seam_present(seam: seam, seams: left) })
-}
-
-fn witness_seam_present(seam: WitnessSeam, seams: List<WitnessSeam>) -> Bool {
-  any(xs: seams, predicate: fn(s) { witness_seam_eq(a: s, b: seam) })
-}
-
-fn witness_span_eq(left: WitnessSpan, right: WitnessSpan) -> Bool {
-  match left {
-    SpanUndeclared => match right {
-      SpanUndeclared => true
-      SpanSeams { seams: _ } => false
-    }
-    SpanSeams { seams: left_seams } =>
-      match right {
-        SpanUndeclared => false
-        SpanSeams { seams: right_seams } => witness_seam_list_eq(left: left_seams, right: right_seams)
-      }
-  }
-}
-
-fn commit_check_kind_eq(left: CommitCheckKind, right: CommitCheckKind) -> Bool {
-  match left {
-    CommitSpecGate { gate: left_gate } =>
-      match right {
-        CommitSpecGate { gate: right_gate } => gate_eq(a: left_gate, b: right_gate)
-        CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
-        CommitCargoFmtCheck => false
-      }
-    CommitWitnessClaim { entry: left_entry, check_fns: left_check_fns, kind: left_kind, span: left_span } =>
-      match right {
-        CommitSpecGate { gate: _ } => false
-        CommitWitnessClaim { entry: right_entry, check_fns: right_check_fns, kind: right_kind, span: right_span } =>
-          (left_entry == right_entry)
-            && string_list_eq(left: left_check_fns, right: right_check_fns)
-            && witness_kind_eq(a: left_kind, b: right_kind)
-            && witness_span_eq(left: left_span, right: right_span)
-        CommitCargoFmtCheck => false
-      }
-    CommitCargoFmtCheck =>
-      match right {
-        CommitCargoFmtCheck => true
-        CommitSpecGate { gate: _ } => false
-        CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
-      }
-  }
-}
-
 fn commit_check_enrollment_eq(left: CommitCheckEnrollment, right: CommitCheckEnrollment) -> Bool {
-  commit_check_kind_eq(left: left.check, right: right.check)
+  commit_check_kind_eq(a: left.check, b: right.check)
     && commit_workflow_surface_list_eq(left: left.surfaces, right: right.surfaces)
 }
 
