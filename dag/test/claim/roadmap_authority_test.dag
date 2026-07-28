@@ -6,6 +6,7 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
+  caret_parse_smoke_seed_growth_justification,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
@@ -252,6 +253,27 @@ test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
     && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
 }
 
+test fn witness_caret_parse_smoke_seed_frontier_is_countable_owned_and_triggered() -> Bool {
+  let id = "caret-parse-smoke-seed-growth-justification"
+  let j = caret_parse_smoke_seed_growth_justification()
+  id_count(id: id) == 1
+    && (nodes() |> any(n =>
+      n.node == id
+        && n.owner == "self-host"
+        && (n.carriers |> any(p => p.path == "dag/gunbc/v1_deletion_plan.dag"))
+    ))
+    && j.owning_dissolution_lane == "v1-zero-hand-maintained-rust"
+    && j.current_boundary == "src/v1/stage0/tests/caret_parse_smoke.rs"
+    && string_contains(s: j.reason, pattern: "predates")
+    && string_contains(s: j.reason, pattern: "add no capability")
+    && string_contains(s: j.trigger, pattern: "emitted test")
+    && string_contains(s: j.trigger, pattern: "delete the Rust test")
+    && edge_exists(
+      child: "v1-zero-hand-maintained-rust",
+      parent: "caret-parse-smoke-seed-growth-justification",
+    )
+}
+
 test fn witness_interpreter_delete_and_repository_zero_hand_rust_fan_in_is_explicit() -> Bool {
   edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
@@ -265,6 +287,10 @@ test fn witness_interpreter_delete_and_repository_zero_hand_rust_fan_in_is_expli
     && edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
     && edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
+    && edge_exists(
+      child: "v1-zero-hand-maintained-rust",
+      parent: "caret-parse-smoke-seed-growth-justification",
+    )
 }
 
 test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
