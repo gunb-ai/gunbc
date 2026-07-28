@@ -1,0 +1,37 @@
+module std.path_intent
+
+import std.filesystem.types { EntryKind }
+import std.types { FilePathParts, String }
+
+type PathIntent
+  = PathRef { name: String }
+  | PathLiteral { parts: FilePathParts }
+  | PathJoin { base: PathIntent, suffix: FilePathParts }
+
+type PathPredicate
+  = PathNonempty { path: PathIntent }
+  | PathNotEq { lhs: PathIntent, rhs: PathIntent }
+  | PathEntryKind { path: PathIntent, kind: EntryKind }
+  | Not { inner: PathPredicate }
+  | And { lhs: PathPredicate, rhs: PathPredicate }
+  | Or { lhs: PathPredicate, rhs: PathPredicate }
+
+type DirnameAscent {
+  path: PathIntent
+}
+
+fn path_intent_ref(name: String) -> PathIntent {
+  PathRef { name: name }
+}
+
+fn path_intent_literal(parts: FilePathParts) -> PathIntent {
+  PathLiteral { parts: parts }
+}
+
+fn path_intent_join(base: PathIntent, suffix: FilePathParts) -> PathIntent {
+  PathJoin { base: base, suffix: suffix }
+}
+
+fn dirname_ascent(path: PathIntent) -> DirnameAscent {
+  DirnameAscent { path: path }
+}

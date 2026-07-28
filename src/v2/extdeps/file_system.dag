@@ -53,6 +53,57 @@ type FilePath {
   path: FilesystemPath
 }
 
+fn path_component_is_parent(component: PathComponent) -> Bool {
+  match component {
+    ParentComponent => true
+    CurrentComponent => false
+    NamedComponent { component: _ } => false
+  }
+}
+
+fn path_component_is_named(component: PathComponent) -> Bool {
+  match component {
+    NamedComponent { component: _ } => true
+    CurrentComponent => false
+    ParentComponent => false
+  }
+}
+
+fn filesystem_path_is_absolute(path: FilesystemPath) -> Bool {
+  match path {
+    Absolute { path: _ } => true
+    Relative { path: _ } => false
+  }
+}
+
+fn filesystem_path_is_relative(path: FilesystemPath) -> Bool {
+  !filesystem_path_is_absolute(path: path)
+}
+
+fn file_path_is_absolute(path: FilePath) -> Bool {
+  filesystem_path_is_absolute(path: path.path)
+}
+
+fn file_path_is_relative(path: FilePath) -> Bool {
+  !file_path_is_absolute(path: path)
+}
+
+fn file_kind_is_regular_file(kind: FileKind) -> Bool {
+  match kind {
+    RegularFile => true
+    Directory => false
+    Symlink => false
+  }
+}
+
+fn file_kind_is_directory(kind: FileKind) -> Bool {
+  match kind {
+    Directory => true
+    RegularFile => false
+    Symlink => false
+  }
+}
+
 type FileContent = FileBody
 
 type FileRead {
