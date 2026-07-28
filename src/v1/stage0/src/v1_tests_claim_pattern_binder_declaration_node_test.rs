@@ -64,8 +64,10 @@ pub fn parse_fixture_pattern(source: String) -> Rc<ParsedFixturePattern> {
                     index.clone(),
                 ),
                 intern_table: empty_intern_table(),
+                declaration_occurrences: None,
                 occurrence_allocator: None,
                 occurrence_index: None,
+                reference_occurrences: None,
             }),
         );
         match result.err.clone() {
