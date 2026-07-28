@@ -30,7 +30,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data pijul_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Pijul R0 fixture. The typed effect graph creates an isolated PIJUL_CONFIG_DIR and ephemeral SSH agent/key, observes the Root add change created by Pijul initialization, records one base and two concurrent signed changes with Pijul 1.0.0-beta.20, applies the changes in both orders, and independently decodes each real `pijul log --state`/`--hash-only` read-back through extdeps.pijul. The receipt proves channel state and change-set invariance, duplicate-delivery idempotence, channel-independent change identity, an observed dependency section, a clean pristine-to-working-copy projection, and a retained rendered order conflict. It does not infer the conflict's unobserved internal vertex and does not promote Pijul conditional advance. Local recipe: put `pijul` 1.0.0-beta.20 on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/pijul_upstream_model_execution_test.dag --function witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict."
+data pijul_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Pijul R0 fixture. The typed effect graph creates an isolated PIJUL_CONFIG_DIR and ephemeral SSH agent/key, observes the implicit Root add change introduced with Pijul's first record, records one authored base and two concurrent signed changes with Pijul 1.0.0-beta.20, applies the changes in both orders, and independently decodes each real `pijul log --state`/`--hash-only` read-back through extdeps.pijul. The receipt proves channel state and change-set invariance, duplicate-delivery idempotence, channel-independent change identity, an observed dependency section, a clean pristine-to-working-copy projection, and a retained rendered order conflict. It does not infer the conflict's unobserved internal vertex and does not promote Pijul conditional advance. Local recipe: put `pijul` 1.0.0-beta.20 on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/pijul_upstream_model_execution_test.dag --function witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict."
 
 type PijulR0LiveReceipt {
   state: PijulStateHash
@@ -184,16 +184,6 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           ),
           expect: ExpectSuccess,
         )
-        let root_hash = gunbc.WitnessBin.Run(
-          workdir: repo_dir,
-          bin_path: "/usr/bin/env",
-          args: pijul_env_args(
-            config_dir: config_dir,
-            agent_socket: agent_socket,
-            args: ["log", "--channel", "main", "--hash-only", "--limit", "1"],
-          ),
-          expect: ExpectSuccess,
-        )
         let base_written = Filesystem.Write(
           path: file_path,
           content: "base version\n",
@@ -234,6 +224,25 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             config_dir: config_dir,
             agent_socket: agent_socket,
             args: ["log", "--channel", "main", "--hash-only", "--limit", "1"],
+          ),
+          expect: ExpectSuccess,
+        )
+        let root_hash = gunbc.WitnessBin.Run(
+          workdir: repo_dir,
+          bin_path: "/usr/bin/env",
+          args: pijul_env_args(
+            config_dir: config_dir,
+            agent_socket: agent_socket,
+            args: [
+              "log",
+              "--channel",
+              "main",
+              "--hash-only",
+              "--offset",
+              "1",
+              "--limit",
+              "1",
+            ],
           ),
           expect: ExpectSuccess,
         )
