@@ -53,25 +53,6 @@ type FilePath {
   path: FilesystemPath
 }
 
-fn filesystem_path_is_absolute(path: FilesystemPath) -> Bool {
-  match path {
-    Absolute { path: _ } => true
-    Relative { path: _ } => false
-  }
-}
-
-fn filesystem_path_is_relative(path: FilesystemPath) -> Bool {
-  !filesystem_path_is_absolute(path: path)
-}
-
-fn file_path_is_absolute(path: FilePath) -> Bool {
-  filesystem_path_is_absolute(path: path.path)
-}
-
-fn file_path_is_relative(path: FilePath) -> Bool {
-  !file_path_is_absolute(path: path)
-}
-
 type FileContent = FileBody
 
 type FileRead {
