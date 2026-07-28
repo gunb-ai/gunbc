@@ -1,6 +1,8 @@
 module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
 import std.algebra { Cons, Empty }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Scaffold, SingleAuthority }
 import std.trait_derive_shape {
   ReprDeriveClone,
   ReprDeriveDebug,
@@ -56,9 +58,11 @@ import v2.compiler.translate {
 }
 import v2.extdeps.languages.rust {
   RustSupplementalGenericBoundContractCoverageBlocker,
+  RustSupplementalGenericBoundContractCoverageDisposition,
   rust_collection_choice_bundle_node,
   rust_free_monoid_collection_primary_choice,
   rust_hash_set_supplemental_generic_bound_contract_blockers,
+  rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
   rust_set_collection_hash_choice,
   rust_set_collection_primary_choice,
   rust_target_model
@@ -474,9 +478,33 @@ fn sgb_hash_set_coverage_blocker_matches(
   blocker.derive_trait == derive_trait
     && blocker.representation_parameter == ^target_collection_type_param_t
     && blocker.authority == authority
+    && blocker.coverage == rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
+    && sgb_hash_set_coverage_disposition_matches(coverage: blocker.coverage)
     && match blocker.unrepresentable_requirement {
       TargetCollectionWitnessHash { type_param: type_param } =>
         type_param == ^target_collection_type_param_t
+      _ => false
+    }
+}
+
+fn sgb_hash_set_coverage_disposition_matches(
+  coverage: RustSupplementalGenericBoundContractCoverageDisposition
+) -> Bool {
+  let requirement_set_ref = DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
+      field: WholeDeclaration
+    }
+  let property_carrier_ref = DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "RequiredTraitWitness",
+      field: WholeDeclaration
+    }
+  coverage.owner == requirement_set_ref
+    && coverage.lane == property_carrier_ref
+    && match coverage.dissolution {
+      Scaffold { dissolves_to: SingleAuthority, bind: bind } =>
+        bind == property_carrier_ref
       _ => false
     }
 }

@@ -7,6 +7,8 @@ import std.trait_derive_shape {
   ReprDeriveOrd,
   ReprDeriveSerialize
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
   rust_1_93_btree_set_trait_implementations_authority,
@@ -1682,11 +1684,39 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
   )
 }
 
+type RustSupplementalGenericBoundContractCoverageDisposition {
+  owner: DeclarationRef
+  lane: DeclarationRef
+  dissolution: Disposition
+}
+
+data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: RustSupplementalGenericBoundContractCoverageDisposition = RustSupplementalGenericBoundContractCoverageDisposition {
+  owner: DeclarationRef {
+    module_path: "v2.std.compilers.target_model",
+    decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
+    field: WholeDeclaration
+  },
+  lane: DeclarationRef {
+    module_path: "v2.std.compilers.target_model",
+    decl_name: "RequiredTraitWitness",
+    field: WholeDeclaration
+  },
+  dissolution: Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "RequiredTraitWitness",
+      field: WholeDeclaration
+    }
+  }
+}
+
 type RustSupplementalGenericBoundContractCoverageBlocker {
   derive_trait: ReprGroundingDeriveTrait
   representation_parameter: Symbol
   unrepresentable_requirement: RequiredTraitWitness
   authority: ExternalAuthority
+  coverage: RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupplementalGenericBoundContractCoverageBlocker> = [
@@ -1696,7 +1726,8 @@ data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupple
     unrepresentable_requirement: TargetCollectionWitnessHash {
       type_param: ^target_collection_type_param_t
     },
-    authority: rust_1_93_hash_set_trait_implementations_authority
+    authority: rust_1_93_hash_set_trait_implementations_authority,
+    coverage: rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
   },
   RustSupplementalGenericBoundContractCoverageBlocker {
     derive_trait: ReprDeriveDeserialize,
@@ -1704,7 +1735,8 @@ data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupple
     unrepresentable_requirement: TargetCollectionWitnessHash {
       type_param: ^target_collection_type_param_t
     },
-    authority: serde_1_0_228_hash_set_deserialize_authority
+    authority: serde_1_0_228_hash_set_deserialize_authority,
+    coverage: rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
   }
 ]
 
