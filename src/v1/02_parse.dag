@@ -48,18 +48,25 @@ import v1.std.core {
   NewlineIndex, authored_name_at, kernel_span,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
   field_access_base,
-  OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection,
-  OccurrenceTransport, DeclarationOccurrence, ReferenceOccurrence,
-  OccurrenceCategory, LexicalValueOccurrence, TypeOccurrence,
-  CallableOccurrence, NamespaceSegmentOccurrence, FieldOccurrence,
-  MethodOccurrence,
 }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceIdAllocator,
   OccurrenceIdAllocResult,
   OccurrenceContainmentPath,
-  OccurrenceMinted,
+  OccurrenceIndex,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  OccurrenceCategory,
+  LexicalValueOccurrence,
+  TypeOccurrence,
+  CallableOccurrence,
+  NamespaceSegmentOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
 }
@@ -218,7 +225,6 @@ fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
   Node {
     name: node.name,
     ident: Present { value: ident },
-    occurrence_identity: none,
     span: node.span,
     ident_span: node.ident_span,
     children: node.children,
@@ -235,16 +241,6 @@ fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
     has_non_tail_self_call: node.has_non_tail_self_call,
     match_pattern: node.match_pattern,
     expr_data: node.expr_data,
-  }
-}
-
-fn parsed_node_intern_id(node: Node, ctx: ParseContext) -> Int? {
-  if node.name == "" {
-    none
-  } else {
-    Present {
-      value: intern(table: ctx.intern_table, s: node.name).id,
-    }
   }
 }
 
@@ -1354,39 +1350,8 @@ fn stamp_parsed_node(
     ancestors: child_ancestors,
     ctx: inferred.ctx
   )
-  let stamped_inferred = match node.inferred {
-    Present { value: Resolved { node: _ } } =>
-      match inferred.node {
-        Present { value: inferred_node } =>
-          Present { value: Resolved { node: inferred_node } }
-        Absent => node.inferred
-      }
-    _ => node.inferred
-  }
   ParsedNodeStampResult {
-    node: Node {
-      name: node.name,
-      ident: parsed_node_intern_id(node: node, ctx: ctx),
-      occurrence_identity: Present {
-        value: OccurrenceMinted { id: occurrence },
-      },
-      span: node.span,
-      ident_span: node.ident_span,
-      children: children.nodes,
-      connective: node.connective,
-      params: params.nodes,
-      inferred: stamped_inferred,
-      return_cardinality: node.return_cardinality,
-      uses: uses.nodes,
-      body: body.node,
-      transport: transport.node,
-      properties: properties.nodes,
-      type_annotation: annotation.node,
-      is_self_recursive: node.is_self_recursive,
-      has_non_tail_self_call: node.has_non_tail_self_call,
-      match_pattern: pattern.pattern,
-      expr_data: node.expr_data,
-    },
+    node: node,
     ctx: pattern.ctx,
   }
 }
@@ -1418,11 +1383,12 @@ fn parse_with_table_in_occurrence_scope(
   }
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
   if has_err(err: r.err) {
+    let occurrence_transport = occurrence_transport_from_parse_context(ctx: r.ctx)
     ParseWithTableResult {
       result: ParseResult { module: none, error: r.err },
       intern_table: r.ctx.intern_table,
       occurrence_allocator: parse_context_occurrence_allocator(ctx: r.ctx),
-      occurrence_transport: occurrence_transport_from_parse_context(ctx: r.ctx),
+      occurrence_transport: occurrence_transport,
     }
   } else {
     let stamped = stamp_parsed_node(
@@ -1431,6 +1397,7 @@ fn parse_with_table_in_occurrence_scope(
       ctx: r.ctx,
       role: ParsedOccurrenceDeclaration { category: NamespaceSegmentOccurrence }
     )
+    let occurrence_transport = occurrence_transport_from_parse_context(ctx: stamped.ctx)
     ParseWithTableResult {
       result: ParseResult {
         module: Present { value: stamped.node },
@@ -1438,7 +1405,7 @@ fn parse_with_table_in_occurrence_scope(
       },
       intern_table: stamped.ctx.intern_table,
       occurrence_allocator: parse_context_occurrence_allocator(ctx: stamped.ctx),
-      occurrence_transport: occurrence_transport_from_parse_context(ctx: stamped.ctx),
+      occurrence_transport: occurrence_transport,
     }
   }
 }

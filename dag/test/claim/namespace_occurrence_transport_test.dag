@@ -1,0 +1,187 @@
+module test.claim.namespace_occurrence_transport_test
+
+import std.algebra { Empty }
+import std.types { SourceSpan }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceProjection,
+  OccurrenceIndexEntry,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  LexicalValueOccurrence,
+  CallableOccurrence,
+  MissingAuthoredOccurrenceIdentity,
+  DuplicateAuthoredOccurrenceIdentity,
+  WrongOccurrenceCategory,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+  occurrence_transport_refusal,
+}
+
+data namespace_occurrence_transport_shared_witness_note: String = "Shared-authority claims only: this normal dag/src-v2 witness proves graph-scoped allocation, equal-text identity independence, typed occurrence categories, and missing/duplicate/wrong-category refusal. Parser, inference, ModuleGraph-to-TypedModule preservation, serde, and linear resource receipts live in the v1 Rust production-path test."
+
+fn fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: file, start: start, end: end }
+}
+
+fn fixture_path(
+  ancestors: List<OccurrenceId>,
+  terminal: OccurrenceId
+) -> OccurrenceContainmentPath {
+  OccurrenceContainmentPath {
+    ancestors: ancestors,
+    terminal: terminal,
+  }
+}
+
+fn fixture_index_entry(
+  occurrence: OccurrenceId,
+  authored_name: String,
+  span: SourceSpan
+) -> OccurrenceIndexEntry {
+  OccurrenceIndexEntry {
+    projection: OccurrenceProjection {
+      occurrence: occurrence,
+      authored_name: authored_name,
+      diagnostic_span: span,
+    },
+    containment: fixture_path(
+      ancestors: Empty,
+      terminal: occurrence
+    ),
+  }
+}
+
+test fn namespace_occurrence_allocator_scope_is_explicit_holds() -> Bool {
+  let first = alloc_occurrence_id(
+    alloc: occurrence_id_allocator_initial()
+  )
+  let second = alloc_occurrence_id(alloc: first.alloc)
+  let isolated = alloc_occurrence_id(
+    alloc: occurrence_id_allocator_initial()
+  )
+  first.id.value == 0 &&
+  second.id.value == 1 &&
+  isolated.id.value == 0
+}
+
+test fn namespace_occurrence_equal_text_mints_distinct_ids_holds() -> Bool {
+  let first = alloc_occurrence_id(
+    alloc: occurrence_id_allocator_initial()
+  )
+  let second = alloc_occurrence_id(alloc: first.alloc)
+  let first_entry = fixture_index_entry(
+    occurrence: first.id,
+    authored_name: "same",
+    span: fixture_span(file: "a.dag", start: 1, end: 5)
+  )
+  let second_entry = fixture_index_entry(
+    occurrence: second.id,
+    authored_name: "same",
+    span: fixture_span(file: "b.dag", start: 40, end: 44)
+  )
+  first_entry.projection.authored_name ==
+    second_entry.projection.authored_name &&
+  first_entry.projection.diagnostic_span !=
+    second_entry.projection.diagnostic_span &&
+  first_entry.projection.occurrence.value !=
+    second_entry.projection.occurrence.value
+}
+
+test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool {
+  let occurrence = OccurrenceId { value: 4 }
+  let span = fixture_span(file: "typed.dag", start: 7, end: 8)
+  let transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: occurrence,
+          authored_name: "x",
+          span: span
+        )
+      ],
+    },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: occurrence,
+        containment: fixture_path(
+          ancestors: Empty,
+          terminal: occurrence
+        ),
+        category: LexicalValueOccurrence,
+        diagnostic_span: span,
+      }
+    ],
+    references: [
+      ReferenceOccurrence {
+        occurrence: occurrence,
+        containment: fixture_path(
+          ancestors: Empty,
+          terminal: occurrence
+        ),
+        category: CallableOccurrence,
+        diagnostic_span: span,
+      }
+    ],
+  }
+  match occurrence_transport_refusal(transport: transport) {
+    Present {
+      value: WrongOccurrenceCategory {
+        occurrence: observed,
+        expected: LexicalValueOccurrence,
+        observed: CallableOccurrence,
+        diagnostic_span: _,
+      },
+    } => observed.value == occurrence.value
+    _ => false
+  }
+}
+
+test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bool {
+  let occurrence = OccurrenceId { value: 9 }
+  let span = fixture_span(file: "refusal.dag", start: 2, end: 3)
+  let declaration = DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: fixture_path(
+      ancestors: Empty,
+      terminal: occurrence
+    ),
+    category: LexicalValueOccurrence,
+    diagnostic_span: span,
+  }
+  let missing = OccurrenceTransport {
+    index: OccurrenceIndex { entries: [] },
+    declarations: [declaration],
+    references: [],
+  }
+  let entry = fixture_index_entry(
+    occurrence: occurrence,
+    authored_name: "x",
+    span: span
+  )
+  let duplicate = OccurrenceTransport {
+    index: OccurrenceIndex { entries: [entry, entry] },
+    declarations: [declaration],
+    references: [],
+  }
+  match occurrence_transport_refusal(transport: missing) {
+    Present {
+      value: MissingAuthoredOccurrenceIdentity {
+        diagnostic_span: _,
+      },
+    } =>
+      match occurrence_transport_refusal(transport: duplicate) {
+        Present {
+          value: DuplicateAuthoredOccurrenceIdentity {
+            occurrence: duplicate_occurrence,
+            diagnostic_span: _,
+          },
+        } => duplicate_occurrence.value == occurrence.value
+        _ => false
+      }
+    _ => false
+  }
+}

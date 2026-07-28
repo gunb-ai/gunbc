@@ -189,13 +189,11 @@ fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
     };
     let sp = make_span(0, 0);
     Rc::new(Node {
-        occurrence_identity: None,
         name: kind_name.clone(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
-            occurrence_identity: None,
             name: param_name.clone(),
             ident: None,
             span: sp.clone(),
@@ -238,14 +236,12 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
         .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = make_span(0, 0);
     Rc::new(Node {
-        occurrence_identity: None,
         name: "Map".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
         children: Rc::new(vec![
             Rc::new(Node {
-                occurrence_identity: None,
                 name: key_name,
                 ident: None,
                 span: sp.clone(),
@@ -266,7 +262,6 @@ fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
                 expr_data: Rc::new(ExprData::NoExprData),
             }),
             Rc::new(Node {
-                occurrence_identity: None,
                 name: val_name,
                 ident: None,
                 span: sp.clone(),
@@ -353,7 +348,6 @@ fn empty_infer_scope() -> Rc<InferScope> {
 fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
     let sp = make_span(0, 0);
     Rc::new(Node {
-        occurrence_identity: None,
         name: name.to_string(),
         ident: None,
         span: sp.clone(),
@@ -785,13 +779,11 @@ fn optional_pattern_lookup_resolves_present_variant() {
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
     let sp = make_span(0, 0);
     let inner_present = Rc::new(Node {
-        occurrence_identity: None,
         name: "Present".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
         children: Rc::new(vec![Rc::new(Node {
-            occurrence_identity: None,
             name: "inner".to_string(),
             ident: None,
             span: sp.clone(),
@@ -828,7 +820,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let optional_inner_sum = Rc::new(Node {
-        occurrence_identity: None,
         name: "Inner".to_string(),
         ident: None,
         span: sp.clone(),
@@ -908,7 +899,6 @@ fn optional_present_absent_patterns_keep_canonical_names() {
 
 fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
-        occurrence_identity: None,
         name: type_name.to_string(),
         ident: None,
         span: make_span(0, 0),
@@ -1126,7 +1116,6 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
 
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
-        occurrence_identity: None,
         name: "User".to_string(),
         ident: None,
         span: zero_span(),
@@ -1559,7 +1548,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         end: 0,
     }));
     let typed_child = Rc::new(Node {
-        occurrence_identity: None,
         name: "x".to_string(),
         ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1569,7 +1557,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
     let error_child = Rc::new(Node {
-        occurrence_identity: None,
         name: "y".to_string(),
         ident_span: syn_span.clone(),
         inferred: Some(Rc::new(InferredNode::CompilerError {
@@ -1580,7 +1567,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
         ..(*leaf_node("".to_string())).clone()
     });
     let conj_node = Rc::new(Node {
-        occurrence_identity: None,
         name: "Result".to_string(),
         ident_span: syn_span.clone(),
         connective: Connective::Conj,
@@ -1632,7 +1618,6 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
 
     let t_param = leaf_node("T".to_string());
     let value_field = Rc::new(Node {
-        occurrence_identity: None,
         name: "value".to_string(),
         ident: None,
         span: make_span(0, 0),
@@ -1655,7 +1640,6 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_decl = Rc::new(Node {
-        occurrence_identity: None,
         name: "Box".to_string(),
         ident: None,
         span: make_span(0, 0),

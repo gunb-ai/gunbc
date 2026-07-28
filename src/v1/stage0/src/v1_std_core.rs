@@ -14,8 +14,6 @@ use self::InferredNode::*;
 use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
-use self::OccurrenceCategory::*;
-use self::OccurrenceTransportRefusal::*;
 use self::OperationModifier::*;
 use self::StringPart::*;
 use self::TokenShape::*;
@@ -26,12 +24,6 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
-    OccurrenceMinted, OccurrenceSynthetic,
-};
-pub use crate::std_occurrence_identity::{
-    NodeOccurrenceIdentity, OccurrenceContainmentPath, OccurrenceId,
-};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -312,286 +304,6 @@ pub enum MatchPattern {
         field_bindings: Rc<Vec<Rc<Node>>>,
     },
     Wildcard,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum OccurrenceCategory {
-    LexicalValueOccurrence,
-    TypeOccurrence,
-    CallableOccurrence,
-    ConstructorOccurrence,
-    NamespaceSegmentOccurrence,
-    FieldOccurrence,
-    MethodOccurrence,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceProjection {
-    pub occurrence: OccurrenceId,
-    pub authored_name: String,
-    pub diagnostic_span: Rc<SourceSpan>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceIndexEntry {
-    pub projection: Rc<OccurrenceProjection>,
-    pub containment: Rc<OccurrenceContainmentPath>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceIndex {
-    pub entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DeclarationOccurrence {
-    pub occurrence: OccurrenceId,
-    pub containment: Rc<OccurrenceContainmentPath>,
-    pub category: OccurrenceCategory,
-    pub diagnostic_span: Rc<SourceSpan>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReferenceOccurrence {
-    pub occurrence: OccurrenceId,
-    pub containment: Rc<OccurrenceContainmentPath>,
-    pub category: OccurrenceCategory,
-    pub diagnostic_span: Rc<SourceSpan>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct OccurrenceTransport {
-    pub index: Rc<OccurrenceIndex>,
-    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
-pub enum OccurrenceTransportRefusal {
-    MissingAuthoredOccurrenceIdentity {
-        diagnostic_span: Rc<SourceSpan>,
-    },
-    DuplicateAuthoredOccurrenceIdentity {
-        occurrence: OccurrenceId,
-        diagnostic_span: Rc<SourceSpan>,
-    },
-    WrongOccurrenceCategory {
-        occurrence: OccurrenceId,
-        expected: OccurrenceCategory,
-        observed: OccurrenceCategory,
-        diagnostic_span: Rc<SourceSpan>,
-    },
-}
-impl OccurrenceTransportRefusal {
-    pub fn diagnostic_span(&self) -> Rc<SourceSpan> {
-        match self {
-            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-            OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                diagnostic_span: __val,
-                ..
-            } => __val.clone(),
-        }
-    }
-}
-
-pub fn occurrence_id_matches(left: OccurrenceId, right: OccurrenceId) -> bool {
-    (left.value.clone() == right.value.clone())
-}
-
-pub fn occurrence_index_population(
-    index: Rc<OccurrenceIndex>,
-    occurrence: OccurrenceId,
-) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for entry in index.entries.clone().iter().cloned() {
-            if occurrence_id_matches(
-                entry.projection.clone().occurrence.clone(),
-                occurrence.clone(),
-            ) {
-                __result.push(entry);
-            }
-        }
-        __result
-    })
-}
-
-pub fn occurrence_transport_index_refusal(
-    transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    transport
-        .index
-        .clone()
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(
-            None,
-            |refusal: _, entry: Rc<OccurrenceIndexEntry>| match refusal.clone() {
-                Some(_) => refusal.clone(),
-                None => {
-                    if ((occurrence_index_population(
-                        transport.index.clone(),
-                        entry.projection.clone().occurrence.clone(),
-                    )
-                    .len() as i64)
-                        > 1)
-                    {
-                        Some(Rc::new(
-                            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                                occurrence: entry.projection.clone().occurrence.clone(),
-                                diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
-                            },
-                        ))
-                    } else {
-                        None
-                    }
-                }
-            },
-        )
-}
-
-pub fn declaration_occurrence_refusal(
-    transport: Rc<OccurrenceTransport>,
-    declaration: Rc<DeclarationOccurrence>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    {
-        let population =
-            occurrence_index_population(transport.index.clone(), declaration.occurrence.clone());
-        if ((population.clone().len() as i64) == 0) {
-            Some(Rc::new(
-                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                    diagnostic_span: declaration.diagnostic_span.clone(),
-                },
-            ))
-        } else {
-            if ((population.clone().len() as i64) > 1) {
-                Some(Rc::new(
-                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                        occurrence: declaration.occurrence.clone(),
-                        diagnostic_span: declaration.diagnostic_span.clone(),
-                    },
-                ))
-            } else {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for reference in transport.references.clone().iter().cloned() {
-                        if occurrence_id_matches(
-                            reference.occurrence.clone(),
-                            declaration.occurrence.clone(),
-                        ) {
-                            __result.push(reference);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(reference) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                            occurrence: declaration.occurrence.clone(),
-                            expected: declaration.category.clone(),
-                            observed: reference.category.clone(),
-                            diagnostic_span: declaration.diagnostic_span.clone(),
-                        },
-                    )),
-                    None => None,
-                }
-            }
-        }
-    }
-}
-
-pub fn reference_occurrence_refusal(
-    transport: Rc<OccurrenceTransport>,
-    reference: Rc<ReferenceOccurrence>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    {
-        let population =
-            occurrence_index_population(transport.index.clone(), reference.occurrence.clone());
-        if ((population.clone().len() as i64) == 0) {
-            Some(Rc::new(
-                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                    diagnostic_span: reference.diagnostic_span.clone(),
-                },
-            ))
-        } else {
-            if ((population.clone().len() as i64) > 1) {
-                Some(Rc::new(
-                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                        occurrence: reference.occurrence.clone(),
-                        diagnostic_span: reference.diagnostic_span.clone(),
-                    },
-                ))
-            } else {
-                match Rc::new({
-                    let mut __result = Vec::new();
-                    for declaration in transport.declarations.clone().iter().cloned() {
-                        if occurrence_id_matches(
-                            declaration.occurrence.clone(),
-                            reference.occurrence.clone(),
-                        ) {
-                            __result.push(declaration);
-                        }
-                    }
-                    __result
-                })
-                .first()
-                .cloned()
-                {
-                    Some(declaration) => Some(Rc::new(
-                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                            occurrence: reference.occurrence.clone(),
-                            expected: reference.category.clone(),
-                            observed: declaration.category.clone(),
-                            diagnostic_span: reference.diagnostic_span.clone(),
-                        },
-                    )),
-                    None => None,
-                }
-            }
-        }
-    }
-}
-
-pub fn occurrence_transport_refusal(
-    transport: Rc<OccurrenceTransport>,
-) -> Option<Rc<OccurrenceTransportRefusal>> {
-    match occurrence_transport_index_refusal(transport.clone()) {
-        Some(refusal) => Some(refusal.clone()),
-        None => {
-            let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
-                None,
-                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
-                    Some(_) => refusal.clone(),
-                    None => declaration_occurrence_refusal(transport.clone(), declaration.clone()),
-                },
-            );
-            match declaration_refusal.clone() {
-                Some(refusal) => Some(refusal.clone()),
-                None => transport.references.clone().iter().cloned().fold(
-                    None,
-                    |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
-                        Some(_) => refusal.clone(),
-                        None => reference_occurrence_refusal(transport.clone(), reference.clone()),
-                    },
-                ),
-            }
-        }
-    }
 }
 
 #[derive(
@@ -1083,7 +795,6 @@ pub struct DeclaredFuncEnv {
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
-    pub occurrence_identity: Option<Rc<NodeOccurrenceIdentity>>,
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
     pub children: Rc<Vec<Rc<Node>>>,
@@ -1100,20 +811,6 @@ pub struct Node {
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub expr_data: Rc<ExprData>,
-}
-
-pub fn node_occurrence_identity(node: Rc<Node>) -> Rc<NodeOccurrenceIdentity> {
-    match node.occurrence_identity.clone() {
-        Some(occurrence) => occurrence.clone(),
-        None => Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-    }
-}
-
-pub fn node_minted_occurrence_id(node: Rc<Node>) -> Option<OccurrenceId> {
-    match (*node_occurrence_identity(node.clone())).clone() {
-        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
-        NodeOccurrenceIdentity::OccurrenceSynthetic => None,
-    }
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -1160,7 +857,6 @@ pub fn make_expr_node(
         match_pattern: None,
         expr_data: expr_data.clone(),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1191,7 +887,6 @@ pub fn make_named_expr_node(
         match_pattern: None,
         expr_data: expr_data.clone(),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1236,7 +931,6 @@ pub fn make_expr_error_node(
             message: message.clone(),
         }),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1270,7 +964,6 @@ pub fn make_arg_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -1305,7 +998,6 @@ pub fn make_arm_node(
             match_pattern: Some(pattern.clone()),
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -1335,7 +1027,6 @@ pub fn make_resource_use_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1382,7 +1073,6 @@ pub fn make_field_init_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1411,7 +1101,6 @@ pub fn make_field_binding_node(
         match_pattern: Some(binding.clone()),
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1453,7 +1142,6 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
             }),
         }),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1477,7 +1165,6 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -1512,7 +1199,6 @@ pub fn make_param_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -1551,7 +1237,6 @@ pub fn make_resolved_param_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -1700,7 +1385,6 @@ pub fn make_field_node(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
-                    occurrence_identity: None,
                 }),
                 make_span(0, 0),
                 make_span(0, 0),
@@ -1726,7 +1410,6 @@ pub fn make_field_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -1804,7 +1487,6 @@ pub fn make_variant_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -2521,7 +2203,6 @@ pub fn make_transport_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -2645,7 +2326,6 @@ pub fn shell_transport_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         });
         let zero_span = make_span(0, 0);
         let stdin_props = match stdin.clone() {
@@ -2677,7 +2357,6 @@ pub fn shell_transport_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -3033,7 +2712,6 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
         match_pattern: node.match_pattern.clone(),
         expr_data: node.expr_data.clone(),
-        occurrence_identity: None,
     })
 }
 
@@ -3520,7 +3198,6 @@ pub fn module_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -3552,7 +3229,6 @@ pub fn import_node(
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
-                occurrence_identity: None,
             }))
         } else {
             None
@@ -3576,7 +3252,6 @@ pub fn import_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
-            occurrence_identity: None,
         })
     }
 }
@@ -3626,7 +3301,6 @@ pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
 }
 
@@ -3663,7 +3337,6 @@ pub fn unit_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3692,7 +3365,6 @@ pub fn bool_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3721,7 +3393,6 @@ pub fn string_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3750,7 +3421,6 @@ pub fn hash_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3779,7 +3449,6 @@ pub fn int_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3808,7 +3477,6 @@ pub fn float_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3837,7 +3505,6 @@ pub fn none_type() -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -3881,7 +3548,6 @@ pub fn error_type() -> Rc<Node> {
         message: "unresolved type".to_string(),
     }),
         ident: None,
-        occurrence_identity: None,
     })
             };
         }
@@ -4159,7 +3825,6 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        occurrence_identity: None,
     })
 }
 
@@ -4183,7 +3848,6 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
-        occurrence_identity: None,
     })
 }
 
@@ -4345,20 +4009,6 @@ pub struct SemanticExprError;
 pub struct InternalExprError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CensusHeadsBodyStripped;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LexicalValueOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TypeOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CallableOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ConstructorOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NamespaceSegmentOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct FieldOccurrence;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MethodOccurrence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Not;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

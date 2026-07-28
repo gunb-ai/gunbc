@@ -5,6 +5,7 @@ use self::ItemKind::*;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_occurrence_identity::OccurrenceTransport;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
@@ -21,7 +22,7 @@ pub use crate::v1_std_core::{
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node, OccurrenceTransport,
+    Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

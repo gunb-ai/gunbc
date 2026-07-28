@@ -24,8 +24,8 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective,
   node_name_span, no_span,
   NewlineIndex, authored_name_at,
-  OccurrenceTransport,
 }
+import std.occurrence_identity { OccurrenceTransport }
 
 import v1.compiler.infer_types {
   child_type_node

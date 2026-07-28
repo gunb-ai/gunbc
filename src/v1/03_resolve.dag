@@ -9,8 +9,8 @@ import v1.std.core {
   no_span, module_node, import_node, import_is_all,
   import_specific_names_at, module_imports, module_items,
   NewlineIndex, authored_name_at,
-  OccurrenceIndex, OccurrenceTransport,
 }
+import std.occurrence_identity { OccurrenceIndex, OccurrenceTransport }
 
 
 type ModuleGraph {
@@ -19,10 +19,36 @@ type ModuleGraph {
   occurrence_transport: OccurrenceTransport
 }
 
+type ModuleOccurrenceInput {
+  module: Node
+  occurrence_transport: OccurrenceTransport
+}
+
+fn module_occurrence_input(
+  module: Node,
+  occurrence_transport: OccurrenceTransport
+) -> ModuleOccurrenceInput {
+  ModuleOccurrenceInput {
+    module: module,
+    occurrence_transport: occurrence_transport,
+  }
+}
+
+fn module_occurrence_input_node(input: ModuleOccurrenceInput) -> Node {
+  input.module
+}
+
+fn module_occurrence_input_transport(
+  input: ModuleOccurrenceInput
+) -> OccurrenceTransport {
+  input.occurrence_transport
+}
+
 type ResolvedModule {
   module: Node
   resolved_imports: List<ResolvedImport>
   dep_order: Int
+  occurrence_transport: OccurrenceTransport
 }
 
 type ResolvedImport {
@@ -50,10 +76,13 @@ fn map_has(m: Map<String, Bool>, key: String) -> Bool {
 }
 
 fn resolve_modules_with_occurrence_transport(
-  modules: List<Node>,
+  module_inputs: List<ModuleOccurrenceInput>,
   source_indices: Map<String, NewlineIndex>,
   occurrence_transport: OccurrenceTransport
 ) -> ModuleGraph {
+  let modules = module_inputs |> map(input =>
+    module_occurrence_input_node(input: input)
+  )
 
   let dup_diags = check_duplicate_modules(modules: modules, source_indices: source_indices)
 
@@ -90,7 +119,8 @@ fn resolve_modules_with_occurrence_transport(
   let sorted_order_map = sorted_names |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     map_insert(acc, pair.second, pair.first)
   )
-  let acyclic_resolved = modules |> flat_map(m =>
+  let acyclic_resolved = module_inputs |> flat_map(input =>
+    let m = module_occurrence_input_node(input: input)
     match map_get(sorted_order_map, authored_name_at(source_indices: source_indices, node: m)) {
       Present { value: order } =>
         match map_get(imports_by_name, authored_name_at(source_indices: source_indices, node: m)) {
@@ -98,7 +128,8 @@ fn resolve_modules_with_occurrence_transport(
             [ResolvedModule {
               module: m,
               resolved_imports: imps,
-              dep_order: order
+              dep_order: order,
+              occurrence_transport: module_occurrence_input_transport(input: input),
             }]
           Absent => []
         }
@@ -120,7 +151,14 @@ fn resolve_modules(
   source_indices: Map<String, NewlineIndex>
 ) -> ModuleGraph {
   resolve_modules_with_occurrence_transport(
-    modules: modules,
+    module_inputs: modules |> map(module => module_occurrence_input(
+      module: module,
+      occurrence_transport: OccurrenceTransport {
+        index: OccurrenceIndex { entries: [] },
+        declarations: [],
+        references: [],
+      }
+    )),
     source_indices: source_indices,
     occurrence_transport: OccurrenceTransport {
       index: OccurrenceIndex { entries: [] },

@@ -12,7 +12,9 @@ use crate::std_induction::SubValueRelation::{
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_occurrence_identity::occurrence_id_allocator_initial;
-pub use crate::std_occurrence_identity::OccurrenceIdAllocator;
+pub use crate::std_occurrence_identity::{
+    OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
+};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -45,8 +47,11 @@ use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
 pub use crate::v1_compiler_parse::ParseResult;
 pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_in_occurrence_scope};
-pub use crate::v1_compiler_resolve::ModuleGraph;
-pub use crate::v1_compiler_resolve::{resolve_modules, resolve_modules_with_occurrence_transport};
+pub use crate::v1_compiler_resolve::{
+    module_occurrence_input, module_occurrence_input_node, module_occurrence_input_transport,
+    resolve_modules_with_occurrence_transport,
+};
+pub use crate::v1_compiler_resolve::{ModuleGraph, ModuleOccurrenceInput};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -81,8 +86,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, OccurrenceIndex, OccurrenceTransport,
-    StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile, Token, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -117,10 +122,10 @@ pub struct FrontendResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
+    pub module_inputs: Rc<Vec<Rc<ModuleOccurrenceInput>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
-    pub occurrence_transports: Rc<Vec<Rc<OccurrenceTransport>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2309,70 +2314,65 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parsed = prepared.clone().iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
+                module_inputs: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
-                occurrence_transports: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
-                let acc = v1_rt::take_owned(acc);
-                {
-                    let parsed = parse_with_table_in_occurrence_scope(
-                        p.tokens.clone(),
-                        v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                            p.newline_index.clone().file.clone(),
-                            p.newline_index.clone(),
+                let parsed = parse_with_table_in_occurrence_scope(
+                    p.tokens.clone(),
+                    v1_rt::rc_map_insert(
+                        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        p.newline_index.clone().file.clone(),
+                        p.newline_index.clone(),
+                    ),
+                    acc.intern_table.clone(),
+                    acc.occurrence_allocator.clone(),
+                );
+                Rc::new(FrontendAccum {
+                    parse_results: v1_rt::rc_list_push(
+                        acc.parse_results.clone(),
+                        parsed.result.clone(),
+                    ),
+                    module_inputs: match parsed.result.clone().module.clone() {
+                        Some(parsed_module) => v1_rt::rc_list_push(
+                            acc.module_inputs.clone(),
+                            module_occurrence_input(
+                                parsed_module.clone(),
+                                parsed.occurrence_transport.clone(),
+                            ),
                         ),
-                        acc.intern_table,
-                        acc.occurrence_allocator,
-                    );
-                    Rc::new(FrontendAccum {
-                        parse_results: v1_rt::rc_list_push(
-                            acc.parse_results,
-                            parsed.result.clone(),
-                        ),
-                        newline_indices: v1_rt::rc_list_push(
-                            acc.newline_indices,
-                            p.newline_index.clone(),
-                        ),
-                        intern_table: parsed.intern_table.clone(),
-                        occurrence_allocator: parsed.occurrence_allocator.clone(),
-                        occurrence_transports: v1_rt::rc_list_push(
-                            acc.occurrence_transports,
-                            parsed.occurrence_transport.clone(),
-                        ),
-                    })
-                }
+                        None => acc.module_inputs.clone(),
+                    },
+                    newline_indices: v1_rt::rc_list_push(
+                        acc.newline_indices.clone(),
+                        p.newline_index.clone(),
+                    ),
+                    intern_table: parsed.intern_table.clone(),
+                    occurrence_allocator: parsed.occurrence_allocator.clone(),
+                })
             },
         );
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let modules = Rc::new({
-            let mut __result = Vec::new();
-            for p in parse_results.clone().iter().cloned() {
-                __result.extend(
-                    (*match p.module.clone() {
-                        Some(m) => Rc::new(vec![m.clone()]),
-                        None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
+        let module_inputs = parsed.module_inputs.clone();
         let source_indices = newline_indices.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
                 v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
             },
         );
-        let occurrence_transport =
-            merge_occurrence_transports(parsed.occurrence_transports.clone());
+        let occurrence_transport = merge_occurrence_transports(Rc::new({
+            let mut __result = Vec::new();
+            for input in module_inputs.clone().iter().cloned() {
+                __result.push(module_occurrence_input_transport(input.clone()));
+            }
+            __result
+        }));
         let graph = resolve_modules_with_occurrence_transport(
-            modules.clone(),
+            module_inputs.clone(),
             source_indices.clone(),
             occurrence_transport.clone(),
         );
@@ -2426,63 +2426,65 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
         let parsed = prepared.clone().iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
+                module_inputs: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
-                occurrence_transports: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
-                let acc = v1_rt::take_owned(acc);
-                {
-                    let parsed = parse_with_table_in_occurrence_scope(
-                        p.tokens.clone(),
-                        v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                            p.newline_index.clone().file.clone(),
-                            p.newline_index.clone(),
+                let parsed = parse_with_table_in_occurrence_scope(
+                    p.tokens.clone(),
+                    v1_rt::rc_map_insert(
+                        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                        p.newline_index.clone().file.clone(),
+                        p.newline_index.clone(),
+                    ),
+                    acc.intern_table.clone(),
+                    acc.occurrence_allocator.clone(),
+                );
+                Rc::new(FrontendAccum {
+                    parse_results: v1_rt::rc_list_push(
+                        acc.parse_results.clone(),
+                        parsed.result.clone(),
+                    ),
+                    module_inputs: match parsed.result.clone().module.clone() {
+                        Some(parsed_module) => v1_rt::rc_list_push(
+                            acc.module_inputs.clone(),
+                            module_occurrence_input(
+                                parsed_module.clone(),
+                                parsed.occurrence_transport.clone(),
+                            ),
                         ),
-                        acc.intern_table,
-                        acc.occurrence_allocator,
-                    );
-                    Rc::new(FrontendAccum {
-                        parse_results: v1_rt::rc_list_push(
-                            acc.parse_results,
-                            parsed.result.clone(),
-                        ),
-                        newline_indices: v1_rt::rc_list_push(
-                            acc.newline_indices,
-                            p.newline_index.clone(),
-                        ),
-                        intern_table: parsed.intern_table.clone(),
-                        occurrence_allocator: parsed.occurrence_allocator.clone(),
-                        occurrence_transports: v1_rt::rc_list_push(
-                            acc.occurrence_transports,
-                            parsed.occurrence_transport.clone(),
-                        ),
-                    })
-                }
+                        None => acc.module_inputs.clone(),
+                    },
+                    newline_indices: v1_rt::rc_list_push(
+                        acc.newline_indices.clone(),
+                        p.newline_index.clone(),
+                    ),
+                    intern_table: parsed.intern_table.clone(),
+                    occurrence_allocator: parsed.occurrence_allocator.clone(),
+                })
             },
         );
         let parse_results = parsed.parse_results.clone();
-        let modules = Rc::new({
-            let mut __result = Vec::new();
-            for p in parse_results.clone().iter().cloned() {
-                __result.extend(
-                    (*match p.module.clone() {
-                        Some(m) => Rc::new(vec![m.clone()]),
-                        None => Rc::new(vec![]),
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
+        let module_inputs = parsed.module_inputs.clone();
         Rc::new(CensusFillParse {
-            modules: modules.clone(),
+            modules: Rc::new({
+                let mut __result = Vec::new();
+                for input in module_inputs.clone().iter().cloned() {
+                    __result.push(module_occurrence_input_node(input.clone()));
+                }
+                __result
+            }),
             newline_indices: parsed.newline_indices.clone(),
             diagnostics: collect_diagnostics(parse_results.clone()),
-            occurrence_transport: merge_occurrence_transports(parsed.occurrence_transports.clone()),
+            occurrence_transport: merge_occurrence_transports(Rc::new({
+                let mut __result = Vec::new();
+                for input in module_inputs.clone().iter().cloned() {
+                    __result.push(module_occurrence_input_transport(input.clone()));
+                }
+                __result
+            })),
         })
     }
 }

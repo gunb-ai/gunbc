@@ -2,9 +2,11 @@
 // Source module: std.occurrence_identity
 
 use self::NodeOccurrenceIdentity::*;
+use self::OccurrenceCategory::*;
+use self::OccurrenceTransportRefusal::*;
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_types::Bool;
 use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -48,6 +50,97 @@ pub fn occurrence_containment_storage_projection_dissolve_on() -> String {
 pub struct OccurrenceContainmentPath {
     pub ancestors: Rc<Vec<OccurrenceId>>,
     pub terminal: OccurrenceId,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceCategory {
+    LexicalValueOccurrence,
+    TypeOccurrence,
+    CallableOccurrence,
+    ConstructorOccurrence,
+    NamespaceSegmentOccurrence,
+    FieldOccurrence,
+    MethodOccurrence,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceProjection {
+    pub occurrence: OccurrenceId,
+    pub authored_name: String,
+    pub diagnostic_span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIndexEntry {
+    pub projection: Rc<OccurrenceProjection>,
+    pub containment: Rc<OccurrenceContainmentPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceIndex {
+    pub entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclarationOccurrence {
+    pub occurrence: OccurrenceId,
+    pub containment: Rc<OccurrenceContainmentPath>,
+    pub category: OccurrenceCategory,
+    pub diagnostic_span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceOccurrence {
+    pub occurrence: OccurrenceId,
+    pub containment: Rc<OccurrenceContainmentPath>,
+    pub category: OccurrenceCategory,
+    pub diagnostic_span: Rc<SourceSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceTransport {
+    pub index: Rc<OccurrenceIndex>,
+    pub declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum OccurrenceTransportRefusal {
+    MissingAuthoredOccurrenceIdentity {
+        diagnostic_span: Rc<SourceSpan>,
+    },
+    DuplicateAuthoredOccurrenceIdentity {
+        occurrence: OccurrenceId,
+        diagnostic_span: Rc<SourceSpan>,
+    },
+    WrongOccurrenceCategory {
+        occurrence: OccurrenceId,
+        expected: OccurrenceCategory,
+        observed: OccurrenceCategory,
+        diagnostic_span: Rc<SourceSpan>,
+    },
+}
+impl OccurrenceTransportRefusal {
+    pub fn diagnostic_span(&self) -> Rc<SourceSpan> {
+        match self {
+            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+            OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                diagnostic_span: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
 }
 
 pub fn occurrence_identity_constructor_spelling_note() -> String {
@@ -120,3 +213,207 @@ pub fn occurrence_id_allocator_advance_to(
 pub fn node_occurrence_identity_minted(id: OccurrenceId) -> Rc<NodeOccurrenceIdentity> {
     Rc::new(NodeOccurrenceIdentity::OccurrenceMinted { id: id.clone() })
 }
+
+pub fn occurrence_id_matches(left: OccurrenceId, right: OccurrenceId) -> bool {
+    (left.value.clone() == right.value.clone())
+}
+
+pub fn occurrence_index_population(
+    index: Rc<OccurrenceIndex>,
+    occurrence: OccurrenceId,
+) -> Rc<Vec<Rc<OccurrenceIndexEntry>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for entry in index.entries.clone().iter().cloned() {
+            if occurrence_id_matches(
+                entry.projection.clone().occurrence.clone(),
+                occurrence.clone(),
+            ) {
+                __result.push(entry);
+            }
+        }
+        __result
+    })
+}
+
+pub fn occurrence_transport_index_refusal(
+    transport: Rc<OccurrenceTransport>,
+) -> Option<Rc<OccurrenceTransportRefusal>> {
+    transport
+        .index
+        .clone()
+        .entries
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            None,
+            |refusal: _, entry: Rc<OccurrenceIndexEntry>| match refusal.clone() {
+                Some(_) => refusal.clone(),
+                None => {
+                    if ((occurrence_index_population(
+                        transport.index.clone(),
+                        entry.projection.clone().occurrence.clone(),
+                    )
+                    .len() as i64)
+                        > 1)
+                    {
+                        Some(Rc::new(
+                            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                                occurrence: entry.projection.clone().occurrence.clone(),
+                                diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
+                            },
+                        ))
+                    } else {
+                        None
+                    }
+                }
+            },
+        )
+}
+
+pub fn declaration_occurrence_refusal(
+    transport: Rc<OccurrenceTransport>,
+    declaration: Rc<DeclarationOccurrence>,
+) -> Option<Rc<OccurrenceTransportRefusal>> {
+    {
+        let population =
+            occurrence_index_population(transport.index.clone(), declaration.occurrence.clone());
+        if ((population.clone().len() as i64) == 0) {
+            Some(Rc::new(
+                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                    diagnostic_span: declaration.diagnostic_span.clone(),
+                },
+            ))
+        } else {
+            if ((population.clone().len() as i64) > 1) {
+                Some(Rc::new(
+                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                        occurrence: declaration.occurrence.clone(),
+                        diagnostic_span: declaration.diagnostic_span.clone(),
+                    },
+                ))
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for reference in transport.references.clone().iter().cloned() {
+                        if occurrence_id_matches(
+                            reference.occurrence.clone(),
+                            declaration.occurrence.clone(),
+                        ) {
+                            __result.push(reference);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(reference) => Some(Rc::new(
+                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: declaration.occurrence.clone(),
+                            expected: declaration.category.clone(),
+                            observed: reference.category.clone(),
+                            diagnostic_span: declaration.diagnostic_span.clone(),
+                        },
+                    )),
+                    None => None,
+                }
+            }
+        }
+    }
+}
+
+pub fn reference_occurrence_refusal(
+    transport: Rc<OccurrenceTransport>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Option<Rc<OccurrenceTransportRefusal>> {
+    {
+        let population =
+            occurrence_index_population(transport.index.clone(), reference.occurrence.clone());
+        if ((population.clone().len() as i64) == 0) {
+            Some(Rc::new(
+                OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                    diagnostic_span: reference.diagnostic_span.clone(),
+                },
+            ))
+        } else {
+            if ((population.clone().len() as i64) > 1) {
+                Some(Rc::new(
+                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                        occurrence: reference.occurrence.clone(),
+                        diagnostic_span: reference.diagnostic_span.clone(),
+                    },
+                ))
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for declaration in transport.declarations.clone().iter().cloned() {
+                        if occurrence_id_matches(
+                            declaration.occurrence.clone(),
+                            reference.occurrence.clone(),
+                        ) {
+                            __result.push(declaration);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(declaration) => Some(Rc::new(
+                        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+                            occurrence: reference.occurrence.clone(),
+                            expected: reference.category.clone(),
+                            observed: declaration.category.clone(),
+                            diagnostic_span: reference.diagnostic_span.clone(),
+                        },
+                    )),
+                    None => None,
+                }
+            }
+        }
+    }
+}
+
+pub fn occurrence_transport_refusal(
+    transport: Rc<OccurrenceTransport>,
+) -> Option<Rc<OccurrenceTransportRefusal>> {
+    match occurrence_transport_index_refusal(transport.clone()) {
+        Some(refusal) => Some(refusal.clone()),
+        None => {
+            let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
+                None,
+                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
+                    Some(_) => refusal.clone(),
+                    None => declaration_occurrence_refusal(transport.clone(), declaration.clone()),
+                },
+            );
+            match declaration_refusal.clone() {
+                Some(refusal) => Some(refusal.clone()),
+                None => transport.references.clone().iter().cloned().fold(
+                    None,
+                    |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
+                        Some(_) => refusal.clone(),
+                        None => reference_occurrence_refusal(transport.clone(), reference.clone()),
+                    },
+                ),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct LexicalValueOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CallableOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConstructorOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NamespaceSegmentOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FieldOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MethodOccurrence;

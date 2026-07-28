@@ -6020,7 +6020,6 @@ const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
 thread_local! {
     static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
         name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
-        occurrence_identity: None,
         span: no_span(),
         ident_span: None,
         children: empty_node_list(),
@@ -6106,7 +6105,6 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
     };
     Rc::new(Node {
         name: item.name.clone(),
-        occurrence_identity: item.occurrence_identity.clone(),
         span: item.span.clone(),
         ident_span: item.ident_span.clone(),
         children,
@@ -6130,7 +6128,6 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
 fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: module.name.clone(),
-        occurrence_identity: module.occurrence_identity.clone(),
         span: module.span.clone(),
         ident_span: module.ident_span.clone(),
         children: Rc::new(

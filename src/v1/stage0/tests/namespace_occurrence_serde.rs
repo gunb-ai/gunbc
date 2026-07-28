@@ -5,13 +5,10 @@ use std::time::{Duration, Instant};
 use v1_compiler::std_occurrence_identity::{
     occurrence_id_allocator_initial, OccurrenceIdAllocator,
 };
-use v1_compiler::v1_compiler_parse::{
-    parse_with_table_in_occurrence_scope, ParseWithTableResult,
-};
+use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
+use v1_compiler::v1_compiler_parse::{parse_with_table_in_occurrence_scope, ParseWithTableResult};
 use v1_compiler::v1_compiler_tokenize::tokenize;
-use v1_compiler::v1_std_core::{
-    build_newline_index, empty_intern_table, NewlineIndex,
-};
+use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
 
 fn parse_source(
     source: &str,
@@ -34,9 +31,7 @@ fn parse_source(
 fn repeated_module(functions: usize) -> String {
     let mut source = String::from("module occurrence.scale\n\n");
     for index in 0..functions {
-        source.push_str(&format!(
-            "fn f_{index}(same: Int) -> Int {{ same }}\n"
-        ));
+        source.push_str(&format!("fn f_{index}(same: Int) -> Int {{ same }}\n"));
     }
     source
 }
@@ -49,7 +44,7 @@ fn max_rss_kib() -> i64 {
 }
 
 #[test]
-fn occurrence_transport_round_trips_with_node_identity_and_paths() {
+fn occurrence_transport_sidecar_round_trips_with_paths() {
     let source = "module occurrence.serde\n\nfn left(x: Int) -> Int { x }\nfn right(x: Int) -> Int { left(x) }\n";
     let parsed = parse_source(
         source,
@@ -88,6 +83,36 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     assert_eq!(
         original_ids, perturbed_ids,
         "filename/span evidence must not participate in occurrence identity"
+    );
+
+    let resolved = compile_to_resolved(Rc::new(im::vector![Rc::new(SourceFile {
+        path: "occurrence_serde.dag".to_string(),
+        content: source.to_string(),
+    })]));
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("production compile must preserve a resolved graph");
+    let typed_module = graph
+        .modules
+        .get(0)
+        .expect("production compile must preserve its typed module");
+    let typed_transport = typed_module
+        .occurrence_transport
+        .as_ref()
+        .expect("typed module must preserve its parser-owned occurrence sidecar");
+    assert_eq!(
+        typed_transport, &parsed.occurrence_transport,
+        "inference/rebuild must preserve the exact parser-owned sidecar"
+    );
+
+    let resolved_bytes = serde_json::to_vec(&resolved)
+        .expect("serialize resolved graph with typed-module occurrence sidecar");
+    let resolved_decoded: Rc<ResolvedPipelineResult> = serde_json::from_slice(&resolved_bytes)
+        .expect("deserialize resolved graph with typed-module occurrence sidecar");
+    assert_eq!(
+        resolved_decoded, resolved,
+        "resolved-graph serde must preserve typed-module occurrence identity"
     );
 }
 
