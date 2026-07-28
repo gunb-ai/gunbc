@@ -307,9 +307,8 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         outcome_accepted(
           bash_stmt_assign_target_model(
             name: n,
-            value: concat("$(dirname \"", concat(concat("$", n), "\"))")
+            value: concat("$(dirname \"", concat(concat("$", n), "\")"))
           )
-        )
         )
       }
     PathLiteral { parts: p } =>
@@ -319,9 +318,8 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         outcome_accepted(
           bash_stmt_assign_target_model(
             name: "d",
-            value: concat("$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\"))")
+            value: concat("$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\")"))
           )
-        )
         )
       }
     PathJoin { base: b, suffix: s } =>
@@ -331,11 +329,10 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
           outcome_accepted(
             bash_stmt_assign_target_model(
               name: "d",
-              value: concat("$(dirname \"", concat(text, "\"))")
+              value: concat("$(dirname \"", concat(text, "\")"))
             )
           )
-        )
-      }
+        }
       )
   }
 }

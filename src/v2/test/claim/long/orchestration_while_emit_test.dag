@@ -52,13 +52,15 @@ fn ci_floor_peak_path_ref() -> PathIntent {
 }
 
 fn ci_floor_peak_root_path() -> PathIntent {
-  PathLiteral { parts: ["sys", "fs", "cgroup"] }
+  PathLiteral {
+    parts: FilePathParts { segments: ["sys", "fs", "cgroup"] }
+  }
 }
 
 fn ci_floor_peak_memory_peak_path() -> PathIntent {
   PathJoin {
     base: ci_floor_peak_path_ref(),
-    suffix: ["memory.peak"]
+    suffix: FilePathParts { segments: ["memory.peak"] }
   }
 }
 
@@ -289,7 +291,9 @@ test fn orch_while_typed_predicate_perturbation_has_teeth_holds() -> Bool {
       rhs: And {
         lhs: PathNotEq {
           lhs: ci_floor_peak_path_ref(),
-          rhs: PathLiteral { parts: ["sys", "fs", "cgroup", "alt"] }
+          rhs: PathLiteral {
+            parts: FilePathParts { segments: ["sys", "fs", "cgroup", "alt"] }
+          }
         },
         rhs: Not {
           inner: PathEntryKind {
@@ -323,7 +327,7 @@ test fn orch_while_path_predicate_refuses_unsafe_join_operand_holds() -> Bool {
     predicate: PathEntryKind {
       path: PathJoin {
         base: PathRef { name: "d" },
-        suffix: ["memory.peak;rm -rf /"]
+        suffix: FilePathParts { segments: ["memory.peak;rm -rf /"] }
       },
       kind: RegularFile
     }
