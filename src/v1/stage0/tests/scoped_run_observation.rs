@@ -71,10 +71,15 @@ fn run_pipe_with_diagnostics(function: &str) -> Output {
 
 fn run_unscoped(function: &str, claim_run: bool) -> Output {
     let (root, _) = primary_fixture();
+    let relative_root = root
+        .strip_prefix(repo_root())
+        .expect("fixture is under repo root")
+        .to_string_lossy()
+        .into_owned();
     let mut args = vec![
         "run".to_string(),
         "--source-root".to_string(),
-        root.to_string_lossy().into_owned(),
+        relative_root,
         "--function".to_string(),
         function.to_string(),
     ];
