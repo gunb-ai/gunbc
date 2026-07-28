@@ -112,6 +112,32 @@ type PijulChangeAction
       to: PijulEdgeDisposition,
     }
 
+type PijulChangeActionFold<R> {
+  new_vertex: fn(
+    PijulVertexId,
+    List<PijulContext>,
+    List<PijulContext>,
+    Bytes,
+  ) -> R
+  map_edge: fn(
+    PijulGraphEdge,
+    PijulEdgeDisposition,
+    PijulEdgeDisposition,
+  ) -> R
+}
+
+fn pijul_change_action_fold<R>(
+  action: PijulChangeAction,
+  fold: PijulChangeActionFold<R>,
+) -> R {
+  match action {
+    PijulNewVertex { vertex, up_context, down_context, content } =>
+      fold.new_vertex(vertex, up_context, down_context, content)
+    PijulMapEdge { edge, from, to } =>
+      fold.map_edge(edge, from, to)
+  }
+}
+
 type PijulRecordedChange {
   identity: PijulChangeIdentity
   dependencies: List<PijulDependency>
@@ -150,6 +176,32 @@ type PijulConflictFact
       inode: PijulInode,
       paths: List<PijulPath>,
     }
+
+type PijulConflictFactFold<R> {
+  order: fn(PijulChangeHash, PijulChangeHash, PijulVertexId) -> R
+  cycle: fn(List<PijulChangeHash>, List<PijulVertexId>) -> R
+  zombie: fn(PijulChangeHash, PijulVertexId) -> R
+  name: fn(PijulChangeHash, PijulChangeHash, PijulPath) -> R
+  move: fn(List<PijulChangeHash>, PijulInode, List<PijulPath>) -> R
+}
+
+fn pijul_conflict_fact_fold<R>(
+  conflict: PijulConflictFact,
+  fold: PijulConflictFactFold<R>,
+) -> R {
+  match conflict {
+    PijulOrderConflict { left, right, at } =>
+      fold.order(left, right, at)
+    PijulCycleConflict { changes, vertices } =>
+      fold.cycle(changes, vertices)
+    PijulZombieConflict { introduced_by, vertex } =>
+      fold.zombie(introduced_by, vertex)
+    PijulNameConflict { left, right, path } =>
+      fold.name(left, right, path)
+    PijulMoveConflict { changes, inode, paths } =>
+      fold.move(changes, inode, paths)
+  }
+}
 
 type PijulPristineState {
   vertices: List<PijulGraphVertex>
@@ -494,18 +546,33 @@ fn pijul_self_dependency(
 }
 
 fn pijul_action_contexts(action: PijulChangeAction) -> List<PijulContext> {
-  match action {
-    PijulNewVertex {
-      vertex: _,
-      up_context,
-      down_context,
-      content: _,
-    } => append(up_context, items: down_context)
-    PijulMapEdge { edge, from: _, to: _ } => [
-      PijulContext { vertex: edge.source },
-      PijulContext { vertex: edge.target },
-    ]
-  }
+  pijul_change_action_fold(
+    action: action,
+    fold: PijulChangeActionFold {
+      new_vertex: pijul_new_vertex_contexts,
+      map_edge: pijul_map_edge_contexts,
+    },
+  )
+}
+
+fn pijul_new_vertex_contexts(
+  vertex: PijulVertexId,
+  up_context: List<PijulContext>,
+  down_context: List<PijulContext>,
+  content: Bytes,
+) -> List<PijulContext> {
+  append(up_context, items: down_context)
+}
+
+fn pijul_map_edge_contexts(
+  edge: PijulGraphEdge,
+  from: PijulEdgeDisposition,
+  to: PijulEdgeDisposition,
+) -> List<PijulContext> {
+  [
+    PijulContext { vertex: edge.source },
+    PijulContext { vertex: edge.target },
+  ]
 }
 
 type PijulMissingContextIssue {
@@ -613,13 +680,16 @@ fn pijul_missing_channel_member_issue(
 }
 
 fn pijul_conflict_changes(conflict: PijulConflictFact) -> List<PijulChangeHash> {
-  match conflict {
-    PijulOrderConflict { left, right, at: _ } => [left, right]
-    PijulCycleConflict { changes, vertices: _ } => changes
-    PijulZombieConflict { introduced_by, vertex: _ } => [introduced_by]
-    PijulNameConflict { left, right, path: _ } => [left, right]
-    PijulMoveConflict { changes, inode: _, paths: _ } => changes
-  }
+  pijul_conflict_fact_fold(
+    conflict: conflict,
+    fold: PijulConflictFactFold {
+      order: fn(left, right, _) { [left, right] },
+      cycle: fn(changes, _) { changes },
+      zombie: fn(introduced_by, _) { [introduced_by] },
+      name: fn(left, right, _) { [left, right] },
+      move: fn(changes, _, _) { changes },
+    },
+  )
 }
 
 fn pijul_missing_conflict_change_issue(
