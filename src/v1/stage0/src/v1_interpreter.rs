@@ -8273,9 +8273,15 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
-    let resolved_toolchain_identity = emit_host_resolved_build_toolchain_identity(&build_argvs)?;
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
-    let workspace = std::path::PathBuf::from(&workspace_dir).join(resolved_toolchain_identity);
+    let realization_workspace = std::path::PathBuf::from(&workspace_dir);
+    std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+    emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
+    let resolved_toolchain_identity =
+        emit_host_resolved_build_toolchain_identity(&build_argvs, &realization_workspace)?;
+    let workspace = realization_workspace.join(resolved_toolchain_identity);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
@@ -8335,8 +8341,13 @@ fn resolve_host_tool_program(name: &str) -> String {
 /// intentionally not part of this identity.
 fn emit_host_resolved_build_toolchain_identity(
     build_argvs: &[Vec<String>],
+    probe_workspace: &std::path::Path,
 ) -> InterpResult<String> {
-    fn observe_tool(requested: &str, version_args: &[&str]) -> InterpResult<String> {
+    fn observe_tool(
+        requested: &str,
+        version_args: &[&str],
+        probe_workspace: &std::path::Path,
+    ) -> InterpResult<String> {
         let resolved = resolve_host_tool_program(requested);
         let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
             msg: format!(
@@ -8352,6 +8363,7 @@ fn emit_host_resolved_build_toolchain_identity(
         })?;
         let output = std::process::Command::new(&resolved)
             .args(version_args)
+            .current_dir(probe_workspace)
             .env_remove("RUSTC_WRAPPER")
             .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
@@ -8402,11 +8414,17 @@ fn emit_host_resolved_build_toolchain_identity(
         } else {
             &["--version"]
         };
-        identity = v1_rt::hash_combine(identity, observe_tool(requested, version_args)?);
+        identity = v1_rt::hash_combine(
+            identity,
+            observe_tool(requested, version_args, probe_workspace)?,
+        );
 
         if requested_name == "cargo" {
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            identity = v1_rt::hash_combine(identity, observe_tool(&rustc, &["-vV"])?);
+            identity = v1_rt::hash_combine(
+                identity,
+                observe_tool(&rustc, &["-vV"], probe_workspace)?,
+            );
             identity = v1_rt::hash_combine(
                 identity,
                 v1_rt::atom_identity_hash(std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default()),
@@ -8416,6 +8434,40 @@ fn emit_host_resolved_build_toolchain_identity(
     Ok(identity)
 }
 
+fn emit_host_materialize_workspace_files(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+) -> InterpResult<()> {
+    use std::path::Component;
+
+    for (rel, text) in files {
+        let p = std::path::Path::new(rel);
+        if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
+                ),
+            });
+        }
+        let full = workspace.join(p);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: mkdir {} failed: {e}",
+                    parent.display()
+                ),
+            })?;
+        }
+        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: write {} failed: {e}",
+                full.display()
+            ),
+        })?;
+    }
+    Ok(())
+}
+
 fn emit_host_run_transport_cached_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -8423,8 +8475,6 @@ fn emit_host_run_transport_cached_in_workspace(
     run_argv: &[String],
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    use std::path::Component;
-
     let ready_marker = workspace.join(".native_ready");
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
@@ -8502,31 +8552,7 @@ fn emit_host_run_transport_cached_in_workspace(
     };
 
     if !compile_skipped {
-        for (rel, text) in files {
-            let p = std::path::Path::new(rel);
-            if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
-                    ),
-                });
-            }
-            let full = workspace.join(p);
-            if let Some(parent) = full.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: mkdir {} failed: {e}",
-                        parent.display()
-                    ),
-                })?;
-            }
-            std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: write {} failed: {e}",
-                    full.display()
-                ),
-            })?;
-        }
+        emit_host_materialize_workspace_files(workspace, files)?;
 
         let mut build_log: Vec<Value> = Vec::new();
         for argv in build_argvs {
