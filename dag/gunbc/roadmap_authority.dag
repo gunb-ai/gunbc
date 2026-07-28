@@ -264,18 +264,10 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 }
 
 type RoadmapDispatchGate
-  = AwaitingRuntimeIdentityLeaseJoin
-  | RuntimeIdentityLeaseJoinAvailable
+  = DispatchBlockedUntilRuntimeIdentityLeaseJoin
 
 fn active_roadmap_dispatch_gate() -> RoadmapDispatchGate {
-  AwaitingRuntimeIdentityLeaseJoin
-}
-
-fn roadmap_dispatch_gate_is_open(gate: RoadmapDispatchGate) -> Bool {
-  match gate {
-    AwaitingRuntimeIdentityLeaseJoin => false
-    RuntimeIdentityLeaseJoinAvailable => true
-  }
+  DispatchBlockedUntilRuntimeIdentityLeaseJoin
 }
 
 fn active_roadmap_nodes() -> List<RoadmapNode> {

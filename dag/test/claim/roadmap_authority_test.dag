@@ -6,7 +6,7 @@ import gunbc.roadmap_authority {
   roadmap_authority,
   authored_merged_prs,
   active_roadmap_dispatch_gate,
-  roadmap_dispatch_gate_is_open,
+  DispatchBlockedUntilRuntimeIdentityLeaseJoin,
 }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
@@ -275,7 +275,9 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
 }
 
 test fn witness_runtime_dispatch_gate_remains_closed() -> Bool {
-  !roadmap_dispatch_gate_is_open(gate: active_roadmap_dispatch_gate())
+  match active_roadmap_dispatch_gate() {
+    DispatchBlockedUntilRuntimeIdentityLeaseJoin => true
+  }
 }
 
 test fn witness_scm_context_is_reachable_but_cannot_spawn() -> Bool {
