@@ -59,7 +59,25 @@ data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+type GitTreeEntryNameOctet
+  = GitTreeEntryNameOctetBeforeSlash {
+      value: Int where range(min: 1, max: 46),
+    }
+  | GitTreeEntryNameOctetAfterSlash {
+      value: Int where range(min: 48, max: 255),
+    }
+
+type GitTreeEntryName {
+  first: GitTreeEntryNameOctet
+  rest: List<GitTreeEntryNameOctet>
+}
+
 type GitPath {
+  first: GitTreeEntryName
+  rest: List<GitTreeEntryName>
+}
+
+type GitTreeWireName {
   octets: List<UInt8>
 }
 
@@ -93,11 +111,11 @@ type Blob {
 }
 
 type TreeEntry
-  = RegularBlobEntry { path: GitPath, oid: GitObjectId }
-  | ExecutableBlobEntry { path: GitPath, oid: GitObjectId }
-  | SymlinkEntry { path: GitPath, oid: GitObjectId }
-  | SubtreeEntry { path: GitPath, oid: GitObjectId }
-  | GitlinkEntry { path: GitPath, oid: GitObjectId }
+  = RegularBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | ExecutableBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SymlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SubtreeEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | GitlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
 
 type Tree {
   entries: List<TreeEntry>
@@ -108,7 +126,7 @@ type Commit {
   parents: List<GitObjectId>
   author: GitAuthor
   committer: GitAuthor
-  message: NonEmptyStr
+  message: Bytes
 }
 
 type AnnotatedTag {
@@ -116,7 +134,7 @@ type AnnotatedTag {
   target_type: ObjectType
   name: NonEmptyStr
   tagger: GitAuthor
-  message: NonEmptyStr
+  message: Bytes
 }
 
 type StoreObject
@@ -208,7 +226,9 @@ type GitIndexStage
   | GitIndexStageTheirs
 
 type GitIndexEntry {
-  entry: TreeEntry
+  path: GitPath
+  mode: GitTreeMode
+  oid: GitObjectId
   stage: GitIndexStage
 }
 
