@@ -238,6 +238,16 @@ fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
   }
 }
 
+fn parsed_node_intern_id(node: Node, ctx: ParseContext) -> Int? {
+  if node.name == "" {
+    none
+  } else {
+    Present {
+      value: intern(table: ctx.intern_table, s: node.name).id,
+    }
+  }
+}
+
 type AdvanceResult
   = AdvanceOk { token: Token, tokens: TokenStream }
   | AdvanceEof
@@ -1356,7 +1366,7 @@ fn stamp_parsed_node(
   ParsedNodeStampResult {
     node: Node {
       name: node.name,
-      ident: node.ident,
+      ident: parsed_node_intern_id(node: node, ctx: ctx),
       occurrence_identity: Present {
         value: OccurrenceMinted { id: occurrence },
       },
