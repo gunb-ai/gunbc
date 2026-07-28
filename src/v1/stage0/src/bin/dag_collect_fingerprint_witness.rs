@@ -66,6 +66,7 @@ fn shell_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
+        authored_occurrence: None,
     })
 }
 

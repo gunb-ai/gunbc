@@ -318,6 +318,191 @@ mod compiler_tests {
         result.expect("pipeline_trivial_module test panicked");
     }
 
+    fn authored_declaration_occurrence_id(
+        node: &std::rc::Rc<crate::v1_std_core::Node>,
+    ) -> Option<i64> {
+        match node.authored_occurrence.as_deref() {
+            Some(
+                crate::std_occurrence_identity::AuthoredOccurrence::AuthoredDeclarationOccurrence {
+                    occurrence,
+                },
+            ) => Some(occurrence.identity.value),
+            _ => None,
+        }
+    }
+
+    fn authored_reference_occurrence_id(
+        node: &std::rc::Rc<crate::v1_std_core::Node>,
+    ) -> Option<i64> {
+        match node.authored_occurrence.as_deref() {
+            Some(
+                crate::std_occurrence_identity::AuthoredOccurrence::AuthoredReferenceOccurrence {
+                    occurrence,
+                },
+            ) => Some(occurrence.identity.value),
+            _ => None,
+        }
+    }
+
+    fn first_authored_reference(
+        node: std::rc::Rc<crate::v1_std_core::Node>,
+    ) -> Option<std::rc::Rc<crate::v1_std_core::Node>> {
+        if authored_reference_occurrence_id(&node).is_some() {
+            return Some(node);
+        }
+        for child in node.children.iter() {
+            if let Some(reference) = first_authored_reference(child.clone()) {
+                return Some(reference);
+            }
+        }
+        None
+    }
+
+    fn occurrence_fixture_item(
+        module: &crate::v1_compiler_infer_items::TypedModule,
+        name: &str,
+    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        module
+            .items
+            .iter()
+            .find(|item| item.name == name)
+            .unwrap_or_else(|| panic!("missing occurrence fixture item {}", name))
+            .clone()
+    }
+
+    #[test]
+    fn authored_occurrences_survive_recovery_and_serde_transport() {
+        let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: "occurrence_transport_fixture.dag".to_string(),
+            content: concat!(
+                "module occurrence_transport_fixture\n",
+                "fn keep(value: Int) -> Int { value }\n",
+                "fn broken() -> Int { missing }\n",
+            )
+            .to_string(),
+        });
+        let frontend =
+            crate::v1_compiler_compile::front_end_sources(std::rc::Rc::new(im::vector![source]));
+        let source_indices = frontend
+            .newline_indices
+            .iter()
+            .cloned()
+            .fold(crate::v1_rt::rc_empty_map(), |acc, index| {
+                crate::v1_rt::rc_map_insert(acc, index.file.clone(), index)
+            });
+        let resolved = frontend.graph.clone().expect("fixture frontend graph");
+        let parsed_module = resolved
+            .modules
+            .first()
+            .expect("fixture resolved module")
+            .module
+            .clone();
+        let parsed_broken = crate::v1_std_core::module_items(parsed_module)
+            .iter()
+            .find(|item| item.name == "broken")
+            .expect("parsed broken function")
+            .clone();
+        let parsed_error_reference =
+            first_authored_reference(parsed_broken.body.clone().expect("parsed broken body"))
+                .expect("parsed missing-name reference");
+        let parsed_error_id = authored_reference_occurrence_id(&parsed_error_reference)
+            .expect("parsed missing-name reference occurrence");
+
+        let normalized =
+            crate::v1_compiler_normalize::normalize_graph(resolved, source_indices.clone());
+        let graph = crate::v1_compiler_infer::reconcile(
+            normalized.graph.clone(),
+            source_indices,
+            frontend.intern_table.clone(),
+        );
+        let module = graph.modules.first().expect("typed fixture module").clone();
+        let keep = occurrence_fixture_item(&module, "keep");
+        let keep_param = keep.params.first().expect("keep parameter").clone();
+        let keep_reference = first_authored_reference(keep.body.clone().expect("typed keep body"))
+            .expect("typed keep reference");
+        let broken = occurrence_fixture_item(&module, "broken");
+        let typed_error_reference =
+            first_authored_reference(broken.body.clone().expect("typed broken body"))
+                .expect("typed missing-name reference");
+
+        let declaration_id = authored_declaration_occurrence_id(&keep_param)
+            .expect("typed parameter declaration occurrence");
+        let reference_id = authored_reference_occurrence_id(&keep_reference)
+            .expect("typed parameter reference occurrence");
+        assert_ne!(
+            declaration_id, reference_id,
+            "declaration and reference categories must retain distinct IDs"
+        );
+        assert_eq!(
+            authored_reference_occurrence_id(&typed_error_reference),
+            Some(parsed_error_id),
+            "inference recovery must retain the parser-minted reference occurrence",
+        );
+        assert!(
+            matches!(
+                &*typed_error_reference.expr_data,
+                crate::v1_std_core::ExprData::ExprError { .. }
+            ),
+            "missing-name reference must exercise the semantic error path",
+        );
+
+        let module_json = serde_json::to_string(&*module).expect("serialize TypedModule");
+        let decoded_module: crate::v1_compiler_infer_items::TypedModule =
+            serde_json::from_str(&module_json).expect("deserialize TypedModule");
+        let decoded_keep = occurrence_fixture_item(&decoded_module, "keep");
+        let decoded_broken = occurrence_fixture_item(&decoded_module, "broken");
+        assert_eq!(
+            decoded_keep
+                .params
+                .first()
+                .expect("decoded keep parameter")
+                .authored_occurrence,
+            keep_param.authored_occurrence,
+        );
+        assert_eq!(
+            first_authored_reference(decoded_keep.body.clone().expect("decoded keep body"))
+                .expect("decoded keep reference")
+                .authored_occurrence,
+            keep_reference.authored_occurrence,
+        );
+        assert_eq!(
+            first_authored_reference(decoded_broken.body.clone().expect("decoded broken body"))
+                .expect("decoded missing-name reference")
+                .authored_occurrence,
+            typed_error_reference.authored_occurrence,
+        );
+
+        let graph_json = serde_json::to_string(&*graph).expect("serialize ResolvedGraph");
+        let decoded_graph: crate::v1_compiler_infer_items::ResolvedGraph =
+            serde_json::from_str(&graph_json).expect("deserialize ResolvedGraph");
+        let decoded_graph_module = decoded_graph.modules.first().expect("decoded graph module");
+        let graph_keep = occurrence_fixture_item(decoded_graph_module, "keep");
+        let graph_broken = occurrence_fixture_item(decoded_graph_module, "broken");
+        assert_eq!(
+            decoded_graph_module.module.authored_occurrence,
+            module.module.authored_occurrence,
+        );
+        assert_eq!(
+            graph_keep
+                .params
+                .first()
+                .expect("graph keep parameter")
+                .authored_occurrence,
+            keep_param.authored_occurrence,
+        );
+        assert_eq!(
+            first_authored_reference(graph_broken.body.clone().expect("graph broken body"))
+                .expect("graph missing-name reference")
+                .authored_occurrence,
+            typed_error_reference.authored_occurrence,
+        );
+        eprintln!(
+            "occurrence transport serde sizes: TypedModule={} ResolvedGraph={}",
+            module_json.len(),
+            graph_json.len(),
+        );
+    }
+
     #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
@@ -1009,6 +1194,7 @@ mod compiler_tests {
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
+            authored_occurrence: None,
             children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(im::Vector::new()),

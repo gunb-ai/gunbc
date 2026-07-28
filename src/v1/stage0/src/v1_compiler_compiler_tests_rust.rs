@@ -19,10 +19,13 @@ pub fn ct_module_header() -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
-                "#[cfg(test)]\n".to_string(),
-                "mod compiler_tests {\n".to_string(),
+                v1_rt::concat(
+                    "#[cfg(test)]\n".to_string(),
+                    "mod compiler_tests {\n".to_string(),
+                ),
+                "    use im::HashMap;\n".to_string(),
             ),
-            "    use im::HashMap;\n".to_string(),
+            "    use crate::v1_rt::VecCompat;\n".to_string(),
         ),
         "    use crate::v1_compiler_tokenize::tokenize;\n\n".to_string(),
     )

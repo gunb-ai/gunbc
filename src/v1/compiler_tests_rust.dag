@@ -11,6 +11,7 @@ fn ct_module_header() -> String {
     "#[cfg(test)]\n",
     "mod compiler_tests {\n",
     "    use im::HashMap;\n",
+    "    use crate::v1_rt::VecCompat;\n",
     "    use crate::v1_compiler_tokenize::tokenize;\n\n")
 }
 
