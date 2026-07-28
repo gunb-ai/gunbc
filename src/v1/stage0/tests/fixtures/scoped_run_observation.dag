@@ -8,6 +8,10 @@ fn claim_false() -> Bool {
   false
 }
 
+fn claim_non_bool() -> String {
+  "not a claim verdict"
+}
+
 type ProcessExit
   = ExitSuccess
   | ExitFailure { code: Int, reason: String }

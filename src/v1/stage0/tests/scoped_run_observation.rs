@@ -84,6 +84,22 @@ fn scoped_negative_claim_is_failed_persistent_and_nonzero() {
 }
 
 #[test]
+fn scoped_non_bool_claim_is_refused_persistent_and_nonzero() {
+    let output = run_pipe("claim_non_bool");
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    assert_eq!(output.stdout, b"not a claim verdict\n");
+    assert!(!output.stderr.contains(&b'\r'), "{:?}", output.stderr);
+    assert!(!output.stderr.contains(&0x1b), "{:?}", output.stderr);
+    let stderr = String::from_utf8(output.stderr).expect("utf8 stderr");
+    assert!(
+        stderr.contains(
+            "⛔ decl=test.fixtures.scoped_run_observation::claim_non_bool#whole refused:"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn scoped_run_pty_begin_uses_the_projected_overwrite_wire() {
     let script = Command::new("script").arg("--version").output();
     if script.is_err() {
