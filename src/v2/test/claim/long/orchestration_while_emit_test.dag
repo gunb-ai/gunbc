@@ -66,11 +66,9 @@ fn ci_floor_peak_while_predicate() -> std.path_intent.PathPredicate {
   And {
     lhs: PathNonempty { path: ci_floor_peak_path_ref() },
     rhs: And {
-      lhs: Not {
-        inner: PathNotEq {
-          lhs: ci_floor_peak_path_ref(),
-          rhs: ci_floor_peak_root_path()
-        }
+      lhs: PathNotEq {
+        lhs: ci_floor_peak_path_ref(),
+        rhs: ci_floor_peak_root_path()
       },
       rhs: Not {
         inner: PathEntryKind {
@@ -159,7 +157,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
 test fn orch_while_typed_predicate_matches_golden_holds() -> Bool {
   match bash_path_predicate_target_model(predicate: ci_floor_peak_while_predicate()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source == "[ -n \"$d\" ] && ! [ \"$d\" = \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]") && (dg == None)
+      (source.authority_source_text == "[ -n \"$d\" ] && ! [ \"$d\" = \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]") && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -167,22 +165,22 @@ test fn orch_while_typed_predicate_matches_golden_holds() -> Bool {
 test fn orch_while_typed_ascent_matches_golden_holds() -> Bool {
   match bash_dirname_ascent_target_model(ascent: ci_floor_peak_while_ascent()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source == orch_while_body_command) && (dg == None)
+      (source.authority_source_text == orch_while_body_command) && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
   let regular = match bash_path_predicate_target_model(predicate: typed_ci_floor_peak_path_kind(kind: RegularFile)) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
     Rejected { diagnostics: _ } => ""
   }
   let directory = match bash_path_predicate_target_model(predicate: typed_ci_floor_peak_path_kind(kind: Directory)) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
     Rejected { diagnostics: _ } => ""
   }
   let missing = match bash_path_predicate_target_model(predicate: typed_ci_floor_peak_path_kind(kind: Missing)) {
-    Accepted { value: source, diagnostics: _ } => source
+    Accepted { value: source, diagnostics: _ } => source.authority_source_text
     Rejected { diagnostics: _ } => ""
   }
   (regular == "[ -f \"$d/memory.peak\" ]")

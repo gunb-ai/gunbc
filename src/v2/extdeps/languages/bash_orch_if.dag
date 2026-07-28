@@ -29,20 +29,13 @@ import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
+  bash_stmt_assign_target_model,
   bash_stmt_if_target_model,
   bash_stmt_if_block_target_model,
-  bash_stmt_negation_tokens,
-  bash_stmt_negation_emitted,
-  bash_stmt_negation_source_text,
-  bash_stmt_negation_lex,
-  bash_stmt_negation_translation_rules_node,
-  bash_stmt_negation_binding_spellings,
-  bash_stmt_andor_tokens,
-  bash_stmt_andor_emitted,
-  bash_stmt_andor_source_text,
-  bash_stmt_andor_lex,
-  bash_stmt_andor_translation_rules_node,
-  bash_stmt_andor_binding_spellings
+  bash_stmt_negation_target_model,
+  bash_stmt_andor_target_model,
+  bash_test_str_eq_target_model,
+  bash_test_str_nonempty_target_model
 }
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
@@ -146,6 +139,59 @@ fn bash_path_operand_quoted_text(path: PathIntent) -> Outcome<String> {
   )
 }
 
+fn bash_test_path_kind_op(kind: EntryKind) -> String {
+  match kind {
+    RegularFile => "-f "
+    Directory => "-d "
+    Missing => "! -e "
+    Other => "-e "
+  }
+}
+
+fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<TargetModel> {
+  let tokens = [
+    FixedToken { token_class: ^bash_token_test_lbracket },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_op },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_operand },
+    FixedToken { token_class: ^bash_token_test_rbracket }
+  ]
+  let binding_spellings = map_insert(
+    map_insert(empty_map(), ^bash_test_path_kind_op, op),
+    ^bash_test_path_kind_operand, operand
+  )
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: tokens,
+      lex: phrase_to_lex_rules(p: phrase([
+        span(text: "[ ", class: ^bash_token_test_lbracket),
+        span(text: " ]", class: ^bash_token_test_rbracket)
+      ])),
+      binding_spellings: binding_spellings
+    ),
+    f: fn(source_text) {
+      outcome_accepted(
+        bash_make_bound_tokens_target_model(
+          rules: bash_relation_translation_rules_node(
+            rule_name: ^bash_relation_rule_test_path_kind,
+            lhs: ^bash_production_test_path_kind,
+            tokens: tokens,
+            emitted: bash_conj_emitted_from_tokens(tokens: tokens)
+          ),
+          source_literal: ^bash_test_path_kind_source_literal,
+          production_name: ^bash_production_test_path_kind,
+          tokens: tokens,
+          source_text: render_target_text(t: source_text),
+          lex: phrase_to_lex_rules(p: phrase([
+            span(text: "[ ", class: ^bash_token_test_lbracket),
+            span(text: " ]", class: ^bash_token_test_rbracket)
+          ])),
+          binding_spellings: binding_spellings
+        )
+      )
+    }
+  )
+}
+
 fn bash_path_intent_invalid_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^bash_path_intent_operand_invalid,
@@ -154,13 +200,13 @@ fn bash_path_intent_invalid_diagnostic() -> Diagnostic {
   }
 }
 
-fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String> {
+fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetModel> {
   match predicate {
     PathNonempty { path: p } =>
       bind_outcome(
         o: bash_path_operand_quoted_text(path: p),
         f: fn(operand) {
-          outcome_accepted(concat("[ -n ", concat(operand, " ]")))
+          bash_test_str_nonempty_target_model(operand: operand)
         }
       )
     PathNotEq { lhs: l, rhs: r } =>
@@ -170,7 +216,14 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String>
           bind_outcome(
             o: bash_path_operand_quoted_text(path: r),
             f: fn(rhs) {
-              outcome_accepted(concat("[ ", concat(lhs, concat(" != ", concat(rhs, " ]")))))
+              bind_outcome(
+                o: bash_test_str_eq_target_model(lhs: lhs, rhs: rhs),
+                f: fn(eq_model) {
+                  outcome_accepted(
+                    bash_stmt_negation_target_model(inner: eq_model.authority_source_text)
+                  )
+                }
+              )
             }
           )
         }
@@ -179,19 +232,16 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String>
       bind_outcome(
         o: bash_path_operand_quoted_text(path: p),
         f: fn(operand) {
-          match k {
-            RegularFile => outcome_accepted(concat("[ -f ", concat(operand, " ]")))
-            Directory => outcome_accepted(concat("[ -d ", concat(operand, " ]")))
-            Missing => outcome_accepted(concat("[ ! -e ", concat(operand, " ]")))
-            Other => outcome_accepted(concat("[ -e ", concat(operand, " ]")))
-          }
+          bash_test_path_kind_target_model(op: bash_test_path_kind_op(kind: k), operand: operand)
         }
       )
     Not { inner: i } =>
       bind_outcome(
         o: bash_path_predicate_target_model(predicate: i),
         f: fn(inner) {
-          outcome_accepted(concat("! ", inner))
+          outcome_accepted(
+            bash_stmt_negation_target_model(inner: inner.authority_source_text)
+          )
         }
       )
     And { lhs: l, rhs: r } =>
@@ -201,7 +251,13 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String>
           bind_outcome(
             o: bash_path_predicate_target_model(predicate: r),
             f: fn(rhs) {
-              outcome_accepted(concat(lhs, concat(" && ", rhs)))
+              outcome_accepted(
+                bash_stmt_andor_target_model(
+                  left: lhs.authority_source_text,
+                  op: "&&",
+                  right: rhs.authority_source_text
+                )
+              )
             }
           )
         }
@@ -213,7 +269,13 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String>
           bind_outcome(
             o: bash_path_predicate_target_model(predicate: r),
             f: fn(rhs) {
-              outcome_accepted(concat(lhs, concat(" || ", rhs)))
+              outcome_accepted(
+                bash_stmt_andor_target_model(
+                  left: lhs.authority_source_text,
+                  op: "||",
+                  right: rhs.authority_source_text
+                )
+              )
             }
           )
         }
@@ -221,25 +283,40 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<String>
   }
 }
 
-fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<String> {
+fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetModel> {
   match ascent.path {
     PathRef { name: n } =>
       if !bash_path_ident_ok(name: n) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
-        outcome_accepted(concat(n, concat("=$(dirname \"$", concat(n, "\"))")))
+        outcome_accepted(
+          bash_stmt_assign_target_model(
+            name: n,
+            value: concat("$(dirname \"", concat(concat("$", n), "\"))")
+          )
+        )
       }
     PathLiteral { parts: p } =>
       if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
-        outcome_accepted(concat("d=$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\"))"))
+        outcome_accepted(
+          bash_stmt_assign_target_model(
+            name: "d",
+            value: concat("$(dirname \"", concat(bash_absolute_parts_text(parts: p), "\"))")
+          )
+        )
       }
     PathJoin { base: b, suffix: s } =>
       bind_outcome(
         o: bash_path_intent_text(path: PathJoin { base: b, suffix: s }),
         f: fn(text) {
-          outcome_accepted(concat("d=$(dirname \"", concat(text, "\"))"))
+          outcome_accepted(
+            bash_stmt_assign_target_model(
+              name: "d",
+              value: concat("$(dirname \"", concat(text, "\"))")
+            )
+          )
         }
       )
   }
