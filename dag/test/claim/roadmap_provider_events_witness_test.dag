@@ -1,6 +1,6 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool }
+import std.types { Bool, String }
 import gunbc.roadmap_provider_events {
   CodexEventsParsed,
   CodexEventsRefused,
@@ -166,6 +166,25 @@ test fn refusal_marks_prior_activity_as_historical() -> Bool {
         && string_contains(s: detail, pattern: "observation line budget 80")
     _ => false
   }
+}
+
+data codex_item_activity_anchor_witness_note: String = "review 44058. The activity read used to scan the whole projected line for a \"type\":\"…\" fragment, so any item whose payload QUOTED another item type reclassified the pane. These two witnesses are the discriminating pair: an agent_message carrying the file_change spelling inside its own text must still read as reporting (the fragment is present and must not win), and a genuine file_change must still read as editing files (the anchored walk must not have simply stopped working). The projector bounds item payloads rather than dropping them, so this line shape is reachable in production, not hypothetical."
+
+fn activity_of(text: String) -> String {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: text)) {
+    ProviderRunning { activity } => activity
+    _ => ""
+  }
+}
+
+test fn codex_item_activity_ignores_a_quoted_type_in_the_payload() -> Bool {
+  let forged = activity_of(
+    text: "{\"type\":\"item.started\",\"item\":{\"type\":\"agent_message\",\"text\":\"see \\\"type\\\":\\\"file_change\\\"\"}}\n",
+  )
+  let genuine = activity_of(
+    text: "{\"type\":\"item.started\",\"item\":{\"type\":\"file_change\"}}\n",
+  )
+  forged == "reporting" && genuine == "editing files"
 }
 
 test fn roadmap_provider_events_keystone_holds() -> Bool {

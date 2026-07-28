@@ -2,16 +2,28 @@ module gunbc.roadmap_provider_events
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
   json_text_parseable,
+  json_text_parse_string,
   json_text_skip_ws,
   json_text_starts_with_at,
 }
 
+type CodexItemActivity
+  = CodexRunningCommand
+  | CodexEditingFiles
+  | CodexUsingConnectedTool
+  | CodexSearching
+  | CodexUpdatingPlan
+  | CodexReasoningItem
+  | CodexReporting
+  | CodexUnclassifiedItem
+
 type CodexProviderEventKind
   = CodexThreadStarted
   | CodexTurnStarted
-  | CodexItemStarted { activity: String }
-  | CodexItemCompleted { activity: String }
+  | CodexItemStarted { activity: CodexItemActivity }
+  | CodexItemCompleted { activity: CodexItemActivity }
   | CodexTurnCompleted
   | CodexTurnFailed
   | CodexError
@@ -81,67 +93,140 @@ data codex_jsonl_projection_note: String = "The attempt-owned provider-events.js
 
 data codex_jsonl_classifier_note: String = "Codex --json is the provider protocol authority: one JSON object per line with thread.started, turn.started, item.*, turn.completed, turn.failed, and error event types. The raw stream is structurally reduced by codex_provider_event_projection_filter before this bounded total envelope classifier runs. The shared RFC 8259 grammar proves each projected line parseable, then the classifier requires the emitted top-level `type` member to be the first object member before selecting a closed event variant. That fail-closed envelope rule prevents a nested item or user-authored string containing `type: turn.completed` from fabricating terminal success. Projected lines are mechanically bounded; the remaining line budget is a red control against projector drift and refuses before grammar descent with the payload elided. Unknown, reordered, malformed, or truncated projected lines still refuse with their located evidence and parsed prefix. A refusal is a workflow fact, never dropped as console noise. Item activity is only a presentation projection from the bounded item type; terminal success/failure comes only from the anchored top-level turn.completed, turn.failed, or error envelope, never from tmux Spawned."
 
-fn codex_line_contains_type_token(raw: String, event_type: String) -> Bool {
-  string_contains(
-    s: raw,
-    pattern: join(["\"type\":\"", event_type, "\""], ""),
-  )
-    || string_contains(
-      s: raw,
-      pattern: join(["\"type\": \"", event_type, "\""], ""),
-    )
+data codex_projected_envelope_walk_note: String = "review 44058. Both reads below are ANCHORED walks over the projector's own envelope shape, not scans. codex_line_contains_type_token, which this replaces, searched the whole line for a `\"type\":\"…\"` fragment in either spacing — so an agent_message whose text quoted `\"type\":\"file_change\"` reclassified the pane's activity, the same fragment-scan class the top-level classifier already refused to use for terminal events and the same one the dashboard health readback was repaired for. The projector emits exactly {\"type\":…} for plain events and {\"type\":…,\"item\":{\"type\":…}} for item events, so both members have a known position and the walk either lands on it or answers false. codex_envelope_member_value_start is the single step both readings share (DESIGN 2, one concept)."
+
+fn codex_envelope_object_first_member(raw: String, at: Int) -> Int? {
+  let start = json_text_skip_ws(s: raw, i: at)
+  if json_text_starts_with_at(s: raw, i: start, lit: "\{") {
+    Present { value: start + 1 }
+  } else {
+    none
+  }
 }
 
-fn codex_line_has_top_level_type(raw: String, event_type: String) -> Bool {
-  let object_start = json_text_skip_ws(s: raw, i: 0)
-  if !json_text_starts_with_at(s: raw, i: object_start, lit: "{") {
-    false
+fn codex_envelope_member_value_start(raw: String, at: Int, key: String) -> Int? {
+  let quoted = join(["\"", key, "\""], "")
+  let key_start = json_text_skip_ws(s: raw, i: at)
+  if !json_text_starts_with_at(s: raw, i: key_start, lit: quoted) {
+    none
   } else {
-    let key = "\"type\""
-    let key_start = json_text_skip_ws(s: raw, i: object_start + 1)
-    if !json_text_starts_with_at(s: raw, i: key_start, lit: key) {
-      false
+    let colon = json_text_skip_ws(
+      s: raw,
+      i: key_start + string_length(s: quoted),
+    )
+    if json_text_starts_with_at(s: raw, i: colon, lit: ":") {
+      Present { value: json_text_skip_ws(s: raw, i: colon + 1) }
     } else {
-      let colon = json_text_skip_ws(
-        s: raw,
-        i: key_start + string_length(s: key),
-      )
-      if !json_text_starts_with_at(s: raw, i: colon, lit: ":") {
-        false
-      } else {
-        let value_start = json_text_skip_ws(s: raw, i: colon + 1)
-        let token = join(["\"", event_type, "\""], "")
-        let after_value = json_text_skip_ws(
-          s: raw,
-          i: value_start + string_length(s: token),
-        )
-        json_text_starts_with_at(s: raw, i: value_start, lit: token)
-          && (
-            json_text_starts_with_at(s: raw, i: after_value, lit: ",")
-              || json_text_starts_with_at(s: raw, i: after_value, lit: "}")
-          )
-      }
+      none
     }
   }
 }
 
-fn codex_item_activity(raw: String) -> String {
-  if codex_line_contains_type_token(raw: raw, event_type: "command_execution") {
-    "running command"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "file_change") {
-    "editing files"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "mcp_tool_call") {
-    "using connected tool"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "web_search") {
-    "searching"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "plan_update") {
-    "updating plan"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "reasoning") {
-    "reasoning"
-  } else if codex_line_contains_type_token(raw: raw, event_type: "agent_message") {
-    "reporting"
+fn codex_envelope_string_member_is(raw: String, at: Int, expected: String) -> Bool {
+  let token = join(["\"", expected, "\""], "")
+  let after = json_text_skip_ws(s: raw, i: at + string_length(s: token))
+  json_text_starts_with_at(s: raw, i: at, lit: token)
+    && (
+      json_text_starts_with_at(s: raw, i: after, lit: ",")
+        || json_text_starts_with_at(s: raw, i: after, lit: "\}")
+    )
+}
+
+fn codex_line_has_top_level_type(raw: String, event_type: String) -> Bool {
+  match codex_envelope_object_first_member(raw: raw, at: 0) {
+    Absent => false
+    Present { value: member } =>
+      match codex_envelope_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => false
+        Present { value: value_start } =>
+          codex_envelope_string_member_is(
+            raw: raw,
+            at: value_start,
+            expected: event_type,
+          )
+      }
+  }
+}
+
+fn codex_line_item_type_is(raw: String, item_type: String) -> Bool {
+  match codex_envelope_object_first_member(raw: raw, at: 0) {
+    Absent => false
+    Present { value: member } =>
+      match codex_envelope_member_value_start(raw: raw, at: member, key: "type") {
+        Absent => false
+        Present { value: type_value } =>
+          match json_text_parse_string(s: raw, i: type_value) {
+            JsonTextParseFail { end: _ } => false
+            JsonTextParseOk { end: after_type } => {
+              let comma = json_text_skip_ws(s: raw, i: after_type)
+              if !json_text_starts_with_at(s: raw, i: comma, lit: ",") {
+                false
+              } else {
+                match codex_envelope_member_value_start(
+                  raw: raw,
+                  at: comma + 1,
+                  key: "item",
+                ) {
+                  Absent => false
+                  Present { value: item_object } =>
+                    match codex_envelope_object_first_member(
+                      raw: raw,
+                      at: item_object,
+                    ) {
+                      Absent => false
+                      Present { value: item_member } =>
+                        match codex_envelope_member_value_start(
+                          raw: raw,
+                          at: item_member,
+                          key: "type",
+                        ) {
+                          Absent => false
+                          Present { value: item_value } =>
+                            codex_envelope_string_member_is(
+                              raw: raw,
+                              at: item_value,
+                              expected: item_type,
+                            )
+                        }
+                    }
+                }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn codex_item_activity(raw: String) -> CodexItemActivity {
+  if codex_line_item_type_is(raw: raw, item_type: "command_execution") {
+    CodexRunningCommand
+  } else if codex_line_item_type_is(raw: raw, item_type: "file_change") {
+    CodexEditingFiles
+  } else if codex_line_item_type_is(raw: raw, item_type: "mcp_tool_call") {
+    CodexUsingConnectedTool
+  } else if codex_line_item_type_is(raw: raw, item_type: "web_search") {
+    CodexSearching
+  } else if codex_line_item_type_is(raw: raw, item_type: "plan_update") {
+    CodexUpdatingPlan
+  } else if codex_line_item_type_is(raw: raw, item_type: "reasoning") {
+    CodexReasoningItem
+  } else if codex_line_item_type_is(raw: raw, item_type: "agent_message") {
+    CodexReporting
   } else {
-    "provider item"
+    CodexUnclassifiedItem
+  }
+}
+
+fn codex_item_activity_label(activity: CodexItemActivity) -> String {
+  match activity {
+    CodexRunningCommand => "running command"
+    CodexEditingFiles => "editing files"
+    CodexUsingConnectedTool => "using connected tool"
+    CodexSearching => "searching"
+    CodexUpdatingPlan => "updating plan"
+    CodexReasoningItem => "reasoning"
+    CodexReporting => "reporting"
+    CodexUnclassifiedItem => "provider item"
   }
 }
 
@@ -353,9 +438,15 @@ fn provider_execution_fold_event(
       match event.kind {
         CodexThreadStarted => ProviderStarting { activity: "thread started" }
         CodexTurnStarted => ProviderRunning { activity: "agent started" }
-        CodexItemStarted { activity } => ProviderRunning { activity: activity }
+        CodexItemStarted { activity } =>
+          ProviderRunning { activity: codex_item_activity_label(activity: activity) }
         CodexItemCompleted { activity } =>
-          ProviderRunning { activity: join([activity, " completed"], "") }
+          ProviderRunning {
+            activity: join(
+              [codex_item_activity_label(activity: activity), " completed"],
+              "",
+            ),
+          }
         CodexTurnCompleted =>
           ProviderCompleted { activity: "agent turn completed" }
         CodexTurnFailed =>
