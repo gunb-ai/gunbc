@@ -130,6 +130,13 @@ fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel 
   )
 }
 
+fn orch_cmdsubst_assign_call_target_model(name: String, callee: String, args_spelling: String) -> TargetModel {
+  bash_stmt_assign_target_model(
+    name: name,
+    value: concat("\"$(", concat(callee, concat(" ", concat(args_spelling, ")\""))))
+  )
+}
+
 fn orch_cmdsubst_assign_raw_target_model(name: String, body: String) -> TargetModel {
   bash_stmt_assign_target_model(
     name: name,
