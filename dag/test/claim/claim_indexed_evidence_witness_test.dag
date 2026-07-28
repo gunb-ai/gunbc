@@ -170,6 +170,40 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
     && !neither.challenge
 }
 
+test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool {
+  let provider = provider_evidence_fixture()
+  let failed = provider_live_request_failed_inference(
+    fact_id: "provider-live-request-failed-split",
+    provider: provider,
+    bound: provider_evidence_bound,
+    reason: "refresh refused",
+  )
+  let succeeded = provider_live_request_succeeded_inference(
+    fact_id: "provider-live-request-succeeded-split",
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let support_only = claim_assessment_from_links(
+    claim: ready_claim,
+    links: succeeded.applicable,
+  )
+  let challenge_only = claim_assessment_from_links(
+    claim: ready_claim,
+    links: failed.applicable,
+  )
+  let readiness = claim_readiness_assessment(
+    policy: ClaimReadinessPolicy { required: [ready_claim] },
+    assessments: [support_only, challenge_only],
+  )
+  !claim_readiness_is_ready(assessment: readiness)
+    && readiness.satisfied.length() == 0
+    && readiness.blocking == [ready_claim]
+}
+
 test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {
   let provider = provider_evidence_fixture()
   let claim = provider_credential_recorded_claim(

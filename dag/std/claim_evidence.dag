@@ -172,33 +172,32 @@ type ClaimReadinessAssessment<C> {
   blocking: List<C>
 }
 
+fn claim_supported_without_challenge_across_assessments<C, L>(
+  claim: C,
+  assessments: List<ClaimAssessment<C, L>>,
+) -> Bool {
+  let states = assessments
+    |> filter(assessment => assessment.claim == claim)
+    |> map(assessment => claim_information_state(assessment: assessment))
+  any(states, state => state.support)
+    && !any(states, state => state.challenge)
+}
+
 fn claim_readiness_assessment<C, L>(
   policy: ClaimReadinessPolicy<C>,
   assessments: List<ClaimAssessment<C, L>>,
 ) -> ClaimReadinessAssessment<C> {
+  let blocking = policy.required
+    |> filter(required =>
+      !claim_supported_without_challenge_across_assessments(
+        claim: required,
+        assessments: assessments,
+      )
+    )
   ClaimReadinessAssessment {
     satisfied: policy.required
-      |> filter(required =>
-        assessments
-          |> any(assessment =>
-            assessment.claim == required
-              && claim_assessment_supports_without_challenge(
-                assessment: assessment,
-              )
-          )
-      ),
-    blocking: policy.required
-      |> filter(required =>
-        !(
-          assessments
-            |> any(assessment =>
-              assessment.claim == required
-                && claim_assessment_supports_without_challenge(
-                  assessment: assessment,
-                )
-            )
-        )
-      ),
+      |> filter(required => !any(blocking, claim => claim == required)),
+    blocking: blocking,
   }
 }
 
