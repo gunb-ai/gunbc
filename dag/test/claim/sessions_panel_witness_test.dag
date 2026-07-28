@@ -4,7 +4,7 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
 }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_worker_observation }
 import gunbc.roadmap_component { dispatch_client_js_source, sessions_route_path }
 import gunbc.roadmap_style { roadmap_css }
 import std.upsert_decision { ObservationVerdict, Converged }
@@ -20,6 +20,7 @@ fn fixture_live() -> DispatchLiveSession {
     node_id: "5-regen-cutover",
     windows: 1,
     lease_verdict: Converged,
+    worker: dispatch_worker_observation(),
   }
 }
 
@@ -29,6 +30,11 @@ test fn sessions_observed_projects_to_wire() -> Bool {
     && string_contains(s: j, pattern: "\"observe_refused\": false")
     && string_contains(s: j, pattern: "\"node_id\": \"5-regen-cutover\"")
     && string_contains(s: j, pattern: "\"session_name\": \"gunbc-dispatch-5-regen-cutover\"")
+    && string_contains(s: j, pattern: "\"configured_provider\": \"Claude\"")
+    && string_contains(s: j, pattern: "\"provider\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"provider_readiness\": \"readiness unobserved\"")
+    && string_contains(s: j, pattern: "\"tool_execution_readiness\": \"tool readiness unobserved\"")
+    && string_contains(s: j, pattern: "\"worker_phase\": \"phase unobserved\"")
     && belt_sessions_http_status(o: Observed { live: [fixture_live()] }) == 200
 }
 
@@ -45,12 +51,61 @@ test fn sessions_client_marks_live_and_shouts_refusal() -> Bool {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "fetch('/sessions.json')")
     && string_contains(s: js, pattern: "sj.observe_refused")
-    && string_contains(s: js, pattern: "session · live")
-    && string_contains(s: js, pattern: "sb.title = sess.session_name")
-    && string_contains(s: js, pattern: "'observe-refused'")
+    && string_contains(s: js, pattern: "session · present")
+    && string_contains(s: js, pattern: "dispatch · accepted")
+    && !string_contains(s: js, pattern: "session · spawned")
+    && !string_contains(s: js, pattern: "session · live")
+    && string_contains(s: js, pattern: "sess.configured_provider")
+    && string_contains(s: js, pattern: "sess.provider")
+    && string_contains(s: js, pattern: "sess.provider_readiness")
+    && string_contains(s: js, pattern: "'observe-refused sessions-observe-refused'")
     && string_contains(s: js, pattern: "session observation refused: ")
     && string_contains(s: js, pattern: "mn.prepend(bn)")
     && string_contains(s: js, pattern: ".catch(")
+}
+
+test fn sessions_client_reobserves_after_dispatch_and_on_cadence() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "const gunbcObserveSessions = () =>")
+    && string_contains(s: js, pattern: "const gunbcObserveAttempts = () =>")
+    && string_contains(s: js, pattern: "const gunbcObservationPollTick = () =>")
+    && string_contains(s: js, pattern: "setTimeout(gunbcObservationPollTick, 3000)")
+    && !string_contains(s: js, pattern: "setInterval")
+    && string_contains(s: js, pattern: "gunbcObserveSessions()")
+    && string_contains(s: js, pattern: "gunbcObserveAttempts()")
+    && string_contains(s: js, pattern: "3000")
+}
+
+test fn sessions_client_serializes_each_observation_source() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "let gunbcSessionsObservationInFlight = false")
+    && string_contains(s: js, pattern: "let gunbcAttemptsObservationInFlight = false")
+    && string_contains(s: js, pattern: "if (gunbcSessionsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcSessionsObservationPending = true")
+    && string_contains(s: js, pattern: "if (gunbcAttemptsObservationInFlight)")
+    && string_contains(s: js, pattern: "gunbcAttemptsObservationPending = true")
+}
+
+test fn sessions_presence_does_not_overwrite_dispatch_presentation() -> Bool {
+  let js = dispatch_client_js_source()
+  return string_contains(s: js, pattern: "sb.textContent === 'dispatch'")
+    && string_contains(s: js, pattern: "sb.textContent === 'session · present'")
+    && string_contains(s: js, pattern: "pb.textContent === 'session · present'")
+}
+
+test fn sessions_refusal_withdraws_prior_presence() -> Bool {
+  let js = dispatch_client_js_source()
+  let presence_reset_selector = ".dispatch-btn[data-session-presence=\"present\"]"
+  return count(split(s: js, delimiter: presence_reset_selector)) == 4
+    && string_contains(s: js, pattern: "sj.observe_refused")
+    && string_contains(s: js, pattern: ".catch(")
+}
+
+test fn attempts_refusal_withdraws_prior_rows() -> Bool {
+  let js = dispatch_client_js_source()
+  return count(split(s: js, delimiter: ".dispatch-attempts")) == 5
+    && string_contains(s: js, pattern: "aj.attempts_refused")
+    && string_contains(s: js, pattern: "staleAttempts.remove()")
 }
 
 test fn sessions_banner_is_styled_loud() -> Bool {

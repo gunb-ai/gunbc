@@ -28,7 +28,7 @@ import gunbc.roadmap_belt {
   belt_member_ids,
   belt_reconcile_status_json,
 }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_worker_observation }
 import std.upsert_decision {
   ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused
 }
@@ -130,6 +130,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     node_id: node_id,
     windows: 1,
     lease_verdict: verdict,
+    worker: dispatch_worker_observation(),
   }
 }
 
@@ -212,4 +213,3 @@ test fn witness_reconcile_status_json_shape() -> Bool {
     && string_contains(s: j, pattern: "refusal_count")
     && string_contains(s: j, pattern: "deferred")
 }
-
