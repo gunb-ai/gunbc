@@ -25,7 +25,6 @@ type TicketFields {
 
 type SeedGrowthJustification {
   reason: String
-  owning_dissolution_lane_node: String
   concrete_dissolve_on: String
 }
 

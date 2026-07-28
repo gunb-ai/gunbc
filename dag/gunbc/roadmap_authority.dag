@@ -1065,7 +1065,6 @@ fn active_section() -> RoadmapSection {
             done: false,
             justification: SeedGrowthJustification {
               reason: "narrow host transport resolving/calling modeled observation_seed_render and writing returned bytes",
-              owning_dissolution_lane_node: "5-dissolve-patches",
               concrete_dissolve_on: "generated host-effect bridge can carry the same typed arguments/selected declaration/terminal write so the stringly run_in_context bridge deletes",
             },
             carriers: plan_ptr(path: "docs/plans/cli-run-hollowing-plan.md"),
