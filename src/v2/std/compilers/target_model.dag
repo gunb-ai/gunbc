@@ -9573,6 +9573,44 @@ fn target_representation_parameter_slots_from_node(
   )
 }
 
+fn target_representation_parameter_slot_requirements_for_derive(
+  slot: TargetRepresentationParameterSlot,
+  derive_key: TargetDeriveTraitKey
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  match slot.supplemental_requirements.lookup(derive_key) {
+    Present { value: existing } => existing
+    Absent => target_derive_supplemental_generic_bound_requirement_set_empty()
+  }
+}
+
+fn target_representation_parameter_slots_insert_requirement(
+  slots: Map<Symbol, TargetRepresentationParameterSlot>,
+  representation_parameter: Symbol,
+  slot: TargetRepresentationParameterSlot,
+  derive_key: TargetDeriveTraitKey,
+  required_key: TargetDeriveTraitKey,
+  derive_requirements: TargetDeriveSupplementalGenericBoundRequirementSet,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetRepresentationParameterSlot> {
+  map_insert(
+    m: slots,
+    key: representation_parameter,
+    value: TargetRepresentationParameterSlot {
+      supplemental_requirements: map_insert(
+        m: slot.supplemental_requirements,
+        key: derive_key,
+        value: map_insert(
+          m: derive_requirements,
+          key: required_key,
+          value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+            authority: authority
+          }
+        )
+      )
+    }
+  )
+}
+
 fn target_derive_supplemental_generic_bound_wire_requirements_apply(
   representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
   derive_trait: ReprGroundingDeriveTrait,
@@ -9598,11 +9636,10 @@ fn target_derive_supplemental_generic_bound_wire_requirements_apply(
               let required_key = target_grounding_derive_trait_key(
                 derive_trait: requirement.required_trait
               )
-              let derive_requirements = match slot.supplemental_requirements.lookup(derive_key) {
-                  Present { value: existing } => existing
-                  Absent =>
-                    target_derive_supplemental_generic_bound_requirement_set_empty()
-                }
+              let derive_requirements = target_representation_parameter_slot_requirements_for_derive(
+                slot: slot,
+                derive_key: derive_key
+              )
               match derive_requirements.lookup(required_key) {
                 Present { value: _ } =>
                   outcome_rejected(
@@ -9612,22 +9649,14 @@ fn target_derive_supplemental_generic_bound_wire_requirements_apply(
                   )
                 Absent =>
                   outcome_accepted(
-                    map_insert(
-                      m: slots,
-                      key: requirement.representation_parameter,
-                      value: TargetRepresentationParameterSlot {
-                        supplemental_requirements: map_insert(
-                          m: slot.supplemental_requirements,
-                          key: derive_key,
-                          value: map_insert(
-                            m: derive_requirements,
-                            key: required_key,
-                            value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
-                              authority: requirement.authority
-                            }
-                          )
-                        )
-                      }
+                    target_representation_parameter_slots_insert_requirement(
+                      slots: slots,
+                      representation_parameter: requirement.representation_parameter,
+                      slot: slot,
+                      derive_key: derive_key,
+                      required_key: required_key,
+                      derive_requirements: derive_requirements,
+                      authority: requirement.authority
                     )
                   )
               }
@@ -9635,6 +9664,51 @@ fn target_derive_supplemental_generic_bound_wire_requirements_apply(
       }
     }
   )
+}
+
+fn target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
+  acc: Outcome<TargetDeriveSupplementalGenericBoundContractCatalog>,
+  row: TargetDeriveSupplementalGenericBoundContractWire,
+  at: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundContractCatalog> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: catalog, diagnostics: _ } =>
+      let derive_key = target_grounding_derive_trait_key(
+        derive_trait: row.derive_trait
+      )
+      match catalog.contracts.lookup(derive_key) {
+        Present { value: _ } =>
+          outcome_rejected(
+            target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+              at: at
+            )
+          )
+        Absent =>
+          bind_outcome(
+            o: target_derive_supplemental_generic_bound_wire_requirements_apply(
+              representation_parameters: catalog.representation_parameters,
+              derive_trait: row.derive_trait,
+              requirements: row.requirements,
+              at: at
+            ),
+            f: fn(updated_parameters) {
+              outcome_accepted(
+                TargetDeriveSupplementalGenericBoundContractCatalog {
+                  representation_parameters: updated_parameters,
+                  contracts: map_insert(
+                    m: catalog.contracts,
+                    key: derive_key,
+                    value: TargetDeriveSupplementalGenericBoundContractAuthority {
+                      authority: row.authority
+                    }
+                  )
+                }
+              )
+            }
+          )
+      }
+  }
 }
 
 fn target_derive_supplemental_generic_bound_contract_catalog_from_node(
@@ -9657,44 +9731,11 @@ fn target_derive_supplemental_generic_bound_contract_catalog_from_node(
           }
         ),
         cons: fn(acc, row) {
-          match acc {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: catalog, diagnostics: _ } =>
-              let derive_key = target_grounding_derive_trait_key(
-                derive_trait: row.derive_trait
-              )
-              match catalog.contracts.lookup(derive_key) {
-                Present { value: _ } =>
-                  outcome_rejected(
-                    target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
-                      at: at
-                    )
-                  )
-                Absent =>
-                  bind_outcome(
-                    o: target_derive_supplemental_generic_bound_wire_requirements_apply(
-                      representation_parameters: catalog.representation_parameters,
-                      derive_trait: row.derive_trait,
-                      requirements: row.requirements,
-                      at: at
-                    ),
-                    f: fn(updated_parameters) {
-                      outcome_accepted(
-                        TargetDeriveSupplementalGenericBoundContractCatalog {
-                          representation_parameters: updated_parameters,
-                          contracts: map_insert(
-                            m: catalog.contracts,
-                            key: derive_key,
-                            value: TargetDeriveSupplementalGenericBoundContractAuthority {
-                              authority: row.authority
-                            }
-                          )
-                        }
-                      )
-                    }
-                  )
-              }
-          }
+          target_derive_supplemental_generic_bound_contract_catalog_insert_wire(
+            acc: acc,
+            row: row,
+            at: at
+          )
         }
       )
     }
