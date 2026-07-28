@@ -3,7 +3,7 @@ module test.claim.roadmap_emit
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -41,7 +41,7 @@ fn signed_child_node() -> RoadmapNode {
     carriers: [],
     sizing: Unsized,
     owner: "",
-    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { artifacts: ["fixture-handback"] }, as_expected: true },
   }
 }
 
