@@ -41,8 +41,8 @@ type EvidenceProvenance {
   agent: ProvAgentId
 }
 
-type EvidenceFreshness<Bound> {
-  bound: Bound
+type EvidenceFreshness<C> {
+  maximum_conclusion: C
   basis: NonEmptyStr
 }
 
@@ -70,16 +70,15 @@ fn evidence_direction_fold<R>(
   }
 }
 
-type EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence> {
+type EvidenceLink<F, C, A, FidelityBoundary, Independence> {
   fact: RecordedFact<F>
   direction: EvidenceDirection
   inference_rule: InferenceRuleId
   authority: A
   provenance: EvidenceProvenance
-  freshness: EvidenceFreshness<FreshBound>
+  freshness: EvidenceFreshness<C>
   fidelity: EvidenceFidelity<FidelityBoundary>
   probe_independence: Independence
-  maximum_conclusion: C
 }
 
 type EvidenceInsufficiency<F, C, Independence> {
@@ -90,24 +89,24 @@ type EvidenceInsufficiency<F, C, Independence> {
   reason: NonEmptyStr
 }
 
-type EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence>
+type EvidenceInference<F, C, A, FidelityBoundary, Independence>
   = EvidenceApplicable {
-      link: EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
+      link: EvidenceLink<F, C, A, FidelityBoundary, Independence>,
     }
   | EvidenceInsufficient {
       insufficiency: EvidenceInsufficiency<F, C, Independence>,
     }
 
-type EvidenceInferenceFold<F, C, A, FreshBound, FidelityBoundary, Independence, R> {
+type EvidenceInferenceFold<F, C, A, FidelityBoundary, Independence, R> {
   applicable: fn(
-    EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
+    EvidenceLink<F, C, A, FidelityBoundary, Independence>,
   ) -> R
   insufficient: fn(EvidenceInsufficiency<F, C, Independence>) -> R
 }
 
-fn evidence_inference_fold<F, C, A, FreshBound, FidelityBoundary, Independence, R>(
-  inference: EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence>,
-  fold: EvidenceInferenceFold<F, C, A, FreshBound, FidelityBoundary, Independence, R>,
+fn evidence_inference_fold<F, C, A, FidelityBoundary, Independence, R>(
+  inference: EvidenceInference<F, C, A, FidelityBoundary, Independence>,
+  fold: EvidenceInferenceFold<F, C, A, FidelityBoundary, Independence, R>,
 ) -> R {
   match inference {
     EvidenceApplicable { link: link } => fold.applicable(link)
@@ -116,21 +115,21 @@ fn evidence_inference_fold<F, C, A, FreshBound, FidelityBoundary, Independence, 
   }
 }
 
-fn applicable_evidence_inference<F, C, A, FreshBound, FidelityBoundary, Independence>(
-  link: EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
-) -> EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence> {
+fn applicable_evidence_inference<F, C, A, FidelityBoundary, Independence>(
+  link: EvidenceLink<F, C, A, FidelityBoundary, Independence>,
+) -> EvidenceInference<F, C, A, FidelityBoundary, Independence> {
   EvidenceApplicable { link: link }
 }
 
-fn insufficient_evidence_inference<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn insufficient_evidence_inference<F, C, A, FidelityBoundary, Independence>(
   insufficiency: EvidenceInsufficiency<F, C, Independence>,
-) -> EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence> {
+) -> EvidenceInference<F, C, A, FidelityBoundary, Independence> {
   EvidenceInsufficient { insufficiency: insufficiency }
 }
 
-fn evidence_inference_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
-  inference: EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence>,
-) -> List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
+fn evidence_inference_links<F, C, A, FidelityBoundary, Independence>(
+  inference: EvidenceInference<F, C, A, FidelityBoundary, Independence>,
+) -> List<EvidenceLink<F, C, A, FidelityBoundary, Independence>> {
   evidence_inference_fold(
     inference: inference,
     fold: EvidenceInferenceFold {
@@ -140,8 +139,8 @@ fn evidence_inference_links<F, C, A, FreshBound, FidelityBoundary, Independence>
   )
 }
 
-fn evidence_inference_insufficiencies<F, C, A, FreshBound, FidelityBoundary, Independence>(
-  inference: EvidenceInference<F, C, A, FreshBound, FidelityBoundary, Independence>,
+fn evidence_inference_insufficiencies<F, C, A, FidelityBoundary, Independence>(
+  inference: EvidenceInference<F, C, A, FidelityBoundary, Independence>,
 ) -> List<EvidenceInsufficiency<F, C, Independence>> {
   evidence_inference_fold(
     inference: inference,
@@ -152,16 +151,17 @@ fn evidence_inference_insufficiencies<F, C, A, FreshBound, FidelityBoundary, Ind
   )
 }
 
-type ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence> {
-  evidence: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>
+type ClaimAssessment<F, C, A, FidelityBoundary, Independence> {
+  evidence: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>
 }
 
-fn claim_assessment_from_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn claim_assessment_from_links<F, C, A, FidelityBoundary, Independence>(
   claim: C,
-  links: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
-) -> ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence> {
+  links: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+) -> ClaimAssessment<F, C, A, FidelityBoundary, Independence> {
   ClaimAssessment {
-    evidence: links |> filter(link => link.maximum_conclusion == claim),
+    evidence: links
+      |> filter(link => link.freshness.maximum_conclusion == claim),
   }
 }
 
@@ -170,12 +170,12 @@ type ClaimInformationState {
   challenge: Bool
 }
 
-fn claim_information_state<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn claim_information_state<F, C, A, FidelityBoundary, Independence>(
   claim: C,
-  assessment: ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>,
+  assessment: ClaimAssessment<F, C, A, FidelityBoundary, Independence>,
 ) -> ClaimInformationState {
   let evidence = assessment.evidence
-    |> filter(link => link.maximum_conclusion == claim)
+    |> filter(link => link.freshness.maximum_conclusion == claim)
   ClaimInformationState {
     support: any(evidence, link =>
       evidence_direction_fold(
@@ -198,9 +198,9 @@ fn claim_information_state<F, C, A, FreshBound, FidelityBoundary, Independence>(
   }
 }
 
-fn claim_assessment_supports_without_challenge<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn claim_assessment_supports_without_challenge<F, C, A, FidelityBoundary, Independence>(
   claim: C,
-  assessment: ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>,
+  assessment: ClaimAssessment<F, C, A, FidelityBoundary, Independence>,
 ) -> Bool {
   let state = claim_information_state(
     claim: claim,
@@ -232,9 +232,9 @@ fn claim_readiness_assessment_fold<C, R>(
   }
 }
 
-fn claim_supported_without_challenge_across_assessments<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn claim_supported_without_challenge_across_assessments<F, C, A, FidelityBoundary, Independence>(
   claim: C,
-  assessments: List<ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>>,
+  assessments: List<ClaimAssessment<F, C, A, FidelityBoundary, Independence>>,
 ) -> Bool {
   let states = assessments
     |> map(assessment =>
@@ -247,9 +247,9 @@ fn claim_supported_without_challenge_across_assessments<F, C, A, FreshBound, Fid
     && !any(states, state => state.challenge)
 }
 
-fn claim_readiness_assessment<F, C, A, FreshBound, FidelityBoundary, Independence>(
+fn claim_readiness_assessment<F, C, A, FidelityBoundary, Independence>(
   policy: ClaimReadinessPolicy<C>,
-  assessments: List<ClaimAssessment<F, C, A, FreshBound, FidelityBoundary, Independence>>,
+  assessments: List<ClaimAssessment<F, C, A, FidelityBoundary, Independence>>,
 ) -> List<ClaimReadinessAssessment<C>> {
   policy.required |> map(required =>
     if claim_supported_without_challenge_across_assessments(
@@ -277,4 +277,4 @@ fn claim_readiness_is_ready<C>(
   )
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. ClaimAssessment stores only canonical links, never caller-supplied support or challenge lists; every information-state and readiness query re-indexes those links by maximum_conclusion and consumes direction through the canonical fold. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment stores only canonical links, never caller-supplied support or challenge lists; every information-state and readiness query re-indexes those links by freshness.maximum_conclusion and consumes direction through the canonical fold. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."

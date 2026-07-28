@@ -91,6 +91,7 @@ fn provider_evidence_fixture() -> ProviderInstance {
 }
 
 data provider_evidence_bound: RunKey = "provider-attempt-1"
+data provider_other_evidence_bound: RunKey = "provider-attempt-2"
 
 fn provider_login_status_fact(
   id: RecordedFactId,
@@ -207,6 +208,29 @@ test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_stat
   )
   evidence_inference_links(inference: inference).length() == 0
     && evidence_inference_insufficiencies(inference: inference).length() == 1
+}
+
+test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bool {
+  let provider = provider_evidence_fixture()
+  let inference = provider_live_request_succeeded_inference(
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-attempt-one",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let other_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_other_evidence_bound,
+  )
+  let other_state = claim_information_state(
+    claim: other_claim,
+    assessment: claim_assessment_from_links(
+      claim: other_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  !other_state.support && !other_state.challenge
 }
 
 test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
@@ -329,7 +353,7 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       agent: "fixture-provider-cli",
     },
     freshness: EvidenceFreshness {
-      bound: provider_evidence_bound,
+      maximum_conclusion: claim,
       basis: "same fixture attempt",
     },
     fidelity: EvidenceFidelity {
@@ -337,7 +361,6 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       losses: [],
     },
     probe: probe,
-    maximum_conclusion: claim,
   )
   let challenge = infer_probe_evidence(
     fact: fact,
@@ -350,7 +373,7 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       agent: "fixture-provider-cli",
     },
     freshness: EvidenceFreshness {
-      bound: provider_evidence_bound,
+      maximum_conclusion: claim,
       basis: "same fixture attempt",
     },
     fidelity: EvidenceFidelity {
@@ -358,7 +381,6 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
       losses: [],
     },
     probe: probe,
-    maximum_conclusion: claim,
   )
   evidence_inference_links(inference: support).length() == 0
     && evidence_inference_insufficiencies(inference: support).length() == 1
@@ -453,7 +475,7 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     && !admissible.challenge
     && all(
       evidence_inference_links(inference: inference),
-      link => link.maximum_conclusion == captured_claim,
+      link => link.freshness.maximum_conclusion == captured_claim,
     )
 }
 

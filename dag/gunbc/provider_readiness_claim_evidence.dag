@@ -47,9 +47,9 @@ type ProviderReadinessObservation
       response: NonEmptyStr,
     }
 
-type ProviderReadinessEvidenceLink = EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, RunKey, ProviderReadiness, ReadBackProbe>
+type ProviderReadinessEvidenceLink = EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
 
-type ProviderReadinessEvidenceInference = EvidenceInference<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, RunKey, ProviderReadiness, ReadBackProbe>
+type ProviderReadinessEvidenceInference = EvidenceInference<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
 
 data provider_login_status_probe: ReadBackProbe = ReadBackProbe {
   label: "codex login status",
@@ -112,7 +112,6 @@ fn provider_observation_insufficient(
 fn provider_login_status_support(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  bound: RunKey,
   readiness: ProviderReadiness,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
@@ -126,7 +125,7 @@ fn provider_login_status_support(
       agent: "codex-cli",
     },
     freshness: EvidenceFreshness {
-      bound: bound,
+      maximum_conclusion: claim,
       basis: "captured inside the named provider attempt",
     },
     fidelity: EvidenceFidelity {
@@ -137,14 +136,12 @@ fn provider_login_status_support(
       ],
     },
     probe: provider_login_status_probe,
-    maximum_conclusion: claim,
   )
 }
 
 fn provider_live_request_challenge(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  bound: RunKey,
   readiness: ProviderReadiness,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
@@ -158,7 +155,7 @@ fn provider_live_request_challenge(
       agent: "codex-cli",
     },
     freshness: EvidenceFreshness {
-      bound: bound,
+      maximum_conclusion: claim,
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: EvidenceFidelity {
@@ -166,14 +163,12 @@ fn provider_live_request_challenge(
       losses: [],
     },
     probe: provider_live_request_probe,
-    maximum_conclusion: claim,
   )
 }
 
 fn provider_live_request_support(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  bound: RunKey,
   readiness: ProviderReadiness,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
@@ -187,7 +182,7 @@ fn provider_live_request_support(
       agent: "codex-cli",
     },
     freshness: EvidenceFreshness {
-      bound: bound,
+      maximum_conclusion: claim,
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: EvidenceFidelity {
@@ -195,7 +190,6 @@ fn provider_live_request_support(
       losses: [],
     },
     probe: provider_live_request_probe,
-    maximum_conclusion: claim,
   )
 }
 
@@ -221,7 +215,6 @@ fn provider_login_status_inference(
         provider_login_status_support(
           fact: observed_fact,
           claim: claim,
-          bound: bound,
           readiness: readiness,
         )
       } else {
@@ -268,7 +261,6 @@ fn provider_live_request_failed_inference(
             provider_live_request_challenge(
               fact: observed_fact,
               claim: claim,
-              bound: bound,
               readiness: readiness,
             )
           } else {
@@ -323,7 +315,6 @@ fn provider_live_request_succeeded_inference(
         provider_live_request_support(
           fact: observed_fact,
           claim: claim,
-          bound: bound,
           readiness: readiness,
         )
       } else {

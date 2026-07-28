@@ -21,17 +21,16 @@ import gunbc.readback_independence {
   readback_probe_is_independent,
 }
 
-fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
+fn infer_probe_evidence<F, C, A, FidelityBoundary>(
   fact: RecordedFact<F>,
   direction: EvidenceDirection,
   inference_rule: InferenceRuleId,
   authority: A,
   provenance: EvidenceProvenance,
-  freshness: EvidenceFreshness<FreshBound>,
+  freshness: EvidenceFreshness<C>,
   fidelity: EvidenceFidelity<FidelityBoundary>,
   probe: ReadBackProbe,
-  maximum_conclusion: C,
-) -> EvidenceInference<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe> {
+) -> EvidenceInference<F, C, A, FidelityBoundary, ReadBackProbe> {
   let supports = evidence_direction_fold(
     direction: direction,
     fold: EvidenceDirectionFold {
@@ -43,7 +42,7 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
     insufficient_evidence_inference(
       insufficiency: EvidenceInsufficiency {
         fact: fact,
-        claim: maximum_conclusion,
+        claim: freshness.maximum_conclusion,
         inference_rule: inference_rule,
         probe_independence: probe,
         reason: "a positive result from this probe may establish the subject it reports",
@@ -60,7 +59,6 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
         freshness: freshness,
         fidelity: fidelity,
         probe_independence: probe,
-        maximum_conclusion: maximum_conclusion,
       },
     )
   }

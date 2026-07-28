@@ -31,9 +31,9 @@ import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
 
 type OsInstallEvidenceClaim = Claim<HostIdentity, HostIdentity, OsInstallRuntimeDiagnosticVerdict, OsInstallPreflightVerdict, RunKey>
 
-type OsInstallEvidenceLink = EvidenceLink<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, RunKey, KvmObservedScreen, ReadBackProbe>
+type OsInstallEvidenceLink = EvidenceLink<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, KvmObservedScreen, ReadBackProbe>
 
-type OsInstallEvidenceInference = EvidenceInference<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, RunKey, KvmObservedScreen, ReadBackProbe>
+type OsInstallEvidenceInference = EvidenceInference<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, KvmObservedScreen, ReadBackProbe>
 
 data os_install_kvm_observation_probe: ReadBackProbe = ReadBackProbe {
   label: "operator-attested KVM screen",
@@ -113,7 +113,7 @@ fn os_install_kvm_attestation_inference(
       agent: attestation.attested_by as ProvAgentId,
     },
     freshness: EvidenceFreshness {
-      bound: bound,
+      maximum_conclusion: claim,
       basis: "attestation is retained inside the named install attempt",
     },
     fidelity: EvidenceFidelity {
@@ -123,7 +123,6 @@ fn os_install_kvm_attestation_inference(
       ],
     },
     probe: os_install_kvm_observation_probe,
-    maximum_conclusion: claim,
   )
 }
 

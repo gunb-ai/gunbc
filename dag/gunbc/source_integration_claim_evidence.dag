@@ -32,9 +32,9 @@ type SourceIntegrationProposition
 
 type SourceIntegrationClaim = Claim<NativeScmProposalIdentity, NativeScmProposalIdentity, SourceIntegrationProposition, NativeScmProposalIdentity, RunKey>
 
-type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, RunKey, SourceIntegrationProposition, ReadBackProbe>
+type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, SourceIntegrationProposition, ReadBackProbe>
 
-type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, RunKey, SourceIntegrationProposition, ReadBackProbe>
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, SourceIntegrationProposition, ReadBackProbe>
 
 data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
   label: "decode one authored source binding",
@@ -93,7 +93,7 @@ fn source_binding_capture_inference(
       agent: "dag-source-decoder",
     },
     freshness: EvidenceFreshness {
-      bound: bound,
+      maximum_conclusion: claim,
       basis: "binding was decoded for the named proposal attempt",
     },
     fidelity: EvidenceFidelity {
@@ -104,7 +104,6 @@ fn source_binding_capture_inference(
       ],
     },
     probe: source_binding_capture_probe,
-    maximum_conclusion: claim,
   )
 }
 
