@@ -1,17 +1,26 @@
 module extdeps.git.object_store
 
-import std.types { NonEmptyStr, Bytes }
+import std.types { ContentHash, NonEmptyStr, Bytes }
 import std.integer { UInt8 }
 import std.measure { ByteSize }
+import std.cache_interface { ContentAddressedByValue, WriteOnce }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
+import extdeps.object_storage { ObjectContainer }
+import extdeps.object_storage.content_addressed { CasAddressingConfig }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data git_objects_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "git-scm.com/book/en/v2/Git-Internals-Git-Objects"
   }
+}
+
+data git_object_store_config: CasAddressingConfig = CasAddressingConfig {
+  container: ObjectContainer { name: "objects" }
+  key_derivation: ContentAddressedByValue
+  write_mode: WriteOnce
 }
 
 data git_ls_tree_authority: ExternalAuthority = ExternalAuthority {
@@ -50,15 +59,24 @@ type GitObjectFormat
   = GitObjectFormatSha1
   | GitObjectFormatSha256
 
-type GitObjectId {
-  format: GitObjectFormat
-  hex: NonEmptyStr
+type GitSha1Digest = ContentHash where brand("GitSha1Digest")
+type GitSha256Digest = ContentHash where brand("GitSha256Digest")
+
+type GitObjectId
+  = GitSha1ObjectId { digest: GitSha1Digest }
+  | GitSha256ObjectId { digest: GitSha256Digest }
+
+fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
+  match oid {
+    GitSha1ObjectId { digest: _ } => GitObjectFormatSha1
+    GitSha256ObjectId { digest: _ } => GitObjectFormatSha256
+  }
 }
 
-fn git_object_id_valid(oid: GitObjectId) -> Bool {
-  match oid.format {
-    GitObjectFormatSha1 => string_length(s: oid.hex as String) == 40
-    GitObjectFormatSha256 => string_length(s: oid.hex as String) == 64
+fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
+  match oid {
+    GitSha1ObjectId { digest } => digest as ContentHash
+    GitSha256ObjectId { digest } => digest as ContentHash
   }
 }
 
