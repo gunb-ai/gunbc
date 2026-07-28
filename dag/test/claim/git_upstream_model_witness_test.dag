@@ -2,7 +2,7 @@ module test.claim.git_upstream_model_witness
 
 import extdeps.git {
   GitAuthor,
-  BlobObj,
+  CommitObj,
   TagObj,
 }
 import extdeps.git.object_store {
@@ -44,6 +44,7 @@ import extdeps.git.object_store {
   GitRefAdvanced,
   GitRefAdvanceStale,
   GitRefAdvanceSymbolic,
+  RefResolved,
   ObjectPromisorUnavailable,
   GitAttributesTransformExecution,
   GitCleanSmudgeFilterExecution,
@@ -60,6 +61,8 @@ import extdeps.git.object_store {
   git_r0_unsupported_boundary,
 }
 import std.measure { byte_size }
+import std.types { Bytes }
+import std.bytes { octets_bytes }
 
 data sha1_blob_regular: GitObjectId = GitObjectId {
   format: GitObjectFormatSha1,
@@ -176,7 +179,10 @@ fn fixture_objects() -> List<StoredObject> {
     StoredObject {
       oid: sha1_blob_regular,
       object: ObjectBlob {
-        blob: Blob { size: byte_size(count: 6), content: "source" as Bytes }
+        blob: Blob {
+          size: byte_size(count: 6),
+          content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
+        }
       },
     },
     StoredObject {
@@ -200,7 +206,7 @@ fn fixture_objects() -> List<StoredObject> {
       object: ObjectTag {
         tag: AnnotatedTag {
           target: sha1_parent_commit,
-          target_type: BlobObj,
+          target_type: CommitObj,
           name: "v0",
           tagger: fixture_author,
           message: "bounded annotated tag",
@@ -242,11 +248,11 @@ fn fixture_repository() -> GitRepositoryState {
       GitWorktreeRegular {
         path: path_regular,
         executable: false,
-        content: "source" as Bytes,
+        content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
       },
       GitWorktreeSymlink {
         path: path_symlink,
-        target: "readme" as Bytes,
+        target: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
       },
       GitWorktreeGitlink {
         path: path_gitlink,

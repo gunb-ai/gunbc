@@ -1,6 +1,6 @@
 module extdeps.git.object_store
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bytes }
 import std.integer { UInt8 }
 import std.measure { ByteSize }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
@@ -42,8 +42,6 @@ data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Git tree paths are byte strings. They are not FilePath/String because a valid Git
-// pathname is not required to be Unicode.
 type GitPath {
   octets: List<UInt8>
 }
@@ -69,8 +67,6 @@ type Blob {
   content: Bytes
 }
 
-// The constructors carry the valid mode/object-type pairs. A mode token cannot
-// silently turn an executable, symlink, or gitlink into an ordinary blob.
 type TreeEntry
   = RegularBlobEntry { path: GitPath, oid: GitObjectId }
   | ExecutableBlobEntry { path: GitPath, oid: GitObjectId }
@@ -236,21 +232,41 @@ type GitTreeDecodeOutcome
   = GitTreeDecoded { entries: List<TreeEntry> }
   | GitTreeDecodeRefused { cause: GitTreeDecodeRefusal }
 
-fn git_decode_tree_entry(entry: GitTreeWireEntry) -> TreeEntry? {
+type GitTreeEntryDecodeOutcome
+  = GitTreeEntryDecoded { entry: TreeEntry }
+  | GitTreeEntryDecodeRefused { cause: GitTreeDecodeRefusal }
+
+fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
   if !git_object_id_valid(oid: entry.oid) {
-    Absent
+    GitTreeEntryDecodeRefused { cause: GitTreeInvalidObjectId { oid: entry.oid } }
   } else if entry.mode == "100644" && entry.object_type == "blob" {
-    Present { value: RegularBlobEntry { path: entry.path, oid: entry.oid } }
+    GitTreeEntryDecoded {
+      entry: RegularBlobEntry { path: entry.path, oid: entry.oid }
+    }
   } else if entry.mode == "100755" && entry.object_type == "blob" {
-    Present { value: ExecutableBlobEntry { path: entry.path, oid: entry.oid } }
+    GitTreeEntryDecoded {
+      entry: ExecutableBlobEntry { path: entry.path, oid: entry.oid }
+    }
   } else if entry.mode == "120000" && entry.object_type == "blob" {
-    Present { value: SymlinkEntry { path: entry.path, oid: entry.oid } }
+    GitTreeEntryDecoded {
+      entry: SymlinkEntry { path: entry.path, oid: entry.oid }
+    }
   } else if entry.mode == "040000" && entry.object_type == "tree" {
-    Present { value: SubtreeEntry { path: entry.path, oid: entry.oid } }
+    GitTreeEntryDecoded {
+      entry: SubtreeEntry { path: entry.path, oid: entry.oid }
+    }
   } else if entry.mode == "160000" && entry.object_type == "commit" {
-    Present { value: GitlinkEntry { path: entry.path, oid: entry.oid } }
+    GitTreeEntryDecoded {
+      entry: GitlinkEntry { path: entry.path, oid: entry.oid }
+    }
   } else {
-    Absent
+    GitTreeEntryDecodeRefused {
+      cause: GitTreeModeObjectMismatch {
+        mode: entry.mode,
+        object_type: entry.object_type,
+        path: entry.path,
+      }
+    }
   }
 }
 
@@ -261,20 +277,10 @@ fn git_decode_tree_step(
   match state {
     GitTreeDecodeRefused { cause } => GitTreeDecodeRefused { cause: cause }
     GitTreeDecoded { entries } => match git_decode_tree_entry(entry: wire) {
-      Present { value: entry } =>
+      GitTreeEntryDecoded { entry } =>
         GitTreeDecoded { entries: append(entries, items: [entry]) }
-      Absent =>
-        if !git_object_id_valid(oid: wire.oid) {
-          GitTreeDecodeRefused { cause: GitTreeInvalidObjectId { oid: wire.oid } }
-        } else {
-          GitTreeDecodeRefused {
-            cause: GitTreeModeObjectMismatch {
-              mode: wire.mode,
-              object_type: wire.object_type,
-              path: wire.path,
-            }
-          }
-        }
+      GitTreeEntryDecodeRefused { cause } =>
+        GitTreeDecodeRefused { cause: cause }
     }
   }
 }
