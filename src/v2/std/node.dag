@@ -6,16 +6,42 @@ import std.content_hash { content_hash_atom, content_hash_combine }
 type Symbol
 type Hash = ContentHash
 
-type OccurrenceId {
-  value: Int
-}
+type OccurrenceId = std.occurrence_identity.OccurrenceId
+
+data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
+
+data node_occurrence_id_v2_facade_dissolve_on: String = "DISSOLVE-ON: the counted v2.std.node imports of NodeOccurrenceId, SyntheticOccurrence, and MintedOccurrence reach zero after the bounded v2 import migration; then delete this compatibility coproduct and its two conversions."
 
 type NodeOccurrenceId
   = SyntheticOccurrence
   | MintedOccurrence { id: OccurrenceId }
 
+fn node_occurrence_id_to_shared(
+  occurrence: NodeOccurrenceId
+) -> std.occurrence_identity.NodeOccurrenceIdentity {
+  match occurrence {
+    SyntheticOccurrence =>
+      std.occurrence_identity.OccurrenceSynthetic
+    MintedOccurrence { id: id } =>
+      std.occurrence_identity.OccurrenceMinted { id: id }
+  }
+}
+
+fn node_occurrence_id_from_shared(
+  occurrence: std.occurrence_identity.NodeOccurrenceIdentity
+) -> NodeOccurrenceId {
+  match occurrence {
+    std.occurrence_identity.OccurrenceSynthetic =>
+      SyntheticOccurrence
+    std.occurrence_identity.OccurrenceMinted { id: id } =>
+      MintedOccurrence { id: id }
+  }
+}
+
 fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
-  MintedOccurrence { id: id }
+  node_occurrence_id_from_shared(
+    occurrence: std.occurrence_identity.node_occurrence_identity_minted(id: id)
+  )
 }
 
 type Connective

@@ -24,6 +24,17 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
+    DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
+    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+};
+pub use crate::std_occurrence_identity::{
+    authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
+    occurrence_id_allocator_advance_to,
+};
+pub use crate::std_occurrence_identity::{
+    AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
+};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -443,32 +454,9 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
-}
-impl CompilerDiagnostic {
-    pub fn span(&self) -> Rc<SourceSpan> {
-        match self {
-            CompilerDiagnostic::UnresolvedImport { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingExport { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::UnresolvedType { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::TypeMismatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ArityMismatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::VariantNotFound { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::FieldNotFound { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingField { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::NonExhaustiveMatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::CircularDependency { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::DuplicateModule { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingAnnotation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ParseError { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::InternalError { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ComplexityUnknown { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::AmbiguousReference { span: __val, .. } => __val.clone(),
-        }
-    }
+    OccurrenceTransportViolation {
+        refusal: Rc<OccurrenceTransportRefusal>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -480,6 +468,40 @@ pub struct ErrorNode {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn occurrence_transport_refusal_diagnostic_span(
+    refusal: Rc<OccurrenceTransportRefusal>,
+) -> Rc<SourceSpan> {
+    match (*refusal.clone()).clone() {
+        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+        OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+        OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+    }
+}
+
+pub fn occurrence_transport_refusal_diagnostic_message(
+    refusal: Rc<OccurrenceTransportRefusal>,
+) -> String {
+    match (*refusal.clone()).clone() {
+    OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: _, .. } => "occurrence transport refused: missing authored occurrence identity".to_string(),
+    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+}
 }
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
@@ -504,6 +526,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::OccurrenceTransportViolation {
+            refusal: refusal, ..
+        } => occurrence_transport_refusal_diagnostic_span(refusal.clone()),
     }
 }
 
@@ -731,6 +756,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             ),
             " — qualify by containment path, alias, or rename".to_string(),
         ),
+        CompilerDiagnostic::OccurrenceTransportViolation {
+            refusal: refusal, ..
+        } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     }
 }
 
@@ -3707,6 +3735,7 @@ pub struct InternTable {
     pub strings: Rc<Vec<String>>,
     pub index: Rc<HashMap<String, i64>>,
     pub next_id: i64,
+    pub authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3720,6 +3749,19 @@ pub fn empty_intern_table() -> Rc<InternTable> {
         strings: Rc::new(vec!["".to_string()]),
         index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
+        authored_token_ordinals: authored_token_ordinal_space_initial(),
+    })
+}
+
+pub fn intern_table_with_authored_token_ordinals(
+    table: Rc<InternTable>,
+    authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
+) -> Rc<InternTable> {
+    Rc::new(InternTable {
+        strings: table.strings.clone(),
+        index: table.index.clone(),
+        next_id: table.next_id.clone(),
+        authored_token_ordinals: authored_token_ordinals.clone(),
     })
 }
 
@@ -3736,6 +3778,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
                     strings: v1_rt::rc_list_push(table.strings.clone(), s.clone()),
                     index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
                     next_id: (id.clone() + 1),
+                    authored_token_ordinals: table.authored_token_ordinals.clone(),
                 }),
                 id: id.clone(),
             })
@@ -3768,17 +3811,24 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
     tables.clone().iter().cloned().fold(
         empty_intern_table(),
         |merged: Rc<InternTable>, t: Rc<InternTable>| {
-            t.strings
-                .clone()
-                .iter()
-                .cloned()
-                .fold(merged, |m: Rc<InternTable>, s: String| {
+            let merged_allocator = occurrence_id_allocator_advance_to(
+                merged.authored_token_ordinals.clone().allocator.clone(),
+                t.authored_token_ordinals.clone(),
+            );
+            let merged = intern_table_with_authored_token_ordinals(
+                merged.clone(),
+                authored_token_ordinal_space_from_allocator(merged_allocator.clone()),
+            );
+            t.strings.clone().iter().cloned().fold(
+                merged.clone(),
+                |m: Rc<InternTable>, s: String| {
                     if (s.clone() == "".to_string()) {
                         m.clone()
                     } else {
                         intern(m.clone(), s.clone()).table.clone()
                     }
-                })
+                },
+            )
         },
     )
 }

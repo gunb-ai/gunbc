@@ -71,6 +71,7 @@ pub mod std_magnitude;
 pub mod std_measure;
 pub mod std_nat;
 pub mod std_node;
+pub mod std_occurrence_identity;
 pub mod std_pareto;
 pub mod std_realization_schedule;
 pub mod std_serialization;
