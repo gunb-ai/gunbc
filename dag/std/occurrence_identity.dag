@@ -5,6 +5,25 @@ import std.types { Bool, Int, String, SourceSpan }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
+type AuthoredTokenOrdinalSpace {
+  next_ordinal: Int
+}
+
+fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
+  AuthoredTokenOrdinalSpace { next_ordinal: 0 }
+}
+
+fn authored_token_ordinal_space_advance_to(
+  space: AuthoredTokenOrdinalSpace,
+  min_next: Int
+) -> AuthoredTokenOrdinalSpace {
+  if space.next_ordinal < min_next {
+    AuthoredTokenOrdinalSpace { next_ordinal: min_next }
+  } else {
+    space
+  }
+}
+
 type OccurrenceId {
   value: Int
 }

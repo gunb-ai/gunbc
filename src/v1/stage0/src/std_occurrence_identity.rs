@@ -24,6 +24,28 @@ pub fn occurrence_identity_scope_law() -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AuthoredTokenOrdinalSpace {
+    pub next_ordinal: i64,
+}
+
+pub fn authored_token_ordinal_space_initial() -> AuthoredTokenOrdinalSpace {
+    AuthoredTokenOrdinalSpace { next_ordinal: 0 }
+}
+
+pub fn authored_token_ordinal_space_advance_to(
+    space: AuthoredTokenOrdinalSpace,
+    min_next: i64,
+) -> AuthoredTokenOrdinalSpace {
+    if (space.next_ordinal.clone() < min_next.clone()) {
+        AuthoredTokenOrdinalSpace {
+            next_ordinal: min_next.clone(),
+        }
+    } else {
+        space
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceId {
     pub value: i64,
 }

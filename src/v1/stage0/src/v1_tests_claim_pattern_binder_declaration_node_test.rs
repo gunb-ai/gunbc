@@ -2,14 +2,18 @@
 // Source module: v1.tests.claim.pattern_binder_declaration_node_test
 
 use self::ParsedFixturePattern::*;
+pub use crate::std_occurrence_identity::OccurrenceIndexEntry;
 pub use crate::v1_compiler_parse::ParseContext;
-pub use crate::v1_compiler_parse::{parse_pattern, token_stream_new};
+pub use crate::v1_compiler_parse::{parse_pattern, parse_with_table, token_stream_new};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::NoExprData;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
-pub use crate::v1_std_core::{build_newline_index, empty_intern_table, field_binding_pattern};
+pub use crate::v1_std_core::{
+    build_newline_index, empty_intern_table, field_binding_pattern,
+    intern_table_advance_authored_token_ordinals, merge_intern_tables,
+};
 pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -19,7 +23,7 @@ use std::rc::Rc;
 pub fn pattern_binder_declaration_node_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -179,5 +183,146 @@ pub fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> bool {
             }
             _ => false,
         },
+    }
+}
+
+pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool {
+    {
+        let first_file = "occurrence-sequential-first.dag".to_string();
+        let first_source =
+            "module occurrence.sequential_first\n\nfn same(x: Int) -> Int { x }\n".to_string();
+        let first = parse_with_table(
+            tokenize(first_source.clone(), first_file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                first_file.clone(),
+                build_newline_index(first_file.clone(), first_source.clone()),
+            ),
+            empty_intern_table(),
+        );
+        let second_file = "occurrence-sequential-second.dag".to_string();
+        let second_source =
+            "module occurrence.sequential_second\n\nfn same(x: Int) -> Int { x }\n".to_string();
+        let second = parse_with_table(
+            tokenize(second_source.clone(), second_file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                second_file.clone(),
+                build_newline_index(second_file.clone(), second_source.clone()),
+            ),
+            first.intern_table.clone(),
+        );
+        let disjoint = first
+            .occurrence_transport
+            .clone()
+            .index
+            .clone()
+            .entries
+            .clone()
+            .iter()
+            .cloned()
+            .fold(true, |outer_ok: bool, left: Rc<OccurrenceIndexEntry>| {
+                (outer_ok
+                    && second
+                        .occurrence_transport
+                        .clone()
+                        .index
+                        .clone()
+                        .entries
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(true, |inner_ok: bool, right: Rc<OccurrenceIndexEntry>| {
+                            (inner_ok
+                                && (left.projection.clone().occurrence.clone().value.clone()
+                                    != right.projection.clone().occurrence.clone().value.clone()))
+                        }))
+            });
+        let second_range_follows_first = second
+            .occurrence_transport
+            .clone()
+            .index
+            .clone()
+            .entries
+            .clone()
+            .iter()
+            .cloned()
+            .fold(true, |ok: bool, entry: Rc<OccurrenceIndexEntry>| {
+                (ok && (entry.projection.clone().occurrence.clone().value.clone()
+                    >= first.occurrence_allocator.clone().next_id.clone()))
+            });
+        let merged = merge_intern_tables(Rc::new(vec![
+            first.intern_table.clone(),
+            second.intern_table.clone(),
+        ]));
+        ((((((((((first.result.clone().error.clone() == None)
+            && (second.result.clone().error.clone() == None))
+            && ((first
+                .occurrence_transport
+                .clone()
+                .index
+                .clone()
+                .entries
+                .clone()
+                .len() as i64)
+                > 0))
+            && ((second
+                .occurrence_transport
+                .clone()
+                .index
+                .clone()
+                .entries
+                .clone()
+                .len() as i64)
+                > 0))
+            && disjoint.clone())
+            && second_range_follows_first.clone())
+            && (first
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .next_ordinal
+                .clone()
+                == first.occurrence_allocator.clone().next_id.clone()))
+            && (second
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .next_ordinal
+                .clone()
+                == second.occurrence_allocator.clone().next_id.clone()))
+            && (merged.authored_token_ordinals.clone().next_ordinal.clone()
+                == second.occurrence_allocator.clone().next_id.clone()))
+            && (second.occurrence_allocator.clone().next_id.clone()
+                > first.occurrence_allocator.clone().next_id.clone()))
+    }
+}
+
+pub fn w_parse_error_preserves_authored_token_ordinal_space() -> bool {
+    {
+        let file = "occurrence-error-space.dag".to_string();
+        let source = "module".to_string();
+        let seeded = intern_table_advance_authored_token_ordinals(empty_intern_table(), 41);
+        let parsed = parse_with_table(
+            tokenize(source.clone(), file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                file.clone(),
+                build_newline_index(file.clone(), source.clone()),
+            ),
+            seeded.clone(),
+        );
+        (((parsed.result.clone().error.clone() != None)
+            && (parsed.occurrence_allocator.clone().next_id.clone() >= 41))
+            && (parsed
+                .intern_table
+                .clone()
+                .authored_token_ordinals
+                .clone()
+                .next_ordinal
+                .clone()
+                == parsed.occurrence_allocator.clone().next_id.clone()))
     }
 }

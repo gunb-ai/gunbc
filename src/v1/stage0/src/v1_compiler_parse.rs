@@ -14,7 +14,9 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
-pub use crate::std_occurrence_identity::{alloc_occurrence_id, occurrence_id_allocator_initial};
+pub use crate::std_occurrence_identity::{
+    alloc_occurrence_id, occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
+};
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
@@ -60,17 +62,17 @@ pub use crate::v1_std_core::{
     expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
     field_binding_pattern, field_node_cardinality, field_node_default_value, field_node_from_key,
     field_node_name_at, field_node_type_expr, file_transport_node, import_node, intern,
-    is_compiler_error, is_container_type, kernel_span, leaf_node_with_span, local_transport_node,
-    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_pattern_binder_declaration_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    intern_table_advance_authored_token_ordinals, is_compiler_error, is_container_type,
+    kernel_span, leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node,
+    make_error_node, make_expr_error_node, make_expr_node, make_field_binding_node,
+    make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
+    make_param_node, make_pattern_binder_declaration_node, make_resource_use_node, make_span,
+    make_text_part_node, make_variant_node, module_node, no_span, node_name_span,
+    param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -2658,13 +2660,23 @@ pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<Occu
     })
 }
 
-pub fn parse_with_table_in_occurrence_scope(
+pub fn parse_with_table_at(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    occurrence_allocator: OccurrenceIdAllocator,
+    occurrence_base: i64,
 ) -> Rc<ParseWithTableResult> {
     {
+        let occurrence_allocator = occurrence_id_allocator_advance_to(
+            OccurrenceIdAllocator {
+                next_id: occurrence_base.clone(),
+            },
+            intern_table
+                .authored_token_ordinals
+                .clone()
+                .next_ordinal
+                .clone(),
+        );
         let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
         let ctx = Rc::new(ParseContext {
             source_indices: source_indices.clone(),
@@ -2680,13 +2692,17 @@ pub fn parse_with_table_in_occurrence_scope(
         if has_err(r.err.clone()) {
             {
                 let occurrence_transport = occurrence_transport_from_parse_context(r.ctx.clone());
+                let occurrence_allocator = parse_context_occurrence_allocator(r.ctx.clone());
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
                         module: None,
                         error: r.err.clone(),
                     }),
-                    intern_table: r.ctx.clone().intern_table.clone(),
-                    occurrence_allocator: parse_context_occurrence_allocator(r.ctx.clone()),
+                    intern_table: intern_table_advance_authored_token_ordinals(
+                        r.ctx.clone().intern_table.clone(),
+                        occurrence_allocator.next_id.clone(),
+                    ),
+                    occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
                 })
             }
@@ -2702,13 +2718,17 @@ pub fn parse_with_table_in_occurrence_scope(
                 );
                 let occurrence_transport =
                     occurrence_transport_from_parse_context(stamped.ctx.clone());
+                let occurrence_allocator = parse_context_occurrence_allocator(stamped.ctx.clone());
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
                         module: Some(stamped.node.clone()),
                         error: None,
                     }),
-                    intern_table: stamped.ctx.clone().intern_table.clone(),
-                    occurrence_allocator: parse_context_occurrence_allocator(stamped.ctx.clone()),
+                    intern_table: intern_table_advance_authored_token_ordinals(
+                        stamped.ctx.clone().intern_table.clone(),
+                        occurrence_allocator.next_id.clone(),
+                    ),
+                    occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
                 })
             }
@@ -2716,16 +2736,34 @@ pub fn parse_with_table_in_occurrence_scope(
     }
 }
 
+pub fn parse_with_table_in_occurrence_scope(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    occurrence_allocator: OccurrenceIdAllocator,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        occurrence_allocator.next_id.clone(),
+    )
+}
+
 pub fn parse_with_table(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseWithTableResult> {
-    parse_with_table_in_occurrence_scope(
+    parse_with_table_at(
         tokens.clone(),
         source_indices.clone(),
         intern_table.clone(),
-        occurrence_id_allocator_initial(),
+        intern_table
+            .authored_token_ordinals
+            .clone()
+            .next_ordinal
+            .clone(),
     )
 }
 

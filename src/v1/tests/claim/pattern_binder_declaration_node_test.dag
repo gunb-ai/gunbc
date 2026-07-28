@@ -12,15 +12,19 @@ import v1.std.core {
   field_binding_pattern,
   build_newline_index,
   empty_intern_table,
+  intern_table_advance_authored_token_ordinals,
+  merge_intern_tables,
 }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse {
   ParseContext,
   token_stream_new,
   parse_pattern,
+  parse_with_table,
 }
+import std.occurrence_identity { OccurrenceIndexEntry }
 
-data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct"
+data pattern_binder_declaration_node_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space"
 
 data pattern_binder_declaration_node_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
@@ -138,4 +142,87 @@ test fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> Bool {
         _ => false
       }
   }
+}
+
+test fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> Bool {
+  let first_file = "occurrence-sequential-first.dag"
+  let first_source = "module occurrence.sequential_first\n\nfn same(x: Int) -> Int { x }\n"
+  let first = parse_with_table(
+    tokens: tokenize(source: first_source, file: first_file),
+    source_indices: map_insert(
+      empty_map(),
+      first_file,
+      build_newline_index(file: first_file, source: first_source)
+    ),
+    intern_table: empty_intern_table()
+  )
+  let second_file = "occurrence-sequential-second.dag"
+  let second_source = "module occurrence.sequential_second\n\nfn same(x: Int) -> Int { x }\n"
+  let second = parse_with_table(
+    tokens: tokenize(source: second_source, file: second_file),
+    source_indices: map_insert(
+      empty_map(),
+      second_file,
+      build_newline_index(file: second_file, source: second_source)
+    ),
+    intern_table: first.intern_table
+  )
+  let disjoint = fold(
+    first.occurrence_transport.index.entries,
+    init: true,
+    f: (outer_ok, left) =>
+      outer_ok &&
+      fold(
+        second.occurrence_transport.index.entries,
+        init: true,
+        f: (inner_ok, right) =>
+          inner_ok &&
+          left.projection.occurrence.value != right.projection.occurrence.value
+      )
+  )
+  let second_range_follows_first = fold(
+    second.occurrence_transport.index.entries,
+    init: true,
+    f: (ok, entry) =>
+      ok &&
+      entry.projection.occurrence.value >= first.occurrence_allocator.next_id
+  )
+  let merged = merge_intern_tables(
+    tables: [first.intern_table, second.intern_table]
+  )
+  first.result.error == none &&
+  second.result.error == none &&
+  (first.occurrence_transport.index.entries |> count) > 0 &&
+  (second.occurrence_transport.index.entries |> count) > 0 &&
+  disjoint &&
+  second_range_follows_first &&
+  first.intern_table.authored_token_ordinals.next_ordinal ==
+    first.occurrence_allocator.next_id &&
+  second.intern_table.authored_token_ordinals.next_ordinal ==
+    second.occurrence_allocator.next_id &&
+  merged.authored_token_ordinals.next_ordinal ==
+    second.occurrence_allocator.next_id &&
+  second.occurrence_allocator.next_id > first.occurrence_allocator.next_id
+}
+
+test fn w_parse_error_preserves_authored_token_ordinal_space() -> Bool {
+  let file = "occurrence-error-space.dag"
+  let source = "module"
+  let seeded = intern_table_advance_authored_token_ordinals(
+    table: empty_intern_table(),
+    min_next: 41
+  )
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file),
+    source_indices: map_insert(
+      empty_map(),
+      file,
+      build_newline_index(file: file, source: source)
+    ),
+    intern_table: seeded
+  )
+  parsed.result.error != none &&
+  parsed.occurrence_allocator.next_id >= 41 &&
+  parsed.intern_table.authored_token_ordinals.next_ordinal ==
+    parsed.occurrence_allocator.next_id
 }

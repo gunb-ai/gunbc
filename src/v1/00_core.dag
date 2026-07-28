@@ -8,6 +8,11 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.induction { SubValueRelation }
+import std.occurrence_identity {
+  AuthoredTokenOrdinalSpace,
+  authored_token_ordinal_space_initial,
+  authored_token_ordinal_space_advance_to,
+}
 
 type Token {
   text: String
@@ -1318,6 +1323,7 @@ type InternTable {
   strings: List<String>
   index: Map<String, Int>
   next_id: Int
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
 }
 
 type InternResult {
@@ -1326,7 +1332,27 @@ type InternResult {
 }
 
 fn empty_intern_table() -> InternTable {
-  InternTable { strings: [""], index: map_insert(empty_map(), "", 0), next_id: 1 }
+  InternTable {
+    strings: [""],
+    index: map_insert(empty_map(), "", 0),
+    next_id: 1,
+    authored_token_ordinals: authored_token_ordinal_space_initial(),
+  }
+}
+
+fn intern_table_advance_authored_token_ordinals(
+  table: InternTable,
+  min_next: Int
+) -> InternTable {
+  InternTable {
+    strings: table.strings,
+    index: table.index,
+    next_id: table.next_id,
+    authored_token_ordinals: authored_token_ordinal_space_advance_to(
+      space: table.authored_token_ordinals,
+      min_next: min_next
+    ),
+  }
 }
 
 fn intern(table: InternTable, s: String) -> InternResult {
@@ -1338,7 +1364,8 @@ fn intern(table: InternTable, s: String) -> InternResult {
         table: InternTable {
           strings: list_push(table.strings, s),
           index: map_insert(table.index, s, id),
-          next_id: id + 1
+          next_id: id + 1,
+          authored_token_ordinals: table.authored_token_ordinals,
         },
         id: id
       }
@@ -1368,6 +1395,10 @@ fn intern_find_or_empty(table: InternTable, s: String) -> Int {
 
 fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    let merged = intern_table_advance_authored_token_ordinals(
+      table: merged,
+      min_next: t.authored_token_ordinals.next_ordinal
+    )
     t.strings |> fold(init: merged, f: (m, s) =>
       if s == "" { m } else { intern(table: m, s: s).table }
     )
