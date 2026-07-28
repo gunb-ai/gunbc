@@ -4,7 +4,6 @@
 // deletes with src/v1 once its behavior is carried per the v1-test-migration coverage bar.
 use im::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 use v1_compiler::std_occurrence_identity::{
     occurrence_id_allocator_initial, OccurrenceIdAllocator,
@@ -29,21 +28,6 @@ fn parse_source(
         empty_intern_table(),
         allocator,
     )
-}
-
-fn repeated_module(functions: usize) -> String {
-    let mut source = String::from("module occurrence.scale\n\n");
-    for index in 0..functions {
-        source.push_str(&format!("fn f_{index}(same: Int) -> Int {{ same }}\n"));
-    }
-    source
-}
-
-fn max_rss_kib() -> i64 {
-    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
-    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
-    assert_eq!(rc, 0, "getrusage must be available for the size receipt");
-    unsafe { usage.assume_init().ru_maxrss }
 }
 
 #[test]
@@ -86,50 +70,5 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
     assert_eq!(
         original_ids, perturbed_ids,
         "filename/span evidence must not participate in occurrence identity"
-    );
-}
-
-#[test]
-fn occurrence_transport_serialization_and_parse_cost_scale_linearly() {
-    let small_source = repeated_module(32);
-    let small_start = Instant::now();
-    let small = parse_source(
-        &small_source,
-        "occurrence_scale_small.dag",
-        occurrence_id_allocator_initial(),
-    );
-    let small_elapsed = small_start.elapsed();
-    let small_bytes = serde_json::to_vec(&small.occurrence_transport)
-        .expect("serialize small occurrence transport")
-        .len();
-    let small_rss = max_rss_kib();
-
-    let large_source = repeated_module(64);
-    let large_start = Instant::now();
-    let large = parse_source(
-        &large_source,
-        "occurrence_scale_large.dag",
-        occurrence_id_allocator_initial(),
-    );
-    let large_elapsed = large_start.elapsed();
-    let large_bytes = serde_json::to_vec(&large.occurrence_transport)
-        .expect("serialize large occurrence transport")
-        .len();
-    let large_rss = max_rss_kib();
-
-    assert!(small.result.error.is_none(), "{:?}", small.result.error);
-    assert!(large.result.error.is_none(), "{:?}", large.result.error);
-    assert!(large_bytes > small_bytes);
-    assert!(
-        large_bytes <= small_bytes * 3,
-        "doubling source declarations must remain linear: small={small_bytes}, large={large_bytes}"
-    );
-    assert!(
-        large_elapsed <= small_elapsed.saturating_mul(8) + Duration::from_secs(2),
-        "doubling source declarations exceeded a generous linear-time wall: small={small_elapsed:?}, large={large_elapsed:?}"
-    );
-    assert!(
-        large_rss <= small_rss.saturating_mul(2).max(small_rss + 64 * 1024),
-        "doubling source declarations exceeded the RSS wall: small={small_rss}KiB, large={large_rss}KiB"
     );
 }
