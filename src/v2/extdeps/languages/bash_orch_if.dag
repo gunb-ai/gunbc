@@ -73,6 +73,10 @@ fn bash_path_ident_ok(name: String) -> Bool {
   }
 }
 
+fn bash_dirname_ascent_target_ok(target: String) -> Bool {
+  bash_path_ident_ok(name: target)
+}
+
 fn bash_path_unquoted_ok_at(path: String, i: Int, n: Int) -> Bool {
   if i >= n {
     true
@@ -298,7 +302,9 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetM
 fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetModel> {
   match ascent.path {
     PathRef { name: n } =>
-      if !bash_path_ident_ok(name: n as String) {
+      if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else if !bash_path_ident_ok(name: n as String) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(
@@ -309,7 +315,9 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         )
       }
     PathLiteral { parts: p } =>
-      if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
+      if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
+        outcome_rejected(bash_path_intent_invalid_diagnostic())
+      } else if !bash_path_unquoted_ok(path: bash_absolute_parts_text(parts: p)) {
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(
@@ -323,12 +331,16 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
       bind_outcome(
         o: bash_path_intent_text(path: PathJoin { base: b, suffix: s }),
         f: fn(text) {
-          outcome_accepted(
-            orch_cmdsubst_assign_raw_target_model(
-              name: ascent.target,
-              body: concat("dirname \"", concat(text, "\""))
+          if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
+            outcome_rejected(bash_path_intent_invalid_diagnostic())
+          } else {
+            outcome_accepted(
+              orch_cmdsubst_assign_raw_target_model(
+                name: ascent.target,
+                body: concat("dirname \"", concat(text, "\""))
+              )
             )
-          )
+          }
         }
       )
   }
