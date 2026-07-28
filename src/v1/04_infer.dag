@@ -56,7 +56,8 @@ import v1.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
-  default_ident_span, node_name_span
+  default_ident_span, node_name_span,
+  node_preserve_authored_occurrence
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
@@ -460,7 +461,7 @@ fn build_item_inductive_fields(items: List<Node>, recursive_type_set: Set<String
 }
 
 fn nominal_ref_node(name: String, span: SourceSpan, ident_span: SourceSpan?) -> Node {
-  Node {
+  Node { authored_occurrence: none,
     name: name, span: span, ident_span: ident_span, children: [],
     connective: NoConnective, params: [],
     inferred: Present { value: Resolved { node: nominal_leaf_type(name: name) } },
@@ -722,7 +723,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                   )
                   let template_fields = decl.children
                   Present { value: template_fields |> map(sf =>
-                    Node {
+                    Node { authored_occurrence: sf.authored_occurrence,
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
                       children: sf.children, connective: sf.connective, params: sf.params,
                       inferred: Present { value: Resolved { node: substitute_generics(n: field_node_type_expr(n: sf), subst: subst, source_indices: scope.type_env.source_indices) } },
@@ -1178,7 +1179,7 @@ fn validate_cast(source_inferred: InferredNode?, target_name: String, span: Sour
 }
 
 fn type_variable_node(id: String) -> Node {
-  Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  Node { authored_occurrence: none, name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -1235,7 +1236,15 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
         let field_subject = lookup_result_subject(result: field_lookup)
-        make_field_binding_node(field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), binding: annotate_pattern_parent_enums(pattern: field_binding_pattern(n: binding), scrutinee_subject: field_subject, scope: scope), span: binding.span, name_span: node_name_span(n: binding))
+        rebuild_field_binding_with_pattern(
+          binding: binding,
+          pattern: annotate_pattern_parent_enums(
+            pattern: field_binding_pattern(n: binding),
+            scrutinee_subject: field_subject,
+            scope: scope,
+          ),
+          source_indices: scope.type_env.source_indices,
+        )
       )
       match inferred_parent {
         Present { value: parent_name } =>
@@ -1397,6 +1406,60 @@ fn arg_has_name(arg: Node, name: String, source_indices: Map<String, NewlineInde
   if n == none { false } else { n.value == name }
 }
 
+fn rebuild_arg_with_value(
+  arg: Node,
+  value: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Node {
+  node_preserve_authored_occurrence(
+    source: arg,
+    rebuilt: make_arg_node(
+      name: arg_name_at(n: arg, source_indices: source_indices),
+      value: value,
+      span: arg.span,
+      name_span: arg.span,
+    ),
+  )
+}
+
+fn rebuild_field_init_with_value(
+  field_init: Node,
+  value: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Node {
+  node_preserve_authored_occurrence(
+    source: field_init,
+    rebuilt: make_field_init_node(
+      name: field_init_node_name_at(
+        n: field_init,
+        source_indices: source_indices,
+      ),
+      value: value,
+      span: field_init.span,
+      name_span: node_name_span(n: field_init),
+    ),
+  )
+}
+
+fn rebuild_field_binding_with_pattern(
+  binding: Node,
+  pattern: MatchPattern,
+  source_indices: Map<String, NewlineIndex>
+) -> Node {
+  node_preserve_authored_occurrence(
+    source: binding,
+    rebuilt: make_field_binding_node(
+      field_name: field_binding_name_at(
+        n: binding,
+        source_indices: source_indices,
+      ),
+      binding: pattern,
+      span: binding.span,
+      name_span: node_name_span(n: binding),
+    ),
+  )
+}
+
 fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   if is_fold && method_args |> count >= min_args {
@@ -1407,7 +1470,14 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     match init_arg {
       Present { value: ia } =>
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
-        Present { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
+        Present { value: ArgInferResult {
+          typed_arg: rebuild_arg_with_value(
+            arg: ia,
+            value: init_result.typed,
+            source_indices: scope.type_env.source_indices,
+          ),
+          diagnostics: init_result.diagnostics
+        } }
       Absent => none
     }
   } else { none }
@@ -1446,7 +1516,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
         make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
       ]
-      let fold_callable = Node {
+      let fold_callable = Node { authored_occurrence: none,
         name: "", span: no_span(), ident_span: none, children: [],
         connective: NoConnective, params: fold_params, inferred: none,
         return_cardinality: Required, uses: [], body: none, transport: none,
@@ -1470,7 +1540,14 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         lambda_param_provenance: prov_map
       }
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Present { value: fold_callable })
-      ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
+      ArgInferResult {
+        typed_arg: rebuild_arg_with_value(
+          arg: a,
+          value: ar.typed,
+          source_indices: scope.type_env.source_indices,
+        ),
+        diagnostics: ar.diagnostics
+      }
     } else {
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
@@ -1523,7 +1600,14 @@ fn empty_override_map() -> Map<String, Node> {
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
-  ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
+  ArgInferResult {
+    typed_arg: rebuild_arg_with_value(
+      arg: arg,
+      value: ar.typed,
+      source_indices: scope.type_env.source_indices,
+    ),
+    diagnostics: ar.diagnostics
+  }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -1576,6 +1660,21 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
 }
 
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
+  let rebuilt = infer_expr_rebuild(
+    texpr: texpr,
+    scope: scope,
+    expected: expected,
+  )
+  InferResult {
+    typed: node_preserve_authored_occurrence(
+      source: texpr,
+      rebuilt: rebuilt.typed,
+    ),
+    diagnostics: rebuilt.diagnostics,
+  }
+}
+
+fn infer_expr_rebuild(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
@@ -1839,7 +1938,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
             let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
             concat(
-              [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
+              [ArgInferResult {
+                typed_arg: rebuild_arg_with_value(
+                  arg: first_arg,
+                  value: first_result.typed,
+                  source_indices: scope.type_env.source_indices,
+                ),
+                diagnostics: first_result.diagnostics
+              }],
               remaining_results
             )
           Absent =>
@@ -1869,7 +1975,14 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             unify_generics(formal: formal_raw, actual: resolved_type(n: ar.typed), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st.subst)
           }
           ArgGenericFoldState {
-            results: concat(st.results, [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }]),
+            results: concat(st.results, [ArgInferResult {
+              typed_arg: rebuild_arg_with_value(
+                arg: a,
+                value: ar.typed,
+                source_indices: scope.type_env.source_indices,
+              ),
+              diagnostics: ar.diagnostics
+            }]),
             subst: next_subst
           }
         )
@@ -1970,7 +2083,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             }
           }
           let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type, source_indices: scope.type_env.source_indices) && !is_fully_resolved(n: first_arg_type, source_indices: scope.type_env.source_indices) {
-            Node {
+            Node { authored_occurrence: receiver.authored_occurrence,
               name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
               children: bridge_result_type.children,
               connective: receiver.connective, params: receiver.params,
@@ -1982,7 +2095,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               match_pattern: receiver.match_pattern, expr_data: receiver.expr_data
             }
           } else { receiver }
-          let remaining_arg_nodes = remaining |> map(ta => make_arg_node(name: arg_name_at(n: ta, source_indices: scope.type_env.source_indices), value: arg_value(n: ta), span: span, name_span: span))
+          let remaining_arg_nodes = remaining |> map(ta =>
+            rebuild_arg_with_value(
+              arg: ta,
+              value: arg_value(n: ta),
+              source_indices: scope.type_env.source_indices,
+            )
+          )
           InferResult {
             typed: make_named_expr_node(
               name: func_name, expr_data: ExprMethodCall { method_semantics: method_resolution.semantics },
@@ -2700,7 +2819,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Present { value: binding } => Present { value: Resolved { node: binding.resolved } }
           Absent => none
         }
-        Node {
+        Node { authored_occurrence: pn.authored_occurrence,
           name: pn.name, ident: pn.ident, span: pn.span, ident_span: pn.ident_span, children: pn.children,
           connective: pn.connective, params: pn.params, inferred: param_type,
           return_cardinality: pn.return_cardinality, uses: pn.uses, body: pn.body,
@@ -3406,7 +3525,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Absent => []
     }
     FieldInferResult {
-      typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
+      typed_field: rebuild_field_init_with_value(
+        field_init: fi,
+        value: ar_typed,
+        source_indices: scope.type_env.source_indices,
+      ),
       infer_result: ar,
       diagnostics: concat(concat(ar_diags, field_type_diags), unknown_field_diags)
     }
@@ -3415,14 +3538,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
   if type_name == none {
     let child_nodes = fi_infer_results |> map(fir =>
-      Node {
+      Node { authored_occurrence: none,
         name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
         children: [], connective: NoConnective,
                params: [], inferred: fir.infer_result.typed.inferred, return_cardinality: Required, uses: [],
         body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
     )
-    let anon_node = Node {
+    let anon_node = Node { authored_occurrence: none,
       name: "", span: no_span(), ident_span: none,
       children: child_nodes, connective: Conj,
            params: [], inferred: none, return_cardinality: Required, uses: [],
@@ -4391,6 +4514,13 @@ fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> St
 }
 
 fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
+  node_preserve_authored_occurrence(
+    source: body,
+    rebuilt: annotate_descent_rebuild(body: body, ctx: ctx),
+  )
+}
+
+fn annotate_descent_rebuild(body: Node, ctx: DescentContext) -> Node {
   match body.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
 
@@ -4423,14 +4553,26 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 scope_locals: ctx.scope_locals, func_env: ctx.func_env,
                 per_field_vars: ctx.per_field_vars
               }
-              make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: lambda_ctx), span: child.span, name_span: child.span)
+              rebuild_arg_with_value(
+                arg: child,
+                value: annotate_descent(body: arg_val, ctx: lambda_ctx),
+                source_indices: ctx.type_env.source_indices,
+              )
             } else {
-              make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+              rebuild_arg_with_value(
+                arg: child,
+                value: annotate_descent(body: arg_val, ctx: ctx),
+                source_indices: ctx.type_env.source_indices,
+              )
             }
-          _ => make_arg_node(name: arg_name_at(n: child, source_indices: ctx.type_env.source_indices), value: annotate_descent(body: arg_val, ctx: ctx), span: child.span, name_span: child.span)
+          _ => rebuild_arg_with_value(
+            arg: child,
+            value: annotate_descent(body: arg_val, ctx: ctx),
+            source_indices: ctx.type_env.source_indices,
+          )
         }
       )
-      Node {
+      Node { authored_occurrence: none,
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -4615,7 +4757,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
-      Node {
+      Node { authored_occurrence: none,
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: concat([annotated_scrut], annotated_arms),
         connective: body.connective, params: body.params,
@@ -4668,7 +4810,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         Present { value: body_child } => [annotated_value, annotate_descent(body: body_child, ctx: inner_ctx)]
         Absent => [annotated_value]
       }
-      Node {
+      Node { authored_occurrence: none,
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: annotated_children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -4722,7 +4864,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         }
         BlockAnnotateAcc { ctx: next_ctx, children: concat(acc.children, [annotated]) }
       )
-      Node {
+      Node { authored_occurrence: none,
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: threaded.children, connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -4827,12 +4969,20 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           let arg_val = arg_value(n: arg_node)
           let is_lambda = match arg_val.expr_data { ExprLambda => true  _ => false }
           if is_lambda {
-            make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: inner_ctx), span: arg_node.span, name_span: arg_node.span)
+            rebuild_arg_with_value(
+              arg: arg_node,
+              value: annotate_descent(body: arg_val, ctx: inner_ctx),
+              source_indices: ctx.type_env.source_indices,
+            )
           } else {
-            make_arg_node(name: match arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) { Present { value: n } => Present { value: n }  Absent => none }, value: annotate_descent(body: arg_val, ctx: ctx), span: arg_node.span, name_span: arg_node.span)
+            rebuild_arg_with_value(
+              arg: arg_node,
+              value: annotate_descent(body: arg_val, ctx: ctx),
+              source_indices: ctx.type_env.source_indices,
+            )
           }
         )
-        Node {
+        Node { authored_occurrence: none,
           name: body.name, span: body.span, ident_span: body.ident_span,
           children: concat([annotated_receiver], annotated_args),
           connective: body.connective, params: body.params,
@@ -4874,7 +5024,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       }
       let annotated_coll = annotate_descent(body: coll, ctx: ctx)
       let annotated_body = annotate_descent(body: fe_body, ctx: inner_ctx)
-      Node {
+      Node { authored_occurrence: none,
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: [annotated_coll, annotated_body], connective: body.connective, params: body.params,
         inferred: body.inferred, return_cardinality: body.return_cardinality,
@@ -5588,7 +5738,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
     let val = field_init_node_value(n: p)
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
     {
-      prop: Node {
+      prop: Node { authored_occurrence: p.authored_occurrence,
         name: p.name, span: p.span, ident_span: p.ident_span,
         children: [val_result.typed], connective: p.connective,
         params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
@@ -5612,7 +5762,7 @@ fn infer_auth_source_properties(props: List<Node>, scope: InferScope) -> InferPr
       let val = field_init_node_value(n: p)
       let val_result = infer_expr(texpr: val, scope: scope, expected: none)
       {
-        prop: Node {
+        prop: Node { authored_occurrence: p.authored_occurrence,
           name: p.name, span: p.span, ident_span: p.ident_span,
           children: [val_result.typed], connective: p.connective,
           params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
@@ -5639,7 +5789,7 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
     Present { value: t } =>
       let prop_result = infer_property_values(props: t.properties, scope: scope)
       InferTransportResult {
-        transport: Present { value: Node {
+        transport: Present { value: Node { authored_occurrence: t.authored_occurrence,
           name: t.name, span: t.span, ident_span: t.ident_span,
           children: t.children, connective: t.connective,
           params: t.params, inferred: t.inferred, return_cardinality: t.return_cardinality,
@@ -5654,6 +5804,17 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
 }
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
+  let rebuilt = infer_item_rebuild(item: item, scope: scope)
+  TypedItemResult {
+    item: node_preserve_authored_occurrence(
+      source: item,
+      rebuilt: rebuilt.item,
+    ),
+    diagnostics: rebuilt.diagnostics,
+  }
+}
+
+fn infer_item_rebuild(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
@@ -5666,7 +5827,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let props_diags = props_result.diagnostics
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
@@ -5692,7 +5853,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       annotate_descent_evidence(body: body_typed, fn_name: authored_name_at(source_indices: scope.type_env.source_indices, node: item), params: item.params, type_env: scope.type_env, scope_locals: fn_scope.locals, func_env: scope.func_env)
     } else { body_typed }
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Present { value: annotated_body },
         connective: NoConnective, transport: typed_transport,
@@ -5710,7 +5871,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let body_typed = body_result.typed
     let body_diags = body_result.diagnostics
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: Present { value: body_typed },
         connective: NoConnective, transport: typed_transport,
@@ -5727,7 +5888,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let val_diags = val_result.diagnostics
     let inferred_ret = if item.type_annotation != none { Present { value: Resolved { node: item.type_annotation.value } } } else { val_typed.inferred }
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: [], params: [],
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: [], body: Present { value: val_typed },
         connective: NoConnective, transport: typed_transport,
@@ -5739,7 +5900,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   else if item.params |> count > 0 && item.body == none {
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
@@ -5751,7 +5912,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
   else {
     TypedItemResult {
-      item: Node {
+      item: Node { authored_occurrence: none,
         name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
@@ -5915,6 +6076,17 @@ fn substitute_generics(n: Node, subst: Map<String, Node>, source_indices: Map<St
 }
 
 fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
+  node_preserve_authored_occurrence(
+    source: n,
+    rebuilt: substitute_generics_apply_rebuild(
+      n: n,
+      subst: subst,
+      source_indices: source_indices,
+    ),
+  )
+}
+
+fn substitute_generics_apply_rebuild(n: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Node {
   match n.inferred {
     Present { value: TypeVariable { id: tv_id } } =>
       match map_get(subst, tv_id) {
@@ -5943,7 +6115,7 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
     if rc_vec_ptr_eq(new_children, n.children) && rc_vec_ptr_eq(new_params, n.params) && new_inferred == n.inferred {
       n
     } else {
-      Node {
+      Node { authored_occurrence: item.authored_occurrence,
         name: n.name, span: n.span, ident_span: n.ident_span,
         children: new_children,
         connective: n.connective,
@@ -6260,7 +6432,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
   } else {
   let has_structure = item.connective != NoConnective
   if has_structure {
-    let type_node = Node {
+    let type_node = Node { authored_occurrence: none,
       name: item.name, span: item.span, ident_span: item.ident_span, children: item.children,
       connective: item.connective, params: item.params, inferred: none,
       return_cardinality: item.return_cardinality,
@@ -6269,7 +6441,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
   } else if item.body != none && item.transport == none {
-    let fn_node = Node {
+    let fn_node = Node { authored_occurrence: none,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6278,7 +6450,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-    let alias_node = Node {
+    let alias_node = Node { authored_occurrence: none,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: [], inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6290,7 +6462,7 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
     let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: ref_node, provenance: SubValueUnknown } }
   } else if item.params |> count > 0 && item.connective == NoConnective && item.body == none && item.transport == none {
-    let bare_node = Node {
+    let bare_node = Node { authored_occurrence: none,
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
       connective: NoConnective, params: item.params, inferred: item.inferred,
       return_cardinality: item.return_cardinality,
@@ -6830,20 +7002,20 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { authored_occurrence: none, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    resolved: Node { authored_occurrence: none, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { authored_occurrence: none, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { authored_occurrence: none, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { authored_occurrence: none, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { authored_occurrence: none, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
 
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
@@ -7004,12 +7176,12 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let kernel_bindings = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
-    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { authored_occurrence: none, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, provenance: SubValueUnknown })
   )
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { authored_occurrence: none, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { authored_occurrence: none, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { authored_occurrence: none, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { authored_occurrence: none, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 
@@ -7028,10 +7200,10 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
     if has_structure {
-      let type_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let type_node = Node { authored_occurrence: none, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children, connective: item.connective, params: [], inferred: none, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      let alias_node = Node { name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let alias_node = Node { authored_occurrence: none, name: item.name, span: item.span, ident_span: item.ident_span, children: [], connective: NoConnective, params: [], inferred: item.inferred, return_cardinality: item.return_cardinality, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: alias_node, provenance: SubValueUnknown })
     } else if item.transport == none && item.children |> count > 0 {
       let ref_node = nominal_ref_node(name: authored_name_at(source_indices: source_indices, node: item), span: item.span, ident_span: item.ident_span)
@@ -7588,7 +7760,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   )
   let reannotated_items = map(typed_items, item =>
     if item.is_self_recursive && item.body != none {
-      Node {
+      Node { authored_occurrence: item.authored_occurrence,
         name: item.name, span: item.span, ident_span: item.ident_span,
         children: item.children, params: item.params,
         inferred: item.inferred, return_cardinality: item.return_cardinality,
@@ -8120,20 +8292,20 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
       name: name,
-      resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: Node { authored_occurrence: none, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     })
   )
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
-    resolved: Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    resolved: Node { authored_occurrence: none, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_value_field = Node { authored_occurrence: none, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { authored_occurrence: none, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { authored_occurrence: none, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { authored_occurrence: none, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)

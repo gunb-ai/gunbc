@@ -196,9 +196,9 @@ fn check_service_method_call_node(receiver_type: Node, method: String, service_r
               Present { value: ServiceMethodResult { result_type: unit_type, op_params: op.params } }
             } else {
               Present { value: ServiceMethodResult {
-                result_type: Node {
+                result_type: Node { authored_occurrence: none,
                   name: "", span: no_span(), ident_span: none,
-                  children: map(op.outputs, f => Node { name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
+                  children: map(op.outputs, f => Node { authored_occurrence: none, name: f.name, span: f.span, ident_span: f.ident_span, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: param_node_type_expr(n: f) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }),
                   connective: Conj,
                   params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
                 },
