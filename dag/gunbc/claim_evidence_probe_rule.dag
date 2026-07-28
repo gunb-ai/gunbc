@@ -31,7 +31,7 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
   fidelity: EvidenceFidelity<FidelityBoundary>,
   probe: ReadBackProbe,
   maximum_conclusion: C,
-) -> EvidenceInference<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe>, F, C, ReadBackProbe> {
+) -> EvidenceInference<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe> {
   let supports = evidence_direction_fold(
     direction: direction,
     fold: EvidenceDirectionFold {

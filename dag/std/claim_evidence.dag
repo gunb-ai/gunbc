@@ -263,13 +263,4 @@ fn claim_readiness_is_ready<C>(
   })
 }
 
-fn claim_readiness_blocking_claims<C>(
-  assessment: List<ClaimReadinessAssessment<C>>,
-) -> List<C> {
-  assessment |> flat_map(row => match row {
-    ClaimReadinessSatisfied { claim: _ } => []
-    ClaimReadinessBlocking { claim } => [claim]
-  })
-}
-
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. The link's one claim identity is maximum_conclusion, so no independently writable stronger claim can bypass that bound. EvidenceInference is an exclusive Applicable | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. The link's one claim identity is maximum_conclusion, so no independently writable stronger claim can bypass that bound. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."

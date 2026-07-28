@@ -33,7 +33,7 @@ type OsInstallEvidenceClaim = Claim<HostIdentity, HostIdentity, OsInstallRuntime
 
 type OsInstallEvidenceLink = EvidenceLink<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, RunKey, KvmObservedScreen, ReadBackProbe>
 
-type OsInstallEvidenceInference = EvidenceInference<OsInstallEvidenceLink, KvmOperatorAttestation, OsInstallEvidenceClaim, ReadBackProbe>
+type OsInstallEvidenceInference = EvidenceInference<KvmOperatorAttestation, OsInstallEvidenceClaim, NonEmptyStr, RunKey, KvmObservedScreen, ReadBackProbe>
 
 data os_install_kvm_observation_probe: ReadBackProbe = ReadBackProbe {
   label: "operator-attested KVM screen",

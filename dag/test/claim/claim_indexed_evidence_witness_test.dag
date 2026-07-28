@@ -5,6 +5,7 @@ import std.claim_evidence {
   RecordedFactId,
   RecordedFact,
   ClaimReadinessPolicy,
+  ClaimReadinessBlocking,
   EvidenceProvenance,
   EvidenceFreshness,
   EvidenceFidelity,
@@ -287,8 +288,12 @@ test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool 
     assessments: [support_only, challenge_only],
   )
   !claim_readiness_is_ready(assessment: readiness)
-    && readiness.satisfied.length() == 0
-    && readiness.blocking == [ready_claim]
+    && readiness.length() == 1
+    && match readiness.first() {
+      Present { value: ClaimReadinessBlocking { claim } } =>
+        claim == ready_claim
+      _ => false
+    }
 }
 
 test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {

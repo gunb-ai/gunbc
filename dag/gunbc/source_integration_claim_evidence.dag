@@ -34,7 +34,7 @@ type SourceIntegrationClaim = Claim<NativeScmProposalIdentity, NativeScmProposal
 
 type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, RunKey, SourceIntegrationProposition, ReadBackProbe>
 
-type SourceIntegrationEvidenceInference = EvidenceInference<SourceIntegrationEvidenceLink, SourceBindingFact, SourceIntegrationClaim, ReadBackProbe>
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, NonEmptyStr, RunKey, SourceIntegrationProposition, ReadBackProbe>
 
 data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
   label: "decode one authored source binding",
