@@ -340,6 +340,33 @@ type MercurialRepositoryCompleteness
       missing_file_revisions: List<MercurialNodeId>,
     }
 
+type MercurialRepositoryCompletenessFold<R> {
+  complete: fn() -> R
+  partial: fn(
+    List<MercurialNodeId>,
+    List<MercurialNodeId>,
+    List<MercurialNodeId>,
+  ) -> R
+}
+
+fn mercurial_repository_completeness_fold<R>(
+  completeness: MercurialRepositoryCompleteness,
+  fold: MercurialRepositoryCompletenessFold<R>,
+) -> R {
+  match completeness {
+    MercurialContentsComplete => fold.complete()
+    MercurialContentsPartial {
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } => fold.partial(
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    )
+  }
+}
+
 type MercurialRepositoryRequirements {
   tokens: List<NonEmptyStr>
 }
@@ -830,14 +857,15 @@ fn mercurial_changeset_known(
   wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_changeset_exists(changesets: changesets, wanted: wanted)
-    || match completeness {
-      MercurialContentsComplete => false
-      MercurialContentsPartial {
-        missing_changesets,
-        missing_manifests: _,
-        missing_file_revisions: _,
-      } => missing_changesets |> any(changeset => changeset == wanted)
-    }
+    || mercurial_repository_completeness_fold(
+      completeness: completeness,
+      fold: MercurialRepositoryCompletenessFold {
+        complete: fn() { false },
+        partial: fn(missing_changesets, _, _) {
+          missing_changesets |> any(changeset => changeset == wanted)
+        },
+      },
+    )
 }
 
 fn mercurial_manifest_known(
@@ -846,14 +874,15 @@ fn mercurial_manifest_known(
   wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_manifest_exists(manifests: manifests, wanted: wanted)
-    || match completeness {
-      MercurialContentsComplete => false
-      MercurialContentsPartial {
-        missing_changesets: _,
-        missing_manifests,
-        missing_file_revisions: _,
-      } => missing_manifests |> any(manifest => manifest == wanted)
-    }
+    || mercurial_repository_completeness_fold(
+      completeness: completeness,
+      fold: MercurialRepositoryCompletenessFold {
+        complete: fn() { false },
+        partial: fn(_, missing_manifests, _) {
+          missing_manifests |> any(manifest => manifest == wanted)
+        },
+      },
+    )
 }
 
 fn mercurial_file_revision_known(
@@ -862,14 +891,15 @@ fn mercurial_file_revision_known(
   wanted: MercurialNodeId,
 ) -> Bool {
   mercurial_file_revision_exists(file_revisions: file_revisions, wanted: wanted)
-    || match completeness {
-      MercurialContentsComplete => false
-      MercurialContentsPartial {
-        missing_changesets: _,
-        missing_manifests: _,
-        missing_file_revisions,
-      } => missing_file_revisions |> any(file_revision => file_revision == wanted)
-    }
+    || mercurial_repository_completeness_fold(
+      completeness: completeness,
+      fold: MercurialRepositoryCompletenessFold {
+        complete: fn() { false },
+        partial: fn(_, _, missing_file_revisions) {
+          missing_file_revisions |> any(file_revision => file_revision == wanted)
+        },
+      },
+    )
 }
 
 type MercurialDuplicateChangesetOutcome
