@@ -277,6 +277,10 @@ type PijulRepositoryProjection {
   candidate: PijulRepositoryState
 }
 
+type PijulDecodedRepository {
+  state: PijulRepositoryState
+}
+
 type PijulReferenceOrigin
   = PijulDependencyReference { owner: PijulChangeHash }
   | PijulContextChangeReference { owner: PijulChangeHash }
@@ -319,7 +323,7 @@ type PijulProjectionRefusal
   | PijulInaccessible { reason: NonEmptyStr }
 
 type PijulRepositoryDecodeOutcome
-  = PijulDecoded { repository: PijulRepositoryState }
+  = PijulDecoded { repository: PijulDecodedRepository }
   | PijulDecodeRefused { cause: PijulProjectionRefusal }
 
 type PijulProjectionOutcome
@@ -905,7 +909,9 @@ fn pijul_decode_projection(
                                   name: candidate.current_channel,
                                 ) {
                                   Present { value: _ } => PijulDecoded {
-                                    repository: candidate
+                                    repository: PijulDecodedRepository {
+                                      state: candidate
+                                    }
                                   }
                                   Absent => PijulDecodeRefused {
                                     cause: PijulCurrentChannelMissing {
@@ -1297,13 +1303,13 @@ type PijulDeliveryUnavailableIssue {
 }
 
 fn pijul_delivery_dependency_issue(
-  repository: PijulRepositoryState,
+  repository: PijulDecodedRepository,
   delivered: List<PijulChangeHash>,
   resulting: List<PijulChangeHash>,
 ) -> PijulDeliveryDependencyIssue? {
   delivered
     |> flat_map(hash =>
-      match pijul_find_change(changes: repository.changes, hash: hash) {
+      match pijul_find_change(changes: repository.state.changes, hash: hash) {
         Present { value: change } =>
           change.dependencies
             |> filter(dependency =>
@@ -1323,18 +1329,24 @@ fn pijul_delivery_dependency_issue(
 }
 
 fn pijul_plan_delivery(
-  repository: PijulRepositoryState,
+  repository: PijulDecodedRepository,
   channel_name: PijulChannelName,
   delivered: List<PijulChangeHash>,
 ) -> PijulDeliveryOutcome {
-  match pijul_find_channel(channels: repository.channels, name: channel_name) {
+  match pijul_find_channel(
+    channels: repository.state.channels,
+    name: channel_name,
+  ) {
     Absent => PijulDeliveryRefused {
       cause: PijulDeliveryTargetMissing { channel: channel_name }
     }
     Present { value: channel } =>
       match delivered
         |> filter(hash =>
-          match pijul_find_change(changes: repository.changes, hash: hash) {
+          match pijul_find_change(
+            changes: repository.state.changes,
+            hash: hash,
+          ) {
             Present { value: _ } => false
             Absent => true
           }
