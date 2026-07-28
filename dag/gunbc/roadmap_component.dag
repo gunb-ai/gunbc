@@ -1,6 +1,6 @@
 module gunbc.roadmap_component
 
-import std.types { Int, String, Bool }
+import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
 import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
@@ -749,7 +749,7 @@ data dispatch_choreography_note: String = "The presented-state choreography (rem
 
 data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell scalar. This row survives until that session replaces it."
 
-data dispatch_requested_read_dwell_ms: Int = 300
+data dispatch_requested_read_dwell_ms: Milliseconds = 300
 
 data js_dwell_const: String = "gunbcDwellMs"
 data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
