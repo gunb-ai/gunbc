@@ -139,7 +139,7 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe, identity: Computat
 type ProviderAdmission
   = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
   | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
-  | ProviderBudgetExhausted { needed_bytes: Int, budget_bytes: Int }
+  | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
 
 fn provider_admit(
   store: ArtifactStore,
@@ -151,8 +151,8 @@ fn provider_admit(
     ArtifactComplete =>
       if measure_count(m: artifact.artifact_bytes) > measure_count(m: store.budget) {
         ProviderBudgetExhausted {
-          needed_bytes: measure_count(m: artifact.artifact_bytes),
-          budget_bytes: measure_count(m: store.budget)
+          needed: artifact.artifact_bytes,
+          budget: store.budget
         }
       } else {
         let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: artifact.artifact_bytes)
@@ -272,7 +272,7 @@ fn admission_is_admitted(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => true
     ProviderRefusedIncompleteWrite { missing: _ } => false
-    ProviderBudgetExhausted { needed_bytes: _, budget_bytes: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
   }
 }
 
@@ -280,7 +280,7 @@ fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
   match a {
     ProviderAdmitted { store: _, evicted: e } => e
     ProviderRefusedIncompleteWrite { missing: _ } => []
-    ProviderBudgetExhausted { needed_bytes: _, budget_bytes: _ } => []
+    ProviderBudgetExhausted { needed: _, budget: _ } => []
   }
 }
 
@@ -288,7 +288,7 @@ fn admission_store(a: ProviderAdmission, fallback: ArtifactStore) -> ArtifactSto
   match a {
     ProviderAdmitted { store: s, evicted: _ } => s
     ProviderRefusedIncompleteWrite { missing: _ } => fallback
-    ProviderBudgetExhausted { needed_bytes: _, budget_bytes: _ } => fallback
+    ProviderBudgetExhausted { needed: _, budget: _ } => fallback
   }
 }
 
@@ -296,7 +296,7 @@ fn admission_is_budget_exhausted(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => false
     ProviderRefusedIncompleteWrite { missing: _ } => false
-    ProviderBudgetExhausted { needed_bytes: _, budget_bytes: _ } => true
+    ProviderBudgetExhausted { needed: _, budget: _ } => true
   }
 }
 
@@ -304,7 +304,7 @@ fn admission_is_refused_incomplete_write(a: ProviderAdmission) -> Bool {
   match a {
     ProviderAdmitted { store: _, evicted: _ } => false
     ProviderRefusedIncompleteWrite { missing: _ } => true
-    ProviderBudgetExhausted { needed_bytes: _, budget_bytes: _ } => false
+    ProviderBudgetExhausted { needed: _, budget: _ } => false
   }
 }
 
