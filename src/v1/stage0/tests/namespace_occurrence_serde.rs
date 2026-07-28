@@ -6,7 +6,8 @@ use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::std_occurrence_identity::{
-    occurrence_id_allocator_initial, OccurrenceIdAllocator,
+    occurrence_id_allocator_initial, OccurrenceCategory, OccurrenceContainmentPath,
+    OccurrenceIdAllocator, OccurrenceTransport,
 };
 use v1_compiler::v1_compiler_parse::{parse_with_table_in_occurrence_scope, ParseWithTableResult};
 use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -28,6 +29,73 @@ fn parse_source(
         empty_intern_table(),
         allocator,
     )
+}
+
+fn containment_ids(path: &OccurrenceContainmentPath) -> (Vec<i64>, i64) {
+    (
+        path.ancestors
+            .iter()
+            .map(|ancestor| ancestor.value)
+            .collect(),
+        path.terminal.value,
+    )
+}
+
+type OccurrenceIdentityView = (
+    Vec<(i64, (Vec<i64>, i64))>,
+    Vec<(i64, OccurrenceCategory, (Vec<i64>, i64))>,
+    Vec<(i64, OccurrenceCategory, (Vec<i64>, i64))>,
+);
+
+fn occurrence_identity_view(transport: &OccurrenceTransport) -> OccurrenceIdentityView {
+    (
+        transport
+            .index
+            .entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.projection.occurrence.value,
+                    containment_ids(&entry.containment),
+                )
+            })
+            .collect(),
+        transport
+            .declarations
+            .iter()
+            .map(|declaration| {
+                (
+                    declaration.occurrence.value,
+                    declaration.category,
+                    containment_ids(&declaration.containment),
+                )
+            })
+            .collect(),
+        transport
+            .references
+            .iter()
+            .map(|reference| {
+                (
+                    reference.occurrence.value,
+                    reference.category,
+                    containment_ids(&reference.containment),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn declaration_spans(transport: &OccurrenceTransport) -> Vec<(i64, i64)> {
+    transport
+        .declarations
+        .iter()
+        .map(|declaration| {
+            (
+                declaration.diagnostic_span.start,
+                declaration.diagnostic_span.end,
+            )
+        })
+        .collect()
 }
 
 #[test]
@@ -53,22 +121,47 @@ fn occurrence_transport_round_trips_with_node_identity_and_paths() {
         "different_span_file.dag",
         occurrence_id_allocator_initial(),
     );
-    let original_ids: Vec<i64> = parsed
-        .occurrence_transport
-        .index
-        .entries
-        .iter()
-        .map(|entry| entry.projection.occurrence.value)
-        .collect();
-    let perturbed_ids: Vec<i64> = parsed_with_perturbed_span_file
-        .occurrence_transport
-        .index
-        .entries
-        .iter()
-        .map(|entry| entry.projection.occurrence.value)
-        .collect();
+    assert!(
+        parsed_with_perturbed_span_file.result.error.is_none(),
+        "{:?}",
+        parsed_with_perturbed_span_file.result.error
+    );
     assert_eq!(
-        original_ids, perturbed_ids,
-        "filename/span evidence must not participate in occurrence identity"
+        occurrence_identity_view(&parsed.occurrence_transport),
+        occurrence_identity_view(&parsed_with_perturbed_span_file.occurrence_transport),
+        "filename evidence must not participate in occurrence identity or containment"
+    );
+
+    let layout_perturbed_source = "module occurrence.serde\n\nfn   left( x: Int ) -> Int {   x }\nfn   right( x: Int ) -> Int {   left( x ) }\n";
+    let parsed_with_perturbed_layout = parse_source(
+        layout_perturbed_source,
+        "layout_perturbed_file.dag",
+        occurrence_id_allocator_initial(),
+    );
+    assert!(
+        parsed_with_perturbed_layout.result.error.is_none(),
+        "{:?}",
+        parsed_with_perturbed_layout.result.error
+    );
+
+    let original_declaration_spans = declaration_spans(&parsed.occurrence_transport);
+    let layout_declaration_spans =
+        declaration_spans(&parsed_with_perturbed_layout.occurrence_transport);
+    assert_eq!(
+        original_declaration_spans.len(),
+        layout_declaration_spans.len(),
+        "layout twin must mint the same declaration population"
+    );
+    assert!(
+        original_declaration_spans
+            .iter()
+            .zip(layout_declaration_spans.iter())
+            .any(|(original, perturbed)| original != perturbed),
+        "layout perturbation control: no declaration span moved, so the independence assertion below would be vacuous"
+    );
+    assert_eq!(
+        occurrence_identity_view(&parsed.occurrence_transport),
+        occurrence_identity_view(&parsed_with_perturbed_layout.occurrence_transport),
+        "layout/span evidence must not participate in occurrence identity or containment"
     );
 }
