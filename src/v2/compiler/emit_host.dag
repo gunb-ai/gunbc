@@ -24,6 +24,8 @@ import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,
   HostTransportDescriptor,
+  MaterializedWorkspaceFile,
+  WorkspaceFile,
   EmittedSource,
   EmittedWithSuffix,
   FixedText,
@@ -37,6 +39,18 @@ import v2.std.host_transport {
   WorkspaceContent,
   WorkspacePath,
   runtime_value_parse_from_row
+}
+import std.artifact_store {
+  ArtifactRealizationInput,
+  artifact_realization_digest
+}
+import std.content_hash {
+  content_hash_atom,
+  content_hash_combine
+}
+import std.types { ContentHash }
+import extdeps.realization.emit_on_demand_host {
+  native_cache_realization_workspace_root
 }
 import v2.std.logic { Bool }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }
@@ -252,6 +266,79 @@ fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String 
   }
 }
 
+fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
+  fold(
+    xs,
+    init: content_hash_atom(value: seed),
+    f: (acc, value) => content_hash_combine(
+      left: acc,
+      right: content_hash_atom(value: value)
+    )
+  )
+}
+
+fn emit_host_materialized_workspace_files(
+  workspace: List<WorkspaceFile>,
+  emitted: String
+) -> List<MaterializedWorkspaceFile> {
+  emit_host_list_map(
+    xs: workspace,
+    f: fn(w) {
+      MaterializedWorkspaceFile {
+        path: w.path,
+        text: workspace_content_text(content: w.content, emitted: emitted)
+      }
+    }
+  )
+}
+
+fn emit_host_workspace_realization_inputs(
+  files: List<MaterializedWorkspaceFile>
+) -> List<ArtifactRealizationInput> {
+  emit_host_list_map(
+    xs: files,
+    f: fn(file) {
+      ArtifactRealizationInput {
+        identity: concat("workspace:", file.path),
+        content_digest: content_hash_atom(value: file.text)
+      }
+    }
+  )
+}
+
+fn emit_host_build_realization_inputs(
+  builds: List<List<String>>
+) -> List<ArtifactRealizationInput> {
+  match builds {
+    Empty => []
+    Cons { head: argv, tail: rest } =>
+      concat(
+        [
+          ArtifactRealizationInput {
+            identity: "build-argv",
+            content_digest: emit_host_string_list_digest(
+              xs: argv,
+              seed: "emit-host-build-argv"
+            )
+          }
+        ],
+        emit_host_build_realization_inputs(builds: rest)
+      )
+  }
+}
+
+fn emit_host_realization_digest(
+  files: List<MaterializedWorkspaceFile>,
+  builds: List<List<String>>
+) -> ContentHash {
+  artifact_realization_digest(
+    inputs: concat(
+      emit_host_workspace_realization_inputs(files: files),
+      emit_host_build_realization_inputs(builds: builds)
+    )
+  )
+}
+
 fn emit_host_octet_bit(octet: Int, place: Int) -> Bool {
   ((octet / place) % 2) == 1
 }
@@ -355,19 +442,20 @@ fn run_host_process_admitted(
         o: invocation_argv(inv: transport.run),
         f: fn(descriptor_run_argv) {
           let run_argv = concat(descriptor_run_argv, run_args)
-          let files = emit_host_list_map(
-            xs: transport.workspace,
-            f: fn(w) {
-              {
-                path: w.path,
-                text: workspace_content_text(content: w.content, emitted: source.carried)
-              }
-            }
+          let files = emit_host_materialized_workspace_files(
+            workspace: transport.workspace,
+            emitted: source.carried
           )
           let result = if use_cache {
             emit_host_run_transport_cached(
               admission: admission,
-              workspace_dir: workspace_dir,
+              workspace_dir: native_cache_realization_workspace_root(
+                workspace_root: workspace_dir,
+                realization_digest: emit_host_realization_digest(
+                  files: files,
+                  builds: builds
+                )
+              ),
               files: files,
               build: builds,
               run: run_argv
