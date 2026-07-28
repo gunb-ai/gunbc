@@ -171,7 +171,7 @@ test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
     signoff: SignedOff {
       by: "operator",
       works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
-      scope_equivalent: HandbackDelivered { artifacts: ["fixture-handback"] },
+      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
       as_expected: true,
     },
   ))

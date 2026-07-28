@@ -82,7 +82,7 @@ fn done_signed_node() -> RoadmapNode {
     carriers: base.carriers,
     sizing: base.sizing,
     owner: base.owner,
-    signoff: signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { artifacts: ["fixture-handback"] }, as_expected: true),
+    signoff: signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 
