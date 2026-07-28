@@ -324,6 +324,20 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      id: "namespace-v2-import-completion",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Complete v2 namespace and import consumers",
+        boundary: "Every v2 compiler import and qualified-reference consumer reads the canonical OccurrenceBound projection before legacy choice mechanisms retire.",
+        displaced_cost: "Prevents a partial namespace migration from stranding v2 imports on a second declaration authority.",
+        first_slice: "Move the remaining v2 import-resolution family onto the canonical occurrence binding.",
+        red_control: "A v2 import consumer that bypasses OccurrenceBound reds the consumer census.",
+        out_of_scope: "No new import precedence or compatibility lookup policy.",
+        handback: "Return the complete v2/import consumer census and executed ambiguous-import refusal."
+      )
+    ),
+    active_small(
       id: "namespace-legacy-choice-retirement",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -537,18 +551,32 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return equivalence, producer deletion readiness, and frontier update."
       )
     ),
-    active(
-      id: "v1-interpreter-role-frontier",
+    active_large(
+      id: "v1-emitter-fixed-point",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Close the explicit v1 interpreter role frontier",
-        boundary: "Every live interpreter consumer is a typed retained role with a deletion trigger or is migrated to native realization.",
-        displaced_cost: "Turns hidden interpreter dependence into a finite deletion obligation.",
-        first_slice: "Re-derive the consumer roster and close one complete role family.",
-        red_control: "An unregistered interpreter import or execution path reds the frontier.",
-        out_of_scope: "Hand-maintained Rust outside interpreter roles is tracked separately.",
-        handback: "Return the complete role roster and migrated family receipt."
+        headline: "Reach the behavioral emitter fixed point",
+        boundary: "The v2 emitter re-emits and rebuilds itself for two generations with behavioral equivalence on the discriminating corpus.",
+        displaced_cost: "Establishes the executable replacement required before any v1 cutover.",
+        first_slice: "Close the remaining emitter import and representation gaps while keeping cargo and witnesses green.",
+        red_control: "A second-generation behavioral divergence or seed-only emitter dependency blocks the gate.",
+        out_of_scope: "Byte identity with the Rust seed is not required.",
+        handback: "Return two-generation behavioral, build, and corpus receipts."
+      )
+    ),
+    active(
+      id: "v1-honest-frontier",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Close the honest typed self-host frontier",
+        boundary: "Every compiler module and live interpreter consumer is SelfEmitted or SeedRetained with a reason and migration trigger; no execution receipt is orphaned.",
+        displaced_cost: "Turns hidden seed and interpreter dependence into finite typed deletion obligations.",
+        first_slice: "Re-derive the complete frontier and close one remaining retained-role family.",
+        red_control: "An unregistered seed module, interpreter consumer, or orphaned receipt reds the frontier.",
+        out_of_scope: "No claim that all modules must self-emit when a typed retained kernel is necessary.",
+        handback: "Return the complete frontier, trigger census, and migrated-family receipt."
       )
     ),
     active_large(
@@ -563,6 +591,76 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "Wrong content, missing artifact, and exhausted budget refuse rather than fall back silently to interpretation.",
         out_of_scope: "No existence-keyed cache or unbounded store.",
         handback: "Return cold miss, warm hit, integrity, and eviction receipts."
+      )
+    ),
+    active_large(
+      id: "v1-verification-ledger",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Execute the proactive v1-versus-v2 verification ledger",
+        boundary: "Run whole-corpus cold parity, compile-clean parity, regen fixed point, and per-family receipts; elapsed time is never evidence.",
+        displaced_cost: "Replaces soak-based confidence with enumerated discriminating execution.",
+        first_slice: "Execute the cold whole-corpus comparison on the fixed-point emitter artifact.",
+        red_control: "Any unexplained divergence, skipped family, or unexecuted enrolled receipt keeps the ledger red.",
+        out_of_scope: "No calendar soak or fixture-only substitute.",
+        handback: "Return the enumerated green ledger with located divergence accounting."
+      )
+    ),
+    active_large(
+      id: "v1-ci-floor-cutover",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Cut the CI floor over to v2-emitted execution",
+        boundary: "The live CI floor runs the v2-emitted path with proactive cold parity against v1 before v1 is quarantined.",
+        displaced_cost: "Moves the mandatory execution consumer off the interpreter instead of proving an unused replacement.",
+        first_slice: "Run the complete floor on v2 emission in shadow, then flip the one execution selector.",
+        red_control: "A CI-only divergence, fallback to the interpreter, or mixed selector blocks cutover.",
+        out_of_scope: "No deletion or quarantine in the cutover change.",
+        handback: "Return shadow parity, atomic flip, and zero-fallback receipts."
+      )
+    ),
+    active_large(
+      id: "v1-hand-queue-drain",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Drain the hand-maintained v1 product queue",
+        boundary: "Migrate the remaining hand-maintained product/compiler files required for products to build without src/v1; typed terminal-kernel pins require explicit reasons.",
+        displaced_cost: "Makes the quarantine products-build claim writable rather than hiding a hand-Rust dependency.",
+        first_slice: "Drain the next complete hand-maintained producer family through emission and execution.",
+        red_control: "A product-reachable hand-maintained v1 file without a typed retained-kernel disposition blocks quarantine.",
+        out_of_scope: "No template cementing to satisfy a census.",
+        handback: "Return the reduced queue, emitted replacement receipts, and typed retained pins."
+      )
+    ),
+    active(
+      id: "v1-test-migration",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Prove v1 test behavior is carried before deletion",
+        boundary: "Every v1 Rust test module removed by terminal deletion has discriminating floor-witness coverage against the frozen baseline.",
+        displaced_cost: "Prevents delete-guard silence from being mistaken for behavioral coverage.",
+        first_slice: "Bind one remaining v1 test module to its native-routed discriminating witnesses.",
+        red_control: "Any baseline test module with zero discriminating witness bindings keeps deletion red.",
+        out_of_scope: "No one-for-one transliteration of Rust test implementation.",
+        handback: "Return the per-module coverage receipt and zero-unbound baseline census."
+      )
+    ),
+    active_small(
+      id: "v1-seed-honesty-decision",
+      owner: "operator",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Decide and discriminate the seed-honesty gate",
+        boundary: "Record whether diverse double-compiling gates terminal deletion and first make the seed-honesty witness capable of a failing control.",
+        displaced_cost: "Prevents a trivially green evidence atom from authorizing deletion.",
+        first_slice: "Land the discriminating RED, then record the operator gate decision.",
+        red_control: "Supplying the same evidence atom as both claim and check cannot pass.",
+        out_of_scope: "No DDC implementation before the operator decides it gates deletion.",
+        handback: "Return the live RED and typed gating or non-gating decision."
       )
     ),
     active(
@@ -778,91 +876,6 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the T4/T5 receipt packet and operator-checkable fleet state."
       )
     ),
-
-    queued(
-      id: "product-scm-git-upstream",
-      owner: "product",
-      path: "docs/plans/dag-scm-design.md",
-      t: fields(
-        headline: "Queue the independent Git upstream model and fixture",
-        boundary: "Model Git's real snapshot, ref, object, publication, and compare-and-advance semantics independently before extracting a common SCM shape.",
-        displaced_cost: "Prevents the first adoption realization from becoming the universal interface by accident.",
-        first_slice: "A bounded cited Git fixture over import, proposal, and exact-parent advance.",
-        red_control: "Git-only facts cannot appear in the later common kernel without an explicit adapter.",
-        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
-        handback: "Return cited upstream rows and fixture only after promotion."
-      )
-    ),
-    queued(
-      id: "product-scm-mercurial-upstream",
-      owner: "product",
-      path: "docs/plans/dag-scm-design.md",
-      t: fields(
-        headline: "Queue the independent Mercurial upstream model and fixture",
-        boundary: "Model Mercurial identity, phases, bookmarks, and publication semantics on their own terms.",
-        displaced_cost: "Falsifies Git-shaped identity and publication assumptions.",
-        first_slice: "A bounded cited Mercurial fixture that stresses identity and publication metadata.",
-        red_control: "The fixture must fail a Git-ref-shaped compatibility assumption.",
-        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
-        handback: "Return cited upstream rows and fixture only after promotion."
-      )
-    ),
-    queued(
-      id: "product-scm-pijul-upstream",
-      owner: "product",
-      path: "docs/plans/dag-scm-design.md",
-      t: fields(
-        headline: "Queue the independent Pijul upstream model and fixture",
-        boundary: "Model first-class changes, dependencies, and set-valued channels independently.",
-        displaced_cost: "Falsifies commit/single-head assumptions before they enter the common shape.",
-        first_slice: "A bounded cited Pijul fixture over change dependencies and channel state.",
-        red_control: "The fixture must fail a linear commit/ref-shaped compatibility assumption.",
-        out_of_scope: "Queued product work is non-spawnable until operator promotion.",
-        handback: "Return cited upstream rows and fixture only after promotion."
-      )
-    ),
-    queued(
-      id: "product-scm-common-shape",
-      owner: "product",
-      path: "docs/plans/dag-scm-design.md",
-      t: fields(
-        headline: "Queue common SCM realization roles after three falsifiers",
-        boundary: "DFS the three independent fixtures and extract only their proven common import, proposal, transition, and projection roles.",
-        displaced_cost: "Avoids N adapters to a Git-shaped nickname interface.",
-        first_slice: "Extract the minimal witnessed common shape and keep provider facts behind adapters.",
-        red_control: "Adding a fourth SCM requires only a new adapter and rows, never a core vendor arm.",
-        out_of_scope: "No common shape is authorized before all three upstream fixtures execute.",
-        handback: "Return the DFS map, reduced shape, and fourth-provider discriminator after promotion."
-      )
-    ),
-    queued(
-      id: "product-source-intent-kernel",
-      owner: "product",
-      path: "docs/plans/dag-scm-design.md",
-      t: fields(
-        headline: "Queue the bounded source-intent landing kernel",
-        boundary: "Compose authenticated authored transformations, claim-indexed evidence, admission, exact transition, readback, and projection into Landed, ChoiceRequired, or CouldNotLand.",
-        displaced_cost: "Moves replay, integration mechanics, and machine-answerable repair out of the user's workflow.",
-        first_slice: "Run one Git-compatible proposal through the bounded kernel without vendor switches.",
-        red_control: "Unclosed semantics, stale parent, unauthorized effect, or failed readback cannot project Landed.",
-        out_of_scope: "No hosted authority, storage service, or customer mutation before product promotion.",
-        handback: "Return bounded closure, refusal partitions, and exact-parent transition receipts after promotion."
-      )
-    ),
-    queued(
-      id: "product-agent-landing-benchmark",
-      owner: "product",
-      path: "docs/plans/dag-scm-product-strategy.md",
-      t: fields(
-        headline: "Queue the fixed-contract agent landing benchmark",
-        boundary: "Compare ordinary Git integration and the source-intent kernel under one fixed safety contract before any design-partner shadow or hosted promotion.",
-        displaced_cost: "Tests whether semantic landing displaces real replay, CI, and judgment cost.",
-        first_slice: "Run the benchmark on gunbc with reversible Git output.",
-        red_control: "Ordinary queue, rebase, or cache improvements that erase the claimed advantage stop or narrow the product lane.",
-        out_of_scope: "No customer source access, ref write authority, hosting, or adjacent product grant.",
-        handback: "Return public checkable receipts and a promote, narrow, or stop disposition after operator promotion."
-      )
-    ),
   ]
 }
 
@@ -870,11 +883,12 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
   [
     edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
-    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-bound-only-consumers"),
+    edge(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers"),
+    edge(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion"),
 
     edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
     edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
-    edge(child: "pderive-source-slot-binding", parent: "namespace-occurrence-transport"),
+    edge(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding"),
     edge(child: "pderive-single-emitter", parent: "pderive-source-slot-binding"),
     edge(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter"),
 
@@ -882,14 +896,22 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
 
+    edge(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer"),
     edge(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight"),
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
 
-    edge(child: "v1-interpreter-role-frontier", parent: "v1-test-hygiene-producer-retirement"),
-    edge(child: "v1-materialization-kernel", parent: "v1-interpreter-role-frontier"),
-    edge(child: "v1-interpreter-quarantine", parent: "v1-materialization-kernel"),
+    edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
+    edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
+    edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
+    edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
+    edge(child: "v1-interpreter-delete", parent: "v1-test-migration"),
+    edge(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
     edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
 
@@ -907,12 +929,17 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
 
-    edge(child: "product-scm-common-shape", parent: "product-scm-git-upstream"),
-    edge(child: "product-scm-common-shape", parent: "product-scm-mercurial-upstream"),
-    edge(child: "product-scm-common-shape", parent: "product-scm-pijul-upstream"),
-    edge(child: "product-source-intent-kernel", parent: "product-scm-common-shape"),
-    edge(child: "product-source-intent-kernel", parent: "namespace-canonical-binding"),
-    edge(child: "product-agent-landing-benchmark", parent: "product-source-intent-kernel"),
+    edge(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join"),
+    edge(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join"),
+    edge(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-test-hygiene-producer-retirement", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-materialization-kernel", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-hand-queue-drain", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-test-migration", parent: "roadmap-runtime-identity-join"),
+    edge(child: "v1-seed-honesty-decision", parent: "roadmap-runtime-identity-join"),
+    edge(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join"),
+    edge(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join"),
   ]
 }
 
