@@ -49,18 +49,29 @@ pub struct SymbolInterner {
 
 #[cfg(test)]
 mod selected_identity_path_tests {
-    use super::selected_module_path;
+    use super::{ExecutionMode, InterpContext};
+    use crate::v1_compiler_compile::SourceFile;
     use im::HashMap;
+    use std::rc::Rc;
 
     #[test]
-    fn suffix_collision_refuses_instead_of_guessing() {
+    fn selected_function_identity_refuses_suffix_collision_on_actual_node() {
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(vec![Rc::new(
+            SourceFile {
+                path: "workspace/src/common.dag".to_string(),
+                content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
+            },
+        )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
         let mut index = HashMap::new();
         index.insert("one".to_string(), "src/common.dag".to_string());
         index.insert("two".to_string(), "common.dag".to_string());
-        assert_eq!(
-            selected_module_path("workspace/src/common.dag", &index),
-            None
-        );
+        assert_eq!(ctx.selected_function_identity("check", &index), None);
     }
 }
 
