@@ -10,16 +10,21 @@ import gunbc.roadmap_model {
   RoadmapEdge,
   Pointer,
   RoadmapNodeId,
+  Intricacy,
   IntricacyMedium,
+  Volume,
   VolumeMedium,
   Sized,
   Unsized,
   PrsMerged,
+  ManualAcceptance,
   section_group,
   section_prose,
 }
 import gunbc.roadmap_status {
   AuthoredLine,
+  DerivableLine,
+  SupersededLine,
   TicketLine,
   TicketFields,
   Signoff,
@@ -49,6 +54,120 @@ fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
     sizing: Unsized,
     owner: "",
     signoff: Unsigned,
+  }
+}
+
+fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: description },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn derivable_wi(
+  id: String,
+  prs: List<Int>,
+  title: String,
+  description: String,
+  intricacy: Intricacy,
+  volume: Volume,
+  repo: String
+) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: description },
+    carriers: [],
+    sizing: Sized {
+      intricacy: intricacy,
+      volume: volume,
+      repo: repo,
+      acceptance: PrsMerged,
+    },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn authored_wi(
+  id: String,
+  done: Bool,
+  content: String,
+  intricacy: Intricacy,
+  volume: Volume,
+  repo: String
+) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: AuthoredLine { done: done, content: content },
+    carriers: [],
+    sizing: Sized {
+      intricacy: intricacy,
+      volume: volume,
+      repo: repo,
+      acceptance: ManualAcceptance,
+    },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: TicketLine { done: done, ticket: t },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn ticket_wi(
+  id: String,
+  done: Bool,
+  t: TicketFields,
+  intricacy: Intricacy,
+  volume: Volume,
+  repo: String
+) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: TicketLine { done: done, ticket: t },
+    carriers: [],
+    sizing: Sized {
+      intricacy: intricacy,
+      volume: volume,
+      repo: repo,
+      acceptance: ManualAcceptance,
+    },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn superseded(id: String, by: String, content: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: SupersededLine { by: by, content: content },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    node: rn.node,
+    line: rn.line,
+    carriers: rn.carriers,
+    sizing: rn.sizing,
+    owner: rn.owner,
+    signoff: s,
   }
 }
 
