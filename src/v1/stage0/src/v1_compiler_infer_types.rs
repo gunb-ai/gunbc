@@ -63,6 +63,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
@@ -228,6 +229,7 @@ pub fn reground_alias_carrier_identity(
         && is_declared_container_alias_spelling(n.name.clone()))
     {
         Rc::new(Node {
+            authored_occurrence: n.authored_occurrence.clone(),
             name: n.name.clone(),
             span: n.span.clone(),
             ident_span: Some(kernel_span(n.name.clone())),
@@ -259,6 +261,7 @@ pub fn structural_carrier_template_name(
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
             Rc::new(Node {
+                authored_occurrence: n.authored_occurrence.clone(),
                 name: n.name.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
@@ -347,11 +350,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     match container_param_name("Map".to_string(), 0) {
         Some(key_id) => match container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
+                authored_occurrence: None,
                 name: "Map".to_string(),
                 span: make_span(0, 0),
                 ident_span: Some(make_span(0, 0)),
                 children: Rc::new(vec![
                     Rc::new(Node {
+                        authored_occurrence: None,
                         name: key_id.clone(),
                         span: make_span(0, 0),
                         ident_span: Some(make_span(0, 0)),
@@ -374,6 +379,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         ident: None,
                     }),
                     Rc::new(Node {
+                        authored_occurrence: None,
                         name: val_id.clone(),
                         span: make_span(0, 0),
                         ident_span: Some(make_span(0, 0)),
@@ -420,10 +426,12 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
 pub fn bare_set_node() -> Option<Rc<Node>> {
     match container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
+            authored_occurrence: None,
             name: "Set".to_string(),
             span: make_span(0, 0),
             ident_span: Some(make_span(0, 0)),
             children: Rc::new(vec![Rc::new(Node {
+                authored_occurrence: None,
                 name: elem_id.clone(),
                 span: make_span(0, 0),
                 ident_span: Some(make_span(0, 0)),
@@ -487,6 +495,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             kind_name.clone(),
         );
         Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: make_span(0, 0),
             ident_span: None,
@@ -525,10 +534,12 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
     match container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
+                authored_occurrence: None,
                 name: kind_name.clone(),
                 span: kernel_span(kind_name.clone()),
                 ident_span: Some(kernel_span(kind_name.clone())),
                 children: Rc::new(vec![Rc::new(Node {
+                    authored_occurrence: None,
                     name: param_name.clone(),
                     span: kernel_span(param_name.clone()),
                     ident_span: Some(kernel_span(param_name.clone())),
@@ -581,11 +592,13 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
         Some(key_name) => match container_param_name("Map".to_string(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
+                    authored_occurrence: None,
                     name: "Map".to_string(),
                     span: kernel_span("Map".to_string()),
                     ident_span: Some(kernel_span("Map".to_string())),
                     children: Rc::new(vec![
                         Rc::new(Node {
+                            authored_occurrence: None,
                             name: key_name.clone(),
                             span: kernel_span(key_name.clone()),
                             ident_span: Some(kernel_span(key_name.clone())),
@@ -606,6 +619,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             ident: None,
                         }),
                         Rc::new(Node {
+                            authored_occurrence: None,
                             name: val_name.clone(),
                             span: kernel_span(val_name.clone()),
                             ident_span: Some(kernel_span(val_name.clone())),
@@ -663,6 +677,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
 
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "Callable".to_string(),
         span: kernel_span("Callable".to_string()),
         ident_span: Some(kernel_span("Callable".to_string())),
@@ -686,11 +701,13 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
 
 pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
         children: Rc::new(vec![
             Rc::new(Node {
+                authored_occurrence: None,
                 name: "first".to_string(),
                 span: kernel_span("first".to_string()),
                 ident_span: Some(kernel_span("first".to_string())),
@@ -713,6 +730,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 ident: None,
             }),
             Rc::new(Node {
+                authored_occurrence: None,
                 name: "second".to_string(),
                 span: kernel_span("second".to_string()),
                 ident_span: Some(kernel_span("second".to_string())),
@@ -754,6 +772,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
 
 pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: kernel_span(name.clone()),
         ident_span: Some(kernel_span(name.clone())),
@@ -798,6 +817,7 @@ pub fn algebra_method_field(
         });
         let callable = make_callable_type(params.clone(), return_type.clone());
         Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: kernel_span(name.clone()),
             ident_span: Some(kernel_span(name.clone())),
@@ -828,6 +848,7 @@ pub fn enrich_base_with_fields(
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: base.authored_occurrence.clone(),
         name: name.clone(),
         span: base.span.clone(),
         ident_span: base.ident_span.clone(),

@@ -1240,6 +1240,7 @@ pub fn qualify_borrowed_type_names(
                         let qname =
                             v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
                         Rc::new(Node {
+                            authored_occurrence: n.authored_occurrence.clone(),
                             name: qname.clone(),
                             span: n.span.clone(),
                             ident_span: Some(kernel_span(qname.clone())),
@@ -1269,6 +1270,7 @@ pub fn qualify_borrowed_type_names(
 
 pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: n.authored_occurrence.clone(),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -1292,6 +1294,7 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
 
 pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: n.authored_occurrence.clone(),
         name: n.name.clone(),
         ident: n.ident.clone(),
         span: n.span.clone(),
@@ -1796,6 +1799,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
+                    authored_occurrence: None,
                     name: tp_name.clone(),
                     span: kernel_span(tp_name.clone()),
                     ident_span: Some(kernel_span(tp_name.clone())),

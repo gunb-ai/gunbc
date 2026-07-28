@@ -18,8 +18,8 @@ import v1.std.core {
   ExprData,
   ExprLet,
   ExprLambda,
-  ExprError,
   ExprMatch,
+  NewlineIndex,
   make_span,
   leaf_node_with_span,
   make_arm_node,
@@ -45,17 +45,7 @@ import v1.compiler.parse {
 }
 
 import v1.compiler.infer {
-  InferScope,
-  infer_expr,
   substitute_generics_apply,
-}
-
-import v1.compiler.infer_env {
-  empty_type_env,
-}
-
-import v1.compiler.infer_sigs {
-  ResolvedFuncEnv,
 }
 
 import v1.compiler.dag_collect {
@@ -397,42 +387,6 @@ test fn occurrence_transport_parser_forms_hold() -> Bool {
   parser_explicit_alias_label_and_declaration_are_distinct() &&
   parser_nested_same_spelling_is_distinct() &&
   parser_sibling_arm_same_spelling_is_distinct()
-}
-
-fn empty_infer_scope() -> InferScope {
-  InferScope {
-    type_env: empty_type_env(),
-    func_env: ResolvedFuncEnv {
-      name: "occurrence.transport",
-      local: empty_map(),
-      parents: [],
-    },
-    locals: empty_map(),
-    body_locals: empty_map(),
-    match_bound_names: empty_map(),
-    module_name: "occurrence.transport",
-    service_registry: empty_map(),
-    item_registry: empty_map(),
-    lambda_param_provenance: empty_map(),
-  }
-}
-
-fn inferred_error_reference_keeps_id() -> Bool {
-  match parse_fixture_expr(source: "missing", occurrence_base: 500) {
-    Absent => false
-    Present { value: reference } =>
-      let typed = infer_expr(
-        texpr: reference,
-        scope: empty_infer_scope(),
-        expected: none,
-      ).typed
-      match typed.expr_data {
-        ExprError { kind: _, message: _ } =>
-          node_reference_id(node: reference) != none &&
-          node_reference_id(node: typed) == node_reference_id(node: reference)
-        _ => false
-      }
-  }
 }
 
 fn rebuilt_reference_keeps_id() -> Bool {

@@ -348,6 +348,7 @@ pub fn check_service_method_call_node(
                         } else {
                             Some(Rc::new(ServiceMethodResult {
                                 result_type: Rc::new(Node {
+                                    authored_occurrence: None,
                                     name: "".to_string(),
                                     span: no_span(),
                                     ident_span: None,
@@ -355,6 +356,7 @@ pub fn check_service_method_call_node(
                                         let mut __result = Vec::new();
                                         for f in op.outputs.clone().iter().cloned() {
                                             __result.push(Rc::new(Node {
+                                                authored_occurrence: None,
                                                 name: f.name.clone(),
                                                 span: f.span.clone(),
                                                 ident_span: f.ident_span.clone(),

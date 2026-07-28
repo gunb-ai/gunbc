@@ -20,6 +20,7 @@ use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,

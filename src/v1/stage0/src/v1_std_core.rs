@@ -24,6 +24,8 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_occurrence_identity::AuthoredOccurrence;
+use crate::std_occurrence_identity::AuthoredOccurrence::*;
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -797,6 +799,7 @@ pub struct Node {
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
+    pub authored_occurrence: Option<Rc<AuthoredOccurrence>>,
     pub children: Rc<Vec<Rc<Node>>>,
     pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
@@ -811,6 +814,40 @@ pub struct Node {
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub expr_data: Rc<ExprData>,
+}
+
+pub fn node_with_authored_occurrence(
+    node: Rc<Node>,
+    occurrence: Rc<AuthoredOccurrence>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        name: node.name.clone(),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        authored_occurrence: Some(occurrence.clone()),
+        children: node.children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: node.uses.clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(),
+        expr_data: node.expr_data.clone(),
+        ident: None,
+    })
+}
+
+pub fn node_preserve_authored_occurrence(source: Rc<Node>, rebuilt: Rc<Node>) -> Rc<Node> {
+    match source.authored_occurrence.clone() {
+        Some(occurrence) => node_with_authored_occurrence(rebuilt.clone(), occurrence.clone()),
+        None => rebuilt.clone(),
+    }
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -840,8 +877,10 @@ pub fn make_expr_node(
 ) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
+        ident: None,
         span: span.clone(),
         ident_span: None,
+        authored_occurrence: None,
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -856,7 +895,6 @@ pub fn make_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -870,8 +908,10 @@ pub fn make_named_expr_node(
 ) -> Rc<Node> {
     Rc::new(Node {
         name: name.clone(),
+        ident: None,
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
+        authored_occurrence: None,
         children: children.clone(),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -886,7 +926,6 @@ pub fn make_named_expr_node(
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: expr_data.clone(),
-        ident: None,
     })
 }
 
@@ -908,8 +947,10 @@ pub fn make_expr_error_node(
 ) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
+        ident: None,
         span: span.clone(),
         ident_span: None,
+        authored_occurrence: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
@@ -930,7 +971,6 @@ pub fn make_expr_error_node(
             kind: kind.clone(),
             message: message.clone(),
         }),
-        ident: None,
     })
 }
 
@@ -946,6 +986,7 @@ pub fn make_arg_node(
             None => "".to_string(),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: arg_name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(arg_name.clone(), name_span.clone()),
@@ -980,7 +1021,9 @@ pub fn make_arm_node(
             None => Rc::new(vec![body.clone()]),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
+            ident: None,
             span: span.clone(),
             ident_span: None,
             children: children.clone(),
@@ -997,7 +1040,6 @@ pub fn make_arm_node(
             has_non_tail_self_call: false,
             match_pattern: Some(pattern.clone()),
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -1009,6 +1051,7 @@ pub fn make_resource_use_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1055,6 +1098,7 @@ pub fn make_field_init_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1083,6 +1127,7 @@ pub fn make_field_binding_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: field_name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(field_name.clone(), name_span.clone()),
@@ -1120,6 +1165,7 @@ pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
 
 pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1147,6 +1193,7 @@ pub fn make_text_part_node(text: String, span: Rc<SourceSpan>) -> Rc<Node> {
 
 pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -1181,6 +1228,7 @@ pub fn make_param_node(
             None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1217,6 +1265,7 @@ pub fn make_resolved_param_node(
             None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1367,6 +1416,7 @@ pub fn make_field_node(
             Some(fk) => Rc::new(vec![make_field_init_node(
                 "from_key".to_string(),
                 Rc::new(Node {
+                    authored_occurrence: None,
                     name: fk.clone(),
                     span: make_span(0, 0),
                     ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
@@ -1392,6 +1442,7 @@ pub fn make_field_node(
             None => Rc::new(vec![]),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: span.clone(),
             ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -1469,6 +1520,7 @@ pub fn make_variant_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), name_span.clone()),
@@ -2185,6 +2237,7 @@ pub fn make_transport_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -2308,6 +2361,7 @@ pub fn shell_transport_node(
 ) -> Rc<Node> {
     {
         let shell_marker = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -2339,6 +2393,7 @@ pub fn shell_transport_node(
         };
         let all_props = v1_rt::concat(env.clone(), stdin_props.clone());
         Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: span.clone(),
             ident_span: None,
@@ -2692,6 +2747,7 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         ident: node.ident.clone(),
         span: node.span.clone(),
         ident_span: node.ident_span.clone(),
+        authored_occurrence: node.authored_occurrence.clone(),
         children: Rc::new({
             let mut __result = Vec::new();
             for child in node.children.clone().iter().cloned() {
@@ -3180,6 +3236,7 @@ pub fn module_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
@@ -3211,6 +3268,7 @@ pub fn import_node(
     {
         let wildcard_marker = if is_all.clone() {
             Some(Rc::new(Node {
+                authored_occurrence: None,
                 name: "".to_string(),
                 span: span.clone(),
                 ident_span: None,
@@ -3234,6 +3292,7 @@ pub fn import_node(
             None
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: module_path.clone(),
             span: span.clone(),
             ident_span: Some(name_span.clone()),
@@ -3283,6 +3342,7 @@ pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn leaf_node_with_span(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: default_ident_span(name.clone(), span.clone()),
@@ -3319,6 +3379,7 @@ pub fn unit_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "Unit".to_string(),
         span: kernel_span("Unit".to_string()),
         ident_span: Some(kernel_span("Unit".to_string())),
@@ -3347,6 +3408,7 @@ pub fn bool_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "Bool".to_string(),
         span: kernel_span("Bool".to_string()),
         ident_span: Some(kernel_span("Bool".to_string())),
@@ -3375,6 +3437,7 @@ pub fn string_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "String".to_string(),
         span: kernel_span("String".to_string()),
         ident_span: Some(kernel_span("String".to_string())),
@@ -3403,6 +3466,7 @@ pub fn hash_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "Hash".to_string(),
         span: kernel_span("Hash".to_string()),
         ident_span: Some(kernel_span("Hash".to_string())),
@@ -3431,6 +3495,7 @@ pub fn int_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "Int".to_string(),
         span: kernel_span("Int".to_string()),
         ident_span: Some(kernel_span("Int".to_string())),
@@ -3459,6 +3524,7 @@ pub fn float_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "Float".to_string(),
         span: kernel_span("Float".to_string()),
         ident_span: Some(kernel_span("Float".to_string())),
@@ -3487,6 +3553,7 @@ pub fn none_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "None".to_string(),
         span: kernel_span("None".to_string()),
         ident_span: Some(kernel_span("None".to_string())),
@@ -3524,6 +3591,7 @@ pub fn error_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
                 Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
@@ -3811,6 +3879,7 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         ident: n.ident.clone(),
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
+        authored_occurrence: n.authored_occurrence.clone(),
         children: n.children.clone(),
         connective: n.connective.clone(),
         params: n.params.clone(),
@@ -3834,6 +3903,7 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         ident: n.ident.clone(),
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
+        authored_occurrence: n.authored_occurrence.clone(),
         children: n.children.clone(),
         connective: n.connective.clone(),
         params: n.params.clone(),

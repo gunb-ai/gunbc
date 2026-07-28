@@ -2,6 +2,7 @@
 // Source module: std.http_path
 
 use self::UrlPathToken::*;
+pub use crate::std_occurrence_identity::AuthoredOccurrenceId;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};

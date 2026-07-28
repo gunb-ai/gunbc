@@ -11,6 +11,10 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_occurrence_identity::AuthoredOccurrence;
+use crate::std_occurrence_identity::AuthoredOccurrence::{
+    AuthoredDeclarationOccurrence, AuthoredReferenceOccurrence,
+};
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -41,7 +45,7 @@ pub use crate::v1_compiler_normalize::NormalizeResult;
 pub use crate::v1_compiler_ownership::analyze_ownership;
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
-pub use crate::v1_compiler_parse::parse_with_table;
+pub use crate::v1_compiler_parse::parse_with_table_at;
 pub use crate::v1_compiler_parse::ParseResult;
 pub use crate::v1_compiler_resolve::resolve_modules;
 pub use crate::v1_compiler_resolve::ModuleGraph;
@@ -109,6 +113,7 @@ pub struct FrontendResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub next_occurrence_ordinal: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -116,6 +121,7 @@ pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub next_occurrence_ordinal: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -427,6 +433,43 @@ pub fn dag_emit_check_inferred_ref_target(
     }
 }
 
+pub fn dag_emit_check_match_pattern_refs(
+    value: Option<Rc<MatchPattern>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match value.clone().as_deref().cloned() {
+            None => Rc::new(vec![]),
+            Some(MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            }) => dag_emit_check_ref_target(declaration.clone(), key_to_id.clone()),
+            Some(MatchPattern::LitPattern { value: _, .. }) => Rc::new(vec![]),
+            Some(MatchPattern::Wildcard) => Rc::new(vec![]),
+            Some(MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            }) => Rc::new({
+                let mut __result = Vec::new();
+                for binding in bindings.clone().iter().cloned() {
+                    __result.extend(
+                        (*v1_rt::concat(
+                            dag_emit_check_ref_target(binding.clone(), key_to_id.clone()),
+                            dag_emit_check_match_pattern_refs(
+                                binding.match_pattern.clone(),
+                                key_to_id.clone(),
+                            ),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        }
+    })
+}
+
 pub fn dag_emit_check_node_refs(
     node: Rc<Node>,
     key_to_id: Rc<HashMap<String, String>>,
@@ -438,72 +481,84 @@ pub fn dag_emit_check_node_refs(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                if is_import_statement_node(node.clone()) {
-                                    Rc::new(vec![])
-                                } else {
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for c in node.children.clone().iter().cloned() {
-                                            __result.extend(
-                                                (*dag_emit_check_ref_target(
-                                                    c.clone(),
-                                                    key_to_id.clone(),
-                                                ))
-                                                .iter()
-                                                .cloned(),
-                                            );
-                                        }
-                                        __result
-                                    })
-                                },
-                                if is_module_shell_node(node.clone()) {
-                                    Rc::new(vec![])
-                                } else {
-                                    Rc::new({
-                                        let mut __result = Vec::new();
-                                        for p in node.params.clone().iter().cloned() {
-                                            __result.extend(
-                                                (*dag_emit_check_ref_target(
-                                                    p.clone(),
-                                                    key_to_id.clone(),
-                                                ))
-                                                .iter()
-                                                .cloned(),
-                                            );
-                                        }
-                                        __result
-                                    })
-                                },
-                            ),
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for u in node.uses.clone().iter().cloned() {
-                                    __result.extend(
-                                        (*dag_emit_check_ref_target(u.clone(), key_to_id.clone()))
+                                v1_rt::concat(
+                                    if is_import_statement_node(node.clone()) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for c in node.children.clone().iter().cloned() {
+                                                __result.extend(
+                                                    (*dag_emit_check_ref_target(
+                                                        c.clone(),
+                                                        key_to_id.clone(),
+                                                    ))
+                                                    .iter()
+                                                    .cloned(),
+                                                );
+                                            }
+                                            __result
+                                        })
+                                    },
+                                    if is_module_shell_node(node.clone()) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        Rc::new({
+                                            let mut __result = Vec::new();
+                                            for p in node.params.clone().iter().cloned() {
+                                                __result.extend(
+                                                    (*dag_emit_check_ref_target(
+                                                        p.clone(),
+                                                        key_to_id.clone(),
+                                                    ))
+                                                    .iter()
+                                                    .cloned(),
+                                                );
+                                            }
+                                            __result
+                                        })
+                                    },
+                                ),
+                                Rc::new({
+                                    let mut __result = Vec::new();
+                                    for u in node.uses.clone().iter().cloned() {
+                                        __result.extend(
+                                            (*dag_emit_check_ref_target(
+                                                u.clone(),
+                                                key_to_id.clone(),
+                                            ))
                                             .iter()
                                             .cloned(),
-                                    );
-                                }
-                                __result
-                            }),
+                                        );
+                                    }
+                                    __result
+                                }),
+                            ),
+                            dag_emit_check_optional_ref_target(
+                                node.body.clone(),
+                                key_to_id.clone(),
+                            ),
                         ),
-                        dag_emit_check_optional_ref_target(node.body.clone(), key_to_id.clone()),
+                        dag_emit_check_optional_ref_target(
+                            node.transport.clone(),
+                            key_to_id.clone(),
+                        ),
                     ),
-                    dag_emit_check_optional_ref_target(node.transport.clone(), key_to_id.clone()),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in node.properties.clone().iter().cloned() {
+                            __result.extend(
+                                (*dag_emit_check_ref_target(p.clone(), key_to_id.clone()))
+                                    .iter()
+                                    .cloned(),
+                            );
+                        }
+                        __result
+                    }),
                 ),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in node.properties.clone().iter().cloned() {
-                        __result.extend(
-                            (*dag_emit_check_ref_target(p.clone(), key_to_id.clone()))
-                                .iter()
-                                .cloned(),
-                        );
-                    }
-                    __result
-                }),
+                dag_emit_check_optional_ref_target(node.type_annotation.clone(), key_to_id.clone()),
             ),
-            dag_emit_check_optional_ref_target(node.type_annotation.clone(), key_to_id.clone()),
+            dag_emit_check_match_pattern_refs(node.match_pattern.clone(), key_to_id.clone()),
         ),
         dag_emit_check_inferred_ref_target(node.inferred.clone(), key_to_id.clone()),
     )
@@ -586,6 +641,32 @@ pub fn json_optional_inferred_node_ref(
     match value.clone() {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id.clone()),
         None => "null".to_string(),
+    }
+}
+
+pub fn serialize_authored_occurrence(value: Option<Rc<AuthoredOccurrence>>) -> String {
+    match value.clone().as_deref().cloned() {
+        None => "null".to_string(),
+        Some(AuthoredOccurrence::AuthoredDeclarationOccurrence {
+            occurrence: declaration,
+            ..
+        }) => v1_rt::concat(
+            v1_rt::concat(
+                "{\"category\": \"declaration\", \"id\": ".to_string(),
+                (declaration.identity.clone().value.clone()).to_string(),
+            ),
+            "}".to_string(),
+        ),
+        Some(AuthoredOccurrence::AuthoredReferenceOccurrence {
+            occurrence: reference,
+            ..
+        }) => v1_rt::concat(
+            v1_rt::concat(
+                "{\"category\": \"reference\", \"id\": ".to_string(),
+                (reference.identity.clone().value.clone()).to_string(),
+            ),
+            "}".to_string(),
+        ),
     }
 }
 
@@ -801,22 +882,30 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 pub fn serialize_field_binding(
     binding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    "{\"field_name\": ".to_string(),
-                    json_quote(field_binding_name_at(
-                        binding.clone(),
-                        source_indices.clone(),
-                    )),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "{\"field_name\": ".to_string(),
+                            json_quote(field_binding_name_at(
+                                binding.clone(),
+                                source_indices.clone(),
+                            )),
+                        ),
+                        ", \"occurrence\": ".to_string(),
+                    ),
+                    serialize_authored_occurrence(binding.authored_occurrence.clone()),
                 ),
                 ", \"binding\": ".to_string(),
             ),
             serialize_match_pattern(
                 field_binding_pattern(binding.clone()),
                 source_indices.clone(),
+                key_to_id.clone(),
             ),
         ),
         "}".to_string(),
@@ -826,6 +915,7 @@ pub fn serialize_field_binding(
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
@@ -833,8 +923,8 @@ pub fn serialize_match_pattern(
             ..
         } => v1_rt::concat(
             v1_rt::concat(
-                "{\"kind\": \"Bind\", \"name\": ".to_string(),
-                json_quote(declaration.name.clone()),
+                "{\"kind\": \"Bind\", \"declaration\": ".to_string(),
+                serialize_node_ref(declaration.clone(), key_to_id.clone()),
             ),
             "}".to_string(),
         ),
@@ -868,7 +958,11 @@ pub fn serialize_match_pattern(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for fb in field_bindings.clone().iter().cloned() {
-                        __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
+                        __result.push(serialize_field_binding(
+                            fb.clone(),
+                            source_indices.clone(),
+                            key_to_id.clone(),
+                        ));
                     }
                     __result
                 })),
@@ -914,6 +1008,7 @@ pub fn serialize_match_arm(
                             serialize_match_pattern(
                                 arm_pattern(arm.clone()),
                                 source_indices.clone(),
+                                key_to_id.clone(),
                             ),
                         ),
                         ", \"guard\": ".to_string(),
@@ -1904,7 +1999,7 @@ pub fn serialize_node_record(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"authored_occurrence\": ".to_string()), serialize_authored_occurrence(node.authored_occurrence.clone())), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
@@ -2276,11 +2371,12 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 parse_results: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
+                next_occurrence_ordinal: 0,
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
-                    let parsed = parse_with_table(
+                    let parsed = parse_with_table_at(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
                             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -2288,6 +2384,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
+                        acc.next_occurrence_ordinal,
                     );
                     Rc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
@@ -2299,6 +2396,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                             p.newline_index.clone(),
                         ),
                         intern_table: parsed.intern_table.clone(),
+                        next_occurrence_ordinal: parsed.next_occurrence_ordinal.clone(),
                     })
                 }
             },
@@ -2332,6 +2430,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             diagnostics: v1_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()),
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
+            next_occurrence_ordinal: parsed.next_occurrence_ordinal.clone(),
         })
     }
 }
@@ -2341,6 +2440,7 @@ pub struct CensusFillParse {
     pub modules: Rc<Vec<Rc<Node>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub next_occurrence_ordinal: i64,
 }
 
 pub fn parse_census_fill_note() -> String {
@@ -2352,7 +2452,10 @@ pub fn parse_census_fill_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
+pub fn parse_census_fill_sources(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    occurrence_base: i64,
+) -> Rc<CensusFillParse> {
     {
         let prepared = Rc::new({
             let mut __result = Vec::new();
@@ -2377,11 +2480,12 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 parse_results: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
+                next_occurrence_ordinal: occurrence_base.clone(),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
-                    let parsed = parse_with_table(
+                    let parsed = parse_with_table_at(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
                             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -2389,6 +2493,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
+                        acc.next_occurrence_ordinal,
                     );
                     Rc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
@@ -2400,6 +2505,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                             p.newline_index.clone(),
                         ),
                         intern_table: parsed.intern_table.clone(),
+                        next_occurrence_ordinal: parsed.next_occurrence_ordinal.clone(),
                     })
                 }
             },
@@ -2423,6 +2529,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             modules: modules.clone(),
             newline_indices: parsed.newline_indices.clone(),
             diagnostics: collect_diagnostics(parse_results.clone()),
+            next_occurrence_ordinal: parsed.next_occurrence_ordinal.clone(),
         })
     }
 }
@@ -2578,7 +2685,10 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let fill = parse_census_fill_sources(options.census_only_sources.clone());
+                let fill = parse_census_fill_sources(
+                    options.census_only_sources.clone(),
+                    frontend.next_occurrence_ordinal.clone(),
+                );
                 let census_si = fill.newline_indices.clone().iter().cloned().fold(
                     source_indices.clone(),
                     |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {

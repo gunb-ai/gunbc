@@ -8,6 +8,13 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
+pub use crate::std_occurrence_identity::AuthoredOccurrence;
+use crate::std_occurrence_identity::AuthoredOccurrence::*;
+pub use crate::std_occurrence_identity::{
+    authored_declaration_occurrence, authored_reference_occurrence,
+    declaration_occurrence_for_token, label_reference_occurrence_for_token,
+    primary_reference_occurrence_for_token,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -53,12 +60,12 @@ pub use crate::v1_std_core::{
     make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
     make_named_expr_node, make_param_node, make_pattern_binder_declaration_node,
     make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    no_span, node_name_span, node_preserve_authored_occurrence, node_with_authored_occurrence,
+    param_node_default_value, param_node_type_expr, pre_intern_tokens, rest_transport_node,
+    service_config_properties, shell_transport_node, transport_auth_basic_key, transport_body_key,
+    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
+    transport_query_key, transport_response_format_key, transport_stdin_key, transport_tls_key,
+    transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -74,20 +81,23 @@ use std::rc::Rc;
 pub struct TokenStream {
     pub all: Rc<Vec<Rc<Token>>>,
     pub pos: i64,
+    pub occurrence_base: i64,
 }
 
 pub fn token_stream_new(all: Rc<Vec<Rc<Token>>>) -> Rc<TokenStream> {
+    token_stream_new_at(all.clone(), 0)
+}
+
+pub fn token_stream_new_at(all: Rc<Vec<Rc<Token>>>, occurrence_base: i64) -> Rc<TokenStream> {
     Rc::new(TokenStream {
         all: all.clone(),
         pos: 0,
+        occurrence_base: occurrence_base.clone(),
     })
 }
 
 pub fn token_stream_empty() -> Rc<TokenStream> {
-    Rc::new(TokenStream {
-        all: Rc::new(vec![]),
-        pos: 0,
-    })
+    token_stream_new(Rc::new(vec![]))
 }
 
 pub fn token_stream_position(stream: Rc<TokenStream>) -> i64 {
@@ -106,6 +116,7 @@ pub fn token_stream_advance(stream: Rc<TokenStream>, n: i64) -> Rc<TokenStream> 
     Rc::new(TokenStream {
         all: stream.all.clone(),
         pos: (stream.pos.clone() + n.clone()),
+        occurrence_base: stream.occurrence_base.clone(),
     })
 }
 
@@ -115,6 +126,43 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
         .clone()
         .get((stream.pos.clone() + offset.clone()) as usize)
         .cloned()
+}
+
+pub fn token_stream_authored_ordinal(stream: Rc<TokenStream>) -> i64 {
+    (stream.occurrence_base.clone() + stream.pos.clone())
+}
+
+pub fn declaration_occurrence_at(tokens: Rc<TokenStream>) -> Rc<AuthoredOccurrence> {
+    authored_declaration_occurrence(declaration_occurrence_for_token(
+        token_stream_authored_ordinal(tokens.clone()),
+    ))
+}
+
+pub fn primary_reference_occurrence_at(tokens: Rc<TokenStream>) -> Rc<AuthoredOccurrence> {
+    authored_reference_occurrence(primary_reference_occurrence_for_token(
+        token_stream_authored_ordinal(tokens.clone()),
+    ))
+}
+
+pub fn label_reference_occurrence_at(tokens: Rc<TokenStream>) -> Rc<AuthoredOccurrence> {
+    authored_reference_occurrence(label_reference_occurrence_for_token(
+        token_stream_authored_ordinal(tokens.clone()),
+    ))
+}
+
+pub fn with_declaration_occurrence(node: Rc<Node>, tokens: Rc<TokenStream>) -> Rc<Node> {
+    node_with_authored_occurrence(node.clone(), declaration_occurrence_at(tokens.clone()))
+}
+
+pub fn with_primary_reference_occurrence(node: Rc<Node>, tokens: Rc<TokenStream>) -> Rc<Node> {
+    node_with_authored_occurrence(
+        node.clone(),
+        primary_reference_occurrence_at(tokens.clone()),
+    )
+}
+
+pub fn with_label_reference_occurrence(node: Rc<Node>, tokens: Rc<TokenStream>) -> Rc<Node> {
+    node_with_authored_occurrence(node.clone(), label_reference_occurrence_at(tokens.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -133,6 +181,7 @@ pub struct ParseResult {
 pub struct ParseWithTableResult {
     pub result: Rc<ParseResult>,
     pub intern_table: Rc<InternTable>,
+    pub next_occurrence_ordinal: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -581,6 +630,7 @@ pub struct PostfixResult {
 pub struct ParserParam {
     pub name: String,
     pub span: Rc<SourceSpan>,
+    pub declaration: Rc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1871,6 +1921,7 @@ pub fn parser_result_witness(
 
 pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: if (name.clone() == "".to_string()) {
@@ -1898,6 +1949,7 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 
 pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: "".to_string(),
         span: span.clone(),
         ident_span: None,
@@ -2069,10 +2121,11 @@ pub fn parse_dotted_ident_rest(
     }
 }
 
-pub fn parse_with_table(
+pub fn parse_with_table_at(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
+    occurrence_base: i64,
 ) -> Rc<ParseWithTableResult> {
     {
         let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
@@ -2080,7 +2133,11 @@ pub fn parse_with_table(
             source_indices: source_indices.clone(),
             intern_table: pre_interned.clone(),
         });
-        let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
+        let r = parse_module(
+            token_stream_new_at(tokens.clone(), occurrence_base.clone()),
+            ctx.clone(),
+        );
+        let next_occurrence_ordinal = (occurrence_base.clone() + (tokens.clone().len() as i64));
         if has_err(r.err.clone()) {
             Rc::new(ParseWithTableResult {
                 result: Rc::new(ParseResult {
@@ -2088,6 +2145,7 @@ pub fn parse_with_table(
                     error: r.err.clone(),
                 }),
                 intern_table: r.ctx.clone().intern_table.clone(),
+                next_occurrence_ordinal: next_occurrence_ordinal.clone(),
             })
         } else {
             Rc::new(ParseWithTableResult {
@@ -2096,9 +2154,23 @@ pub fn parse_with_table(
                     error: None,
                 }),
                 intern_table: r.ctx.clone().intern_table.clone(),
+                next_occurrence_ordinal: next_occurrence_ordinal.clone(),
             })
         }
     }
+}
+
+pub fn parse_with_table(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        0,
+    )
 }
 
 pub fn parse(
@@ -2191,6 +2263,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             ..(*ctx.clone()).clone()
         });
         let base_mod = Rc::new(Node {
+            authored_occurrence: None,
             name: mod_name.clone(),
             span: start_span.clone(),
             ident_span: Some(mod_name_span.clone()),
@@ -2493,9 +2566,18 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
         let span = token_span(tok.clone());
         let form = find_item_form(dag_syntax_spec().item_forms.clone(), kw.clone());
         match form.clone() {
-    Some(f) => parse_item_by_form(tokens.clone(), ctx.clone(), f.clone()),
+    Some(f) => {
+            let result = parse_item_by_form(tokens.clone(), ctx.clone(), f.clone());
+Rc::new(ItemResult {
+    item: with_declaration_occurrence(result.item.clone(), token_stream_advance(tokens.clone(), 1)),
+    tokens: result.tokens.clone(),
+    ctx: result.ctx.clone(),
+    err: result.err.clone(),
+})
+},
     None => Rc::new(ItemResult {
     item: Rc::new(Node {
+    authored_occurrence: None,
     name: "<unknown>".to_string(),
     span: span.clone(),
     ident_span: Some(span.clone()),
@@ -2679,6 +2761,7 @@ pub fn parse_item_by_form(
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -2801,6 +2884,7 @@ pub fn field_to_child_node(
             None => Rc::new(vec![]),
         };
         Rc::new(Node {
+            authored_occurrence: None,
             name: field_node_name_at(field.clone(), source_indices.clone()),
             span: field.span.clone(),
             ident_span: field.ident_span.clone(),
@@ -2839,6 +2923,7 @@ pub fn variant_to_child_node(
             __result
         });
         Rc::new(Node {
+            authored_occurrence: None,
             name: variant_node_name_at(variant.clone(), source_indices.clone()),
             span: variant.span.clone(),
             ident_span: variant.ident_span.clone(),
@@ -2873,6 +2958,7 @@ pub fn outputs_to_inferred(
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
             node: Rc::new(Node {
+                authored_occurrence: None,
                 name: "".to_string(),
                 span: span.clone(),
                 ident_span: None,
@@ -2926,6 +3012,7 @@ pub fn make_operation_node(
             mock_props.clone(),
         );
         Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: span.clone(),
             ident_span: ident_span.clone(),
@@ -2969,6 +3056,7 @@ pub fn make_capability_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
+        authored_occurrence: None,
         name: name.clone(),
         span: span.clone(),
         ident_span: ident_span.clone(),
@@ -3006,6 +3094,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -3050,6 +3139,7 @@ pub fn parse_type_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -3094,6 +3184,7 @@ pub fn parse_type_after_kw(
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 let named_dummy = Rc::new(Node {
+                    authored_occurrence: None,
                     name: name.clone(),
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
@@ -3157,6 +3248,7 @@ pub fn parse_type_after_kw(
                     Rc::new(vec![])
                 };
                 let item = Rc::new(Node {
+                    authored_occurrence: None,
                     name: name.clone(),
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
@@ -3198,6 +3290,7 @@ pub fn parse_type_after_kw(
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
                         let item = Rc::new(Node {
+                            authored_occurrence: None,
                             name: name.clone(),
                             span: start_span.clone(),
                             ident_span: Some(name_span.clone()),
@@ -3242,6 +3335,7 @@ pub fn parse_type_body_from_prefix(
         let type_params = prefix.type_params.clone();
         let ctx = prefix.ctx.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -3314,6 +3408,7 @@ pub fn parse_type_body_from_prefix(
                     Rc::new(vec![])
                 };
                 let item = Rc::new(Node {
+                    authored_occurrence: None,
                     name: name.clone(),
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
@@ -3355,6 +3450,7 @@ pub fn parse_type_body_from_prefix(
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
                         let item = Rc::new(Node {
+                            authored_occurrence: None,
                             name: name.clone(),
                             span: start_span.clone(),
                             ident_span: Some(name_span.clone()),
@@ -3399,6 +3495,7 @@ pub fn parse_type_body_after_eq(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -3468,6 +3565,7 @@ pub fn parse_type_body_after_eq(
                     __result
                 });
                 let item = Rc::new(Node {
+                    authored_occurrence: None,
                     name: name.clone(),
                     span: start_span.clone(),
                     ident_span: Some(name_span.clone()),
@@ -3554,6 +3652,7 @@ pub fn parse_type_body_after_eq(
                                     __result
                                 });
                                 let item = Rc::new(Node {
+                                    authored_occurrence: None,
                                     name: name.clone(),
                                     span: start_span.clone(),
                                     ident_span: Some(name_span.clone()),
@@ -3611,6 +3710,7 @@ pub fn parse_type_body_after_eq(
                                     });
                                 }
                                 let item = Rc::new(Node {
+                                    authored_occurrence: None,
                                     name: name.clone(),
                                     span: start_span.clone(),
                                     ident_span: Some(name_span.clone()),
@@ -3667,6 +3767,7 @@ pub fn parse_type_body_after_eq(
                             });
                         }
                         let item = Rc::new(Node {
+                            authored_occurrence: None,
                             name: name.clone(),
                             span: start_span.clone(),
                             ident_span: Some(name_span.clone()),
@@ -3720,6 +3821,7 @@ pub fn try_where_clause(
                     });
                 }
                 let predicate_node = Rc::new(Node {
+                    authored_occurrence: None,
                     name: "".to_string(),
                     span: start_span.clone(),
                     ident_span: None,
@@ -3740,6 +3842,7 @@ pub fn try_where_clause(
                     ident: None,
                 });
                 let refined = Rc::new(Node {
+                    authored_occurrence: None,
                     name: "".to_string(),
                     span: start_span.clone(),
                     ident_span: None,
@@ -4556,6 +4659,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     });
                 }
                 let te = Rc::new(Node {
+                    authored_occurrence: None,
                     name: "".to_string(),
                     span: span.clone(),
                     ident_span: None,
@@ -4609,6 +4713,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                 }
             }
             Some(TokenShape::ShIdent) => {
+                let occurrence_tokens = tokens.clone();
                 let r = parse_dotted_ident(tokens.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeResult {
@@ -4618,12 +4723,21 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                         err: r.err.clone(),
                     });
                 }
-                finish_type_expr_from_name(
+                let result = finish_type_expr_from_name(
                     r.tokens.clone(),
                     ctx.clone(),
                     r.name.clone(),
                     r.span.clone(),
-                )
+                );
+                Rc::new(TypeResult {
+                    type_expr: with_primary_reference_occurrence(
+                        result.type_expr.clone(),
+                        occurrence_tokens.clone(),
+                    ),
+                    tokens: result.tokens.clone(),
+                    ctx: result.ctx.clone(),
+                    err: result.err.clone(),
+                })
             }
             _ => Rc::new(TypeResult {
                 type_expr: leaf_type_node("".to_string(), span.clone()),
@@ -4702,6 +4816,7 @@ pub fn parse_callable_type_expr(
             });
         }
         let te = Rc::new(Node {
+            authored_occurrence: None,
             name: "Callable".to_string(),
             span: start_span.clone(),
             ident_span: Some(start_span.clone()),
@@ -4823,6 +4938,7 @@ pub fn finish_type_expr_from_name(
                     });
                 }
                 let te = Rc::new(Node {
+                    authored_occurrence: None,
                     name: type_name.clone(),
                     span: start_span.clone(),
                     ident_span: Some(start_span.clone()),
@@ -4989,6 +5105,7 @@ pub fn maybe_optional(
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let ote = Rc::new(Node {
+                authored_occurrence: None,
                 name: te.name.clone(),
                 span: te.span.clone(),
                 ident_span: te.ident_span.clone(),
@@ -5250,6 +5367,7 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -5294,6 +5412,7 @@ pub fn parse_fn_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -5326,6 +5445,7 @@ pub fn parse_fn_after_kw(
         let name_span = r.span.clone();
         let tokens = r.tokens.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5380,6 +5500,7 @@ pub fn parse_fn_after_kw(
         }
         let body = r.expr.clone();
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5421,6 +5542,7 @@ pub fn parse_fn_body_from_prefix(
         let ctx = prefix.ctx.clone();
         let all_params = v1_rt::concat(type_params.clone(), params.clone());
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5482,6 +5604,7 @@ pub fn parse_fn_body_from_prefix(
         }
         let body = body_result.expr.clone();
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5514,6 +5637,7 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -5607,6 +5731,7 @@ pub fn parse_block_item_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -5639,6 +5764,7 @@ pub fn parse_block_item_after_kw(
         let name_span = r.span.clone();
         let tokens = r.tokens.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5714,6 +5840,7 @@ pub fn parse_block_item_after_kw(
         }
         let body = r.expr.clone();
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5754,6 +5881,7 @@ pub fn parse_block_body_from_prefix(
         let uses = prefix.uses.clone();
         let ctx = prefix.ctx.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5784,6 +5912,7 @@ pub fn parse_block_body_from_prefix(
         }
         let body = r.expr.clone();
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -5818,6 +5947,7 @@ pub fn parse_no_body_from_prefix(
 ) -> Rc<ItemResult> {
     {
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: prefix.name.clone(),
             span: start_span.clone(),
             ident_span: Some(prefix.name_span.clone()),
@@ -5977,6 +6107,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     });
                 }
                 let res_node = Rc::new(Node {
+                    authored_occurrence: None,
                     name: r3.type_expr.clone().name.clone(),
                     span: r3.type_expr.clone().span.clone(),
                     ident_span: r3.type_expr.clone().ident_span.clone(),
@@ -6146,6 +6277,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -6190,6 +6322,7 @@ pub fn parse_service_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -6227,6 +6360,7 @@ pub fn parse_service_after_kw(
         let name = r.name.clone();
         let svc_name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(svc_name_span.clone()),
@@ -6302,6 +6436,7 @@ pub fn parse_service_after_kw(
             None => Rc::new(vec![]),
         };
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(svc_name_span.clone()),
@@ -8769,6 +8904,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -8813,6 +8949,7 @@ pub fn parse_resource_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -8844,6 +8981,7 @@ pub fn parse_resource_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -8899,6 +9037,7 @@ pub fn parse_resource_after_kw(
             });
         }
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -9476,6 +9615,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
     {
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -9520,6 +9660,7 @@ pub fn parse_alias_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -9551,6 +9692,7 @@ pub fn parse_alias_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -9605,6 +9747,7 @@ pub fn parse_alias_after_kw(
             no_span(),
         );
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -9640,6 +9783,7 @@ pub fn parse_data_after_kw(
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: "".to_string(),
             span: start_span.clone(),
             ident_span: None,
@@ -9671,6 +9815,7 @@ pub fn parse_data_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let named_dummy = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -9728,6 +9873,7 @@ pub fn parse_data_after_kw(
             });
         }
         let item = Rc::new(Node {
+            authored_occurrence: None,
             name: name.clone(),
             span: start_span.clone(),
             ident_span: Some(name_span.clone()),
@@ -9854,6 +10000,7 @@ pub fn parse_param_list_acc(
 
 pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamResult> {
     {
+        let declaration_tokens = tokens.clone();
         let start_span = token_span(token_stream_first(tokens.clone()));
         let dummy_param = make_param_node(
             "".to_string(),
@@ -9873,10 +10020,20 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
+        let named_dummy = with_declaration_occurrence(
+            make_param_node(
+                name.clone(),
+                leaf_type_node("".to_string(), start_span.clone()),
+                None,
+                start_span.clone(),
+                name_span.clone(),
+            ),
+            declaration_tokens.clone(),
+        );
         let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(ParamResult {
-                param: dummy_param.clone(),
+                param: named_dummy.clone(),
                 tokens: r2.tokens.clone(),
                 ctx: ctx.clone(),
                 err: r2.err.clone(),
@@ -9885,7 +10042,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
         let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(ParamResult {
-                param: dummy_param.clone(),
+                param: named_dummy.clone(),
                 tokens: r3.tokens.clone(),
                 ctx: r3.ctx.clone(),
                 err: r3.err.clone(),
@@ -9899,7 +10056,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
         );
         if has_err(wr.err.clone()) {
             return Rc::new(ParamResult {
-                param: dummy_param.clone(),
+                param: named_dummy.clone(),
                 tokens: wr.tokens.clone(),
                 ctx: wr.ctx.clone(),
                 err: wr.err.clone(),
@@ -9919,12 +10076,15 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                         err: r4.err.clone(),
                     });
                 }
-                let p = make_param_node(
-                    name.clone(),
-                    type_expr.clone(),
-                    Some(r4.expr.clone()),
-                    start_span.clone(),
-                    name_span.clone(),
+                let p = with_declaration_occurrence(
+                    make_param_node(
+                        name.clone(),
+                        type_expr.clone(),
+                        Some(r4.expr.clone()),
+                        start_span.clone(),
+                        name_span.clone(),
+                    ),
+                    declaration_tokens.clone(),
                 );
                 Rc::new(ParamResult {
                     param: p.clone(),
@@ -9934,12 +10094,15 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let p = make_param_node(
-                    name.clone(),
-                    type_expr.clone(),
-                    None,
-                    start_span.clone(),
-                    name_span.clone(),
+                let p = with_declaration_occurrence(
+                    make_param_node(
+                        name.clone(),
+                        type_expr.clone(),
+                        None,
+                        start_span.clone(),
+                        name_span.clone(),
+                    ),
+                    declaration_tokens.clone(),
                 );
                 Rc::new(ParamResult {
                     param: p.clone(),
@@ -10183,6 +10346,7 @@ pub fn parse_constrained_assignment(
             name_span.clone(),
         );
         let node = Rc::new(Node {
+            authored_occurrence: None,
             name: node.name.clone(),
             span: node.span.clone(),
             ident_span: node.ident_span.clone(),
@@ -10223,6 +10387,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_expr = parse_recovery_placeholder();
         let tokens = token_stream_advance(tokens.clone(), 1);
+        let declaration_tokens = tokens.clone();
         let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -10276,26 +10441,30 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             EatResult::EatConsumed { .. } => Some(r3.expr.clone()),
             EatResult::EatUnchanged { tokens: _, .. } => None,
         };
-        let node = Rc::new(Node {
-            name: name.clone(),
-            span: span.clone(),
-            ident_span: Some(name_span.clone()),
-            children: Rc::new(vec![r3.expr.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: ret.inferred.clone(),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: cr.constraints.clone(),
-            type_annotation: type_ann.clone(),
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::ExprLet),
-            ident: None,
-        });
+        let node = with_declaration_occurrence(
+            Rc::new(Node {
+                authored_occurrence: None,
+                name: name.clone(),
+                span: span.clone(),
+                ident_span: Some(name_span.clone()),
+                children: Rc::new(vec![r3.expr.clone()]),
+                connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: ret.inferred.clone(),
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: cr.constraints.clone(),
+                type_annotation: type_ann.clone(),
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::ExprLet),
+                ident: None,
+            }),
+            declaration_tokens.clone(),
+        );
         Rc::new(ExprResult {
             expr: node.clone(),
             tokens: ret.tokens.clone(),
@@ -10307,6 +10476,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
 
 pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
+        let declaration_tokens = tokens.clone();
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_expr = parse_recovery_placeholder();
         let r = expect_name(tokens.clone());
@@ -10342,13 +10512,16 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                 err: cr.err.clone(),
             });
         }
-        let node = make_named_expr_node(
-            name.clone(),
-            Rc::new(ExprData::ExprLet),
-            Rc::new(vec![r3.expr.clone()]),
-            None,
-            span.clone(),
-            name_span.clone(),
+        let node = with_declaration_occurrence(
+            make_named_expr_node(
+                name.clone(),
+                Rc::new(ExprData::ExprLet),
+                Rc::new(vec![r3.expr.clone()]),
+                None,
+                span.clone(),
+                name_span.clone(),
+            ),
+            declaration_tokens.clone(),
         );
         if ((cr.constraints.clone().len() as i64) > 0) {
             {
@@ -10356,6 +10529,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     name: node.name.clone(),
                     span: node.span.clone(),
                     ident_span: node.ident_span.clone(),
+                    authored_occurrence: node.authored_occurrence.clone(),
                     children: node.children.clone(),
                     params: node.params.clone(),
                     inferred: node.inferred.clone(),
@@ -10474,15 +10648,18 @@ pub fn parse_expr_loop(
                                                     err: r.err.clone(),
                                                 });
                                             }
-                                            let new_lhs = make_named_expr_node(
-                                                r.name.clone(),
-                                                Rc::new(ExprData::ExprFieldAccess {
-                                                    summary: None,
-                                                }),
-                                                Rc::new(vec![lhs.clone()]),
-                                                None,
-                                                loop_span.clone(),
-                                                r.span.clone(),
+                                            let new_lhs = with_primary_reference_occurrence(
+                                                make_named_expr_node(
+                                                    r.name.clone(),
+                                                    Rc::new(ExprData::ExprFieldAccess {
+                                                        summary: None,
+                                                    }),
+                                                    Rc::new(vec![lhs.clone()]),
+                                                    None,
+                                                    loop_span.clone(),
+                                                    r.span.clone(),
+                                                ),
+                                                rest.clone(),
                                             );
                                             {
                                                 let __tco_0 = r.tokens.clone();
@@ -11163,6 +11340,7 @@ pub fn parse_ident_expr(
     name: String,
 ) -> Rc<ExprResult> {
     {
+        let occurrence_tokens = tokens.clone();
         let span = token_span(token_stream_first(tokens.clone()));
         let tokens = token_stream_advance(tokens.clone(), 1);
         if tok_is_fat_arrow(token_stream_first(tokens.clone())) {
@@ -11171,12 +11349,16 @@ pub fn parse_ident_expr(
                 if has_err(r.err.clone()) {
                     return r;
                 }
+                let declaration = with_declaration_occurrence(
+                    parsed_name_leaf(name.clone(), span.clone()),
+                    occurrence_tokens.clone(),
+                );
                 Rc::new(ExprResult {
                     expr: make_expr_node(
                         Rc::new(ExprData::ExprLambda),
                         v1_rt::concat(
                             Rc::new(vec![r.expr.clone()]),
-                            Rc::new(vec![parsed_name_leaf(name.clone(), span.clone())]),
+                            Rc::new(vec![declaration.clone()]),
                         ),
                         None,
                         span.clone(),
@@ -11190,16 +11372,35 @@ pub fn parse_ident_expr(
             if (is_uppercase_start(name.clone())
                 && tok_is_lbrace(token_stream_first(tokens.clone())))
             {
-                parse_record_literal(tokens.clone(), ctx.clone(), name.clone(), span.clone())
+                {
+                    let result = parse_record_literal(
+                        tokens.clone(),
+                        ctx.clone(),
+                        name.clone(),
+                        span.clone(),
+                    );
+                    Rc::new(ExprResult {
+                        expr: with_primary_reference_occurrence(
+                            result.expr.clone(),
+                            occurrence_tokens.clone(),
+                        ),
+                        tokens: result.tokens.clone(),
+                        ctx: result.ctx.clone(),
+                        err: result.err.clone(),
+                    })
+                }
             } else {
                 Rc::new(ExprResult {
-                    expr: make_named_expr_node(
-                        name.clone(),
-                        Rc::new(ExprData::ExprVar { binding_kind: None }),
-                        Rc::new(vec![]),
-                        None,
-                        span.clone(),
-                        span.clone(),
+                    expr: with_primary_reference_occurrence(
+                        make_named_expr_node(
+                            name.clone(),
+                            Rc::new(ExprData::ExprVar { binding_kind: None }),
+                            Rc::new(vec![]),
+                            None,
+                            span.clone(),
+                            span.clone(),
+                        ),
+                        occurrence_tokens.clone(),
                     ),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
@@ -11403,7 +11604,10 @@ pub fn try_postfix(
                                     });
                                 }
                                 Rc::new(PostfixResult {
-                                    expr: r.expr.clone(),
+                                    expr: node_preserve_authored_occurrence(
+                                        lhs.clone(),
+                                        r.expr.clone(),
+                                    ),
                                     changed: true,
                                     tokens: r.tokens.clone(),
                                     ctx: r.ctx.clone(),
@@ -11452,7 +11656,10 @@ pub fn try_postfix(
                                         });
                                     }
                                     Rc::new(PostfixResult {
-                                        expr: r.expr.clone(),
+                                        expr: node_preserve_authored_occurrence(
+                                            lhs.clone(),
+                                            r.expr.clone(),
+                                        ),
                                         changed: true,
                                         tokens: r.tokens.clone(),
                                         ctx: r.ctx.clone(),
@@ -11636,44 +11843,47 @@ pub fn make_call_expr(
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    match (*lhs.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => make_named_expr_node(
-            expr_var_name_at(lhs.clone(), source_indices.clone()),
-            Rc::new(ExprData::ExprCall {
-                call_semantics: None,
-                descent_evidence: None,
-            }),
-            args.clone(),
-            None,
-            lhs.span.clone(),
-            node_name_span(lhs.clone()),
-        ),
-        ExprData::ExprFieldAccess { summary: _, .. } => make_named_expr_node(
-            field_access_field_at(lhs.clone(), source_indices.clone()),
-            Rc::new(ExprData::ExprMethodCall {
-                method_semantics: None,
-            }),
-            v1_rt::concat(
-                Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]),
+    {
+        let rebuilt = match (*lhs.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => make_named_expr_node(
+                expr_var_name_at(lhs.clone(), source_indices.clone()),
+                Rc::new(ExprData::ExprCall {
+                    call_semantics: None,
+                    descent_evidence: None,
+                }),
                 args.clone(),
+                None,
+                lhs.span.clone(),
+                node_name_span(lhs.clone()),
             ),
-            None,
-            lhs.span.clone(),
-            node_name_span(lhs.clone()),
-        ),
-        _ => make_named_expr_node(
-            "<expr>".to_string(),
-            Rc::new(ExprData::ExprCall {
-                call_semantics: None,
-                descent_evidence: None,
-            }),
-            args.clone(),
-            None,
-            lhs.span.clone(),
-            no_span(),
-        ),
+            ExprData::ExprFieldAccess { summary: _, .. } => make_named_expr_node(
+                field_access_field_at(lhs.clone(), source_indices.clone()),
+                Rc::new(ExprData::ExprMethodCall {
+                    method_semantics: None,
+                }),
+                v1_rt::concat(
+                    Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]),
+                    args.clone(),
+                ),
+                None,
+                lhs.span.clone(),
+                node_name_span(lhs.clone()),
+            ),
+            _ => make_named_expr_node(
+                "<expr>".to_string(),
+                Rc::new(ExprData::ExprCall {
+                    call_semantics: None,
+                    descent_evidence: None,
+                }),
+                args.clone(),
+                None,
+                lhs.span.clone(),
+                no_span(),
+            ),
+        };
+        node_preserve_authored_occurrence(lhs.clone(), rebuilt.clone())
     }
 }
 
@@ -11865,6 +12075,7 @@ pub fn parse_arg_list_acc(
 
 pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArgResult> {
     {
+        let label_tokens = tokens.clone();
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_arg = make_arg_node(
             None,
@@ -11911,11 +12122,14 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                     err: r.err.clone(),
                                 });
                             }
-                            let arg = make_arg_node(
-                                Some(name_r.name.clone()),
-                                r.expr.clone(),
-                                span.clone(),
-                                name_r.span.clone(),
+                            let arg = with_label_reference_occurrence(
+                                make_arg_node(
+                                    Some(name_r.name.clone()),
+                                    r.expr.clone(),
+                                    span.clone(),
+                                    name_r.span.clone(),
+                                ),
+                                label_tokens.clone(),
                             );
                             Rc::new(ArgResult {
                                 arg: arg.clone(),
@@ -12159,15 +12373,18 @@ pub fn parse_expr_loop_no_brace(
                                                     err: r.err.clone(),
                                                 });
                                             }
-                                            let new_lhs = make_named_expr_node(
-                                                r.name.clone(),
-                                                Rc::new(ExprData::ExprFieldAccess {
-                                                    summary: None,
-                                                }),
-                                                Rc::new(vec![lhs.clone()]),
-                                                None,
-                                                loop_span.clone(),
-                                                r.span.clone(),
+                                            let new_lhs = with_primary_reference_occurrence(
+                                                make_named_expr_node(
+                                                    r.name.clone(),
+                                                    Rc::new(ExprData::ExprFieldAccess {
+                                                        summary: None,
+                                                    }),
+                                                    Rc::new(vec![lhs.clone()]),
+                                                    None,
+                                                    loop_span.clone(),
+                                                    r.span.clone(),
+                                                ),
+                                                rest.clone(),
                                             );
                                             {
                                                 let __tco_0 = r.tokens.clone();
@@ -12661,9 +12878,9 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                     } else {
                         Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Bind {
-                                declaration: make_pattern_binder_declaration_node(
-                                    n.clone(),
-                                    r.span.clone(),
+                                declaration: with_declaration_occurrence(
+                                    make_pattern_binder_declaration_node(n.clone(), r.span.clone()),
+                                    tokens.clone(),
                                 ),
                             }),
                             tokens: r.tokens.clone(),
@@ -12868,6 +13085,7 @@ pub fn parse_variant_bindings_brace_acc(
             });
         } else {
             let bind_span = token_span(token_stream_first(tokens.clone()));
+            let field_name_tokens = tokens.clone();
             let r = expect_name(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(BindingsResult {
@@ -12896,11 +13114,14 @@ pub fn parse_variant_bindings_brace_acc(
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => r2.tokens.clone(),
                     });
-                    let fb = make_field_binding_node(
-                        field_name.clone(),
-                        r2.pattern.clone(),
-                        bind_span.clone(),
-                        field_name_span.clone(),
+                    let fb = with_label_reference_occurrence(
+                        make_field_binding_node(
+                            field_name.clone(),
+                            r2.pattern.clone(),
+                            bind_span.clone(),
+                            field_name_span.clone(),
+                        ),
+                        field_name_tokens.clone(),
                     );
                     {
                         let __tco_0 = r2.ctx.clone();
@@ -12916,16 +13137,23 @@ pub fn parse_variant_bindings_brace_acc(
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                     });
-                    let fb = make_field_binding_node(
-                        field_name.clone(),
-                        Rc::new(MatchPattern::Bind {
-                            declaration: make_pattern_binder_declaration_node(
-                                field_name.clone(),
-                                field_name_span.clone(),
-                            ),
-                        }),
-                        bind_span.clone(),
-                        field_name_span.clone(),
+                    let declaration = with_declaration_occurrence(
+                        make_pattern_binder_declaration_node(
+                            field_name.clone(),
+                            field_name_span.clone(),
+                        ),
+                        field_name_tokens.clone(),
+                    );
+                    let fb = with_label_reference_occurrence(
+                        make_field_binding_node(
+                            field_name.clone(),
+                            Rc::new(MatchPattern::Bind {
+                                declaration: declaration.clone(),
+                            }),
+                            bind_span.clone(),
+                            field_name_span.clone(),
+                        ),
+                        field_name_tokens.clone(),
                     );
                     {
                         let __tco_0 = v1_rt::rc_list_push(acc, fb.clone());
@@ -13077,6 +13305,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 err: r.err.clone(),
             });
         }
+        let declaration_tokens = r.tokens.clone();
         let r = expect_name(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -13112,26 +13341,30 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 if has_err(r3.err.clone()) {
                     return r3;
                 }
-                let node = Rc::new(Node {
-                    name: name.clone(),
-                    span: span.clone(),
-                    ident_span: Some(name_span.clone()),
-                    children: Rc::new(vec![r3.expr.clone()]),
-                    connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: Some(tr.type_expr.clone()),
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: None,
-                    expr_data: Rc::new(ExprData::ExprLet),
-                    ident: None,
-                });
+                let node = with_declaration_occurrence(
+                    Rc::new(Node {
+                        authored_occurrence: None,
+                        name: name.clone(),
+                        span: span.clone(),
+                        ident_span: Some(name_span.clone()),
+                        children: Rc::new(vec![r3.expr.clone()]),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: Some(tr.type_expr.clone()),
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::ExprLet),
+                        ident: None,
+                    }),
+                    declaration_tokens.clone(),
+                );
                 Rc::new(ExprResult {
                     expr: node.clone(),
                     tokens: r3.tokens.clone(),
@@ -13154,13 +13387,16 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     return r3;
                 }
                 Rc::new(ExprResult {
-                    expr: make_named_expr_node(
-                        name.clone(),
-                        Rc::new(ExprData::ExprLet),
-                        Rc::new(vec![r3.expr.clone()]),
-                        None,
-                        span.clone(),
-                        name_span.clone(),
+                    expr: with_declaration_occurrence(
+                        make_named_expr_node(
+                            name.clone(),
+                            Rc::new(ExprData::ExprLet),
+                            Rc::new(vec![r3.expr.clone()]),
+                            None,
+                            span.clone(),
+                            name_span.clone(),
+                        ),
+                        declaration_tokens.clone(),
                     ),
                     tokens: r3.tokens.clone(),
                     ctx: r3.ctx.clone(),
@@ -13225,6 +13461,7 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                 err: r.err.clone(),
             });
         }
+        let declaration_tokens = r.tokens.clone();
         let r = expect_name(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -13270,13 +13507,16 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
             });
         }
         let body = r.expr.clone();
-        let for_expr = make_named_expr_node(
-            var_name.clone(),
-            Rc::new(ExprData::ExprForEach),
-            Rc::new(vec![collection.clone(), body.clone()]),
-            None,
-            span.clone(),
-            var_name_span.clone(),
+        let for_expr = with_declaration_occurrence(
+            make_named_expr_node(
+                var_name.clone(),
+                Rc::new(ExprData::ExprForEach),
+                Rc::new(vec![collection.clone(), body.clone()]),
+                None,
+                span.clone(),
+                var_name_span.clone(),
+            ),
+            declaration_tokens.clone(),
         );
         Rc::new(ExprResult {
             expr: for_expr.clone(),
@@ -13427,6 +13667,7 @@ pub fn parse_field_init_list_acc(
 
 pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
     {
+        let label_tokens = tokens.clone();
         let zero_span = make_span(0, 0);
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_fi = make_field_init_node(
@@ -13460,11 +13701,14 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                                 err: r.err.clone(),
                             });
                         }
-                        let fi = make_field_init_node(
-                            n.clone(),
-                            r.expr.clone(),
-                            span.clone(),
-                            name_r.span.clone(),
+                        let fi = with_label_reference_occurrence(
+                            make_field_init_node(
+                                n.clone(),
+                                r.expr.clone(),
+                                span.clone(),
+                                name_r.span.clone(),
+                            ),
+                            label_tokens.clone(),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
@@ -13475,8 +13719,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                     }
                 } else {
                     {
-                        let fi = make_field_init_node(
-                            n.clone(),
+                        let value = with_primary_reference_occurrence(
                             make_named_expr_node(
                                 n.clone(),
                                 Rc::new(ExprData::ExprVar { binding_kind: None }),
@@ -13485,8 +13728,16 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                                 span.clone(),
                                 name_r.span.clone(),
                             ),
-                            span.clone(),
-                            name_r.span.clone(),
+                            label_tokens.clone(),
+                        );
+                        let fi = with_label_reference_occurrence(
+                            make_field_init_node(
+                                n.clone(),
+                                value.clone(),
+                                span.clone(),
+                                name_r.span.clone(),
+                            ),
+                            label_tokens.clone(),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
@@ -13713,10 +13964,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                     Rc::new({
                                         let mut __result = Vec::new();
                                         for p in lambda_r.params.clone().iter().cloned() {
-                                            __result.push(parsed_name_leaf(
-                                                p.name.clone(),
-                                                p.span.clone(),
-                                            ));
+                                            __result.push(p.declaration.clone());
                                         }
                                         __result
                                     }),
@@ -13816,7 +14064,7 @@ pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                     Rc::new({
                         let mut __result = Vec::new();
                         for p in params_r.params.clone().iter().cloned() {
-                            __result.push(parsed_name_leaf(p.name.clone(), p.span.clone()));
+                            __result.push(p.declaration.clone());
                         }
                         __result
                     }),
@@ -13857,17 +14105,19 @@ pub fn collect_fn_lambda_params(
                     err: name_r.err.clone(),
                 });
             } else {
+                let param = Rc::new(ParserParam {
+                    name: name_r.name.clone(),
+                    span: name_r.span.clone(),
+                    declaration: with_declaration_occurrence(
+                        parsed_name_leaf(name_r.name.clone(), name_r.span.clone()),
+                        tokens.clone(),
+                    ),
+                });
                 tokens = skip_newlines(name_r.tokens.clone());
                 if tok_is_comma(token_stream_first(tokens.clone())) {
                     {
                         let __tco_0 = token_stream_advance(tokens, 1);
-                        let __tco_1 = v1_rt::rc_list_push(
-                            acc,
-                            Rc::new(ParserParam {
-                                name: name_r.name.clone(),
-                                span: name_r.span.clone(),
-                            }),
-                        );
+                        let __tco_1 = v1_rt::rc_list_push(acc, param.clone());
                         tokens = __tco_0;
                         acc = __tco_1;
                         continue;
@@ -13875,13 +14125,7 @@ pub fn collect_fn_lambda_params(
                 } else {
                     break Rc::new(IdentCollectResult {
                         success: true,
-                        params: v1_rt::rc_list_push(
-                            acc.clone(),
-                            Rc::new(ParserParam {
-                                name: name_r.name.clone(),
-                                span: name_r.span.clone(),
-                            }),
-                        ),
+                        params: v1_rt::rc_list_push(acc.clone(), param.clone()),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
                         err: None,
@@ -13949,6 +14193,13 @@ pub fn collect_lambda_idents(
             let param = Rc::new(ParserParam {
                 name: tok.clone().unwrap().text.clone(),
                 span: tok.clone().unwrap().span.clone(),
+                declaration: with_declaration_occurrence(
+                    parsed_name_leaf(
+                        tok.clone().unwrap().text.clone(),
+                        tok.clone().unwrap().span.clone(),
+                    ),
+                    tokens.clone(),
+                ),
             });
             let new_acc = v1_rt::rc_list_push(acc.clone(), param.clone());
             match (*eat(

@@ -283,6 +283,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
+            authored_occurrence: None,
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
@@ -305,6 +306,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         let present_node = Rc::new(Node {
+            authored_occurrence: None,
             name: "Present".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Present".to_string())),
@@ -335,6 +337,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             None => error_type(),
         };
         let value_field = Rc::new(Node {
+            authored_occurrence: None,
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
@@ -357,6 +360,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         Rc::new(Node {
+            authored_occurrence: None,
             name: "Holds".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Holds".to_string())),
@@ -382,6 +386,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
 pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let diagnostic_type = Rc::new(Node {
+            authored_occurrence: None,
             name: "Diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Diagnostic".to_string())),
@@ -402,6 +407,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         let diagnostic_field = Rc::new(Node {
+            authored_occurrence: None,
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("diagnostic".to_string())),
@@ -424,6 +430,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             ident: None,
         });
         Rc::new(Node {
+            authored_occurrence: None,
             name: "Violates".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Violates".to_string())),
