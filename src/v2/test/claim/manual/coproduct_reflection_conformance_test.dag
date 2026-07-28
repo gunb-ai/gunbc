@@ -1,10 +1,7 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-<<<<<<< HEAD
-=======
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 
->>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
@@ -14,8 +11,6 @@ fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
 }
 
-<<<<<<< HEAD
-=======
 fn behavior_discriminant(value: Behavior) -> Symbol {
   discriminant(v: value)
 }
@@ -24,7 +19,6 @@ fn connective_discriminant(value: Connective) -> Symbol {
   discriminant(v: value)
 }
 
->>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   !bag_eq(
     xs: coproduct_arm_keys(type_name: reflect_connective_type),
@@ -76,7 +70,3 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)

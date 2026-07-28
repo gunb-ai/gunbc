@@ -98,10 +98,7 @@ import v2.std.node {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
-<<<<<<< HEAD
-=======
   coproduct_nullary_inhabitant_by_discriminant,
->>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
@@ -9103,9 +9100,21 @@ type RequiredTraitWitness
   | TargetCollectionWitnessHash { type_param: Symbol }
   | TargetCollectionWitnessEq { type_param: Symbol }
 
+type TargetDeriveSupplementalGenericBoundContract {
+  derive_trait: ReprGroundingDeriveTrait
+  requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
+}
+
+type TargetDeriveSupplementalGenericBoundRequirement {
+  representation_parameter: Symbol
+  required_trait: ReprGroundingDeriveTrait
+}
+
 type TargetRepresentationChoice {
   form: TargetRepresentation
+  representation_parameters: List<Symbol>
   constraints: List<RequiredTraitWitness>
+  supplemental_generic_bound_contracts: List<TargetDeriveSupplementalGenericBoundContract>
 }
 
 type TargetTextCarrier {
@@ -9119,18 +9128,6 @@ type TargetCollectionRealization {
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic
   text_carrier: Optional<TargetTextCarrier>
-}
-
-<<<<<<< HEAD
-=======
-type TargetDeriveSupplementalGenericBoundContract {
-  derive_trait: ReprGroundingDeriveTrait
-  requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
-}
-
-type TargetDeriveSupplementalGenericBoundRequirement {
-  representation_parameter: Symbol
-  required_trait: ReprGroundingDeriveTrait
 }
 
 fn target_grounding_derive_trait_discriminant(
@@ -9496,7 +9493,6 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
   )
 }
 
->>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_collection_set_no_representation,
