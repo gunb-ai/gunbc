@@ -29,7 +29,7 @@ type BmcFanPolicyProjectionCapability {
   aggregate_fan_pid_entry: NonEmptyStr
   projection_id: NonEmptyStr
   publication_protocol: LinuxFilePublicationProtocol
-  durability_capability: StateDurabilityCapability
+  durability_boundaries: List<StateDurabilityBoundary>
   required_tach_inputs: List<NonEmptyStr>
 }
 
@@ -42,12 +42,13 @@ fn bmc_fan_policy_projection_supports_apply(
     && capability.firmware == observation.firmware
     && capability.config_path == observation.board_config_path
     && capability.controller_service == observation.controller_service
-    && capability.projection_id == capability.durability_capability.realization_id
     && linux_file_publication_has_synchronized_commit(
       protocol: capability.publication_protocol,
     )
     && durability_commit_barrier_is_synchronized(
-      barrier: capability.durability_capability.commit_barrier,
+      barrier: bmc_fan_policy_projection_durability_capability(
+        capability: capability,
+      ).commit_barrier,
     )
 }
 
@@ -69,6 +70,16 @@ fn bmc_fan_state_durability_capability(
   }
 }
 
+fn bmc_fan_policy_projection_durability_capability(
+  capability: BmcFanPolicyProjectionCapability,
+) -> StateDurabilityCapability {
+  bmc_fan_state_durability_capability(
+    realization_id: capability.projection_id,
+    boundaries: capability.durability_boundaries,
+    publication_protocol: capability.publication_protocol,
+  )
+}
+
 fn bmc_fan_policy_projection_topology_matches(
   capability: BmcFanPolicyProjectionCapability,
   observation: BmcFanPolicyObservation,
@@ -84,4 +95,4 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its projection identity must also equal its durability realizer identity, so lifecycle evidence for an old firmware/path/writer cannot qualify a different projection. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently qualified projection."
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its durability capability is derived from the same projection identity, lifecycle boundaries, and executable publication protocol; there is no separately writable durability claim that can fork from the realizer. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently qualified projection."

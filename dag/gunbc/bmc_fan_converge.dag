@@ -17,13 +17,45 @@ import extdeps.bmc.types {
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
 }
-import extdeps.boards.types { BaseboardModel }
-import extdeps.exec.command { shell_quote }
-import extdeps.filesystem.linux {
-  LinuxMountObservation,
-  LinuxOverlayObservation,
-  linux_filesystem_kind_from_mount_type,
+import extdeps.bmc.openbmc_fan_control {
+  openbmc_copy_file_preserving_metadata,
+  openbmc_disk_usage_kib,
+  openbmc_fan_config_observe,
+  openbmc_fan_config_project_local,
+  openbmc_fan_config_validate,
+  openbmc_fan_config_verify,
+  openbmc_make_directory,
+  openbmc_parent_directory,
+  openbmc_path_exists,
+  openbmc_path_is_nonempty_file,
+  openbmc_path_is_writable,
+  openbmc_read_file,
+  openbmc_remove_directory,
+  openbmc_remove_file,
+  openbmc_rename_replace,
+  openbmc_resolve_path,
+  openbmc_sensor_service,
+  openbmc_sensor_value,
+  openbmc_synchronize_filesystems,
+  openbmc_systemd_is_active,
+  openbmc_systemd_restart,
+  openbmc_upload_file,
+  openbmc_utc_timestamp,
+  openbmc_wait_seconds,
+  openbmc_zone_failsafe,
 }
+import extdeps.boards.types { BaseboardModel }
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  LinuxOverlayObservation,
+  NoExplicitFilesystemSynchronization,
+  ReplacementAtomicityUnspecified,
+  RenameReplaceWithinTargetDirectory,
+  SyncAllFilesystemsAfterReplacement,
+  linux_file_publication_has_synchronized_commit,
+  linux_overlay_observation_from_proc_mounts,
+}
+import extdeps.filesystem.filesystem_io
 import extdeps.languages.json.emit {
   json_array,
   json_int,
@@ -32,7 +64,10 @@ import extdeps.languages.json.emit {
   json_string,
   serialize_json,
 }
-import extdeps.ssh.password_session { password_ssh_exec_script }
+import extdeps.languages.json.grammar { json_text_parseable }
+import extdeps.ssh.password_session {
+  PasswordSshSession,
+}
 import gunbc.auth.access_token_source {
   GcloudPrintToken,
   access_token_upsert_required_reason,
@@ -105,6 +140,30 @@ type BmcFanConvergeTarget {
   durability_evidence: List<StateDurabilityEvidence>
 }
 
+type BmcFanTypedObservationPlan {
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  controller_zone_path: NonEmptyStr
+  tach_sensors: List<NonEmptyStr>
+  temperature_sensors: List<NonEmptyStr>
+}
+
+fn bmc_fan_typed_observation_plan(
+  projection: BmcFanPolicyProjectionCapability,
+  intent: BmcControlPlaneIntent,
+) -> BmcFanTypedObservationPlan {
+  BmcFanTypedObservationPlan {
+    config_path: projection.config_path,
+    controller_service: projection.controller_service,
+    controller_zone_path: projection.controller_zone_path,
+    tach_sensors: projection.required_tach_inputs,
+    temperature_sensors: append(
+      ["TEMP_SOC"],
+      items: intent.fan_policy.thermal_guard.required_component_sensors,
+    ),
+  }
+}
+
 data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   host: srv3_host,
   board: srv3_baseboard.catalog.model,
@@ -166,6 +225,21 @@ type ParsedFanCurve
 type ParsedFanControllerShape
   = FanControllerShapeParsed { shape: BmcFanControllerShape }
   | FanControllerShapeParseRefused { reason: String }
+
+type BmcFanObservedLinesResult
+  = BmcFanObservedLines {
+      lines: List<String>,
+      overlay: LinuxOverlayObservation,
+    }
+  | BmcFanObservedLinesRefused { reason: String }
+
+type BmcFanConfigLinesResult
+  = BmcFanConfigLines { lines: List<String> }
+  | BmcFanConfigLinesRefused { reason: String }
+
+type BmcFanTypedMutationResult
+  = BmcFanTypedMutationApplied
+  | BmcFanTypedMutationRefused { reason: String }
 
 fn bmc_fan_curve_readings(curve: BmcFanCurve) -> List<Int> {
   curve.steps |> map(step => celsius_count(step.at_or_above))
@@ -239,14 +313,49 @@ fn bmc_fan_observation_value_or_empty(lines: List<String>, key: String) -> Strin
   }
 }
 
-fn bmc_fan_identity_observer_script() -> String {
-  join([
-    "set -eu",
-    "firmware=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '\"')",
-    "machine=$(sed -n 's/^OPENBMC_TARGET_MACHINE=//p' /etc/os-release | tr -d '\"')",
-    "printf 'firmware=%s\\n' \"$firmware\"",
-    "printf 'machine=%s\\n' \"$machine\"",
-  ], "\n")
+fn bmc_fan_unquote_os_release_value(raw: String) -> String {
+  let value = trim(raw)
+  if value.length() >= 2
+    && starts_with(s: value, prefix: "\"")
+    && ends_with(s: value, suffix: "\"") {
+    substring(s: value, start: 1, end: value.length() - 1)
+  } else {
+    value
+  }
+}
+
+fn bmc_fan_parse_os_release_identity(
+  content: String,
+) -> BmcFanLiveIdentityResult {
+  let lines = split(s: content, delimiter: "\n")
+  let firmware = bmc_fan_observation_value_or_empty(
+    lines: lines,
+    key: "VERSION_ID",
+  )
+  let machine = bmc_fan_observation_value_or_empty(
+    lines: lines,
+    key: "OPENBMC_TARGET_MACHINE",
+  )
+  bmc_fan_parse_live_identity(lines: [
+    concat("firmware=", bmc_fan_unquote_os_release_value(raw: firmware)),
+    concat("machine=", bmc_fan_unquote_os_release_value(raw: machine)),
+  ])
+}
+
+fn bmc_fan_observe_live_identity(
+  session: PasswordSshSession,
+) -> BmcFanLiveIdentityResult {
+  let result = openbmc_read_file(session: session, path: "/etc/os-release")
+  if result.success {
+    bmc_fan_parse_os_release_identity(content: result.stdout)
+  } else {
+    BmcFanLiveIdentityRefused {
+      reason: concat(
+        "BMC fan identity observation transport failed: ",
+        result.stderr,
+      ),
+    }
+  }
 }
 
 fn bmc_fan_parse_live_identity(lines: List<String>) -> BmcFanLiveIdentityResult {
@@ -413,107 +522,268 @@ fn bmc_fan_build_curve_steps(
   )
 }
 
-fn bmc_fan_remote_sensor_reader_script() -> String {
-  join([
-    "read_sensor_value() {",
-    "  sensor_class=\"$1\"",
-    "  sensor_name=\"$2\"",
-    "  sensor_path=\"/xyz/openbmc_project/sensors/$sensor_class/$sensor_name\"",
-    "  sensor_service=$(busctl call xyz.openbmc_project.ObjectMapper /xyz/openbmc_project/object_mapper xyz.openbmc_project.ObjectMapper GetObject sas \"$sensor_path\" 1 xyz.openbmc_project.Sensor.Value 2>/dev/null | awk -F'\"' '\{print $2}')",
-    "  if [ -z \"$sensor_service\" ]; then echo absent; return; fi",
-    "  sensor_raw=$(busctl get-property \"$sensor_service\" \"$sensor_path\" xyz.openbmc_project.Sensor.Value Value 2>/dev/null | awk '\{print $2}')",
-    "  case \"$sensor_raw\" in ''|nan|inf|-inf) echo absent ;; *) awk -v v=\"$sensor_raw\" 'BEGIN { printf \"%.0f\\n\", v }' ;; esac",
-    "}",
-  ], "\n")
+fn bmc_fan_nonempty_whitespace_tokens(raw: String) -> List<String> {
+  split(s: trim(raw), delimiter: " ")
+    |> filter(token => trim(token) != "")
+    |> map(token => trim(token))
 }
 
-fn bmc_fan_observer_script(
-  config_path: NonEmptyStr,
-  controller_service: NonEmptyStr,
-  controller_zone_path: NonEmptyStr,
-  component_sensors: List<NonEmptyStr>,
+fn bmc_fan_busctl_payload(raw: String) -> String {
+  let tokens = bmc_fan_nonempty_whitespace_tokens(raw: raw)
+  if tokens.length() < 2 {
+    ""
+  } else {
+    concat("", tokens.skip(n: 1).first())
+  }
+}
+
+fn bmc_fan_bool_text(value: Bool) -> String {
+  if value { "true" } else { "false" }
+}
+
+fn bmc_fan_sensor_integer_value(raw: String) -> String {
+  let payload = trim(raw)
+  if payload == "" || payload == "nan" || payload == "inf" || payload == "-inf" {
+    "absent"
+  } else {
+    let whole = split(s: payload, delimiter: ".").first()
+    match parse_int(s: whole) {
+      Present { value: value } => to_string(value)
+      Absent => "absent"
+    }
+  }
+}
+
+fn bmc_fan_observe_sensor_line(
+  session: PasswordSshSession,
+  sensor_class: NonEmptyStr,
+  sensor_name: NonEmptyStr,
+  key_prefix: NonEmptyStr,
 ) -> String {
-  let component_sensor_words = join(component_sensors |> map(s => s as String), " ")
-  join([
-    "set -eu",
-    concat("CONFIG=", shell_quote(arg: config_path as String)),
-    "SELECTED=/usr/share/swampd/config.json",
-    concat("SERVICE=", shell_quote(arg: controller_service as String)),
-    concat("ZONE_PATH=", shell_quote(arg: controller_zone_path as String)),
-    "firmware=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '\"')",
-    "machine=$(sed -n 's/^OPENBMC_TARGET_MACHINE=//p' /etc/os-release | tr -d '\"')",
-    "board_config_path=$(readlink -f \"$SELECTED\")",
-    "service_active=$(systemctl is-active \"$SERVICE\" 2>/dev/null || true)",
-    "zone_failsafe=$(busctl get-property xyz.openbmc_project.State.FanCtrl \"$ZONE_PATH\" xyz.openbmc_project.Control.Mode FailSafe 2>/dev/null | awk '\{print $2}')",
-    "target_count=$(jq '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length' \"$CONFIG\")",
-    "minimum=$(jq '[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].minThermalOutput | floor' \"$CONFIG\")",
-    "zone_failsafe_duty=$(jq '[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].failsafePercent | floor' \"$CONFIG\")",
-    "sensor_failsafe=$(jq '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].failsafePercent | floor' \"$CONFIG\")",
-    "positive_hysteresis=$(jq '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.positiveHysteresis | floor' \"$CONFIG\")",
-    "negative_hysteresis=$(jq '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.negativeHysteresis | floor' \"$CONFIG\")",
-    "readings=$(jq -r '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")' \"$CONFIG\")",
-    "outputs=$(jq -r '[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")' \"$CONFIG\")",
-    "fan_entries=$(jq -r '[.zones[].pids[] | select(.type == \"fan\") | .name] | join(\",\")' \"$CONFIG\")",
-    "fan_entry_count=$(jq '[.zones[].pids[] | select(.type == \"fan\")] | length' \"$CONFIG\")",
-    "fan_inputs=$(jq -r '[.zones[].pids[] | select(.type == \"fan\")][0].inputs | join(\",\")' \"$CONFIG\")",
-    "root_options=$(awk '$2 == \"/\" { print $4 }' /proc/mounts)",
-    "lowerdir=$(printf '%s\\n' \"$root_options\" | tr ',' '\\n' | sed -n 's/^lowerdir=//p')",
-    "upperdir=$(printf '%s\\n' \"$root_options\" | tr ',' '\\n' | sed -n 's/^upperdir=//p')",
-    "case \"$lowerdir\" in /*) ;; *) lowerdir=\"/$lowerdir\" ;; esac",
-    "case \"$upperdir\" in /*) ;; *) upperdir=\"/$upperdir\" ;; esac",
-    "root_source=$(awk '$2 == \"/\" { print $1; exit }' /proc/mounts)",
-    "root_fstype=$(awk '$2 == \"/\" { print $3; exit }' /proc/mounts)",
-    "lower_source=$(awk -v p=\"$lowerdir\" '$2 == p { print $1; exit }' /proc/mounts)",
-    "lower_fstype=$(awk -v p=\"$lowerdir\" '$2 == p { print $3; exit }' /proc/mounts)",
-    "upper_source=$(awk -v p=\"$upperdir\" '$2 == p { print $1; exit }' /proc/mounts)",
-    "upper_fstype=$(awk -v p=\"$upperdir\" '$2 == p { print $3; exit }' /proc/mounts)",
-    "if [ -w \"$(dirname \"$CONFIG\")\" ]; then writable=true; else writable=false; fi",
-    "if [ -n \"$upperdir\" ] && [ -e \"$upperdir$CONFIG\" ]; then upper_override=true; else upper_override=false; fi",
-    "available_bytes=$(df -Pk / | awk 'NR == 2 { printf \"%.0f\", $4 * 1024 }')",
-    "observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "printf 'firmware=%s\\n' \"$firmware\"",
-    "printf 'machine=%s\\n' \"$machine\"",
-    "printf 'selected_config_path=%s\\n' \"$SELECTED\"",
-    "printf 'board_config_path=%s\\n' \"$board_config_path\"",
-    "printf 'controller_service=%s\\n' \"$SERVICE\"",
-    "printf 'controller_binary=%s\\n' /usr/bin/swampd",
-    "printf 'service_active=%s\\n' \"$service_active\"",
-    "printf 'zone_control_path=%s\\n' \"$ZONE_PATH\"",
-    "printf 'zone_failsafe=%s\\n' \"$zone_failsafe\"",
-    "printf 'target_count=%s\\n' \"$target_count\"",
-    "printf 'minimum=%s\\n' \"$minimum\"",
-    "printf 'zone_failsafe_duty=%s\\n' \"$zone_failsafe_duty\"",
-    "printf 'sensor_failsafe=%s\\n' \"$sensor_failsafe\"",
-    "printf 'positive_hysteresis=%s\\n' \"$positive_hysteresis\"",
-    "printf 'negative_hysteresis=%s\\n' \"$negative_hysteresis\"",
-    "printf 'readings=%s\\n' \"$readings\"",
-    "printf 'outputs=%s\\n' \"$outputs\"",
-    "printf 'fan_entries=%s\\n' \"$fan_entries\"",
-    "printf 'fan_entry_count=%s\\n' \"$fan_entry_count\"",
-    "printf 'fan_inputs=%s\\n' \"$fan_inputs\"",
-    "printf 'lowerdir=%s\\n' \"$lowerdir\"",
-    "printf 'upperdir=%s\\n' \"$upperdir\"",
-    "printf 'root_source=%s\\n' \"$root_source\"",
-    "printf 'root_fstype=%s\\n' \"$root_fstype\"",
-    "printf 'lower_source=%s\\n' \"$lower_source\"",
-    "printf 'lower_fstype=%s\\n' \"$lower_fstype\"",
-    "printf 'upper_source=%s\\n' \"$upper_source\"",
-    "printf 'upper_fstype=%s\\n' \"$upper_fstype\"",
-    "printf 'writable=%s\\n' \"$writable\"",
-    "printf 'upper_override=%s\\n' \"$upper_override\"",
-    "printf 'available_bytes=%s\\n' \"$available_bytes\"",
-    "printf 'observed_at=%s\\n' \"$observed_at\"",
-    bmc_fan_remote_sensor_reader_script(),
-    "printf 'temperature_TEMP_SOC='; read_sensor_value temperature TEMP_SOC",
-    "for tach in FAN1 FAN2 FAN3 FAN4 FAN5; do printf 'tach_%s=' \"$tach\"; read_sensor_value fan_tach \"$tach\"; done",
+  let sensor_path = concat(
+    "/xyz/openbmc_project/sensors/",
     concat(
-      "for sensor in ",
-      concat(
-        component_sensor_words,
-        "; do printf 'temperature_%s=' \"$sensor\"; read_sensor_value temperature \"$sensor\"; done",
-      ),
+      sensor_class as String,
+      concat("/", sensor_name as String),
     ),
-  ], "\n")
+  ) as NonEmptyStr
+  let service_result = openbmc_sensor_service(
+    session: session,
+    sensor_path: sensor_path,
+  )
+  let value = if !service_result.success {
+    "absent"
+  } else if trim(service_result.stdout) == "" {
+    "absent"
+  } else {
+    let value_result = openbmc_sensor_value(
+      session: session,
+      service: trim(service_result.stdout) as NonEmptyStr,
+      sensor_path: sensor_path,
+    )
+    if value_result.success {
+      bmc_fan_sensor_integer_value(raw: value_result.stdout)
+    } else {
+      "absent"
+    }
+  }
+  concat(
+    concat(key_prefix as String, sensor_name as String),
+    concat("=", value),
+  )
+}
+
+fn bmc_fan_observe_sensor_lines(
+  session: PasswordSshSession,
+  sensor_class: NonEmptyStr,
+  sensor_names: List<NonEmptyStr>,
+  key_prefix: NonEmptyStr,
+) -> List<String> {
+  sensor_names |> map(sensor =>
+    bmc_fan_observe_sensor_line(
+      session: session,
+      sensor_class: sensor_class,
+      sensor_name: sensor,
+      key_prefix: key_prefix,
+    )
+  )
+}
+
+fn bmc_fan_config_snapshot_lines(raw: String) -> BmcFanConfigLinesResult {
+  let fields = split(s: trim(raw), delimiter: "\t")
+  if fields.length() != 11 {
+    BmcFanConfigLinesRefused {
+      reason: "typed jq fan-config observation did not return eleven semantic fields",
+    }
+  } else {
+    BmcFanConfigLines {
+      lines: [
+        concat("target_count=", fields.first()),
+        concat("minimum=", fields.skip(n: 1).first()),
+        concat("zone_failsafe_duty=", fields.skip(n: 2).first()),
+        concat("sensor_failsafe=", fields.skip(n: 3).first()),
+        concat("positive_hysteresis=", fields.skip(n: 4).first()),
+        concat("negative_hysteresis=", fields.skip(n: 5).first()),
+        concat("readings=", fields.skip(n: 6).first()),
+        concat("outputs=", fields.skip(n: 7).first()),
+        concat("fan_entries=", fields.skip(n: 8).first()),
+        concat("fan_entry_count=", fields.skip(n: 9).first()),
+        concat("fan_inputs=", fields.skip(n: 10).first()),
+      ],
+    }
+  }
+}
+
+fn bmc_fan_df_available_bytes(raw: String) -> String {
+  let lines = split(s: trim(raw), delimiter: "\n")
+  if lines.length() < 2 {
+    ""
+  } else {
+    let fields = bmc_fan_nonempty_whitespace_tokens(
+      raw: lines.skip(n: 1).first(),
+    )
+    if fields.length() < 4 {
+      ""
+    } else {
+      match parse_int(s: fields.skip(n: 3).first()) {
+        Present { value: kib } => to_string(kib * 1024)
+        Absent => ""
+      }
+    }
+  }
+}
+
+fn bmc_fan_observe_typed_lines(
+  session: PasswordSshSession,
+  identity: BmcFanLiveIdentity,
+  plan: BmcFanTypedObservationPlan,
+) -> BmcFanObservedLinesResult {
+  let selected = openbmc_resolve_path(
+    session: session,
+    path: "/usr/share/swampd/config.json",
+  )
+  let service = openbmc_systemd_is_active(
+    session: session,
+    service: plan.controller_service,
+  )
+  let zone = openbmc_zone_failsafe(
+    session: session,
+    zone_path: plan.controller_zone_path,
+  )
+  let config = openbmc_fan_config_observe(
+    session: session,
+    config_path: plan.config_path,
+  )
+  let mounts = openbmc_read_file(session: session, path: "/proc/mounts")
+  let parent = openbmc_parent_directory(
+    session: session,
+    path: plan.config_path,
+  )
+  let disk = openbmc_disk_usage_kib(session: session, path: "/")
+  let timestamp = openbmc_utc_timestamp(session: session)
+  if !selected.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("selected fan-config path observation failed: ", selected.stderr),
+    }
+  } else if !service.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("fan controller is not active: ", service.stderr),
+    }
+  } else if !zone.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("fan zone failsafe observation failed: ", zone.stderr),
+    }
+  } else if !config.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("fan config semantic observation failed: ", config.stderr),
+    }
+  } else if !mounts.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("BMC mount-table observation failed: ", mounts.stderr),
+    }
+  } else if !parent.success || trim(parent.stdout) == "" {
+    BmcFanObservedLinesRefused {
+      reason: concat("fan config parent-directory observation failed: ", parent.stderr),
+    }
+  } else if !disk.success {
+    BmcFanObservedLinesRefused {
+      reason: concat("BMC filesystem capacity observation failed: ", disk.stderr),
+    }
+  } else if !timestamp.success || trim(timestamp.stdout) == "" {
+    BmcFanObservedLinesRefused {
+      reason: concat("BMC timestamp observation failed: ", timestamp.stderr),
+    }
+  } else {
+    match linux_overlay_observation_from_proc_mounts(
+      proc_mounts: mounts.stdout,
+    ) {
+      Absent =>
+        BmcFanObservedLinesRefused {
+          reason: "BMC root OverlayFS lower/upper backing-mount relationship is absent",
+        }
+      Present { value: overlay } => {
+        let writable = openbmc_path_is_writable(
+          session: session,
+          path: trim(parent.stdout) as NonEmptyStr,
+        )
+        let upper_override = openbmc_path_exists(
+          session: session,
+          path: concat(
+            overlay.upper_directory as String,
+            plan.config_path as String,
+          ) as NonEmptyStr,
+        )
+        match bmc_fan_config_snapshot_lines(raw: config.stdout) {
+          BmcFanConfigLinesRefused { reason: reason } =>
+            BmcFanObservedLinesRefused { reason: reason }
+          BmcFanConfigLines { lines: config_lines } => {
+            let identity_lines = [
+              concat("firmware=", identity.firmware.version as String),
+              concat("machine=", identity.machine as String),
+              "selected_config_path=/usr/share/swampd/config.json",
+              concat("board_config_path=", trim(selected.stdout)),
+              concat("controller_service=", plan.controller_service as String),
+              "controller_binary=/usr/bin/swampd",
+              concat("service_active=", trim(service.stdout)),
+              concat("zone_control_path=", plan.controller_zone_path as String),
+              concat("zone_failsafe=", bmc_fan_busctl_payload(raw: zone.stdout)),
+            ]
+            let substrate_lines = [
+              concat("writable=", bmc_fan_bool_text(value: writable.success)),
+              concat("upper_override=", bmc_fan_bool_text(value: upper_override.success)),
+              concat("available_bytes=", bmc_fan_df_available_bytes(raw: disk.stdout)),
+              concat("observed_at=", trim(timestamp.stdout)),
+            ]
+            let temperature_lines = bmc_fan_observe_sensor_lines(
+              session: session,
+              sensor_class: "temperature",
+              sensor_names: plan.temperature_sensors,
+              key_prefix: "temperature_",
+            )
+            let tach_lines = bmc_fan_observe_sensor_lines(
+              session: session,
+              sensor_class: "fan_tach",
+              sensor_names: plan.tach_sensors,
+              key_prefix: "tach_",
+            )
+            BmcFanObservedLines {
+              lines: append(
+                append(
+                  append(
+                    append(identity_lines, items: config_lines),
+                    items: substrate_lines,
+                  ),
+                  items: temperature_lines,
+                ),
+                items: tach_lines,
+              ),
+              overlay: overlay,
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 fn bmc_fan_parse_curve(lines: List<String>) -> ParsedFanCurve {
@@ -645,6 +915,7 @@ fn bmc_fan_parse_bool(raw: String) -> Bool? {
 
 fn bmc_fan_parse_live_observation(
   lines: List<String>,
+  overlay: LinuxOverlayObservation,
 ) -> BmcFanLiveObservationResult {
   let firmware = bmc_fan_observation_value_or_empty(lines: lines, key: "firmware")
   let machine = bmc_fan_observation_value_or_empty(lines: lines, key: "machine")
@@ -656,14 +927,6 @@ fn bmc_fan_parse_live_observation(
   let zone_path = bmc_fan_observation_value_or_empty(lines: lines, key: "zone_control_path")
   let zone_failsafe = bmc_fan_observation_value_or_empty(lines: lines, key: "zone_failsafe")
   let observed_at = bmc_fan_observation_value_or_empty(lines: lines, key: "observed_at")
-  let lowerdir = bmc_fan_observation_value_or_empty(lines: lines, key: "lowerdir")
-  let upperdir = bmc_fan_observation_value_or_empty(lines: lines, key: "upperdir")
-  let root_source = bmc_fan_observation_value_or_empty(lines: lines, key: "root_source")
-  let root_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "root_fstype")
-  let lower_source = bmc_fan_observation_value_or_empty(lines: lines, key: "lower_source")
-  let lower_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "lower_fstype")
-  let upper_source = bmc_fan_observation_value_or_empty(lines: lines, key: "upper_source")
-  let upper_fstype = bmc_fan_observation_value_or_empty(lines: lines, key: "upper_fstype")
   let target_count_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "target_count")
   let available_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "available_bytes")
   if firmware == "" {
@@ -748,17 +1011,9 @@ fn bmc_fan_parse_live_observation(
                                 reason: "persistent overlay override observation is absent",
                               }
                             Present { value: upper_override } =>
-                              if lowerdir == ""
-                                || upperdir == ""
-                                || root_source == ""
-                                || root_fstype == ""
-                                || lower_source == ""
-                                || lower_fstype == ""
-                                || upper_source == ""
-                                || upper_fstype == ""
-                                || available <= 0 {
+                              if available <= 0 {
                                 BmcFanLiveObservationRefused {
-                                  reason: "root overlay mount, lower/upper backing mount, or free-space observation is absent",
+                                  reason: "persistent overlay free-space observation is absent",
                                 }
                               } else {
                                 let firmware_version = BmcFirmwareVersion {
@@ -780,31 +1035,7 @@ fn bmc_fan_parse_live_observation(
                                     persistence: BmcOverlayConfigObserved {
                                       firmware: firmware_version,
                                       config_path: board_path as NonEmptyStr,
-                                      overlay: LinuxOverlayObservation {
-                                        merged_mount: LinuxMountObservation {
-                                          source: root_source as NonEmptyStr,
-                                          target: "/",
-                                          filesystem: linux_filesystem_kind_from_mount_type(
-                                            mount_type: root_fstype as NonEmptyStr,
-                                          ),
-                                        },
-                                        lower_directory: lowerdir as NonEmptyStr,
-                                        upper_directory: upperdir as NonEmptyStr,
-                                        lower_backing_mount: LinuxMountObservation {
-                                          source: lower_source as NonEmptyStr,
-                                          target: lowerdir as NonEmptyStr,
-                                          filesystem: linux_filesystem_kind_from_mount_type(
-                                            mount_type: lower_fstype as NonEmptyStr,
-                                          ),
-                                        },
-                                        upper_backing_mount: LinuxMountObservation {
-                                          source: upper_source as NonEmptyStr,
-                                          target: upperdir as NonEmptyStr,
-                                          filesystem: linux_filesystem_kind_from_mount_type(
-                                            mount_type: upper_fstype as NonEmptyStr,
-                                          ),
-                                        },
-                                      },
+                                      overlay: overlay,
                                       writable: writable,
                                       upper_override_present: upper_override,
                                       available_bytes: byte_size(available),
@@ -836,49 +1067,121 @@ fn bmc_fan_observed_int(
   }
 }
 
-fn bmc_fan_required_tachs_healthy(
+fn bmc_fan_first_unhealthy_tach(
   lines: List<String>,
   required: List<NonEmptyStr>,
-) -> Bool {
-  fold(
-    required,
-    init: true,
-    f: (healthy, tach) =>
-      if !healthy {
-        false
-      } else {
-        match bmc_fan_observed_int(
-          lines: lines,
-          key: concat("tach_", tach as String),
-        ) {
-          Present { value: rpm } => rpm > 0
-          Absent => false
+) -> String? {
+  if required.length() == 0 {
+    none
+  } else {
+    let tach = required.first()
+    match bmc_fan_observed_int(
+      lines: lines,
+      key: concat("tach_", tach as String),
+    ) {
+      Absent =>
+        Present {
+          value: concat("required tach is absent: ", tach as String),
         }
-      }
-  )
+      Present { value: rpm } =>
+        if rpm <= 0 {
+          Present {
+            value: concat(
+              concat("required tach is not rotating: ", tach as String),
+              concat("=", to_string(rpm)),
+            ),
+          }
+        } else {
+          bmc_fan_first_unhealthy_tach(
+            lines: lines,
+            required: required.skip(n: 1),
+          )
+        }
+    }
+  }
 }
 
-fn bmc_fan_required_components_healthy(
+fn bmc_fan_first_unhealthy_component(
   lines: List<String>,
   required: List<NonEmptyStr>,
   rollback_temperature: Int,
-) -> Bool {
-  fold(
-    required,
-    init: true,
-    f: (healthy, sensor) =>
-      if !healthy {
-        false
+) -> String? {
+  if required.length() == 0 {
+    none
+  } else {
+    let sensor = required.first()
+    match bmc_fan_observed_int(
+      lines: lines,
+      key: concat("temperature_", sensor as String),
+    ) {
+      Absent =>
+        Present {
+          value: concat(
+            "required component temperature is absent: ",
+            sensor as String,
+          ),
+        }
+      Present { value: temperature } =>
+        if temperature >= rollback_temperature {
+          Present {
+            value: concat(
+              concat(
+                concat("component reached rollback temperature: ", sensor as String),
+                concat("=", to_string(temperature)),
+              ),
+              concat("C >= ", concat(to_string(rollback_temperature), "C")),
+            ),
+          }
+        } else {
+          bmc_fan_first_unhealthy_component(
+            lines: lines,
+            required: required.skip(n: 1),
+            rollback_temperature: rollback_temperature,
+          )
+        }
+    }
+  }
+}
+
+fn bmc_fan_live_thermal_tach_safety_refusal(
+  observation: BmcFanLiveObservation,
+  intent: BmcControlPlaneIntent,
+  projection: BmcFanPolicyProjectionCapability,
+) -> String? {
+  let processor_rollback = celsius_count(
+    intent.fan_policy.thermal_guard.processor_rollback_temperature,
+  )
+  let component_rollback = celsius_count(
+    intent.fan_policy.thermal_guard.component_rollback_temperature,
+  )
+  match bmc_fan_observed_int(
+    lines: observation.raw_lines,
+    key: "temperature_TEMP_SOC",
+  ) {
+    Absent => Present { value: "TEMP_SOC is absent" }
+    Present { value: temperature } =>
+      if temperature >= processor_rollback {
+        Present {
+          value: concat(
+            concat("TEMP_SOC reached rollback temperature: ", to_string(temperature)),
+            concat("C >= ", concat(to_string(processor_rollback), "C")),
+          ),
+        }
       } else {
-        match bmc_fan_observed_int(
-          lines: lines,
-          key: concat("temperature_", sensor as String),
+        match bmc_fan_first_unhealthy_tach(
+          lines: observation.raw_lines,
+          required: projection.required_tach_inputs,
         ) {
-          Present { value: temperature } => temperature < rollback_temperature
-          Absent => false
+          Present { value: reason } => Present { value: reason }
+          Absent =>
+            bmc_fan_first_unhealthy_component(
+              lines: observation.raw_lines,
+              required: intent.fan_policy.thermal_guard.required_component_sensors,
+              rollback_temperature: component_rollback,
+            )
         }
       }
-  )
+  }
 }
 
 fn bmc_fan_live_thermal_tach_safety_holds(
@@ -886,22 +1189,31 @@ fn bmc_fan_live_thermal_tach_safety_holds(
   intent: BmcControlPlaneIntent,
   projection: BmcFanPolicyProjectionCapability,
 ) -> Bool {
-  match bmc_fan_observed_int(
-    lines: observation.raw_lines,
-    key: "temperature_TEMP_SOC",
+  match bmc_fan_live_thermal_tach_safety_refusal(
+    observation: observation,
+    intent: intent,
+    projection: projection,
   ) {
-    Absent => false
-    Present { value: temperature } =>
-      temperature < celsius_count(intent.fan_policy.thermal_guard.processor_rollback_temperature)
-        && bmc_fan_required_tachs_healthy(
-          lines: observation.raw_lines,
-          required: projection.required_tach_inputs,
-        )
-        && bmc_fan_required_components_healthy(
-          lines: observation.raw_lines,
-          required: intent.fan_policy.thermal_guard.required_component_sensors,
-          rollback_temperature: celsius_count(intent.fan_policy.thermal_guard.component_rollback_temperature),
-        )
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn bmc_fan_live_safety_refusal(
+  observation: BmcFanLiveObservation,
+  intent: BmcControlPlaneIntent,
+  projection: BmcFanPolicyProjectionCapability,
+) -> String? {
+  if observation.zone_failsafe_active {
+    Present { value: "fan controller zone is in failsafe" }
+  } else if observation.zone_control_path != projection.controller_zone_path {
+    Present { value: "observed fan-controller zone path differs from the exact projection" }
+  } else {
+    bmc_fan_live_thermal_tach_safety_refusal(
+      observation: observation,
+      intent: intent,
+      projection: projection,
+    )
   }
 }
 
@@ -910,295 +1222,700 @@ fn bmc_fan_live_safety_holds(
   intent: BmcControlPlaneIntent,
   projection: BmcFanPolicyProjectionCapability,
 ) -> Bool {
-  !observation.zone_failsafe_active
-    && observation.zone_control_path == projection.controller_zone_path
-    && bmc_fan_live_thermal_tach_safety_holds(
-      observation: observation,
-      intent: intent,
-      projection: projection,
-    )
-}
-
-fn bmc_fan_target_config_path(target: BmcFanConvergeTarget) -> NonEmptyStr {
-  match target.projection {
-    Present { value: projection } => projection.config_path
-    Absent => "/usr/share/swampd/config-asrr.json"
+  match bmc_fan_live_safety_refusal(
+    observation: observation,
+    intent: intent,
+    projection: projection,
+  ) {
+    Absent => true
+    Present { value: _ } => false
   }
 }
 
-fn bmc_fan_target_controller_service(target: BmcFanConvergeTarget) -> NonEmptyStr {
-  match target.projection {
-    Present { value: projection } => projection.controller_service
-    Absent => "phosphor-pid-control.service"
-  }
+fn bmc_fan_remote_state_directory() -> NonEmptyStr {
+  "/var/lib/gunbc/bmc-fan-policy"
 }
 
-fn bmc_fan_target_controller_zone_path(target: BmcFanConvergeTarget) -> NonEmptyStr {
-  match target.projection {
-    Present { value: projection } => projection.controller_zone_path
-    Absent => "/xyz/openbmc_project/settings/fanctrl/zone0"
-  }
+fn bmc_fan_remote_backup_path() -> NonEmptyStr {
+  "/var/lib/gunbc/bmc-fan-policy/previous.json"
 }
 
-fn bmc_fan_apply_script(
+fn bmc_fan_remote_backup_stage_path() -> NonEmptyStr {
+  "/var/lib/gunbc/bmc-fan-policy/previous.json.gunbc-stage"
+}
+
+fn bmc_fan_remote_backup_version_path() -> NonEmptyStr {
+  "/var/lib/gunbc/bmc-fan-policy/previous.version"
+}
+
+fn bmc_fan_remote_backup_version_stage_path() -> NonEmptyStr {
+  "/var/lib/gunbc/bmc-fan-policy/previous.version.gunbc-stage"
+}
+
+fn bmc_fan_remote_lock_path() -> NonEmptyStr {
+  "/run/gunbc-bmc-fan-converge.lock"
+}
+
+fn bmc_fan_remote_config_stage_path(
   plan: BmcFanPolicyApplyPlan,
-  intent: BmcControlPlaneIntent,
-) -> String {
-  let desired = bmc_fan_policy_projection_json(
-    curve: plan.desired_curve,
-    projection: plan.projection,
-  )
-  let required_tach_words = join(plan.projection.required_tach_inputs |> map(t => t as String), " ")
-  let component_sensor_words = join(
-    intent.fan_policy.thermal_guard.required_component_sensors |> map(s => s as String),
-    " ",
-  )
-  let processor_rollback = celsius_count(
-    intent.fan_policy.thermal_guard.processor_rollback_temperature,
-  )
-  let component_rollback = celsius_count(
-    intent.fan_policy.thermal_guard.component_rollback_temperature,
-  )
-  join([
-    "set -eu",
-    concat("CONFIG=", shell_quote(arg: plan.config_path as String)),
-    concat("SERVICE=", shell_quote(arg: plan.controller_service as String)),
-    concat("ZONE_PATH=", shell_quote(arg: plan.projection.controller_zone_path as String)),
-    concat("EXPECTED_VERSION=", shell_quote(arg: plan.observed.firmware.version as String)),
-    concat("DESIRED=", shell_quote(arg: desired)),
-    "STATE_DIR=/var/lib/gunbc/bmc-fan-policy",
-    "BACKUP=$STATE_DIR/previous.json",
-    "BACKUP_VERSION=$STATE_DIR/previous.version",
-    "LOCK=/run/gunbc-bmc-fan-converge.lock",
-    "STAGE=$CONFIG.gunbc-stage.$$",
-    "cleanup() { rm -f \"$STAGE\"; rmdir \"$LOCK\" 2>/dev/null || true; }",
-    "restore_previous() {",
-    "  cp -p \"$BACKUP\" \"$STAGE\"",
-    "  jq empty \"$STAGE\"",
-    "  mv -f \"$STAGE\" \"$CONFIG\"",
-    "  systemctl restart \"$SERVICE\"",
-    "}",
-    "fail_and_restore() {",
-    "  reason=\"$1\"",
-    "  restore_previous >/dev/null 2>&1 || true",
-    "  printf 'bmc fan apply refused and restored previous config: %s\\n' \"$reason\" >&2",
-    "  exit 1",
-    "}",
-    "trap cleanup EXIT HUP INT TERM",
-    "mkdir \"$LOCK\" 2>/dev/null || { echo 'bmc fan apply refused: another convergence holds the lock' >&2; exit 1; }",
-    "firmware=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '\"')",
-    "[ \"$firmware\" = \"$EXPECTED_VERSION\" ] || { echo 'bmc fan apply refused: firmware changed after observation' >&2; exit 1; }",
-    "[ \"$(readlink -f /usr/share/swampd/config.json)\" = \"$CONFIG\" ] || { echo 'bmc fan apply refused: selected board config changed after observation' >&2; exit 1; }",
-    "[ -w \"$(dirname \"$CONFIG\")\" ] || { echo 'bmc fan apply refused: config overlay is not writable' >&2; exit 1; }",
-    "mkdir -p \"$STATE_DIR\"",
-    "cp -p \"$CONFIG\" \"$BACKUP.tmp\"",
-    "mv -f \"$BACKUP.tmp\" \"$BACKUP\"",
-    "printf '%s\\n' \"$firmware\" > \"$BACKUP_VERSION.tmp\"",
-    "mv -f \"$BACKUP_VERSION.tmp\" \"$BACKUP_VERSION\"",
-    "jq --argjson desired \"$DESIRED\" '",
-    "  if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then",
-    "    error(\"expected exactly one TEMP_SOC stepwise controller\")",
-    "  elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then",
-    "    error(\"expected exactly one projected aggregate fan PID entry\")",
-    "  else",
-    "    .zones |= map(",
-    "      if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then",
-    "        .minThermalOutput = $desired.minimum",
-    "        | .failsafePercent = $desired.zone_failsafe_duty",
-    "        | .pids |= map(",
-    "            if .name == $desired.fan_pid_entry and .type == \"fan\" then",
-    "              .inputs = $desired.fan_inputs",
-    "            elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then",
-    "              .failsafePercent = $desired.sensor_failsafe",
-    "              | .pid.positiveHysteresis = $desired.positive_hysteresis",
-    "              | .pid.negativeHysteresis = $desired.negative_hysteresis",
-    "              | .pid.reading = ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)",
-    "              | .pid.output = ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)",
-    "            else . end",
-    "          )",
-    "      else . end",
-    "    )",
-    "  end",
-    "' \"$CONFIG\" > \"$STAGE\" || fail_and_restore 'semantic jq projection failed'",
-    "jq empty \"$STAGE\" || fail_and_restore 'staged config is not valid JSON'",
-    "mv -f \"$STAGE\" \"$CONFIG\" || fail_and_restore 'atomic config replacement failed'",
-    "systemctl restart \"$SERVICE\" || fail_and_restore 'controller restart failed'",
-    "sleep 5",
-    "systemctl is-active --quiet \"$SERVICE\" || fail_and_restore 'controller is not active after restart'",
-    "jq -e --argjson desired \"$DESIRED\" '",
-    "  ([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0]) as $zone",
-    "  | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0]) as $pid",
-    "  | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")][0]) as $fan",
-    "  | ($zone.minThermalOutput == $desired.minimum)",
-    "    and ($zone.failsafePercent == $desired.zone_failsafe_duty)",
-    "    and ($pid.failsafePercent == $desired.sensor_failsafe)",
-    "    and ($pid.pid.positiveHysteresis == $desired.positive_hysteresis)",
-    "    and ($pid.pid.negativeHysteresis == $desired.negative_hysteresis)",
-    "    and ($pid.pid.reading == ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries))",
-    "    and ($pid.pid.output == ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries))",
-    "    and ($fan.inputs == $desired.fan_inputs)",
-    "' \"$CONFIG\" >/dev/null || fail_and_restore 'semantic config readback differs from intent'",
-    "attempt=0",
-    "zone_failsafe=true",
-    "while [ \"$attempt\" -lt 15 ]; do zone_failsafe=$(busctl get-property xyz.openbmc_project.State.FanCtrl \"$ZONE_PATH\" xyz.openbmc_project.Control.Mode FailSafe 2>/dev/null | awk '\{print $2}'); [ \"$zone_failsafe\" = false ] && break; attempt=$((attempt + 1)); sleep 1; done",
-    "[ \"$zone_failsafe\" = false ] || fail_and_restore 'controller zone remained in failsafe after projected tach topology restart'",
-    bmc_fan_remote_sensor_reader_script(),
-    "temp_soc=$(read_sensor_value temperature TEMP_SOC)",
-    "case \"$temp_soc\" in ''|*[!0-9]*) fail_and_restore 'TEMP_SOC is unavailable after apply' ;; esac",
-    concat(
-      "[ \"$temp_soc\" -lt ",
-      concat(
-        to_string(processor_rollback),
-        " ] || fail_and_restore 'TEMP_SOC reached the rollback ceiling'",
-      ),
-    ),
-    concat(
-      "for tach in ",
-      concat(
-        required_tach_words,
-        "; do tach_value=$(read_sensor_value fan_tach \"$tach\"); case \"$tach_value\" in ''|*[!0-9]*) fail_and_restore \"required tach $tach is unavailable\" ;; esac; [ \"$tach_value\" -gt 0 ] || fail_and_restore \"required tach $tach is zero\"; done",
-      ),
-    ),
-    concat(
-      "for sensor in ",
-      concat(
-        component_sensor_words,
-        concat(
-          "; do sensor_value=$(read_sensor_value temperature \"$sensor\"); case \"$sensor_value\" in ''|*[!0-9]*) fail_and_restore \"required component sensor $sensor is unavailable\" ;; esac; [ \"$sensor_value\" -lt ",
-          concat(
-            to_string(component_rollback),
-            " ] || fail_and_restore \"component sensor $sensor reached the rollback ceiling\"; done",
-          ),
-        ),
-      ),
-    ),
-    "printf 'apply=changed\\n'",
-    "printf 'temperature_TEMP_SOC=%s\\n' \"$temp_soc\"",
-  ], "\n")
+) -> NonEmptyStr {
+  concat(plan.config_path as String, ".gunbc-stage") as NonEmptyStr
 }
 
-fn bmc_fan_rollback_script(plan: BmcFanPolicyApplyPlan) -> String {
-  join([
-    "set -eu",
-    concat("CONFIG=", shell_quote(arg: plan.config_path as String)),
-    concat("SERVICE=", shell_quote(arg: plan.controller_service as String)),
-    concat("EXPECTED_VERSION=", shell_quote(arg: plan.observed.firmware.version as String)),
-    "STATE_DIR=/var/lib/gunbc/bmc-fan-policy",
-    "BACKUP=$STATE_DIR/previous.json",
-    "BACKUP_VERSION=$STATE_DIR/previous.version",
-    "LOCK=/run/gunbc-bmc-fan-converge.lock",
-    "STAGE=$CONFIG.gunbc-rollback.$$",
-    "cleanup() { rm -f \"$STAGE\"; rmdir \"$LOCK\" 2>/dev/null || true; }",
-    "trap cleanup EXIT HUP INT TERM",
-    "mkdir \"$LOCK\" 2>/dev/null || { echo 'bmc fan rollback refused: convergence lock is held' >&2; exit 1; }",
-    "[ -s \"$BACKUP\" ] && [ -s \"$BACKUP_VERSION\" ] || { echo 'bmc fan rollback refused: previous config is absent' >&2; exit 1; }",
-    "firmware=$(sed -n 's/^VERSION_ID=//p' /etc/os-release | tr -d '\"')",
-    "[ \"$firmware\" = \"$EXPECTED_VERSION\" ] && [ \"$(cat \"$BACKUP_VERSION\")\" = \"$firmware\" ] || { echo 'bmc fan rollback refused: backup firmware identity differs' >&2; exit 1; }",
-    "cp -p \"$BACKUP\" \"$STAGE\"",
-    "jq empty \"$STAGE\"",
-    "mv -f \"$STAGE\" \"$CONFIG\"",
-    "systemctl restart \"$SERVICE\"",
-    "sleep 3",
-    "systemctl is-active --quiet \"$SERVICE\"",
-    "printf 'rollback=restored\\n'",
-  ], "\n")
+fn bmc_fan_mutation_refused(reason: String) -> BmcFanTypedMutationResult {
+  BmcFanTypedMutationRefused { reason: reason }
+}
+
+fn bmc_fan_mutation_succeeded(
+  result: BmcFanTypedMutationResult,
+) -> Bool {
+  match result {
+    BmcFanTypedMutationApplied => true
+    BmcFanTypedMutationRefused { reason: _ } => false
+  }
+}
+
+fn bmc_fan_publish_staged_config(
+  session: PasswordSshSession,
+  protocol: LinuxFilePublicationProtocol,
+  staged_path: NonEmptyStr,
+  destination_path: NonEmptyStr,
+) -> BmcFanTypedMutationResult {
+  if !linux_file_publication_has_synchronized_commit(protocol: protocol) {
+    bmc_fan_mutation_refused(
+      reason: "fan config publication plan lacks staged validation, atomic replacement, or synchronization",
+    )
+  } else {
+    let validated = openbmc_fan_config_validate(
+      session: session,
+      config_path: staged_path,
+    )
+    if !validated.success {
+      bmc_fan_mutation_refused(
+        reason: concat("staged fan config is not valid JSON: ", validated.stderr),
+      )
+    } else {
+      match protocol.replacement {
+        ReplacementAtomicityUnspecified =>
+          bmc_fan_mutation_refused(
+            reason: "fan config publication plan omits same-directory rename replacement",
+          )
+        RenameReplaceWithinTargetDirectory => {
+          let replaced = openbmc_rename_replace(
+            session: session,
+            source_path: staged_path,
+            destination_path: destination_path,
+          )
+          if !replaced.success {
+            bmc_fan_mutation_refused(
+              reason: concat("atomic fan config replacement failed: ", replaced.stderr),
+            )
+          } else {
+            match protocol.synchronization {
+              NoExplicitFilesystemSynchronization =>
+                bmc_fan_mutation_refused(
+                  reason: "fan config publication replaced the file but lacks a filesystem synchronization barrier",
+                )
+              SyncAllFilesystemsAfterReplacement => {
+                let synchronized = openbmc_synchronize_filesystems(
+                  session: session,
+                )
+                if synchronized.success {
+                  BmcFanTypedMutationApplied
+                } else {
+                  bmc_fan_mutation_refused(
+                    reason: concat(
+                      "filesystem synchronization failed after fan config replacement: ",
+                      synchronized.stderr,
+                    ),
+                  )
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn bmc_fan_wait_for_failsafe_clear(
+  session: PasswordSshSession,
+  zone_path: NonEmptyStr,
+  attempts_remaining: Int,
+) -> BmcFanTypedMutationResult {
+  let observed = openbmc_zone_failsafe(
+    session: session,
+    zone_path: zone_path,
+  )
+  if observed.success
+    && bmc_fan_busctl_payload(raw: observed.stdout) == "false" {
+    BmcFanTypedMutationApplied
+  } else if attempts_remaining <= 1 {
+    bmc_fan_mutation_refused(
+      reason: "fan controller zone remained in failsafe after bounded restart polling",
+    )
+  } else {
+    let waited = openbmc_wait_seconds(session: session, seconds: 1)
+    if !waited.success {
+      bmc_fan_mutation_refused(
+        reason: concat("failsafe polling delay failed: ", waited.stderr),
+      )
+    } else {
+      bmc_fan_wait_for_failsafe_clear(
+        session: session,
+        zone_path: zone_path,
+        attempts_remaining: attempts_remaining - 1,
+      )
+    }
+  }
+}
+
+fn bmc_fan_restart_and_verify_controller(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+  desired_json: String?,
+) -> BmcFanTypedMutationResult {
+  let restarted = openbmc_systemd_restart(
+    session: session,
+    service: plan.controller_service,
+  )
+  if !restarted.success {
+    bmc_fan_mutation_refused(
+      reason: concat("fan controller restart failed: ", restarted.stderr),
+    )
+  } else {
+    let waited = openbmc_wait_seconds(session: session, seconds: 5)
+    if !waited.success {
+      bmc_fan_mutation_refused(
+        reason: concat("fan controller stabilization delay failed: ", waited.stderr),
+      )
+    } else {
+      let active = openbmc_systemd_is_active(
+        session: session,
+        service: plan.controller_service,
+      )
+      if !active.success || trim(active.stdout) != "active" {
+        bmc_fan_mutation_refused(
+          reason: concat("fan controller is not active after restart: ", active.stderr),
+        )
+      } else {
+        match desired_json {
+          Present { value: desired } => {
+            let verified = openbmc_fan_config_verify(
+              session: session,
+              config_path: plan.config_path,
+              desired_json: desired,
+            )
+            if !verified.success {
+              bmc_fan_mutation_refused(
+                reason: concat("semantic fan config readback differs from intent: ", verified.stderr),
+              )
+            } else {
+              bmc_fan_wait_for_failsafe_clear(
+                session: session,
+                zone_path: plan.projection.controller_zone_path,
+                attempts_remaining: 15,
+              )
+            }
+          }
+          Absent =>
+            bmc_fan_wait_for_failsafe_clear(
+              session: session,
+              zone_path: plan.projection.controller_zone_path,
+              attempts_remaining: 15,
+            )
+        }
+      }
+    }
+  }
+}
+
+fn bmc_fan_restore_previous_locked(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+) -> BmcFanTypedMutationResult {
+  let staged = bmc_fan_remote_config_stage_path(plan: plan)
+  let copied = openbmc_copy_file_preserving_metadata(
+    session: session,
+    source_path: bmc_fan_remote_backup_path(),
+    destination_path: staged,
+  )
+  if !copied.success {
+    bmc_fan_mutation_refused(
+      reason: concat("previous fan config could not be staged: ", copied.stderr),
+    )
+  } else {
+    let published = bmc_fan_publish_staged_config(
+      session: session,
+      protocol: plan.projection.publication_protocol,
+      staged_path: staged,
+      destination_path: plan.config_path,
+    )
+    if !bmc_fan_mutation_succeeded(result: published) {
+      published
+    } else {
+      bmc_fan_restart_and_verify_controller(
+        session: session,
+        plan: plan,
+        desired_json: none,
+      )
+    }
+  }
+}
+
+fn bmc_fan_failure_with_restore(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+  reason: String,
+) -> BmcFanTypedMutationResult {
+  let restored = bmc_fan_restore_previous_locked(
+    session: session,
+    plan: plan,
+  )
+  match restored {
+    BmcFanTypedMutationApplied =>
+      bmc_fan_mutation_refused(
+        reason: concat(
+          "fan policy apply refused and restored the previous config: ",
+          reason,
+        ),
+      )
+    BmcFanTypedMutationRefused { reason: restore_reason } =>
+      bmc_fan_mutation_refused(
+        reason: concat(
+          concat(
+            "fan policy apply failed and typed rollback also failed: ",
+            reason,
+          ),
+          concat("; rollback: ", restore_reason),
+        ),
+      )
+  }
+}
+
+fn bmc_fan_prepare_backup(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+  local_version_path: NonEmptyStr,
+) -> BmcFanTypedMutationResult {
+  let state_dir = openbmc_make_directory(
+    session: session,
+    path: bmc_fan_remote_state_directory(),
+    parents: true,
+  )
+  if !state_dir.success {
+    bmc_fan_mutation_refused(
+      reason: concat("fan rollback state directory could not be created: ", state_dir.stderr),
+    )
+  } else {
+    let copied = openbmc_copy_file_preserving_metadata(
+      session: session,
+      source_path: plan.config_path,
+      destination_path: bmc_fan_remote_backup_stage_path(),
+    )
+    if !copied.success {
+      bmc_fan_mutation_refused(
+        reason: concat("current fan config backup failed: ", copied.stderr),
+      )
+    } else {
+      let backup_replaced = openbmc_rename_replace(
+        session: session,
+        source_path: bmc_fan_remote_backup_stage_path(),
+        destination_path: bmc_fan_remote_backup_path(),
+      )
+      if !backup_replaced.success {
+        bmc_fan_mutation_refused(
+          reason: concat("fan config backup publication failed: ", backup_replaced.stderr),
+        )
+      } else {
+        let version_uploaded = openbmc_upload_file(
+          session: session,
+          local_path: local_version_path,
+          remote_path: bmc_fan_remote_backup_version_stage_path(),
+        )
+        if !version_uploaded.success {
+          bmc_fan_mutation_refused(
+            reason: concat("fan config backup version upload failed: ", version_uploaded.stderr),
+          )
+        } else {
+          let version_replaced = openbmc_rename_replace(
+            session: session,
+            source_path: bmc_fan_remote_backup_version_stage_path(),
+            destination_path: bmc_fan_remote_backup_version_path(),
+          )
+          if !version_replaced.success {
+            bmc_fan_mutation_refused(
+              reason: concat("fan config backup version publication failed: ", version_replaced.stderr),
+            )
+          } else {
+            let synchronized = openbmc_synchronize_filesystems(
+              session: session,
+            )
+            if synchronized.success {
+              BmcFanTypedMutationApplied
+            } else {
+              bmc_fan_mutation_refused(
+                reason: concat("fan config backup synchronization failed: ", synchronized.stderr),
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn bmc_fan_apply_from_local_files(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+  desired_json: String,
+  local_stage_path: NonEmptyStr,
+  local_version_path: NonEmptyStr,
+) -> BmcFanTypedMutationResult {
+  let backup = bmc_fan_prepare_backup(
+    session: session,
+    plan: plan,
+    local_version_path: local_version_path,
+  )
+  if !bmc_fan_mutation_succeeded(result: backup) {
+    backup
+  } else {
+    let remote_stage = bmc_fan_remote_config_stage_path(plan: plan)
+    let uploaded = openbmc_upload_file(
+      session: session,
+      local_path: local_stage_path,
+      remote_path: remote_stage,
+    )
+    if !uploaded.success {
+      bmc_fan_mutation_refused(
+        reason: concat("projected fan config upload failed: ", uploaded.stderr),
+      )
+    } else {
+      let published = bmc_fan_publish_staged_config(
+        session: session,
+        protocol: plan.projection.publication_protocol,
+        staged_path: remote_stage,
+        destination_path: plan.config_path,
+      )
+      match published {
+        BmcFanTypedMutationRefused { reason: reason } =>
+          bmc_fan_failure_with_restore(
+            session: session,
+            plan: plan,
+            reason: reason,
+          )
+        BmcFanTypedMutationApplied => {
+          let restarted = bmc_fan_restart_and_verify_controller(
+            session: session,
+            plan: plan,
+            desired_json: Present { value: desired_json },
+          )
+          match restarted {
+            BmcFanTypedMutationApplied => BmcFanTypedMutationApplied
+            BmcFanTypedMutationRefused { reason: reason } =>
+              bmc_fan_failure_with_restore(
+                session: session,
+                plan: plan,
+                reason: reason,
+              )
+          }
+        }
+      }
+    }
+  }
+}
+
+fn bmc_fan_apply_locked(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+) -> BmcFanTypedMutationResult {
+  match bmc_fan_observe_live_identity(session: session) {
+    BmcFanLiveIdentityRefused { reason: reason } =>
+      bmc_fan_mutation_refused(reason: reason)
+    BmcFanLiveIdentityObserved { identity: identity } =>
+      if identity.firmware != plan.observed.firmware {
+        bmc_fan_mutation_refused(
+          reason: "BMC firmware changed after fan-policy observation",
+        )
+      } else {
+        let selected = openbmc_resolve_path(
+          session: session,
+          path: "/usr/share/swampd/config.json",
+        )
+        if !selected.success || trim(selected.stdout) != (plan.config_path as String) {
+          bmc_fan_mutation_refused(
+            reason: "selected board fan config changed after observation",
+          )
+        } else {
+          let current = openbmc_read_file(
+            session: session,
+            path: plan.config_path,
+          )
+          if !current.success {
+            bmc_fan_mutation_refused(
+              reason: concat("current fan config read failed: ", current.stderr),
+            )
+          } else {
+            let temp = shell.Mktemp.Dir()
+            if !temp.success {
+              bmc_fan_mutation_refused(
+                reason: "local fan config staging directory creation failed",
+              )
+            } else {
+              let input_path = concat(temp.path as String, "/current.json") as NonEmptyStr
+              let stage_path = concat(temp.path as String, "/projected.json") as NonEmptyStr
+              let version_path = concat(temp.path as String, "/previous.version") as NonEmptyStr
+              let source_write = Filesystem.Write(
+                path: input_path as String,
+                content: current.stdout,
+              )
+              let desired_json = bmc_fan_policy_projection_json(
+                curve: plan.desired_curve,
+                projection: plan.projection,
+              )
+              let result = if !source_write.success {
+                bmc_fan_mutation_refused(
+                  reason: concat("local source config staging failed: ", source_write.error),
+                )
+              } else {
+                let projected = openbmc_fan_config_project_local(
+                  input_path: input_path,
+                  desired_json: desired_json,
+                )
+                if !projected.success {
+                  bmc_fan_mutation_refused(
+                    reason: concat("semantic jq fan config projection failed: ", projected.stderr),
+                  )
+                } else if !json_text_parseable(s: projected.content) {
+                  bmc_fan_mutation_refused(
+                    reason: "projected fan config is not parseable JSON",
+                  )
+                } else {
+                  let stage_write = Filesystem.Write(
+                    path: stage_path as String,
+                    content: projected.content,
+                  )
+                  let version_write = Filesystem.Write(
+                    path: version_path as String,
+                    content: concat(identity.firmware.version as String, "\n"),
+                  )
+                  if !stage_write.success || !version_write.success {
+                    bmc_fan_mutation_refused(
+                      reason: "local projected config or backup-version staging failed",
+                    )
+                  } else {
+                    bmc_fan_apply_from_local_files(
+                      session: session,
+                      plan: plan,
+                      desired_json: desired_json,
+                      local_stage_path: stage_path,
+                      local_version_path: version_path,
+                    )
+                  }
+                }
+              }
+              let cleaned = shell.Remove.RecursiveForce(path: temp.path)
+              if !cleaned.success && bmc_fan_mutation_succeeded(result: result) {
+                bmc_fan_mutation_refused(
+                  reason: "fan policy applied but local staging cleanup failed",
+                )
+              } else {
+                result
+              }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn bmc_fan_apply_typed(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+) -> BmcFanTypedMutationResult {
+  let lock = openbmc_make_directory(
+    session: session,
+    path: bmc_fan_remote_lock_path(),
+    parents: false,
+  )
+  if !lock.success {
+    bmc_fan_mutation_refused(
+      reason: "another BMC fan convergence transaction holds the lock",
+    )
+  } else {
+    let result = bmc_fan_apply_locked(session: session, plan: plan)
+    let stage_cleanup = openbmc_remove_file(
+      session: session,
+      path: bmc_fan_remote_config_stage_path(plan: plan),
+    )
+    let lock_cleanup = openbmc_remove_directory(
+      session: session,
+      path: bmc_fan_remote_lock_path(),
+    )
+    if bmc_fan_mutation_succeeded(result: result)
+      && (!stage_cleanup.success || !lock_cleanup.success) {
+      bmc_fan_mutation_refused(
+        reason: "fan policy applied but typed remote transaction cleanup failed",
+      )
+    } else {
+      result
+    }
+  }
+}
+
+fn bmc_fan_rollback_typed(
+  session: PasswordSshSession,
+  plan: BmcFanPolicyApplyPlan,
+) -> BmcFanTypedMutationResult {
+  let lock = openbmc_make_directory(
+    session: session,
+    path: bmc_fan_remote_lock_path(),
+    parents: false,
+  )
+  if !lock.success {
+    bmc_fan_mutation_refused(
+      reason: "BMC fan rollback refused because the convergence lock is held",
+    )
+  } else {
+    let restored = match bmc_fan_observe_live_identity(session: session) {
+      BmcFanLiveIdentityRefused { reason: reason } =>
+        bmc_fan_mutation_refused(reason: reason)
+      BmcFanLiveIdentityObserved { identity: identity } =>
+        if identity.firmware != plan.observed.firmware {
+          bmc_fan_mutation_refused(
+            reason: "BMC firmware changed after rollback observation",
+          )
+        } else {
+          let backup = openbmc_path_is_nonempty_file(
+            session: session,
+            path: bmc_fan_remote_backup_path(),
+          )
+          let version_file = openbmc_path_is_nonempty_file(
+            session: session,
+            path: bmc_fan_remote_backup_version_path(),
+          )
+          let version = openbmc_read_file(
+            session: session,
+            path: bmc_fan_remote_backup_version_path(),
+          )
+          if !backup.success || !version_file.success || !version.success {
+            bmc_fan_mutation_refused(
+              reason: "previous fan config or its firmware identity is absent",
+            )
+          } else if trim(version.stdout) != (identity.firmware.version as String) {
+            bmc_fan_mutation_refused(
+              reason: "previous fan config belongs to a different BMC firmware version",
+            )
+          } else {
+            bmc_fan_restore_previous_locked(session: session, plan: plan)
+          }
+        }
+    }
+    let stage_cleanup = openbmc_remove_file(
+      session: session,
+      path: bmc_fan_remote_config_stage_path(plan: plan),
+    )
+    let lock_cleanup = openbmc_remove_directory(
+      session: session,
+      path: bmc_fan_remote_lock_path(),
+    )
+    if bmc_fan_mutation_succeeded(result: restored)
+      && (!stage_cleanup.success || !lock_cleanup.success) {
+      bmc_fan_mutation_refused(
+        reason: "fan rollback completed but typed remote transaction cleanup failed",
+      )
+    } else {
+      restored
+    }
+  }
 }
 
 fn bmc_fan_observe_with_credential(
   target: BmcFanConvergeTarget,
   credential: Secret,
 ) -> BmcFanLiveObservationResult {
-  let identity_run = password_ssh_exec_script(
+  let session = PasswordSshSession {
     host: target.onboarding.bmc.host,
     username: target.onboarding.factory_login.username,
     password: credential,
-    script: bmc_fan_identity_observer_script(),
-  )
-  if !identity_run.success {
-    BmcFanLiveObservationRefused {
-      reason: concat("BMC fan identity observation transport failed: ", identity_run.stderr),
-    }
-  } else {
-    match bmc_fan_parse_live_identity(
-      lines: split(s: identity_run.stdout, delimiter: "\n"),
-    ) {
-      BmcFanLiveIdentityRefused { reason: reason } =>
-        BmcFanLiveObservationRefused { reason: reason }
-      BmcFanLiveIdentityObserved { identity: identity } =>
-        if identity.machine != "altrad8ud-1l2t" {
-          BmcFanLiveObservationRefused {
-            reason: concat(
-              "BMC fan identity is not altrad8ud-1l2t: ",
-              identity.machine as String,
+  }
+  match bmc_fan_observe_live_identity(session: session) {
+    BmcFanLiveIdentityRefused { reason: reason } =>
+      BmcFanLiveObservationRefused { reason: reason }
+    BmcFanLiveIdentityObserved { identity: identity } =>
+      if identity.machine != "altrad8ud-1l2t" {
+        BmcFanLiveObservationRefused {
+          reason: concat(
+            "BMC fan identity is not altrad8ud-1l2t: ",
+            identity.machine as String,
+          ),
+        }
+      } else if !bmc_fan_identity_matches_firmware_intent(
+        identity: identity,
+        intent: fleet_bmc_valid_state.firmware,
+      ) {
+        BmcFanLiveObservationRefused {
+          reason: concat(
+            concat(
+              "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
+              identity.firmware.version as String,
             ),
-          }
-        } else if !bmc_fan_identity_matches_firmware_intent(
-          identity: identity,
-          intent: fleet_bmc_valid_state.firmware,
-        ) {
-          BmcFanLiveObservationRefused {
-            reason: concat(
-              concat(
-                "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
+            concat(
+              "; fleet valid state requires ",
+              bmc_fan_firmware_intent_requirement(
+                intent: fleet_bmc_valid_state.firmware,
+              ),
+            ),
+          ),
+        }
+      } else {
+        match target.projection {
+          Absent =>
+            BmcFanLiveObservationRefused {
+              reason: concat(
+                "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
                 identity.firmware.version as String,
               ),
-              concat(
-                "; fleet valid state requires ",
-                bmc_fan_firmware_intent_requirement(
-                  intent: fleet_bmc_valid_state.firmware,
-                ),
-              ),
-            ),
-          }
-        } else {
-          match target.projection {
-            Absent =>
+            }
+          Present { value: projection } =>
+            if projection.firmware != identity.firmware {
               BmcFanLiveObservationRefused {
                 reason: concat(
-                  "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
-                  identity.firmware.version as String,
+                  concat(
+                    "BMC fan convergence has no exact config projection for observed OpenBMC ",
+                    identity.firmware.version as String,
+                  ),
+                  concat(
+                    "; available projection is ",
+                    projection.firmware.version as String,
+                  ),
                 ),
               }
-            Present { value: projection } =>
-              if projection.firmware != identity.firmware {
-                BmcFanLiveObservationRefused {
-                  reason: concat(
-                    concat(
-                      "BMC fan convergence has no exact config projection for observed OpenBMC ",
-                      identity.firmware.version as String,
-                    ),
-                    concat(
-                      "; available projection is ",
-                      projection.firmware.version as String,
-                    ),
-                  ),
-                }
-              } else {
-                let run = password_ssh_exec_script(
-                  host: target.onboarding.bmc.host,
-                  username: target.onboarding.factory_login.username,
-                  password: credential,
-                  script: bmc_fan_observer_script(
-                    config_path: bmc_fan_target_config_path(target: target),
-                    controller_service: bmc_fan_target_controller_service(target: target),
-                    controller_zone_path: bmc_fan_target_controller_zone_path(target: target),
-                    component_sensors: fleet_bmc_valid_state.fan_policy.thermal_guard.required_component_sensors,
-                  ),
-                )
-                if run.success {
+            } else {
+              match bmc_fan_observe_typed_lines(
+                session: session,
+                identity: identity,
+                plan: bmc_fan_typed_observation_plan(
+                  projection: projection,
+                  intent: fleet_bmc_valid_state,
+                ),
+              ) {
+                BmcFanObservedLinesRefused { reason: reason } =>
+                  BmcFanLiveObservationRefused { reason: reason }
+                BmcFanObservedLines {
+                  lines: lines,
+                  overlay: overlay,
+                } =>
                   bmc_fan_parse_live_observation(
-                    lines: split(s: run.stdout, delimiter: "\n"),
+                    lines: lines,
+                    overlay: overlay,
                   )
-                } else {
-                  BmcFanLiveObservationRefused {
-                    reason: concat("BMC fan live observation transport failed: ", run.stderr),
-                  }
-                }
               }
-          }
+            }
         }
-    }
   }
+}
 }
 
 fn bmc_fan_rollback_after_failed_readback(
@@ -1207,29 +1924,32 @@ fn bmc_fan_rollback_after_failed_readback(
   plan: BmcFanPolicyApplyPlan,
   reason: String,
 ) -> ProcessExit {
-  let rollback = password_ssh_exec_script(
-    host: target.onboarding.bmc.host,
-    username: target.onboarding.factory_login.username,
-    password: credential,
-    script: bmc_fan_rollback_script(plan: plan),
+  let rollback = bmc_fan_rollback_typed(
+    session: PasswordSshSession {
+      host: target.onboarding.bmc.host,
+      username: target.onboarding.factory_login.username,
+      password: credential,
+    },
+    plan: plan,
   )
-  if rollback.success {
-    exit_failure(
-      reason: concat(
-        "BMC fan convergence failed independent readback and restored the previous config: ",
-        reason,
-      ),
-    )
-  } else {
-    exit_failure(
-      reason: concat(
-        concat(
-          "BMC fan convergence failed independent readback and rollback also failed: ",
+  match rollback {
+    BmcFanTypedMutationApplied =>
+      exit_failure(
+        reason: concat(
+          "BMC fan convergence failed independent readback and restored the previous config: ",
           reason,
         ),
-        concat("; rollback transport: ", rollback.stderr),
-      ),
-    )
+      )
+    BmcFanTypedMutationRefused { reason: rollback_reason } =>
+      exit_failure(
+        reason: concat(
+          concat(
+            "BMC fan convergence failed independent readback and rollback also failed: ",
+            reason,
+          ),
+          concat("; typed rollback: ", rollback_reason),
+        ),
+      )
   }
 }
 
@@ -1261,25 +1981,36 @@ fn bmc_fan_observe_only_with_credential(
             Absent =>
               exit_failure(reason: "BMC fan policy is converged but no exact live-safety projection is available")
             Present { value: projection } =>
-              if bmc_fan_live_safety_holds(
+              match bmc_fan_live_safety_refusal(
                 observation: observed,
                 intent: fleet_bmc_valid_state,
                 projection: projection,
               ) {
-                ExitSuccess
-              } else {
-                exit_failure(reason: "BMC fan read-only classification is converged, but thermal/tach safety did not hold")
+                Absent => ExitSuccess
+                Present { value: reason } =>
+                  exit_failure(
+                    reason: concat(
+                      "BMC fan read-only classification is converged, but live safety refused: ",
+                      reason,
+                    ),
+                  )
               }
           }
         Apply { plan: plan } =>
-          if bmc_fan_live_thermal_tach_safety_holds(
+          match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,
             projection: plan.projection,
           ) {
-            exit_failure(reason: "BMC fan read-only classification observed safe drift: apply required")
-          } else {
-            exit_failure(reason: "BMC fan read-only classification observed drift, but pre-apply thermal/tach safety refused")
+            Absent =>
+              exit_failure(reason: "BMC fan read-only classification observed safe drift: apply required")
+            Present { value: reason } =>
+              exit_failure(
+                reason: concat(
+                  "BMC fan read-only classification observed drift, but pre-apply safety refused: ",
+                  reason,
+                ),
+              )
           }
       }
     }
@@ -1309,32 +2040,40 @@ fn bmc_fan_rollback_previous_with_credential(
             controller_service: projection.controller_service,
             projection: projection,
           }
-          let rollback = password_ssh_exec_script(
-            host: target.onboarding.bmc.host,
-            username: target.onboarding.factory_login.username,
-            password: credential,
-            script: bmc_fan_rollback_script(plan: plan),
+          let rollback = bmc_fan_rollback_typed(
+            session: PasswordSshSession {
+              host: target.onboarding.bmc.host,
+              username: target.onboarding.factory_login.username,
+              password: credential,
+            },
+            plan: plan,
           )
-          if !rollback.success {
-            exit_failure(reason: concat("BMC fan rollback failed: ", rollback.stderr))
-          } else {
-            match bmc_fan_observe_with_credential(
-              target: target,
-              credential: credential,
-            ) {
-              BmcFanLiveObservationRefused { reason: reason } =>
-                exit_failure(reason: concat("BMC fan rollback completed but independent observation failed: ", reason))
-              BmcFanLiveObserved { observation: readback } =>
-                if bmc_fan_live_thermal_tach_safety_holds(
-                  observation: readback,
-                  intent: fleet_bmc_valid_state,
-                  projection: projection,
-                ) {
-                  ExitSuccess
-                } else {
-                  exit_failure(reason: "BMC fan rollback completed but independent thermal/tach safety refused")
-                }
-            }
+          match rollback {
+            BmcFanTypedMutationRefused { reason: reason } =>
+              exit_failure(reason: concat("BMC fan rollback failed: ", reason))
+            BmcFanTypedMutationApplied =>
+              match bmc_fan_observe_with_credential(
+                target: target,
+                credential: credential,
+              ) {
+                BmcFanLiveObservationRefused { reason: reason } =>
+                  exit_failure(reason: concat("BMC fan rollback completed but independent observation failed: ", reason))
+                BmcFanLiveObserved { observation: readback } =>
+                  match bmc_fan_live_thermal_tach_safety_refusal(
+                    observation: readback,
+                    intent: fleet_bmc_valid_state,
+                    projection: projection,
+                  ) {
+                    Absent => ExitSuccess
+                    Present { value: reason } =>
+                      exit_failure(
+                        reason: concat(
+                          "BMC fan rollback completed but independent safety refused: ",
+                          reason,
+                        ),
+                      )
+                  }
+              }
           }
         }
       }
@@ -1369,40 +2108,49 @@ fn bmc_fan_converge_with_credential(
             Absent =>
               exit_failure(reason: "BMC fan policy is semantically converged but has no exact safety-probe projection")
             Present { value: projection } =>
-              if bmc_fan_live_safety_holds(
+              match bmc_fan_live_safety_refusal(
                 observation: observed,
                 intent: fleet_bmc_valid_state,
                 projection: projection,
               ) {
-                ExitSuccess
-              } else {
-                exit_failure(reason: "BMC fan policy matches intent but live thermal/tach safety readback refused")
+                Absent => ExitSuccess
+                Present { value: reason } =>
+                  exit_failure(
+                    reason: concat(
+                      "BMC fan policy matches intent but live safety readback refused: ",
+                      reason,
+                    ),
+                  )
               }
           }
         Apply { plan: plan } =>
-          if !bmc_fan_live_thermal_tach_safety_holds(
+          match bmc_fan_live_thermal_tach_safety_refusal(
             observation: observed,
             intent: fleet_bmc_valid_state,
             projection: plan.projection,
           ) {
-            exit_failure(
-              reason: "BMC fan convergence refused before mutation because thermal/tach safety did not hold",
-            )
-          } else {
-            let apply_run = password_ssh_exec_script(
-              host: target.onboarding.bmc.host,
-              username: target.onboarding.factory_login.username,
-              password: credential,
-              script: bmc_fan_apply_script(
-                plan: plan,
-                intent: fleet_bmc_valid_state,
-              ),
-            )
-            if !apply_run.success {
+            Present { value: reason } =>
               exit_failure(
-                reason: concat("BMC fan apply failed: ", apply_run.stderr),
+                reason: concat(
+                  "BMC fan convergence refused before mutation because live safety did not hold: ",
+                  reason,
+                ),
               )
-            } else {
+            Absent => {
+            let apply_run = bmc_fan_apply_typed(
+              session: PasswordSshSession {
+                host: target.onboarding.bmc.host,
+                username: target.onboarding.factory_login.username,
+                password: credential,
+              },
+              plan: plan,
+            )
+            match apply_run {
+              BmcFanTypedMutationRefused { reason: reason } =>
+                exit_failure(
+                  reason: concat("BMC fan apply failed: ", reason),
+                )
+              BmcFanTypedMutationApplied =>
               match bmc_fan_observe_with_credential(
                 target: target,
                 credential: credential,
@@ -1455,9 +2203,10 @@ fn bmc_fan_converge_with_credential(
                         reason: "post-apply classification remained drifted",
                       )
                   }
-                }
               }
             }
+            }
+          }
           }
       }
     }

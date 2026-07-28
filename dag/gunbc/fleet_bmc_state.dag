@@ -38,7 +38,6 @@ import gunbc.bmc_intent {
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
-  bmc_fan_state_durability_capability,
 }
 import std.bmc { OpenBmc }
 import std.measure {
@@ -54,7 +53,6 @@ import std.state_durability {
   ActivationVerified,
   StateActivationEvidence,
   StateDurabilityBoundary,
-  StateDurabilityCapability,
   StateDurabilityEvidence,
   StatePreservationObservationRefused,
   StatePreservationOutcome,
@@ -173,12 +171,6 @@ data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = LinuxFile
   synchronization: SyncAllFilesystemsAfterReplacement,
 }
 
-data srv4_bmc_fan_durability_capability: StateDurabilityCapability = bmc_fan_state_durability_capability(
-    realization_id: srv4_bmc_fan_realization_id,
-    boundaries: [fleet_bmc_fan_graceful_restart_boundary],
-    publication_protocol: srv4_bmc_fan_publication_protocol,
-  )
-
 data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcFanPolicyProjectionCapability {
   board: srv4_baseboard.catalog.model,
   firmware: srv4_bmc_firmware_observation.firmware,
@@ -188,7 +180,7 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcF
   aggregate_fan_pid_entry: "FAN1",
   projection_id: srv4_bmc_fan_realization_id,
   publication_protocol: srv4_bmc_fan_publication_protocol,
-  durability_capability: srv4_bmc_fan_durability_capability,
+  durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
   required_tach_inputs: fleet_bmc_valid_state.fan_policy.required_tach_inputs,
 }
 
@@ -208,12 +200,12 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
 
 data srv4_bmc_root_overlay_observation: LinuxOverlayObservation = LinuxOverlayObservation {
   merged_mount: LinuxMountObservation {
-    source: "overlay",
+    source: "cow",
     target: "/",
     filesystem: LinuxOverlayFs,
   },
   lower_directory: "/run/initramfs/ro",
-  upper_directory: "/run/initramfs/rw",
+  upper_directory: "/run/initramfs/rw/cow",
   lower_backing_mount: LinuxMountObservation {
     source: "/dev/mtdblock4",
     target: "/run/initramfs/ro",

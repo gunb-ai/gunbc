@@ -28,6 +28,7 @@ import gunbc.bmc_intent {
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_durability_capability,
   bmc_fan_policy_projection_supports_apply,
   bmc_fan_policy_projection_topology_matches,
 }
@@ -300,7 +301,9 @@ fn bmc_fan_policy_classification(
                     let durability = state_durability_verdict(
                       intent: intent.fan_policy.durability,
                       capability: Present {
-                        value: projector.durability_capability,
+                        value: bmc_fan_policy_projection_durability_capability(
+                          capability: projector,
+                        ),
                       },
                       evidence: durability_evidence,
                     )

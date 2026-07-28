@@ -1,6 +1,6 @@
 module extdeps.tools.jq
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
@@ -28,6 +28,58 @@ service jq.Json {
     exit {
       0 => Unit
       nonzero => String "jq extract failed"
+    }
+  }
+
+  operation TransformWithArgJson {
+    input {
+      arg_name: NonEmptyStr
+      arg_json: String
+      filter: NonEmptyStr
+      path: NonEmptyStr
+    }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "jq",
+        "--argjson",
+        "{arg_name}",
+        "{arg_json}",
+        "{filter}",
+        "{path}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "jq JSON transform failed"
+    }
+  }
+
+  operation ExtractRequiredRawFromContent {
+    input {
+      filter: NonEmptyStr
+      content: String
+    }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["jq", "-e", "-r", "{filter}"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "jq required raw extraction from content failed"
     }
   }
 }
