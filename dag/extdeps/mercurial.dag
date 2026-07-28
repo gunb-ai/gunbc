@@ -389,54 +389,55 @@ fn mercurial_projection_accessibility(
     } =>
       let overlapping_changesets = projection.changesets
         |> filter(changeset =>
-          any(missing_changesets, missing => missing == changeset.node)
+          mercurial_changeset_declared_missing(
+            availability: projection.availability,
+            wanted: changeset.node,
+          )
         )
         |> map(changeset => changeset.node)
       let overlapping_manifests = projection.manifests
         |> filter(manifest =>
-          any(missing_manifests, missing => missing == manifest.node)
+          mercurial_manifest_declared_missing(
+            availability: projection.availability,
+            wanted: manifest.node,
+          )
         )
         |> map(manifest => manifest.node)
       let overlapping_file_revisions = projection.file_revisions
         |> filter(file_revision =>
-          any(
-            missing_file_revisions,
-            missing => missing == file_revision.node,
+          mercurial_file_revision_declared_missing(
+            availability: projection.availability,
+            wanted: file_revision.node,
           )
         )
         |> map(file_revision => file_revision.node)
-      match overlapping_changesets.first() {
-        Present { value: changeset } =>
-          MercurialProjectionAccessibilityRefused {
-            cause: MercurialChangesetPresentAndDeclaredMissing {
-              changeset: changeset,
-            }
+      if count(overlapping_changesets) > 0 {
+        MercurialProjectionAccessibilityRefused {
+          cause: MercurialChangesetPresentAndDeclaredMissing {
+            changeset: overlapping_changesets.first(),
           }
-        Absent =>
-          match overlapping_manifests.first() {
-            Present { value: manifest } =>
-              MercurialProjectionAccessibilityRefused {
-                cause: MercurialManifestPresentAndDeclaredMissing {
-                  manifest: manifest,
-                }
-              }
-            Absent =>
-              match overlapping_file_revisions.first() {
-                Present { value: file_revision } =>
-                  MercurialProjectionAccessibilityRefused {
-                    cause: MercurialFileRevisionPresentAndDeclaredMissing {
-                      file_revision: file_revision,
-                    }
-                  }
-                Absent => MercurialProjectionAccessible {
-                  completeness: MercurialContentsPartial {
-                    missing_changesets: missing_changesets,
-                    missing_manifests: missing_manifests,
-                    missing_file_revisions: missing_file_revisions,
-                  },
-                }
-              }
+        }
+      } else if count(overlapping_manifests) > 0 {
+        MercurialProjectionAccessibilityRefused {
+          cause: MercurialManifestPresentAndDeclaredMissing {
+            manifest: overlapping_manifests.first(),
           }
+        }
+      } else if count(overlapping_file_revisions) > 0 {
+        MercurialProjectionAccessibilityRefused {
+          cause: MercurialFileRevisionPresentAndDeclaredMissing {
+            file_revision: overlapping_file_revisions.first(),
+          }
+        }
+      } else {
+        MercurialProjectionAccessible {
+          completeness: MercurialContentsPartial {
+            missing_changesets: missing_changesets,
+            missing_manifests: missing_manifests,
+            missing_file_revisions: missing_file_revisions,
+          },
+        }
+      }
   }
 }
 
