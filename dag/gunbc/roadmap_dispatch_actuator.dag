@@ -31,6 +31,7 @@ import gunbc.roadmap_model {
   Unsized,
 }
 import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
+import gunbc.dispatch_pipe_pane_emit { dispatch_event_pipe_command }
 import gunbc.session_lease {
   ProcessPortScope,
   PortAbsent,
@@ -54,7 +55,6 @@ import extdeps.tmux {
   shape_tmux_attempt_panes_argv_for,
   TmuxPipeCommand,
 }
-import extdeps.exec.command { shell_quote }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
   claude_cli_program,
@@ -844,20 +844,7 @@ fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: Lis
   )
 }
 
-fn dispatch_event_pipe_command(
-  tee_program: String,
-  events_path: String,
-) -> TmuxPipeCommand {
-  TmuxPipeCommand {
-    body: join([
-      "exec ",
-      shell_quote(arg: tee_program),
-      " -a -- ",
-      shell_quote(arg: events_path),
-    ], "") as NonEmptyStr,
-  }
-}
-data dispatch_event_pipe_command_note: String = "tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a shell-command payload. TmuxPipeCommand bounds that residue, and both dynamic argv tokens (exact tee executable and attempt event path) pass through extdeps.exec.command.shell_quote before rendering. The earlier session-environment design was rejected by live execution because pipe processes did not inherit tmux set-environment values and created no file. Staging order is state directory -> idle exact-shell pane -> default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider byte and a fast nonzero exit are both observable. DECLARED SCAFFOLD (DESIGN 6 — the body is concat-assembled here rather than emitted, because the bash-AST vocabulary is confined by v2.lens.realization_vocabulary_containment to the realization-edge prefixes and dag/gunbc/roadmap_dispatch_actuator.dag is not one; reaching the grammar from here today would be the vocabulary leak that lens exists to red). DISSOLVES ON: this site emitting through the bash backend as emit(intent, Bash) once the pipe-pane payload is constructed on a realization-edge module — the 5.C foreign-executor route in shell-to-dag-residual-census-and-arc-completion.md, where this site is enrolled. The seam itself is permanent (tmux pipe-pane's input contract IS shell text); what dissolves is the hand-joined construction, not the shell."
+data dispatch_event_pipe_seam_note: String = "tmux pipe-pane is the one foreign-executor seam in attempt capture: upstream requires a shell-command payload. TmuxPipeCommand bounds that residue. The earlier session-environment design was rejected by live execution because pipe processes did not inherit tmux set-environment values and created no file. Staging order is state directory -> idle exact-shell pane -> default-shell -> remain-on-exit -> quoted pipe -> typed provider respawn, so the first provider byte and a fast nonzero exit are both observable. The payload itself is no longer constructed here: gunbc.dispatch_pipe_pane_emit builds it as a bash AST and renders it through the signed serializer (review 44063), which is why this module now imports a command rather than joining one."
 
 fn attempt_state_prepare_argv_for_instance(
   instance: HostDashboardInstance,

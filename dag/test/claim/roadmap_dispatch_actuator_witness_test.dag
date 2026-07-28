@@ -73,8 +73,11 @@ import gunbc.roadmap_dispatch_actuator {
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
-  dispatch_event_pipe_command,
   dispatch_current_attempt_events_projection_argv_for_instance,
+}
+import gunbc.dispatch_pipe_pane_emit {
+  dispatch_event_pipe_command,
+  dispatch_event_pipe_body_is_poisoned,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -289,13 +292,16 @@ test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
   }
 }
 
-test fn witness_event_pipe_shell_quotes_dynamic_argv_tokens() -> Bool {
+data event_pipe_emission_witness_note: String = "review 44063. The claim is no longer 'the caller remembered to quote' — quoting is the lit-word production's job now, so the exact emitted spelling is the oracle: every word single-quoted, and an embedded quote closed/escaped/reopened as '\\''. The metacharacter fixture stays because it is what a spelling regression would smuggle: a $(...) inside the events path must be inert text in the payload, never a command substitution. The poison RED holds the serializer-refusal arm dead in corpus."
+
+test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
   let command = dispatch_event_pipe_command(
     tee_program: "/usr/bin/tee",
     events_path: "/tmp/a';$(touch nope)",
   )
   let body = command.body as String
-  body == "exec '/usr/bin/tee' -a -- '/tmp/a'\\'';$(touch nope)'"
+  body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"
+    && !dispatch_event_pipe_body_is_poisoned(command: command)
 }
 
 test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
@@ -323,7 +329,7 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
     && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
     && witness_tmux_attempt_panes_parse_alive_and_exit()
     && witness_tmux_attempt_panes_malformed_row_refuses()
-    && witness_event_pipe_shell_quotes_dynamic_argv_tokens()
+    && witness_event_pipe_emits_grammar_quoted_command()
     && witness_provider_projection_is_exact_bounded_capability()
     && witness_host_exec_argv_shapes_bound_to_extdeps()
 }
