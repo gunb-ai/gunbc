@@ -274,13 +274,7 @@ type PijulRepositoryState {
 }
 
 type PijulRepositoryProjection {
-  changes: List<PijulRecordedChange>
-  pristine: PijulPristineState
-  tree: PijulTree
-  working_copy: PijulWorkingCopy
-  channels: List<PijulChannel>
-  current_channel: PijulChannelName
-  availability: PijulRepositoryAvailability
+  candidate: PijulRepositoryState
 }
 
 type PijulReferenceOrigin
@@ -375,18 +369,11 @@ fn pijul_add_change_once(
   }
 }
 
-fn pijul_add_change_once_step(
-  changes: List<PijulChangeHash>,
-  change: PijulChangeHash,
-) -> List<PijulChangeHash> {
-  pijul_add_change_once(changes: changes, change: change)
-}
-
 fn pijul_change_set_union(
   left: List<PijulChangeHash>,
   right: List<PijulChangeHash>,
 ) -> List<PijulChangeHash> {
-  fold(right, init: left, f: pijul_add_change_once_step)
+  fold(right, init: left, f: pijul_add_change_once)
 }
 
 fn pijul_missing_changes(
@@ -421,9 +408,12 @@ fn pijul_change_known_or_declared_missing(
   projection: PijulRepositoryProjection,
   change: PijulChangeHash,
 ) -> Bool {
-  pijul_hash_present(changes: pijul_change_hashes(changes: projection.changes), target: change)
+  pijul_hash_present(
+    changes: pijul_change_hashes(changes: projection.candidate.changes),
+    target: change,
+  )
     || pijul_hash_present(
-      changes: pijul_missing_changes(availability: projection.availability),
+      changes: pijul_missing_changes(availability: projection.candidate.availability),
       target: change,
     )
 }
@@ -439,8 +429,8 @@ fn pijul_vertex_known_or_declared_missing(
   projection: PijulRepositoryProjection,
   vertex: PijulVertexId,
 ) -> Bool {
-  pijul_vertex_present(pristine: projection.pristine, vertex: vertex)
-    || pijul_missing_vertices(availability: projection.availability)
+  pijul_vertex_present(pristine: projection.candidate.pristine, vertex: vertex)
+    || pijul_missing_vertices(availability: projection.candidate.availability)
       |> filter(missing => missing == vertex)
       |> count > 0
 }
@@ -507,7 +497,7 @@ type PijulMissingChangeIssue {
 fn pijul_missing_dependency_issue(
   projection: PijulRepositoryProjection,
 ) -> PijulMissingChangeIssue? {
-  projection.changes
+  projection.candidate.changes
     |> flat_map(change =>
       change.dependencies
         |> filter(dependency =>
@@ -583,7 +573,7 @@ type PijulMissingContextIssue {
 fn pijul_missing_context_issue(
   projection: PijulRepositoryProjection,
 ) -> PijulMissingContextIssue? {
-  projection.changes
+  projection.candidate.changes
     |> flat_map(change =>
       change.actions
         |> flat_map(action => pijul_action_contexts(action: action))
@@ -662,7 +652,7 @@ fn pijul_duplicate_working_copy_path(
 fn pijul_missing_channel_member_issue(
   projection: PijulRepositoryProjection,
 ) -> PijulMissingChangeIssue? {
-  projection.channels
+  projection.candidate.channels
     |> flat_map(channel =>
       channel.state_identity.changes
         |> filter(change =>
@@ -695,7 +685,7 @@ fn pijul_conflict_changes(conflict: PijulConflictFact) -> List<PijulChangeHash> 
 fn pijul_missing_conflict_change_issue(
   projection: PijulRepositoryProjection,
 ) -> PijulMissingChangeIssue? {
-  projection.pristine.conflicts
+  projection.candidate.pristine.conflicts
     |> flat_map(conflict => pijul_conflict_changes(conflict: conflict))
     |> filter(change =>
       !pijul_change_known_or_declared_missing(
@@ -713,7 +703,7 @@ fn pijul_missing_conflict_change_issue(
 fn pijul_missing_tree_change_issue(
   projection: PijulRepositoryProjection,
 ) -> PijulMissingChangeIssue? {
-  projection.tree.entries
+  projection.candidate.tree.entries
     |> filter(entry =>
       !pijul_change_known_or_declared_missing(
         projection: projection,
@@ -790,66 +780,53 @@ fn pijul_state_identity_issue(
     |> first
 }
 
-fn pijul_projection_to_repository(
-  projection: PijulRepositoryProjection,
-) -> PijulRepositoryState {
-  PijulRepositoryState {
-    changes: projection.changes,
-    pristine: projection.pristine,
-    tree: projection.tree,
-    working_copy: projection.working_copy,
-    channels: projection.channels,
-    current_channel: projection.current_channel,
-    availability: projection.availability,
-  }
-}
-
 fn pijul_decode_projection(
   projection: PijulRepositoryProjection,
 ) -> PijulRepositoryDecodeOutcome {
-  match projection.availability {
+  let candidate = projection.candidate
+  match candidate.availability {
     PijulRepositoryInaccessible { reason } => PijulDecodeRefused {
       cause: PijulInaccessible { reason: reason }
     }
-    _ => match pijul_duplicate_change(changes: projection.changes) {
+    _ => match pijul_duplicate_change(changes: candidate.changes) {
       Present { value: issue } =>
         PijulDecodeRefused {
           cause: PijulDuplicateChange { change: issue.change }
         }
-      Absent => match pijul_duplicate_channel(channels: projection.channels) {
+      Absent => match pijul_duplicate_channel(channels: candidate.channels) {
         Present { value: issue } =>
           PijulDecodeRefused {
             cause: PijulDuplicateChannel { channel: issue.channel }
           }
-        Absent => match pijul_duplicate_channel_member(channels: projection.channels) {
+        Absent => match pijul_duplicate_channel_member(channels: candidate.channels) {
           Present { value: issue } => PijulDecodeRefused {
             cause: PijulDuplicateChannelMember {
               channel: issue.channel,
               change: issue.change,
             }
           }
-          Absent => match pijul_duplicate_vertex(pristine: projection.pristine) {
+          Absent => match pijul_duplicate_vertex(pristine: candidate.pristine) {
             Present { value: issue } =>
               PijulDecodeRefused {
                 cause: PijulDuplicateVertex { vertex: issue.vertex }
               }
-            Absent => match pijul_duplicate_tree_path(tree: projection.tree) {
+            Absent => match pijul_duplicate_tree_path(tree: candidate.tree) {
               Present { value: issue } =>
                 PijulDecodeRefused {
                   cause: PijulDuplicateTreePath { path: issue.path }
                 }
-              Absent => match pijul_duplicate_tree_inode(tree: projection.tree) {
+              Absent => match pijul_duplicate_tree_inode(tree: candidate.tree) {
                 Present { value: issue } =>
                   PijulDecodeRefused {
                     cause: PijulDuplicateTreeInode { inode: issue.inode }
                   }
                 Absent => match pijul_duplicate_working_copy_path(
-                  working_copy: projection.working_copy,
+                  working_copy: candidate.working_copy,
                 ) {
                   Present { value: issue } => PijulDecodeRefused {
                     cause: PijulDuplicateWorkingCopyPath { path: issue.path }
                   }
-                  Absent => match pijul_self_dependency(changes: projection.changes) {
+                  Absent => match pijul_self_dependency(changes: candidate.changes) {
                     Present { value: issue } => PijulDecodeRefused {
                       cause: PijulSelfDependency { change: issue.change }
                     }
@@ -895,7 +872,7 @@ fn pijul_decode_projection(
                                 }
                               }
                               Absent => match pijul_state_identity_issue(
-                                channels: projection.channels,
+                                channels: candidate.channels,
                               ) {
                                 Present { value: issue } => match issue {
                                   PijulStateCollisionIssue {
@@ -924,17 +901,15 @@ fn pijul_decode_projection(
                                   }
                                 }
                                 Absent => match pijul_find_channel(
-                                  channels: projection.channels,
-                                  name: projection.current_channel,
+                                  channels: candidate.channels,
+                                  name: candidate.current_channel,
                                 ) {
                                   Present { value: _ } => PijulDecoded {
-                                    repository: pijul_projection_to_repository(
-                                      projection: projection,
-                                    )
+                                    repository: candidate
                                   }
                                   Absent => PijulDecodeRefused {
                                     cause: PijulCurrentChannelMissing {
-                                      channel: projection.current_channel
+                                      channel: candidate.current_channel
                                     }
                                   }
                                 }
@@ -955,24 +930,10 @@ fn pijul_decode_projection(
   }
 }
 
-fn pijul_repository_to_projection(
-  repository: PijulRepositoryState,
-) -> PijulRepositoryProjection {
-  PijulRepositoryProjection {
-    changes: repository.changes,
-    pristine: repository.pristine,
-    tree: repository.tree,
-    working_copy: repository.working_copy,
-    channels: repository.channels,
-    current_channel: repository.current_channel,
-    availability: repository.availability,
-  }
-}
-
 fn pijul_project_repository(
   repository: PijulRepositoryState,
 ) -> PijulProjectionOutcome {
-  let projection = pijul_repository_to_projection(repository: repository)
+  let projection = PijulRepositoryProjection { candidate: repository }
   match pijul_decode_projection(projection: projection) {
     PijulDecoded { repository: _ } => PijulProjected { projection: projection }
     PijulDecodeRefused { cause } => PijulProjectionRefused { cause: cause }
@@ -1281,22 +1242,22 @@ fn pijul_assess_read_back(
   match pijul_decode_projection(projection: observation.projection) {
     PijulDecodeRefused { cause } => PijulReadBackInvalid { cause: cause }
     PijulDecoded { repository: _ } =>
-      if !(expected.changes == observation.projection.changes) {
+      if !(expected.candidate.changes == observation.projection.candidate.changes) {
         PijulReadBackMismatch { axis: PijulReadBackChangesMismatch }
-      } else if !(expected.pristine == observation.projection.pristine) {
+      } else if !(expected.candidate.pristine == observation.projection.candidate.pristine) {
         PijulReadBackMismatch { axis: PijulReadBackPristineMismatch }
-      } else if !(expected.tree == observation.projection.tree) {
+      } else if !(expected.candidate.tree == observation.projection.candidate.tree) {
         PijulReadBackMismatch { axis: PijulReadBackTreeMismatch }
-      } else if !(expected.working_copy == observation.projection.working_copy) {
+      } else if !(expected.candidate.working_copy == observation.projection.candidate.working_copy) {
         PijulReadBackMismatch { axis: PijulReadBackWorkingCopyMismatch }
       } else if !pijul_channels_equivalent(
-        left: expected.channels,
-        right: observation.projection.channels,
+        left: expected.candidate.channels,
+        right: observation.projection.candidate.channels,
       ) {
         PijulReadBackMismatch { axis: PijulReadBackChannelsMismatch }
-      } else if !(expected.current_channel == observation.projection.current_channel) {
+      } else if !(expected.candidate.current_channel == observation.projection.candidate.current_channel) {
         PijulReadBackMismatch { axis: PijulReadBackCurrentChannelMismatch }
-      } else if !(expected.availability == observation.projection.availability) {
+      } else if !(expected.candidate.availability == observation.projection.candidate.availability) {
         PijulReadBackMismatch { axis: PijulReadBackAvailabilityMismatch }
       } else {
         PijulReadBackMatches { observation: observation }
@@ -1387,7 +1348,7 @@ fn pijul_plan_delivery(
           let unique_delivered = fold(
             delivered,
             init: [],
-            f: pijul_add_change_once_step,
+            f: pijul_add_change_once,
           )
           let resulting = pijul_change_set_union(
             left: channel.state_identity.changes,
