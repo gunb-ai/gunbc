@@ -1258,6 +1258,7 @@ pub fn qualify_borrowed_type_names(
                             match_pattern: n.match_pattern.clone(),
                             expr_data: n.expr_data.clone(),
                             ident: None,
+                            occurrence_identity: None,
                         })
                     }
                 }
@@ -1287,6 +1288,7 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
+        occurrence_identity: None,
     })
 }
 
@@ -1310,6 +1312,7 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
+        occurrence_identity: None,
     })
 }
 
@@ -1816,6 +1819,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             });

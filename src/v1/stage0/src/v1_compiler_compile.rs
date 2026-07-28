@@ -11,6 +11,8 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_occurrence_identity::occurrence_id_allocator_initial;
+pub use crate::std_occurrence_identity::OccurrenceIdAllocator;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -41,10 +43,10 @@ pub use crate::v1_compiler_normalize::NormalizeResult;
 pub use crate::v1_compiler_ownership::analyze_ownership;
 use crate::v1_compiler_ownership::OwnershipDecision::SharedError;
 pub use crate::v1_compiler_ownership::{OwnershipDecision, OwnershipProof};
-pub use crate::v1_compiler_parse::parse_with_table;
 pub use crate::v1_compiler_parse::ParseResult;
-pub use crate::v1_compiler_resolve::resolve_modules;
+pub use crate::v1_compiler_parse::{parse_with_table, parse_with_table_in_occurrence_scope};
 pub use crate::v1_compiler_resolve::ModuleGraph;
+pub use crate::v1_compiler_resolve::{resolve_modules, resolve_modules_with_occurrence_transport};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -79,8 +81,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompileResult, CompilerDiagnostic, Connective, ErrorNode, ExprData,
     ExprErrorKind, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile, Token, UnaryOpKind,
-    VarBindingKind,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, OccurrenceIndex, OccurrenceTransport,
+    StringPart, TextFile, Token, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -109,6 +111,7 @@ pub struct FrontendResult {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -116,12 +119,44 @@ pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_allocator: OccurrenceIdAllocator,
+    pub occurrence_transports: Rc<Vec<Rc<OccurrenceTransport>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub newline_index: Rc<NewlineIndex>,
+}
+
+pub fn merge_occurrence_transports(
+    transports: Rc<Vec<Rc<OccurrenceTransport>>>,
+) -> Rc<OccurrenceTransport> {
+    Rc::new(OccurrenceTransport {
+        index: Rc::new(OccurrenceIndex {
+            entries: Rc::new({
+                let mut __result = Vec::new();
+                for transport in transports.clone().iter().cloned() {
+                    __result.extend((*transport.index.clone().entries.clone()).iter().cloned());
+                }
+                __result
+            }),
+        }),
+        declarations: Rc::new({
+            let mut __result = Vec::new();
+            for transport in transports.clone().iter().cloned() {
+                __result.extend((*transport.declarations.clone()).iter().cloned());
+            }
+            __result
+        }),
+        references: Rc::new({
+            let mut __result = Vec::new();
+            for transport in transports.clone().iter().cloned() {
+                __result.extend((*transport.references.clone()).iter().cloned());
+            }
+            __result
+        }),
+    })
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -2276,11 +2311,13 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 parse_results: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
+                occurrence_allocator: occurrence_id_allocator_initial(),
+                occurrence_transports: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
-                    let parsed = parse_with_table(
+                    let parsed = parse_with_table_in_occurrence_scope(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
                             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -2288,6 +2325,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
+                        acc.occurrence_allocator,
                     );
                     Rc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
@@ -2299,6 +2337,11 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                             p.newline_index.clone(),
                         ),
                         intern_table: parsed.intern_table.clone(),
+                        occurrence_allocator: parsed.occurrence_allocator.clone(),
+                        occurrence_transports: v1_rt::rc_list_push(
+                            acc.occurrence_transports,
+                            parsed.occurrence_transport.clone(),
+                        ),
                     })
                 }
             },
@@ -2326,12 +2369,19 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
             },
         );
-        let graph = resolve_modules(modules.clone(), source_indices.clone());
+        let occurrence_transport =
+            merge_occurrence_transports(parsed.occurrence_transports.clone());
+        let graph = resolve_modules_with_occurrence_transport(
+            modules.clone(),
+            source_indices.clone(),
+            occurrence_transport.clone(),
+        );
         Rc::new(FrontendResult {
             graph: Some(graph.clone()),
             diagnostics: v1_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()),
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
+            occurrence_transport: occurrence_transport.clone(),
         })
     }
 }
@@ -2341,6 +2391,7 @@ pub struct CensusFillParse {
     pub modules: Rc<Vec<Rc<Node>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
 pub fn parse_census_fill_note() -> String {
@@ -2377,11 +2428,13 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 parse_results: Rc::new(vec![]),
                 newline_indices: Rc::new(vec![]),
                 intern_table: intern_table.clone(),
+                occurrence_allocator: occurrence_id_allocator_initial(),
+                occurrence_transports: Rc::new(vec![]),
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
-                    let parsed = parse_with_table(
+                    let parsed = parse_with_table_in_occurrence_scope(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
                             v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
@@ -2389,6 +2442,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
+                        acc.occurrence_allocator,
                     );
                     Rc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
@@ -2400,6 +2454,11 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                             p.newline_index.clone(),
                         ),
                         intern_table: parsed.intern_table.clone(),
+                        occurrence_allocator: parsed.occurrence_allocator.clone(),
+                        occurrence_transports: v1_rt::rc_list_push(
+                            acc.occurrence_transports,
+                            parsed.occurrence_transport.clone(),
+                        ),
                     })
                 }
             },
@@ -2423,6 +2482,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             modules: modules.clone(),
             newline_indices: parsed.newline_indices.clone(),
             diagnostics: collect_diagnostics(parse_results.clone()),
+            occurrence_transport: merge_occurrence_transports(parsed.occurrence_transports.clone()),
         })
     }
 }

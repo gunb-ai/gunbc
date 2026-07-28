@@ -8,6 +8,13 @@ use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
+pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_occurrence_binding::ContainmentPath;
+use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted;
+pub use crate::std_occurrence_identity::{alloc_occurrence_id, occurrence_id_allocator_initial};
+pub use crate::std_occurrence_identity::{
+    NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -63,6 +70,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
     FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
+    OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
     OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
@@ -121,6 +129,8 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
 pub struct ParseContext {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_allocator: Option<OccurrenceIdAllocator>,
+    pub occurrence_index: Option<Rc<OccurrenceIndex>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -133,6 +143,48 @@ pub struct ParseResult {
 pub struct ParseWithTableResult {
     pub result: Rc<ParseResult>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_allocator: OccurrenceIdAllocator,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedNodeStampResult {
+    pub node: Rc<Node>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedNodeListStampResult {
+    pub nodes: Rc<Vec<Rc<Node>>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedOptionalNodeStampResult {
+    pub node: Option<Rc<Node>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedPatternStampResult {
+    pub pattern: Option<Rc<MatchPattern>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+pub fn parse_context_occurrence_allocator(ctx: Rc<ParseContext>) -> OccurrenceIdAllocator {
+    match ctx.occurrence_allocator.clone() {
+        Some(allocator) => allocator.clone(),
+        None => occurrence_id_allocator_initial(),
+    }
+}
+
+pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceIndex> {
+    match ctx.occurrence_index.clone() {
+        Some(index) => index.clone(),
+        None => Rc::new(OccurrenceIndex {
+            entries: Rc::new(vec![]),
+        }),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1893,6 +1945,7 @@ pub fn leaf_type_node(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -1920,6 +1973,7 @@ pub fn literal_width_nat_type_node(value: i64, span: Rc<SourceSpan>) -> Rc<Node>
             }),
         }),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -2069,16 +2123,259 @@ pub fn parse_dotted_ident_rest(
     }
 }
 
-pub fn parse_with_table(
+pub fn occurrence_ancestors_push(
+    ancestors: Rc<Vec<OccurrenceId>>,
+    occurrence: OccurrenceId,
+) -> Rc<Vec<OccurrenceId>> {
+    v1_rt::concat(
+        ancestors.clone(),
+        Rc::new({
+            let mut __cons_v = (*Rc::new(vec![])).clone();
+            __cons_v.insert(0, occurrence.clone());
+            __cons_v
+        }),
+    )
+}
+
+pub fn stamp_parsed_node_list(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedNodeListStampResult> {
+    nodes.clone().iter().cloned().fold(
+        Rc::new(ParsedNodeListStampResult {
+            nodes: Rc::new(vec![]),
+            ctx: ctx.clone(),
+        }),
+        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
+            let acc = v1_rt::take_owned(acc);
+            {
+                let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx);
+                Rc::new(ParsedNodeListStampResult {
+                    nodes: v1_rt::rc_list_push(acc.nodes, stamped.node.clone()),
+                    ctx: stamped.ctx.clone(),
+                })
+            }
+        },
+    )
+}
+
+pub fn stamp_parsed_optional_node(
+    node: Option<Rc<Node>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedOptionalNodeStampResult> {
+    match node.clone() {
+        Some(value) => {
+            let stamped = stamp_parsed_node(value.clone(), ancestors.clone(), ctx.clone());
+            Rc::new(ParsedOptionalNodeStampResult {
+                node: Some(stamped.node.clone()),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        None => Rc::new(ParsedOptionalNodeStampResult {
+            node: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_pattern(
+    pattern: Option<Rc<MatchPattern>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedPatternStampResult> {
+    match pattern.clone().as_deref().cloned() {
+        Some(MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        }) => {
+            let stamped = stamp_parsed_node(declaration.clone(), ancestors.clone(), ctx.clone());
+            Rc::new(ParsedPatternStampResult {
+                pattern: Some(Rc::new(MatchPattern::Bind {
+                    declaration: stamped.node.clone(),
+                })),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        Some(MatchPattern::VariantPattern {
+            name,
+            parent_enum,
+            field_bindings,
+            ..
+        }) => {
+            let stamped =
+                stamp_parsed_node_list(field_bindings.clone(), ancestors.clone(), ctx.clone());
+            Rc::new(ParsedPatternStampResult {
+                pattern: Some(Rc::new(MatchPattern::VariantPattern {
+                    name: name.clone(),
+                    parent_enum: parent_enum.clone(),
+                    field_bindings: stamped.nodes.clone(),
+                })),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        Some(other) => Rc::new(ParsedPatternStampResult {
+            pattern: Some(other.clone()),
+            ctx: ctx.clone(),
+        }),
+        None => Rc::new(ParsedPatternStampResult {
+            pattern: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_inferred(
+    inferred: Option<Rc<InferredNode>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedOptionalNodeStampResult> {
+    match inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: node, .. }) => {
+            let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), ctx.clone());
+            Rc::new(ParsedOptionalNodeStampResult {
+                node: Some(stamped.node.clone()),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        _ => Rc::new(ParsedOptionalNodeStampResult {
+            node: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_node(
+    node: Rc<Node>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedNodeStampResult> {
+    {
+        let allocated = alloc_occurrence_id(parse_context_occurrence_allocator(ctx.clone()));
+        let occurrence = allocated.id.clone();
+        let containment = Rc::new(ContainmentPath {
+            ancestors: ancestors.clone(),
+            terminal: occurrence.clone(),
+            _phantom: std::marker::PhantomData,
+        });
+        let projection = Rc::new(OccurrenceProjection {
+            occurrence: occurrence.clone(),
+            authored_name: node.name.clone(),
+            diagnostic_span: node.span.clone(),
+        });
+        let indexed_ctx = Rc::new(ParseContext {
+            occurrence_allocator: Some(allocated.alloc.clone()),
+            occurrence_index: Some(Rc::new(OccurrenceIndex {
+                entries: v1_rt::rc_list_push(
+                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                    Rc::new(OccurrenceIndexEntry {
+                        projection: projection.clone(),
+                        containment: containment.clone(),
+                    }),
+                ),
+            })),
+            ..(*ctx.clone()).clone()
+        });
+        let child_ancestors = occurrence_ancestors_push(ancestors.clone(), occurrence.clone());
+        let children = stamp_parsed_node_list(
+            node.children.clone(),
+            child_ancestors.clone(),
+            indexed_ctx.clone(),
+        );
+        let params = stamp_parsed_node_list(
+            node.params.clone(),
+            child_ancestors.clone(),
+            children.ctx.clone(),
+        );
+        let uses = stamp_parsed_node_list(
+            node.uses.clone(),
+            child_ancestors.clone(),
+            params.ctx.clone(),
+        );
+        let properties = stamp_parsed_node_list(
+            node.properties.clone(),
+            child_ancestors.clone(),
+            uses.ctx.clone(),
+        );
+        let body = stamp_parsed_optional_node(
+            node.body.clone(),
+            child_ancestors.clone(),
+            properties.ctx.clone(),
+        );
+        let transport = stamp_parsed_optional_node(
+            node.transport.clone(),
+            child_ancestors.clone(),
+            body.ctx.clone(),
+        );
+        let annotation = stamp_parsed_optional_node(
+            node.type_annotation.clone(),
+            child_ancestors.clone(),
+            transport.ctx.clone(),
+        );
+        let inferred = stamp_parsed_inferred(
+            node.inferred.clone(),
+            child_ancestors.clone(),
+            annotation.ctx.clone(),
+        );
+        let pattern = stamp_parsed_pattern(
+            node.match_pattern.clone(),
+            child_ancestors.clone(),
+            inferred.ctx.clone(),
+        );
+        let stamped_inferred = match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: _, .. }) => match inferred.node.clone() {
+                Some(inferred_node) => Some(Rc::new(InferredNode::Resolved {
+                    node: inferred_node.clone(),
+                })),
+                None => node.inferred.clone(),
+            },
+            _ => node.inferred.clone(),
+        };
+        Rc::new(ParsedNodeStampResult {
+            node: Rc::new(Node {
+                occurrence_identity: Some(Rc::new(NodeOccurrenceIdentity::OccurrenceMinted {
+                    id: occurrence.clone(),
+                })),
+                children: children.nodes.clone(),
+                params: params.nodes.clone(),
+                uses: uses.nodes.clone(),
+                properties: properties.nodes.clone(),
+                body: body.node.clone(),
+                transport: transport.node.clone(),
+                type_annotation: annotation.node.clone(),
+                inferred: stamped_inferred.clone(),
+                match_pattern: pattern.pattern.clone(),
+                ..(*node.clone()).clone()
+            }),
+            ctx: pattern.ctx.clone(),
+        })
+    }
+}
+
+pub fn empty_occurrence_transport(index: Rc<OccurrenceIndex>) -> Rc<OccurrenceTransport> {
+    Rc::new(OccurrenceTransport {
+        index: index.clone(),
+        declarations: Rc::new(vec![]),
+        references: Rc::new(vec![]),
+    })
+}
+
+pub fn parse_with_table_in_occurrence_scope(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
+    occurrence_allocator: OccurrenceIdAllocator,
 ) -> Rc<ParseWithTableResult> {
     {
         let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
         let ctx = Rc::new(ParseContext {
             source_indices: source_indices.clone(),
             intern_table: pre_interned.clone(),
+            occurrence_allocator: Some(occurrence_allocator.clone()),
+            occurrence_index: Some(Rc::new(OccurrenceIndex {
+                entries: Rc::new(vec![]),
+            })),
         });
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
@@ -2088,17 +2385,41 @@ pub fn parse_with_table(
                     error: r.err.clone(),
                 }),
                 intern_table: r.ctx.clone().intern_table.clone(),
+                occurrence_allocator: parse_context_occurrence_allocator(r.ctx.clone()),
+                occurrence_transport: empty_occurrence_transport(parse_context_occurrence_index(
+                    r.ctx.clone(),
+                )),
             })
         } else {
-            Rc::new(ParseWithTableResult {
-                result: Rc::new(ParseResult {
-                    module: Some(r.module.clone()),
-                    error: None,
-                }),
-                intern_table: r.ctx.clone().intern_table.clone(),
-            })
+            {
+                let stamped = stamp_parsed_node(r.module.clone(), Rc::new(vec![]), r.ctx.clone());
+                Rc::new(ParseWithTableResult {
+                    result: Rc::new(ParseResult {
+                        module: Some(stamped.node.clone()),
+                        error: None,
+                    }),
+                    intern_table: stamped.ctx.clone().intern_table.clone(),
+                    occurrence_allocator: parse_context_occurrence_allocator(stamped.ctx.clone()),
+                    occurrence_transport: empty_occurrence_transport(
+                        parse_context_occurrence_index(stamped.ctx.clone()),
+                    ),
+                })
+            }
         }
     }
+}
+
+pub fn parse_with_table(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_in_occurrence_scope(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        occurrence_id_allocator_initial(),
+    )
 }
 
 pub fn parse(
@@ -2209,6 +2530,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let mod_ = Rc::new(Node {
             ident: Some(mod_ir.id.clone()),
@@ -2514,6 +2836,7 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     match_pattern: None,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
+    occurrence_identity: None,
 }),
     tokens: tokens.clone(),
     ctx: ctx.clone(),
@@ -2697,6 +3020,7 @@ pub fn parse_item_by_form(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -2821,6 +3145,7 @@ pub fn field_to_child_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -2861,6 +3186,7 @@ pub fn variant_to_child_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -2897,6 +3223,7 @@ pub fn outputs_to_inferred(
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             }),
         }))
     } else {
@@ -2956,6 +3283,7 @@ pub fn make_operation_node(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -2999,6 +3327,7 @@ pub fn make_capability_node(
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -3024,6 +3353,7 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -3068,6 +3398,7 @@ pub fn parse_type_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -3112,6 +3443,7 @@ pub fn parse_type_after_kw(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 if has_err(r.err.clone()) {
                     return Rc::new(ItemResult {
@@ -3175,6 +3507,7 @@ pub fn parse_type_after_kw(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -3218,6 +3551,7 @@ pub fn parse_type_after_kw(
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            occurrence_identity: None,
                         });
                         Rc::new(ItemResult {
                             item: item.clone(),
@@ -3260,6 +3594,7 @@ pub fn parse_type_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let raw_tokens = skip_newlines(prefix.tokens.clone());
         let is_sole_constructor = tok_is_ident_text(
@@ -3332,6 +3667,7 @@ pub fn parse_type_body_from_prefix(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -3375,6 +3711,7 @@ pub fn parse_type_body_from_prefix(
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            occurrence_identity: None,
                         });
                         Rc::new(ItemResult {
                             item: item.clone(),
@@ -3417,6 +3754,7 @@ pub fn parse_type_body_after_eq(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __lead, .. } => {
@@ -3486,6 +3824,7 @@ pub fn parse_type_body_after_eq(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(ItemResult {
                     item: item.clone(),
@@ -3572,6 +3911,7 @@ pub fn parse_type_body_after_eq(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    occurrence_identity: None,
                                 });
                                 Rc::new(ItemResult {
                                     item: item.clone(),
@@ -3631,6 +3971,7 @@ pub fn parse_type_body_after_eq(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    occurrence_identity: None,
                                 });
                                 Rc::new(ItemResult {
                                     item: item.clone(),
@@ -3687,6 +4028,7 @@ pub fn parse_type_body_after_eq(
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            occurrence_identity: None,
                         });
                         Rc::new(ItemResult {
                             item: item.clone(),
@@ -3738,6 +4080,7 @@ pub fn try_where_clause(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 let refined = Rc::new(Node {
                     name: "".to_string(),
@@ -3758,6 +4101,7 @@ pub fn try_where_clause(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(TypeResult {
                     type_expr: refined.clone(),
@@ -4581,6 +4925,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(TypeResult {
                     type_expr: te.clone(),
@@ -4722,6 +5067,7 @@ pub fn parse_callable_type_expr(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         maybe_optional(
             ret.tokens.clone(),
@@ -4841,6 +5187,7 @@ pub fn finish_type_expr_from_name(
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 maybe_optional(
                     r3.tokens.clone(),
@@ -5007,6 +5354,7 @@ pub fn maybe_optional(
                 match_pattern: te.match_pattern.clone(),
                 expr_data: te.expr_data.clone(),
                 ident: None,
+                occurrence_identity: None,
             });
             Rc::new(TypeResult {
                 type_expr: ote.clone(),
@@ -5268,6 +5616,7 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -5312,6 +5661,7 @@ pub fn parse_fn_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -5344,6 +5694,7 @@ pub fn parse_fn_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -5398,6 +5749,7 @@ pub fn parse_fn_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -5439,6 +5791,7 @@ pub fn parse_fn_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let tokens = skip_newlines(prefix.tokens.clone());
         let body_result = if tok_is_eq(token_stream_first(tokens.clone())) {
@@ -5500,6 +5853,7 @@ pub fn parse_fn_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -5532,6 +5886,7 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let kw = tok_keyword_text(token_stream_first(tokens.clone()));
         let r = if (kw.clone() == "func".to_string()) {
@@ -5625,6 +5980,7 @@ pub fn parse_block_item_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -5657,6 +6013,7 @@ pub fn parse_block_item_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
@@ -5732,6 +6089,7 @@ pub fn parse_block_item_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -5772,6 +6130,7 @@ pub fn parse_block_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
@@ -5802,6 +6161,7 @@ pub fn parse_block_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -5836,6 +6196,7 @@ pub fn parse_no_body_from_prefix(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -5995,6 +6356,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     match_pattern: r3.type_expr.clone().match_pattern.clone(),
                     expr_data: r3.type_expr.clone().expr_data.clone(),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 let ru = make_resource_use_node(
                     name.clone(),
@@ -6164,6 +6526,7 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -6208,6 +6571,7 @@ pub fn parse_service_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r_ns = expect_name(tokens.clone());
         if has_err(r_ns.err.clone()) {
@@ -6245,6 +6609,7 @@ pub fn parse_service_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
@@ -6320,6 +6685,7 @@ pub fn parse_service_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -8787,6 +9153,7 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -8831,6 +9198,7 @@ pub fn parse_resource_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -8862,6 +9230,7 @@ pub fn parse_resource_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
@@ -8917,6 +9286,7 @@ pub fn parse_resource_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -9494,6 +9864,7 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(
             tokens.clone(),
@@ -9538,6 +9909,7 @@ pub fn parse_alias_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -9569,6 +9941,7 @@ pub fn parse_alias_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r.err.clone()) {
@@ -9623,6 +9996,7 @@ pub fn parse_alias_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -9658,6 +10032,7 @@ pub fn parse_data_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
@@ -9689,6 +10064,7 @@ pub fn parse_data_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r.err.clone()) {
@@ -9746,6 +10122,7 @@ pub fn parse_data_after_kw(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ItemResult {
             item: item.clone(),
@@ -10201,6 +10578,7 @@ pub fn parse_constrained_assignment(
             match_pattern: node.match_pattern.clone(),
             expr_data: node.expr_data.clone(),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ExprResult {
             expr: node.clone(),
@@ -10295,6 +10673,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             match_pattern: None,
             expr_data: Rc::new(ExprData::ExprLet),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(ExprResult {
             expr: node.clone(),
@@ -10371,6 +10750,7 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     match_pattern: node.match_pattern.clone(),
                     expr_data: node.expr_data.clone(),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(ExprResult {
                     expr: node.clone(),
@@ -13131,6 +13511,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
+                    occurrence_identity: None,
                 });
                 Rc::new(ExprResult {
                     expr: node.clone(),

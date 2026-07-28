@@ -12,7 +12,10 @@ pub use crate::v1_std_core::{
     authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
     module_imports, module_items, module_node, no_span,
 };
-pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
+pub use crate::v1_std_core::{
+    CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node, OccurrenceIndex,
+    OccurrenceTransport,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -22,6 +25,7 @@ use std::rc::Rc;
 pub struct ModuleGraph {
     pub modules: Rc<Vec<Rc<ResolvedModule>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,9 +62,10 @@ pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     }
 }
 
-pub fn resolve_modules(
+pub fn resolve_modules_with_occurrence_transport(
     modules: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    occurrence_transport: Rc<OccurrenceTransport>,
 ) -> Rc<ModuleGraph> {
     {
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
@@ -183,8 +188,26 @@ pub fn resolve_modules(
                 v1_rt::concat(dup_diags.clone(), import_diags.clone()),
                 topo_diags.clone(),
             ),
+            occurrence_transport: occurrence_transport.clone(),
         })
     }
+}
+
+pub fn resolve_modules(
+    modules: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ModuleGraph> {
+    resolve_modules_with_occurrence_transport(
+        modules.clone(),
+        source_indices.clone(),
+        Rc::new(OccurrenceTransport {
+            index: Rc::new(OccurrenceIndex {
+                entries: Rc::new(vec![]),
+            }),
+            declarations: Rc::new(vec![]),
+            references: Rc::new(vec![]),
+        }),
+    )
 }
 
 pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {

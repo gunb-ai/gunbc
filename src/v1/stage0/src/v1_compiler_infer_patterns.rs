@@ -303,6 +303,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let present_node = Rc::new(Node {
             name: "Present".to_string(),
@@ -323,6 +324,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         present_node
     }
@@ -355,6 +357,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(Node {
             name: "Holds".to_string(),
@@ -375,6 +378,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -400,6 +404,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         let diagnostic_field = Rc::new(Node {
             name: "diagnostic".to_string(),
@@ -422,6 +427,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         });
         Rc::new(Node {
             name: "Violates".to_string(),
@@ -442,6 +448,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }

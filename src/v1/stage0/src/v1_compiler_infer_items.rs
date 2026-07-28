@@ -21,7 +21,7 @@ pub use crate::v1_std_core::{
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
 };
 pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
+    Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node, OccurrenceTransport,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -78,6 +78,7 @@ pub struct TypedModule {
     pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub occurrence_transport: Option<Rc<OccurrenceTransport>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -93,6 +94,7 @@ pub struct ResolvedGraph {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
 pub fn inferred_to_outputs(

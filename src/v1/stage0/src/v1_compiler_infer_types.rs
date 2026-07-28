@@ -81,6 +81,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -246,6 +247,7 @@ pub fn reground_alias_carrier_identity(
             match_pattern: n.match_pattern.clone(),
             expr_data: n.expr_data.clone(),
             ident: None,
+            occurrence_identity: None,
         })
     } else {
         n.clone()
@@ -277,6 +279,7 @@ pub fn structural_carrier_template_name(
                 match_pattern: n.match_pattern.clone(),
                 expr_data: n.expr_data.clone(),
                 ident: None,
+                occurrence_identity: None,
             }),
             source_indices.clone(),
         )
@@ -372,6 +375,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
+                        occurrence_identity: None,
                     }),
                     Rc::new(Node {
                         name: val_id.clone(),
@@ -394,6 +398,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         match_pattern: None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
+                        occurrence_identity: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
@@ -410,6 +415,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             })),
             None => None,
         },
@@ -444,6 +450,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -459,6 +466,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })),
         None => None,
     }
@@ -511,6 +519,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
                 message: msg.clone(),
             }),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -549,6 +558,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
@@ -564,6 +574,7 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
@@ -604,6 +615,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            occurrence_identity: None,
                         }),
                         Rc::new(Node {
                             name: val_name.clone(),
@@ -626,6 +638,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             match_pattern: None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
+                            occurrence_identity: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
@@ -642,6 +655,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                     match_pattern: None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
+                    occurrence_identity: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -681,6 +695,7 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -711,6 +726,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             }),
             Rc::new(Node {
                 name: "second".to_string(),
@@ -733,6 +749,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 match_pattern: None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
+                occurrence_identity: None,
             }),
         ]),
         connective: Connective::Conj,
@@ -749,6 +766,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -774,6 +792,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
@@ -818,6 +837,7 @@ pub fn algebra_method_field(
             match_pattern: None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
+            occurrence_identity: None,
         })
     }
 }
@@ -846,6 +866,7 @@ pub fn enrich_base_with_fields(
         match_pattern: base.match_pattern.clone(),
         expr_data: base.expr_data.clone(),
         ident: None,
+        occurrence_identity: None,
     })
 }
 

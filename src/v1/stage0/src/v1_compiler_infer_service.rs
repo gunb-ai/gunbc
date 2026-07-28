@@ -375,6 +375,7 @@ pub fn check_service_method_call_node(
                                                 match_pattern: None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
+                                                occurrence_identity: None,
                                             }));
                                         }
                                         __result
@@ -393,6 +394,7 @@ pub fn check_service_method_call_node(
                                     match_pattern: None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
+                                    occurrence_identity: None,
                                 }),
                                 op_params: op.params.clone(),
                             }))

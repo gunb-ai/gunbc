@@ -38,6 +38,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         match_pattern: None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
+        occurrence_identity: None,
     })
 }
 
