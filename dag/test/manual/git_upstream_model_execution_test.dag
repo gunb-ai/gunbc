@@ -33,6 +33,8 @@ fn git_r0_typed_execution_read_back() -> String {
       let readme_path = concat(fixture.path, "/readme")
       let run_path = concat(fixture.path, "/run")
       let raw_path = concat(fixture.path, concat("/", raw_name))
+      let src_path = concat(fixture.path, "/src")
+      let src_keep_path = concat(src_path, "/keep")
       let sha256_source_path = concat(sha256_fixture.path, "/source")
 
       let initialized = gunbc.WitnessBin.Run(
@@ -44,6 +46,8 @@ fn git_r0_typed_execution_read_back() -> String {
       let readme_written = Filesystem.Write(path: readme_path, content: "source")
       let run_written = Filesystem.Write(path: run_path, content: "run")
       let raw_written = Filesystem.Write(path: raw_path, content: "source")
+      let src_created = shell.Mkdir.Parents(path: src_path)
+      let src_keep_written = Filesystem.Write(path: src_keep_path, content: "")
       let run_executable = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "/bin/chmod",
@@ -59,7 +63,7 @@ fn git_r0_typed_execution_read_back() -> String {
       let added = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
-        args: ["add", "--", "readme", "run", "link", raw_name],
+        args: ["add", "--", "readme", "run", "link", "src/keep", raw_name],
         expect: ExpectSuccess,
       )
       let regular_oid = gunbc.WitnessBin.Run(
@@ -98,19 +102,6 @@ fn git_r0_typed_execution_read_back() -> String {
           trim(s: empty_tree.stdout),
           "-m",
           "gitlink",
-        ],
-        expect: ExpectSuccess,
-      )
-      let subtree_indexed = gunbc.WitnessBin.Run(
-        workdir: fixture.path,
-        bin_path: "git",
-        args: [
-          "update-index",
-          "--add",
-          "--cacheinfo",
-          "040000",
-          trim(s: empty_tree.stdout),
-          "src",
         ],
         expect: ExpectSuccess,
       )
@@ -282,7 +273,13 @@ fn git_r0_typed_execution_read_back() -> String {
       let paths = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
-        args: ["ls-tree", "--format=%(path)", trim(s: root_tree.stdout)],
+        args: [
+          "-c",
+          "core.quotePath=false",
+          "ls-tree",
+          "--format=%(path)",
+          trim(s: root_tree.stdout),
+        ],
         expect: ExpectSuccess,
       )
       let index = gunbc.WitnessBin.Run(
@@ -308,11 +305,12 @@ fn git_r0_typed_execution_read_back() -> String {
       let cleaned_fixture = shell.Remove.RecursiveForce(path: fixture.path)
       let cleaned_sha256 = shell.Remove.RecursiveForce(path: sha256_fixture.path)
 
-      let all_operations_succeeded =
-        initialized.success
+      let all_operations_succeeded = initialized.success
           && readme_written.success
           && run_written.success
           && raw_written.success
+          && src_created.success
+          && src_keep_written.success
           && run_executable.success
           && link_created.success
           && added.success
@@ -321,7 +319,6 @@ fn git_r0_typed_execution_read_back() -> String {
           && symlink_oid.success
           && empty_tree.success
           && gitlink_commit.success
-          && subtree_indexed.success
           && gitlink_indexed.success
           && root_tree.success
           && parent_commit.success
@@ -348,24 +345,21 @@ fn git_r0_typed_execution_read_back() -> String {
           && cleaned_fixture.success
           && cleaned_sha256.success
 
-      let content_addresses_grounded =
-        trim(s: regular_oid.stdout) == fixture_oid_text(oid: sha1_blob_regular)
+      let content_addresses_grounded = trim(s: regular_oid.stdout) == fixture_oid_text(oid: sha1_blob_regular)
           && trim(s: executable_oid.stdout) == fixture_oid_text(oid: sha1_blob_executable)
           && trim(s: symlink_oid.stdout) == fixture_oid_text(oid: sha1_blob_symlink)
           && trim(s: empty_tree.stdout) == fixture_oid_text(oid: sha1_subtree)
           && trim(s: sha256_blob.stdout) == fixture_oid_text(oid: sha256_object)
           && trim(s: sha256_format.stdout) == "sha256"
 
-      let tree_modes_grounded =
-        count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
+      let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
           && string_contains(s: modes.stdout, pattern: "100644")
           && string_contains(s: modes.stdout, pattern: "100755")
           && string_contains(s: modes.stdout, pattern: "120000")
           && string_contains(s: modes.stdout, pattern: "040000")
           && string_contains(s: modes.stdout, pattern: "160000")
 
-      let read_back_grounded =
-        trim(s: main_read_back.stdout) == trim(s: next_commit.stdout)
+      let read_back_grounded = trim(s: main_read_back.stdout) == trim(s: next_commit.stdout)
           && trim(s: tag_type.stdout) == "tag"
           && count(split(s: trim(s: index.stdout), delimiter: "\n")) == 6
           && string_contains(s: paths.stdout, pattern: raw_name)
@@ -377,7 +371,37 @@ fn git_r0_typed_execution_read_back() -> String {
         && read_back_grounded {
         git_r0_fixture_expected_readback_receipt()
       } else {
-        "git-r0-typed-execution-mismatch"
+        join(
+          [
+            concat("all=", to_string(all_operations_succeeded)),
+            concat("content=", to_string(content_addresses_grounded)),
+            concat("modes_ok=", to_string(tree_modes_grounded)),
+            concat("readback=", to_string(read_back_grounded)),
+            concat("add=", to_string(added.success)),
+            concat("gitlink=", to_string(gitlink_indexed.success)),
+            concat("gitlink_err=", gitlink_indexed.stderr),
+            concat("tree=", to_string(root_tree.success)),
+            concat("tree_err=", root_tree.stderr),
+            concat("parent=", to_string(parent_commit.success)),
+            concat("parent_err=", parent_commit.stderr),
+            concat("next=", to_string(next_commit.success)),
+            concat("next_err=", next_commit.stderr),
+            concat("tag=", to_string(tag_created.success)),
+            concat("tag_err=", tag_created.stderr),
+            concat("sha256=", to_string(sha256_blob.success)),
+            concat("sha256_err=", sha256_blob.stderr),
+            concat("advance=", to_string(main_advanced.success)),
+            concat("advance_err=", main_advanced.stderr),
+            concat("stale_success=", to_string(stale_refused.success)),
+            concat("missing_success=", to_string(missing_target_refused.success)),
+            concat("fsck=", to_string(fsck.success)),
+            concat("fsck_err=", fsck.stderr),
+            concat("modes=", modes.stdout),
+            concat("index=", index.stdout),
+            concat("paths=", paths.stdout),
+          ],
+          "|",
+        )
       }
     }
   }
