@@ -2,6 +2,7 @@
 // Source module: std.occurrence_identity
 
 use self::NodeOccurrenceIdentity::*;
+pub use crate::std_algebra::FreeMonoid;
 pub use crate::std_types::Bool;
 use crate::std_types::Bool::*;
 use crate::v1_rt;
@@ -23,6 +24,30 @@ pub fn occurrence_identity_scope_law() -> String {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceId {
     pub value: i64,
+}
+
+pub fn occurrence_containment_storage_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. It exists because the generic carrier cannot yet be emitted by the v1 stage0 backend without invented generic derive and match-clone obligations.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_containment_storage_projection_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "DISSOLVE-ON: generic stage0 emission accepts std.occurrence_binding.ContainmentPath<OccurrenceId> without supplemental derive bounds or match clones; then replace this projection with the canonical generic carrier and delete both storage-projection rows.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceContainmentPath {
+    pub ancestors: Rc<Vec<OccurrenceId>>,
+    pub terminal: OccurrenceId,
 }
 
 pub fn occurrence_identity_constructor_spelling_note() -> String {

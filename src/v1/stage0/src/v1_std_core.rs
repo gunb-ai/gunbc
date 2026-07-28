@@ -26,11 +26,12 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_occurrence_binding::ContainmentPath;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::{
     OccurrenceMinted, OccurrenceSynthetic,
 };
-pub use crate::std_occurrence_identity::{NodeOccurrenceIdentity, OccurrenceId};
+pub use crate::std_occurrence_identity::{
+    NodeOccurrenceIdentity, OccurrenceContainmentPath, OccurrenceId,
+};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -337,7 +338,7 @@ pub struct OccurrenceProjection {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIndexEntry {
     pub projection: Rc<OccurrenceProjection>,
-    pub containment: Rc<ContainmentPath<OccurrenceId>>,
+    pub containment: Rc<OccurrenceContainmentPath>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -348,7 +349,7 @@ pub struct OccurrenceIndex {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationOccurrence {
     pub occurrence: OccurrenceId,
-    pub containment: Rc<ContainmentPath<OccurrenceId>>,
+    pub containment: Rc<OccurrenceContainmentPath>,
     pub category: OccurrenceCategory,
     pub diagnostic_span: Rc<SourceSpan>,
 }
@@ -356,7 +357,7 @@ pub struct DeclarationOccurrence {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceOccurrence {
     pub occurrence: OccurrenceId,
-    pub containment: Rc<ContainmentPath<OccurrenceId>>,
+    pub containment: Rc<OccurrenceContainmentPath>,
     pub category: OccurrenceCategory,
     pub diagnostic_span: Rc<SourceSpan>,
 }

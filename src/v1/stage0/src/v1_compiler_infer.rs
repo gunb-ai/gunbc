@@ -24,8 +24,7 @@ use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportServi
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
-pub use crate::std_occurrence_binding::ContainmentPath;
-pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_occurrence_identity::{OccurrenceContainmentPath, OccurrenceId};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::LiteralValue::LitStr;
@@ -18472,7 +18471,7 @@ pub fn reconcile(
 }
 
 pub fn occurrence_containment_has_root(
-    containment: Rc<ContainmentPath<OccurrenceId>>,
+    containment: Rc<OccurrenceContainmentPath>,
     root: OccurrenceId,
 ) -> bool {
     {
@@ -18570,7 +18569,6 @@ pub fn reconcile_with_census_extra(
             item_registry: typed.item_registry.clone(),
             diagnostics: typed.diagnostics.clone(),
             emit_graph_info: emit_info.clone(),
-            occurrence_transport: graph.occurrence_transport.clone(),
         })
     }
 }

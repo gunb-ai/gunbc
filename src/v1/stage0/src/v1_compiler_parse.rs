@@ -9,11 +9,11 @@ use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
 pub use crate::std_algebra::FreeMonoid;
-pub use crate::std_occurrence_binding::ContainmentPath;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceMinted;
 pub use crate::std_occurrence_identity::{alloc_occurrence_id, occurrence_id_allocator_initial};
 pub use crate::std_occurrence_identity::{
-    NodeOccurrenceIdentity, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
+    NodeOccurrenceIdentity, OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult,
+    OccurrenceIdAllocator,
 };
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
@@ -2260,10 +2260,9 @@ pub fn stamp_parsed_node(
     {
         let allocated = alloc_occurrence_id(parse_context_occurrence_allocator(ctx.clone()));
         let occurrence = allocated.id.clone();
-        let containment = Rc::new(ContainmentPath {
+        let containment = Rc::new(OccurrenceContainmentPath {
             ancestors: ancestors.clone(),
             terminal: occurrence.clone(),
-            _phantom: std::marker::PhantomData,
         });
         let projection = Rc::new(OccurrenceProjection {
             occurrence: occurrence.clone(),

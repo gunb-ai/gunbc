@@ -94,7 +94,6 @@ pub struct ResolvedGraph {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
-    pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
 pub fn inferred_to_outputs(
