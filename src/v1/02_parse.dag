@@ -183,6 +183,61 @@ fn parse_context_reference_occurrences(
   }
 }
 
+fn parse_context_with_occurrence_state(
+  ctx: ParseContext,
+  occurrence_allocator: OccurrenceIdAllocator?,
+  occurrence_index: OccurrenceIndex?,
+  declaration_occurrences: List<DeclarationOccurrence>?,
+  reference_occurrences: List<ReferenceOccurrence>?
+) -> ParseContext {
+  ParseContext {
+    source_indices: ctx.source_indices,
+    intern_table: ctx.intern_table,
+    occurrence_allocator: occurrence_allocator,
+    occurrence_index: occurrence_index,
+    declaration_occurrences: declaration_occurrences,
+    reference_occurrences: reference_occurrences,
+  }
+}
+
+fn parse_context_with_intern_table(
+  ctx: ParseContext,
+  intern_table: InternTable
+) -> ParseContext {
+  ParseContext {
+    source_indices: ctx.source_indices,
+    intern_table: intern_table,
+    occurrence_allocator: ctx.occurrence_allocator,
+    occurrence_index: ctx.occurrence_index,
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences,
+  }
+}
+
+fn parsed_node_with_ident(node: Node, ident: Int) -> Node {
+  Node {
+    name: node.name,
+    ident: Present { value: ident },
+    occurrence_identity: node.occurrence_identity,
+    span: node.span,
+    ident_span: node.ident_span,
+    children: node.children,
+    connective: node.connective,
+    params: node.params,
+    inferred: node.inferred,
+    return_cardinality: node.return_cardinality,
+    uses: node.uses,
+    body: node.body,
+    transport: node.transport,
+    properties: node.properties,
+    type_annotation: node.type_annotation,
+    is_self_recursive: node.is_self_recursive,
+    has_non_tail_self_call: node.has_non_tail_self_call,
+    match_pattern: node.match_pattern,
+    expr_data: node.expr_data,
+  }
+}
+
 type AdvanceResult
   = AdvanceOk { token: Token, tokens: TokenStream }
   | AdvanceEof
@@ -1076,7 +1131,10 @@ fn parse_context_record_occurrence(
 ) -> ParseContext {
   match role {
     ParsedOccurrenceDeclaration { category: category } =>
-      with(ctx, {
+      parse_context_with_occurrence_state(
+        ctx: ctx,
+        occurrence_allocator: ctx.occurrence_allocator,
+        occurrence_index: ctx.occurrence_index,
         declaration_occurrences: Present {
           value: list_push(
             parse_context_declaration_occurrences(ctx: ctx),
@@ -1088,9 +1146,14 @@ fn parse_context_record_occurrence(
             }
           ),
         },
-      })
+        reference_occurrences: ctx.reference_occurrences
+      )
     ParsedOccurrenceReference { category: category } =>
-      with(ctx, {
+      parse_context_with_occurrence_state(
+        ctx: ctx,
+        occurrence_allocator: ctx.occurrence_allocator,
+        occurrence_index: ctx.occurrence_index,
+        declaration_occurrences: ctx.declaration_occurrences,
         reference_occurrences: Present {
           value: list_push(
             parse_context_reference_occurrences(ctx: ctx),
@@ -1102,7 +1165,7 @@ fn parse_context_record_occurrence(
             }
           ),
         },
-      })
+      )
     ParsedOccurrenceUnclassified => ctx
   }
 }
@@ -1203,7 +1266,8 @@ fn stamp_parsed_node(
     node: node,
     requested: role
   )
-  let indexed_ctx = with(ctx, {
+  let indexed_ctx = parse_context_with_occurrence_state(
+    ctx: ctx,
     occurrence_allocator: Present { value: allocated.alloc },
     occurrence_index: Present { value: OccurrenceIndex {
       entries: list_push(
@@ -1214,7 +1278,9 @@ fn stamp_parsed_node(
         }
       ),
     } },
-  })
+    declaration_occurrences: ctx.declaration_occurrences,
+    reference_occurrences: ctx.reference_occurrences
+  )
   let indexed_ctx = parse_context_record_occurrence(
     ctx: indexed_ctx,
     role: effective_role,
@@ -1288,20 +1354,29 @@ fn stamp_parsed_node(
     _ => node.inferred
   }
   ParsedNodeStampResult {
-    node: with(node, {
+    node: Node {
+      name: node.name,
+      ident: node.ident,
       occurrence_identity: Present {
         value: OccurrenceMinted { id: occurrence },
       },
+      span: node.span,
+      ident_span: node.ident_span,
       children: children.nodes,
+      connective: node.connective,
       params: params.nodes,
+      inferred: stamped_inferred,
+      return_cardinality: node.return_cardinality,
       uses: uses.nodes,
-      properties: properties.nodes,
       body: body.node,
       transport: transport.node,
+      properties: properties.nodes,
       type_annotation: annotation.node,
-      inferred: stamped_inferred,
+      is_self_recursive: node.is_self_recursive,
+      has_non_tail_self_call: node.has_non_tail_self_call,
       match_pattern: pattern.pattern,
-    }),
+      expr_data: node.expr_data,
+    },
     ctx: pattern.ctx,
   }
 }
@@ -1398,7 +1473,10 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
   let ctx = r.ctx
 
   let mod_ir = intern(table: ctx.intern_table, s: mod_name)
-  let ctx = with(ctx, { intern_table: mod_ir.table })
+  let ctx = parse_context_with_intern_table(
+    ctx: ctx,
+    intern_table: mod_ir.table
+  )
   let base_mod = Node {
     name: mod_name, span: start_span,
     ident_span: Present { value: mod_name_span },
@@ -1408,7 +1486,7 @@ fn parse_module(tokens: TokenStream, ctx: ParseContext) -> ModuleResult {
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
-  let mod = with(base_mod, { ident: Present { value: mod_ir.id } })
+  let mod = parsed_node_with_ident(node: base_mod, ident: mod_ir.id)
   ModuleResult { module: mod, tokens: tokens, ctx: ctx, err: none }
 }
 
@@ -1467,15 +1545,21 @@ fn parse_import(tokens: TokenStream, ctx: ParseContext) -> ImportResult {
     let tokens = skip_newlines(tokens: r.tokens)
     let base_imp = import_node(module_path: mod_path, is_all: false, specific_names: names, span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
-    let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(base_imp, { ident: Present { value: imp_ir.id } })
+    let ctx = parse_context_with_intern_table(
+      ctx: ctx,
+      intern_table: imp_ir.table
+    )
+    let imp = parsed_node_with_ident(node: base_imp, ident: imp_ir.id)
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     let tokens = skip_newlines(tokens: tokens)
     let base_imp = import_node(module_path: mod_path, is_all: true, specific_names: [], span: start_span, name_span: mod_path_span)
     let imp_ir = intern(table: ctx.intern_table, s: mod_path)
-    let ctx = with(ctx, { intern_table: imp_ir.table })
-    let imp = with(base_imp, { ident: Present { value: imp_ir.id } })
+    let ctx = parse_context_with_intern_table(
+      ctx: ctx,
+      intern_table: imp_ir.table
+    )
+    let imp = parsed_node_with_ident(node: base_imp, ident: imp_ir.id)
     ImportResult { import: imp, tokens: tokens, ctx: ctx, err: none }
   }
 }
