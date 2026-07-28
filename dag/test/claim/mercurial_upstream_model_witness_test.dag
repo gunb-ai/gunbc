@@ -21,18 +21,25 @@ import extdeps.mercurial {
   MercurialPhaseWireEntry,
   MercurialSubrepository,
   MercurialObsolescenceMarker,
+  MercurialEvolutionMetadata,
   MercurialEvolutionNotEnabled,
   MercurialEvolutionMarkers,
   MercurialRepositoryRequirements,
+  MercurialRepositoryAvailability,
   MercurialRepositoryPartial,
+  MercurialRepositoryInaccessible,
   MercurialRepositoryProjection,
+  MercurialRepositoryContents,
   MercurialRepositoryState,
   MercurialDecoded,
   MercurialDecodeRefused,
+  MercurialRepositoryUnavailable,
   MercurialMissingCopySourceRevision,
   MercurialMissingPhase,
   MercurialDuplicatePhase,
   MercurialPhaseMonotonicityViolation,
+  MercurialInaccessibleProjectionCarriesRepositoryFacts,
+  MercurialChangesetPresentAndDeclaredMissing,
   MercurialRegularFile,
   MercurialExecutableFile,
   MercurialSymlink,
@@ -47,6 +54,7 @@ import extdeps.mercurial {
   MercurialReadBackMatches,
   MercurialReadBackMismatch,
   MercurialReadBackInvalid,
+  MercurialReadBackUnavailable,
   MercurialConditionalAdvanceUnavailable,
   mercurial_decode_projection,
   mercurial_project_repository,
@@ -54,6 +62,7 @@ import extdeps.mercurial {
   mercurial_exchange_disposition,
   mercurial_portable_history,
   mercurial_named_branch_changesets,
+  mercurial_repository_contents,
   mercurial_r0_conditional_advance,
 }
 import std.bytes { octets_bytes }
@@ -296,10 +305,53 @@ fn projection_with_file_revisions(
   }
 }
 
+fn projection_with_evolution(
+  projection: MercurialRepositoryProjection,
+  evolution: MercurialEvolutionMetadata,
+) -> MercurialRepositoryProjection {
+  MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    publishing: projection.publishing,
+    subrepositories: projection.subrepositories,
+    evolution: evolution,
+    availability: projection.availability,
+  }
+}
+
+fn projection_with_availability(
+  projection: MercurialRepositoryProjection,
+  availability: MercurialRepositoryAvailability,
+) -> MercurialRepositoryProjection {
+  MercurialRepositoryProjection {
+    requirements: projection.requirements,
+    file_revisions: projection.file_revisions,
+    manifests: projection.manifests,
+    changesets: projection.changesets,
+    local_revisions: projection.local_revisions,
+    heads: projection.heads,
+    bookmarks: projection.bookmarks,
+    tags: projection.tags,
+    phases: projection.phases,
+    publishing: projection.publishing,
+    subrepositories: projection.subrepositories,
+    evolution: projection.evolution,
+    availability: availability,
+  }
+}
+
 fn fixture_repository() -> MercurialRepositoryState? {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecoded { repository } => Present { value: repository }
     MercurialDecodeRefused { cause: _ } => Absent
+    MercurialRepositoryUnavailable { reason: _ } => Absent
   }
 }
 
@@ -315,10 +367,69 @@ test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool 
     && string_contains(s: receipt, pattern: "copy=bin/run<-src/main.dag")
 }
 
+test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool {
+  let invalid = projection_with_availability(
+    projection: fixture_projection(),
+    availability: MercurialRepositoryPartial {
+      missing_changesets: [hg_c0],
+      missing_manifests: [],
+      missing_file_revisions: [hg_file_missing],
+    },
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialChangesetPresentAndDeclaredMissing { changeset },
+    } => changeset == hg_c0
+    _ => false
+  }
+}
+
+test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts() -> Bool {
+  let invalid = projection_with_availability(
+    projection: fixture_projection(),
+    availability: MercurialRepositoryInaccessible {
+      reason: "repository permission denied",
+    },
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialInaccessibleProjectionCarriesRepositoryFacts,
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> Bool {
+  let inaccessible = MercurialRepositoryProjection {
+    requirements: MercurialRepositoryRequirements { tokens: [] },
+    file_revisions: [],
+    manifests: [],
+    changesets: [],
+    local_revisions: [],
+    heads: [],
+    bookmarks: [],
+    tags: [],
+    phases: [],
+    publishing: MercurialNonPublishingServer,
+    subrepositories: [],
+    evolution: MercurialEvolutionNotEnabled,
+    availability: MercurialRepositoryInaccessible {
+      reason: "repository permission denied",
+    },
+  }
+  match mercurial_decode_projection(projection: inaccessible) {
+    MercurialRepositoryUnavailable { reason } =>
+      reason == "repository permission denied"
+    _ => false
+  }
+}
+
 test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecodeRefused { cause: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository } =>
+      let contents = mercurial_repository_contents(repository: repository)
       let projected = mercurial_project_repository(repository: repository)
       match mercurial_assess_read_back(
         expected: repository,
@@ -328,10 +439,10 @@ test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
         },
       ) {
         MercurialReadBackMatches { observed_by: _ } =>
-          count(repository.file_revisions) == 3
-            && count(repository.manifests) == 1
-            && count(repository.changesets) == 3
-            && count(repository.subrepositories) == 1
+          count(contents.file_revisions) == 3
+            && count(contents.manifests) == 1
+            && count(contents.changesets) == 3
+            && count(contents.subrepositories) == 1
         _ => false
       }
   }
@@ -367,6 +478,7 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
         MercurialReadBackMismatch { observed_by: _, expected: _, observed: _ } => true
         MercurialReadBackMatches { observed_by: _ } => false
         MercurialReadBackInvalid { observed_by: _, cause: _ } => false
+        MercurialReadBackUnavailable { observed_by: _, reason: _ } => false
       }
   }
 }
@@ -375,7 +487,8 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      match repository.manifests.first() {
+      let contents = mercurial_repository_contents(repository: repository)
+      match contents.manifests.first() {
         Absent => false
         Present { value: manifest } =>
           let entries = manifest.entries
@@ -411,7 +524,8 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      match repository.file_revisions.skip(n: 1).first() {
+      let contents = mercurial_repository_contents(repository: repository)
+      match contents.file_revisions.skip(n: 1).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
           MercurialNotCopied => false
@@ -477,8 +591,10 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
   )
   match mercurial_decode_projection(projection: declared_partial) {
     MercurialDecodeRefused { cause: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository } =>
-      match repository.file_revisions.skip(n: 2).first() {
+      let contents = mercurial_repository_contents(repository: repository)
+      match contents.file_revisions.skip(n: 2).first() {
         Absent => false
         Present { value: file_revision } => match file_revision.copy {
           MercurialCopiedFrom { path: _, file_revision: source_revision } =>
@@ -498,11 +614,15 @@ test fn witness_mercurial_clone_local_revision_can_change_without_identity_chang
   )
   match a {
     MercurialDecodeRefused { cause: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
     MercurialDecoded { repository: repo_a } => match b {
       MercurialDecodeRefused { cause: _ } => false
+      MercurialRepositoryUnavailable { reason: _ } => false
       MercurialDecoded { repository: repo_b } =>
+        let contents_a = mercurial_repository_contents(repository: repo_a)
+        let contents_b = mercurial_repository_contents(repository: repo_b)
         mercurial_portable_history(repository: repo_a) == mercurial_portable_history(repository: repo_b)
-          && !(repo_a.local_revisions == repo_b.local_revisions)
+          && !(contents_a.local_revisions == contents_b.local_revisions)
     }
   }
 }
@@ -511,12 +631,13 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
+      let contents = mercurial_repository_contents(repository: repository)
       mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
-        && repository.heads == [
+        && contents.heads == [
           MercurialHead { changeset: hg_c1 },
           MercurialHead { changeset: hg_c2 },
         ]
-        && repository.bookmarks == [
+        && contents.bookmarks == [
           MercurialBookmark { name: "main", target: hg_c1 },
         ]
   }
@@ -526,22 +647,23 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
   match fixture_repository() {
     Absent => false
     Present { value: repository } =>
-      count(repository.phases) == 3
-        && match repository.phases.first() {
+      let contents = mercurial_repository_contents(repository: repository)
+      count(contents.phases) == 3
+        && match contents.phases.first() {
           Present { value: entry } => match entry.phase {
             MercurialPublic => true
             _ => false
           }
           Absent => false
         }
-        && match repository.phases.skip(n: 1).first() {
+        && match contents.phases.skip(n: 1).first() {
           Present { value: entry } => match entry.phase {
             MercurialDraft => true
             _ => false
           }
           Absent => false
         }
-        && match repository.phases.skip(n: 2).first() {
+        && match contents.phases.skip(n: 2).first() {
           Present { value: entry } => match entry.phase {
             MercurialSecret => true
             _ => false
@@ -635,23 +757,17 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
   match fixture_repository() {
     Absent => false
     Present { value: with_evolution } =>
-      let without_evolution = MercurialRepositoryState {
-        requirements: with_evolution.requirements,
-        file_revisions: with_evolution.file_revisions,
-        manifests: with_evolution.manifests,
-        changesets: with_evolution.changesets,
-        local_revisions: with_evolution.local_revisions,
-        heads: with_evolution.heads,
-        bookmarks: with_evolution.bookmarks,
-        tags: with_evolution.tags,
-        phases: with_evolution.phases,
-        publishing: with_evolution.publishing,
-        subrepositories: with_evolution.subrepositories,
-        evolution: MercurialEvolutionNotEnabled,
-        availability: with_evolution.availability,
+      match mercurial_decode_projection(
+        projection: projection_with_evolution(
+          projection: fixture_projection(),
+          evolution: MercurialEvolutionNotEnabled,
+        ),
+      ) {
+        MercurialDecoded { repository: without_evolution } =>
+          mercurial_portable_history(repository: with_evolution) == mercurial_portable_history(repository: without_evolution)
+            && !(with_evolution == without_evolution)
+        _ => false
       }
-      mercurial_portable_history(repository: with_evolution) == mercurial_portable_history(repository: without_evolution)
-        && !(with_evolution == without_evolution)
   }
 }
 
@@ -686,6 +802,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
@@ -709,6 +826,7 @@ test fn witness_mercurial_unknown_phase_refuses() -> Bool {
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
@@ -744,6 +862,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 
@@ -776,6 +895,7 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
+    MercurialRepositoryUnavailable { reason: _ } => false
   }
 }
 

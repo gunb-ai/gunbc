@@ -173,7 +173,7 @@ type MercurialRepositoryRequirements {
   tokens: List<NonEmptyStr>
 }
 
-type MercurialRepositoryState {
+type MercurialRepositoryContents {
   requirements: MercurialRepositoryRequirements
   file_revisions: List<MercurialFileRevision>
   manifests: List<MercurialManifest>
@@ -186,7 +186,50 @@ type MercurialRepositoryState {
   publishing: MercurialPublishingBehavior
   subrepositories: List<MercurialSubrepository>
   evolution: MercurialEvolutionMetadata
-  availability: MercurialRepositoryAvailability
+}
+
+type MercurialRepositoryState
+  = MercurialRepositoryStateComplete {
+      contents: MercurialRepositoryContents,
+    }
+  | MercurialRepositoryStatePartial {
+      contents: MercurialRepositoryContents,
+      missing_changesets: List<MercurialChangesetId>,
+      missing_manifests: List<MercurialManifestId>,
+      missing_file_revisions: List<MercurialFileRevisionId>,
+    }
+
+fn mercurial_repository_contents(
+  repository: MercurialRepositoryState,
+) -> MercurialRepositoryContents {
+  match repository {
+    MercurialRepositoryStateComplete { contents } => contents
+    MercurialRepositoryStatePartial {
+      contents,
+      missing_changesets: _,
+      missing_manifests: _,
+      missing_file_revisions: _,
+    } => contents
+  }
+}
+
+fn mercurial_repository_availability(
+  repository: MercurialRepositoryState,
+) -> MercurialRepositoryAvailability {
+  match repository {
+    MercurialRepositoryStateComplete { contents: _ } =>
+      MercurialRepositoryComplete
+    MercurialRepositoryStatePartial {
+      contents: _,
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } => MercurialRepositoryPartial {
+      missing_changesets: missing_changesets,
+      missing_manifests: missing_manifests,
+      missing_file_revisions: missing_file_revisions,
+    }
+  }
 }
 
 type MercurialManifestWireEntry {
@@ -268,6 +311,16 @@ type MercurialProjectionRefusal
       child: MercurialChangesetId,
       child_phase: MercurialPhase,
     }
+  | MercurialInaccessibleProjectionCarriesRepositoryFacts
+  | MercurialChangesetPresentAndDeclaredMissing {
+      changeset: MercurialChangesetId,
+    }
+  | MercurialManifestPresentAndDeclaredMissing {
+      manifest: MercurialManifestId,
+    }
+  | MercurialFileRevisionPresentAndDeclaredMissing {
+      file_revision: MercurialFileRevisionId,
+    }
 
 type MercurialChangesetReferenceOrigin
   = MercurialLocalRevisionTarget { revision: MercurialLocalRevision }
@@ -281,6 +334,130 @@ type MercurialChangesetReferenceOrigin
 type MercurialChangesetReference {
   target: MercurialChangesetId
   origin: MercurialChangesetReferenceOrigin
+}
+
+type MercurialRepositoryCompleteness
+  = MercurialContentsComplete
+  | MercurialContentsPartial {
+      missing_changesets: List<MercurialChangesetId>,
+      missing_manifests: List<MercurialManifestId>,
+      missing_file_revisions: List<MercurialFileRevisionId>,
+    }
+
+type MercurialProjectionAccessibilityOutcome
+  = MercurialProjectionAccessible {
+      completeness: MercurialRepositoryCompleteness,
+    }
+  | MercurialProjectionUnavailable { reason: NonEmptyStr }
+  | MercurialProjectionAccessibilityRefused {
+      cause: MercurialProjectionRefusal,
+    }
+
+fn mercurial_projection_accessibility(
+  projection: MercurialRepositoryProjection,
+) -> MercurialProjectionAccessibilityOutcome {
+  match projection.availability {
+    MercurialRepositoryInaccessible { reason } =>
+      let evolution_facts = match projection.evolution {
+        MercurialEvolutionNotEnabled => false
+        MercurialEvolutionMarkers { markers } => count(markers) > 0
+      }
+      if count(projection.requirements.tokens) > 0
+        || count(projection.file_revisions) > 0
+        || count(projection.manifests) > 0
+        || count(projection.changesets) > 0
+        || count(projection.local_revisions) > 0
+        || count(projection.heads) > 0
+        || count(projection.bookmarks) > 0
+        || count(projection.tags) > 0
+        || count(projection.phases) > 0
+        || count(projection.subrepositories) > 0
+        || evolution_facts {
+        MercurialProjectionAccessibilityRefused {
+          cause: MercurialInaccessibleProjectionCarriesRepositoryFacts,
+        }
+      } else {
+        MercurialProjectionUnavailable { reason: reason }
+      }
+    MercurialRepositoryComplete => MercurialProjectionAccessible {
+      completeness: MercurialContentsComplete,
+    }
+    MercurialRepositoryPartial {
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } =>
+      let overlapping_changesets = projection.changesets
+        |> filter(changeset =>
+          any(missing_changesets, missing => missing == changeset.node)
+        )
+        |> map(changeset => changeset.node)
+      let overlapping_manifests = projection.manifests
+        |> filter(manifest =>
+          any(missing_manifests, missing => missing == manifest.node)
+        )
+        |> map(manifest => manifest.node)
+      let overlapping_file_revisions = projection.file_revisions
+        |> filter(file_revision =>
+          any(
+            missing_file_revisions,
+            missing => missing == file_revision.node,
+          )
+        )
+        |> map(file_revision => file_revision.node)
+      match overlapping_changesets.first() {
+        Present { value: changeset } =>
+          MercurialProjectionAccessibilityRefused {
+            cause: MercurialChangesetPresentAndDeclaredMissing {
+              changeset: changeset,
+            }
+          }
+        Absent =>
+          match overlapping_manifests.first() {
+            Present { value: manifest } =>
+              MercurialProjectionAccessibilityRefused {
+                cause: MercurialManifestPresentAndDeclaredMissing {
+                  manifest: manifest,
+                }
+              }
+            Absent =>
+              match overlapping_file_revisions.first() {
+                Present { value: file_revision } =>
+                  MercurialProjectionAccessibilityRefused {
+                    cause: MercurialFileRevisionPresentAndDeclaredMissing {
+                      file_revision: file_revision,
+                    }
+                  }
+                Absent => MercurialProjectionAccessible {
+                  completeness: MercurialContentsPartial {
+                    missing_changesets: missing_changesets,
+                    missing_manifests: missing_manifests,
+                    missing_file_revisions: missing_file_revisions,
+                  },
+                }
+              }
+          }
+  }
+}
+
+fn mercurial_repository_state_from_contents(
+  contents: MercurialRepositoryContents,
+  completeness: MercurialRepositoryCompleteness,
+) -> MercurialRepositoryState {
+  match completeness {
+    MercurialContentsComplete =>
+      MercurialRepositoryStateComplete { contents: contents }
+    MercurialContentsPartial {
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } => MercurialRepositoryStatePartial {
+      contents: contents,
+      missing_changesets: missing_changesets,
+      missing_manifests: missing_manifests,
+      missing_file_revisions: missing_file_revisions,
+    }
+  }
 }
 
 type MercurialManifestDecodeOutcome
@@ -1037,9 +1214,11 @@ fn mercurial_validate_references(
 type MercurialDecodeOutcome
   = MercurialDecoded { repository: MercurialRepositoryState }
   | MercurialDecodeRefused { cause: MercurialProjectionRefusal }
+  | MercurialRepositoryUnavailable { reason: NonEmptyStr }
 
-fn mercurial_decode_projection(
+fn mercurial_decode_accessible_projection(
   projection: MercurialRepositoryProjection,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialDecodeOutcome {
   match mercurial_decode_manifests(wires: projection.manifests) {
     MercurialManifestDecodeRefused { cause } =>
@@ -1086,8 +1265,8 @@ fn mercurial_decode_projection(
                           ) {
                             MercurialReferenceInvalid { cause } =>
                               MercurialDecodeRefused { cause: cause }
-                            MercurialReferencesValid => MercurialDecoded {
-                              repository: MercurialRepositoryState {
+                            MercurialReferencesValid =>
+                              let contents = MercurialRepositoryContents {
                                 requirements: projection.requirements,
                                 file_revisions: projection.file_revisions,
                                 manifests: manifests,
@@ -1100,15 +1279,35 @@ fn mercurial_decode_projection(
                                 publishing: projection.publishing,
                                 subrepositories: projection.subrepositories,
                                 evolution: projection.evolution,
-                                availability: projection.availability,
                               }
-                            }
+                              MercurialDecoded {
+                                repository: mercurial_repository_state_from_contents(
+                                  contents: contents,
+                                  completeness: completeness,
+                                ),
+                              }
                           }
                     }
                   }
               }
           }
       }
+  }
+}
+
+fn mercurial_decode_projection(
+  projection: MercurialRepositoryProjection,
+) -> MercurialDecodeOutcome {
+  match mercurial_projection_accessibility(projection: projection) {
+    MercurialProjectionAccessibilityRefused { cause } =>
+      MercurialDecodeRefused { cause: cause }
+    MercurialProjectionUnavailable { reason } =>
+      MercurialRepositoryUnavailable { reason: reason }
+    MercurialProjectionAccessible { completeness } =>
+      mercurial_decode_accessible_projection(
+        projection: projection,
+        completeness: completeness,
+      )
   }
 }
 
@@ -1155,20 +1354,21 @@ fn mercurial_project_phase(entry: MercurialPhaseEntry) -> MercurialPhaseWireEntr
 fn mercurial_project_repository(
   repository: MercurialRepositoryState,
 ) -> MercurialRepositoryProjection {
+  let contents = mercurial_repository_contents(repository: repository)
   MercurialRepositoryProjection {
-    requirements: repository.requirements,
-    file_revisions: repository.file_revisions,
-    manifests: repository.manifests |> map(m => mercurial_project_manifest(manifest: m)),
-    changesets: repository.changesets,
-    local_revisions: repository.local_revisions,
-    heads: repository.heads,
-    bookmarks: repository.bookmarks,
-    tags: repository.tags,
-    phases: repository.phases |> map(p => mercurial_project_phase(entry: p)),
-    publishing: repository.publishing,
-    subrepositories: repository.subrepositories,
-    evolution: repository.evolution,
-    availability: repository.availability,
+    requirements: contents.requirements,
+    file_revisions: contents.file_revisions,
+    manifests: contents.manifests |> map(m => mercurial_project_manifest(manifest: m)),
+    changesets: contents.changesets,
+    local_revisions: contents.local_revisions,
+    heads: contents.heads,
+    bookmarks: contents.bookmarks,
+    tags: contents.tags,
+    phases: contents.phases |> map(p => mercurial_project_phase(entry: p)),
+    publishing: contents.publishing,
+    subrepositories: contents.subrepositories,
+    evolution: contents.evolution,
+    availability: mercurial_repository_availability(repository: repository),
   }
 }
 
@@ -1188,6 +1388,10 @@ type MercurialReadBackAssessment
       observed_by: NonEmptyStr,
       cause: MercurialProjectionRefusal,
     }
+  | MercurialReadBackUnavailable {
+      observed_by: NonEmptyStr,
+      reason: NonEmptyStr,
+    }
 
 fn mercurial_assess_read_back(
   expected: MercurialRepositoryState,
@@ -1198,6 +1402,11 @@ fn mercurial_assess_read_back(
       observed_by: observation.observed_by,
       cause: cause,
     }
+    MercurialRepositoryUnavailable { reason } =>
+      MercurialReadBackUnavailable {
+        observed_by: observation.observed_by,
+        reason: reason,
+      }
     MercurialDecoded { repository: observed } =>
       if observed == expected {
         MercurialReadBackMatches { observed_by: observation.observed_by }
@@ -1214,14 +1423,15 @@ fn mercurial_assess_read_back(
 fn mercurial_portable_history(
   repository: MercurialRepositoryState,
 ) -> List<MercurialChangesetId> {
-  repository.changesets |> map(c => c.node)
+  mercurial_repository_contents(repository: repository).changesets
+    |> map(c => c.node)
 }
 
 fn mercurial_named_branch_changesets(
   repository: MercurialRepositoryState,
   branch: MercurialNamedBranchName,
 ) -> List<MercurialChangesetId> {
-  repository.changesets
+  mercurial_repository_contents(repository: repository).changesets
     |> filter(c => c.branch == branch)
     |> map(c => c.node)
 }
