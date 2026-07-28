@@ -13,12 +13,18 @@ import std.trait_derive_shape {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
   im_15_1_0_vector_trait_implementations_authority,
+  rust_1_93_btree_set_trait_implementations_authority,
+  rust_1_93_hash_set_trait_implementations_authority,
   rust_1_93_vec_trait_implementations_authority,
   serde_1_0_228_btree_set_deserialize_authority,
+  serde_1_0_228_btree_set_serialize_authority,
+  serde_1_0_228_hash_set_deserialize_authority,
+  serde_1_0_228_hash_set_serialize_authority,
   serde_1_0_228_vec_serialize_authority
 }
 import v2.std.compilers.target_model {
   TargetCollectionRealization,
+  TargetCollectionWitnessHash,
   TargetCollectionReprVec,
   TargetDeriveSupplementalGenericBoundContract,
   TargetDeriveSupplementalGenericBoundContractAuthority,
@@ -44,12 +50,17 @@ import v2.std.compilers.target_model {
   target_representation_parameter_slots_empty
 }
 import v2.compiler.translate {
+  collection_realization_from_target,
   free_monoid_collection_realization_from_target,
   target_collection_choice_from_node
 }
 import v2.extdeps.languages.rust {
+  RustSupplementalGenericBoundContractCoverageBlocker,
   rust_collection_choice_bundle_node,
   rust_free_monoid_collection_primary_choice,
+  rust_hash_set_supplemental_generic_bound_contract_blockers,
+  rust_set_collection_hash_choice,
+  rust_set_collection_primary_choice,
   rust_target_model
 }
 import v2.std.algebra { fold_list_node }
@@ -70,7 +81,7 @@ import v2.std.node {
 }
 import v2.std.optional { Absent, Optional, Present }
 
-data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier and target-bundle codec prerequisite. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. Versioned Rust, serde, and im authorities flow with each contract and requirement."
+data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside ReprGroundingDeriveTrait remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
 
 data sgb_type_param: Symbol = ^sgb_type_param
 data sgb_left_slot: Symbol = ^sgb_left_slot
@@ -118,6 +129,16 @@ fn sgb_concrete_source_carrier_node() -> Node {
       Edge { label: Positional, target: target_carrier_free_monoid_node() },
       Edge { label: Positional, target: char_kernel_type_node() }
     ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_collection_eligible_elem_node() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: ^target_collection_kernel_string }
+    },
+    children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
@@ -443,6 +464,46 @@ fn sgb_contract_is_explicit_empty(
   contract.derive_trait == derive_trait
     && contract.authority == authority
     && count(contract.requirements.keys()) == 0
+}
+
+fn sgb_hash_set_coverage_blocker_matches(
+  blocker: RustSupplementalGenericBoundContractCoverageBlocker,
+  derive_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Bool {
+  blocker.derive_trait == derive_trait
+    && blocker.representation_parameter == ^target_collection_type_param_t
+    && blocker.authority == authority
+    && match blocker.unrepresentable_requirement {
+      TargetCollectionWitnessHash { type_param: type_param } =>
+        type_param == ^target_collection_type_param_t
+      _ => false
+    }
+}
+
+fn sgb_hash_set_coverage_blockers_match_exact() -> Bool {
+  match rust_hash_set_supplemental_generic_bound_contract_blockers {
+    Empty => false
+    Cons { head: partial_eq_blocker, tail: remaining } =>
+      match remaining {
+        Empty => false
+        Cons { head: deserialize_blocker, tail: tail } =>
+          match tail {
+            Cons { head: _, tail: _ } => false
+            Empty =>
+              sgb_hash_set_coverage_blocker_matches(
+                blocker: partial_eq_blocker,
+                derive_trait: ReprDerivePartialEq,
+                authority: rust_1_93_hash_set_trait_implementations_authority
+              )
+                && sgb_hash_set_coverage_blocker_matches(
+                  blocker: deserialize_blocker,
+                  derive_trait: ReprDeriveDeserialize,
+                  authority: serde_1_0_228_hash_set_deserialize_authority
+                )
+          }
+      }
+  }
 }
 
 fn sgb_choice_bundle_node() -> Node {
@@ -905,6 +966,153 @@ test fn rust_vec_unmodeled_ord_contract_refuses_as_missing() -> Bool {
       ) {
         Accepted { value: _, diagnostics: _ } => false
         Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+test fn rust_set_target_bundle_round_trip_preserves_both_production_policies() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      sgb_choice_matches_exact(
+        choice: decoded.primary,
+        expected: rust_set_collection_primary_choice()
+      )
+        && match decoded.alternatives {
+          Empty => false
+          Cons { head: hash_choice, tail: tail } =>
+            match tail {
+              Cons { head: _, tail: _ } => false
+              Empty =>
+                sgb_choice_matches_exact(
+                  choice: hash_choice,
+                  expected: rust_set_collection_hash_choice()
+                )
+            }
+        }
+  }
+}
+
+test fn rust_btree_set_debug_contract_is_explicit_known_zero_from_std_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveDebug
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          sgb_contract_is_explicit_empty(
+            contract: contract,
+            derive_trait: ReprDeriveDebug,
+            authority: rust_1_93_btree_set_trait_implementations_authority
+          )
+      }
+  }
+}
+
+test fn rust_btree_set_serialize_contract_is_explicit_known_zero_from_serde_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveSerialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          sgb_contract_is_explicit_empty(
+            contract: contract,
+            derive_trait: ReprDeriveSerialize,
+            authority: serde_1_0_228_btree_set_serialize_authority
+          )
+      }
+  }
+}
+
+test fn rust_btree_set_deserialize_contract_requires_ord_from_serde_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveDeserialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDeriveDeserialize
+            && contract.authority == serde_1_0_228_btree_set_deserialize_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveOrd,
+              authority: serde_1_0_228_btree_set_deserialize_authority
+            )
+      }
+  }
+}
+
+test fn rust_hash_set_serialize_contract_is_known_zero_after_bundle_decode() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match decoded.alternatives {
+        Empty => false
+        Cons { head: hash_choice, tail: _ } =>
+          match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+            row: sgb_realization(
+              source_carrier: decoded.source_carrier,
+              primary: hash_choice,
+              alternatives: Empty
+            ),
+            elem: sgb_collection_eligible_elem_node(),
+            derive_trait: ReprDeriveSerialize
+          ) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: contract, diagnostics: _ } =>
+              sgb_contract_is_explicit_empty(
+                contract: contract,
+                derive_trait: ReprDeriveSerialize,
+                authority: serde_1_0_228_hash_set_serialize_authority
+              )
+          }
+      }
+  }
+}
+
+test fn rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match decoded.alternatives {
+        Empty => false
+        Cons { head: hash_choice, tail: _ } =>
+          let hash_realization = sgb_realization(
+            source_carrier: decoded.source_carrier,
+            primary: hash_choice,
+            alternatives: Empty
+          )
+          match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+            row: hash_realization,
+            elem: sgb_collection_eligible_elem_node(),
+            derive_trait: ReprDerivePartialEq
+          ) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: _ } =>
+              match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+                row: hash_realization,
+                elem: sgb_collection_eligible_elem_node(),
+                derive_trait: ReprDeriveDeserialize
+              ) {
+                Accepted { value: _, diagnostics: _ } => false
+                Rejected { diagnostics: _ } =>
+                  sgb_hash_set_coverage_blockers_match_exact()
+              }
+          }
       }
   }
 }

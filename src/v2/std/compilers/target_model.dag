@@ -9208,18 +9208,32 @@ fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_authority_insert(
+fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
   contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
   derive_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  authority: ExternalAuthority,
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 ) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   map_insert(
     m: contracts,
     key: target_grounding_derive_trait_key(derive_trait: derive_trait),
     value: TargetDeriveSupplementalGenericBoundContractAuthority {
       authority: authority,
-      requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
+      requirements: requirements
     }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_authority_insert(
+  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
+  derive_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+    contracts: contracts,
+    derive_trait: derive_trait,
+    authority: authority,
+    requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
   )
 }
 

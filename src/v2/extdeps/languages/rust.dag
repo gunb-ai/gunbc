@@ -4,10 +4,18 @@ import std.trait_derive_shape {
   ReprDeriveDebug,
   ReprDeriveDeserialize,
   ReprDerivePartialEq,
+  ReprDeriveOrd,
   ReprDeriveSerialize
 }
+import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
+  rust_1_93_btree_set_trait_implementations_authority,
+  rust_1_93_hash_set_trait_implementations_authority,
   rust_1_93_vec_trait_implementations_authority,
+  serde_1_0_228_btree_set_deserialize_authority,
+  serde_1_0_228_btree_set_serialize_authority,
+  serde_1_0_228_hash_set_deserialize_authority,
+  serde_1_0_228_hash_set_serialize_authority,
   serde_1_0_228_vec_deserialize_authority,
   serde_1_0_228_vec_serialize_authority
 }
@@ -200,6 +208,8 @@ import v2.std.compilers.target_model {
   TargetRepresentation,
   TargetRepresentationChoice,
   TargetDeriveSupplementalGenericBoundContractAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementSet,
   TargetDeriveTraitKey,
   TargetRepresentationParameterSlot,
   RequiredTraitWitness,
@@ -213,7 +223,11 @@ import v2.std.compilers.target_model {
   target_collection_choice_field_representation_parameters,
   target_collection_choice_field_supplemental_generic_bound_contracts,
   target_derive_supplemental_generic_bound_contract_authorities_empty,
+  target_derive_supplemental_generic_bound_contract_requirements_empty,
   target_derive_supplemental_generic_bound_contract_authority_insert,
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements,
+  target_derive_supplemental_generic_bound_requirement_set_empty,
+  target_grounding_derive_trait_key,
   target_representation_choice_parameters_bundle_node,
   target_representation_choice_supplemental_generic_bound_contracts_bundle_node,
   target_representation_parameter_slot_empty,
@@ -1573,6 +1587,23 @@ fn rust_collection_representation_parameters() -> Map<Symbol, TargetRepresentati
   )
 }
 
+fn rust_single_parameter_supplemental_generic_bound_requirements(
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+    key: ^target_collection_type_param_t,
+    value: map_insert(
+      m: target_derive_supplemental_generic_bound_requirement_set_empty(),
+      key: target_grounding_derive_trait_key(derive_trait: required_trait),
+      value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+        authority: authority
+      }
+    )
+  )
+}
+
 fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
       contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
@@ -1601,6 +1632,82 @@ fn rust_vec_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, 
   )
 }
 
+fn rust_btree_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+      derive_trait: ReprDeriveDebug,
+      authority: rust_1_93_btree_set_trait_implementations_authority
+    )
+  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: debug_contract,
+      derive_trait: ReprDeriveClone,
+      authority: rust_1_93_btree_set_trait_implementations_authority
+    )
+  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: clone_contract,
+      derive_trait: ReprDerivePartialEq,
+      authority: rust_1_93_btree_set_trait_implementations_authority
+    )
+  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: partial_eq_contract,
+      derive_trait: ReprDeriveSerialize,
+      authority: serde_1_0_228_btree_set_serialize_authority
+    )
+  target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
+    contracts: serialize_contract,
+    derive_trait: ReprDeriveDeserialize,
+    authority: serde_1_0_228_btree_set_deserialize_authority,
+    requirements: rust_single_parameter_supplemental_generic_bound_requirements(
+      required_trait: ReprDeriveOrd,
+      authority: serde_1_0_228_btree_set_deserialize_authority
+    )
+  )
+}
+
+fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+      derive_trait: ReprDeriveDebug,
+      authority: rust_1_93_hash_set_trait_implementations_authority
+    )
+  let clone_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
+      contracts: debug_contract,
+      derive_trait: ReprDeriveClone,
+      authority: rust_1_93_hash_set_trait_implementations_authority
+    )
+  target_derive_supplemental_generic_bound_contract_authority_insert(
+    contracts: clone_contract,
+    derive_trait: ReprDeriveSerialize,
+    authority: serde_1_0_228_hash_set_serialize_authority
+  )
+}
+
+type RustSupplementalGenericBoundContractCoverageBlocker {
+  derive_trait: ReprGroundingDeriveTrait
+  representation_parameter: Symbol
+  unrepresentable_requirement: RequiredTraitWitness
+  authority: ExternalAuthority
+}
+
+data rust_hash_set_supplemental_generic_bound_contract_blockers: List<RustSupplementalGenericBoundContractCoverageBlocker> = [
+  RustSupplementalGenericBoundContractCoverageBlocker {
+    derive_trait: ReprDerivePartialEq,
+    representation_parameter: ^target_collection_type_param_t,
+    unrepresentable_requirement: TargetCollectionWitnessHash {
+      type_param: ^target_collection_type_param_t
+    },
+    authority: rust_1_93_hash_set_trait_implementations_authority
+  },
+  RustSupplementalGenericBoundContractCoverageBlocker {
+    derive_trait: ReprDeriveDeserialize,
+    representation_parameter: ^target_collection_type_param_t,
+    unrepresentable_requirement: TargetCollectionWitnessHash {
+      type_param: ^target_collection_type_param_t
+    },
+    authority: serde_1_0_228_hash_set_deserialize_authority
+  }
+]
+
 fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
   TargetRepresentationChoice {
     form: TargetRepresentation {
@@ -1611,7 +1718,7 @@ fn rust_set_collection_primary_choice() -> TargetRepresentationChoice {
     constraints: [
       TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
     ],
-    supplemental_generic_bound_contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
+    supplemental_generic_bound_contracts: rust_btree_set_supplemental_generic_bound_contracts()
   }
 }
 
@@ -1626,7 +1733,7 @@ fn rust_set_collection_hash_choice() -> TargetRepresentationChoice {
       TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t },
       TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
     ],
-    supplemental_generic_bound_contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
+    supplemental_generic_bound_contracts: rust_hash_set_supplemental_generic_bound_contracts()
   }
 }
 
