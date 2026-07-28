@@ -41,6 +41,7 @@ import gunbc.observation_tty_render {
 import extdeps.render.terminal {
   DynamicLineClosed,
   DynamicLineOpen,
+  DynamicLineState,
   TerminalWriteProjected,
   TerminalWriteRefused,
   project_terminal_write,
@@ -64,11 +65,11 @@ fn seed_tier(emoji: Bool) -> Tier {
 }
 
 type ScopedRunWriteProjection
-  = ScopedRunWriteProjected { bytes: String, next_open: Bool }
+  = ScopedRunWriteProjected { bytes: String, next: DynamicLineState }
   | ScopedRunWriteRefused { cause: NonEmptyStr }
 
 type ScopedRunMeasuredProjection
-  = ScopedRunMeasuredProjected { bytes: String, next_open: Bool, wall: Nanosecond }
+  = ScopedRunMeasuredProjected { bytes: String, next: DynamicLineState, wall: Nanosecond }
   | ScopedRunMeasuredRefused { cause: NonEmptyStr }
 
 type ScopedRunTimingReceipt
@@ -105,7 +106,7 @@ fn scoped_run_project(
   event: ObservationEvent,
   addressable: Bool,
   emoji: Bool,
-  prior_open: Bool
+  prior: DynamicLineState
 ) -> ScopedRunWriteProjection {
   let cap = scoped_run_capability(addressable: addressable, emoji: emoji)
   match tty_event_emission_under(
@@ -116,7 +117,7 @@ fn scoped_run_project(
     TtyEmissionRefused { cause: c } => ScopedRunWriteRefused { cause: c }
     TtyEmissionProjected { emission: e } =>
       match project_terminal_write(
-        prior: if prior_open { DynamicLineOpen } else { DynamicLineClosed },
+        prior: prior,
         requested: e.cursor,
         capability: cap,
         rendered: tty_render_emission(emission: e, tier: cap.tier)
@@ -125,10 +126,7 @@ fn scoped_run_project(
         TerminalWriteProjected { bytes: b, next: n } =>
           ScopedRunWriteProjected {
             bytes: b,
-            next_open: match n {
-              DynamicLineOpen => true
-              DynamicLineClosed => false
-            }
+            next: n
           }
       }
   }
@@ -167,14 +165,14 @@ fn scoped_run_project_measured(
   event: ObservationEvent,
   addressable: Bool,
   emoji: Bool,
-  prior_open: Bool
+  prior: DynamicLineState
 ) -> ScopedRunMeasuredProjection {
   match event.wall {
     MeasuredUnavailable { cause: c } => ScopedRunMeasuredRefused { cause: c }
     MeasuredValue { value: wall } =>
-      match scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior_open: prior_open) {
+      match scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior: prior) {
         ScopedRunWriteRefused { cause: c } => ScopedRunMeasuredRefused { cause: c }
-        ScopedRunWriteProjected { bytes: b, next_open: n } => ScopedRunMeasuredProjected { bytes: b, next_open: n, wall: wall }
+        ScopedRunWriteProjected { bytes: b, next: n } => ScopedRunMeasuredProjected { bytes: b, next: n, wall: wall }
       }
   }
 }
@@ -186,70 +184,70 @@ fn scoped_run_timing_receipt(wall: Nanosecond, seed_resolution: Nanosecond) -> S
   }
 }
 
-fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
+fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: Begin),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
+fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: Concluded { outcome: Final { shown_failures: 0 } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
+fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunMeasuredProjection {
+fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, wall: Nanosecond, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunMeasuredProjection {
   scoped_run_project_measured(
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall: wall, transition: Concluded { outcome: Failed { error: error, output: "" } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_begin_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_begin_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_project(
     event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: Begin),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_final_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_final_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_project(
     event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: Concluded { outcome: Final { shown_failures: 0 } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_refused_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_refused_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_project(
     event: scoped_run_event(entry_file: entry_file, module_path: module_path, function: function, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open
+    prior: prior
   )
 }
 
-fn scoped_run_projection_refusal_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+fn scoped_run_projection_refusal_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, addressable: Bool, emoji: Bool, prior: DynamicLineState) -> ScopedRunWriteProjection {
   scoped_run_refused_write(
     entry_file: entry_file,
     module_path: module_path,
@@ -264,7 +262,7 @@ fn scoped_run_projection_refusal_write(entry_file: NonEmptyStr, module_path: Non
 fn scoped_run_close_before_deferred_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
   let cap = scoped_run_capability(addressable: addressable, emoji: emoji)
   match project_terminal_write(
-    prior: if prior_open { DynamicLineOpen } else { DynamicLineClosed },
+    prior: prior,
     requested: Clear,
     capability: cap,
     rendered: ""
@@ -273,10 +271,7 @@ fn scoped_run_close_before_deferred_write(entry_file: NonEmptyStr, module_path: 
     TerminalWriteProjected { bytes: b, next: n } =>
       ScopedRunWriteProjected {
         bytes: b,
-        next_open: match n {
-          DynamicLineOpen => true
-          DynamicLineClosed => false
-        }
+          next: n
       }
   }
 }
