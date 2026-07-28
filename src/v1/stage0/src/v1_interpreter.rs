@@ -8279,9 +8279,13 @@ fn eval_emit_host_run_transport_cached_builtin(
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
-    let resolved_toolchain_identity =
-        emit_host_resolved_build_toolchain_identity(&build_argvs, &realization_workspace)?;
-    let workspace = realization_workspace.join(resolved_toolchain_identity);
+    let build_environment = emit_host_constructed_build_environment();
+    let resolved_build_context_identity = emit_host_resolved_build_context_identity(
+        &build_argvs,
+        &realization_workspace,
+        &build_environment,
+    )?;
+    let workspace = realization_workspace.join(resolved_build_context_identity);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
@@ -8291,6 +8295,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         &workspace_files,
         &build_argvs,
         &run_argv,
+        &build_environment,
         ctx,
     )
 }
@@ -8329,6 +8334,118 @@ fn resolve_host_tool_program(name: &str) -> String {
     name.to_string()
 }
 
+#[derive(Clone)]
+struct EmitHostBuildEnvironment {
+    entries: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    digest: String,
+}
+
+/// Construct the complete environment admitted to build and run subprocesses.
+/// Commands use env_clear() and receive exactly these rows, so an undeclared
+/// ambient variable cannot affect an artifact outside the realization identity.
+fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
+    use std::os::unix::ffi::OsStrExt;
+
+    fn admitted(name: &str) -> bool {
+        const EXACT: &[&str] = &[
+            "PATH",
+            "HOME",
+            "TMPDIR",
+            "LD_LIBRARY_PATH",
+            "LIBRARY_PATH",
+            "CPATH",
+            "PKG_CONFIG_PATH",
+            "SDKROOT",
+            "MACOSX_DEPLOYMENT_TARGET",
+        ];
+        const PREFIXES: &[&str] = &[
+            "CARGO_", "RUST", "CC_", "CXX_", "AR_", "CFLAGS", "CXXFLAGS", "CPPFLAGS",
+            "LDFLAGS", "PKG_CONFIG_", "GO", "NODE_", "NPM_", "PYTHON",
+        ];
+        if matches!(
+            name,
+            "CARGO_TARGET_DIR" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER"
+        ) {
+            return false;
+        }
+        EXACT.contains(&name) || PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    }
+
+    let mut entries: Vec<_> = std::env::vars_os()
+        .filter(|(name, _)| name.to_str().map(admitted).unwrap_or(false))
+        .collect();
+    entries.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
+
+    let mut digest =
+        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v1".to_string());
+    for (name, value) in &entries {
+        digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(name.as_bytes()));
+        digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(value.as_bytes()));
+    }
+    EmitHostBuildEnvironment { entries, digest }
+}
+
+fn emit_host_apply_build_environment(
+    command: &mut std::process::Command,
+    environment: &EmitHostBuildEnvironment,
+) {
+    command.env_clear();
+    command.envs(environment.entries.iter().cloned());
+}
+
+fn emit_host_cargo_configuration_digest(
+    environment: &EmitHostBuildEnvironment,
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    fn environment_path(
+        environment: &EmitHostBuildEnvironment,
+        name: &str,
+    ) -> Option<std::path::PathBuf> {
+        environment
+            .entries
+            .iter()
+            .find(|(key, _)| key.to_str() == Some(name))
+            .map(|(_, value)| std::path::PathBuf::from(value))
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(cargo_home) = environment_path(environment, "CARGO_HOME") {
+        candidates.push(cargo_home.join("config"));
+        candidates.push(cargo_home.join("config.toml"));
+    } else if let Some(home) = environment_path(environment, "HOME") {
+        candidates.push(home.join(".cargo/config"));
+        candidates.push(home.join(".cargo/config.toml"));
+    }
+    for ancestor in probe_workspace.ancestors() {
+        candidates.push(ancestor.join(".cargo/config"));
+        candidates.push(ancestor.join(".cargo/config.toml"));
+    }
+
+    let mut digest =
+        v1_rt::atom_identity_hash("emit-host-cargo-configuration-v1".to_string());
+    for path in candidates {
+        match std::fs::read(&path) {
+            Ok(content) => {
+                digest = v1_rt::hash_combine(
+                    digest,
+                    v1_rt::atom_identity_hash(path.to_string_lossy().into_owned()),
+                );
+                digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(&content));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
+                        path.display()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(digest)
+}
+
 /// Observe the host tools which will realize a cached build. This is deliberately
 /// inside the existing wet host-transport boundary: the `.dag` substrate owns the
 /// effective path shape, while only the host can resolve PATH/rustup shims and read
@@ -8339,14 +8456,16 @@ fn resolve_host_tool_program(name: &str) -> String {
 /// paired with the rustc selected by the same process environment. The transport
 /// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
 /// intentionally not part of this identity.
-fn emit_host_resolved_build_toolchain_identity(
+fn emit_host_resolved_build_context_identity(
     build_argvs: &[Vec<String>],
     probe_workspace: &std::path::Path,
+    environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<String> {
     fn observe_tool(
         requested: &str,
         version_args: &[&str],
         probe_workspace: &std::path::Path,
+        environment: &EmitHostBuildEnvironment,
     ) -> InterpResult<String> {
         let resolved = resolve_host_tool_program(requested);
         let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
@@ -8361,13 +8480,10 @@ fn emit_host_resolved_build_toolchain_identity(
                 canonical.display()
             ),
         })?;
-        let output = std::process::Command::new(&resolved)
-            .args(version_args)
-            .current_dir(probe_workspace)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
-            .output()
-            .map_err(|e| InterpError::TypeError {
+        let mut command = std::process::Command::new(&resolved);
+        command.args(version_args).current_dir(probe_workspace);
+        emit_host_apply_build_environment(&mut command, environment);
+        let output = command.output().map_err(|e| InterpError::TypeError {
                 msg: format!(
                     "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
                 ),
@@ -8400,7 +8516,8 @@ fn emit_host_resolved_build_toolchain_identity(
     }
 
     let mut identity =
-        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string());
+        v1_rt::atom_identity_hash("emit-host-resolved-build-context-v1".to_string());
+    identity = v1_rt::hash_combine(identity, environment.digest.clone());
     for argv in build_argvs {
         let requested = argv.first().ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_run_transport_cached: empty build argv".to_string(),
@@ -8416,16 +8533,18 @@ fn emit_host_resolved_build_toolchain_identity(
         };
         identity = v1_rt::hash_combine(
             identity,
-            observe_tool(requested, version_args, probe_workspace)?,
+            observe_tool(requested, version_args, probe_workspace, environment)?,
         );
 
         if requested_name == "cargo" {
-            let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            identity =
-                v1_rt::hash_combine(identity, observe_tool(&rustc, &["-vV"], probe_workspace)?);
             identity = v1_rt::hash_combine(
                 identity,
-                v1_rt::atom_identity_hash(std::env::var("RUSTUP_TOOLCHAIN").unwrap_or_default()),
+                emit_host_cargo_configuration_digest(environment, probe_workspace)?,
+            );
+            let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+            identity = v1_rt::hash_combine(
+                identity,
+                observe_tool(&rustc, &["-vV"], probe_workspace, environment)?,
             );
         }
     }
@@ -8471,6 +8590,7 @@ fn emit_host_run_transport_cached_in_workspace(
     files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    build_environment: &EmitHostBuildEnvironment,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let ready_marker = workspace.join(".native_ready");
@@ -8534,14 +8654,13 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(resolve_host_tool_program(&argv[0]))
+        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0]));
+        command
             .args(&argv[1..])
-            .current_dir(workspace)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
-            .output()
-            .map_err(|e| InterpError::TypeError {
+            .current_dir(workspace);
+        emit_host_apply_build_environment(&mut command, build_environment);
+        command.env("CARGO_TARGET_DIR", &target_dir);
+        command.output().map_err(|e| InterpError::TypeError {
                 msg: format!(
                     "emit_host_run_transport_cached: spawn {:?} failed: {e}",
                     argv[0]
