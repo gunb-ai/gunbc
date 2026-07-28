@@ -264,3 +264,332 @@ fn resolve_closure_request(closure_digest: ContentHash, compiler: DeclaredInput)
   }
 }
 
+data materialization_provider_reader_predicate_contract: Disposition = Terminal {
+  reason: "One canonical fold per outcome coproduct is the total-match authority (codex rework, review 44158): lookup_fold and admission_fold are the ONLY matches over ProviderLookup / ProviderAdmission, and completeness_missing is the single projection over ArtifactCompleteness. Every predicate and projection below is a DERIVATION of its fold and contains no match of its own, so a new outcome variant is a type error at exactly one site per coproduct, never a sweep over a hand-rolled selector family. Handler returns are a bare type variable by design — the seed types fn-typed parameters returning bare vars or concrete types, not generic-applied enums (realization_reconcile substrate-limit receipt). Discriminating corpus: dag/test/claim/materialization_provider_witness_test.dag."
+}
+
+data no_output_ids: List<ArtifactOutputId> = []
+data no_evicted_keys: List<ContentHash> = []
+
+fn lookup_fold<T>(
+  l: ProviderLookup,
+  hit: fn(MaterializedArtifact) -> T,
+  miss: fn(ContentHash) -> T,
+  kind_mismatch: fn(ContentHash, ArtifactKindId, ArtifactKindId) -> T,
+  wrong_artifact: fn(ContentHash, ContentHash) -> T,
+  wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
+  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
+  identity_unshareable: fn(ContentHash, IdentityUnknownCause) -> T,
+  identity_grade_unsupported: fn(ContentHash, ComputationIdentity) -> T
+) -> T {
+  match l {
+    ProviderHit { artifact: a } => hit(a)
+    ProviderMiss { key: k } => miss(k)
+    ProviderRefusedKindMismatch { key: k, requested: r, found: f } => kind_mismatch(k, r, f)
+    ProviderRefusedWrongArtifact { key: k, found_key: fk } => wrong_artifact(k, fk)
+    ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
+    ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
+    ProviderRefusedIdentityUnshareable { key: k, cause: c } => identity_unshareable(k, c)
+    ProviderRefusedIdentityGradeUnsupported { key: k, grade: g } => identity_grade_unsupported(k, g)
+  }
+}
+
+fn lookup_is_hit(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => true,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_is_miss(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => true,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => true,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => true,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => true,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId> {
+  lookup_fold(
+    l: l,
+    hit: a => no_output_ids,
+    miss: k => no_output_ids,
+    kind_mismatch: (k, r, f) => no_output_ids,
+    wrong_artifact: (k, fk) => no_output_ids,
+    wrong_content: (k, r, o) => no_output_ids,
+    incomplete: (k, m) => m,
+    identity_unshareable: (k, c) => no_output_ids,
+    identity_grade_unsupported: (k, g) => no_output_ids
+  )
+}
+
+fn lookup_is_refused_identity_unshareable(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => true,
+    identity_grade_unsupported: (k, g) => false
+  )
+}
+
+fn lookup_is_refused_identity_grade_unsupported(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: a => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    identity_unshareable: (k, c) => false,
+    identity_grade_unsupported: (k, g) => true
+  )
+}
+
+fn admission_fold<T>(
+  a: ProviderAdmission,
+  admitted: fn(ArtifactStore, List<ContentHash>) -> T,
+  kind_mismatch_write: fn(ArtifactKindId, ArtifactKindId) -> T,
+  wrong_artifact_write: fn(ContentHash, ContentHash) -> T,
+  wrong_content_write: fn(ContentHash, ContentHash) -> T,
+  incomplete_write: fn(List<ArtifactOutputId>) -> T,
+  identity_unshareable_write: fn(IdentityUnknownCause) -> T,
+  identity_grade_unsupported_write: fn(ComputationIdentity) -> T,
+  budget_exhausted: fn(ByteSize, ByteSize) -> T
+) -> T {
+  match a {
+    ProviderAdmitted { store: s, evicted: e } => admitted(s, e)
+    ProviderRefusedKindMismatchWrite { requested: r, found: f } => kind_mismatch_write(r, f)
+    ProviderRefusedWrongArtifactWrite { key: k, found_key: fk } => wrong_artifact_write(k, fk)
+    ProviderRefusedWrongContentWrite { recorded: r, observed: o } => wrong_content_write(r, o)
+    ProviderRefusedIncompleteWrite { missing: m } => incomplete_write(m)
+    ProviderRefusedIdentityUnshareableWrite { cause: c } => identity_unshareable_write(c)
+    ProviderRefusedIdentityGradeUnsupportedWrite { grade: g } => identity_grade_unsupported_write(g)
+    ProviderBudgetExhausted { needed: n, budget: b } => budget_exhausted(n, b)
+  }
+}
+
+fn admission_is_admitted(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => true,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => e,
+    kind_mismatch_write: (r, f) => no_evicted_keys,
+    wrong_artifact_write: (k, fk) => no_evicted_keys,
+    wrong_content_write: (r, o) => no_evicted_keys,
+    incomplete_write: m => no_evicted_keys,
+    identity_unshareable_write: c => no_evicted_keys,
+    identity_grade_unsupported_write: g => no_evicted_keys,
+    budget_exhausted: (n, b) => no_evicted_keys
+  )
+}
+
+fn admission_store(a: ProviderAdmission, fallback: ArtifactStore) -> ArtifactStore {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => s,
+    kind_mismatch_write: (r, f) => fallback,
+    wrong_artifact_write: (k, fk) => fallback,
+    wrong_content_write: (r, o) => fallback,
+    incomplete_write: m => fallback,
+    identity_unshareable_write: c => fallback,
+    identity_grade_unsupported_write: g => fallback,
+    budget_exhausted: (n, b) => fallback
+  )
+}
+
+fn admission_is_budget_exhausted(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => true
+  )
+}
+
+fn admission_refused_incomplete_missing(a: ProviderAdmission) -> List<ArtifactOutputId> {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => no_output_ids,
+    kind_mismatch_write: (r, f) => no_output_ids,
+    wrong_artifact_write: (k, fk) => no_output_ids,
+    wrong_content_write: (r, o) => no_output_ids,
+    incomplete_write: m => m,
+    identity_unshareable_write: c => no_output_ids,
+    identity_grade_unsupported_write: g => no_output_ids,
+    budget_exhausted: (n, b) => no_output_ids
+  )
+}
+
+fn admission_is_refused_kind_mismatch_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => true,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_wrong_artifact_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => true,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_wrong_content_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => true,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_incomplete_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => true,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_identity_unshareable_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => true,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_identity_grade_unsupported_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => true,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn completeness_missing(c: ArtifactCompleteness) -> List<ArtifactOutputId> {
+  match c {
+    ArtifactComplete => no_output_ids
+    ArtifactMissingOutputs { missing: m } => m
+  }
+}
+
+fn completeness_is_complete(c: ArtifactCompleteness) -> Bool {
+  completeness_missing(c: c).count() == 0
+}
