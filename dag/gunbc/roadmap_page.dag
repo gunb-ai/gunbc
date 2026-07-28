@@ -9,7 +9,7 @@ import gunbc.roadmap_style { roadmap_css }
 import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   SectionElement, Prose, Group, SectionGroup,
   NodeSizing, Unsized, Sized,
   Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
@@ -23,7 +23,7 @@ import gunbc.roadmap_status {
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
   disclosure_mark_class, disclosure_mark_glyph, node_mid_class,
@@ -402,7 +402,7 @@ fn carrier_links(carriers: List<Pointer>) -> List<Fragment> {
 }
 
 fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
+  nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
   })
@@ -539,7 +539,21 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
 
 data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic Stop stays inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
 
-fn node_head_row(rn: RoadmapNode, merged: List<Int>, dispatchable: Bool) -> Fragment {
+fn dependency_badge(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Fragment> {
+  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+  if count(parents) > 1 {
+    [
+      el_class(
+        "span",
+        "dependencies",
+        [ txt(concat("requires all: ", join(map(parents, p => p as String), ", "))) ]),
+    ]
+  } else {
+    []
+  }
+}
+
+fn node_head_row(rn: RoadmapNode, edges: List<RoadmapEdge>, merged: List<Int>, dispatchable: Bool) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
   el_class("div", "node-head", concat(
     [
@@ -549,7 +563,9 @@ fn node_head_row(rn: RoadmapNode, merged: List<Int>, dispatchable: Bool) -> Frag
           [ el_class("span", "title", lead_nodes(line: rn.line)) ],
           concat(superseded_badge(rn: rn), owner_badge(rn: rn)),
         ),
-        concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)))),
+        concat(
+          concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
+          dependency_badge(rn: rn, edges: edges)))),
     ],
     workflow_controls_nodes(rn: rn, dispatchable: dispatchable)))
 }
@@ -565,7 +581,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   let status = node_status_symbol(rn: rn, merged: merged)
   let dispatchable = node_exposes_manual_dispatch(rn: rn, merged: merged)
   let head = concat(
-    [ node_head_row(rn: rn, merged: merged, dispatchable: dispatchable) ],
+    [ node_head_row(rn: rn, edges: edges, merged: merged, dispatchable: dispatchable) ],
     item_detail_block(rn: rn),
   )
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
@@ -649,7 +665,7 @@ fn section_markup(s: RoadmapSection, merged: List<Int>) -> Fragment {
     body: body)
 }
 
-fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> Fragment {
+fn frontier_flat_node_li(rn: RoadmapNode, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
   let status = node_status_symbol(rn: rn, merged: merged)
   Element {
     tag: "li",
@@ -657,35 +673,37 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> Fragment {
     children: concat(
       [ node_head_row(
           rn: rn,
+          edges: edges,
           merged: merged,
           dispatchable: node_exposes_manual_dispatch(rn: rn, merged: merged)) ],
       item_detail_block(rn: rn)),
   }
 }
 
-fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>) -> Fragment {
-  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, merged: merged)))
+fn frontier_bucket_ul(items: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
+  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, edges: edges, merged: merged)))
 }
 
-fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>) -> Fragment {
+fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
   altitude_section(
     cls: concat("frontier-bucket frontier-", cls),
     title_nodes: [ el("h2", [ txt(label) ]) ],
     statuses: map(items, rn => node_status_symbol(rn: rn, merged: merged)),
-    body: [ frontier_bucket_ul(items: items, merged: merged) ])
+    body: [ frontier_bucket_ul(items: items, edges: edges, merged: merged) ])
 }
 
-fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Fragment {
+fn roadmap_frontier_markup(frontier: SpawnFrontier, edges: List<RoadmapEdge>, merged: List<Int>) -> Fragment {
   el_class("section", "roadmap-frontier", [
-    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged),
-    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged),
-    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged),
-    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, merged: merged),
+    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, edges: edges, merged: merged),
+    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, edges: edges, merged: merged),
+    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, edges: edges, merged: merged),
+    frontier_bucket_markup(label: "Superseded", cls: "superseded", items: frontier.superseded, edges: edges, merged: merged),
   ])
 }
 
 fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>) -> Fragment {
   let frontier = spawn_frontier(doc: doc, merged: merged)
+  let edges = doc_all_edges(doc: doc)
   Element {
     tag: "html",
     attributes: [],
@@ -698,7 +716,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
       el("body", [
         roadmap_header(title: "gunbc — daily workspace"),
         el_class("main", "daily-workspace", concat(main_prefix, [
-          roadmap_frontier_markup(frontier: frontier, merged: merged),
+          roadmap_frontier_markup(frontier: frontier, edges: edges, merged: merged),
         ])),
         dispatch_client_script(),
       ]),

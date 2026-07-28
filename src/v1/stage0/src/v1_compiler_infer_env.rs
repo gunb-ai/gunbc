@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+pub use crate::std_algebra::FreeMonoid;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
