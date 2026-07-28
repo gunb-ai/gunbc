@@ -33,6 +33,7 @@ import v2.std.orchestration {
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Symbol }
 import std.filesystem.types { RegularFile, Directory, Missing }
 import std.path_intent { And, Not, PathEntryKind, PathLiteral, PathNonempty, PathNotEq, PathRef }
 import std.types { FilePathParts }
