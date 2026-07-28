@@ -39,6 +39,7 @@ import extdeps.languages.json.emit {
   json_array,
   json_object,
   json_kv,
+  serialize_json_object_prefix,
 }
 import extdeps.gunbc
 import extdeps.shell
@@ -308,6 +309,21 @@ fn dispatch_environment_admit(
   )
 }
 
+data dispatch_environment_receipt_schema: String = "roadmap-dispatch-environment/v1"
+
+data dispatch_environment_receipt_status_admitted: String = "admitted"
+
+data dispatch_environment_receipt_status_refused: String = "refused"
+
+data dispatch_environment_receipt_identity_note: String = "A persisted admission receipt is identified by its LEADING members, never by scanning its text. dispatch_environment_admission_json always emits schema then status first, so the admitted document's exact byte prefix is derivable from the same emitter; a reader requires the receipt to START with it. The scan this replaces (two string_contains over the serialized document) was satisfiable from any value position — a refused receipt whose reason or validation summary happened to carry the fragments read as admitted, fabricating a completed Environment fact from refused evidence (DESIGN 5). Positional identity makes that unwritable: no nested value can occupy the document prefix."
+
+fn dispatch_environment_receipt_identity_prefix(status: String) -> String {
+  serialize_json_object_prefix(members: [
+    json_kv(key: "schema", value: json_string(s: dispatch_environment_receipt_schema)),
+    json_kv(key: "status", value: json_string(s: status)),
+  ])
+}
+
 fn capability_ensure_receipt_json(receipt: CapabilityEnsureReceipt) -> JsonValue {
   json_object(members: [
     json_kv(key: "capability", value: json_string(s: receipt.capability_label)),
@@ -325,8 +341,8 @@ fn dispatch_environment_admission_json(
   match admission {
     EnvironmentAdmitted { receipts, validation_summary } =>
       serialize_json(v: json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-environment/v1")),
-        json_kv(key: "status", value: json_string(s: "admitted")),
+        json_kv(key: "schema", value: json_string(s: dispatch_environment_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: dispatch_environment_receipt_status_admitted)),
         json_kv(key: "validation", value: json_string(s: validation_summary)),
         json_kv(
           key: "receipts",
@@ -336,8 +352,8 @@ fn dispatch_environment_admission_json(
       ]))
     EnvironmentRefused { receipts, validation_summary, reason } =>
       serialize_json(v: json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-environment/v1")),
-        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "schema", value: json_string(s: dispatch_environment_receipt_schema)),
+        json_kv(key: "status", value: json_string(s: dispatch_environment_receipt_status_refused)),
         json_kv(key: "reason", value: json_string(s: reason)),
         json_kv(key: "validation", value: json_string(s: validation_summary)),
         json_kv(
