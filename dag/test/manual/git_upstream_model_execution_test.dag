@@ -4,7 +4,6 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.gunbc
 import extdeps.git.object_store {
-  GitPath,
   GitSha1Digest,
   GitObjectId,
   GitSha1ObjectId,
@@ -20,7 +19,6 @@ import extdeps.git.object_store {
   RegularBlobEntry,
   ExecutableBlobEntry,
   SymlinkEntry,
-  SubtreeEntry,
   GitlinkEntry,
   GitWorktreeRegular,
   GitWorktreeSymlink,
@@ -69,7 +67,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data git_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Git R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp, Filesystem.Write, shell.Mkdir, shell.Test, shell.Remove, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. Real Git hashes SHA-1 and SHA-256 blobs, writes the tree, commits and annotated tag, validates five tree modes plus a non-ASCII path, checks the index/worktree, runs fsck, performs exact-old-OID compare-and-swap, proves stale and nonexistent-object updates refuse, and independently reads the ref/tag/tree state back. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/git_upstream_model_execution_test.dag --function witness_git_cli_fixture_hashes_projects_and_independently_reads_back."
 
 type GitR0LiveFixtureOutcome
-  = GitR0LiveFixtureObserved { outcome: GitReadBackOutcome }
+  = GitR0LiveFixtureObserved {
+      outcome: GitReadBackOutcome,
+      observed_tree_entries: List<GitTreeWireEntry>,
+    }
   | GitR0LiveFixtureExecutionRefused { diagnostic: String }
 
 fn observed_sha1_oid(stdout: String) -> GitObjectId {
@@ -451,6 +452,8 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         workdir: fixture.path,
         bin_path: "git",
         args: [
+          "-c",
+          "core.quotePath=false",
           "ls-tree",
           "-z",
           "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
@@ -627,7 +630,6 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                 let observed_empty_blob = observed_sha1_oid(
                   stdout: empty_blob_oid.stdout,
                 )
-                let observed_subtree = observed_sha1_oid(stdout: subtree_oid.stdout)
                 let observed_gitlink = observed_sha1_oid(
                   stdout: gitlink_commit.stdout,
                 )
@@ -663,6 +665,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                     projection: projection,
                     observation: observation,
                   ),
+                  observed_tree_entries: observed_tree_entries,
                 }
                 }
               _ => GitR0LiveFixtureExecutionRefused {
@@ -713,6 +716,7 @@ test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -
   match git_r0_typed_execution_read_back() {
     GitR0LiveFixtureObserved {
       outcome: GitReadBackVerified { observation },
+      observed_tree_entries: _,
     } =>
       observation.tree_oid == sha1_root_tree
         && observation.tag_oids == [sha1_tag]
