@@ -1,10 +1,11 @@
 module std.path_intent
 
 import std.filesystem.types { EntryKind }
+import std.node { Symbol }
 import std.types { FilePathParts, String }
 
 type PathIntent
-  = PathRef { name: String }
+  = PathRef { name: Symbol }
   | PathLiteral { parts: FilePathParts }
   | PathJoin { base: PathIntent, suffix: FilePathParts }
 
@@ -20,7 +21,7 @@ type DirnameAscent {
   path: PathIntent
 }
 
-fn path_intent_ref(name: String) -> PathIntent {
+fn path_intent_ref(name: Symbol) -> PathIntent {
   PathRef { name: name }
 }
 

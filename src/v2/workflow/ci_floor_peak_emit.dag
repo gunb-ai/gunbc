@@ -36,7 +36,7 @@ import std.types { FilePathParts }
 data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ floor-peak cgroup observation emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
 fn ci_floor_peak_path_ref() -> PathIntent {
-  PathRef { name: "d" }
+  PathRef { name: ^d }
 }
 
 fn ci_floor_peak_root_path() -> PathIntent {

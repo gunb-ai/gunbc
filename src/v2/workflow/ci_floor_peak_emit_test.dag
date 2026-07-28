@@ -206,7 +206,7 @@ test fn ci_floor_peak_path_kind_discriminates_regular_directory_missing_holds() 
 test fn ci_floor_peak_path_predicate_refuses_unsafe_operand_holds() -> Bool {
   match bash_path_predicate_target_model(
     predicate: And {
-      lhs: PathNonempty { path: PathRef { name: "d;rm -rf /" } },
+      lhs: PathNonempty { path: PathRef { name: "d;rm -rf /" as Symbol } },
       rhs: PathNonempty { path: ci_floor_peak_path_ref() }
     }
   ) {
