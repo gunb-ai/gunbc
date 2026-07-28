@@ -1,0 +1,9 @@
+module test.fixtures.scoped_run_observation
+
+fn claim_true() -> Bool {
+  true
+}
+
+fn claim_false() -> Bool {
+  false
+}

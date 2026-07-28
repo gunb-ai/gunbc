@@ -10651,11 +10651,12 @@ struct ScopedRunObservation {
 }
 
 impl ScopedRunObservation {
-    fn resolve(source_roots: &[String], entry_file: &str, function: &str) -> Result<Self, String> {
+    fn resolve(entry_file: &str, function: &str) -> Result<Self, String> {
         use std::io::IsTerminal;
         let authority = "dag/gunbc/observation_seed_render.dag";
+        let authority_roots = witness_layer_roots();
         let (graph, indices) =
-            resolve_entry_graph_shared(source_roots, authority).map_err(|e| {
+            resolve_entry_graph_shared(&authority_roots, authority).map_err(|e| {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
         Ok(Self {
@@ -10856,7 +10857,7 @@ pub fn handle_run_with_options(
     };
 
     let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        ScopedRunObservation::resolve(&source_roots, entry, &function).unwrap_or_else(|cause| {
+        ScopedRunObservation::resolve(entry, &function).unwrap_or_else(|cause| {
             eprintln!("error: {cause}");
             std::process::exit(1);
         })
