@@ -118,8 +118,29 @@ type StoreObject
   | ObjectCommit { commit: Commit }
   | ObjectTag { tag: AnnotatedTag }
 
-type StoredObject {
+type GitContentAddressProducer
+  = GitHashObjectObserved {
+      git_version: NonEmptyStr,
+      object_format: GitObjectFormat,
+    }
+
+type GitContentAddressReceipt {
   oid: GitObjectId
+  object_type: ObjectType
+  canonical_size: ByteSize
+  producer: GitContentAddressProducer
+}
+
+fn git_content_address_producer_format(
+  producer: GitContentAddressProducer,
+) -> GitObjectFormat {
+  match producer {
+    GitHashObjectObserved { git_version: _, object_format } => object_format
+  }
+}
+
+type StoredObject {
+  content_address: GitContentAddressReceipt
   object: StoreObject
 }
 
@@ -185,8 +206,21 @@ fn store_object_kind(object: StoreObject) -> ObjectType {
   }
 }
 
+fn stored_object_oid(stored: StoredObject) -> GitObjectId {
+  stored.content_address.oid
+}
+
+fn git_stored_object_receipt_valid(
+  stored: StoredObject,
+  repository_format: GitObjectFormat,
+) -> Bool {
+  stored.content_address.object_type == store_object_kind(object: stored.object)
+    && git_content_address_producer_format(producer: stored.content_address.producer) == git_object_id_format(oid: stored.content_address.oid)
+    && git_object_id_format(oid: stored.content_address.oid) == repository_format
+}
+
 fn git_find_stored_object(objects: List<StoredObject>, oid: GitObjectId) -> StoredObject? {
-  objects |> filter(o => o.oid == oid) |> first
+  objects |> filter(o => stored_object_oid(stored: o) == oid) |> first
 }
 
 fn git_find_unavailable(
@@ -202,7 +236,18 @@ fn git_find_unavailable(
 
 fn git_lookup_object(repo: GitRepositoryState, oid: GitObjectId) -> ObjectLookupResult {
   match git_find_stored_object(objects: repo.objects, oid: oid) {
-    Present { value: stored } => ObjectFound { stored: stored }
+    Present { value: stored } =>
+      if git_stored_object_receipt_valid(
+        stored: stored,
+        repository_format: repo.object_format,
+      ) {
+        ObjectFound { stored: stored }
+      } else {
+        ObjectCorrupt {
+          oid: oid,
+          reason: "content-address observation does not match the decoded object kind or object format",
+        }
+      }
     Absent => match git_find_unavailable(unavailable: repo.unavailable, oid: oid) {
       Present { value: unavailable } => match unavailable {
         GitPromisorObjectUnavailable { oid: missing, promisor } =>
@@ -239,8 +284,7 @@ type GitTreeWireEntry {
 }
 
 type GitTreeDecodeRefusal
-  = GitTreeInvalidObjectId { oid: GitObjectId }
-  | GitTreeModeObjectMismatch {
+  = GitTreeModeObjectMismatch {
       mode: NonEmptyStr,
       object_type: NonEmptyStr,
       path: GitPath,
@@ -255,9 +299,7 @@ type GitTreeEntryDecodeOutcome
   | GitTreeEntryDecodeRefused { cause: GitTreeDecodeRefusal }
 
 fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
-  if !git_object_id_valid(oid: entry.oid) {
-    GitTreeEntryDecodeRefused { cause: GitTreeInvalidObjectId { oid: entry.oid } }
-  } else if entry.mode == "100644" && entry.object_type == "blob" {
+  if entry.mode == "100644" && entry.object_type == "blob" {
     GitTreeEntryDecoded {
       entry: RegularBlobEntry { path: entry.path, oid: entry.oid }
     }
@@ -346,56 +388,91 @@ fn git_tag_objects(objects: List<StoredObject>) -> List<StoredObject> {
 }
 
 fn git_project_repository(repo: GitRepositoryState, tree_oid: GitObjectId) -> GitProjectionOutcome {
-  match git_lookup_object(repo: repo, oid: tree_oid) {
-    ObjectFound { stored } => match stored.object {
-      ObjectTree { tree } => GitProjected {
-        projection: GitR0Projection {
-          object_format: repo.object_format,
-          tree_oid: tree_oid,
-          tree_entries: git_project_tree(tree: tree),
-          tags: git_tag_objects(objects: repo.objects),
-          refs: repo.refs,
-          index: repo.index,
-          worktree: repo.worktree,
-          unavailable: repo.unavailable,
-        }
+  match repo.objects
+    |> filter(stored => !git_stored_object_receipt_valid(
+      stored: stored,
+      repository_format: repo.object_format,
+    ))
+    |> first {
+    Present { value: corrupt } => GitProjectionRefused {
+      cause: ObjectCorrupt {
+        oid: stored_object_oid(stored: corrupt),
+        reason: "stored object lacks a matching Git content-address observation",
       }
-      _ => GitProjectionRefused { cause: ObjectFound { stored: stored } }
     }
-    other => GitProjectionRefused { cause: other }
+    Absent => match git_lookup_object(repo: repo, oid: tree_oid) {
+      ObjectFound { stored } => match stored.object {
+        ObjectTree { tree } => GitProjected {
+          projection: GitR0Projection {
+            object_format: repo.object_format,
+            tree_oid: tree_oid,
+            tree_entries: git_project_tree(tree: tree),
+            tags: git_tag_objects(objects: repo.objects),
+            refs: repo.refs,
+            index: repo.index,
+            worktree: repo.worktree,
+            unavailable: repo.unavailable,
+          }
+        }
+        _ => GitProjectionRefused { cause: ObjectFound { stored: stored } }
+      }
+      other => GitProjectionRefused { cause: other }
+    }
   }
 }
 
-type GitR0ReadBack {
+type GitR0ReadBackObservation {
+  git_version: NonEmptyStr
   object_format: GitObjectFormat
   tree_oid: GitObjectId
-  tree: Tree
-  tags: List<StoredObject>
+  tree_entries: List<GitTreeWireEntry>
+  tag_oids: List<GitObjectId>
   refs: List<GitRefRecord>
   index: List<GitIndexEntry>
   worktree: List<GitWorktreeEntry>
   unavailable: List<GitUnavailableObject>
 }
 
-type GitReadBackOutcome
-  = GitReadBack { state: GitR0ReadBack }
-  | GitReadBackRefused { cause: GitTreeDecodeRefusal }
+type GitReadBackMismatchAxis
+  = GitReadBackObjectFormatMismatch
+  | GitReadBackTreeIdentityMismatch
+  | GitReadBackTreeEntriesMismatch
+  | GitReadBackTagsMismatch
+  | GitReadBackRefsMismatch
+  | GitReadBackIndexMismatch
+  | GitReadBackWorktreeMismatch
+  | GitReadBackAvailabilityMismatch
 
-fn git_read_back_projection(projection: GitR0Projection) -> GitReadBackOutcome {
-  match git_decode_tree(entries: projection.tree_entries) {
-    GitTreeDecoded { entries } => GitReadBack {
-      state: GitR0ReadBack {
-        object_format: projection.object_format,
-        tree_oid: projection.tree_oid,
-        tree: Tree { entries: entries },
-        tags: projection.tags,
-        refs: projection.refs,
-        index: projection.index,
-        worktree: projection.worktree,
-        unavailable: projection.unavailable,
-      }
-    }
-    GitTreeDecodeRefused { cause } => GitReadBackRefused { cause: cause }
+type GitReadBackOutcome
+  = GitReadBackVerified { observation: GitR0ReadBackObservation }
+  | GitReadBackMismatch { axis: GitReadBackMismatchAxis }
+
+fn git_projection_tag_oids(projection: GitR0Projection) -> List<GitObjectId> {
+  projection.tags |> map(tag => stored_object_oid(stored: tag))
+}
+
+fn git_verify_independent_read_back(
+  projection: GitR0Projection,
+  observation: GitR0ReadBackObservation,
+) -> GitReadBackOutcome {
+  if !(projection.object_format == observation.object_format) {
+    GitReadBackMismatch { axis: GitReadBackObjectFormatMismatch }
+  } else if !(projection.tree_oid == observation.tree_oid) {
+    GitReadBackMismatch { axis: GitReadBackTreeIdentityMismatch }
+  } else if !(projection.tree_entries == observation.tree_entries) {
+    GitReadBackMismatch { axis: GitReadBackTreeEntriesMismatch }
+  } else if !(git_projection_tag_oids(projection: projection) == observation.tag_oids) {
+    GitReadBackMismatch { axis: GitReadBackTagsMismatch }
+  } else if !(projection.refs == observation.refs) {
+    GitReadBackMismatch { axis: GitReadBackRefsMismatch }
+  } else if !(projection.index == observation.index) {
+    GitReadBackMismatch { axis: GitReadBackIndexMismatch }
+  } else if !(projection.worktree == observation.worktree) {
+    GitReadBackMismatch { axis: GitReadBackWorktreeMismatch }
+  } else if !(projection.unavailable == observation.unavailable) {
+    GitReadBackMismatch { axis: GitReadBackAvailabilityMismatch }
+  } else {
+    GitReadBackVerified { observation: observation }
   }
 }
 
@@ -420,7 +497,6 @@ type GitUpdateRefOutcome
       name: GitRefName,
       target: GitRefName,
     }
-  | GitRefAdvanceInvalidObjectId { repository: GitRepositoryState, oid: GitObjectId }
   | GitRefAdvanceFormatMismatch {
       repository: GitRepositoryState,
       repository_format: GitObjectFormat,
@@ -469,15 +545,13 @@ fn git_update_ref_exact(
   new_oid: GitObjectId,
   expected_old: GitObjectId,
 ) -> GitUpdateRefOutcome {
-  if !git_object_id_valid(oid: new_oid) {
-    GitRefAdvanceInvalidObjectId { repository: repo, oid: new_oid }
-  } else if !(new_oid.format == repo.object_format) {
+  if !(git_object_id_format(oid: new_oid) == repo.object_format) {
     GitRefAdvanceFormatMismatch {
       repository: repo,
       repository_format: repo.object_format,
       oid: new_oid,
     }
-  } else if !(expected_old.format == repo.object_format) {
+  } else if !(git_object_id_format(oid: expected_old) == repo.object_format) {
     GitRefAdvanceFormatMismatch {
       repository: repo,
       repository_format: repo.object_format,
