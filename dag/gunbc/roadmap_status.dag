@@ -23,6 +23,12 @@ type TicketFields {
   last_verified_on: String
 }
 
+type SeedGrowthJustification {
+  reason: String
+  owning_dissolution_lane: String
+  concrete_dissolve_on: String
+}
+
 type RoadmapItem
 
   = DerivableLine { prs: List<Int>, title: String, description: String }
@@ -34,6 +40,8 @@ type RoadmapItem
   | SupersededLine { by: String, content: String }
 
   | TicketLine { done: Bool, ticket: TicketFields }
+
+  | SeedGrowthJustificationLine { done: Bool, seed_growth_justification: SeedGrowthJustification }
 
 type Signoff
   = Unsigned
@@ -82,6 +90,7 @@ fn item_is_done(item: RoadmapItem, merged: List<Int>) -> Bool {
     PlainLine { content: _ } => false
     SupersededLine { by: _, content: _ } => true
     TicketLine { done, ticket: _ } => done
+    SeedGrowthJustificationLine { done, seed_growth_justification: _ } => done
   }
 }
 
@@ -92,6 +101,7 @@ fn item_superseded_by(item: RoadmapItem) -> String {
     PlainLine { content: _ } => ""
     SupersededLine { by, content: _ } => by
     TicketLine { done: _, ticket: _ } => ""
+    SeedGrowthJustificationLine { done: _, seed_growth_justification: _ } => ""
   }
 }
 
@@ -102,6 +112,7 @@ fn line_ticket(item: RoadmapItem) -> TicketFields? {
     PlainLine { content: _ } => Absent
     SupersededLine { by: _, content: _ } => Absent
     TicketLine { done: _, ticket } => Present { value: ticket }
+    SeedGrowthJustificationLine { done: _, seed_growth_justification: _ } => Absent
   }
 }
 
@@ -117,6 +128,7 @@ fn status_drift(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Dr
     PlainLine { content: _ } => Underivable
     SupersededLine { by: _, content: _ } => Underivable
     TicketLine { done: _, ticket: _ } => Underivable
+    SeedGrowthJustificationLine { done: _, seed_growth_justification: _ } => Underivable
     DerivableLine { prs, title: _, description: _ } =>
       if committed_box == prs_all_merged(prs: prs, merged: merged) {
         Clean

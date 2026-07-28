@@ -17,7 +17,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  TicketFields, TicketUpdate, line_ticket,
+  SeedGrowthJustificationLine, TicketFields, TicketUpdate, line_ticket,
   item_superseded_by, item_is_done, signoff_accepts, signoff_by,
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
@@ -232,6 +232,8 @@ fn line_title(line: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => join(["**", ticket.headline, "** — ", ticket.brief], "")
+    SeedGrowthJustificationLine { done: _, seed_growth_justification } =>
+      join(["**SeedGrowthJustification** — ", seed_growth_justification.reason], "")
   }
 }
 

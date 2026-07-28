@@ -9,7 +9,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionGroup,
   RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids,
 }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_superseded_by, signoff_accepts }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine, SeedGrowthJustificationLine, item_superseded_by, signoff_accepts }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import extdeps.languages.json.emit {
@@ -182,6 +182,11 @@ fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
           json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
           json_kv(key: "prs", value: json_array(elements: [])),
         ])
+      SeedGrowthJustificationLine { done: _, seed_growth_justification: _ } =>
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
     }
     ManualAcceptance =>
       json_object(members: [
@@ -197,6 +202,7 @@ fn node_title(item: RoadmapItem) -> String {
     PlainLine { content } => content
     SupersededLine { by: _, content } => content
     TicketLine { done: _, ticket } => ticket.headline
+    SeedGrowthJustificationLine { done: _, seed_growth_justification } => concat("**SeedGrowthJustification** — ", seed_growth_justification.reason)
   }
 }
 

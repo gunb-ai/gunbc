@@ -11,7 +11,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine, SeedGrowthJustificationLine, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 8 }
 
@@ -78,6 +78,8 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
     SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
     TicketLine { done: _, ticket } =>
       [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief], "") }]
+    SeedGrowthJustificationLine { done: _, seed_growth_justification } =>
+      [TextInline { text: concat("**SeedGrowthJustification** — ", seed_growth_justification.reason) }]
   }
 }
 
@@ -88,6 +90,7 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
     AuthoredLine { done: _, content: _ } => false
     SupersededLine { by: _, content: _ } => false
     TicketLine { done: _, ticket: _ } => false
+    SeedGrowthJustificationLine { done: _, seed_growth_justification: _ } => false
   }
 }
 
