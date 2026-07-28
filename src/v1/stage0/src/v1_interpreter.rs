@@ -1346,9 +1346,18 @@ pub struct SelectedFunctionIdentity {
 }
 
 fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>) -> Option<String> {
+    let normalize = |path: &str| {
+        path.replace('\\', "/")
+            .split("/./")
+            .collect::<Vec<_>>()
+            .join("/")
+            .trim_start_matches("./")
+            .to_string()
+    };
+    let file = normalize(file);
     let exact: Vec<_> = module_path_index
         .iter()
-        .filter(|(_, path)| path.as_str() == file)
+        .filter(|(_, path)| normalize(path) == file)
         .map(|(module, _)| module.clone())
         .collect();
     if exact.len() == 1 {
@@ -1359,7 +1368,7 @@ fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>)
     }
     let suffix: Vec<_> = module_path_index
         .iter()
-        .filter(|(_, path)| file.ends_with(path.as_str()))
+        .filter(|(_, path)| file.ends_with(&normalize(path)))
         .map(|(module, _)| module.clone())
         .collect();
     (suffix.len() == 1).then(|| suffix.into_iter().next().expect("one suffix"))
