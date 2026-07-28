@@ -1243,8 +1243,47 @@ fn nullary_coproduct_variant_value(
     }
 }
 
+fn typed_nullary_coproduct_item_from_call(call: &Rc<Node>) -> InterpResult<Rc<Node>> {
+    let discriminator_expr = call
+        .children
+        .get(1)
+        .and_then(|arg| arg.children.first())
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: typed discriminator argument missing".to_string(),
+        })?;
+    let callable = discriminator_expr
+        .inferred
+        .as_ref()
+        .and_then(|inferred| inferred_to_node(inferred.clone()))
+        .filter(|node| node.connective == Connective::Arrow)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: discriminator is not a typed function".to_string(),
+        })?;
+    let parameter = callable
+        .params
+        .first()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: discriminator parameter missing".to_string(),
+        })?;
+    let item = parameter
+        .inferred
+        .as_ref()
+        .and_then(|inferred| inferred_to_node(inferred.clone()))
+        .filter(|node| node.connective == Connective::Disj)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "coproduct_nullary_inhabitants: discriminator parameter is not a closed coproduct"
+                .to_string(),
+        })?;
+    Ok(item)
+}
+
+fn same_type_declaration(left: &Rc<Node>, right: &Rc<Node>) -> bool {
+    left.span == right.span && left.ident_span == right.ident_span
+}
+
 pub fn eval_coproduct_nullary_inhabitants(
     ctx: &InterpContext,
+    call: &Rc<Node>,
     args: &[(Option<String>, Value)],
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(
@@ -1252,12 +1291,20 @@ pub fn eval_coproduct_nullary_inhabitants(
         "coproduct_nullary_inhabitants",
     )?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
+    let typed_item = typed_nullary_coproduct_item_from_call(call)?;
+    if !same_type_declaration(item, &typed_item) {
+        return Ok(outcome_rejected_value(
+            ctx,
+            "coproduct_nullary_inhabitants: requested type does not match typed discriminator",
+        ));
+    }
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
             msg: "coproduct_nullary_inhabitants: not a closed coproduct".to_string(),
         });
     }
     let si = ctx.source_indices();
+    let reflected_type_name = authored_name_at(si.clone(), typed_item);
     let mut inhabitants = Vec::with_capacity(item.children.len());
     for variant in item.children.iter() {
         if !variant_is_nullary(variant) {
@@ -1267,7 +1314,7 @@ pub fn eval_coproduct_nullary_inhabitants(
             ));
         }
         let label = authored_name_at(si.clone(), variant.clone());
-        let value = nullary_coproduct_variant_value(ctx, type_name, &label);
+        let value = nullary_coproduct_variant_value(ctx, &reflected_type_name, &label);
         if discriminant_symbol(ctx, &value)? != label {
             return Ok(outcome_rejected_value(
                 ctx,
