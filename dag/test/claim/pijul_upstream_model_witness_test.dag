@@ -39,6 +39,20 @@ import extdeps.pijul {
   PijulReadBackMatches,
   PijulReadBackMismatch,
   PijulReadBackWorkingCopyMismatch,
+  PijulLogHeadDecoded,
+  PijulLogHeadDecodeRefused,
+  PijulLogHashSetDecoded,
+  PijulLogHashSetDecodeRefused,
+  PijulChannelLogObserved,
+  PijulChannelLogInvalid,
+  PijulChannelLogReadBackMatches,
+  PijulChannelLogReadBackMismatch,
+  PijulRenderedOrderConflictObservation,
+  PijulRenderedOrderConflictGrounded,
+  PijulRenderedConflictNotGrounded,
+  PijulDependencyTextObservation,
+  PijulDependencyMentionGrounded,
+  PijulDependencyMentionNotGrounded,
   PijulDeliveryAdmissible,
   PijulDeliveryRefused,
   PijulDeliveryMissingDependency,
@@ -49,8 +63,15 @@ import extdeps.pijul {
   PijulMissingContext,
   PijulConditionalAdvanceUnavailable,
   pijul_decode_projection,
+  pijul_projection_to_repository,
   pijul_project_repository,
   pijul_assess_read_back,
+  pijul_decode_log_head_plaintext,
+  pijul_decode_hash_only_log,
+  pijul_decode_channel_log_observation,
+  pijul_assess_channel_log_read_back,
+  pijul_assess_rendered_order_conflict,
+  pijul_assess_dependency_text,
   pijul_plan_delivery,
   pijul_change_sets_equal,
   pijul_hash_count,
@@ -294,18 +315,7 @@ fn fixture_projection() -> PijulRepositoryProjection {
 }
 
 fn fixture_repository() -> PijulRepositoryState {
-  match pijul_decode_projection(projection: fixture_projection()) {
-    PijulDecoded { repository } => repository
-    PijulDecodeRefused { cause: _ } => PijulRepositoryState {
-      changes: [],
-      pristine: PijulPristineState { vertices: [], edges: [], conflicts: [] },
-      tree: PijulTree { entries: [] },
-      working_copy: PijulWorkingCopy { entries: [] },
-      channels: [],
-      current_channel: "refused-fixture",
-      availability: PijulRepositoryComplete,
-    }
-  }
+  pijul_projection_to_repository(projection: fixture_projection())
 }
 
 fn projection_with_channels(
@@ -499,6 +509,146 @@ test fn witness_pijul_channel_state_is_set_valued_not_delivery_order() -> Bool {
         Absent => false
       }
     Absent => false
+  }
+}
+
+test fn witness_pijul_log_wire_constructs_independent_channel_readback() -> Bool {
+  let head = join(
+    [
+      concat("Change ", pijul_change_right as String),
+      "Author: fixture",
+      concat("State: ", pijul_state_combined as String),
+      "",
+      "    right",
+    ],
+    "\n",
+  )
+  let hashes = join(
+    [
+      pijul_change_right as String,
+      pijul_change_root as String,
+      pijul_change_left as String,
+    ],
+    "\n",
+  )
+  match pijul_decode_channel_log_observation(
+    pijul_version: "pijul 1.0.0-beta fixture",
+    channel: "read-back",
+    head_plaintext: head,
+    hash_only: hashes,
+  ) {
+    PijulChannelLogInvalid { cause: _ } => false
+    PijulChannelLogObserved { observation } =>
+      match pijul_assess_channel_log_read_back(
+        expected: PijulChannelStateIdentity {
+          state: pijul_state_combined,
+          changes: [pijul_change_root, pijul_change_left, pijul_change_right],
+          producer: PijulLogStateObserved { pijul_version: "modeled fixture" },
+        },
+        observation: observation,
+      ) {
+        PijulChannelLogReadBackMatches { observation: matched } =>
+          matched.channel == "read-back"
+            && matched.head.change == pijul_change_right
+        PijulChannelLogReadBackMismatch { axis: _ } => false
+      }
+  }
+}
+
+test fn witness_pijul_log_wire_refuses_duplicate_state_and_hash_rows() -> Bool {
+  let duplicated_state = join(
+    [
+      concat("Change ", pijul_change_left as String),
+      concat("State: ", pijul_state_combined as String),
+      concat("State: ", pijul_state_wrong as String),
+    ],
+    "\n",
+  )
+  let duplicated_hash = join(
+    [pijul_change_left as String, pijul_change_left as String],
+    "\n",
+  )
+  match pijul_decode_log_head_plaintext(text: duplicated_state) {
+    PijulLogHeadDecoded { head: _ } => false
+    PijulLogHeadDecodeRefused { cause: _ } =>
+      match pijul_decode_hash_only_log(text: duplicated_hash) {
+        PijulLogHashSetDecoded { changes: _ } => false
+        PijulLogHashSetDecodeRefused { cause: _ } => true
+      }
+  }
+}
+
+test fn witness_pijul_rendered_conflict_grounds_only_observed_conflict_shape() -> Bool {
+  let rendered = join(
+    [
+      concat(">>>>>>> 1 [", substring(
+        s: pijul_change_left as String,
+        start: 0,
+        end: 8,
+      )),
+      "left",
+      "=======",
+      concat("right [", substring(
+        s: pijul_change_right as String,
+        start: 0,
+        end: 8,
+      )),
+      "<<<<<<< 1",
+    ],
+    "\n",
+  )
+  match pijul_assess_rendered_order_conflict(
+    observation: PijulRenderedOrderConflictObservation {
+      path: pijul_path_source,
+      left: pijul_change_left,
+      right: pijul_change_right,
+      rendered_working_copy: rendered,
+    },
+  ) {
+    PijulRenderedOrderConflictGrounded { path, left, right } =>
+      path == pijul_path_source
+        && left == pijul_change_left
+        && right == pijul_change_right
+    PijulRenderedConflictNotGrounded => false
+  }
+}
+
+test fn witness_pijul_dependency_must_appear_inside_dependency_section() -> Bool {
+  let grounded = PijulDependencyTextObservation {
+    change: pijul_change_left,
+    dependency: pijul_change_root,
+    change_text: join(
+      [
+        "# Dependencies",
+        concat("[2] ", pijul_change_root as String),
+        "# Hunks",
+        "1. File addition",
+      ],
+      "\n",
+    ),
+  }
+  let only_hunk_mentions = PijulDependencyTextObservation {
+    change: pijul_change_left,
+    dependency: pijul_change_root,
+    change_text: join(
+      [
+        "# Dependencies",
+        "",
+        "# Hunks",
+        concat("context ", pijul_change_root as String),
+      ],
+      "\n",
+    ),
+  }
+  match pijul_assess_dependency_text(observation: grounded) {
+    PijulDependencyMentionGrounded { change, dependency } =>
+      change == pijul_change_left
+        && dependency == pijul_change_root
+        && match pijul_assess_dependency_text(observation: only_hunk_mentions) {
+          PijulDependencyMentionNotGrounded => true
+          _ => false
+        }
+    PijulDependencyMentionNotGrounded => false
   }
 }
 
