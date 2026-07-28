@@ -20357,24 +20357,38 @@ mod inert_lens_hygiene_tests {
     // root).
     #[test]
     fn unreadable_lens_is_a_read_refusal_not_an_absence() {
-        // Scratch root lives INSIDE the workspace (gitignored target/): the walk's
+        // Scratch roots live INSIDE the workspace (gitignored target/): the walk's
         // path keys are workspace-anchored and an outside-tree root panics by design.
-        let scratch = workspace_root().join("target").join(format!(
-            "gunbc-unreadable-lens-{}",
-            std::process::id()
-        ));
+        // Pool root and importer root are SEPARATE dirs because the pool's
+        // module-binding walk (`for_each_parsed_module_binding`) panics loudly on an
+        // unreadable file — that panic remains the pool-side backstop; the arm under
+        // test here is the importer walk's recorded refusal, which previously was a
+        // silent `continue`.
+        let scratch = workspace_root()
+            .join("target")
+            .join(format!("gunbc-unreadable-lens-{}", std::process::id()));
+        let pool_dir = scratch.join("pool");
         let lens_dir = scratch.join("lens");
-        std::fs::create_dir_all(&lens_dir).expect("scratch dir");
+        std::fs::create_dir_all(&pool_dir).expect("scratch pool dir");
+        std::fs::create_dir_all(&lens_dir).expect("scratch lens dir");
+        std::fs::write(
+            pool_dir.join("pool_probe.dag"),
+            "module v2.lens.pool_probe\n\ndata marker: String = \"x\"\n",
+        )
+        .expect("write pool module");
         std::fs::write(
             lens_dir.join("good.dag"),
             "module v2.lens.good_probe\n\ndata marker: String = \"x\"\n",
         )
         .expect("write good lens");
+        // Invalid UTF-8, so `read_to_string` refuses for every uid (a chmod-based
+        // probe would pass under root).
         std::fs::write(lens_dir.join("bad_lens.dag"), [0xFFu8, 0xFE, 0x00, 0xC0])
             .expect("write unreadable lens");
-        let root = scratch.to_string_lossy().into_owned();
+        let pool_root = pool_dir.to_string_lossy().into_owned();
+        let lens_root = lens_dir.to_string_lossy().into_owned();
         let observation =
-            super::import_resolution_facts_with_observation(&[root.clone()], &[root], &[]);
+            super::import_resolution_facts_with_observation(&[pool_root], &[lens_root], &[]);
         std::fs::remove_dir_all(&scratch).ok();
         let observed_bad = observation
             .observed_paths
@@ -20399,6 +20413,18 @@ mod inert_lens_hygiene_tests {
                 .iter()
                 .any(|f| f.path.ends_with("bad_lens.dag")),
             "no facts may be fabricated for an unreadable file"
+        );
+        // End-to-end: a facts value carrying this observation must STOP the census —
+        // the lens is present in the inventory, produced no module declaration, and
+        // the refusal (not absence) is the surfaced state.
+        let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
+        facts.observed_paths = observation.observed_paths;
+        facts.read_refusals = observation.read_refusals;
+        let err = super::refuse_on_module_graph_read_refusals(&facts)
+            .expect_err("census must refuse while a lens-bearing path is unreadable");
+        assert!(
+            err.contains("bad_lens.dag"),
+            "refusal must locate the unreadable path: {err}"
         );
     }
 

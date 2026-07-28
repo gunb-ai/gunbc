@@ -1,0 +1,30 @@
+module gunbc.cli_run_floor_lens_oracle_scaffold
+
+
+data cli_run_floor_lens_legacy_graph_oracle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "floor_lens_graph_legacy",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_legacy_walk_oracle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "inert_lens_modules_legacy",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_oracle_dissolve_trigger: String = "🟡 dissolve-on: floor_lens_graph_legacy + inert_lens_modules_legacy — the 6A repoint's TEST-SIDE equality oracle (the deleted build_floor_lens_import_graph corpus scan and module-name-grain walk, retained only inside cli_run.rs inert_lens_hygiene_tests as the executing equivalence receipt, the same shape as resolve_transitively_bfs_legacy). DELETES WHEN the legacy-oracle class dissolves (the queued resolve_transitively_bfs_legacy triage deletion) OR cli_run.rs Chunk F retires the HAND census entirely (docs/plans/cli-run-reconcile-defork.md)"
+
+data cli_run_floor_lens_oracle_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md"
+
+data cli_run_floor_lens_oracle_equality_receipt_test: String = "facts_walk_matches_legacy_floor_lens_graph_on_live_corpus"
+
+data cli_run_floor_lens_oracle_build_count_receipt_test: String = "lens_census_single_facts_build_receipt"
+
+data cli_run_floor_lens_oracle_read_refusal_receipt_test: String = "unreadable_lens_is_a_read_refusal_not_an_absence"
