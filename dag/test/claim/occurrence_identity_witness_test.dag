@@ -3,16 +3,35 @@ module test.claim.occurrence_identity_witness_test
 import std.types { Bool }
 import std.occurrence_identity {
   OccurrenceId,
-  OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
-  NodeOccurrenceId,
-  SyntheticOccurrence,
-  MintedOccurrence,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
+  AuthoredDeclarationOccurrence,
+  AuthoredReferenceOccurrence,
+  DeclarationOccurrenceAccepted,
+  DeclarationOccurrenceWrongCategory,
+  DeclarationOccurrenceMalformed,
+  ReferenceOccurrenceAccepted,
+  ReferenceOccurrenceWrongCategory,
+  ReferenceOccurrenceMalformed,
   occurrence_id_allocator_initial,
   alloc_occurrence_id,
   occurrence_id_eq,
   occurrence_id_allocator_advance_to,
-  node_occurrence_minted,
+  occurrence_node_minted,
+  declaration_occurrence_for_token,
+  primary_reference_occurrence_for_token,
+  label_reference_occurrence_for_token,
+  authored_declaration_occurrence,
+  authored_reference_occurrence,
+  declaration_occurrence_from_identity,
+  reference_occurrence_from_identity,
+}
+import v2.std.node {
+  SyntheticOccurrence,
+  MintedOccurrence,
+  node_occurrence_id_to_shared,
+  node_occurrence_id_from_shared,
+  node_occurrence_id_semantically_equivalent,
 }
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
@@ -40,17 +59,110 @@ test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
   advanced.next_id == 7 && unchanged.next_id == 7
 }
 
-test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
-  let minted = node_occurrence_minted(id: OccurrenceId { value: 4 })
-  let minted_holds = match minted {
-    MintedOccurrence { id: id } =>
-      id.value == 4
+test fn occurrence_identity_authored_categories_are_disjoint_holds() -> Bool {
+  let declaration = declaration_occurrence_for_token(token_ordinal: 7)
+  let primary_reference = primary_reference_occurrence_for_token(token_ordinal: 7)
+  let label_reference = label_reference_occurrence_for_token(token_ordinal: 7)
+  declaration.identity.value == 28
+    && primary_reference.identity.value == 29
+    && label_reference.identity.value == 30
+    && match authored_declaration_occurrence(occurrence: declaration) {
+      AuthoredDeclarationOccurrence { occurrence: occurrence } =>
+        occurrence.identity.value == 28
+      _ => false
+    }
+    && match authored_reference_occurrence(occurrence: primary_reference) {
+      AuthoredReferenceOccurrence { occurrence: occurrence } =>
+        occurrence.identity.value == 29
+      _ => false
+    }
+}
+
+test fn occurrence_identity_legacy_to_shared_to_legacy_round_trip_holds() -> Bool {
+  let legacy_minted = MintedOccurrence { id: OccurrenceId { value: 41 } }
+  let shared_minted = node_occurrence_id_to_shared(legacy: legacy_minted)
+  let legacy_minted_again = node_occurrence_id_from_shared(shared: shared_minted)
+  let minted_holds = match legacy_minted_again {
+    MintedOccurrence { id: id } => id.value == 41
     _ => false
   }
-  let synthetic: NodeOccurrenceId = SyntheticOccurrence
-  let synthetic_holds = match synthetic {
+  let legacy_synthetic_again = node_occurrence_id_from_shared(
+    shared: node_occurrence_id_to_shared(legacy: SyntheticOccurrence),
+  )
+  minted_holds && match legacy_synthetic_again {
     SyntheticOccurrence => true
     _ => false
   }
-  minted_holds && synthetic_holds
+}
+
+test fn occurrence_identity_shared_to_legacy_to_shared_round_trip_holds() -> Bool {
+  let shared_minted = occurrence_node_minted(id: OccurrenceId { value: 53 })
+  let shared_minted_again = node_occurrence_id_to_shared(
+    legacy: node_occurrence_id_from_shared(shared: shared_minted),
+  )
+  let minted_holds = match shared_minted_again {
+    OccurrenceMinted { id: id } => id.value == 53
+    _ => false
+  }
+  let shared_synthetic_again = node_occurrence_id_to_shared(
+    legacy: node_occurrence_id_from_shared(shared: OccurrenceSynthetic),
+  )
+  minted_holds && match shared_synthetic_again {
+    OccurrenceSynthetic => true
+    _ => false
+  }
+}
+
+test fn occurrence_identity_legacy_shared_semantic_equivalence_holds() -> Bool {
+  node_occurrence_id_semantically_equivalent(
+    legacy: SyntheticOccurrence,
+    shared: OccurrenceSynthetic,
+  )
+    && node_occurrence_id_semantically_equivalent(
+      legacy: MintedOccurrence { id: OccurrenceId { value: 67 } },
+      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+    )
+    && !node_occurrence_id_semantically_equivalent(
+      legacy: SyntheticOccurrence,
+      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+    )
+    && !node_occurrence_id_semantically_equivalent(
+      legacy: MintedOccurrence { id: OccurrenceId { value: 68 } },
+      shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+    )
+}
+
+test fn occurrence_identity_wrong_category_and_malformed_are_red_holds() -> Bool {
+  let declaration_wrong = match declaration_occurrence_from_identity(
+    identity: OccurrenceId { value: 1 },
+  ) {
+    DeclarationOccurrenceWrongCategory { identity: identity } =>
+      identity.value == 1
+    DeclarationOccurrenceAccepted { occurrence: _ } => false
+    DeclarationOccurrenceMalformed { identity: _ } => false
+  }
+  let reference_wrong = match reference_occurrence_from_identity(
+    identity: OccurrenceId { value: 4 },
+  ) {
+    ReferenceOccurrenceWrongCategory { identity: identity } =>
+      identity.value == 4
+    ReferenceOccurrenceAccepted { occurrence: _ } => false
+    ReferenceOccurrenceMalformed { identity: _ } => false
+  }
+  let declaration_malformed = match declaration_occurrence_from_identity(
+    identity: OccurrenceId { value: 3 },
+  ) {
+    DeclarationOccurrenceMalformed { identity: identity } =>
+      identity.value == 3
+    _ => false
+  }
+  let reference_malformed = match reference_occurrence_from_identity(
+    identity: OccurrenceId { value: -1 },
+  ) {
+    ReferenceOccurrenceMalformed { identity: identity } =>
+      identity.value == -1
+    _ => false
+  }
+  declaration_wrong && reference_wrong
+    && declaration_malformed && reference_malformed
 }

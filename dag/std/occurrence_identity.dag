@@ -2,15 +2,44 @@ module std.occurrence_identity
 
 import std.types { Bool, Int, String }
 
-data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
+data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped occurrence space. Production parsing assigns every source a disjoint authored-token ordinal range. Identity is the packed authored-token ordinal plus a typed edge role; filename, SourceSpan, authored name, structural Node equality, content hash, and module-local reset are forbidden identity inputs."
+
+data occurrence_identity_slots_per_authored_token: Int = 4
 
 type OccurrenceId {
   value: Int
 }
 
 type NodeOccurrenceId
-  = SyntheticOccurrence
-  | MintedOccurrence { id: OccurrenceId }
+  = OccurrenceSynthetic
+  | OccurrenceMinted { id: OccurrenceId }
+
+type DeclarationOccurrence {
+  identity: OccurrenceId
+}
+
+type ReferenceOccurrence {
+  identity: OccurrenceId
+}
+
+type AuthoredOccurrence
+  = AuthoredDeclarationOccurrence { occurrence: DeclarationOccurrence }
+  | AuthoredReferenceOccurrence { occurrence: ReferenceOccurrence }
+
+type AuthoredOccurrenceRole
+  = DeclarationOccurrenceRole
+  | PrimaryReferenceOccurrenceRole
+  | LabelReferenceOccurrenceRole
+
+type DeclarationOccurrenceProjection
+  = DeclarationOccurrenceAccepted { occurrence: DeclarationOccurrence }
+  | DeclarationOccurrenceWrongCategory { identity: OccurrenceId }
+  | DeclarationOccurrenceMalformed { identity: OccurrenceId }
+
+type ReferenceOccurrenceProjection
+  = ReferenceOccurrenceAccepted { occurrence: ReferenceOccurrence }
+  | ReferenceOccurrenceWrongCategory { identity: OccurrenceId }
+  | ReferenceOccurrenceMalformed { identity: OccurrenceId }
 
 type OccurrenceIdAllocator {
   next_id: Int
@@ -47,6 +76,95 @@ fn occurrence_id_allocator_advance_to(
   }
 }
 
-fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
-  MintedOccurrence { id: id }
+fn authored_occurrence_role_slot(role: AuthoredOccurrenceRole) -> Int {
+  match role {
+    DeclarationOccurrenceRole => 0
+    PrimaryReferenceOccurrenceRole => 1
+    LabelReferenceOccurrenceRole => 2
+  }
+}
+
+fn authored_occurrence_identity(
+  token_ordinal: Int,
+  role: AuthoredOccurrenceRole
+) -> OccurrenceId {
+  OccurrenceId {
+    value: (token_ordinal * occurrence_identity_slots_per_authored_token)
+      + authored_occurrence_role_slot(role: role),
+  }
+}
+
+fn declaration_occurrence_for_token(token_ordinal: Int) -> DeclarationOccurrence {
+  DeclarationOccurrence {
+    identity: authored_occurrence_identity(
+      token_ordinal: token_ordinal,
+      role: DeclarationOccurrenceRole,
+    ),
+  }
+}
+
+fn primary_reference_occurrence_for_token(token_ordinal: Int) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    identity: authored_occurrence_identity(
+      token_ordinal: token_ordinal,
+      role: PrimaryReferenceOccurrenceRole,
+    ),
+  }
+}
+
+fn label_reference_occurrence_for_token(token_ordinal: Int) -> ReferenceOccurrence {
+  ReferenceOccurrence {
+    identity: authored_occurrence_identity(
+      token_ordinal: token_ordinal,
+      role: LabelReferenceOccurrenceRole,
+    ),
+  }
+}
+
+fn authored_declaration_occurrence(
+  occurrence: DeclarationOccurrence
+) -> AuthoredOccurrence {
+  AuthoredDeclarationOccurrence { occurrence: occurrence }
+}
+
+fn authored_reference_occurrence(
+  occurrence: ReferenceOccurrence
+) -> AuthoredOccurrence {
+  AuthoredReferenceOccurrence { occurrence: occurrence }
+}
+
+fn occurrence_identity_slot(identity: OccurrenceId) -> Int {
+  identity.value % occurrence_identity_slots_per_authored_token
+}
+
+fn declaration_occurrence_from_identity(
+  identity: OccurrenceId
+) -> DeclarationOccurrenceProjection {
+  if identity.value < 0 || occurrence_identity_slot(identity: identity) == 3 {
+    DeclarationOccurrenceMalformed { identity: identity }
+  } else if occurrence_identity_slot(identity: identity) == 0 {
+    DeclarationOccurrenceAccepted {
+      occurrence: DeclarationOccurrence { identity: identity },
+    }
+  } else {
+    DeclarationOccurrenceWrongCategory { identity: identity }
+  }
+}
+
+fn reference_occurrence_from_identity(
+  identity: OccurrenceId
+) -> ReferenceOccurrenceProjection {
+  if identity.value < 0 || occurrence_identity_slot(identity: identity) == 3 {
+    ReferenceOccurrenceMalformed { identity: identity }
+  } else if occurrence_identity_slot(identity: identity) == 0 {
+    ReferenceOccurrenceWrongCategory { identity: identity }
+  } else {
+    ReferenceOccurrenceAccepted {
+      occurrence: ReferenceOccurrence { identity: identity },
+    }
+  }
+}
+
+fn occurrence_node_minted(id: OccurrenceId) -> NodeOccurrenceId {
+  OccurrenceMinted { id: id }
 }

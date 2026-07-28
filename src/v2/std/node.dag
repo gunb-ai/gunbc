@@ -3,16 +3,62 @@ module v2.std.node
 import std.types { ContentHash }
 import std.content_hash { content_hash_atom, content_hash_combine }
 import std.occurrence_identity {
-  SyntheticOccurrence,
-  MintedOccurrence,
-  node_occurrence_minted,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
+  occurrence_id_eq,
 }
 
 type Symbol
 type Hash = ContentHash
 
 type OccurrenceId = std.occurrence_identity.OccurrenceId
-type NodeOccurrenceId = std.occurrence_identity.NodeOccurrenceId
+
+type NodeOccurrenceId
+  = SyntheticOccurrence
+  | MintedOccurrence { id: OccurrenceId }
+
+fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
+  MintedOccurrence { id: id }
+}
+
+fn node_occurrence_id_to_shared(
+  legacy: NodeOccurrenceId
+) -> std.occurrence_identity.NodeOccurrenceId {
+  match legacy {
+    SyntheticOccurrence => OccurrenceSynthetic
+    MintedOccurrence { id: id } => OccurrenceMinted { id: id }
+  }
+}
+
+fn node_occurrence_id_from_shared(
+  shared: std.occurrence_identity.NodeOccurrenceId
+) -> NodeOccurrenceId {
+  match shared {
+    OccurrenceSynthetic => SyntheticOccurrence
+    OccurrenceMinted { id: id } => MintedOccurrence { id: id }
+  }
+}
+
+fn node_occurrence_id_semantically_equivalent(
+  legacy: NodeOccurrenceId,
+  shared: std.occurrence_identity.NodeOccurrenceId
+) -> Bool {
+  match legacy {
+    SyntheticOccurrence =>
+      match shared {
+        OccurrenceSynthetic => true
+        OccurrenceMinted { id: _ } => false
+      }
+    MintedOccurrence { id: legacy_id } =>
+      match shared {
+        OccurrenceSynthetic => false
+        OccurrenceMinted { id: shared_id } =>
+          occurrence_id_eq(left: legacy_id, right: shared_id)
+      }
+  }
+}
+
+data node_occurrence_id_compatibility_dissolve_on: String = "COUNTED DISSOLVE-ON: migrate the 265 v2 files/import blocks that import legacy SyntheticOccurrence or MintedOccurrence from v2.std.node to std.occurrence_identity; the wider compatibility surface currently appears in 360 v2 .dag files and 270 relevant v2.std.node import blocks. When the constructor-import count reaches zero and remaining type imports consume the shared authority directly, delete legacy NodeOccurrenceId and these total conversions. Until then this coproduct is representation-only and cannot decide occurrence category, binding, or resolution."
 
 type Connective
   = Atom { identity: Symbol }
