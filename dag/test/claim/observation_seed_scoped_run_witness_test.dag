@@ -1,6 +1,7 @@
 module test.claim.observation_seed_scoped_run_witness
 
 import std.types { Bool }
+import std.measure { nanosecond_count }
 import extdeps.render.ansi {
   ansi_carriage_return,
   ansi_line_feed,
@@ -158,15 +159,15 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
   match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1, addressable: false, emoji: false, prior_open: false) {
     ScopedRunMeasuredRefused { cause: _ } => false
-    ScopedRunMeasuredProjected { bytes: one, next_open: one_open, wall_ns: one_ns } =>
+    ScopedRunMeasuredProjected { bytes: one, next_open: one_open, wall: one_wall } =>
       match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 999999, addressable: false, emoji: false, prior_open: false) {
         ScopedRunMeasuredRefused { cause: _ } => false
-        ScopedRunMeasuredProjected { bytes: sub_ms, next_open: sub_ms_open, wall_ns: sub_ms_ns } =>
+        ScopedRunMeasuredProjected { bytes: sub_ms, next_open: sub_ms_open, wall: sub_ms_wall } =>
           match scoped_run_final_write_measured(entry_file: entry(), module_path: module_path(), function: function(), wall_ns: 1000000, addressable: false, emoji: false, prior_open: false) {
             ScopedRunMeasuredRefused { cause: _ } => false
-            ScopedRunMeasuredProjected { bytes: one_ms, next_open: one_ms_open, wall_ns: one_ms_ns } =>
+            ScopedRunMeasuredProjected { bytes: one_ms, next_open: one_ms_open, wall: one_ms_wall } =>
               !one_open && !sub_ms_open && !one_ms_open &&
-              one_ns == 1 && sub_ms_ns == 999999 && one_ms_ns == 1000000 &&
+              nanosecond_count(n: one_wall) == 1 && nanosecond_count(n: sub_ms_wall) == 999999 && nanosecond_count(n: one_ms_wall) == 1000000 &&
               string_contains(s: one, pattern: "duration") &&
               string_contains(s: sub_ms, pattern: "duration") &&
               string_contains(s: one_ms, pattern: "duration")

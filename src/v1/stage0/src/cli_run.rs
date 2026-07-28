@@ -10768,9 +10768,20 @@ impl ScopedRunObservation {
             if !self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredProjected") {
                 return Err("scoped measured projection returned a non-measured arm".to_string());
             }
-            match self.ctx.field(fields, "wall_ns") {
+            let Some(Value::Variant {
+                variant_name: wall_variant,
+                fields: wall_fields,
+                ..
+            }) = self.ctx.field(fields, "wall")
+            else {
+                return Err("scoped measured projection omitted canonical wall".to_string());
+            };
+            if !self.ctx.sym_eq(*wall_variant, "Nanosecond") {
+                return Err("scoped measured projection returned non-Nanosecond wall".to_string());
+            }
+            match self.ctx.field(wall_fields, "count") {
                 Some(Value::Int(value)) if *value >= 0 => Some(*value as u128),
-                _ => return Err("scoped measured projection omitted wall_ns".to_string()),
+                _ => return Err("scoped measured Nanosecond omitted count".to_string()),
             }
         } else if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
             return Err("scoped run observation returned an unknown projection arm".to_string());
