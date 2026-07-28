@@ -61,7 +61,6 @@ import v2.std.node {
   MintedOccurrence,
   Named,
   Node,
-  OccurrenceId,
   Positional,
   Symbol,
   Transform,
@@ -430,7 +429,9 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
 fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
-    occurrence_id: MintedOccurrence { id: OccurrenceId { value: id } },
+    occurrence_id: MintedOccurrence {
+      id: v2.std.node.OccurrenceId { value: id },
+    },
     children: []
   }
 }
@@ -523,4 +524,3 @@ test fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
   }
 }
-
