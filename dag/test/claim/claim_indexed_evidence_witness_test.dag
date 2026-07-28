@@ -14,6 +14,8 @@ import std.claim_evidence {
   claim_information_state,
   claim_readiness_assessment,
   claim_readiness_is_ready,
+  evidence_inference_links,
+  evidence_inference_insufficiencies,
 }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
@@ -96,7 +98,10 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     bound: provider_evidence_bound,
     reason: "invalid refresh token",
   )
-  let links = append(login.applicable, items: failed.applicable)
+  let links = append(
+    evidence_inference_links(inference: login),
+    items: evidence_inference_links(inference: failed),
+  )
   let credential_claim = provider_credential_recorded_claim(
     provider: provider,
     bound: provider_evidence_bound,
@@ -151,7 +156,10 @@ test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let links = append(failed.applicable, items: succeeded.applicable)
+  let links = append(
+    evidence_inference_links(inference: failed),
+    items: evidence_inference_links(inference: succeeded),
+  )
   let both = claim_information_state(
     assessment: claim_assessment_from_links(
       claim: ready_claim,
@@ -189,11 +197,11 @@ test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool 
   )
   let support_only = claim_assessment_from_links(
     claim: ready_claim,
-    links: succeeded.applicable,
+    links: evidence_inference_links(inference: succeeded),
   )
   let challenge_only = claim_assessment_from_links(
     claim: ready_claim,
-    links: failed.applicable,
+    links: evidence_inference_links(inference: failed),
   )
   let readiness = claim_readiness_assessment(
     policy: ClaimReadinessPolicy { required: [ready_claim] },
@@ -265,10 +273,10 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
     probe: probe,
     maximum_conclusion: claim,
   )
-  support.applicable.length() == 0
-    && support.insufficient.length() == 1
-    && challenge.applicable.length() == 1
-    && challenge.insufficient.length() == 0
+  evidence_inference_links(inference: support).length() == 0
+    && evidence_inference_insufficiencies(inference: support).length() == 1
+    && evidence_inference_links(inference: challenge).length() == 1
+    && evidence_inference_insufficiencies(inference: challenge).length() == 0
 }
 
 test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
@@ -299,13 +307,13 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
   let boot = claim_information_state(
     assessment: claim_assessment_from_links(
       claim: boot_claim,
-      links: inference.applicable,
+      links: evidence_inference_links(inference: inference),
     ),
   )
   let installed = claim_information_state(
     assessment: claim_assessment_from_links(
       claim: installed_claim,
-      links: inference.applicable,
+      links: evidence_inference_links(inference: inference),
     ),
   )
   boot.support
@@ -339,13 +347,13 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
   let captured = claim_information_state(
     assessment: claim_assessment_from_links(
       claim: captured_claim,
-      links: inference.applicable,
+      links: evidence_inference_links(inference: inference),
     ),
   )
   let admissible = claim_information_state(
     assessment: claim_assessment_from_links(
       claim: admissible_claim,
-      links: inference.applicable,
+      links: evidence_inference_links(inference: inference),
     ),
   )
   captured.support
@@ -353,7 +361,7 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     && !admissible.support
     && !admissible.challenge
     && all(
-      inference.applicable,
+      evidence_inference_links(inference: inference),
       link => link.maximum_conclusion == captured_claim,
     )
 }

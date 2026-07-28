@@ -8,11 +8,11 @@ import std.claim_evidence {
   EvidenceFreshness,
   EvidenceFidelity,
   EvidenceDirection,
-  EvidenceSupports,
+  EvidenceDirectionFold,
   EvidenceLink,
   EvidenceInsufficiency,
   EvidenceInference,
-  evidence_direction_bits,
+  evidence_direction_fold,
   applicable_evidence_inference,
   insufficient_evidence_inference,
 }
@@ -33,8 +33,14 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
   probe: ReadBackProbe,
   maximum_conclusion: C,
 ) -> EvidenceInference<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, ReadBackProbe>, F, C, ReadBackProbe> {
-  let direction_bits = evidence_direction_bits(direction: direction)
-  if direction_bits.support && !readback_probe_is_independent(p: probe) {
+  let supports = evidence_direction_fold(
+    direction: direction,
+    fold: EvidenceDirectionFold {
+      supports: true,
+      challenges: false,
+    },
+  )
+  if supports && !readback_probe_is_independent(p: probe) {
     insufficient_evidence_inference(
       insufficiency: EvidenceInsufficiency {
         fact: fact,

@@ -55,21 +55,18 @@ type EvidenceDirection
   = EvidenceSupports
   | EvidenceChallenges
 
-type EvidenceDirectionBits {
-  support: Bool
-  challenge: Bool
+type EvidenceDirectionFold<R> {
+  supports: R
+  challenges: R
 }
 
-fn evidence_direction_bits(direction: EvidenceDirection) -> EvidenceDirectionBits {
+fn evidence_direction_fold<R>(
+  direction: EvidenceDirection,
+  fold: EvidenceDirectionFold<R>,
+) -> R {
   match direction {
-    EvidenceSupports => EvidenceDirectionBits {
-      support: true,
-      challenge: false,
-    }
-    EvidenceChallenges => EvidenceDirectionBits {
-      support: false,
-      challenge: true,
-    }
+    EvidenceSupports => fold.supports
+    EvidenceChallenges => fold.challenges
   }
 }
 
@@ -94,27 +91,62 @@ type EvidenceInsufficiency<F, C, Independence> {
   reason: NonEmptyStr
 }
 
-type EvidenceInference<L, F, C, Independence> {
-  applicable: List<L>
-  insufficient: List<EvidenceInsufficiency<F, C, Independence>>
+type EvidenceInference<L, F, C, Independence>
+  = EvidenceApplicable { link: L }
+  | EvidenceInsufficient {
+      insufficiency: EvidenceInsufficiency<F, C, Independence>,
+    }
+
+type EvidenceInferenceFold<L, F, C, Independence, R> {
+  applicable: fn(L) -> R
+  insufficient: fn(EvidenceInsufficiency<F, C, Independence>) -> R
+}
+
+fn evidence_inference_fold<L, F, C, Independence, R>(
+  inference: EvidenceInference<L, F, C, Independence>,
+  fold: EvidenceInferenceFold<L, F, C, Independence, R>,
+) -> R {
+  match inference {
+    EvidenceApplicable { link: link } => fold.applicable(link)
+    EvidenceInsufficient { insufficiency: insufficiency } =>
+      fold.insufficient(insufficiency)
+  }
 }
 
 fn applicable_evidence_inference<L, F, C, Independence>(
   link: L,
 ) -> EvidenceInference<L, F, C, Independence> {
-  EvidenceInference {
-    applicable: [link],
-    insufficient: [],
-  }
+  EvidenceApplicable { link: link }
 }
 
 fn insufficient_evidence_inference<L, F, C, Independence>(
   insufficiency: EvidenceInsufficiency<F, C, Independence>,
 ) -> EvidenceInference<L, F, C, Independence> {
-  EvidenceInference {
-    applicable: [],
-    insufficient: [insufficiency],
-  }
+  EvidenceInsufficient { insufficiency: insufficiency }
+}
+
+fn evidence_inference_links<L, F, C, Independence>(
+  inference: EvidenceInference<L, F, C, Independence>,
+) -> List<L> {
+  evidence_inference_fold(
+    inference: inference,
+    fold: EvidenceInferenceFold {
+      applicable: fn(link) { [link] },
+      insufficient: fn(_) { [] },
+    },
+  )
+}
+
+fn evidence_inference_insufficiencies<L, F, C, Independence>(
+  inference: EvidenceInference<L, F, C, Independence>,
+) -> List<EvidenceInsufficiency<F, C, Independence>> {
+  evidence_inference_fold(
+    inference: inference,
+    fold: EvidenceInferenceFold {
+      applicable: fn(_) { [] },
+      insufficient: fn(insufficiency) { [insufficiency] },
+    },
+  )
 }
 
 type ClaimAssessment<C, L> {
@@ -123,23 +155,44 @@ type ClaimAssessment<C, L> {
   challenging: List<L>
 }
 
+fn claim_assessment_add_link<F, C, A, FreshBound, FidelityBoundary, Independence>(
+  assessment: ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
+  link: EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
+) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
+  if !(link.claim == assessment.claim) {
+    assessment
+  } else {
+    evidence_direction_fold(
+      direction: link.direction,
+      fold: EvidenceDirectionFold {
+        supports: ClaimAssessment {
+          claim: assessment.claim,
+          supporting: append(assessment.supporting, items: [link]),
+          challenging: assessment.challenging,
+        },
+        challenges: ClaimAssessment {
+          claim: assessment.claim,
+          supporting: assessment.supporting,
+          challenging: append(assessment.challenging, items: [link]),
+        },
+      },
+    )
+  }
+}
+
 fn claim_assessment_from_links<F, C, A, FreshBound, FidelityBoundary, Independence>(
   claim: C,
   links: List<EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
 ) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
-  ClaimAssessment {
-    claim: claim,
-    supporting: links
-      |> filter(link =>
-        link.claim == claim
-          && evidence_direction_bits(direction: link.direction).support
-      ),
-    challenging: links
-      |> filter(link =>
-        link.claim == claim
-          && evidence_direction_bits(direction: link.direction).challenge
-      ),
-  }
+  fold(
+    links,
+    init: ClaimAssessment {
+      claim: claim,
+      supporting: [],
+      challenging: [],
+    },
+    f: claim_assessment_add_link,
+  )
 }
 
 type ClaimInformationState {
@@ -207,4 +260,4 @@ fn claim_readiness_is_ready<C>(
   assessment.blocking.length() == 0
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. ClaimInformationState is the product of two independent bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. EvidenceInference is an exclusive Applicable | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."
