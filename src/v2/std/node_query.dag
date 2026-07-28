@@ -11,8 +11,8 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list }
-import v2.std.algebra { TailAbsent, TailFound, is_empty, list_snoc_item, list_tail }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, list_snoc_item, list_tail }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.node {
   Ambiguous,
