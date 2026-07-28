@@ -147,6 +147,14 @@ test fn orch_while_typed_ascent_matches_golden_holds() -> Bool {
   }
 }
 
+test fn orch_while_live_cond_matches_literal_holds() -> Bool {
+  ci_floor_peak_while_cond_command == "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]"
+}
+
+test fn orch_while_live_body_matches_literal_holds() -> Bool {
+  ci_floor_peak_while_body_command == "d=$(dirname \"$d\")"
+}
+
 test fn orch_while_path_kind_discriminates_regular_directory_missing_holds() -> Bool {
   let regular = match bash_path_predicate_target_model(predicate: typed_ci_floor_peak_path_kind(kind: RegularFile)) {
     Accepted { value: source, diagnostics: _ } => source.authority_source_text
