@@ -255,6 +255,39 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
   }
 }
 
+test fn orch_while_raw_while_refuses_to_equal_golden_holds() -> Bool {
+  match orch_emit_step(
+    s: While {
+      cond: ExitZero {
+        run: Run {
+          command: concat(ci_floor_peak_while_cond_command, " # raw-while"),
+          env: [],
+          redirect: Absent,
+          capture: Absent
+        }
+      },
+      body: Pipeline {
+        steps: [
+          Do {
+            run: Run {
+              command: orch_while_body_command,
+              env: [],
+              redirect: Absent,
+              capture: Absent
+            }
+          }
+        ],
+        on_failure: FailFast
+      }
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_while_locate_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn orch_while_emit_cond_has_teeth_holds() -> Bool {
   match orch_emit_step(s: orch_while_locate_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
