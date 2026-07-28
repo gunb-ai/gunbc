@@ -193,7 +193,7 @@ fn scoped_deferred_diagnostics_are_preserved_before_final() {
         "timed receipt must precede Final: {stderr}"
     );
     let receipt = stderr
-        .split("[scoped-observation-receipt wall_ns=")
+        .split("[scoped-observation-end-receipt wall_ns=")
         .nth(1)
         .and_then(|tail| tail.split(']').next())
         .expect("exact Nanosecond production receipt");
@@ -207,7 +207,6 @@ fn scoped_deferred_diagnostics_are_preserved_before_final() {
         .and_then(|value| value.parse::<u128>().ok())
         .expect("seed-resolution overhead receipt");
     assert!(seed_ns > 0 && wall_ns >= seed_ns, "{stderr}");
-    assert!(wall_ns >= seed_ns, "{stderr}");
 }
 
 #[test]

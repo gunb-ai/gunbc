@@ -10817,7 +10817,7 @@ impl ScopedRunObservation {
         self.open = next_open;
         if measured && std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
             eprintln!(
-                "[scoped-observation-receipt wall_ns={} seed_resolution_ns={}]",
+                "[scoped-observation-measured-receipt wall_ns={} seed_resolution_ns={}]",
                 self.last_wall_ns, self.seed_resolution_ns
             );
         }
@@ -10838,7 +10838,7 @@ impl ScopedRunObservation {
         if std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
             let (wall_ns, seed_resolution_ns) = self.timing_receipt()?;
             eprintln!(
-                "[scoped-observation-receipt wall_ns={} seed_resolution_ns={}]",
+                "[scoped-observation-end-receipt wall_ns={} seed_resolution_ns={}]",
                 wall_ns, seed_resolution_ns
             );
         }
