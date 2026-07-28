@@ -83,7 +83,7 @@ jobs:
       - name: Floor cgroup peak pre-read (calibration; reset if permitted)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
-          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then if echo reset > "$d/memory.peak" 2>/dev/null; then echo "[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d"; else echo "[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat "$d/memory.peak") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)"; fi; else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
         timeout-minutes: 5
       - name: affected-set falsifier (predict-only cold run)
@@ -112,7 +112,7 @@ jobs:
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"
-          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         if: always()
         timeout-minutes: 5
