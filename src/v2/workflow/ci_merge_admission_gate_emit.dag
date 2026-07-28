@@ -76,10 +76,12 @@ fn ci_merge_admission_gate_intent() -> EffectPlan<BoundOperationInvocation> {
   }
 }
 
-fn ci_merge_admission_gate_script() -> String {
+fn ci_merge_admission_gate_render(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> String {
   let _fail_fast_note = ci_merge_admission_gate_fail_fast_note
   let _refusal_note = ci_merge_admission_gate_refusal_note
-  match effect_plan_bash_materialize(plan: ci_merge_admission_gate_intent()) {
+  match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: source } => concat(source, "\n")
     EffectPlanBashMaterializationRefused { refusal: refusal } =>
       concat(
@@ -90,4 +92,10 @@ fn ci_merge_admission_gate_script() -> String {
         "\n"
       )
   }
+}
+
+data ci_merge_admission_gate_render_parameterized_note: String = "The renderer takes the plan as a PARAMETER so its refusal arm has an executing consumer. Inlining the real intent would leave that arm reachable only by a corpus regression — the arm would ship unexercised, and a witness that rebuilt the marker text beside it would be asserting its own arithmetic rather than this code (the proxy-assertion fail-open). The witness perturbs one operation name and calls THIS function, so the arm the gate would actually take is the arm under test."
+
+fn ci_merge_admission_gate_script() -> String {
+  ci_merge_admission_gate_render(plan: ci_merge_admission_gate_intent())
 }

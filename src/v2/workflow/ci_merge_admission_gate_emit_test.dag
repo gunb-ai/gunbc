@@ -19,13 +19,13 @@ import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_intent,
   ci_merge_admission_gate_invoke_step,
   ci_merge_admission_gate_refusal_prefix,
+  ci_merge_admission_gate_render,
   ci_merge_admission_gate_script
 }
 import v2.workflow.effect_plan_bash_materialize {
   EffectPlanBashMaterializationRefused,
   EffectPlanBashMaterialized,
-  effect_plan_bash_materialize,
-  effect_plan_bash_refusal_label
+  effect_plan_bash_materialize
 }
 
 data gate_emit_witness_note: String = "Wave B acceptance. The claims that matter are the two the migration could silently break — the gate still fetches the SAME merge base and still invokes the SAME admission tool — plus the two the migration exists to make true: the run text is derived from the typed plan rather than spelled, and FailFast is enforced by the carrier rather than inherited from the runner's shell flags. Each positive has a control that goes red when the corresponding property is absent: perturbing the plan to Continue must refuse (not emit a weaker chain), and a plan whose operation does not exist must render a located refusal marker instead of shell."
@@ -106,7 +106,7 @@ test fn gate_continue_policy_refuses_red_control() -> Bool {
 }
 
 test fn gate_absent_operation_renders_located_refusal_red_control() -> Bool {
-  let script_of_absent = match effect_plan_bash_materialize(plan: EffectPlan {
+  let script_of_absent = ci_merge_admission_gate_render(plan: EffectPlan {
     steps: [
       Do { effect: ci_merge_admission_gate_fetch_step() },
       Do { effect: bind_operation_invocation(
@@ -119,14 +119,7 @@ test fn gate_absent_operation_renders_located_refusal_red_control() -> Bool {
       ) }
     ],
     on_failure: FailFast
-  }) {
-    EffectPlanBashMaterialized { source: _ } => ""
-    EffectPlanBashMaterializationRefused { refusal: refusal } =>
-      concat(
-        ci_merge_admission_gate_refusal_prefix,
-        effect_plan_bash_refusal_label(refusal: refusal)
-      )
-  }
+  })
   string_contains(s: script_of_absent, pattern: ci_merge_admission_gate_refusal_prefix)
     && string_contains(s: script_of_absent, pattern: "step 1")
     && string_contains(s: script_of_absent, pattern: "gunbc.WitnessBin.NoSuchOperationZzz")
