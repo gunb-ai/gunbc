@@ -365,7 +365,7 @@ test fn witness_pijul_fixture_uniqueness_frontier_is_clear() -> Bool {
 }
 
 test fn witness_pijul_fixture_has_no_duplicate_change_identity() -> Bool {
-  match pijul_duplicate_change(changes: fixture_projection().changes) {
+  match pijul_duplicate_change(changes: fixture_projection().candidate.changes) {
     Present { value: _ } => false
     Absent => true
   }
@@ -395,7 +395,7 @@ test fn witness_pijul_fixture_reference_frontier_is_clear() -> Bool {
 }
 
 test fn witness_pijul_fixture_has_no_self_dependency() -> Bool {
-  match pijul_self_dependency(changes: fixture_projection().changes) {
+  match pijul_self_dependency(changes: fixture_projection().candidate.changes) {
     Present { value: _ } => false
     Absent => true
   }
