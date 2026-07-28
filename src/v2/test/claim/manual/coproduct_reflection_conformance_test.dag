@@ -5,8 +5,48 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
 
+type NullaryReflectionRequestedA
+  = NullaryReflectionRequestedAFirst
+  | NullaryReflectionRequestedASecond
+
+type NullaryReflectionContextB
+  = NullaryReflectionContextBFirst
+  | NullaryReflectionContextBSecond
+
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
+}
+
+fn behavior_discriminant(value: Behavior) -> Symbol {
+  discriminant(v: value)
+}
+
+fn connective_discriminant(value: Connective) -> Symbol {
+  discriminant(v: value)
+}
+
+fn nullary_reflection_context_b_discriminant(
+  value: NullaryReflectionContextB
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn nullary_reflection_context_b_outcome_is_rejected(
+  result: Outcome<List<NullaryReflectionContextB>>
+) -> Bool {
+  match result {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool {
+  nullary_reflection_context_b_outcome_is_rejected(
+    result: coproduct_nullary_inhabitants(
+      type_name: ^NullaryReflectionRequestedA,
+      discriminant_of: nullary_reflection_context_b_discriminant
+    )
+  )
 }
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
@@ -39,7 +79,10 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 }
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_behavior_type,
+    discriminant_of: behavior_discriminant
+  ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
@@ -55,9 +98,11 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_connective_type,
+    discriminant_of: connective_discriminant
+  ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
-
