@@ -4,10 +4,26 @@
 use self::AdvanceResult::*;
 use self::EatResult::*;
 use self::ExpectedToken::*;
+use self::ParsedOccurrenceRole::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
 pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
+pub use crate::std_algebra::FreeMonoid;
+use crate::std_occurrence_identity::OccurrenceCategory::{
+    CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
+    NamespaceSegmentOccurrence, TypeOccurrence,
+};
+pub use crate::std_occurrence_identity::{
+    alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
+    occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
+};
+pub use crate::std_occurrence_identity::{
+    AuthoredTokenOrdinalSpace, DeclarationOccurrence, OccurrenceCategory,
+    OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
+    OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
+    ReferenceOccurrence,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -48,17 +64,17 @@ pub use crate::v1_std_core::{
     expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
     field_binding_pattern, field_node_cardinality, field_node_default_value, field_node_from_key,
     field_node_name_at, field_node_type_expr, file_transport_node, import_node, intern,
-    is_compiler_error, is_container_type, kernel_span, leaf_node_with_span, local_transport_node,
-    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
-    make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_pattern_binder_declaration_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    intern_table_with_authored_token_ordinals, is_compiler_error, is_container_type, kernel_span,
+    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
+    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
+    make_pattern_binder_declaration_node, make_resource_use_node, make_span, make_text_part_node,
+    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
+    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
+    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
+    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
+    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
+    variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
@@ -121,6 +137,10 @@ pub fn token_stream_peek(stream: Rc<TokenStream>, offset: i64) -> Option<Rc<Toke
 pub struct ParseContext {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_allocator: Option<OccurrenceIdAllocator>,
+    pub occurrence_index: Option<Rc<OccurrenceIndex>>,
+    pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
+    pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -133,6 +153,143 @@ pub struct ParseResult {
 pub struct ParseWithTableResult {
     pub result: Rc<ParseResult>,
     pub intern_table: Rc<InternTable>,
+    pub occurrence_allocator: OccurrenceIdAllocator,
+    pub occurrence_transport: Rc<OccurrenceTransport>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedNodeStampResult {
+    pub node: Rc<Node>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedNodeListStampResult {
+    pub nodes: Rc<Vec<Rc<Node>>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedOptionalNodeStampResult {
+    pub node: Option<Rc<Node>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ParsedPatternStampResult {
+    pub pattern: Option<Rc<MatchPattern>>,
+    pub ctx: Rc<ParseContext>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ParsedOccurrenceRole {
+    ParsedOccurrenceUnclassified,
+    ParsedOccurrenceDeclaration { category: OccurrenceCategory },
+    ParsedOccurrenceReference { category: OccurrenceCategory },
+}
+impl ParsedOccurrenceRole {
+    pub fn category(&self) -> OccurrenceCategory {
+        match self {
+            ParsedOccurrenceRole::ParsedOccurrenceUnclassified => {
+                panic!("no category on unit variant")
+            }
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: __val, ..
+            } => __val.clone(),
+            ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn parse_context_occurrence_allocator(ctx: Rc<ParseContext>) -> OccurrenceIdAllocator {
+    match ctx.occurrence_allocator.clone() {
+        Some(allocator) => allocator.clone(),
+        None => occurrence_id_allocator_initial(),
+    }
+}
+
+pub fn parse_context_occurrence_index(ctx: Rc<ParseContext>) -> Rc<OccurrenceIndex> {
+    match ctx.occurrence_index.clone() {
+        Some(index) => index.clone(),
+        None => Rc::new(OccurrenceIndex {
+            entries: Rc::new(vec![]),
+        }),
+    }
+}
+
+pub fn parse_context_declaration_occurrences(
+    ctx: Rc<ParseContext>,
+) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+    match ctx.declaration_occurrences.clone() {
+        Some(occurrences) => occurrences.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn parse_context_reference_occurrences(
+    ctx: Rc<ParseContext>,
+) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+    match ctx.reference_occurrences.clone() {
+        Some(occurrences) => occurrences.clone(),
+        None => Rc::new(vec![]),
+    }
+}
+
+pub fn parse_context_with_occurrence_state(
+    ctx: Rc<ParseContext>,
+    occurrence_allocator: Option<OccurrenceIdAllocator>,
+    occurrence_index: Option<Rc<OccurrenceIndex>>,
+    declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
+    reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+) -> Rc<ParseContext> {
+    Rc::new(ParseContext {
+        source_indices: ctx.source_indices.clone(),
+        intern_table: ctx.intern_table.clone(),
+        occurrence_allocator: occurrence_allocator.clone(),
+        occurrence_index: occurrence_index.clone(),
+        declaration_occurrences: declaration_occurrences.clone(),
+        reference_occurrences: reference_occurrences.clone(),
+    })
+}
+
+pub fn parse_context_with_intern_table(
+    ctx: Rc<ParseContext>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParseContext> {
+    Rc::new(ParseContext {
+        source_indices: ctx.source_indices.clone(),
+        intern_table: intern_table.clone(),
+        occurrence_allocator: ctx.occurrence_allocator.clone(),
+        occurrence_index: ctx.occurrence_index.clone(),
+        declaration_occurrences: ctx.declaration_occurrences.clone(),
+        reference_occurrences: ctx.reference_occurrences.clone(),
+    })
+}
+
+pub fn parsed_node_with_ident(node: Rc<Node>, ident: i64) -> Rc<Node> {
+    Rc::new(Node {
+        name: node.name.clone(),
+        ident: Some(ident.clone()),
+        span: node.span.clone(),
+        ident_span: node.ident_span.clone(),
+        children: node.children.clone(),
+        connective: node.connective.clone(),
+        params: node.params.clone(),
+        inferred: node.inferred.clone(),
+        return_cardinality: node.return_cardinality.clone(),
+        uses: node.uses.clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
+        properties: node.properties.clone(),
+        type_annotation: node.type_annotation.clone(),
+        is_self_recursive: node.is_self_recursive.clone(),
+        has_non_tail_self_call: node.has_non_tail_self_call.clone(),
+        match_pattern: node.match_pattern.clone(),
+        expr_data: node.expr_data.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2069,36 +2226,537 @@ pub fn parse_dotted_ident_rest(
     }
 }
 
+pub fn occurrence_ancestors_push(
+    ancestors: Rc<Vec<OccurrenceId>>,
+    occurrence: OccurrenceId,
+) -> Rc<Vec<OccurrenceId>> {
+    v1_rt::concat(
+        ancestors.clone(),
+        Rc::new({
+            let mut __cons_v = (*Rc::new(vec![])).clone();
+            __cons_v.insert(0, occurrence.clone());
+            __cons_v
+        }),
+    )
+}
+
+pub fn stamp_parsed_node_list(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+    role: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedNodeListStampResult> {
+    nodes.clone().iter().cloned().fold(
+        Rc::new(ParsedNodeListStampResult {
+            nodes: Rc::new(vec![]),
+            ctx: ctx.clone(),
+        }),
+        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
+            let acc = v1_rt::take_owned(acc);
+            {
+                let stamped =
+                    stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx, role.clone());
+                Rc::new(ParsedNodeListStampResult {
+                    nodes: v1_rt::rc_list_push(acc.nodes, stamped.node.clone()),
+                    ctx: stamped.ctx.clone(),
+                })
+            }
+        },
+    )
+}
+
+pub fn stamp_parsed_optional_node(
+    node: Option<Rc<Node>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+    role: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedOptionalNodeStampResult> {
+    match node.clone() {
+        Some(value) => {
+            let stamped =
+                stamp_parsed_node(value.clone(), ancestors.clone(), ctx.clone(), role.clone());
+            Rc::new(ParsedOptionalNodeStampResult {
+                node: Some(stamped.node.clone()),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        None => Rc::new(ParsedOptionalNodeStampResult {
+            node: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_pattern(
+    pattern: Option<Rc<MatchPattern>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedPatternStampResult> {
+    match pattern.clone().as_deref().cloned() {
+        Some(MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        }) => {
+            let stamped = stamp_parsed_node(
+                declaration.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                    category: OccurrenceCategory::LexicalValueOccurrence,
+                }),
+            );
+            Rc::new(ParsedPatternStampResult {
+                pattern: Some(Rc::new(MatchPattern::Bind {
+                    declaration: stamped.node.clone(),
+                })),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        Some(MatchPattern::VariantPattern {
+            name,
+            parent_enum,
+            field_bindings,
+            ..
+        }) => {
+            let stamped = stamp_parsed_node_list(
+                field_bindings.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                    category: OccurrenceCategory::FieldOccurrence,
+                }),
+            );
+            Rc::new(ParsedPatternStampResult {
+                pattern: Some(Rc::new(MatchPattern::VariantPattern {
+                    name: name.clone(),
+                    parent_enum: parent_enum.clone(),
+                    field_bindings: stamped.nodes.clone(),
+                })),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        Some(MatchPattern::LitPattern { value: value, .. }) => Rc::new(ParsedPatternStampResult {
+            pattern: Some(Rc::new(MatchPattern::LitPattern {
+                value: value.clone(),
+            })),
+            ctx: ctx.clone(),
+        }),
+        Some(MatchPattern::Wildcard) => Rc::new(ParsedPatternStampResult {
+            pattern: Some(Rc::new(MatchPattern::Wildcard)),
+            ctx: ctx.clone(),
+        }),
+        None => Rc::new(ParsedPatternStampResult {
+            pattern: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_inferred(
+    inferred: Option<Rc<InferredNode>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ParsedOptionalNodeStampResult> {
+    match inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: node, .. }) => {
+            let stamped = stamp_parsed_node(
+                node.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::TypeOccurrence,
+                }),
+            );
+            Rc::new(ParsedOptionalNodeStampResult {
+                node: Some(stamped.node.clone()),
+                ctx: stamped.ctx.clone(),
+            })
+        }
+        _ => Rc::new(ParsedOptionalNodeStampResult {
+            node: None,
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn parsed_occurrence_role_for_node(
+    node: Rc<Node>,
+    requested: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedOccurrenceRole> {
+    match (*requested.clone()).clone() {
+        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => {
+            match (*node.expr_data.clone()).clone() {
+                ExprData::ExprLet => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                    category: OccurrenceCategory::LexicalValueOccurrence,
+                }),
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::LexicalValueOccurrence,
+                }),
+                ExprData::ExprFieldAccess { summary: _, .. } => {
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                        category: OccurrenceCategory::FieldOccurrence,
+                    })
+                }
+                ExprData::ExprMethodCall {
+                    method_semantics: _,
+                    ..
+                } => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::MethodOccurrence,
+                }),
+                _ => Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            }
+        }
+        _ => requested.clone(),
+    }
+}
+
+pub fn parse_context_record_occurrence(
+    ctx: Rc<ParseContext>,
+    role: Rc<ParsedOccurrenceRole>,
+    occurrence: OccurrenceId,
+    containment: Rc<OccurrenceContainmentPath>,
+    diagnostic_span: Rc<SourceSpan>,
+) -> Rc<ParseContext> {
+    match (*role.clone()).clone() {
+        ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+            category: category, ..
+        } => parse_context_with_occurrence_state(
+            ctx.clone(),
+            ctx.occurrence_allocator.clone(),
+            ctx.occurrence_index.clone(),
+            Some(v1_rt::rc_list_push(
+                parse_context_declaration_occurrences(ctx.clone()),
+                Rc::new(DeclarationOccurrence {
+                    occurrence: occurrence.clone(),
+                    containment: containment.clone(),
+                    category: category.clone(),
+                    diagnostic_span: diagnostic_span.clone(),
+                }),
+            )),
+            ctx.reference_occurrences.clone(),
+        ),
+        ParsedOccurrenceRole::ParsedOccurrenceReference {
+            category: category, ..
+        } => parse_context_with_occurrence_state(
+            ctx.clone(),
+            ctx.occurrence_allocator.clone(),
+            ctx.occurrence_index.clone(),
+            ctx.declaration_occurrences.clone(),
+            Some(v1_rt::rc_list_push(
+                parse_context_reference_occurrences(ctx.clone()),
+                Rc::new(ReferenceOccurrence {
+                    occurrence: occurrence.clone(),
+                    containment: containment.clone(),
+                    category: category.clone(),
+                    diagnostic_span: diagnostic_span.clone(),
+                }),
+            )),
+        ),
+        ParsedOccurrenceRole::ParsedOccurrenceUnclassified => ctx.clone(),
+    }
+}
+
+pub fn stamp_parsed_node_list_with_head_role(
+    nodes: Rc<Vec<Rc<Node>>>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+    head_role: Rc<ParsedOccurrenceRole>,
+    tail_role: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedNodeListStampResult> {
+    match nodes.clone().first().cloned() {
+        Some(head) => {
+            let stamped_head = stamp_parsed_node(
+                head.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                head_role.clone(),
+            );
+            let stamped_tail = stamp_parsed_node_list(
+                Rc::new(
+                    nodes
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                ),
+                ancestors.clone(),
+                stamped_head.ctx.clone(),
+                tail_role.clone(),
+            );
+            Rc::new(ParsedNodeListStampResult {
+                nodes: v1_rt::concat(
+                    Rc::new(vec![stamped_head.node.clone()]),
+                    stamped_tail.nodes.clone(),
+                ),
+                ctx: stamped_tail.ctx.clone(),
+            })
+        }
+        None => Rc::new(ParsedNodeListStampResult {
+            nodes: Rc::new(vec![]),
+            ctx: ctx.clone(),
+        }),
+    }
+}
+
+pub fn stamp_parsed_node_children(
+    node: Rc<Node>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+    role: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedNodeListStampResult> {
+    match (*node.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => stamp_parsed_node_list_with_head_role(
+            node.children.clone(),
+            ancestors.clone(),
+            ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: OccurrenceCategory::CallableOccurrence,
+            }),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        ),
+        ExprData::ExprLambda => stamp_parsed_node_list_with_head_role(
+            node.children.clone(),
+            ancestors.clone(),
+            ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::LexicalValueOccurrence,
+            }),
+        ),
+        _ => match (*role.clone()).clone() {
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::LexicalValueOccurrence,
+                ..
+            } => stamp_parsed_node_list_with_head_role(
+                node.children.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::TypeOccurrence,
+                }),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            ),
+            _ => stamp_parsed_node_list(
+                node.children.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            ),
+        },
+    }
+}
+
+pub fn stamp_parsed_node(
+    node: Rc<Node>,
+    ancestors: Rc<Vec<OccurrenceId>>,
+    ctx: Rc<ParseContext>,
+    role: Rc<ParsedOccurrenceRole>,
+) -> Rc<ParsedNodeStampResult> {
+    {
+        let allocated = alloc_occurrence_id(parse_context_occurrence_allocator(ctx.clone()));
+        let occurrence = allocated.id.clone();
+        let containment = Rc::new(OccurrenceContainmentPath {
+            ancestors: ancestors.clone(),
+            terminal: occurrence.clone(),
+        });
+        let projection = Rc::new(OccurrenceProjection {
+            occurrence: occurrence.clone(),
+            authored_name: node.name.clone(),
+            diagnostic_span: node.span.clone(),
+        });
+        let effective_role = parsed_occurrence_role_for_node(node.clone(), role.clone());
+        let indexed_ctx = parse_context_with_occurrence_state(
+            ctx.clone(),
+            Some(allocated.alloc.clone()),
+            Some(Rc::new(OccurrenceIndex {
+                entries: v1_rt::rc_list_push(
+                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                    Rc::new(OccurrenceIndexEntry {
+                        projection: projection.clone(),
+                        containment: containment.clone(),
+                    }),
+                ),
+            })),
+            ctx.declaration_occurrences.clone(),
+            ctx.reference_occurrences.clone(),
+        );
+        let indexed_ctx = parse_context_record_occurrence(
+            indexed_ctx.clone(),
+            effective_role.clone(),
+            occurrence.clone(),
+            containment.clone(),
+            node.span.clone(),
+        );
+        let child_ancestors = occurrence_ancestors_push(ancestors.clone(), occurrence.clone());
+        let children = stamp_parsed_node_children(
+            node.clone(),
+            child_ancestors.clone(),
+            indexed_ctx.clone(),
+            effective_role.clone(),
+        );
+        let params = stamp_parsed_node_list(
+            node.params.clone(),
+            child_ancestors.clone(),
+            children.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::LexicalValueOccurrence,
+            }),
+        );
+        let uses = stamp_parsed_node_list(
+            node.uses.clone(),
+            child_ancestors.clone(),
+            params.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        );
+        let properties = stamp_parsed_node_list(
+            node.properties.clone(),
+            child_ancestors.clone(),
+            uses.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        );
+        let body = stamp_parsed_optional_node(
+            node.body.clone(),
+            child_ancestors.clone(),
+            properties.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        );
+        let transport = stamp_parsed_optional_node(
+            node.transport.clone(),
+            child_ancestors.clone(),
+            body.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        );
+        let annotation = stamp_parsed_optional_node(
+            node.type_annotation.clone(),
+            child_ancestors.clone(),
+            transport.ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                category: OccurrenceCategory::TypeOccurrence,
+            }),
+        );
+        let inferred = stamp_parsed_inferred(
+            node.inferred.clone(),
+            child_ancestors.clone(),
+            annotation.ctx.clone(),
+        );
+        let pattern = stamp_parsed_pattern(
+            node.match_pattern.clone(),
+            child_ancestors.clone(),
+            inferred.ctx.clone(),
+        );
+        Rc::new(ParsedNodeStampResult {
+            node: node.clone(),
+            ctx: pattern.ctx.clone(),
+        })
+    }
+}
+
+pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<OccurrenceTransport> {
+    Rc::new(OccurrenceTransport {
+        index: parse_context_occurrence_index(ctx.clone()),
+        declarations: parse_context_declaration_occurrences(ctx.clone()),
+        references: parse_context_reference_occurrences(ctx.clone()),
+    })
+}
+
+pub fn parse_with_table_at(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
+) -> Rc<ParseWithTableResult> {
+    {
+        let occurrence_allocator = occurrence_id_allocator_advance_to(
+            occurrence_base.allocator.clone(),
+            intern_table.authored_token_ordinals.clone(),
+        );
+        let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
+        let ctx = Rc::new(ParseContext {
+            source_indices: source_indices.clone(),
+            intern_table: pre_interned.clone(),
+            occurrence_allocator: Some(occurrence_allocator.clone()),
+            occurrence_index: Some(Rc::new(OccurrenceIndex {
+                entries: Rc::new(vec![]),
+            })),
+            declaration_occurrences: Some(Rc::new(vec![])),
+            reference_occurrences: Some(Rc::new(vec![])),
+        });
+        let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
+        if has_err(r.err.clone()) {
+            {
+                let occurrence_transport = occurrence_transport_from_parse_context(r.ctx.clone());
+                let occurrence_allocator = parse_context_occurrence_allocator(r.ctx.clone());
+                Rc::new(ParseWithTableResult {
+                    result: Rc::new(ParseResult {
+                        module: None,
+                        error: r.err.clone(),
+                    }),
+                    intern_table: intern_table_with_authored_token_ordinals(
+                        r.ctx.clone().intern_table.clone(),
+                        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+                    ),
+                    occurrence_allocator: occurrence_allocator.clone(),
+                    occurrence_transport: occurrence_transport.clone(),
+                })
+            }
+        } else {
+            {
+                let stamped = stamp_parsed_node(
+                    r.module.clone(),
+                    Rc::new(vec![]),
+                    r.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::NamespaceSegmentOccurrence,
+                    }),
+                );
+                let occurrence_transport =
+                    occurrence_transport_from_parse_context(stamped.ctx.clone());
+                let occurrence_allocator = parse_context_occurrence_allocator(stamped.ctx.clone());
+                Rc::new(ParseWithTableResult {
+                    result: Rc::new(ParseResult {
+                        module: Some(stamped.node.clone()),
+                        error: None,
+                    }),
+                    intern_table: intern_table_with_authored_token_ordinals(
+                        stamped.ctx.clone().intern_table.clone(),
+                        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+                    ),
+                    occurrence_allocator: occurrence_allocator.clone(),
+                    occurrence_transport: occurrence_transport.clone(),
+                })
+            }
+        }
+    }
+}
+
+pub fn parse_with_table_in_occurrence_scope(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    occurrence_allocator: OccurrenceIdAllocator,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+    )
+}
+
 pub fn parse_with_table(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseWithTableResult> {
-    {
-        let pre_interned = pre_intern_tokens(tokens.clone(), intern_table.clone());
-        let ctx = Rc::new(ParseContext {
-            source_indices: source_indices.clone(),
-            intern_table: pre_interned.clone(),
-        });
-        let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
-        if has_err(r.err.clone()) {
-            Rc::new(ParseWithTableResult {
-                result: Rc::new(ParseResult {
-                    module: None,
-                    error: r.err.clone(),
-                }),
-                intern_table: r.ctx.clone().intern_table.clone(),
-            })
-        } else {
-            Rc::new(ParseWithTableResult {
-                result: Rc::new(ParseResult {
-                    module: Some(r.module.clone()),
-                    error: None,
-                }),
-                intern_table: r.ctx.clone().intern_table.clone(),
-            })
-        }
-    }
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        intern_table.authored_token_ordinals.clone(),
+    )
 }
 
 pub fn parse(
@@ -2186,10 +2844,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
         let mod_ir = intern(ctx.intern_table.clone(), mod_name.clone());
-        let ctx = Rc::new(ParseContext {
-            intern_table: mod_ir.table.clone(),
-            ..(*ctx.clone()).clone()
-        });
+        let ctx = parse_context_with_intern_table(ctx.clone(), mod_ir.table.clone());
         let base_mod = Rc::new(Node {
             name: mod_name.clone(),
             span: start_span.clone(),
@@ -2210,10 +2865,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let mod_ = Rc::new(Node {
-            ident: Some(mod_ir.id.clone()),
-            ..(*base_mod.clone()).clone()
-        });
+        let mod_ = parsed_node_with_ident(base_mod.clone(), mod_ir.id.clone());
         Rc::new(ModuleResult {
             module: mod_.clone(),
             tokens: tokens.clone(),
@@ -2374,14 +3026,8 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     mod_path_span.clone(),
                 );
                 let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
-                let ctx = Rc::new(ParseContext {
-                    intern_table: imp_ir.table.clone(),
-                    ..(*ctx.clone()).clone()
-                });
-                let imp = Rc::new(Node {
-                    ident: Some(imp_ir.id.clone()),
-                    ..(*base_imp.clone()).clone()
-                });
+                let ctx = parse_context_with_intern_table(ctx.clone(), imp_ir.table.clone());
+                let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
                 Rc::new(ImportResult {
                     import: imp.clone(),
                     tokens: tokens.clone(),
@@ -2399,14 +3045,8 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     mod_path_span.clone(),
                 );
                 let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
-                let ctx = Rc::new(ParseContext {
-                    intern_table: imp_ir.table.clone(),
-                    ..(*ctx.clone()).clone()
-                });
-                let imp = Rc::new(Node {
-                    ident: Some(imp_ir.id.clone()),
-                    ..(*base_imp.clone()).clone()
-                });
+                let ctx = parse_context_with_intern_table(ctx.clone(), imp_ir.table.clone());
+                let imp = parsed_node_with_ident(base_imp.clone(), imp_ir.id.clone());
                 Rc::new(ImportResult {
                     import: imp.clone(),
                     tokens: tokens.clone(),
