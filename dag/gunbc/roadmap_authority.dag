@@ -263,6 +263,46 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
   RoadmapEdge { child: nid(s: child), parent: nid(s: parent) }
 }
 
+type SeedGrowthJustification {
+  reason: String
+  owning_dissolution_lane: RoadmapNodeId
+  trigger: String
+  current_boundary: String
+}
+
+fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
+  SeedGrowthJustification {
+    reason: "The scoped observation consumer must cross the current interpreter entry seam to bind the runtime-selected declaration identity, capture and replay deferred stderr, and project exactly one terminal outcome while the typed observation policy remains in .dag.",
+    owning_dissolution_lane: nid(s: "v1-hand-queue-drain"),
+    trigger: "Extract the scoped-run observation seam into typed host-effect transport, then hollow cli_run.rs Chunk F so generated workflow orchestration consumes the .dag projection; delete the interpreter-facing Rust bridge at that cut.",
+    current_boundary: "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs",
+  }
+}
+
+fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
+  fields(
+    headline: "Justify the bounded scoped-run observation seed bridge",
+    boundary: concat(
+      "The admitted growth is restricted to exactly these five files: ",
+      j.current_boundary,
+    ),
+    displaced_cost: concat("Reason: ", j.reason),
+    first_slice: concat(
+      "Route the bridge's deletion obligation to ",
+      concat(j.owning_dissolution_lane as String, " without admitting another seed file."),
+    ),
+    red_control: concat(
+      "Any interpreter-facing bridge growth outside the five-file boundary, or growth without this trigger, refuses acceptance: ",
+      j.trigger,
+    ),
+    out_of_scope: "No general seed-growth ledger, observation feature expansion, or implementation-status record.",
+    handback: concat(
+      "Return the five-file boundary receipt and carry this exact dissolution trigger into ",
+      j.owning_dissolution_lane as String,
+    ),
+  )
+}
+
 fn active_roadmap_nodes() -> List<RoadmapNode> {
   [
     active(
@@ -407,6 +447,12 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
+    active_small(
+      id: "observation-scoped-run-seed-growth-justification",
+      owner: "ci-observation",
+      path: "dag/gunbc/plans/cli_run_hollowing_plan.dag",
+      t: seed_growth_fields(j: observation_scoped_run_seed_growth_justification())
+    ),
     active(
       id: "observation-scoped-run-consumer",
       owner: "ci-observation",
@@ -890,6 +936,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "pderive-single-emitter", parent: "pderive-source-slot-binding"),
     edge(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter"),
 
+    edge(child: "observation-scoped-run-consumer", parent: "observation-scoped-run-seed-growth-justification"),
     edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
     edge(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping"),
     edge(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement"),
