@@ -125,6 +125,25 @@ type StoreObject
   | ObjectCommit { commit: Commit }
   | ObjectTag { tag: AnnotatedTag }
 
+type StoreObjectFold<R> {
+  blob: fn(Blob) -> R
+  tree: fn(Tree) -> R
+  commit: fn(Commit) -> R
+  tag: fn(AnnotatedTag) -> R
+}
+
+fn store_object_fold<R>(
+  object: StoreObject,
+  fold: StoreObjectFold<R>,
+) -> R {
+  match object {
+    ObjectBlob { blob } => fold.blob(blob)
+    ObjectTree { tree } => fold.tree(tree)
+    ObjectCommit { commit } => fold.commit(commit)
+    ObjectTag { tag } => fold.tag(tag)
+  }
+}
+
 type GitCanonicalHashInputRefusal
   = GitCanonicalHashInputInvalidObjectId { oid: GitObjectId }
 
@@ -208,12 +227,15 @@ type GitRepositoryState {
 }
 
 fn store_object_kind(object: StoreObject) -> ObjectType {
-  match object {
-    ObjectBlob { blob: _ } => BlobObj
-    ObjectTree { tree: _ } => TreeObj
-    ObjectCommit { commit: _ } => CommitObj
-    ObjectTag { tag: _ } => TagObj
-  }
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: fn(_) { BlobObj },
+      tree: fn(_) { TreeObj },
+      commit: fn(_) { CommitObj },
+      tag: fn(_) { TagObj },
+    },
+  )
 }
 
 fn git_object_id_raw_size(oid: GitObjectId) -> NonNegativeInt {
