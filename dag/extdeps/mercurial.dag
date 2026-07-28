@@ -513,7 +513,8 @@ fn mercurial_changeset_declared_missing(
   match availability {
     MercurialRepositoryPartial { missing_changesets, missing_manifests: _, missing_file_revisions: _ } =>
       missing_changesets |> any(changeset => changeset == wanted)
-    _ => false
+    MercurialRepositoryComplete => false
+    MercurialRepositoryInaccessible { reason: _ } => false
   }
 }
 
@@ -524,7 +525,8 @@ fn mercurial_manifest_declared_missing(
   match availability {
     MercurialRepositoryPartial { missing_changesets: _, missing_manifests, missing_file_revisions: _ } =>
       missing_manifests |> any(manifest => manifest == wanted)
-    _ => false
+    MercurialRepositoryComplete => false
+    MercurialRepositoryInaccessible { reason: _ } => false
   }
 }
 
@@ -535,7 +537,8 @@ fn mercurial_file_revision_declared_missing(
   match availability {
     MercurialRepositoryPartial { missing_changesets: _, missing_manifests: _, missing_file_revisions } =>
       missing_file_revisions |> any(file_revision => file_revision == wanted)
-    _ => false
+    MercurialRepositoryComplete => false
+    MercurialRepositoryInaccessible { reason: _ } => false
   }
 }
 
