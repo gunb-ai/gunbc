@@ -352,42 +352,88 @@ pub fn occurrence_transport_index_build(
     )
 }
 
-pub fn declaration_occurrences_by_id(
-    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
-) -> Rc<HashMap<i64, Rc<DeclarationOccurrence>>> {
-    declarations.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
-        |by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
-         declaration: Rc<DeclarationOccurrence>| match v1_rt::map_get(
-            &by_id,
-            declaration.occurrence.clone().value.clone(),
-        ) {
-            Some(_) => by_id.clone(),
-            None => v1_rt::rc_map_insert(
-                by_id.clone(),
-                declaration.occurrence.clone().value.clone(),
-                declaration.clone(),
-            ),
-        },
-    )
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OccurrenceTransportRoleIndexBuild {
+    pub declarations_by_id: Rc<HashMap<i64, Rc<DeclarationOccurrence>>>,
+    pub references_by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>,
+    pub refusal: Option<Rc<OccurrenceTransportRefusal>>,
 }
 
-pub fn reference_occurrences_by_id(
+pub fn occurrence_transport_role_index_build(
+    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
-) -> Rc<HashMap<i64, Rc<ReferenceOccurrence>>> {
-    references.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
-        |by_id: Rc<HashMap<i64, Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
-            match v1_rt::map_get(&by_id, reference.occurrence.clone().value.clone()) {
-                Some(_) => by_id.clone(),
-                None => v1_rt::rc_map_insert(
-                    by_id.clone(),
-                    reference.occurrence.clone().value.clone(),
-                    reference.clone(),
-                ),
-            }
-        },
-    )
+) -> Rc<OccurrenceTransportRoleIndexBuild> {
+    {
+        let declaration_build = declarations.clone().iter().cloned().fold(
+            Rc::new(OccurrenceTransportRoleIndexBuild {
+                declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
+                references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
+                refusal: None,
+            }),
+            |build: Rc<OccurrenceTransportRoleIndexBuild>,
+             declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
+                Some(_) => build.clone(),
+                None => match v1_rt::map_get(
+                    &build.declarations_by_id.clone(),
+                    declaration.occurrence.clone().value.clone(),
+                ) {
+                    Some(existing) => Rc::new(OccurrenceTransportRoleIndexBuild {
+                        declarations_by_id: build.declarations_by_id.clone(),
+                        references_by_id: build.references_by_id.clone(),
+                        refusal: Some(Rc::new(
+                            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                                occurrence: existing.occurrence.clone(),
+                                diagnostic_span: existing.diagnostic_span.clone(),
+                            },
+                        )),
+                    }),
+                    None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                        declarations_by_id: v1_rt::rc_map_insert(
+                            build.declarations_by_id.clone(),
+                            declaration.occurrence.clone().value.clone(),
+                            declaration.clone(),
+                        ),
+                        references_by_id: build.references_by_id.clone(),
+                        refusal: None,
+                    }),
+                },
+            },
+        );
+        match declaration_build.refusal.clone() {
+            Some(_) => declaration_build,
+            None => references.clone().iter().cloned().fold(
+                declaration_build,
+                |build: Rc<OccurrenceTransportRoleIndexBuild>,
+                 reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
+                    Some(_) => build.clone(),
+                    None => match v1_rt::map_get(
+                        &build.references_by_id.clone(),
+                        reference.occurrence.clone().value.clone(),
+                    ) {
+                        Some(existing) => Rc::new(OccurrenceTransportRoleIndexBuild {
+                            declarations_by_id: build.declarations_by_id.clone(),
+                            references_by_id: build.references_by_id.clone(),
+                            refusal: Some(Rc::new(
+                                OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                                    occurrence: existing.occurrence.clone(),
+                                    diagnostic_span: existing.diagnostic_span.clone(),
+                                },
+                            )),
+                        }),
+                        None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                            declarations_by_id: build.declarations_by_id.clone(),
+                            references_by_id: v1_rt::rc_map_insert(
+                                build.references_by_id.clone(),
+                                reference.occurrence.clone().value.clone(),
+                                reference.clone(),
+                            ),
+                            refusal: None,
+                        }),
+                    },
+                },
+            ),
+        }
+    }
 }
 
 pub fn declaration_occurrence_refusal(
@@ -482,33 +528,44 @@ pub fn occurrence_transport_refusal(
         match index_build.refusal.clone() {
             Some(refusal) => Some(refusal.clone()),
             None => {
-                let declarations_by_id =
-                    declaration_occurrences_by_id(transport.declarations.clone());
-                let references_by_id = reference_occurrences_by_id(transport.references.clone());
-                let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
-                    None,
-                    |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
-                        Some(_) => refusal.clone(),
-                        None => declaration_occurrence_refusal(
-                            index_build.entries_by_id.clone(),
-                            references_by_id.clone(),
-                            declaration.clone(),
-                        ),
-                    },
+                let role_index_build = occurrence_transport_role_index_build(
+                    transport.declarations.clone(),
+                    transport.references.clone(),
                 );
-                match declaration_refusal.clone() {
+                match role_index_build.refusal.clone() {
                     Some(refusal) => Some(refusal.clone()),
-                    None => transport.references.clone().iter().cloned().fold(
-                        None,
-                        |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
-                            Some(_) => refusal.clone(),
-                            None => reference_occurrence_refusal(
-                                index_build.entries_by_id.clone(),
-                                declarations_by_id.clone(),
-                                reference.clone(),
+                    None => {
+                        let declaration_refusal =
+                            transport.declarations.clone().iter().cloned().fold(
+                                None,
+                                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
+                                    .clone()
+                                {
+                                    Some(_) => refusal.clone(),
+                                    None => declaration_occurrence_refusal(
+                                        index_build.entries_by_id.clone(),
+                                        role_index_build.references_by_id.clone(),
+                                        declaration.clone(),
+                                    ),
+                                },
+                            );
+                        match declaration_refusal.clone() {
+                            Some(refusal) => Some(refusal.clone()),
+                            None => transport.references.clone().iter().cloned().fold(
+                                None,
+                                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal
+                                    .clone()
+                                {
+                                    Some(_) => refusal.clone(),
+                                    None => reference_occurrence_refusal(
+                                        index_build.entries_by_id.clone(),
+                                        role_index_build.declarations_by_id.clone(),
+                                        reference.clone(),
+                                    ),
+                                },
                             ),
-                        },
-                    ),
+                        }
+                    }
                 }
             }
         }

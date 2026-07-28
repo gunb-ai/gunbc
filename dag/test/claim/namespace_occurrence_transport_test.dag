@@ -295,6 +295,90 @@ test fn namespace_occurrence_ancestor_path_mismatch_refuses_holds() -> Bool {
   }
 }
 
+test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 45 }
+  let span = fixture_span(
+    file: "occurrence-duplicate-declaration.dag",
+    start: 8,
+    end: 9
+  )
+  let declaration = DeclarationOccurrence {
+    occurrence: occurrence,
+    containment: fixture_path(
+      ancestors: Empty,
+      terminal: occurrence
+    ),
+    category: LexicalValueOccurrence,
+    diagnostic_span: span,
+  }
+  let transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: occurrence,
+          authored_name: "same",
+          span: span
+        )
+      ],
+    },
+    declarations: [declaration, declaration],
+    references: [],
+  }
+  match occurrence_transport_refusal(transport: transport) {
+    Present {
+      value: DuplicateAuthoredOccurrenceIdentity {
+        occurrence: observed,
+        diagnostic_span: observed_span,
+      },
+    } =>
+      observed.value == occurrence.value &&
+      observed_span == span
+    _ => false
+  }
+}
+
+test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 46 }
+  let span = fixture_span(
+    file: "occurrence-duplicate-reference.dag",
+    start: 10,
+    end: 11
+  )
+  let reference = ReferenceOccurrence {
+    occurrence: occurrence,
+    containment: fixture_path(
+      ancestors: Empty,
+      terminal: occurrence
+    ),
+    category: CallableOccurrence,
+    diagnostic_span: span,
+  }
+  let transport = OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        fixture_index_entry(
+          occurrence: occurrence,
+          authored_name: "same",
+          span: span
+        )
+      ],
+    },
+    declarations: [],
+    references: [reference, reference],
+  }
+  match occurrence_transport_refusal(transport: transport) {
+    Present {
+      value: DuplicateAuthoredOccurrenceIdentity {
+        occurrence: observed,
+        diagnostic_span: observed_span,
+      },
+    } =>
+      observed.value == occurrence.value &&
+      observed_span == span
+    _ => false
+  }
+}
+
 test fn namespace_occurrence_validator_large_population_holds() -> Bool {
   let small = OccurrenceTransport {
     index: OccurrenceIndex {
