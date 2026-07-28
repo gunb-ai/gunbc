@@ -61,7 +61,7 @@ import extdeps.git.object_store {
   GitRefTransitionModeled,
   GitRefAdvanceDuplicate,
   GitRefAdvanceStale,
-  GitRefAdvanceSymbolic,
+  GitRefAdvanceSymbolicCycle,
   GitRefAdvanceFormatMismatch,
   GitRefAdvanceTargetUnavailable,
   RefResolved,
@@ -827,7 +827,9 @@ test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() ->
     expected_old: sha1_parent_commit,
   ) {
     GitRefTransitionModeled { repository, transition } =>
-      transition.expected_old == sha1_parent_commit
+      transition.requested_name == "refs/heads/main"
+        && transition.advanced_name == "refs/heads/main"
+        && transition.expected_old == sha1_parent_commit
         && transition.new == sha1_next_commit
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
           RefResolved { oid } => oid == sha1_next_commit
@@ -932,15 +934,59 @@ test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool 
   }
 }
 
-test fn witness_git_symbolic_ref_is_not_silently_advanced_as_direct() -> Bool {
+test fn witness_git_symbolic_ref_dereferences_without_losing_symbolic_identity() -> Bool {
   match git_model_update_ref_exact(
     repo: fixture_repository(),
     name: "HEAD",
     new_oid: sha1_next_commit,
     expected_old: sha1_parent_commit,
   ) {
-    GitRefAdvanceSymbolic { repository: _, name, target } =>
-      name == "HEAD" && target == "refs/heads/main"
+    GitRefTransitionModeled { repository, transition } =>
+      transition.requested_name == "HEAD"
+        && transition.advanced_name == "refs/heads/main"
+        && repository.refs == [
+          GitRefRecord {
+            name: "refs/heads/main",
+            target: DirectTarget { oid: sha1_next_commit },
+          },
+          GitRefRecord {
+            name: "HEAD",
+            target: SymbolicTarget { ref_name: "refs/heads/main" },
+          },
+        ]
+    _ => false
+  }
+}
+
+test fn witness_git_symbolic_ref_cycle_refuses_without_mutation() -> Bool {
+  let repo = fixture_repository()
+  let cyclic = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: repo.unavailable,
+    refs: [
+      GitRefRecord {
+        name: "HEAD",
+        target: SymbolicTarget { ref_name: "refs/meta/loop" },
+      },
+      GitRefRecord {
+        name: "refs/meta/loop",
+        target: SymbolicTarget { ref_name: "HEAD" },
+      },
+    ],
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_model_update_ref_exact(
+    repo: cyclic,
+    name: "HEAD",
+    new_oid: sha1_next_commit,
+    expected_old: sha1_parent_commit,
+  ) {
+    GitRefAdvanceSymbolicCycle { repository, name, chain } =>
+      repository == cyclic
+        && name == "HEAD"
+        && chain == ["HEAD", "refs/meta/loop", "HEAD"]
     _ => false
   }
 }

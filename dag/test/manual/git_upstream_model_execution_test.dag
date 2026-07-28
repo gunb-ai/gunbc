@@ -60,7 +60,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data git_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Git R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp, Filesystem.Write, shell.Mkdir, shell.Test, shell.Remove, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. Real Git hashes SHA-1 and SHA-256 blobs, writes the tree, commits and annotated tag, validates five tree modes plus a non-ASCII path, checks the index/worktree, runs fsck, performs exact-old-OID compare-and-swap, proves stale and nonexistent-object updates refuse, and independently reads the ref/tag/tree state back. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/git_upstream_model_execution_test.dag --function witness_git_cli_fixture_hashes_projects_and_independently_reads_back."
+data git_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Git R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp, Filesystem.Write, shell.Mkdir, shell.Test, shell.Remove, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. Real Git hashes SHA-1 and SHA-256 blobs, writes the tree, commits and annotated tag, validates five tree modes plus a non-ASCII path, checks the index/worktree, runs fsck, performs exact-old-OID compare-and-swap through symbolic HEAD while retaining its target, proves stale and nonexistent-object updates refuse, and independently reads the ref/tag/tree state back. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/git_upstream_model_execution_test.dag --function witness_git_cli_fixture_hashes_projects_and_independently_reads_back."
 
 type GitR0LiveFixtureOutcome
   = GitR0LiveFixtureObserved {
@@ -305,12 +305,12 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         expect: ExpectSuccess,
       )
 
-      let main_advanced = gunbc.WitnessBin.Run(
+      let head_advanced = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
         args: [
           "update-ref",
-          "refs/heads/main",
+          "HEAD",
           trim(s: next_commit.stdout),
           trim(s: parent_commit.stdout),
         ],
@@ -467,7 +467,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && sha256_source_written.success
           && sha256_blob.success
           && sha256_format.success
-          && main_advanced.success
+          && head_advanced.success
           && !stale_refused.success
           && !missing_target_refused.success
           && fsck.success
@@ -546,7 +546,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
               GitLsFilesStageZDecoded { entries: observed_index_entries } =>
                 match git_model_update_ref_exact(
                   repo: complete_fixture_repository(),
-                  name: "refs/heads/main",
+                  name: "HEAD",
                   new_oid: sha1_next_commit,
                   expected_old: sha1_parent_commit,
                 ) {
@@ -655,8 +655,8 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
               concat("tag_err=", tag_created.stderr),
               concat("sha256=", to_string(sha256_blob.success)),
               concat("sha256_err=", sha256_blob.stderr),
-              concat("advance=", to_string(main_advanced.success)),
-              concat("advance_err=", main_advanced.stderr),
+              concat("advance=", to_string(head_advanced.success)),
+              concat("advance_err=", head_advanced.stderr),
               concat("stale_success=", to_string(stale_refused.success)),
               concat("missing_success=", to_string(missing_target_refused.success)),
               concat("fsck=", to_string(fsck.success)),

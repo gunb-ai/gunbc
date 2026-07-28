@@ -1353,7 +1353,8 @@ fn git_verify_independent_read_back(
 }
 
 type GitModeledRefTransition {
-  name: GitRefName
+  requested_name: GitRefName
+  advanced_name: GitRefName
   expected_old: GitObjectId
   new: GitObjectId
 }
@@ -1375,10 +1376,10 @@ type GitUpdateRefOutcome
       name: GitRefName,
       count: NonNegativeInt,
     }
-  | GitRefAdvanceSymbolic {
+  | GitRefAdvanceSymbolicCycle {
       repository: GitRepositoryState,
       name: GitRefName,
-      target: GitRefName,
+      chain: List<GitRefName>,
     }
   | GitRefAdvanceFormatMismatch {
       repository: GitRepositoryState,
@@ -1397,7 +1398,7 @@ type GitUpdateRefOutcome
       object_type: ObjectType,
     }
 
-data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, but mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref, rejects stale/nonexistent targets, and observes the resulting ref. P3 must consume an executing transport observation, never promote this model transition to Applied."
+data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
 
 fn git_replace_direct_ref(
   refs: List<GitRefRecord>,
@@ -1411,6 +1412,86 @@ fn git_replace_direct_ref(
       record
     }
   )
+}
+
+fn git_model_update_ref_exact_dereferenced(
+  repo: GitRepositoryState,
+  requested_name: GitRefName,
+  current_name: GitRefName,
+  visited: List<GitRefName>,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+  new_object_type: ObjectType,
+) -> GitUpdateRefOutcome {
+  if visited |> any(name => name == current_name) {
+    GitRefAdvanceSymbolicCycle {
+      repository: repo,
+      name: current_name,
+      chain: append(visited, items: [current_name]),
+    }
+  } else {
+    match git_lookup_ref(refs: repo.refs, name: current_name) {
+      GitRefLookupMissing { name: missing } =>
+        GitRefAdvanceMissing { repository: repo, name: missing }
+      GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
+        GitRefAdvanceDuplicate {
+          repository: repo,
+          name: duplicate,
+          count: duplicate_count,
+        }
+      GitRefLookupUnique { record } => match record.target {
+        SymbolicTarget { ref_name } =>
+          git_model_update_ref_exact_dereferenced(
+            repo: repo,
+            requested_name: requested_name,
+            current_name: ref_name,
+            visited: append(visited, items: [current_name]),
+            new_oid: new_oid,
+            expected_old: expected_old,
+            new_object_type: new_object_type,
+          )
+        DirectTarget { oid: observed } =>
+          if starts_with(s: current_name as String, prefix: "refs/heads/")
+            && !(new_object_type == CommitObj) {
+            GitRefAdvanceTargetKindRefused {
+              repository: repo,
+              name: current_name,
+              oid: new_oid,
+              object_type: new_object_type,
+            }
+          } else if !(observed == expected_old) {
+            GitRefAdvanceStale {
+              repository: repo,
+              name: current_name,
+              expected_old: expected_old,
+              observed: observed,
+            }
+          } else {
+            let updated = GitRepositoryState {
+              object_format: repo.object_format,
+              objects: repo.objects,
+              unavailable: repo.unavailable,
+              refs: git_replace_direct_ref(
+                refs: repo.refs,
+                name: current_name,
+                new_oid: new_oid,
+              ),
+              index: repo.index,
+              worktree: repo.worktree,
+            }
+            GitRefTransitionModeled {
+              repository: updated,
+              transition: GitModeledRefTransition {
+                requested_name: requested_name,
+                advanced_name: current_name,
+                expected_old: expected_old,
+                new: new_oid,
+              }
+            }
+          }
+      }
+    }
+  }
 }
 
 fn git_model_update_ref_exact(
@@ -1434,56 +1515,15 @@ fn git_model_update_ref_exact(
   } else {
     match git_lookup_object(repo: repo, oid: new_oid) {
       ObjectFound { stored: new_object } =>
-        if starts_with(s: name as String, prefix: "refs/heads/")
-          && !(store_object_kind(object: new_object.object) == CommitObj) {
-          GitRefAdvanceTargetKindRefused {
-            repository: repo,
-            name: name,
-            oid: new_oid,
-            object_type: store_object_kind(object: new_object.object),
-          }
-        } else {
-          match git_lookup_ref(refs: repo.refs, name: name) {
-            GitRefLookupMissing { name: missing } =>
-              GitRefAdvanceMissing { repository: repo, name: missing }
-            GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
-              GitRefAdvanceDuplicate {
-                repository: repo,
-                name: duplicate,
-                count: duplicate_count,
-              }
-            GitRefLookupUnique { record } => match record.target {
-              SymbolicTarget { ref_name } =>
-                GitRefAdvanceSymbolic { repository: repo, name: name, target: ref_name }
-              DirectTarget { oid: observed } =>
-                if !(observed == expected_old) {
-                  GitRefAdvanceStale {
-                    repository: repo,
-                    name: name,
-                    expected_old: expected_old,
-                    observed: observed,
-                  }
-                } else {
-                  let updated = GitRepositoryState {
-                    object_format: repo.object_format,
-                    objects: repo.objects,
-                    unavailable: repo.unavailable,
-                    refs: git_replace_direct_ref(refs: repo.refs, name: name, new_oid: new_oid),
-                    index: repo.index,
-                    worktree: repo.worktree,
-                  }
-                  GitRefTransitionModeled {
-                    repository: updated,
-                    transition: GitModeledRefTransition {
-                      name: name,
-                      expected_old: expected_old,
-                      new: new_oid,
-                    }
-                  }
-                }
-            }
-          }
-        }
+        git_model_update_ref_exact_dereferenced(
+          repo: repo,
+          requested_name: name,
+          current_name: name,
+          visited: [],
+          new_oid: new_oid,
+          expected_old: expected_old,
+          new_object_type: store_object_kind(object: new_object.object),
+        )
       unavailable => GitRefAdvanceTargetUnavailable {
         repository: repo,
         oid: new_oid,
