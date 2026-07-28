@@ -24,11 +24,16 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
+    DuplicateAuthoredOccurrenceIdentity, MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+};
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinalSpace, OccurrenceIdAllocator};
+pub use crate::std_occurrence_identity::{
+    AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
+};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -448,32 +453,9 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
-}
-impl CompilerDiagnostic {
-    pub fn span(&self) -> Rc<SourceSpan> {
-        match self {
-            CompilerDiagnostic::UnresolvedImport { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingExport { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::UnresolvedType { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::TypeMismatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ArityMismatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::VariantNotFound { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::FieldNotFound { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingField { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::NonExhaustiveMatch { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::CircularDependency { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::DuplicateModule { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::MissingAnnotation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ParseError { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::InternalError { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::ComplexityUnknown { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
-            CompilerDiagnostic::AmbiguousReference { span: __val, .. } => __val.clone(),
-        }
-    }
+    OccurrenceTransportViolation {
+        refusal: Rc<OccurrenceTransportRefusal>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -485,6 +467,47 @@ pub struct ErrorNode {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn occurrence_transport_refusal_diagnostic_span(
+    refusal: Rc<OccurrenceTransportRefusal>,
+) -> Rc<SourceSpan> {
+    match (*refusal.clone()).clone() {
+        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+        OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+        OccurrenceTransportRefusal::WrongOccurrenceCategory {
+            diagnostic_span: span,
+            ..
+        } => span.clone(),
+    }
+}
+
+pub fn occurrence_transport_refusal_diagnostic_message(
+    refusal: Rc<OccurrenceTransportRefusal>,
+) -> String {
+    match (*refusal.clone()).clone() {
+        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+            diagnostic_span: _,
+            ..
+        } => "occurrence transport refused: missing authored occurrence identity".to_string(),
+        OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => {
+            v1_rt::concat(
+                "occurrence transport refused: duplicate authored occurrence identity ".to_string(),
+                (occurrence.value.clone()).to_string(),
+            )
+        }
+        OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat(
+            "occurrence transport refused: wrong category for authored occurrence identity "
+                .to_string(),
+            (occurrence.value.clone()).to_string(),
+        ),
+    }
 }
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
@@ -509,6 +532,9 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::OccurrenceTransportViolation {
+            refusal: refusal, ..
+        } => occurrence_transport_refusal_diagnostic_span(refusal.clone()),
     }
 }
 
@@ -736,6 +762,9 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             ),
             " — qualify by containment path, alias, or rename".to_string(),
         ),
+        CompilerDiagnostic::OccurrenceTransportViolation {
+            refusal: refusal, ..
+        } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     }
 }
 

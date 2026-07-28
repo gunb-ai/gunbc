@@ -11,7 +11,9 @@ use crate::std_induction::SubValueRelation::{
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_occurrence_identity::occurrence_id_allocator_initial;
+pub use crate::std_occurrence_identity::{
+    occurrence_id_allocator_initial, occurrence_transport_refusal,
+};
 pub use crate::std_occurrence_identity::{
     OccurrenceIdAllocator, OccurrenceIndex, OccurrenceTransport,
 };
@@ -57,7 +59,9 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::*;
 use crate::v1_std_core::Cardinality::*;
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, OwnershipViolation};
+use crate::v1_std_core::CompilerDiagnostic::{
+    InternalError, OccurrenceTransportViolation, OwnershipViolation,
+};
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::ExprErrorKind::*;
@@ -117,6 +121,12 @@ pub struct FrontendResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendOccurrenceResolution {
+    pub graph: Option<Rc<ModuleGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2291,6 +2301,35 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
     )
 }
 
+pub fn resolve_frontend_occurrence_transport(
+    module_inputs: Rc<Vec<Rc<ModuleOccurrenceInput>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    occurrence_transport: Rc<OccurrenceTransport>,
+) -> Rc<FrontendOccurrenceResolution> {
+    match occurrence_transport_refusal(occurrence_transport.clone()) {
+        Some(refusal) => Rc::new(FrontendOccurrenceResolution {
+            graph: None,
+            diagnostics: Rc::new(vec![make_error_node(
+                Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
+                    refusal: refusal.clone(),
+                }),
+                "".to_string(),
+            )]),
+        }),
+        None => {
+            let graph = resolve_modules_with_occurrence_transport(
+                module_inputs.clone(),
+                source_indices.clone(),
+                occurrence_transport.clone(),
+            );
+            Rc::new(FrontendOccurrenceResolution {
+                graph: Some(graph.clone()),
+                diagnostics: graph.diagnostics.clone(),
+            })
+        }
+    }
+}
+
 pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
         let prepared = Rc::new({
@@ -2371,14 +2410,14 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             }
             __result
         }));
-        let graph = resolve_modules_with_occurrence_transport(
+        let resolution = resolve_frontend_occurrence_transport(
             module_inputs.clone(),
             source_indices.clone(),
             occurrence_transport.clone(),
         );
         Rc::new(FrontendResult {
-            graph: Some(graph.clone()),
-            diagnostics: v1_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()),
+            graph: resolution.graph.clone(),
+            diagnostics: v1_rt::concat(parse_diagnostics.clone(), resolution.diagnostics.clone()),
             newline_indices: newline_indices.clone(),
             intern_table: parsed.intern_table.clone(),
             occurrence_transport: occurrence_transport.clone(),

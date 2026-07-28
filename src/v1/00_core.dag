@@ -14,6 +14,10 @@ import std.occurrence_identity {
   authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_advance_to,
   OccurrenceIdAllocator,
+  OccurrenceTransportRefusal,
+  MissingAuthoredOccurrenceIdentity,
+  DuplicateAuthoredOccurrenceIdentity,
+  WrongOccurrenceCategory,
 }
 
 type Token {
@@ -163,6 +167,7 @@ type CompilerDiagnostic
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -171,6 +176,49 @@ type ErrorNode {
 
 type ErrorDAG {
   errors: List<ErrorNode>
+}
+
+fn occurrence_transport_refusal_diagnostic_span(
+  refusal: OccurrenceTransportRefusal
+) -> SourceSpan {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => span
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => span
+    WrongOccurrenceCategory {
+      occurrence: _,
+      expected: _,
+      observed: _,
+      diagnostic_span: span,
+    } => span
+  }
+}
+
+fn occurrence_transport_refusal_diagnostic_message(
+  refusal: OccurrenceTransportRefusal
+) -> String {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
+      "occurrence transport refused: missing authored occurrence identity"
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: duplicate authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    WrongOccurrenceCategory {
+      occurrence: occurrence,
+      expected: _,
+      observed: _,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: wrong category for authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+  }
 }
 
 fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
@@ -195,6 +243,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     SoleConstructorViolation { type_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
+    OccurrenceTransportViolation { refusal: refusal } =>
+      occurrence_transport_refusal_diagnostic_span(refusal: refusal)
   }
 }
 
@@ -220,6 +270,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    OccurrenceTransportViolation { refusal: refusal } =>
+      occurrence_transport_refusal_diagnostic_message(refusal: refusal)
   }
 }
 

@@ -12,6 +12,7 @@ import v1.std.core {
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
   Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
+  OccurrenceTransportViolation,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
@@ -31,6 +32,7 @@ import std.occurrence_identity {
   OccurrenceIndex,
   OccurrenceTransport,
   occurrence_id_allocator_initial,
+  occurrence_transport_refusal,
 }
 
 import v1.compiler.resolve {
@@ -96,6 +98,11 @@ type FrontendResult {
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
   occurrence_transport: OccurrenceTransport
+}
+
+type FrontendOccurrenceResolution {
+  graph: ModuleGraph?
+  diagnostics: List<ErrorNode>
 }
 
 type FrontendAccum {
@@ -943,6 +950,35 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   )
 }
 
+fn resolve_frontend_occurrence_transport(
+  module_inputs: List<ModuleOccurrenceInput>,
+  source_indices: Map<String, NewlineIndex>,
+  occurrence_transport: OccurrenceTransport
+) -> FrontendOccurrenceResolution {
+  match occurrence_transport_refusal(transport: occurrence_transport) {
+    Present { value: refusal } =>
+      FrontendOccurrenceResolution {
+        graph: none,
+        diagnostics: [
+          make_error_node(
+            diagnostic: OccurrenceTransportViolation { refusal: refusal },
+            module_name: ""
+          )
+        ],
+      }
+    Absent =>
+      let graph = resolve_modules_with_occurrence_transport(
+        module_inputs: module_inputs,
+        source_indices: source_indices,
+        occurrence_transport: occurrence_transport
+      )
+      FrontendOccurrenceResolution {
+        graph: Present { value: graph },
+        diagnostics: graph.diagnostics,
+      }
+  }
+}
+
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
@@ -992,14 +1028,14 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
       module_occurrence_input_transport(input: input)
     )
   )
-  let graph = resolve_modules_with_occurrence_transport(
+  let resolution = resolve_frontend_occurrence_transport(
     module_inputs: module_inputs,
     source_indices: source_indices,
     occurrence_transport: occurrence_transport
   )
   FrontendResult {
-    graph: Present { value: graph },
-    diagnostics: concat(parse_diagnostics, graph.diagnostics),
+    graph: resolution.graph,
+    diagnostics: concat(parse_diagnostics, resolution.diagnostics),
     newline_indices: newline_indices,
     intern_table: parsed.intern_table,
     occurrence_transport: occurrence_transport

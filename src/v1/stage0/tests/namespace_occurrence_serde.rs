@@ -3,12 +3,20 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::std_occurrence_identity::{
-    occurrence_id_allocator_initial, OccurrenceIdAllocator,
+    occurrence_id_allocator_initial, DeclarationOccurrence, OccurrenceCategory,
+    OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocator, OccurrenceIndex,
+    OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
+    ReferenceOccurrence,
 };
-use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
+use v1_compiler::std_types::SourceSpan;
+use v1_compiler::v1_compiler_compile::{
+    compile_to_resolved, resolve_frontend_occurrence_transport, ResolvedPipelineResult, SourceFile,
+};
 use v1_compiler::v1_compiler_parse::{parse_with_table_in_occurrence_scope, ParseWithTableResult};
 use v1_compiler::v1_compiler_tokenize::tokenize;
-use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, NewlineIndex};
+use v1_compiler::v1_std_core::{
+    build_newline_index, diagnostic_to_span, empty_intern_table, CompilerDiagnostic, NewlineIndex,
+};
 
 fn parse_source(
     source: &str,
@@ -41,6 +49,141 @@ fn max_rss_kib() -> i64 {
     let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) };
     assert_eq!(rc, 0, "getrusage must be available for the size receipt");
     unsafe { usage.assume_init().ru_maxrss }
+}
+
+fn occurrence_span(file: &str, start: i64, end: i64) -> Rc<SourceSpan> {
+    Rc::new(SourceSpan {
+        file: file.to_string(),
+        start,
+        end,
+    })
+}
+
+fn occurrence_path(occurrence: OccurrenceId) -> Rc<OccurrenceContainmentPath> {
+    Rc::new(OccurrenceContainmentPath {
+        ancestors: Rc::new(vec![].into()),
+        terminal: occurrence,
+    })
+}
+
+fn occurrence_index_entry(
+    occurrence: OccurrenceId,
+    span: Rc<SourceSpan>,
+) -> Rc<OccurrenceIndexEntry> {
+    Rc::new(OccurrenceIndexEntry {
+        projection: Rc::new(OccurrenceProjection {
+            occurrence,
+            authored_name: "same".to_string(),
+            diagnostic_span: span,
+        }),
+        containment: occurrence_path(occurrence),
+    })
+}
+
+fn occurrence_transport(
+    entries: Vec<Rc<OccurrenceIndexEntry>>,
+    declarations: Vec<Rc<DeclarationOccurrence>>,
+    references: Vec<Rc<ReferenceOccurrence>>,
+) -> Rc<OccurrenceTransport> {
+    Rc::new(OccurrenceTransport {
+        index: Rc::new(OccurrenceIndex {
+            entries: Rc::new(entries.into()),
+        }),
+        declarations: Rc::new(declarations.into()),
+        references: Rc::new(references.into()),
+    })
+}
+
+#[test]
+fn production_frontend_refuses_invalid_occurrence_transport() {
+    let occurrence = OccurrenceId { value: 17 };
+    let span = occurrence_span("occurrence_refusal.dag", 4, 9);
+    let declaration = Rc::new(DeclarationOccurrence {
+        occurrence,
+        containment: occurrence_path(occurrence),
+        category: OccurrenceCategory::LexicalValueOccurrence,
+        diagnostic_span: span.clone(),
+    });
+    let reference = Rc::new(ReferenceOccurrence {
+        occurrence,
+        containment: occurrence_path(occurrence),
+        category: OccurrenceCategory::CallableOccurrence,
+        diagnostic_span: span.clone(),
+    });
+    let entry = occurrence_index_entry(occurrence, span.clone());
+
+    let valid = resolve_frontend_occurrence_transport(
+        Rc::new(vec![].into()),
+        Rc::new(HashMap::new()),
+        occurrence_transport(vec![], vec![], vec![]),
+    );
+    assert!(
+        valid.graph.is_some() && valid.diagnostics.is_empty(),
+        "valid empty transport must reach the existing resolver"
+    );
+
+    let cases = [
+        (
+            occurrence_transport(vec![], vec![declaration.clone()], vec![]),
+            "missing",
+        ),
+        (
+            occurrence_transport(
+                vec![entry.clone(), entry.clone()],
+                vec![declaration.clone()],
+                vec![],
+            ),
+            "duplicate",
+        ),
+        (
+            occurrence_transport(vec![entry], vec![declaration], vec![reference]),
+            "wrong-category",
+        ),
+    ];
+
+    for (transport, expected) in cases {
+        let result = resolve_frontend_occurrence_transport(
+            Rc::new(vec![].into()),
+            Rc::new(HashMap::new()),
+            transport,
+        );
+        assert!(
+            result.graph.is_none(),
+            "{expected} transport must stop before resolver acceptance"
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "{expected} transport must produce one typed diagnostic"
+        );
+        let diagnostic = result.diagnostics[0].diagnostic.clone();
+        assert_eq!(
+            diagnostic_to_span(diagnostic.clone()),
+            span,
+            "{expected} refusal must preserve its authored location"
+        );
+        match (&*diagnostic, expected) {
+            (CompilerDiagnostic::OccurrenceTransportViolation { refusal }, "missing") => {
+                assert!(matches!(
+                    &**refusal,
+                    OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { .. }
+                ))
+            }
+            (CompilerDiagnostic::OccurrenceTransportViolation { refusal }, "duplicate") => {
+                assert!(matches!(
+                    &**refusal,
+                    OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { .. }
+                ))
+            }
+            (CompilerDiagnostic::OccurrenceTransportViolation { refusal }, "wrong-category") => {
+                assert!(matches!(
+                    &**refusal,
+                    OccurrenceTransportRefusal::WrongOccurrenceCategory { .. }
+                ))
+            }
+            _ => panic!("{expected} transport returned the wrong typed diagnostic"),
+        }
+    }
 }
 
 #[test]
