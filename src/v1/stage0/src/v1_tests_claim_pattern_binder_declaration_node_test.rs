@@ -4,7 +4,7 @@
 use self::ParsedFixturePattern::*;
 pub use crate::std_occurrence_identity::authored_token_ordinal_space_from_allocator;
 use crate::std_occurrence_identity::OccurrenceCategory::{
-    CallableOccurrence, LexicalValueOccurrence,
+    CallableOccurrence, LexicalValueOccurrence, TypeOccurrence,
 };
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
@@ -38,7 +38,7 @@ use std::rc::Rc;
 pub fn pattern_binder_declaration_node_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch,w_production_frontend_refuses_duplicate_declaration_rows,w_production_frontend_refuses_duplicate_reference_rows".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/pattern_binder_declaration_node_test.dag --functions w_pattern_parser_materializes_dedicated_declaration_nodes,w_shorthand_wrapper_and_declaration_roles_remain_distinct,w_let_initializer_retains_lexical_reference_category,w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges,w_parse_error_preserves_authored_token_ordinal_space,w_production_frontend_accepts_valid_occurrence_transport,w_production_frontend_refuses_missing_occurrence_identity,w_production_frontend_refuses_duplicate_occurrence_identity,w_production_frontend_refuses_wrong_occurrence_category,w_production_frontend_refuses_index_terminal_mismatch,w_production_frontend_refuses_ancestor_path_mismatch,w_production_frontend_refuses_duplicate_declaration_rows,w_production_frontend_refuses_duplicate_reference_rows".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -184,6 +184,82 @@ pub fn transport_fixture_reference(occurrence: OccurrenceId) -> Rc<ReferenceOccu
     })
 }
 
+pub fn occurrence_index_has_name(
+    index: Rc<OccurrenceIndex>,
+    occurrence: OccurrenceId,
+    name: String,
+) -> bool {
+    index.entries.clone().iter().cloned().fold(
+        false,
+        |found: bool, entry: Rc<OccurrenceIndexEntry>| {
+            (found
+                || ((entry.projection.clone().occurrence.clone().value.clone()
+                    == occurrence.value.clone())
+                    && (entry.projection.clone().authored_name.clone() == name.clone())))
+        },
+    )
+}
+
+pub fn lexical_declaration_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+    transport.declarations.clone().iter().cloned().fold(
+        0,
+        |total: i64, declaration: Rc<DeclarationOccurrence>| match declaration.category.clone() {
+            OccurrenceCategory::LexicalValueOccurrence => {
+                if occurrence_index_has_name(
+                    transport.index.clone(),
+                    declaration.occurrence.clone(),
+                    name.clone(),
+                ) {
+                    (total.clone() + 1)
+                } else {
+                    total.clone()
+                }
+            }
+            _ => total.clone(),
+        },
+    )
+}
+
+pub fn lexical_reference_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+    transport.references.clone().iter().cloned().fold(
+        0,
+        |total: i64, reference: Rc<ReferenceOccurrence>| match reference.category.clone() {
+            OccurrenceCategory::LexicalValueOccurrence => {
+                if occurrence_index_has_name(
+                    transport.index.clone(),
+                    reference.occurrence.clone(),
+                    name.clone(),
+                ) {
+                    (total.clone() + 1)
+                } else {
+                    total.clone()
+                }
+            }
+            _ => total.clone(),
+        },
+    )
+}
+
+pub fn type_reference_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
+    transport.references.clone().iter().cloned().fold(
+        0,
+        |total: i64, reference: Rc<ReferenceOccurrence>| match reference.category.clone() {
+            OccurrenceCategory::TypeOccurrence => {
+                if occurrence_index_has_name(
+                    transport.index.clone(),
+                    reference.occurrence.clone(),
+                    name.clone(),
+                ) {
+                    (total.clone() + 1)
+                } else {
+                    total.clone()
+                }
+            }
+            _ => total.clone(),
+        },
+    )
+}
+
 pub fn w_pattern_parser_materializes_dedicated_declaration_nodes() -> bool {
     ((((parsed_pattern_has_one_binder("direct_bind".to_string(), "direct_bind".to_string())
         && parsed_pattern_has_one_binder(
@@ -242,6 +318,35 @@ pub fn w_shorthand_wrapper_and_declaration_roles_remain_distinct() -> bool {
             }
             _ => false,
         },
+    }
+}
+
+pub fn w_let_initializer_retains_lexical_reference_category() -> bool {
+    {
+        let file = "occurrence-let-initializer-role.dag".to_string();
+        let source = "module occurrence.let_initializer_role\n\nfn demo(y: Int) -> Int {\n  let x = y\n  x\n}\n".to_string();
+        let parsed = parse_with_table(
+            tokenize(source.clone(), file.clone()),
+            v1_rt::rc_map_insert(
+                v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                file.clone(),
+                build_newline_index(file.clone(), source.clone()),
+            ),
+            empty_intern_table(),
+        );
+        (((((parsed.result.clone().error.clone() == None)
+            && (lexical_declaration_count_named(
+                parsed.occurrence_transport.clone(),
+                "x".to_string(),
+            ) == 1))
+            && (lexical_reference_count_named(
+                parsed.occurrence_transport.clone(),
+                "y".to_string(),
+            ) == 1))
+            && (type_reference_count_named(parsed.occurrence_transport.clone(), "y".to_string())
+                == 0))
+            && (type_reference_count_named(parsed.occurrence_transport.clone(), "Int".to_string())
+                == 2))
     }
 }
 
