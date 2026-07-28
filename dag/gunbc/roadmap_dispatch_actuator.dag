@@ -64,6 +64,9 @@ import extdeps.llm.cli {
   CodexExecSpec,
   CodexWorkspaceWrite,
   CodexApprovalNever,
+  ReasoningEffort,
+  ReasoningMedium,
+  ReasoningHigh,
 }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
@@ -233,7 +236,7 @@ type DispatchRequestGate
       worktree_path: String
       branch_name: String
       brief: String
-      reasoning_effort: String
+      reasoning_effort: ReasoningEffort
     }
   | DispatchRefused { reason: NonEmptyStr }
 
@@ -314,15 +317,15 @@ fn volume_label(v: Volume) -> String {
   }
 }
 
-fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> String {
+fn dispatch_reasoning_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
   match i {
-    IntricacyHigh => "high"
-    IntricacyMedium => "medium"
-    IntricacyLow => "medium"
+    IntricacyHigh => ReasoningHigh
+    IntricacyMedium => ReasoningMedium
+    IntricacyLow => ReasoningMedium
   }
 }
 
-fn claude_effort_for_intricacy(i: Intricacy) -> String {
+fn claude_effort_for_intricacy(i: Intricacy) -> ReasoningEffort {
   dispatch_reasoning_effort_for_intricacy(i: i)
 }
 
@@ -691,7 +694,7 @@ fn git_worktree_add_argv_for_instance(
 }
 
 fn claude_spawn_argv(
-  effort: String,
+  effort: ReasoningEffort,
   session_uuid: String,
   node_id: RoadmapNodeId,
   brief: String,
@@ -708,7 +711,7 @@ fn claude_spawn_argv(
 }
 
 fn codex_spawn_argv(
-  effort: String,
+  effort: ReasoningEffort,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -723,7 +726,7 @@ fn codex_spawn_argv(
 
 fn codex_spawn_argv_for_instance(
   instance: HostDashboardInstance,
-  effort: String,
+  effort: ReasoningEffort,
   worktree_path: String,
   brief: String,
 ) -> List<String> {
@@ -743,7 +746,7 @@ fn codex_spawn_argv_for_instance(
 
 fn dispatch_provider_inner_argv(
   provider: DispatchCliProvider,
-  effort: String,
+  effort: ReasoningEffort,
   session_uuid: String,
   node_id: RoadmapNodeId,
   worktree_path: String,
@@ -772,7 +775,7 @@ fn dispatch_provider_inner_argv(
 fn dispatch_provider_inner_argv_for_instance(
   instance: HostDashboardInstance,
   provider: DispatchCliProvider,
-  effort: String,
+  effort: ReasoningEffort,
   session_uuid: String,
   node_id: RoadmapNodeId,
   worktree_path: String,

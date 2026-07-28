@@ -75,6 +75,11 @@ import gunbc.roadmap_dispatch_actuator {
   parse_tmux_attempt_panes_output,
   dispatch_current_attempt_events_projection_argv_for_instance,
 }
+import extdeps.llm.cli {
+  ReasoningHigh,
+  ReasoningMedium,
+  reasoning_effort_label,
+}
 import gunbc.dispatch_pipe_pane_emit {
   dispatch_event_pipe_command,
   dispatch_event_pipe_body_is_poisoned,
@@ -128,13 +133,18 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
 }
 
 test fn witness_claude_effort_high_for_high_intricacy() -> Bool {
-  claude_effort_for_intricacy(i: IntricacyHigh) == "high"
-    && dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh) == "high"
+  reasoning_effort_label(effort: claude_effort_for_intricacy(i: IntricacyHigh)) == "high"
+    && reasoning_effort_label(
+      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh),
+    ) == "high"
+    && reasoning_effort_label(
+      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyLow),
+    ) == "medium"
 }
 
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
-    effort: "high",
+    effort: ReasoningHigh,
     session_uuid: "uuid-1",
     node_id: nid(s: "node-1"),
     brief: "brief body",
@@ -157,7 +167,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
 
 test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
-    effort: "medium",
+    effort: ReasoningMedium,
     session_uuid: "uuid-2",
     node_id: nid(s: "node-2"),
     brief: "brief",
@@ -183,7 +193,7 @@ test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
 
 test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
   let argv = codex_spawn_argv(
-    effort: "high",
+    effort: ReasoningHigh,
     worktree_path: "/opt/gunbc/dispatch-worktrees/codex-node",
     brief: "brief body",
   )
@@ -369,7 +379,7 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
-        && e == "high"
+        && reasoning_effort_label(effort: e) == "high"
     _ => false
   }
 }
@@ -465,7 +475,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let claude_args_dangerous = shape_claude_invoke_argv(
     session_id: "uuid-bound",
     node_id: "bound-node",
-    effort: "high",
+    effort: ReasoningHigh,
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
@@ -474,7 +484,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let claude_args_default = shape_claude_invoke_argv(
     session_id: "uuid-bound",
     node_id: "bound-node",
-    effort: "high",
+    effort: ReasoningHigh,
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
@@ -484,7 +494,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     codex_home: "/home/u/.codex-dispatch",
     cwd: "/opt/gunbc/dispatch-worktrees/bound-node",
     prompt: "brief",
-    reasoning_effort: "high",
+    reasoning_effort: ReasoningHigh,
     spec: CodexExecSpec {
       sandbox: CodexWorkspaceWrite,
       approval: CodexApprovalNever,
@@ -503,7 +513,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
 
 test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
-    effort: "high",
+    effort: ReasoningHigh,
     session_uuid: "uuid-policy",
     node_id: nid(s: "node-policy"),
     brief: "brief",

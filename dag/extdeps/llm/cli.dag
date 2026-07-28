@@ -109,7 +109,7 @@ fn claude_workspace_trust_seeded(config_text: String, project_path: String) -> B
 fn shape_claude_invoke_argv(
   session_id: String,
   node_id: String,
-  effort: String,
+  effort: ReasoningEffort,
   settings_json: String,
   append_system_prompt: String,
   start_prompt: String,
@@ -121,7 +121,7 @@ fn shape_claude_invoke_argv(
       permission_args,
       [
         "--settings", settings_json,
-        "--effort", effort,
+        "--effort", reasoning_effort_label(effort: effort),
         "--session-id", session_id,
         "-n", node_id,
         "--append-system-prompt", append_system_prompt,
@@ -140,6 +140,21 @@ type CodexCliApprovalPolicy
   = CodexApprovalUntrusted
   | CodexApprovalOnRequest
   | CodexApprovalNever
+
+data reasoning_effort_note: String = "review 44058. Reasoning effort is a CLOSED three-valued axis, not free text. It was a String on both provider surfaces at once — spliced into Codex's `-c model_reasoning_effort=\"…\"` config expression and passed as Claude's `--effort` value — so a typo reached the provider as a value it rejects at run time, a host-side failure standing where a construction refusal was available (DESIGN 5). One type, not two: dispatch_reasoning_effort_for_intricacy feeds the SAME value to both providers, which is the proven coincidence that earns a shared carrier rather than a bare alias (DESIGN 6); each provider keeps its own flag spelling in its own argv row, and reasoning_effort_label is the single place the wire word exists. It sits beside CodexCliSandbox and CodexCliApprovalPolicy, which model the sibling closed axes of the same cited surface the same way. If one provider ever admits a value the other does not, that is a new variant plus a per-provider label refusal — never a re-widening to String."
+
+type ReasoningEffort
+  = ReasoningLow
+  | ReasoningMedium
+  | ReasoningHigh
+
+fn reasoning_effort_label(effort: ReasoningEffort) -> String {
+  match effort {
+    ReasoningLow => "low"
+    ReasoningMedium => "medium"
+    ReasoningHigh => "high"
+  }
+}
 
 type CodexExecSpec {
   sandbox: CodexCliSandbox
@@ -202,7 +217,7 @@ fn shape_codex_exec_argv_for_program(
   codex_home: String,
   cwd: String,
   prompt: String,
-  reasoning_effort: String,
+  reasoning_effort: ReasoningEffort,
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
@@ -222,7 +237,7 @@ fn shape_codex_exec_argv_for_programs(
   codex_home: String,
   cwd: String,
   prompt: String,
-  reasoning_effort: String,
+  reasoning_effort: ReasoningEffort,
   spec: CodexExecSpec,
 ) -> List<String> {
   concat(
@@ -241,7 +256,13 @@ fn shape_codex_exec_argv_for_programs(
         codex_session_persistence_args(persist: spec.persist_session),
         [
           "-C", cwd,
-          "-c", concat(concat("model_reasoning_effort=\"", reasoning_effort), "\""),
+          "-c", concat(
+            concat(
+              "model_reasoning_effort=\"",
+              reasoning_effort_label(effort: reasoning_effort),
+            ),
+            "\"",
+          ),
           prompt,
         ],
       ),
@@ -253,7 +274,7 @@ fn shape_codex_exec_argv(
   codex_home: String,
   cwd: String,
   prompt: String,
-  reasoning_effort: String,
+  reasoning_effort: ReasoningEffort,
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_program(
