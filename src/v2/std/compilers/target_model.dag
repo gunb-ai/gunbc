@@ -9169,6 +9169,26 @@ fn target_grounding_derive_trait_lookup_step(
   }
 }
 
+fn target_grounding_derive_trait_lookup_all(
+  id: Symbol,
+  inhabitants: List<ReprGroundingDeriveTrait>,
+  acc: TargetGroundingDeriveTraitLookup
+) -> TargetGroundingDeriveTraitLookup {
+  match inhabitants {
+    Empty => acc
+    Cons { head: candidate, tail: tail } =>
+      target_grounding_derive_trait_lookup_all(
+        id: id,
+        inhabitants: tail,
+        acc: target_grounding_derive_trait_lookup_step(
+          id: id,
+          acc: acc,
+          candidate: candidate
+        )
+      )
+  }
+}
+
 fn target_grounding_derive_trait_from_atom(
   id: Symbol,
   at: Node
@@ -9179,16 +9199,10 @@ fn target_grounding_derive_trait_from_atom(
       discriminant_of: target_grounding_derive_trait_discriminant
     ),
     f: fn(inhabitants) {
-      match fold(
-        xs: inhabitants,
-        init: TargetGroundingDeriveTraitMissing,
-        f: fn(acc, candidate) {
-          target_grounding_derive_trait_lookup_step(
-            id: id,
-            acc: acc,
-            candidate: candidate
-          )
-        }
+      match target_grounding_derive_trait_lookup_all(
+        id: id,
+        inhabitants: inhabitants,
+        acc: TargetGroundingDeriveTraitMissing
       ) {
         TargetGroundingDeriveTraitMissing =>
           outcome_rejected(target_collection_shape_malformed_diagnostic(node: at))

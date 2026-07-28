@@ -1,9 +1,13 @@
 module v2.test.manual.coproduct_reflection_conformance
 
+import std.trait_derive_shape { ReprGroundingDeriveTrait }
+import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
+data reflect_derive_trait_type: Symbol = ^ReprGroundingDeriveTrait
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
@@ -14,6 +18,10 @@ fn behavior_discriminant(value: Behavior) -> Symbol {
 }
 
 fn connective_discriminant(value: Connective) -> Symbol {
+  discriminant(v: value)
+}
+
+fn derive_trait_discriminant(value: ReprGroundingDeriveTrait) -> Symbol {
   discriminant(v: value)
 }
 
@@ -72,5 +80,22 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn witness_derive_trait_nullary_inhabitant_set_matches_arm_keys() -> Bool {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_derive_trait_type,
+    discriminant_of: derive_trait_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      fold_list(
+        xs: inhabitants,
+        empty: false,
+        cons: fn(found, inhabitant) {
+          found || derive_trait_discriminant(value: inhabitant) == ^ReprDeriveDebug
+        }
+      )
+    Rejected { diagnostics: _ } => false
   }
 }
