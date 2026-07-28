@@ -15168,7 +15168,7 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
             let mut __found = false;
             for arm in arms.clone().iter().cloned() {
                 if match (*arm_pattern(arm.clone())).clone() {
-                    MatchPattern::Bind { name: _, .. } => true,
+                    MatchPattern::Bind { declaration: _, .. } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -15190,7 +15190,10 @@ pub fn emit_pattern(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
+        MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        } => emit_ident(declaration.name.clone(), RenderTarget::Rust),
         MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
         MatchPattern::VariantPattern {
             name: n,
@@ -15652,8 +15655,12 @@ pub fn emit_variant_pattern(
                                                     let is_shorthand =
                                                         match (*fb_pat.clone()).clone() {
                                                             MatchPattern::Bind {
-                                                                name: n, ..
-                                                            } => (n.clone() == fb_name.clone()),
+                                                                declaration: declaration,
+                                                                ..
+                                                            } => {
+                                                                (declaration.name.clone()
+                                                                    == fb_name.clone())
+                                                            }
                                                             _ => false,
                                                         };
                                                     if is_shorthand.clone() {
@@ -16069,7 +16076,10 @@ pub fn emit_pattern_rc_aware(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
+        MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        } => emit_ident(declaration.name.clone(), RenderTarget::Rust),
         MatchPattern::LitPattern { value: v, .. } => rust_literal_for_pattern(v.clone()),
         MatchPattern::VariantPattern {
             name: n,
@@ -16433,14 +16443,17 @@ pub fn emit_variant_pattern_rc_aware(
                                                     )
                                                 } else {
                                                     {
-                                                        let is_shorthand = match (*fb_pat.clone())
-                                                            .clone()
-                                                        {
-                                                            MatchPattern::Bind {
-                                                                name: n, ..
-                                                            } => (n.clone() == fb_name.clone()),
-                                                            _ => false,
-                                                        };
+                                                        let is_shorthand =
+                                                            match (*fb_pat.clone()).clone() {
+                                                                MatchPattern::Bind {
+                                                                    declaration: declaration,
+                                                                    ..
+                                                                } => {
+                                                                    (declaration.name.clone()
+                                                                        == fb_name.clone())
+                                                                }
+                                                                _ => false,
+                                                            };
                                                         if is_shorthand.clone() {
                                                             emit_ident(
                                                                 fb_name.clone(),
@@ -16523,7 +16536,7 @@ pub fn emit_variant_pattern_rc_aware(
 
 pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
     match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: _, .. } => true,
+        MatchPattern::Bind { declaration: _, .. } => true,
         MatchPattern::Wildcard => true,
         _ => false,
     }
@@ -21837,7 +21850,10 @@ pub fn freemonoid_cons_binding(
         .cloned()
         {
             Some(fb) => match (*field_binding_pattern(fb.clone())).clone() {
-                MatchPattern::Bind { name: nm, .. } => nm.clone(),
+                MatchPattern::Bind {
+                    declaration: declaration,
+                    ..
+                } => declaration.name.clone(),
                 _ => "_".to_string(),
             },
             None => "_".to_string(),
@@ -21879,7 +21895,7 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
         for arm in arms.clone().iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
                 MatchPattern::Wildcard => true,
-                MatchPattern::Bind { name: _, .. } => true,
+                MatchPattern::Bind { declaration: _, .. } => true,
                 _ => false,
             } {
                 __result.push(arm);
@@ -21893,7 +21909,10 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
 
 pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
     match (*arm_pattern(arm.clone())).clone() {
-        MatchPattern::Bind { name: nm, .. } => nm.clone(),
+        MatchPattern::Bind {
+            declaration: declaration,
+            ..
+        } => declaration.name.clone(),
         _ => "".to_string(),
     }
 }

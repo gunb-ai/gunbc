@@ -7,7 +7,7 @@ import std.markdown {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
-  RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
+  RoadmapParent, TopLevel, UnderParent, roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
@@ -91,15 +91,34 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
   }
 }
 
-fn node_inlines(rn: RoadmapNode) -> List<MarkdownInline> {
+fn dependency_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
+  let parents = roadmap_parent_ids(edges: edges, node: rn.node)
+  if count(parents) > 1 {
+    [
+      TextInline {
+        text: concat(
+          " — requires all: ",
+          join(map(parents, p => p as String), ", "),
+        )
+      },
+    ]
+  } else {
+    []
+  }
+}
+
+fn node_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
   concat(
-    line_inlines(line: rn.line),
-    carriers_inlines(carriers: rn.carriers),
+    concat(
+      line_inlines(line: rn.line),
+      carriers_inlines(carriers: rn.carriers),
+    ),
+    dependency_inlines(rn: rn, edges: edges),
   )
 }
 
 fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
+  nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
   })
@@ -113,12 +132,12 @@ fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
   }
 }
 
-fn plain_item_for(rn: RoadmapNode) -> MarkdownListItem {
-  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn) }] }
+fn plain_item_for(rn: RoadmapNode, edges: List<RoadmapEdge>) -> MarkdownListItem {
+  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
 }
 
 fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn), signoff_suffix_inlines(rn: rn, merged: merged)) }
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
     concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
@@ -144,7 +163,7 @@ fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: Li
   let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
     if node_is_plain(rn: rn) {
       let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
-      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn)]) }
+      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn, edges: edges)]) }
     } else {
       let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
       { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)]), pbuf: [] }

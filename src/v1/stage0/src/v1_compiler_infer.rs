@@ -2,8 +2,8 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
-pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
+pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
@@ -2615,10 +2615,13 @@ pub fn extend_scope_with_pattern_node(
 ) -> Rc<PatternScopeResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
-            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => Rc::new(PatternScopeResult {
                 scope: extend_scope_match_bound(
                     scope.clone(),
-                    n.clone(),
+                    declaration.name.clone(),
                     pattern_binding_type(scrutinee_subject.clone()),
                     scrutinee_provenance.clone(),
                 ),
@@ -2675,10 +2678,13 @@ pub fn extend_scope_with_pattern_node(
                         );
                         let fb_pattern = field_binding_pattern(fb.clone());
                         match (*fb_pattern.clone()).clone() {
-                            MatchPattern::Bind { name: n, .. } => Rc::new(PatternScopeResult {
+                            MatchPattern::Bind {
+                                declaration: declaration,
+                                ..
+                            } => Rc::new(PatternScopeResult {
                                 scope: extend_scope_match_bound(
                                     acc.scope.clone(),
-                                    n.clone(),
+                                    declaration.name.clone(),
                                     field_type.clone(),
                                     field_provenance.clone(),
                                 ),
@@ -9561,12 +9567,12 @@ let arm_ctx = match variant_arm_ctx.clone() {
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => match scrut_inducing_field.clone() {
     Some(ind_field) => if (vname.clone() == "Present".to_string()) {
                         bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| match (*field_binding_pattern(fb.clone())).clone() {
-    MatchPattern::Bind { name: bname, .. } => Rc::new(DescentContext {
+    MatchPattern::Bind { declaration: declaration, .. } => Rc::new(DescentContext {
     fn_name: c.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(c.param_names.clone(), bname.clone(), ind_field.element_type.clone()),
+    param_names: v1_rt::rc_map_insert(c.param_names.clone(), declaration.name.clone(), ind_field.element_type.clone()),
     param_order: c.param_order.clone(),
     type_env: c.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(c.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    sub_value_vars: v1_rt::rc_map_insert(c.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
@@ -9580,7 +9586,7 @@ let arm_ctx = match variant_arm_ctx.clone() {
 inner_bindings.clone().iter().cloned().fold(c.clone(), |ic: Rc<DescentContext>, inner_fb: Rc<Node>| {
                                 let inner_field_name = field_binding_name_at(inner_fb.clone(), ctx.type_env.clone().source_indices.clone());
 let inner_bind_name = match (*field_binding_pattern(inner_fb.clone())).clone() {
-    MatchPattern::Bind { name: ibname, .. } => ibname.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 let inner_matching = Rc::new({ let mut __result = Vec::new(); for f in inner_ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == inner_vname.clone()) && (f.field_name.clone() == inner_field_name.clone())) { __result.push(f); } } __result }).first().cloned();
@@ -9617,7 +9623,7 @@ match inner_matching.clone() {
 bindings.clone().iter().cloned().fold(ctx.clone(), |c: Rc<DescentContext>, fb: Rc<Node>| {
                             let field_name = field_binding_name_at(fb.clone(), ctx.type_env.clone().source_indices.clone());
 let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
-    MatchPattern::Bind { name: bname, .. } => bname.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 let matching = Rc::new({ let mut __result = Vec::new(); for f in ind_fields.clone().iter().cloned() { if ((f.variant_name.clone() == vname.clone()) && (f.field_name.clone() == field_name.clone())) { __result.push(f); } } __result }).first().cloned();
@@ -9645,13 +9651,13 @@ match matching.clone() {
 })
 },
 },
-    MatchPattern::Bind { name: bname, .. } => if (scrut_type.clone() != "".to_string()) {
+    MatchPattern::Bind { declaration: declaration, .. } => if (scrut_type.clone() != "".to_string()) {
                         Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), scrut_type.clone()),
+    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), declaration.name.clone(), scrut_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::PreservedValue)),
+    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::PreservedValue)),
     size_aliases: ctx.size_aliases.clone(),
     scope_locals: ctx.scope_locals.clone(),
     func_env: ctx.func_env.clone(),
@@ -9661,10 +9667,10 @@ match matching.clone() {
                         match scrut_inducing_field.clone() {
     Some(ind_field) => Rc::new(DescentContext {
     fn_name: ctx.fn_name.clone(),
-    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), bname.clone(), ind_field.element_type.clone()),
+    param_names: v1_rt::rc_map_insert(ctx.param_names.clone(), declaration.name.clone(), ind_field.element_type.clone()),
     param_order: ctx.param_order.clone(),
     type_env: ctx.type_env.clone(),
-    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), bname.clone(), Rc::new(SubValueRelation::StrictSubValue {
+    sub_value_vars: v1_rt::rc_map_insert(ctx.sub_value_vars.clone(), declaration.name.clone(), Rc::new(SubValueRelation::StrictSubValue {
     field: ind_field.clone(),
     factor: Rc::new(ShrinkFactor::UnitShrink),
 })),
@@ -10602,7 +10608,7 @@ pub fn classify_body_provenance(
     MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
                     let field_label = field_binding_name_at(binding.clone(), type_env.source_indices.clone());
 let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
-    MatchPattern::Bind { name: bn, .. } => bn.clone(),
+    MatchPattern::Bind { declaration: declaration, .. } => declaration.name.clone(),
     _ => "".to_string(),
 };
 if ((bind_name.clone() != "".to_string()) && (field_label.clone() != "".to_string())) {
@@ -10614,7 +10620,7 @@ v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), field_prov.clone())
                         acc.clone()
                     }
 }),
-    MatchPattern::Bind { name: bname, .. } => v1_rt::rc_map_insert(let_prov.clone(), bname.clone(), scrut_prov.clone()),
+    MatchPattern::Bind { declaration: declaration, .. } => v1_rt::rc_map_insert(let_prov.clone(), declaration.name.clone(), scrut_prov.clone()),
     _ => let_prov.clone(),
 };
 classify_body_provenance(arm_body(arm.clone()), param_names.clone(), param_types.clone(), type_env.clone(), func_env.clone(), arm_let_prov.clone())
@@ -11220,7 +11226,10 @@ pub fn arm_ctx_from_variant_provenance(
                             ctx.type_env.clone().source_indices.clone(),
                         );
                         let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
-                            MatchPattern::Bind { name: bn, .. } => bn.clone(),
+                            MatchPattern::Bind {
+                                declaration: declaration,
+                                ..
+                            } => declaration.name.clone(),
                             _ => "".to_string(),
                         };
                         if ((bind_name.clone() == "".to_string())
