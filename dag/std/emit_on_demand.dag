@@ -109,12 +109,12 @@ fn wet_surface_ref(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-data interpreter_wet_surface_effect_family_authority: DeclarationRef = wet_surface_ref(
+data emitted_effect_family_boundary_authority: DeclarationRef = wet_surface_ref(
   module_path: "v2.std.host_transport",
   decl_name: "EmittedEffectFamily"
 )
 
-data interpreter_wet_surface_effect_family_note: String = "The five wet surfaces below are consumers of the existing ts-effects-providers authority v2.std.host_transport.EmittedEffectFamily (the closed FilesystemReadFamily | ShellExecRunFamily sum), not new effect families. Their shared surviving role records where the seed interpreter still dispatches live effects; it does not fork the effect-provider lane."
+data emitted_effect_family_boundary_note: String = "Boundary citation, not a shared authority for the five rows: v2.std.host_transport.EmittedEffectFamily is the closed FilesystemReadFamily | ShellExecRunFamily sum for the emitted-native host-effect subset. It does not represent socket acceptance, Filesystem.Write, generic shell/argv transports, or the full probe-bin surface. Each wet surface below therefore cites only its own nearest authorities; this role adds no effect-family variants and does not fork the ts-effects-providers lane."
 
 data interpreter_wet_surface_decl_ref_frontier_note: String = "Every current member is DeclaredFrontier because field-granular declaration-Node enumeration does not yet exist (the std.decl_ref / gunbc#5364 wall-after-grounding). Each row still names the closest .dag authorities plus its own reason and dissolution route; none is silently omitted. A row graduates to NodeTreeDerived when the compile graph can resolve its exact declaration reference. interpreter_surviving_roles is derived from this membership and drops wet-effect-surfaces when the roster reaches zero."
 
