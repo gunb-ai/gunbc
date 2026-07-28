@@ -86,7 +86,8 @@ fn authority_page_html() -> String {
 
 test fn workflow_lamps_render_on_stable_rows() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: "<li class=\"node node-done\" data-node=")
+  string_contains(s: h, pattern: "<li class=\"node node-open\" data-node=")
+    && !string_contains(s: h, pattern: "<li class=\"node node-done\" data-node=")
     && string_contains(s: h, pattern: join(["class=\"", workflow_controls_class, "\""], ""))
     && string_contains(s: h, pattern: join([
       "class=\"", workflow_lamp_class, "\" ",
