@@ -31,6 +31,13 @@ data git_ls_tree_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data git_ls_files_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
 data git_update_ref_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -433,35 +440,84 @@ type GitTreeEntryDecodeOutcome
   = GitTreeEntryDecoded { entry: TreeEntry }
   | GitTreeEntryDecodeRefused { cause: GitTreeDecodeRefusal }
 
-fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
-  if entry.mode == "100644" && entry.object_type == "blob" {
-    GitTreeEntryDecoded {
-      entry: RegularBlobEntry { path: entry.path, oid: entry.oid }
-    }
-  } else if entry.mode == "100755" && entry.object_type == "blob" {
-    GitTreeEntryDecoded {
-      entry: ExecutableBlobEntry { path: entry.path, oid: entry.oid }
-    }
-  } else if entry.mode == "120000" && entry.object_type == "blob" {
-    GitTreeEntryDecoded {
-      entry: SymlinkEntry { path: entry.path, oid: entry.oid }
-    }
-  } else if entry.mode == "040000" && entry.object_type == "tree" {
-    GitTreeEntryDecoded {
-      entry: SubtreeEntry { path: entry.path, oid: entry.oid }
-    }
-  } else if entry.mode == "160000" && entry.object_type == "commit" {
-    GitTreeEntryDecoded {
-      entry: GitlinkEntry { path: entry.path, oid: entry.oid }
-    }
+type GitTreeMode
+  = GitRegularBlobMode
+  | GitExecutableBlobMode
+  | GitSymlinkMode
+  | GitSubtreeMode
+  | GitlinkMode
+
+type GitTreeModeDecodeOutcome
+  = GitTreeModeDecoded { mode: GitTreeMode }
+  | GitTreeModeRefused
+
+fn git_decode_tree_mode(text: NonEmptyStr) -> GitTreeModeDecodeOutcome {
+  if text == "100644" {
+    GitTreeModeDecoded { mode: GitRegularBlobMode }
+  } else if text == "100755" {
+    GitTreeModeDecoded { mode: GitExecutableBlobMode }
+  } else if text == "120000" {
+    GitTreeModeDecoded { mode: GitSymlinkMode }
+  } else if text == "040000" {
+    GitTreeModeDecoded { mode: GitSubtreeMode }
+  } else if text == "160000" {
+    GitTreeModeDecoded { mode: GitlinkMode }
   } else {
-    GitTreeEntryDecodeRefused {
+    GitTreeModeRefused
+  }
+}
+
+fn git_tree_mode_object_type(mode: GitTreeMode) -> NonEmptyStr {
+  match mode {
+    GitRegularBlobMode => "blob"
+    GitExecutableBlobMode => "blob"
+    GitSymlinkMode => "blob"
+    GitSubtreeMode => "tree"
+    GitlinkMode => "commit"
+  }
+}
+
+fn git_tree_entry_from_mode(
+  mode: GitTreeMode,
+  path: GitPath,
+  oid: GitObjectId,
+) -> TreeEntry {
+  match mode {
+    GitRegularBlobMode => RegularBlobEntry { path: path, oid: oid }
+    GitExecutableBlobMode => ExecutableBlobEntry { path: path, oid: oid }
+    GitSymlinkMode => SymlinkEntry { path: path, oid: oid }
+    GitSubtreeMode => SubtreeEntry { path: path, oid: oid }
+    GitlinkMode => GitlinkEntry { path: path, oid: oid }
+  }
+}
+
+fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
+  match git_decode_tree_mode(text: entry.mode) {
+    GitTreeModeRefused => GitTreeEntryDecodeRefused {
       cause: GitTreeModeObjectMismatch {
         mode: entry.mode,
         object_type: entry.object_type,
         path: entry.path,
       }
     }
+    GitTreeModeDecoded { mode } =>
+      if git_tree_mode_object_type(mode: mode) == entry.object_type {
+        GitTreeEntryDecoded {
+          entry: git_tree_entry_from_mode(
+            mode: mode,
+            path: entry.path,
+            oid: entry.oid,
+          )
+        }
+      } else {
+        GitTreeEntryDecodeRefused {
+          cause: GitTreeModeObjectMismatch {
+            mode: entry.mode,
+            object_type: entry.object_type,
+            path: entry.path,
+          }
+        }
+      }
   }
 }
 
@@ -788,6 +844,133 @@ fn git_decode_ls_tree_z(
         rows,
         init: GitLsTreeZDecoded { entries: [] },
         f: (state, row) => git_ls_tree_z_row_step(
+          state: state,
+          row: row,
+          format: format,
+        ),
+      )
+  }
+}
+
+type GitIndexStageDecodeOutcome
+  = GitIndexStageDecoded { stage: GitIndexStage }
+  | GitIndexStageRefused { text: NonEmptyStr }
+
+fn git_decode_index_stage(text: NonEmptyStr) -> GitIndexStageDecodeOutcome {
+  if text == "0" {
+    GitIndexStageDecoded { stage: GitIndexStageNormal }
+  } else if text == "1" {
+    GitIndexStageDecoded { stage: GitIndexStageBase }
+  } else if text == "2" {
+    GitIndexStageDecoded { stage: GitIndexStageOurs }
+  } else if text == "3" {
+    GitIndexStageDecoded { stage: GitIndexStageTheirs }
+  } else {
+    GitIndexStageRefused { text: text }
+  }
+}
+
+type GitLsFilesStageZRefusal
+  = GitLsFilesStageZFramingRefused { cause: GitNulQuartetRefusal }
+  | GitLsFilesStageZHeaderNonAscii { field: NonEmptyStr }
+  | GitLsFilesStageZModeRefused { mode: NonEmptyStr }
+  | GitLsFilesStageZObjectIdRefused { cause: GitObjectIdTextRefusal }
+  | GitLsFilesStageZStageRefused { stage: NonEmptyStr }
+
+type GitLsFilesStageZDecodeOutcome
+  = GitLsFilesStageZDecoded { entries: List<GitIndexEntry> }
+  | GitLsFilesStageZRefused { cause: GitLsFilesStageZRefusal }
+
+fn git_ls_files_stage_z_row_step(
+  state: GitLsFilesStageZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
+  match state {
+    GitLsFilesStageZRefused { cause } =>
+      GitLsFilesStageZRefused { cause: cause }
+    GitLsFilesStageZDecoded { entries } =>
+      match git_ascii_field_text(octets: row.first) {
+        Absent => GitLsFilesStageZRefused {
+          cause: GitLsFilesStageZHeaderNonAscii { field: "mode" }
+        }
+        Present { value: mode_text } =>
+          match git_decode_tree_mode(text: mode_text) {
+            GitTreeModeRefused => GitLsFilesStageZRefused {
+              cause: GitLsFilesStageZModeRefused { mode: mode_text }
+            }
+            GitTreeModeDecoded { mode } =>
+              match git_ascii_field_text(octets: row.second) {
+                Absent => GitLsFilesStageZRefused {
+                  cause: GitLsFilesStageZHeaderNonAscii {
+                    field: "object-id"
+                  }
+                }
+                Present { value: object_id_text } =>
+                  match git_decode_object_id_text(
+                    format: format,
+                    text: object_id_text as String,
+                  ) {
+                    GitObjectIdTextRefused { cause } =>
+                      GitLsFilesStageZRefused {
+                        cause: GitLsFilesStageZObjectIdRefused { cause: cause }
+                      }
+                    GitObjectIdTextDecoded { oid } =>
+                      match git_ascii_field_text(octets: row.third) {
+                        Absent => GitLsFilesStageZRefused {
+                          cause: GitLsFilesStageZHeaderNonAscii {
+                            field: "stage"
+                          }
+                        }
+                        Present { value: stage_text } =>
+                          match git_decode_index_stage(text: stage_text) {
+                            GitIndexStageRefused { text } =>
+                              GitLsFilesStageZRefused {
+                                cause: GitLsFilesStageZStageRefused {
+                                  stage: text
+                                }
+                              }
+                            GitIndexStageDecoded { stage } =>
+                              let path = GitPath { octets: row.fourth }
+                              GitLsFilesStageZDecoded {
+                                entries: append(
+                                  entries,
+                                  items: [
+                                    GitIndexEntry {
+                                      path: path,
+                                      entry: git_tree_entry_from_mode(
+                                        mode: mode,
+                                        path: path,
+                                        oid: oid,
+                                      ),
+                                      stage: stage,
+                                    },
+                                  ],
+                                )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn git_decode_ls_files_stage_z(
+  payload: Bytes,
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
+  match git_decode_nul_quartets(payload: payload) {
+    GitNulQuartetsRefused { cause } =>
+      GitLsFilesStageZRefused {
+        cause: GitLsFilesStageZFramingRefused { cause: cause }
+      }
+    GitNulQuartetsDecoded { rows } =>
+      fold(
+        rows,
+        init: GitLsFilesStageZDecoded { entries: [] },
+        f: (state, row) => git_ls_files_stage_z_row_step(
           state: state,
           row: row,
           format: format,
