@@ -7,6 +7,7 @@ import gunbc.roadmap_authority {
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
 }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -114,6 +115,7 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "roadmap-authority",
     signoff: signoff,
   }
