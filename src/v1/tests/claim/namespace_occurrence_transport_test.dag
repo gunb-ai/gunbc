@@ -20,6 +20,9 @@ import v1.std.core {
   ReferenceOccurrence,
   LexicalValueOccurrence,
   CallableOccurrence,
+  FieldOccurrence,
+  make_arm_node,
+  leaf_node_with_span,
   MissingAuthoredOccurrenceIdentity,
   DuplicateAuthoredOccurrenceIdentity,
   WrongOccurrenceCategory,
@@ -27,11 +30,17 @@ import v1.std.core {
 }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse {
+  ParseContext,
   ParseWithTableResult,
+  token_stream_new,
+  parse_pattern,
+  stamp_parsed_node,
+  ParsedOccurrenceUnclassified,
+  occurrence_transport_from_parse_context,
   parse_with_table_in_occurrence_scope,
 }
 
-data namespace_occurrence_transport_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/namespace_occurrence_transport_test.dag --functions w_namespace_occurrence_transport_mints_distinct_equal_text,w_namespace_occurrence_transport_preserves_graph_allocator,w_namespace_occurrence_transport_refuses_missing_duplicate_and_wrong_category"
+data namespace_occurrence_transport_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/namespace_occurrence_transport_test.dag --functions w_namespace_occurrence_transport_mints_distinct_equal_text,w_namespace_occurrence_transport_preserves_graph_allocator,w_namespace_occurrence_transport_covers_pattern_binder_forms,w_namespace_occurrence_transport_refuses_missing_duplicate_and_wrong_category"
 
 data namespace_occurrence_transport_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
@@ -118,6 +127,95 @@ test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool {
     f: (separate, first_id) =>
       separate &&
       second_ids |> all(second_id => first_id != second_id)
+  )
+}
+
+type PatternOccurrenceFixture
+  = PatternOccurrenceReady { transport: OccurrenceTransport }
+  | PatternOccurrenceRefused
+
+fn pattern_occurrence_fixture(source: String) -> PatternOccurrenceFixture {
+  let file = "pattern-occurrence-fixture.dag"
+  let span = make_span(start: 0, end: 1)
+  let source_indices = map_insert(
+    empty_map(),
+    file,
+    build_newline_index(file: file, source: source)
+  )
+  let parsed = parse_pattern(
+    tokens: token_stream_new(all: tokenize(source: source, file: file)),
+    ctx: ParseContext {
+      source_indices: source_indices,
+      intern_table: empty_intern_table(),
+    }
+  )
+  match parsed.err {
+    Present { value: _ } => PatternOccurrenceRefused
+    Absent =>
+      let stamped = stamp_parsed_node(
+        node: make_arm_node(
+          pattern: parsed.pattern,
+          guard: none,
+          body: leaf_node_with_span(name: "body", span: span),
+          span: span
+        ),
+        ancestors: Empty,
+        ctx: parsed.ctx,
+        role: ParsedOccurrenceUnclassified
+      )
+      PatternOccurrenceReady {
+        transport: occurrence_transport_from_parse_context(ctx: stamped.ctx),
+      }
+  }
+}
+
+fn pattern_fixture_has_roles(
+  source: String,
+  lexical_minimum: Int,
+  field_minimum: Int
+) -> Bool {
+  match pattern_occurrence_fixture(source: source) {
+    PatternOccurrenceRefused => false
+    PatternOccurrenceReady { transport: transport } =>
+      transport.declarations
+        |> filter(declaration =>
+          declaration.category == LexicalValueOccurrence
+        )
+        |> count >= lexical_minimum &&
+      transport.declarations
+        |> filter(declaration =>
+          declaration.category == FieldOccurrence
+        )
+        |> count >= field_minimum &&
+      occurrence_transport_refusal(transport: transport) == none
+  }
+}
+
+test fn w_namespace_occurrence_transport_covers_pattern_binder_forms() -> Bool {
+  pattern_fixture_has_roles(
+    source: "direct_bind",
+    lexical_minimum: 1,
+    field_minimum: 0
+  ) &&
+  pattern_fixture_has_roles(
+    source: "Pair { left: explicit_bind }",
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    source: "Shorthand { shorthand_only }",
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    source: "Left(positional_bind)",
+    lexical_minimum: 1,
+    field_minimum: 1
+  ) &&
+  pattern_fixture_has_roles(
+    source: "Outer { pair: Pair { left: nested_bind } }",
+    lexical_minimum: 1,
+    field_minimum: 2
   )
 }
 
