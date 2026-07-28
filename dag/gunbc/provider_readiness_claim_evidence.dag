@@ -1,6 +1,6 @@
 module gunbc.provider_readiness_claim_evidence
 
-import std.types { NonEmptyStr, RunKey }
+import std.types { Bool, NonEmptyStr, RunKey }
 import std.claim_evidence {
   RecordedFact,
   Claim,
@@ -8,11 +8,15 @@ import std.claim_evidence {
   EvidenceProvenance,
   EvidenceFreshness,
   EvidenceFidelity,
+  EvidenceDirection,
   EvidenceSupports,
   EvidenceChallenges,
+  EvidenceDirectionFold,
+  evidence_direction_fold,
   EvidenceLink,
   EvidenceInsufficiency,
   EvidenceInference,
+  EvidenceAdmissionPolicy,
   insufficient_evidence_inference,
 }
 import extdeps.external_authority { ExternalAuthority }
@@ -28,24 +32,25 @@ import extdeps.llm.cli_lifecycle {
 import gunbc.readback_independence {
   ReadBackProbe,
   ProbeInert,
+  readback_probe_is_independent,
 }
 import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
 
 type ProviderReadinessClaim = Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
 
-type ProviderReadinessObservation
-  = ProviderLoginStatusObserved {
-      provider: ProviderInstance,
-      bound: RunKey,
-      readiness: ProviderReadiness,
-      response: NonEmptyStr,
-    }
-  | ProviderLiveRequestObserved {
-      provider: ProviderInstance,
-      bound: RunKey,
-      readiness: ProviderReadiness,
-      response: NonEmptyStr,
-    }
+type ProviderReadinessOperationResult
+  = ProviderLoginCredentialRecorded { response: NonEmptyStr }
+  | ProviderLoginCredentialAbsent { response: NonEmptyStr }
+  | ProviderLoginStatusUnrecognized { response: NonEmptyStr }
+  | ProviderLiveModelResponseReceived { response: NonEmptyStr }
+  | ProviderLiveRefreshRefused { reason: NonEmptyStr }
+  | ProviderLiveRequestRefused { reason: NonEmptyStr }
+
+type ProviderReadinessObservation {
+  provider: ProviderInstance
+  bound: RunKey
+  result: ProviderReadinessOperationResult
+}
 
 type ProviderReadinessEvidenceLink = EvidenceLink<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe>
 
@@ -112,7 +117,6 @@ fn provider_observation_insufficient(
 fn provider_login_status_support(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  readiness: ProviderReadiness,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
     fact: fact,
@@ -129,7 +133,7 @@ fn provider_login_status_support(
       basis: "captured inside the named provider attempt",
     },
     fidelity: EvidenceFidelity {
-      boundary: readiness,
+      boundary: ProviderCredentialsRecordedUnverified,
       losses: [
         "refresh acceptance is not exercised",
         "live model request capability is not exercised",
@@ -142,7 +146,7 @@ fn provider_login_status_support(
 fn provider_live_request_challenge(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  readiness: ProviderReadiness,
+  reason: NonEmptyStr,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
     fact: fact,
@@ -159,7 +163,7 @@ fn provider_live_request_challenge(
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: EvidenceFidelity {
-      boundary: readiness,
+      boundary: ProviderRefreshFailed { reason: reason },
       losses: [],
     },
     probe: provider_live_request_probe,
@@ -169,7 +173,6 @@ fn provider_live_request_challenge(
 fn provider_live_request_support(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,
-  readiness: ProviderReadiness,
 ) -> ProviderReadinessEvidenceInference {
   infer_probe_evidence(
     fact: fact,
@@ -186,7 +189,7 @@ fn provider_live_request_support(
       basis: "provider response belongs to the named request attempt",
     },
     fidelity: EvidenceFidelity {
-      boundary: readiness,
+      boundary: ProviderAuthenticated,
       losses: [],
     },
     probe: provider_live_request_probe,
@@ -202,20 +205,14 @@ fn provider_login_status_inference(
     provider: provider,
     bound: bound,
   )
-  match observed_fact.value {
-    ProviderLoginStatusObserved {
-      provider: observed_provider,
-      bound: observed_bound,
-      readiness,
-      response: _,
-    } =>
-      if (observed_provider == provider
-        && observed_bound == bound
-        && readiness == ProviderCredentialsRecordedUnverified) {
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLoginCredentialRecorded { response: _ } =>
+      if (observation.provider == provider
+        && observation.bound == bound) {
         provider_login_status_support(
           fact: observed_fact,
           claim: claim,
-          readiness: readiness,
         )
       } else {
         provider_observation_insufficient(
@@ -226,12 +223,23 @@ fn provider_login_status_inference(
           reason: "login-status fact does not belong to this provider attempt or does not record credentials",
         )
       }
-    ProviderLiveRequestObserved {
-      provider: _,
-      bound: _,
-      readiness: _,
-      response: _,
-    } =>
+    ProviderLoginCredentialAbsent { response: _ } =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-login-status-records-credential-only",
+        probe: provider_login_status_probe,
+        reason: "login-status operation did not report recorded credentials",
+      )
+    ProviderLoginStatusUnrecognized { response: _ } =>
+      provider_observation_insufficient(
+        fact: observed_fact,
+        claim: claim,
+        inference_rule: "provider-login-status-records-credential-only",
+        probe: provider_login_status_probe,
+        reason: "login-status operation result was not classified",
+      )
+    _ =>
       provider_observation_insufficient(
         fact: observed_fact,
         claim: claim,
@@ -248,50 +256,31 @@ fn provider_live_request_failed_inference(
   bound: RunKey,
 ) -> ProviderReadinessEvidenceInference {
   let claim = provider_ready_claim(provider: provider, bound: bound)
-  match observed_fact.value {
-    ProviderLiveRequestObserved {
-      provider: observed_provider,
-      bound: observed_bound,
-      readiness,
-      response: _,
-    } =>
-      match readiness {
-        ProviderRefreshFailed { reason: _ } =>
-          if observed_provider == provider && observed_bound == bound {
-            provider_live_request_challenge(
-              fact: observed_fact,
-              claim: claim,
-              readiness: readiness,
-            )
-          } else {
-            provider_observation_insufficient(
-              fact: observed_fact,
-              claim: claim,
-              inference_rule: "provider-live-request-refresh-refusal",
-              probe: provider_live_request_probe,
-              reason: "live-request refusal does not belong to this provider attempt",
-            )
-          }
-        _ => provider_observation_insufficient(
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLiveRefreshRefused { reason } =>
+      if observation.provider == provider && observation.bound == bound {
+        provider_live_request_challenge(
+          fact: observed_fact,
+          claim: claim,
+          reason: reason,
+        )
+      } else {
+        provider_observation_insufficient(
           fact: observed_fact,
           claim: claim,
           inference_rule: "provider-live-request-refresh-refusal",
           probe: provider_live_request_probe,
-          reason: "live-request fact is not a refresh refusal",
+          reason: "live-request refusal does not belong to this provider attempt",
         )
       }
-    ProviderLoginStatusObserved {
-      provider: _,
-      bound: _,
-      readiness: _,
-      response: _,
-    } =>
+    _ =>
       provider_observation_insufficient(
         fact: observed_fact,
         claim: claim,
         inference_rule: "provider-live-request-refresh-refusal",
         probe: provider_live_request_probe,
-        reason: "login status cannot challenge live-request readiness",
+        reason: "operation result is not a live refresh refusal",
       )
   }
 }
@@ -302,20 +291,14 @@ fn provider_live_request_succeeded_inference(
   bound: RunKey,
 ) -> ProviderReadinessEvidenceInference {
   let claim = provider_ready_claim(provider: provider, bound: bound)
-  match observed_fact.value {
-    ProviderLiveRequestObserved {
-      provider: observed_provider,
-      bound: observed_bound,
-      readiness,
-      response: _,
-    } =>
-      if (observed_provider == provider
-        && observed_bound == bound
-        && readiness == ProviderAuthenticated) {
+  let observation = observed_fact.value
+  match observation.result {
+    ProviderLiveModelResponseReceived { response: _ } =>
+      if (observation.provider == provider
+        && observation.bound == bound) {
         provider_live_request_support(
           fact: observed_fact,
           claim: claim,
-          readiness: readiness,
         )
       } else {
         provider_observation_insufficient(
@@ -326,18 +309,137 @@ fn provider_live_request_succeeded_inference(
           reason: "live-request fact does not belong to this provider attempt or did not authenticate",
         )
       }
-    ProviderLoginStatusObserved {
-      provider: _,
-      bound: _,
-      readiness: _,
-      response: _,
-    } =>
+    _ =>
       provider_observation_insufficient(
         fact: observed_fact,
         claim: claim,
         inference_rule: "provider-live-request-succeeded",
         probe: provider_live_request_probe,
-        reason: "login status cannot establish live-request success",
+        reason: "operation result is not a live model response",
       )
+  }
+}
+
+fn provider_readiness_fact_claim(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  fact.value.provider == claim.subject
+    && fact.value.provider == claim.target
+    && fact.value.provider.kind == claim.scope
+    && fact.value.bound == claim.bound
+}
+
+fn provider_readiness_rule_claim(
+  rule: InferenceRuleId,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  (rule == "provider-login-status-records-credential-only"
+      && claim.proposition == ProviderCredentialsRecordedUnverified)
+    || ((rule == "provider-live-request-refresh-refusal"
+        || rule == "provider-live-request-succeeded")
+      && claim.proposition == ProviderAuthenticated)
+}
+
+fn provider_readiness_authority_claim(
+  authority: ExternalAuthority,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  authority == codex_cli_auth_external_authority
+}
+
+fn provider_readiness_provenance_claim(
+  provenance: EvidenceProvenance,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  provenance.agent == "codex-cli"
+    && (
+      (provenance.entity == "provider-login-status-output"
+        && provenance.activity == "provider-login-status-request")
+      || (provenance.entity == "provider-live-request-refusal"
+        && provenance.activity == "provider-model-request")
+      || (provenance.entity == "provider-live-request-success"
+        && provenance.activity == "provider-model-request")
+    )
+}
+
+fn provider_readiness_freshness_claim(
+  freshness: EvidenceFreshness<ProviderReadinessClaim>,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  freshness.maximum_conclusion == claim
+}
+
+fn provider_readiness_fidelity_claim(
+  fidelity: EvidenceFidelity<ProviderReadiness>,
+  _: ProviderReadinessClaim,
+) -> Bool {
+  match fidelity.boundary {
+    ProviderCredentialsRecordedUnverified => fidelity.losses.length() == 2
+    ProviderAuthenticated => fidelity.losses.length() == 0
+    ProviderRefreshFailed { reason: _ } => fidelity.losses.length() == 0
+    _ => false
+  }
+}
+
+fn provider_readiness_independence_claim(
+  probe: ReadBackProbe,
+  _: ProviderReadinessClaim,
+  _: EvidenceDirection,
+) -> Bool {
+  readback_probe_is_independent(p: probe)
+}
+
+fn provider_readiness_link_relation(
+  link: ProviderReadinessEvidenceLink,
+  claim: ProviderReadinessClaim,
+) -> Bool {
+  let supports = evidence_direction_fold(
+    direction: link.direction,
+    fold: EvidenceDirectionFold {
+      supports: true,
+      challenges: false,
+    },
+  )
+  match link.fact.value.result {
+    ProviderLoginCredentialRecorded { response: _ } =>
+      supports
+        && link.inference_rule == "provider-login-status-records-credential-only"
+        && claim == provider_credential_recorded_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderCredentialsRecordedUnverified
+    ProviderLiveRefreshRefused { reason } =>
+      !supports
+        && link.inference_rule == "provider-live-request-refresh-refusal"
+        && claim == provider_ready_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderRefreshFailed { reason: reason }
+    ProviderLiveModelResponseReceived { response: _ } =>
+      supports
+        && link.inference_rule == "provider-live-request-succeeded"
+        && claim == provider_ready_claim(
+          provider: link.fact.value.provider,
+          bound: link.fact.value.bound,
+        )
+        && link.fidelity.boundary == ProviderAuthenticated
+    _ => false
+  }
+}
+
+fn provider_readiness_evidence_admission_policy(
+) -> EvidenceAdmissionPolicy<ProviderReadinessObservation, ProviderReadinessClaim, ExternalAuthority, ProviderReadiness, ReadBackProbe> {
+  EvidenceAdmissionPolicy {
+    fact_claim: provider_readiness_fact_claim,
+    inference_rule_claim: provider_readiness_rule_claim,
+    authority_claim: provider_readiness_authority_claim,
+    provenance_claim: provider_readiness_provenance_claim,
+    freshness_claim: provider_readiness_freshness_claim,
+    fidelity_claim: provider_readiness_fidelity_claim,
+    independence_claim: provider_readiness_independence_claim,
+    relation: provider_readiness_link_relation,
   }
 }
