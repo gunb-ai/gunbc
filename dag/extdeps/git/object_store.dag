@@ -82,7 +82,6 @@ fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
 }
 
 type Blob {
-  size: ByteSize
   content: Bytes
 }
 
@@ -327,14 +326,6 @@ fn git_store_object_canonical_size(object: StoreObject) -> ByteSize {
   }
 }
 
-fn git_store_object_internal_size_valid(object: StoreObject) -> Bool {
-  match object {
-    ObjectBlob { blob } =>
-      blob.size == byte_size(count: count(bytes_octets(b: blob.content)))
-    _ => true
-  }
-}
-
 fn stored_object_oid(stored: StoredObject) -> GitObjectId {
   stored.content_address.oid
 }
@@ -346,7 +337,6 @@ fn git_stored_object_receipt_valid(
   stored.content_address.object_type == store_object_kind(object: stored.object)
     && stored.content_address.canonical_subject == stored.object
     && stored.content_address.canonical_size == git_store_object_canonical_size(object: stored.object)
-    && git_store_object_internal_size_valid(object: stored.object)
     && git_content_address_producer_format(producer: stored.content_address.producer) == git_object_id_format(oid: stored.content_address.oid)
     && git_object_id_format(oid: stored.content_address.oid) == repository_format
 }

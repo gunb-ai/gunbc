@@ -261,7 +261,6 @@ fn fixture_objects() -> List<StoredObject> {
       oid: sha1_blob_regular,
       object: ObjectBlob {
         blob: Blob {
-          size: byte_size(count: 6),
           content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
         }
       },
@@ -270,7 +269,6 @@ fn fixture_objects() -> List<StoredObject> {
       oid: sha1_blob_executable,
       object: ObjectBlob {
         blob: Blob {
-          size: byte_size(count: 3),
           content: octets_bytes(o: [114, 117, 110]),
         }
       },
@@ -279,7 +277,6 @@ fn fixture_objects() -> List<StoredObject> {
       oid: sha1_blob_symlink,
       object: ObjectBlob {
         blob: Blob {
-          size: byte_size(count: 6),
           content: octets_bytes(o: [114, 101, 97, 100, 109, 101]),
         }
       },
@@ -301,7 +298,6 @@ fn fixture_objects() -> List<StoredObject> {
       oid: sha1_empty_blob,
       object: ObjectBlob {
         blob: Blob {
-          size: byte_size(count: 0),
           content: octets_bytes(o: []),
         }
       },
@@ -644,7 +640,6 @@ test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
   let repo = fixture_repository()
   let object = ObjectBlob {
     blob: Blob {
-      size: byte_size(count: 6),
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
   }
@@ -685,7 +680,6 @@ test fn witness_git_content_address_binds_subject_and_canonical_size() -> Bool {
   let repo = fixture_repository()
   let observed_subject = ObjectBlob {
     blob: Blob {
-      size: byte_size(count: 6),
       content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
     }
   }
@@ -695,7 +689,6 @@ test fn witness_git_content_address_binds_subject_and_canonical_size() -> Bool {
   )
   let different_object = ObjectBlob {
     blob: Blob {
-      size: byte_size(count: 3),
       content: octets_bytes(o: [114, 117, 110]),
     }
   }
