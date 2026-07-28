@@ -15,6 +15,7 @@ import v2.extdeps.languages.bash {
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
   bash_stmt_assign_target_model,
+  bash_word_cmdsubst_target_model,
   bash_word_cmdsubst_source_text
 }
 
@@ -131,9 +132,11 @@ fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel 
 }
 
 fn orch_cmdsubst_assign_call_target_model(name: String, callee: String, args_spelling: String) -> TargetModel {
+  let call = orch_call_target_model(callee: callee, args_spelling: args_spelling)
+  let cmdsubst = bash_word_cmdsubst_target_model(body: call.authority_source_text)
   bash_stmt_assign_target_model(
     name: name,
-    value: concat("\"$(", concat(callee, concat(" ", concat(args_spelling, ")\""))))
+    value: cmdsubst.authority_source_text
   )
 }
 
