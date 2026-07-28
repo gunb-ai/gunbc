@@ -9722,62 +9722,56 @@ fn target_derive_supplemental_generic_bound_contract_catalog_from_node(
 }
 
 fn target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
-  choice: TargetRepresentationChoice,
-  derive_key: TargetDeriveTraitKey
+  contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> List<Node> {
   fold_list(
-    xs: choice.representation_parameters.keys(),
+    xs: contract_authority.requirements.keys(),
     empty: Empty,
     cons: fn(acc, representation_parameter) {
-      match choice.representation_parameters.lookup(representation_parameter) {
+      match contract_authority.requirements.lookup(representation_parameter) {
         Absent => acc
-        Present { value: slot } =>
-          match slot.supplemental_requirements.lookup(derive_key) {
-            Absent => acc
-            Present { value: requirements } =>
-              fold_list(
-                xs: requirements.keys(),
-                empty: acc,
-                cons: fn(requirement_acc, required_key) {
-                  match requirements.lookup(required_key) {
-                    Absent => requirement_acc
-                    Present { value: requirement_authority } =>
-                      list_snoc_item(
-                        xs: requirement_acc,
-                        item: target_model_type_conj_node(
-                          children: [
-                            target_model_named_edge(
-                              name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
-                              target: target_model_type_atom_node(
-                                identity: representation_parameter
-                              )
-                            ),
-                            target_model_named_edge(
-                              name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
-                              target: target_model_type_atom_node(
-                                identity: required_key
-                              )
-                            ),
-                            target_model_named_edge(
-                              name: ^target_derive_supplemental_generic_bound_requirement_field_authority,
-                              target: target_external_authority_bundle_node(
-                                authority: requirement_authority.authority
-                              )
-                            )
-                          ]
+        Present { value: requirements } =>
+          fold_list(
+            xs: requirements.keys(),
+            empty: acc,
+            cons: fn(requirement_acc, required_key) {
+              match requirements.lookup(required_key) {
+                Absent => requirement_acc
+                Present { value: requirement_authority } =>
+                  list_snoc_item(
+                    xs: requirement_acc,
+                    item: target_model_type_conj_node(
+                      children: [
+                        target_model_named_edge(
+                          name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter,
+                          target: target_model_type_atom_node(
+                            identity: representation_parameter
+                          )
+                        ),
+                        target_model_named_edge(
+                          name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait,
+                          target: target_model_type_atom_node(
+                            identity: required_key
+                          )
+                        ),
+                        target_model_named_edge(
+                          name: ^target_derive_supplemental_generic_bound_requirement_field_authority,
+                          target: target_external_authority_bundle_node(
+                            authority: requirement_authority.authority
+                          )
                         )
-                      )
-                  }
-                }
-              )
-          }
+                      ]
+                    )
+                  )
+              }
+            }
+          )
       }
     }
   )
 }
 
 fn target_derive_supplemental_generic_bound_contract_node_from_key(
-  choice: TargetRepresentationChoice,
   derive_key: TargetDeriveTraitKey,
   contract_authority: TargetDeriveSupplementalGenericBoundContractAuthority
 ) -> Node {
@@ -9797,8 +9791,7 @@ fn target_derive_supplemental_generic_bound_contract_node_from_key(
         name: ^target_derive_supplemental_generic_bound_contract_field_requirements,
         target: fold_list_node(
           xs: target_derive_supplemental_generic_bound_requirement_nodes_for_contract(
-            choice: choice,
-            derive_key: derive_key
+            contract_authority: contract_authority
           ),
           item_node: fn(requirement_node) { requirement_node }
         )
@@ -9830,7 +9823,6 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
             list_snoc_item(
               xs: acc,
               item: target_derive_supplemental_generic_bound_contract_node_from_key(
-                choice: choice,
                 derive_key: derive_key,
                 contract_authority: contract_authority
               )
@@ -9839,31 +9831,6 @@ fn target_representation_choice_supplemental_generic_bound_contracts_bundle_node
       }
     ),
     item_node: fn(contract_node) { contract_node }
-  )
-}
-
-fn target_derive_supplemental_generic_bound_requirements_for_choice(
-  choice: TargetRepresentationChoice,
-  derive_key: TargetDeriveTraitKey
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
-  fold_list(
-    xs: choice.representation_parameters.keys(),
-    empty: empty_map(),
-    cons: fn(acc, representation_parameter) {
-      match choice.representation_parameters.lookup(representation_parameter) {
-        Absent => acc
-        Present { value: slot } =>
-          match slot.supplemental_requirements.lookup(derive_key) {
-            Absent => acc
-            Present { value: requirements } =>
-              map_insert(
-                m: acc,
-                key: representation_parameter,
-                value: requirements
-              )
-          }
-      }
-    }
   )
 }
 
@@ -9912,10 +9879,7 @@ fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
         TargetDeriveSupplementalGenericBoundContract {
           derive_trait: derive_trait,
           authority: contract_authority.authority,
-          requirements: target_derive_supplemental_generic_bound_requirements_for_choice(
-            choice: choice,
-            derive_key: derive_key
-          )
+          requirements: contract_authority.requirements
         }
       )
   }

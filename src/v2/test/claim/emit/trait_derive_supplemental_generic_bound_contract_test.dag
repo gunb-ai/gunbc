@@ -22,6 +22,8 @@ import v2.std.compilers.target_model {
   TargetCollectionReprVec,
   TargetDeriveSupplementalGenericBoundContract,
   TargetDeriveSupplementalGenericBoundContractAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementSet,
   TargetDeriveTraitKey,
   TargetGenericApply,
   TargetRepresentation,
@@ -31,12 +33,13 @@ import v2.std.compilers.target_model {
   target_carrier_free_monoid_node,
   target_collection_free_monoid_no_representation_diagnostic,
   target_derive_supplemental_generic_bound_contract_authorities_empty,
-  target_derive_supplemental_generic_bound_contract_authority_insert,
+  target_derive_supplemental_generic_bound_contract_requirements_empty,
   target_derive_supplemental_generic_bound_contract_lookup_in_realization,
   target_derive_supplemental_generic_bound_requirement_authority,
+  target_derive_supplemental_generic_bound_requirement_set_empty,
   target_derive_supplemental_generic_bound_contract_wire_node,
   target_derive_supplemental_generic_bound_requirement_wire_node,
-  target_representation_parameter_slot_add_requirement,
+  target_grounding_derive_trait_key,
   target_representation_parameter_slot_empty,
   target_representation_parameter_slots_empty
 }
@@ -67,7 +70,7 @@ import v2.std.node {
 }
 import v2.std.optional { Absent, Optional, Present }
 
-data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier and target-bundle codec prerequisite. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Requirements are nested under declared slots and keyed by required trait, so duplicate slots, rows, and obligations and undeclared-slot requirements are not constructible in accepted target values. The wire decoder alone sees list-shaped malformed input and refuses it before constructing a choice. Versioned Rust, serde, and im authorities flow with each contract and requirement."
+data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier and target-bundle codec prerequisite. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. Versioned Rust, serde, and im authorities flow with each contract and requirement."
 
 data sgb_type_param: Symbol = ^sgb_type_param
 data sgb_left_slot: Symbol = ^sgb_left_slot
@@ -140,67 +143,103 @@ fn sgb_vec_representation() -> TargetRepresentation {
   }
 }
 
+fn sgb_requirement_set(
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_requirement_set_empty(),
+    key: target_grounding_derive_trait_key(derive_trait: required_trait),
+    value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+      authority: authority
+    }
+  )
+}
+
+fn sgb_single_parameter_requirements(
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+    key: representation_parameter,
+    value: sgb_requirement_set(
+      required_trait: required_trait,
+      authority: authority
+    )
+  )
+}
+
+fn sgb_single_clone_requirement() -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  sgb_single_parameter_requirements(
+    representation_parameter: ^sgb_left_slot,
+    required_trait: ReprDeriveClone,
+    authority: im_15_1_0_vector_trait_implementations_authority
+  )
+}
+
+fn sgb_deserialize_requirements() -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: sgb_single_clone_requirement(),
+    key: ^sgb_right_slot,
+    value: sgb_requirement_set(
+      required_trait: ReprDeriveOrd,
+      authority: serde_1_0_228_btree_set_deserialize_authority
+    )
+  )
+}
+
+fn sgb_contract(
+  authority: ExternalAuthority,
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
+) -> TargetDeriveSupplementalGenericBoundContractAuthority {
+  TargetDeriveSupplementalGenericBoundContractAuthority {
+    authority: authority,
+    requirements: requirements
+  }
+}
+
 fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
-  let debug_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty(),
-      derive_trait: ReprDeriveDebug,
-      authority: im_15_1_0_vector_trait_implementations_authority
+  let debug_contracts = map_insert(
+    m: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDebug),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_trait_implementations_authority,
+      requirements: sgb_single_clone_requirement()
     )
-  let partial_eq_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: debug_contract,
-      derive_trait: ReprDerivePartialEq,
-      authority: im_15_1_0_vector_trait_implementations_authority
+  )
+  let partial_eq_contracts = map_insert(
+    m: debug_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDerivePartialEq),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_trait_implementations_authority,
+      requirements: sgb_single_clone_requirement()
     )
-  let serialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: partial_eq_contract,
-      derive_trait: ReprDeriveSerialize,
-      authority: im_15_1_0_vector_trait_implementations_authority
+  )
+  let serialize_contracts = map_insert(
+    m: partial_eq_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveSerialize),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_trait_implementations_authority,
+      requirements: sgb_single_clone_requirement()
     )
-  let deserialize_contract = target_derive_supplemental_generic_bound_contract_authority_insert(
-      contracts: serialize_contract,
-      derive_trait: ReprDeriveDeserialize,
-      authority: im_15_1_0_vector_trait_implementations_authority
+  )
+  let deserialize_contracts = map_insert(
+    m: serialize_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDeserialize),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_trait_implementations_authority,
+      requirements: sgb_deserialize_requirements()
     )
-  target_derive_supplemental_generic_bound_contract_authority_insert(
-    contracts: deserialize_contract,
-    derive_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
   )
-}
-
-fn sgb_left_parameter_slot() -> TargetRepresentationParameterSlot {
-  let debug_slot = target_representation_parameter_slot_add_requirement(
-    slot: target_representation_parameter_slot_empty(),
-    derive_trait: ReprDeriveDebug,
-    required_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
-  )
-  let partial_eq_slot = target_representation_parameter_slot_add_requirement(
-    slot: debug_slot,
-    derive_trait: ReprDerivePartialEq,
-    required_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
-  )
-  let serialize_slot = target_representation_parameter_slot_add_requirement(
-    slot: partial_eq_slot,
-    derive_trait: ReprDeriveSerialize,
-    required_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
-  )
-  target_representation_parameter_slot_add_requirement(
-    slot: serialize_slot,
-    derive_trait: ReprDeriveDeserialize,
-    required_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
-  )
-}
-
-fn sgb_right_parameter_slot() -> TargetRepresentationParameterSlot {
-  target_representation_parameter_slot_add_requirement(
-    slot: target_representation_parameter_slot_empty(),
-    derive_trait: ReprDeriveDeserialize,
-    required_trait: ReprDeriveOrd,
-    authority: serde_1_0_228_btree_set_deserialize_authority
+  map_insert(
+    m: deserialize_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveClone),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_trait_implementations_authority,
+      requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
+    )
   )
 }
 
@@ -209,10 +248,10 @@ fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationPar
     m: map_insert(
       m: target_representation_parameter_slots_empty(),
       key: ^sgb_left_slot,
-      value: sgb_left_parameter_slot()
+      value: target_representation_parameter_slot_empty()
     ),
     key: ^sgb_right_slot,
-    value: sgb_right_parameter_slot()
+    value: target_representation_parameter_slot_empty()
   )
 }
 
