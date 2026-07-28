@@ -282,6 +282,27 @@ fn scoped_declaration_identity_follows_the_selected_function_node() {
         "{stderr}"
     );
 
+    let qualified_output = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args([
+            "run",
+            "--source-root",
+            fixture_root.to_str().expect("fixture root utf8"),
+            "--entry",
+            entry.to_str().expect("entry utf8"),
+            "--function",
+            "test.scoped_identity.imported.imported_claim",
+            "--claim-run",
+        ])
+        .output()
+        .expect("run qualified imported scoped function");
+    assert!(qualified_output.status.success(), "{qualified_output:?}");
+    let qualified_stderr = String::from_utf8(qualified_output.stderr).expect("utf8 stderr");
+    assert!(
+        qualified_stderr.contains("decl=test.scoped_identity.imported::imported_claim#whole"),
+        "qualified selection must carry the selected node identity: {qualified_stderr}"
+    );
+
     let left = fixture_root.join("left.dag");
     let right = fixture_root.join("right.dag");
     let ambiguous = fixture_root.join("ambiguous.dag");

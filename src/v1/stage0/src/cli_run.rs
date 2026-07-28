@@ -10649,6 +10649,37 @@ struct ScopedRunObservation {
     addressable: bool,
     emoji: bool,
     open: bool,
+    started: std::time::Instant,
+}
+
+fn observation_seed_authority_entry() -> Result<String, String> {
+    fn visit(dir: &Path) -> Option<String> {
+        let entries = std::fs::read_dir(dir).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(found) = visit(&path) {
+                    return Some(found);
+                }
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("dag") {
+                let source = std::fs::read_to_string(&path).ok()?;
+                if source
+                    .lines()
+                    .any(|line| line.trim() == "module gunbc.observation_seed_render")
+                {
+                    return Some(path.to_string_lossy().into_owned());
+                }
+            }
+        }
+        None
+    }
+    witness_layer_roots()
+        .into_iter()
+        .find_map(|root| visit(Path::new(&root)))
+        .ok_or_else(|| {
+            "modeled gunbc.observation_seed_render binding is not visible in witness roots"
+                .to_string()
+        })
 }
 
 /// Resolve the declaration identity using the same module-qualified function
@@ -10656,29 +10687,26 @@ struct ScopedRunObservation {
 /// `item_registry` is intentionally flat and therefore cannot answer this
 /// question for imported or qualified selections.
 fn selected_scoped_function_identity(
-    graph: &v1_compiler_infer_items::ResolvedGraph,
+    graph: &ResolvedGraph,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     requested: &str,
 ) -> Result<(String, String), usize> {
     let (requested_module, bare_name) = requested
         .rsplit_once('.')
         .map_or((None, requested), |(module, bare)| (Some(module), bare));
-    let candidates: Vec<(String, String)> = graph
-        .modules
-        .iter()
-        .flat_map(|module| {
-            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
-            module.items.iter().filter_map({
-                let module_path = module_path.clone();
-                move |item| {
-                    let name = authored_name_at(source_indices.clone(), item.clone());
-                    let module_matches =
-                        requested_module.is_none_or(|requested| requested == module_path);
-                    (module_matches && name == bare_name).then(|| (module_path.clone(), name))
-                }
-            })
-        })
-        .collect();
+    let mut candidates = Vec::new();
+    for module in graph.modules.iter() {
+        let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+        if requested_module.map_or(false, |requested| requested != module_path) {
+            continue;
+        }
+        for item in module.items.iter() {
+            let name = authored_name_at(source_indices.clone(), item.clone());
+            if name == bare_name {
+                candidates.push((module_path.clone(), name));
+            }
+        }
+    }
     if candidates.len() == 1 {
         Ok(candidates.into_iter().next().expect("one candidate"))
     } else {
@@ -10689,10 +10717,10 @@ fn selected_scoped_function_identity(
 impl ScopedRunObservation {
     fn resolve(entry_file: &str, module_path: &str, function: &str) -> Result<Self, String> {
         use std::io::IsTerminal;
-        let authority = "dag/gunbc/observation_seed_render.dag";
+        let authority = observation_seed_authority_entry()?;
         let authority_roots = witness_layer_roots();
         let (graph, indices) =
-            resolve_entry_graph_shared(&authority_roots, authority).map_err(|e| {
+            resolve_entry_graph_shared(&authority_roots, &authority).map_err(|e| {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
         Ok(Self {
@@ -10701,12 +10729,19 @@ impl ScopedRunObservation {
             module_path: module_path.to_string(),
             function: function.to_string(),
             addressable: std::io::stderr().is_terminal(),
-            emoji: std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+            emoji: std::io::stderr().is_terminal()
+                && std::env::var("TERM").map_or(true, |term| term != "dumb"),
             open: false,
+            started: std::time::Instant::now(),
         })
     }
 
-    fn emit(&mut self, projection: &str, detail: Option<(&str, &str)>) -> Result<(), String> {
+    fn emit(
+        &mut self,
+        projection: &str,
+        detail: Option<(&str, &str)>,
+        measured: bool,
+    ) -> Result<(), String> {
         use std::io::Write;
         use v1_interpreter::Value;
 
@@ -10726,6 +10761,12 @@ impl ScopedRunObservation {
         ];
         if let Some((name, value)) = detail {
             args.push((Some(name.to_string()), Value::Str(value.to_string())));
+        }
+        if measured {
+            args.push((
+                Some("wall_ns".to_string()),
+                Value::Int(self.started.elapsed().as_nanos() as i64),
+            ));
         }
         args.extend([
             (
@@ -10758,6 +10799,7 @@ impl ScopedRunObservation {
                 return self.emit(
                     "scoped_run_projection_refusal_write",
                     Some(("diagnostic", &cause)),
+                    false,
                 );
             }
             return Err(format!(
@@ -10785,19 +10827,27 @@ impl ScopedRunObservation {
     }
 
     fn begin(&mut self) -> Result<(), String> {
-        self.emit("scoped_run_begin_write", None)
+        self.emit("scoped_run_begin_write_measured", None, true)
     }
     fn finish(&mut self) -> Result<(), String> {
-        self.emit("scoped_run_final_write", None)
+        self.emit("scoped_run_final_write_measured", None, true)
     }
     fn refused(&mut self, cause: &str) -> Result<(), String> {
-        self.emit("scoped_run_refused_write", Some(("diagnostic", cause)))
+        self.emit(
+            "scoped_run_refused_write_measured",
+            Some(("diagnostic", cause)),
+            true,
+        )
     }
     fn failed(&mut self, cause: &str) -> Result<(), String> {
-        self.emit("scoped_run_failed_write", Some(("error", cause)))
+        self.emit(
+            "scoped_run_failed_write_measured",
+            Some(("error", cause)),
+            true,
+        )
     }
     fn close_before_deferred(&mut self) -> Result<(), String> {
-        self.emit("scoped_run_close_before_deferred_write", None)
+        self.emit("scoped_run_close_before_deferred_write", None, false)
     }
 }
 

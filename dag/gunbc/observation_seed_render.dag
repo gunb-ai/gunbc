@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
 import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
+import std.measure { nanosecond }
 import std.disposition { Disposition, Terminal }
 import std.observation {
   ObservationSubject,
@@ -138,6 +139,66 @@ fn scoped_run_event(
     wall: MeasuredUnavailable { cause: "scoped run wall is not measured" as NonEmptyStr },
     rss: MeasuredUnavailable { cause: "scoped run rss is not sampled" as NonEmptyStr }
   }
+}
+
+fn scoped_run_measured_event(
+  entry_file: NonEmptyStr,
+  module_path: NonEmptyStr,
+  function: NonEmptyStr,
+  wall_ns: Nat,
+  transition: std.observation.ObservationTransition
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: scoped_run_subject(entry_file: entry_file, module_path: module_path, function: function),
+    transition: transition,
+    wall: MeasuredValue { value: nanosecond(count: wall_ns) },
+    rss: MeasuredUnavailable { cause: "scoped run rss is not sampled" as NonEmptyStr }
+  }
+}
+
+fn scoped_run_project_measured(
+  event: ObservationEvent,
+  addressable: Bool,
+  emoji: Bool,
+  prior_open: Bool
+) -> ScopedRunWriteProjection {
+  scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior_open: prior_open)
+}
+
+fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project_measured(
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Begin),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project_measured(
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Final { shown_failures: 0 } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project_measured(
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, wall_ns: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project_measured(
+    event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Failed { error: error, output: "" } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
 }
 
 fn scoped_run_begin_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
