@@ -79,7 +79,9 @@ test fn occurrence_identity_authored_categories_are_disjoint_holds() -> Bool {
 }
 
 test fn occurrence_identity_legacy_to_shared_to_legacy_round_trip_holds() -> Bool {
-  let legacy_minted = MintedOccurrence { id: OccurrenceId { value: 41 } }
+  let legacy_minted = node_occurrence_id_from_shared(
+    shared: OccurrenceMinted { id: OccurrenceId { value: 41 } },
+  )
   let shared_minted = node_occurrence_id_to_shared(legacy: legacy_minted)
   let legacy_minted_again = node_occurrence_id_from_shared(shared: shared_minted)
   let minted_holds = match legacy_minted_again {
@@ -117,9 +119,11 @@ test fn occurrence_identity_legacy_shared_semantic_equivalence_holds() -> Bool {
   node_occurrence_id_semantically_equivalent(
     legacy: SyntheticOccurrence,
     shared: OccurrenceSynthetic,
-  )
+    )
     && node_occurrence_id_semantically_equivalent(
-      legacy: MintedOccurrence { id: OccurrenceId { value: 67 } },
+      legacy: node_occurrence_id_from_shared(
+        shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
+      ),
       shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
     )
     && !node_occurrence_id_semantically_equivalent(
@@ -127,7 +131,9 @@ test fn occurrence_identity_legacy_shared_semantic_equivalence_holds() -> Bool {
       shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
     )
     && !node_occurrence_id_semantically_equivalent(
-      legacy: MintedOccurrence { id: OccurrenceId { value: 68 } },
+      legacy: node_occurrence_id_from_shared(
+        shared: OccurrenceMinted { id: OccurrenceId { value: 68 } },
+      ),
       shared: OccurrenceMinted { id: OccurrenceId { value: 67 } },
     )
 }

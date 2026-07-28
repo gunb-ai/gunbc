@@ -4,7 +4,7 @@ import std.types { Bool, Int, String }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped occurrence space. Production parsing assigns every source a disjoint authored-token ordinal range. Identity is the packed authored-token ordinal plus a typed edge role; filename, SourceSpan, authored name, structural Node equality, content hash, and module-local reset are forbidden identity inputs."
 
-data occurrence_identity_constructor_spelling_note: String = "Shared NodeOccurrenceId uses collision-free neutral constructors because .dag variant names are closure-global: legacy v2 SyntheticOccurrence/MintedOccurrence and identically named shared constructors cannot coexist in one conversion closure. Constructor spelling is representation; this shared carrier remains the sole semantic authority."
+data occurrence_identity_constructor_spelling_note: String = "Shared NodeOccurrenceIdentity and its neutral constructors are collision-free because .dag type and variant names are closure-global and signatures cannot qualify a colliding type: legacy v2 NodeOccurrenceId/SyntheticOccurrence/MintedOccurrence and identically named shared declarations cannot coexist in one conversion closure. Spelling is representation; this shared carrier remains the sole semantic authority."
 
 data occurrence_identity_slots_per_authored_token: Int = 4
 
@@ -12,7 +12,7 @@ type OccurrenceId {
   value: Int
 }
 
-type NodeOccurrenceId
+type NodeOccurrenceIdentity
   = OccurrenceSynthetic
   | OccurrenceMinted { id: OccurrenceId }
 
@@ -91,8 +91,7 @@ fn authored_occurrence_identity(
   role: AuthoredOccurrenceRole
 ) -> OccurrenceId {
   OccurrenceId {
-    value: (token_ordinal * occurrence_identity_slots_per_authored_token)
-      + authored_occurrence_role_slot(role: role),
+    value: (token_ordinal * occurrence_identity_slots_per_authored_token) + authored_occurrence_role_slot(role: role),
   }
 }
 
@@ -167,6 +166,10 @@ fn reference_occurrence_from_identity(
   }
 }
 
-fn occurrence_node_minted(id: OccurrenceId) -> NodeOccurrenceId {
+fn occurrence_node_minted(id: OccurrenceId) -> NodeOccurrenceIdentity {
   OccurrenceMinted { id: id }
+}
+
+fn occurrence_node_minted_from_value(value: Int) -> NodeOccurrenceIdentity {
+  occurrence_node_minted(id: OccurrenceId { value: value })
 }

@@ -3,17 +3,20 @@ module v2.std.node
 import std.types { ContentHash }
 import std.content_hash { content_hash_atom, content_hash_combine }
 import std.occurrence_identity {
+  NodeOccurrenceIdentity,
   OccurrenceSynthetic,
   OccurrenceMinted,
-  occurrence_id_eq,
+  occurrence_node_minted_from_value,
 }
 
 type Symbol
 type Hash = ContentHash
 
-type OccurrenceId = std.occurrence_identity.OccurrenceId
+type OccurrenceId {
+  value: Int
+}
 
-data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
+data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceIdentity is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
 
 type NodeOccurrenceId
   = SyntheticOccurrence
@@ -25,25 +28,27 @@ fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
 
 fn node_occurrence_id_to_shared(
   legacy: NodeOccurrenceId
-) -> std.occurrence_identity.NodeOccurrenceId {
+) -> NodeOccurrenceIdentity {
   match legacy {
     SyntheticOccurrence => OccurrenceSynthetic
-    MintedOccurrence { id: id } => OccurrenceMinted { id: id }
+    MintedOccurrence { id: id } =>
+      occurrence_node_minted_from_value(value: id.value)
   }
 }
 
 fn node_occurrence_id_from_shared(
-  shared: std.occurrence_identity.NodeOccurrenceId
+  shared: NodeOccurrenceIdentity
 ) -> NodeOccurrenceId {
   match shared {
     OccurrenceSynthetic => SyntheticOccurrence
-    OccurrenceMinted { id: id } => MintedOccurrence { id: id }
+    OccurrenceMinted { id: id } =>
+      MintedOccurrence { id: OccurrenceId { value: id.value } }
   }
 }
 
 fn node_occurrence_id_semantically_equivalent(
   legacy: NodeOccurrenceId,
-  shared: std.occurrence_identity.NodeOccurrenceId
+  shared: NodeOccurrenceIdentity
 ) -> Bool {
   match legacy {
     SyntheticOccurrence =>
@@ -55,7 +60,7 @@ fn node_occurrence_id_semantically_equivalent(
       match shared {
         OccurrenceSynthetic => false
         OccurrenceMinted { id: shared_id } =>
-          occurrence_id_eq(left: legacy_id, right: shared_id)
+          legacy_id.value == shared_id.value
       }
   }
 }
