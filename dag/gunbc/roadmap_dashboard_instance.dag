@@ -1,6 +1,6 @@
 module gunbc.roadmap_dashboard_instance
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.languages.json.emit {
@@ -73,7 +73,7 @@ type HostDashboardInstance {
   serve_binary: FilePath
   serve_function: NonEmptyStr
   listen_host: NonEmptyStr
-  listen_port: Int
+  listen_port: Port
   tmux_server: TmuxServerScope
   actuation: DashboardActuationPosture
   provision_transport: DashboardProvisionTransport
@@ -336,7 +336,7 @@ fn isolated_dashboard_instance(
   host_identity: NonEmptyStr,
   root: FilePath,
   serve_function: NonEmptyStr,
-  listen_port: Int,
+  listen_port: Port,
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
 ) -> HostDashboardInstance {
@@ -480,7 +480,7 @@ type DashboardInstanceProvisionOp
       executable: FilePath,
       state_root: FilePath,
     }
-  | DashboardVerifyHealth { host: NonEmptyStr, port: Int }
+  | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
