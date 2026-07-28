@@ -1,0 +1,136 @@
+module v2.workflow.ci_merge_admission_gate_emit_test
+
+import gunbc.merge_admission_produce {
+  merge_admission_gate_entry_function,
+  merge_admission_gate_entry_path,
+  merge_admission_gate_fetch_parts,
+  merge_admission_v1_tool_source_roots
+}
+import v2.std.effect_plan { Do, EffectPlan }
+import v2.std.operation_argv {
+  BoundOperationInvocation,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text
+}
+import v2.std.orchestration { Continue, FailFast }
+import v2.workflow.ci_merge_admission_gate_emit {
+  ci_merge_admission_gate_fetch_step,
+  ci_merge_admission_gate_intent,
+  ci_merge_admission_gate_invoke_step,
+  ci_merge_admission_gate_refusal_prefix,
+  ci_merge_admission_gate_render,
+  ci_merge_admission_gate_script
+}
+import v2.workflow.effect_plan_bash_materialize {
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  effect_plan_bash_materialize
+}
+
+data gate_emit_witness_note: String = "Wave B acceptance. The claims that matter are the two the migration could silently break — the gate still fetches the SAME merge base and still invokes the SAME admission tool — plus the two the migration exists to make true: the run text is derived from the typed plan rather than spelled, and FailFast is enforced by the carrier rather than inherited from the runner's shell flags. Each positive has a control that goes red when the corresponding property is absent: perturbing the plan to Continue must refuse (not emit a weaker chain), and a plan whose operation does not exist must render a located refusal marker instead of shell."
+
+fn gate_materialized_source(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> String {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => source
+    EffectPlanBashMaterializationRefused { refusal: _ } => ""
+  }
+}
+
+fn gate_plan_refuses(plan: EffectPlan<BoundOperationInvocation>) -> Bool {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: _ } => false
+    EffectPlanBashMaterializationRefused { refusal: _ } => true
+  }
+}
+
+test fn gate_script_is_the_materialized_typed_plan() -> Bool {
+  let expected = concat(
+    gate_materialized_source(plan: ci_merge_admission_gate_intent()),
+    "\n"
+  )
+  ci_merge_admission_gate_script() == expected
+}
+
+test fn gate_script_carries_no_hand_spelled_root_variable() -> Bool {
+  let script = ci_merge_admission_gate_script()
+  !string_contains(s: script, pattern: "ROOT=")
+    && !string_contains(s: script, pattern: "$ROOT")
+    && !string_contains(s: script, pattern: "rev-parse")
+}
+
+test fn gate_still_fetches_the_declared_merge_base() -> Bool {
+  let script = ci_merge_admission_gate_script()
+  let parts = merge_admission_gate_fetch_parts()
+  string_contains(s: script, pattern: "'git' 'fetch' '--no-tags'")
+    && string_contains(s: script, pattern: concat(concat("'", parts.remote), "'"))
+    && string_contains(s: script, pattern: concat(concat("'", parts.ref_name), "'"))
+}
+
+test fn gate_still_invokes_the_declared_admission_tool() -> Bool {
+  let script = ci_merge_admission_gate_script()
+  string_contains(
+    s: script,
+    pattern: concat(concat("'--entry' '", merge_admission_gate_entry_path), "'")
+  )
+    && string_contains(
+      s: script,
+      pattern: concat(concat("'--function' '", merge_admission_gate_entry_function), "'")
+    )
+    && string_contains(
+      s: script,
+      pattern: concat(
+        concat("'--source-root' '", merge_admission_v1_tool_source_roots.first()),
+        "'"
+      )
+    )
+}
+
+test fn gate_fail_fast_is_visible_in_the_emitted_chain() -> Bool {
+  let script = ci_merge_admission_gate_script()
+  let fetch_first = string_contains(
+    s: script,
+    pattern: "'git' 'fetch' '--no-tags' 'origin' 'main' && "
+  )
+  fetch_first && string_contains(s: script, pattern: " && ")
+}
+
+test fn gate_continue_policy_refuses_red_control() -> Bool {
+  let intent = ci_merge_admission_gate_intent()
+  gate_plan_refuses(plan: EffectPlan {
+    steps: intent.steps,
+    on_failure: Continue
+  })
+}
+
+test fn gate_absent_operation_renders_located_refusal_red_control() -> Bool {
+  let script_of_absent = ci_merge_admission_gate_render(plan: EffectPlan {
+    steps: [
+      Do { effect: ci_merge_admission_gate_fetch_step() },
+      Do { effect: bind_operation_invocation(
+        at: OperationRef {
+          path: "dag/extdeps/gunbc/gunbc.dag",
+          service: "gunbc.WitnessBin",
+          operation: "NoSuchOperationZzz"
+        },
+        bindings: [operation_argv_bind_text(name: "workdir", text: ".")]
+      ) }
+    ],
+    on_failure: FailFast
+  })
+  string_contains(s: script_of_absent, pattern: ci_merge_admission_gate_refusal_prefix)
+    && string_contains(s: script_of_absent, pattern: "step 1")
+    && string_contains(s: script_of_absent, pattern: "gunbc.WitnessBin.NoSuchOperationZzz")
+    && string_contains(s: script_of_absent, pattern: "OperationNotFound")
+    && !string_contains(s: script_of_absent, pattern: "'git' 'fetch'")
+}
+
+test fn gate_invoke_step_binds_the_bin_path_outside_argv_zero() -> Bool {
+  let step = ci_merge_admission_gate_invoke_step()
+  let script = ci_merge_admission_gate_script()
+  (step.at.service == "gunbc.WitnessBin")
+    && (step.at.operation == "Run")
+    && string_contains(s: script, pattern: "'env' '-C' '.' 'target/release/gunbc'")
+}

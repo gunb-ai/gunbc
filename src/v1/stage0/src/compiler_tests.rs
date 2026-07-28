@@ -323,35 +323,58 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "occurrence_sidecar_serde.dag".to_string(),
-                    content: "module occurrence.sidecar_serde\nfn left(x: Int) -> Int { x }\nfn right(x: Int) -> Int { left(x) }\n".to_string(),
+                let left_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "occurrence_sidecar_left.dag".to_string(),
+                    content: "module occurrence.sidecar_left\nfn shared(x: Int) -> Int { x }\n"
+                        .to_string(),
                 });
-                let resolved = crate::v1_compiler_compile::compile_to_resolved(
-                    std::rc::Rc::new(im::vector![source]),
-                );
+                let right_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "occurrence_sidecar_right.dag".to_string(),
+                    content: "module occurrence.sidecar_right\nfn shared(x: Int) -> Int { x }\n"
+                        .to_string(),
+                });
+                let resolved =
+                    crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(im::vector![
+                        left_source,
+                        right_source
+                    ]));
                 let graph = resolved
                     .graph
                     .as_ref()
                     .expect("production compile must preserve a resolved graph");
-                let typed_module = graph
-                    .modules
-                    .get(0)
-                    .expect("production compile must preserve its typed module");
-                let transport = typed_module
-                    .occurrence_transport
-                    .as_ref()
-                    .expect("typed module must preserve occurrence transport");
-                assert!(!transport.index.entries.is_empty());
-                assert!(!transport.declarations.is_empty());
-                assert!(!transport.references.is_empty());
+                assert_eq!(graph.modules.len(), 2);
+                let mut occurrence_ids = std::collections::HashSet::new();
+                for typed_module in graph.modules.iter() {
+                    let transport = typed_module
+                        .occurrence_transport
+                        .as_ref()
+                        .expect("typed module must preserve occurrence transport");
+                    assert!(!transport.index.entries.is_empty());
+                    assert!(!transport.declarations.is_empty());
+                    assert!(!transport.references.is_empty());
+                    for entry in transport.index.entries.iter() {
+                        assert!(
+                            occurrence_ids.insert(entry.projection.occurrence.value),
+                            "graph-scoped occurrence ids must remain disjoint across modules"
+                        );
+                    }
+                    let module_bytes = serde_json::to_vec(typed_module)
+                        .expect("serialize typed module occurrence sidecar");
+                    let decoded_module: std::rc::Rc<crate::v1_compiler_infer_items::TypedModule> =
+                        serde_json::from_slice(&module_bytes)
+                            .expect("deserialize typed module occurrence sidecar");
+                    assert_eq!(&decoded_module, typed_module);
+                }
 
-                let graph_bytes = serde_json::to_vec(graph)
-                    .expect("serialize resolved graph occurrence sidecar");
+                let graph_bytes =
+                    serde_json::to_vec(graph).expect("serialize resolved graph occurrence sidecar");
                 let decoded_graph: std::rc::Rc<crate::v1_compiler_infer_items::ResolvedGraph> =
                     serde_json::from_slice(&graph_bytes)
                         .expect("deserialize resolved graph occurrence sidecar");
                 assert_eq!(&decoded_graph, graph);
+                for (before, after) in graph.modules.iter().zip(decoded_graph.modules.iter()) {
+                    assert_eq!(after.occurrence_transport, before.occurrence_transport);
+                }
 
                 let resolved_bytes = serde_json::to_vec(&resolved)
                     .expect("serialize resolved pipeline occurrence sidecar");

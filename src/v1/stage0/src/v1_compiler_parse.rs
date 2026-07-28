@@ -2517,6 +2517,12 @@ pub fn stamp_parsed_node_children(
             }),
             Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
         ),
+        ExprData::ExprLet => stamp_parsed_node_list(
+            node.children.clone(),
+            ancestors.clone(),
+            ctx.clone(),
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+        ),
         ExprData::ExprLambda => stamp_parsed_node_list_with_head_role(
             node.children.clone(),
             ancestors.clone(),
