@@ -49,12 +49,13 @@ import extdeps.git.object_store {
   GitR0ReadBackObservation,
   GitReadBackVerified,
   GitReadBackMismatch,
-  GitRefAdvanced,
+  GitRefTransitionModeled,
   GitRefAdvanceStale,
   GitRefAdvanceSymbolic,
   GitRefAdvanceFormatMismatch,
   GitRefAdvanceTargetUnavailable,
   RefResolved,
+  ObjectCorrupt,
   ObjectPromisorUnavailable,
   GitAttributesTransformExecution,
   GitCleanSmudgeFilterExecution,
@@ -65,7 +66,7 @@ import extdeps.git.object_store {
   git_project_repository,
   git_verify_independent_read_back,
   git_lookup_object,
-  git_update_ref_exact,
+  git_model_update_ref_exact,
   git_resolve_direct_ref,
   store_object_kind,
   stored_object_oid,
@@ -142,12 +143,23 @@ fn git_r0_fixture_expected_readback_receipt() -> String {
       fixture_oid_text(oid: sha1_parent_commit),
       fixture_oid_text(oid: sha1_next_commit),
       fixture_oid_text(oid: sha1_tag),
+      concat("sha256=", fixture_oid_text(oid: sha256_object)),
       "modes=120000,100755,040000,160000,100644",
       concat("main=", fixture_oid_text(oid: sha1_next_commit)),
       "tag_type=tag",
     ],
     "|",
   )
+}
+
+test fn witness_git_execution_receipt_binds_modeled_object_identities() -> Bool {
+  let receipt = git_r0_fixture_expected_readback_receipt()
+  string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_root_tree))
+    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_parent_commit))
+    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_next_commit))
+    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha1_tag))
+    && string_contains(s: receipt, pattern: fixture_oid_text(oid: sha256_object))
+    && string_contains(s: receipt, pattern: "modes=120000,100755,040000,160000,100644")
 }
 
 data fixture_author: GitAuthor = GitAuthor {
@@ -529,17 +541,50 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
   }
 }
 
-test fn witness_git_exact_old_oid_advance_and_readback() -> Bool {
-  match git_update_ref_exact(
+test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
+  let repo = fixture_repository()
+  let forged = StoredObject {
+    content_address: fixture_content_address(
+      oid: sha1_blob_regular,
+      object_type: TagObj,
+      canonical_size: byte_size(count: 6),
+    ),
+    object: ObjectBlob {
+      blob: Blob {
+        size: byte_size(count: 6),
+        content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
+      }
+    },
+  }
+  let invalid = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: append(
+      repo.objects |> filter(object =>
+        !(stored_object_oid(stored: object) == sha1_blob_regular)
+      ),
+      items: [forged],
+    ),
+    unavailable: repo.unavailable,
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_lookup_object(repo: invalid, oid: sha1_blob_regular) {
+    ObjectCorrupt { oid, reason: _ } => oid == sha1_blob_regular
+    _ => false
+  }
+}
+
+test fn witness_git_exact_old_oid_transition_model_preserves_expected_state() -> Bool {
+  match git_model_update_ref_exact(
     repo: fixture_repository(),
     name: "refs/heads/main",
     new_oid: sha1_next_commit,
     expected_old: sha1_parent_commit,
   ) {
-    GitRefAdvanced { repository, receipt } =>
-      receipt.expected_old == sha1_parent_commit
-        && receipt.new == sha1_next_commit
-        && receipt.read_back == sha1_next_commit
+    GitRefTransitionModeled { repository, transition } =>
+      transition.expected_old == sha1_parent_commit
+        && transition.new == sha1_next_commit
         && match git_resolve_direct_ref(repo: repository, name: "refs/heads/main") {
           RefResolved { oid } => oid == sha1_next_commit
           _ => false
@@ -550,7 +595,7 @@ test fn witness_git_exact_old_oid_advance_and_readback() -> Bool {
 
 test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
   let repo = fixture_repository()
-  match git_update_ref_exact(
+  match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
     new_oid: sha1_next_commit,
@@ -570,7 +615,7 @@ test fn witness_git_stale_expected_oid_refuses_without_mutation() -> Bool {
 
 test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
   let repo = fixture_repository()
-  match git_update_ref_exact(
+  match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
     new_oid: sha1_absent_commit,
@@ -589,7 +634,7 @@ test fn witness_git_missing_new_object_refuses_without_mutation() -> Bool {
 
 test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool {
   let repo = fixture_repository()
-  match git_update_ref_exact(
+  match git_model_update_ref_exact(
     repo: repo,
     name: "refs/heads/main",
     new_oid: sha256_object,
@@ -604,7 +649,7 @@ test fn witness_git_mismatched_object_format_refuses_without_mutation() -> Bool 
 }
 
 test fn witness_git_symbolic_ref_is_not_silently_advanced_as_direct() -> Bool {
-  match git_update_ref_exact(
+  match git_model_update_ref_exact(
     repo: fixture_repository(),
     name: "HEAD",
     new_oid: sha1_next_commit,

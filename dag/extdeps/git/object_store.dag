@@ -476,15 +476,17 @@ fn git_verify_independent_read_back(
   }
 }
 
-type GitUpdateRefReceipt {
+type GitModeledRefTransition {
   name: GitRefName
   expected_old: GitObjectId
   new: GitObjectId
-  read_back: GitObjectId
 }
 
 type GitUpdateRefOutcome
-  = GitRefAdvanced { repository: GitRepositoryState, receipt: GitUpdateRefReceipt }
+  = GitRefTransitionModeled {
+      repository: GitRepositoryState,
+      transition: GitModeledRefTransition,
+    }
   | GitRefAdvanceStale {
       repository: GitRepositoryState,
       name: GitRefName,
@@ -513,17 +515,8 @@ type GitUpdateRefOutcome
       oid: GitObjectId,
       object_type: ObjectType,
     }
-  | GitRefAdvanceReadBackMismatch {
-      repository: GitRepositoryState,
-      name: GitRefName,
-      requested: GitObjectId,
-      observed: GitObjectId,
-    }
-  | GitRefAdvanceReadBackRefused {
-      repository: GitRepositoryState,
-      name: GitRefName,
-      result: RefResolutionResult,
-    }
+
+data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, but mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref, rejects stale/nonexistent targets, and observes the resulting ref. P3 must consume an executing transport observation, never promote this model transition to Applied."
 
 fn git_replace_direct_ref(
   refs: List<GitRefRecord>,
@@ -539,7 +532,7 @@ fn git_replace_direct_ref(
   )
 }
 
-fn git_update_ref_exact(
+fn git_model_update_ref_exact(
   repo: GitRepositoryState,
   name: GitRefName,
   new_oid: GitObjectId,
@@ -591,30 +584,12 @@ fn git_update_ref_exact(
                     index: repo.index,
                     worktree: repo.worktree,
                   }
-                  match git_resolve_direct_ref(repo: updated, name: name) {
-                    RefResolved { oid: read_back } =>
-                      if read_back == new_oid {
-                        GitRefAdvanced {
-                          repository: updated,
-                          receipt: GitUpdateRefReceipt {
-                            name: name,
-                            expected_old: expected_old,
-                            new: new_oid,
-                            read_back: read_back,
-                          }
-                        }
-                      } else {
-                        GitRefAdvanceReadBackMismatch {
-                          repository: updated,
-                          name: name,
-                          requested: new_oid,
-                          observed: read_back,
-                        }
-                      }
-                    other => GitRefAdvanceReadBackRefused {
-                      repository: updated,
+                  GitRefTransitionModeled {
+                    repository: updated,
+                    transition: GitModeledRefTransition {
                       name: name,
-                      result: other,
+                      expected_old: expected_old,
+                      new: new_oid,
                     }
                   }
                 }

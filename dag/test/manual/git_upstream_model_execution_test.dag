@@ -1,6 +1,7 @@
 module test.manual.git_upstream_model_execution
 
 import extdeps.shell.exec { TransportScript }
+import gunbc.output_policy { ExpectSuccess }
 import test.claim.git_upstream_model_witness {
   git_r0_fixture_expected_readback_receipt,
 }
@@ -15,7 +16,8 @@ fn git_r0_fixture_execution_script() -> TransportScript {
     [
       "set -euo pipefail",
       "fixture_tmp=$(mktemp -d)",
-      "cleanup() { if [ -n \"$\{fixture_tmp:-}\" ] && [ -d \"$fixture_tmp\" ]; then rm -rf -- \"$fixture_tmp\"; fi; }",
+      "sha256_tmp=$(mktemp -d)",
+      "cleanup() { if [ -n \"$\{fixture_tmp:-}\" ] && [ -d \"$fixture_tmp\" ]; then rm -rf -- \"$fixture_tmp\"; fi; if [ -n \"$\{sha256_tmp:-}\" ] && [ -d \"$sha256_tmp\" ]; then rm -rf -- \"$sha256_tmp\"; fi; }",
       "trap cleanup EXIT",
       "git -C \"$fixture_tmp\" init -q --object-format=sha1",
       "blob_regular=$(printf source | git -C \"$fixture_tmp\" hash-object -w --stdin)",
@@ -35,6 +37,9 @@ fn git_r0_fixture_execution_script() -> TransportScript {
       "next_commit=$(printf 'next\\n' | git -C \"$fixture_tmp\" commit-tree \"$root_tree\" -p \"$parent_commit\")",
       "tag_payload=$(printf 'object %s\\ntype commit\\ntag v0\\ntagger A. U. Thor <author@example.invalid> 946684800 +0000\\n\\nbounded annotated tag\\n' \"$parent_commit\")",
       "tag_oid=$(printf '%s' \"$tag_payload\" | git -C \"$fixture_tmp\" mktag)",
+      "git -C \"$sha256_tmp\" init -q --bare --object-format=sha256",
+      "sha256_blob=$(printf source | git --git-dir=\"$sha256_tmp\" hash-object -w --stdin)",
+      "test \"$(git --git-dir=\"$sha256_tmp\" rev-parse --show-object-format)\" = sha256",
       "git -C \"$fixture_tmp\" update-ref refs/heads/main \"$parent_commit\"",
       "git -C \"$fixture_tmp\" symbolic-ref HEAD refs/heads/main",
       "git -C \"$fixture_tmp\" update-ref refs/tags/v0 \"$tag_oid\"",
@@ -54,14 +59,17 @@ fn git_r0_fixture_execution_script() -> TransportScript {
       "main_readback=$(git -C \"$fixture_tmp\" rev-parse refs/heads/main)",
       "tag_type=$(git -C \"$fixture_tmp\" cat-file -t refs/tags/v0)",
       "modes=$(git -C \"$fixture_tmp\" ls-tree --format='%(objectmode)' \"$root_tree\" | paste -sd, -)",
-      "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|modes=%s|main=%s|tag_type=%s\\n' \"$(git -C \"$fixture_tmp\" rev-parse --show-object-format)\" \"$blob_regular\" \"$blob_exec\" \"$blob_link\" \"$empty_tree\" \"$gitlink_commit\" \"$root_tree\" \"$parent_commit\" \"$next_commit\" \"$tag_oid\" \"$modes\" \"$main_readback\" \"$tag_type\"",
+      "printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|sha256=%s|modes=%s|main=%s|tag_type=%s\\n' \"$(git -C \"$fixture_tmp\" rev-parse --show-object-format)\" \"$blob_regular\" \"$blob_exec\" \"$blob_link\" \"$empty_tree\" \"$gitlink_commit\" \"$root_tree\" \"$parent_commit\" \"$next_commit\" \"$tag_oid\" \"$sha256_blob\" \"$modes\" \"$main_readback\" \"$tag_type\"",
     ],
     "\n",
   ) as TransportScript
 }
 
 test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -> Bool {
-  let execution = shell.Exec.Run(script: git_r0_fixture_execution_script())
+  let execution = shell.Exec.Run(
+    script: git_r0_fixture_execution_script(),
+    expect: ExpectSuccess,
+  )
   execution.success
     && trim(s: execution.stdout) == git_r0_fixture_expected_readback_receipt()
 }
