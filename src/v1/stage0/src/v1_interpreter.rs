@@ -47,6 +47,23 @@ pub struct SymbolInterner {
     calls: u64,
 }
 
+#[cfg(test)]
+mod selected_identity_path_tests {
+    use super::selected_module_path;
+    use std::collections::HashMap;
+
+    #[test]
+    fn suffix_collision_refuses_instead_of_guessing() {
+        let mut index = HashMap::new();
+        index.insert("one".to_string(), "src/common.dag".to_string());
+        index.insert("two".to_string(), "common.dag".to_string());
+        assert_eq!(
+            selected_module_path("workspace/src/common.dag", &index),
+            None
+        );
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct InternStats {
     pub calls: u64,
@@ -1328,6 +1345,26 @@ pub struct SelectedFunctionIdentity {
     pub bare_name_ambiguous: bool,
 }
 
+fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>) -> Option<String> {
+    let exact: Vec<_> = module_path_index
+        .iter()
+        .filter(|(_, path)| path.as_str() == file)
+        .map(|(module, _)| module.clone())
+        .collect();
+    if exact.len() == 1 {
+        return exact.into_iter().next();
+    }
+    if !exact.is_empty() {
+        return None;
+    }
+    let suffix: Vec<_> = module_path_index
+        .iter()
+        .filter(|(_, path)| file.ends_with(path.as_str()))
+        .map(|(module, _)| module.clone())
+        .collect();
+    (suffix.len() == 1).then(|| suffix.into_iter().next().expect("one suffix"))
+}
+
 impl InterpContext {
     pub fn sym(&self, s: &str) -> Symbol {
         self.symbols.borrow_mut().intern(s)
@@ -1606,23 +1643,7 @@ impl InterpContext {
     ) -> Option<SelectedFunctionIdentity> {
         let node = self.lookup_fn(name)?;
         let file = node.span.file.as_str();
-        let exact: Vec<_> = module_path_index
-            .iter()
-            .filter(|(_, path)| path.as_str() == file)
-            .map(|(module, _)| module.clone())
-            .collect();
-        let module_path = if exact.len() == 1 {
-            exact.into_iter().next().expect("one exact module path")
-        } else if exact.is_empty() {
-            let suffix: Vec<_> = module_path_index
-                .iter()
-                .filter(|(_, path)| file.ends_with(path.as_str()))
-                .map(|(module, _)| module.clone())
-                .collect();
-            (suffix.len() == 1).then(|| suffix.into_iter().next().expect("one suffix"))?
-        } else {
-            return None;
-        };
+        let module_path = selected_module_path(file, module_path_index)?;
         Some(SelectedFunctionIdentity {
             module_path,
             decl_name: authored_name_at(self.source_indices.clone(), node.clone()),

@@ -10674,9 +10674,10 @@ impl ScopedRunObservation {
             resolve_entry_graph_shared(&authority_roots, &authority).map_err(|e| {
                 format!("scoped run observation authority resolve failed for {authority}: {e}")
             })?;
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
         let seed_resolution_ns = started.elapsed().as_nanos();
         Ok(Self {
-            ctx: make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
+            ctx,
             entry_file: entry_file.to_string(),
             module_path: module_path.to_string(),
             function: function.to_string(),
