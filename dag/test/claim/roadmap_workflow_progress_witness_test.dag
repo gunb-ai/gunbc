@@ -4,6 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_provider_events {
   ProviderCompleted,
+  ProviderRunning,
   ProviderFailed,
   ProviderEventsRefused,
 }
@@ -11,12 +12,20 @@ import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   workflow_attempt_progress,
   workflow_attempt_progress_json_value,
+  environment_admission_receipt_is_admitted,
+}
+import gunbc.roadmap_dispatch_environment {
+  DispatchEnvironmentAdmission,
+  EnvironmentAdmitted,
+  EnvironmentRefused,
+  dispatch_environment_admission_json,
 }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessRunning,
   WorkerProcessExited,
   WorkerProcessAbsent,
+  WorkerProcessUnobserved,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
 import gunbc.roadmap_workflow_stage {
@@ -145,6 +154,93 @@ test fn completed_event_and_nonzero_exit_refuse_contradiction() -> Bool {
   }
 }
 
+data agent_completion_requires_compatible_exit_note: String = "review 44032 REDs. The Agent obligation's design contract requires a compatible process exit, so turn.completed alone must never paint agent complete. These three witnesses pin the arms that previously preserved ProviderCompleted from incomplete evidence: still-running stays active, absent refuses, unobserved refuses. Each is the discriminating control for one arm — flipping any back to `provider` reds exactly one of them."
+
+test fn completed_event_while_process_runs_is_not_complete() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessRunning { command: "node" },
+  ))
+  segment_state(progress.segments, "agent") == "active"
+    && match progress.provider {
+      ProviderRunning { activity } =>
+        string_contains(s: activity, pattern: "awaiting process exit")
+      _ => false
+    }
+}
+
+test fn completed_event_with_absent_process_refuses() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessAbsent,
+  ))
+  segment_state(progress.segments, "agent") == "refused"
+    && match progress.provider {
+      ProviderEventsRefused { activity: _, detail } =>
+        string_contains(s: detail, pattern: "no process exit was observed")
+      _ => false
+    }
+}
+
+test fn completed_event_with_unobserved_process_refuses() -> Bool {
+  let progress = workflow_attempt_progress(evidence: fixture_evidence(
+    events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
+    process: WorkerProcessUnobserved { reason: "tmux refused" },
+  ))
+  segment_state(progress.segments, "agent") == "refused"
+    && match progress.provider {
+      ProviderEventsRefused { activity: _, detail } =>
+        string_contains(s: detail, pattern: "tmux refused")
+      _ => false
+    }
+}
+
+data admission_receipt_positional_identity_note: String = "review 44032 RED. The admission receipt is READ BACK FROM DISK, so nothing guarantees the bytes came from dispatch_environment_admission_json — a corrupt, truncated, or foreign file is exactly the case the projection must survive. The forgery below is well-formed JSON that declares status refused at the top level while carrying an admitted status in a nested member; the former two-string_contains scan matched both fragments and read it as admitted. Note the emitter's own escaping already prevented the narrower attack (a quoted reason cannot reproduce a raw fragment), which is why the fixture is a raw document rather than a round-trip: the vulnerability was never in the emitter, it was in identifying a document by scanning it. Positional identity refuses this because a nested value cannot occupy the document prefix, and the paired green keeps the real emitter's admitted receipt admitted so the witness discriminates rather than rejecting everything."
+
+fn admission_receipt_for(admission: DispatchEnvironmentAdmission) -> String {
+  dispatch_environment_admission_json(admission: admission)
+}
+
+fn nested_admitted_forgery() -> String {
+  "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"refused\", \"reason\": \"probe failed\", \"receipts\": [{\"capability\": \"git-workspace\", \"status\": \"admitted\"}]}"
+}
+
+test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
+  let forged = nested_admitted_forgery()
+  let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
+    receipts: [],
+    validation_summary: "gunbc run --claim-run",
+  })
+  string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
+    && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
+    && !environment_admission_receipt_is_admitted(receipt: forged)
+    && environment_admission_receipt_is_admitted(receipt: genuine)
+}
+
+test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
+  let base = fixture_evidence(
+    events: "",
+    process: WorkerProcessAbsent,
+  )
+  let forged = WorkflowAttemptEvidence {
+    node_id: base.node_id,
+    attempt_key: base.attempt_key,
+    branch: base.branch,
+    modeled_state_present: base.modeled_state_present,
+    admission_receipt_readable: base.admission_receipt_readable,
+    admission_receipt: nested_admitted_forgery(),
+    spawn_failure_present: base.spawn_failure_present,
+    spawn_failure: base.spawn_failure,
+    provider_events_readable: base.provider_events_readable,
+    provider_events: base.provider_events,
+    provider_events_error: base.provider_events_error,
+    process: base.process,
+    validation_summary: base.validation_summary,
+  }
+  let progress = workflow_attempt_progress(evidence: forged)
+  !(segment_state(progress.segments, "env") == "complete")
+}
+
 test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
   let base = fixture_evidence(
     events: "",
@@ -263,6 +359,11 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
     && nonzero_exit_without_terminal_event_is_failed()
     && zero_exit_without_terminal_event_is_refused()
     && completed_event_and_nonzero_exit_refuse_contradiction()
+    && completed_event_while_process_runs_is_not_complete()
+    && completed_event_with_absent_process_refuses()
+    && completed_event_with_unobserved_process_refuses()
+    && refused_receipt_quoting_admitted_fragments_is_not_admitted()
+    && forged_admission_receipt_cannot_complete_environment()
     && persisted_staging_failure_precedes_empty_event_stream()
     && legacy_attempt_refuses_unobserved_early_stages()
     && readable_but_invalid_admission_receipt_refuses_progress()

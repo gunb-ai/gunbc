@@ -9,6 +9,10 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
+import gunbc.roadmap_dispatch_environment {
+  dispatch_environment_receipt_status_admitted,
+  dispatch_environment_receipt_identity_prefix,
+}
 import gunbc.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
@@ -96,14 +100,15 @@ type WorkflowAttemptProgress {
   reconciliation: WorkflowReconcileReport
 }
 
-data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection also requires the internally emitted admission schema and admitted verdict, so a corrupted or refused receipt cannot paint Environment complete. Complete Codex JSONL remains attempt evidence; the observer's modeled jq capability validates it and emits bounded structural envelopes before this module derives agent activity and provider terminal events. Large command output is therefore opaque to the synchronous UI rather than a workflow refusal. The shared gunbc.worker_lifecycle.WorkerProcessEvidence supplies process presence and exit to both the Sessions surface and Agent reconciliation. Reconciliation is fail-closed: a failed event projection refuses, nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, and contradictory turn.completed plus nonzero process exit is refused. The ordered desired facts derive from roadmap_attempt_workflow_segment_kinds; only non-pending evidence projections enter the observed fact forest, so Pending in the row means an absent observation rather than a fabricated pending receipt. The two forests reconcile through gunbc.workflow_reconcile, making observed count, remaining work, and overall convergence fold results rather than another hand-authored status. Verification, publication, review, and goal audit remain pending until their own authoritative receipts exist; provider completion cannot fabricate them."
+data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection requires the receipt to START with the emitter's own admitted identity prefix (schema then status), so a corrupted or refused receipt cannot paint Environment complete. Positional identity replaces a text scan that any value position could satisfy. Complete Codex JSONL remains attempt evidence; the observer's modeled jq capability validates it and emits bounded structural envelopes before this module derives agent activity and provider terminal events. Large command output is therefore opaque to the synchronous UI rather than a workflow refusal. The shared gunbc.worker_lifecycle.WorkerProcessEvidence supplies process presence and exit to both the Sessions surface and Agent reconciliation. Reconciliation is fail-closed, and Agent completes ONLY on the design contract's compatible process exit: a failed event projection refuses, nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, contradictory turn.completed plus nonzero process exit is refused, turn.completed with the pane still running stays ACTIVE awaiting that exit, and turn.completed with an absent or unobserved process REFUSES because no exit was established. A terminal provider event alone never paints Agent complete — that would fabricate a completed obligation from incomplete evidence. The ordered desired facts derive from roadmap_attempt_workflow_segment_kinds; only non-pending evidence projections enter the observed fact forest, so Pending in the row means an absent observation rather than a fabricated pending receipt. The two forests reconcile through gunbc.workflow_reconcile, making observed count, remaining work, and overall convergence fold results rather than another hand-authored status. Verification, publication, review, and goal audit remain pending until their own authoritative receipts exist; provider completion cannot fabricate them."
 
 fn environment_admission_receipt_is_admitted(receipt: String) -> Bool {
-  string_contains(
+  starts_with(
     s: receipt,
-    pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"",
+    prefix: dispatch_environment_receipt_identity_prefix(
+      status: dispatch_environment_receipt_status_admitted,
+    ),
   )
-    && string_contains(s: receipt, pattern: "\"status\": \"admitted\"")
 }
 
 fn provider_execution_reconcile_process(
@@ -128,9 +133,27 @@ fn provider_execution_reconcile_process(
               ], ""),
             }
           }
-        WorkerProcessRunning { command: _ } => provider
-        WorkerProcessAbsent => provider
-        WorkerProcessUnobserved { reason: _ } => provider
+        WorkerProcessRunning { command: _ } =>
+          ProviderRunning {
+            activity: join([
+              activity,
+              "; awaiting process exit",
+            ], ""),
+          }
+        WorkerProcessAbsent =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
+          }
+        WorkerProcessUnobserved { reason } =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: join([
+              "Codex emitted turn.completed but process evidence is unobserved (",
+              reason,
+              "); the compatible exit the Agent obligation requires cannot be established",
+            ], ""),
+          }
       }
     _ =>
       match process {
