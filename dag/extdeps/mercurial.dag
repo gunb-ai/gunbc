@@ -652,67 +652,52 @@ fn mercurial_file_revision_exists(
   file_revisions |> any(file_revision => file_revision.node == wanted)
 }
 
-fn mercurial_changeset_declared_missing(
-  availability: MercurialRepositoryAvailability,
-  wanted: MercurialChangesetId,
-) -> Bool {
-  match availability {
-    MercurialRepositoryPartial { missing_changesets, missing_manifests: _, missing_file_revisions: _ } =>
-      missing_changesets |> any(changeset => changeset == wanted)
-    MercurialRepositoryComplete => false
-    MercurialRepositoryInaccessible { reason: _ } => false
-  }
-}
-
-fn mercurial_manifest_declared_missing(
-  availability: MercurialRepositoryAvailability,
-  wanted: MercurialManifestId,
-) -> Bool {
-  match availability {
-    MercurialRepositoryPartial { missing_changesets: _, missing_manifests, missing_file_revisions: _ } =>
-      missing_manifests |> any(manifest => manifest == wanted)
-    MercurialRepositoryComplete => false
-    MercurialRepositoryInaccessible { reason: _ } => false
-  }
-}
-
-fn mercurial_file_revision_declared_missing(
-  availability: MercurialRepositoryAvailability,
-  wanted: MercurialFileRevisionId,
-) -> Bool {
-  match availability {
-    MercurialRepositoryPartial { missing_changesets: _, missing_manifests: _, missing_file_revisions } =>
-      missing_file_revisions |> any(file_revision => file_revision == wanted)
-    MercurialRepositoryComplete => false
-    MercurialRepositoryInaccessible { reason: _ } => false
-  }
-}
-
 fn mercurial_changeset_known(
   changesets: List<MercurialChangeset>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
   wanted: MercurialChangesetId,
 ) -> Bool {
   mercurial_changeset_exists(changesets: changesets, wanted: wanted)
-    || mercurial_changeset_declared_missing(availability: availability, wanted: wanted)
+    || match completeness {
+      MercurialContentsComplete => false
+      MercurialContentsPartial {
+        missing_changesets,
+        missing_manifests: _,
+        missing_file_revisions: _,
+      } => missing_changesets |> any(changeset => changeset == wanted)
+    }
 }
 
 fn mercurial_manifest_known(
   manifests: List<MercurialManifest>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
   wanted: MercurialManifestId,
 ) -> Bool {
   mercurial_manifest_exists(manifests: manifests, wanted: wanted)
-    || mercurial_manifest_declared_missing(availability: availability, wanted: wanted)
+    || match completeness {
+      MercurialContentsComplete => false
+      MercurialContentsPartial {
+        missing_changesets: _,
+        missing_manifests,
+        missing_file_revisions: _,
+      } => missing_manifests |> any(manifest => manifest == wanted)
+    }
 }
 
 fn mercurial_file_revision_known(
   file_revisions: List<MercurialFileRevision>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
   wanted: MercurialFileRevisionId,
 ) -> Bool {
   mercurial_file_revision_exists(file_revisions: file_revisions, wanted: wanted)
-    || mercurial_file_revision_declared_missing(availability: availability, wanted: wanted)
+    || match completeness {
+      MercurialContentsComplete => false
+      MercurialContentsPartial {
+        missing_changesets: _,
+        missing_manifests: _,
+        missing_file_revisions,
+      } => missing_file_revisions |> any(file_revision => file_revision == wanted)
+    }
 }
 
 type MercurialDuplicateChangesetOutcome
@@ -893,7 +878,7 @@ fn mercurial_validate_phase_assignments(
 fn mercurial_first_missing_manifest(
   changesets: List<MercurialChangeset>,
   manifests: List<MercurialManifest>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialReferenceCheckOutcome {
   fold(changesets, init: MercurialReferencesValid, f: fn(found, c) {
     match found {
@@ -901,7 +886,7 @@ fn mercurial_first_missing_manifest(
       MercurialReferencesValid =>
         if mercurial_manifest_known(
           manifests: manifests,
-          availability: availability,
+          completeness: completeness,
           wanted: c.manifest,
         ) {
           MercurialReferencesValid
@@ -919,7 +904,7 @@ fn mercurial_first_missing_manifest(
 
 fn mercurial_first_missing_parent(
   changesets: List<MercurialChangeset>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialReferenceCheckOutcome {
   fold(changesets, init: MercurialReferencesValid, f: fn(found, c) {
     match found {
@@ -931,7 +916,7 @@ fn mercurial_first_missing_parent(
           MercurialReferencesValid =>
             if mercurial_changeset_known(
               changesets: changesets,
-              availability: availability,
+              completeness: completeness,
               wanted: parent,
             ) {
               MercurialReferencesValid
@@ -952,7 +937,7 @@ fn mercurial_first_missing_parent(
 fn mercurial_first_missing_file_revision(
   manifests: List<MercurialManifest>,
   file_revisions: List<MercurialFileRevision>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialReferenceCheckOutcome {
   fold(manifests, init: MercurialReferencesValid, f: fn(found, manifest) {
     match found {
@@ -964,7 +949,7 @@ fn mercurial_first_missing_file_revision(
             MercurialReferencesValid =>
               if mercurial_file_revision_known(
                 file_revisions: file_revisions,
-                availability: availability,
+                completeness: completeness,
                 wanted: entry.file_revision,
               ) {
                 MercurialReferencesValid
@@ -985,7 +970,7 @@ fn mercurial_first_missing_file_revision(
 
 fn mercurial_first_missing_file_revision_dependency(
   file_revisions: List<MercurialFileRevision>,
-  availability: MercurialRepositoryAvailability,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialReferenceCheckOutcome {
   fold(file_revisions, init: MercurialReferencesValid, f: fn(found, file_revision) {
     match found {
@@ -1000,7 +985,7 @@ fn mercurial_first_missing_file_revision_dependency(
               MercurialReferencesValid =>
                 if mercurial_file_revision_known(
                   file_revisions: file_revisions,
-                  availability: availability,
+                  completeness: completeness,
                   wanted: parent,
                 ) {
                   MercurialReferencesValid
@@ -1022,7 +1007,7 @@ fn mercurial_first_missing_file_revision_dependency(
             MercurialCopiedFrom { path, file_revision: source_revision } =>
               if mercurial_file_revision_known(
                 file_revisions: file_revisions,
-                availability: availability,
+                completeness: completeness,
                 wanted: source_revision,
               ) {
                 MercurialReferencesValid
@@ -1042,7 +1027,7 @@ fn mercurial_first_missing_file_revision_dependency(
 }
 
 fn mercurial_changeset_references(
-  projection: MercurialRepositoryProjection,
+  projection: MercurialRepositoryProjectionContents,
   phases: List<MercurialPhaseEntry>,
 ) -> List<MercurialChangesetReference> {
   let local_revisions = projection.local_revisions |> map(entry =>
@@ -1101,7 +1086,8 @@ fn mercurial_changeset_references(
 }
 
 fn mercurial_first_missing_changeset_reference(
-  projection: MercurialRepositoryProjection,
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
   phases: List<MercurialPhaseEntry>,
 ) -> MercurialReferenceCheckOutcome {
   fold(
@@ -1113,7 +1099,7 @@ fn mercurial_first_missing_changeset_reference(
         MercurialReferencesValid =>
           if mercurial_changeset_known(
             changesets: projection.changesets,
-            availability: projection.availability,
+            completeness: completeness,
             wanted: reference.target,
           ) {
             MercurialReferencesValid
@@ -1131,39 +1117,41 @@ fn mercurial_first_missing_changeset_reference(
 }
 
 fn mercurial_validate_references(
-  projection: MercurialRepositoryProjection,
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
   manifests: List<MercurialManifest>,
   phases: List<MercurialPhaseEntry>,
 ) -> MercurialReferenceCheckOutcome {
   match mercurial_first_missing_manifest(
     changesets: projection.changesets,
     manifests: manifests,
-    availability: projection.availability,
+    completeness: completeness,
   ) {
     MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
     MercurialReferencesValid =>
       match mercurial_first_missing_parent(
         changesets: projection.changesets,
-        availability: projection.availability,
+        completeness: completeness,
       ) {
         MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
         MercurialReferencesValid =>
           match mercurial_first_missing_file_revision(
             manifests: manifests,
             file_revisions: projection.file_revisions,
-            availability: projection.availability,
+            completeness: completeness,
           ) {
             MercurialReferenceInvalid { cause } => MercurialReferenceInvalid { cause: cause }
             MercurialReferencesValid =>
               match mercurial_first_missing_file_revision_dependency(
                 file_revisions: projection.file_revisions,
-                availability: projection.availability,
+                completeness: completeness,
               ) {
                 MercurialReferenceInvalid { cause } =>
                   MercurialReferenceInvalid { cause: cause }
                 MercurialReferencesValid =>
                   match mercurial_first_missing_changeset_reference(
                     projection: projection,
+                    completeness: completeness,
                     phases: phases,
                   ) {
                     MercurialReferenceInvalid { cause } =>
@@ -1185,8 +1173,83 @@ type MercurialDecodeOutcome
   | MercurialDecodeRefused { cause: MercurialProjectionRefusal }
   | MercurialRepositoryUnavailable { reason: NonEmptyStr }
 
+fn mercurial_validate_partial_projection(
+  projection: MercurialRepositoryProjectionContents,
+  missing_changesets: List<MercurialChangesetId>,
+  missing_manifests: List<MercurialManifestId>,
+  missing_file_revisions: List<MercurialFileRevisionId>,
+) -> MercurialReferenceCheckOutcome {
+  let changesets_checked = fold(
+    projection.changesets,
+    init: MercurialReferencesValid,
+    f: fn(found, changeset) {
+      match found {
+        MercurialReferenceInvalid { cause: _ } => found
+        MercurialReferencesValid =>
+          if missing_changesets |> any(missing => missing == changeset.node) {
+            MercurialReferenceInvalid {
+              cause: MercurialChangesetPresentAndDeclaredMissing {
+                changeset: changeset.node,
+              },
+            }
+          } else {
+            MercurialReferencesValid
+          }
+      }
+    },
+  )
+  match changesets_checked {
+    MercurialReferenceInvalid { cause: _ } => changesets_checked
+    MercurialReferencesValid =>
+      let manifests_checked = fold(
+        projection.manifests,
+        init: MercurialReferencesValid,
+        f: fn(found, manifest) {
+          match found {
+            MercurialReferenceInvalid { cause: _ } => found
+            MercurialReferencesValid =>
+              if missing_manifests |> any(missing => missing == manifest.node) {
+                MercurialReferenceInvalid {
+                  cause: MercurialManifestPresentAndDeclaredMissing {
+                    manifest: manifest.node,
+                  },
+                }
+              } else {
+                MercurialReferencesValid
+              }
+          }
+        },
+      )
+      match manifests_checked {
+        MercurialReferenceInvalid { cause: _ } => manifests_checked
+        MercurialReferencesValid =>
+          fold(
+            projection.file_revisions,
+            init: MercurialReferencesValid,
+            f: fn(found, file_revision) {
+              match found {
+                MercurialReferenceInvalid { cause: _ } => found
+                MercurialReferencesValid =>
+                  if missing_file_revisions
+                    |> any(missing => missing == file_revision.node)
+                  {
+                    MercurialReferenceInvalid {
+                      cause: MercurialFileRevisionPresentAndDeclaredMissing {
+                        file_revision: file_revision.node,
+                      },
+                    }
+                  } else {
+                    MercurialReferencesValid
+                  }
+              }
+            },
+          )
+      }
+  }
+}
+
 fn mercurial_decode_accessible_projection(
-  projection: MercurialRepositoryProjection,
+  projection: MercurialRepositoryProjectionContents,
   completeness: MercurialRepositoryCompleteness,
 ) -> MercurialDecodeOutcome {
   match mercurial_decode_manifests(wires: projection.manifests) {
@@ -1229,6 +1292,7 @@ fn mercurial_decode_accessible_projection(
                         MercurialLocalRevisionsUnique =>
                           match mercurial_validate_references(
                             projection: projection,
+                            completeness: completeness,
                             manifests: manifests,
                             phases: phases,
                           ) {
@@ -1267,16 +1331,38 @@ fn mercurial_decode_accessible_projection(
 fn mercurial_decode_projection(
   projection: MercurialRepositoryProjection,
 ) -> MercurialDecodeOutcome {
-  match mercurial_projection_accessibility(projection: projection) {
-    MercurialProjectionAccessibilityRefused { cause } =>
-      MercurialDecodeRefused { cause: cause }
-    MercurialProjectionUnavailable { reason } =>
-      MercurialRepositoryUnavailable { reason: reason }
-    MercurialProjectionAccessible { completeness } =>
+  match projection {
+    MercurialCompleteProjection { contents } =>
       mercurial_decode_accessible_projection(
-        projection: projection,
-        completeness: completeness,
+        projection: contents,
+        completeness: MercurialContentsComplete,
       )
+    MercurialPartialProjection {
+      contents,
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } =>
+      match mercurial_validate_partial_projection(
+        projection: contents,
+        missing_changesets: missing_changesets,
+        missing_manifests: missing_manifests,
+        missing_file_revisions: missing_file_revisions,
+      ) {
+        MercurialReferenceInvalid { cause } =>
+          MercurialDecodeRefused { cause: cause }
+        MercurialReferencesValid =>
+          mercurial_decode_accessible_projection(
+            projection: contents,
+            completeness: MercurialContentsPartial {
+              missing_changesets: missing_changesets,
+              missing_manifests: missing_manifests,
+              missing_file_revisions: missing_file_revisions,
+            },
+          )
+      }
+    MercurialInaccessibleProjection { reason } =>
+      MercurialRepositoryUnavailable { reason: reason }
   }
 }
 
@@ -1324,7 +1410,7 @@ fn mercurial_project_repository(
   repository: MercurialRepositoryState,
 ) -> MercurialRepositoryProjection {
   let contents = mercurial_repository_contents(repository: repository)
-  MercurialRepositoryProjection {
+  let projection_contents = MercurialRepositoryProjectionContents {
     requirements: contents.requirements,
     file_revisions: contents.file_revisions,
     manifests: contents.manifests |> map(m => mercurial_project_manifest(manifest: m)),
@@ -1337,7 +1423,20 @@ fn mercurial_project_repository(
     publishing: contents.publishing,
     subrepositories: contents.subrepositories,
     evolution: contents.evolution,
-    availability: mercurial_repository_availability(repository: repository),
+  }
+  match mercurial_repository_completeness(repository: repository) {
+    MercurialContentsComplete =>
+      MercurialCompleteProjection { contents: projection_contents }
+    MercurialContentsPartial {
+      missing_changesets,
+      missing_manifests,
+      missing_file_revisions,
+    } => MercurialPartialProjection {
+      contents: projection_contents,
+      missing_changesets: missing_changesets,
+      missing_manifests: missing_manifests,
+      missing_file_revisions: missing_file_revisions,
+    }
   }
 }
 

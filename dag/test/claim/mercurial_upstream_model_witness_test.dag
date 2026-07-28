@@ -19,16 +19,17 @@ import extdeps.mercurial {
   MercurialVersionedTag,
   MercurialLocalTag,
   MercurialPhaseWireEntry,
+  MercurialPublishingBehavior,
   MercurialSubrepository,
   MercurialObsolescenceMarker,
   MercurialEvolutionMetadata,
   MercurialEvolutionNotEnabled,
   MercurialEvolutionMarkers,
   MercurialRepositoryRequirements,
-  MercurialRepositoryAvailability,
-  MercurialRepositoryPartial,
-  MercurialRepositoryInaccessible,
+  MercurialRepositoryProjectionContents,
   MercurialRepositoryProjection,
+  MercurialPartialProjection,
+  MercurialInaccessibleProjection,
   MercurialRepositoryContents,
   MercurialRepositoryState,
   MercurialDecoded,
@@ -38,7 +39,6 @@ import extdeps.mercurial {
   MercurialMissingPhase,
   MercurialDuplicatePhase,
   MercurialPhaseMonotonicityViolation,
-  MercurialInaccessibleProjectionCarriesRepositoryFacts,
   MercurialChangesetPresentAndDeclaredMissing,
   MercurialRegularFile,
   MercurialExecutableFile,
@@ -63,6 +63,7 @@ import extdeps.mercurial {
   mercurial_portable_history,
   mercurial_named_branch_changesets,
   mercurial_repository_contents,
+  mercurial_projection_map_contents,
   mercurial_r0_conditional_advance,
 }
 import std.bytes { octets_bytes }
@@ -207,10 +208,10 @@ fn local_revisions_b() -> List<MercurialLocalRevisionEntry> {
   ]
 }
 
-fn fixture_projection_with_local_revisions(
+fn fixture_projection_contents_with_local_revisions(
   local_revisions: List<MercurialLocalRevisionEntry>,
-) -> MercurialRepositoryProjection {
-  MercurialRepositoryProjection {
+) -> MercurialRepositoryProjectionContents {
+  MercurialRepositoryProjectionContents {
     requirements: MercurialRepositoryRequirements {
       tokens: ["revlogv1", "store", "fncache", "dotencode"],
     },
@@ -251,12 +252,26 @@ fn fixture_projection_with_local_revisions(
         },
       ],
     },
-    availability: MercurialRepositoryPartial {
-      missing_changesets: [],
-      missing_manifests: [],
-      missing_file_revisions: [hg_file_missing],
-    },
   }
+}
+
+fn fixture_projection_with_local_revisions(
+  local_revisions: List<MercurialLocalRevisionEntry>,
+) -> MercurialRepositoryProjection {
+  MercurialPartialProjection {
+    contents: fixture_projection_contents_with_local_revisions(
+      local_revisions: local_revisions,
+    ),
+    missing_changesets: [],
+    missing_manifests: [],
+    missing_file_revisions: [hg_file_missing],
+  }
+}
+
+fn fixture_projection_contents() -> MercurialRepositoryProjectionContents {
+  fixture_projection_contents_with_local_revisions(
+    local_revisions: local_revisions_a(),
+  )
 }
 
 fn fixture_projection() -> MercurialRepositoryProjection {
@@ -267,84 +282,175 @@ fn projection_with_phases(
   projection: MercurialRepositoryProjection,
   phases: List<MercurialPhaseWireEntry>,
 ) -> MercurialRepositoryProjection {
-  MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
 }
 
 fn projection_with_file_revisions(
   projection: MercurialRepositoryProjection,
   file_revisions: List<MercurialFileRevision>,
 ) -> MercurialRepositoryProjection {
-  MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
 }
 
 fn projection_with_evolution(
   projection: MercurialRepositoryProjection,
   evolution: MercurialEvolutionMetadata,
 ) -> MercurialRepositoryProjection {
-  MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: evolution,
-    availability: projection.availability,
-  }
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: evolution,
+      }
+    },
+  )
 }
 
-fn projection_with_availability(
+fn projection_with_manifests(
   projection: MercurialRepositoryProjection,
-  availability: MercurialRepositoryAvailability,
+  manifests: List<MercurialManifestWire>,
 ) -> MercurialRepositoryProjection {
-  MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: availability,
-  }
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
+}
+
+fn projection_with_changesets(
+  projection: MercurialRepositoryProjection,
+  changesets: List<MercurialChangeset>,
+) -> MercurialRepositoryProjection {
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
+}
+
+fn projection_with_local_revisions(
+  projection: MercurialRepositoryProjection,
+  local_revisions: List<MercurialLocalRevisionEntry>,
+) -> MercurialRepositoryProjection {
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
+}
+
+fn projection_with_publishing(
+  projection: MercurialRepositoryProjection,
+  publishing: MercurialPublishingBehavior,
+) -> MercurialRepositoryProjection {
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
 }
 
 fn fixture_repository() -> MercurialRepositoryState? {
@@ -368,14 +474,12 @@ test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool 
 }
 
 test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool {
-  let invalid = projection_with_availability(
-    projection: fixture_projection(),
-    availability: MercurialRepositoryPartial {
-      missing_changesets: [hg_c0],
-      missing_manifests: [],
-      missing_file_revisions: [hg_file_missing],
-    },
-  )
+  let invalid = MercurialPartialProjection {
+    contents: fixture_projection_contents(),
+    missing_changesets: [hg_c0],
+    missing_manifests: [],
+    missing_file_revisions: [hg_file_missing],
+  }
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused {
       cause: MercurialChangesetPresentAndDeclaredMissing { changeset },
@@ -385,37 +489,38 @@ test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool 
 }
 
 test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts() -> Bool {
-  let invalid = projection_with_availability(
-    projection: fixture_projection(),
-    availability: MercurialRepositoryInaccessible {
-      reason: "repository permission denied",
+  let inaccessible = MercurialInaccessibleProjection {
+    reason: "repository permission denied",
+  }
+  let mapped = mercurial_projection_map_contents(
+    projection: inaccessible,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: fixture_file_revisions(),
+        manifests: contents.manifests,
+        changesets: fixture_changesets(),
+        local_revisions: contents.local_revisions,
+        heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
     },
   )
-  match mercurial_decode_projection(projection: invalid) {
-    MercurialDecodeRefused {
-      cause: MercurialInaccessibleProjectionCarriesRepositoryFacts,
-    } => true
+  match mapped {
+    MercurialInaccessibleProjection { reason } =>
+      reason == "repository permission denied"
     _ => false
   }
 }
 
 test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> Bool {
-  let inaccessible = MercurialRepositoryProjection {
-    requirements: MercurialRepositoryRequirements { tokens: [] },
-    file_revisions: [],
-    manifests: [],
-    changesets: [],
-    local_revisions: [],
-    heads: [],
-    bookmarks: [],
-    tags: [],
-    phases: [],
-    publishing: MercurialNonPublishingServer,
-    subrepositories: [],
-    evolution: MercurialEvolutionNotEnabled,
-    availability: MercurialRepositoryInaccessible {
-      reason: "repository permission denied",
-    },
+  let inaccessible = MercurialInaccessibleProjection {
+    reason: "repository permission denied",
   }
   match mercurial_decode_projection(projection: inaccessible) {
     MercurialRepositoryUnavailable { reason } =>
@@ -453,21 +558,10 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
     Absent => false
     Present { value: repository } =>
       let projected = mercurial_project_repository(repository: repository)
-      let perturbed = MercurialRepositoryProjection {
-        requirements: projected.requirements,
-        file_revisions: projected.file_revisions,
-        manifests: projected.manifests,
-        changesets: projected.changesets,
-        local_revisions: projected.local_revisions,
-        heads: projected.heads,
-        bookmarks: projected.bookmarks,
-        tags: projected.tags,
-        phases: projected.phases,
+      let perturbed = projection_with_publishing(
+        projection: projected,
         publishing: MercurialPublishingServer,
-        subrepositories: projected.subrepositories,
-        evolution: projected.evolution,
-        availability: projected.availability,
-      }
+      )
       match mercurial_assess_read_back(
         expected: repository,
         observation: MercurialReadBackObservation {
@@ -538,6 +632,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
 
 test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   let projection = fixture_projection()
+  let projection_contents = fixture_projection_contents()
   let broken = MercurialFileRevision {
     node: hg_file_executable,
     parents: [hg_file_regular],
@@ -550,7 +645,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   let invalid = projection_with_file_revisions(
     projection: projection,
     file_revisions: append(
-      projection.file_revisions
+      projection_contents.file_revisions
         |> filter(file_revision => !(file_revision.node == hg_file_executable)),
       items: [broken],
     ),
@@ -572,6 +667,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
 
 test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
   let projection = fixture_projection()
+  let projection_contents = fixture_projection_contents()
   let partial = MercurialFileRevision {
     node: hg_file_executable,
     parents: [hg_file_regular],
@@ -584,7 +680,7 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
   let declared_partial = projection_with_file_revisions(
     projection: projection,
     file_revisions: append(
-      projection.file_revisions
+      projection_contents.file_revisions
         |> filter(file_revision => !(file_revision.node == hg_file_executable)),
       items: [partial],
     ),
@@ -772,10 +868,8 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
 }
 
 test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
-  let projection = fixture_projection()
-  let invalid = MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
+  let invalid = projection_with_manifests(
+    projection: fixture_projection(),
     manifests: [
       MercurialManifestWire {
         node: hg_manifest,
@@ -788,17 +882,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
         ],
       },
     ],
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
@@ -807,22 +891,10 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
 }
 
 test fn witness_mercurial_unknown_phase_refuses() -> Bool {
-  let projection = fixture_projection()
-  let invalid = MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
+  let invalid = projection_with_phases(
+    projection: fixture_projection(),
     phases: [MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
@@ -831,7 +903,7 @@ test fn witness_mercurial_unknown_phase_refuses() -> Bool {
 }
 
 test fn witness_mercurial_missing_parent_refuses() -> Bool {
-  let projection = fixture_projection()
+  let projection_contents = fixture_projection_contents()
   let broken = MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
@@ -841,24 +913,13 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     authored_at: "provenance-only-2",
     description: "right",
   }
-  let invalid = MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
+  let invalid = projection_with_changesets(
+    projection: fixture_projection(),
     changesets: append(
-      projection.changesets |> filter(c => !(c.node == hg_c2)),
+      projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
       items: [broken],
     ),
-    local_revisions: projection.local_revisions,
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
@@ -867,12 +928,8 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
 }
 
 test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
-  let projection = fixture_projection()
-  let invalid = MercurialRepositoryProjection {
-    requirements: projection.requirements,
-    file_revisions: projection.file_revisions,
-    manifests: projection.manifests,
-    changesets: projection.changesets,
+  let invalid = projection_with_local_revisions(
+    projection: fixture_projection(),
     local_revisions: [
       MercurialLocalRevisionEntry {
         revision: MercurialLocalRevision { value: 0 },
@@ -883,15 +940,7 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
         changeset: hg_c1,
       },
     ],
-    heads: projection.heads,
-    bookmarks: projection.bookmarks,
-    tags: projection.tags,
-    phases: projection.phases,
-    publishing: projection.publishing,
-    subrepositories: projection.subrepositories,
-    evolution: projection.evolution,
-    availability: projection.availability,
-  }
+  )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
