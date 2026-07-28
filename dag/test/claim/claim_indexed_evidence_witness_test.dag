@@ -455,15 +455,12 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
       proposal: proposal,
       binding: "call foo resolves to declaration foo",
     },
-    bound: bound,
   )
   let captured_claim = source_proposal_captured_claim(
     proposal: proposal,
-    bound: bound,
   )
   let admissible_claim = source_proposal_admissible_claim(
     proposal: proposal,
-    bound: bound,
   )
   let captured = claim_information_state(
     claim: captured_claim,
@@ -485,7 +482,9 @@ test fn witness_source_capture_does_not_invent_admission() -> Bool {
     && !admissible.challenge
     && all(
       evidence_inference_links(inference: inference),
-      link => link.freshness.maximum_conclusion == captured_claim,
+      link =>
+        link.freshness.maximum_conclusion == captured_claim
+          && link.freshness.maximum_conclusion.bound == bound,
     )
 }
 

@@ -44,7 +44,6 @@ data source_binding_capture_probe: ReadBackProbe = ReadBackProbe {
 
 fn source_proposal_captured_claim(
   proposal: NativeScmProposalIdentity,
-  bound: RunKey,
 ) -> SourceIntegrationClaim {
   Claim {
     id: "source-proposal-captured",
@@ -52,13 +51,12 @@ fn source_proposal_captured_claim(
     target: proposal,
     proposition: SourceProposalCaptured,
     scope: proposal,
-    bound: bound,
+    bound: proposal.attempt_key as RunKey,
   }
 }
 
 fn source_proposal_admissible_claim(
   proposal: NativeScmProposalIdentity,
-  bound: RunKey,
 ) -> SourceIntegrationClaim {
   Claim {
     id: "source-proposal-admissible",
@@ -66,18 +64,16 @@ fn source_proposal_admissible_claim(
     target: proposal,
     proposition: SourceProposalAdmissible,
     scope: proposal,
-    bound: bound,
+    bound: proposal.attempt_key as RunKey,
   }
 }
 
 fn source_binding_capture_inference(
   fact_id: RecordedFactId,
   fact: SourceBindingFact,
-  bound: RunKey,
 ) -> SourceIntegrationEvidenceInference {
   let claim = source_proposal_captured_claim(
     proposal: fact.proposal,
-    bound: bound,
   )
   infer_probe_evidence(
     fact: RecordedFact {
