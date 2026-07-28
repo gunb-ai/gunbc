@@ -10,7 +10,9 @@ import gunbc.design.component {
 }
 import gunbc.roadmap_component {
   dispatch_button_component, dispatch_button_wire_total, dispatch_button_terminal_count,
+  dispatch_preamble_statements,
 }
+import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_ok_status_labels }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -36,6 +38,11 @@ test fn witness_dropped_state_is_located_red() -> Bool {
 
 test fn witness_no_fabricated_state() -> Bool {
   states_missing_label(c: dispatch_button_component(), wire_labels: belt_dispatch_all_status_labels()).length() == 0
+}
+
+test fn witness_dwell_emits_as_a_branded_duration() -> Bool {
+  let emitted = serialize_ts_stmts_indented(stmts: dispatch_preamble_statements(), indent: "")
+  emitted == "const gunbcDwellMs = 300;"
 }
 
 test fn witness_terminal_role_split_follows_ok_set() -> Bool {
