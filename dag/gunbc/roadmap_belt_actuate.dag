@@ -44,15 +44,12 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_current_attempt_events_path_for_instance,
   dispatch_current_attempt_spawn_failure_path_for_instance,
   dispatch_branch_name,
-  DispatchAttemptRef, dispatch_attempt_refs, git_for_each_ref_dispatch_argv,
+  DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence,
+  git_for_each_ref_dispatch_argv,
   git_for_each_ref_dispatch_argv_for_instance,
-  TmuxPaneEntry, parse_tmux_panes_output, tmux_list_panes_argv,
-  tmux_list_panes_argv_for_instance,
-  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
+  dispatch_tmux_session_scope,
   DispatchCliProvider, ClaudeCodeProvider, CodexCliProvider,
   dispatch_cli_provider, dispatch_provider_label, dispatch_codex_home,
-  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
-  TmuxLsEntry,
   dispatch_tmux_session_name,
   dispatch_worktree_root,
   tmux_ls_argv,
@@ -60,11 +57,38 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv,
   tmux_kill_session_argv_for_instance,
   dispatch_live_sessions,
+  dispatch_live_sessions_with_process,
+  DispatchStopRunningProcess,
+  DispatchClearRetainedSession,
+  DispatchCleanupRefused,
+  dispatch_session_cleanup,
+  dispatch_session_cleanup_action,
+  dispatch_session_cleanup_allowed,
+  dispatch_session_cleanup_detail,
   TmuxAttemptPaneEntry,
   AttemptPanesParsed,
   AttemptPanesParseRefused,
   parse_tmux_attempt_panes_output,
   tmux_attempt_panes_argv_for_instance,
+  worker_process_from_attempt_pane,
+}
+import extdeps.llm.cli_lifecycle {
+  provider_kind_label,
+  provider_readiness_label,
+  tool_execution_readiness_label,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
+  WorkerProcessUnobserved,
+  WorkerProcessAbsent,
+  worker_phase_label,
+  worker_process_evidence_label,
+  worker_process_evidence_detail,
+  worktree_evidence_label,
+  provider_evidence_label,
+  process_identity_evidence_label,
+  transcript_evidence_label,
+  terminal_outcome_evidence_label,
 }
 import gunbc.host_layout { srv1_gunbc_repo_root }
 import gunbc.roadmap_dashboard_instance {
@@ -87,11 +111,6 @@ import gunbc.roadmap_execution_contract {
   execution_contract_validation_summary,
 }
 import gunbc.roadmap_workflow_progress {
-  AttemptProcessObservation,
-  AttemptProcessAlive,
-  AttemptProcessExited,
-  AttemptProcessAbsent,
-  AttemptProcessObservationRefused,
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
@@ -1187,12 +1206,19 @@ fn belt_attempts_json_value(a: BeltAttempts) -> JsonValue {
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-attempts/v1")),
         json_kv(key: "attempts_refused", value: json_bool(b: false)),
-        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 =>
+        json_kv(key: "attempts", value: json_array(elements: attempts |> map(a2 => {
+          let evidence = dispatch_attempt_evidence(attempt: a2)
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: a2.node_id)),
             json_kv(key: "branch", value: json_string(s: a2.branch)),
             json_kv(key: "attempt_key", value: json_string(s: a2.attempt_key)),
-          ])))),
+            json_kv(key: "worktree_evidence", value: json_string(s: worktree_evidence_label(evidence: evidence.worktree))),
+            json_kv(key: "provider_evidence", value: json_string(s: provider_evidence_label(evidence: evidence.provider_instance))),
+            json_kv(key: "process_identity_evidence", value: json_string(s: process_identity_evidence_label(evidence: evidence.process_identity))),
+            json_kv(key: "transcript_evidence", value: json_string(s: transcript_evidence_label(evidence: evidence.transcript))),
+            json_kv(key: "terminal_outcome_evidence", value: json_string(s: terminal_outcome_evidence_label(evidence: evidence.terminal_outcome))),
+          ])
+        }))),
       ])
   }
 }
@@ -1262,13 +1288,68 @@ fn belt_attempt_panes_observe_for_instance(
   }
 }
 
+data belt_sessions_observation_separation_note: String = "The sessions route has two probes with independent authority. tmux ls decides only which session containers are present; if it refuses, the session set refuses. The richer pane probe decides process running/exited/unobserved and cleanup eligibility for each already-observed session. A pane-probe refusal therefore does NOT erase known session presence: it maps every present session to process-unobserved and cleanup-unavailable with the located pane reason. This keeps the UI capable of saying `session present · process unknown` instead of either fabricating liveness or hiding the container."
+
+fn belt_sessions_observe_for_instance(
+  instance: HostDashboardInstance,
+) -> BeltObserve {
+  let ls = tmux_ls_argv_for_instance(instance: instance)
+  if belt_program_available(program: ls.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: belt_observe_workdir,
+      bin_path: ls.program as FilePath,
+      args: ls.args,
+      expect: OutcomeIsData,
+    )
+    if result.success {
+      match belt_attempt_panes_observe_for_instance(instance: instance) {
+        BeltAttemptPanesObserved { panes } =>
+          Observed {
+            live: dispatch_live_sessions_with_process(
+              tmux_ls_output: result.stdout,
+              panes: panes,
+              pane_observation_refusal: "",
+            ),
+          }
+        BeltAttemptPanesRefused { reason } =>
+          Observed {
+            live: dispatch_live_sessions_with_process(
+              tmux_ls_output: result.stdout,
+              panes: [],
+              pane_observation_refusal: reason,
+            ),
+          }
+      }
+    } else if tmux_ls_stderr_reports_empty(stderr: result.stderr) {
+      Observed { live: [] }
+    } else {
+      ObserveRefused {
+        reason: concat(
+          "belt_sessions_observe: tmux ls failed; session containers are unknowable. stderr: ",
+          result.stderr,
+        ),
+      }
+    }
+  } else {
+    ObserveRefused {
+      reason: "belt_sessions_observe: tmux not found; session containers are unknowable",
+    }
+  }
+}
+
+fn belt_sessions_observe() -> BeltObserve {
+  belt_sessions_observe_for_instance(
+    instance: srv1_live_dashboard_instance(),
+  )
+}
+
 fn attempt_process_for_node(
   panes: BeltAttemptPanes,
   node_id: String,
-) -> AttemptProcessObservation {
+) -> WorkerProcessEvidence {
   match panes {
     BeltAttemptPanesRefused { reason } =>
-      AttemptProcessObservationRefused { reason: reason }
+      WorkerProcessUnobserved { reason: reason as NonEmptyStr }
     BeltAttemptPanesObserved { panes: observed } => {
       let session_name = dispatch_tmux_session_name(
         node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
@@ -1276,23 +1357,9 @@ fn attempt_process_for_node(
       let matched = observed |> filter(pane =>
         pane.session_name == session_name)
       match matched.first() {
-        Absent => AttemptProcessAbsent
+        Absent => WorkerProcessAbsent
         Present { value: pane } =>
-          if pane.dead {
-            match pane.exit_code {
-              Present { value: code } =>
-                AttemptProcessExited {
-                  exit_code: code,
-                  command: pane.command,
-                }
-              Absent =>
-                AttemptProcessObservationRefused {
-                  reason: "dead tmux pane lacked pane_dead_status after parsing",
-                }
-            }
-          } else {
-            AttemptProcessAlive { command: pane.command }
-          }
+          worker_process_from_attempt_pane(pane: pane)
       }
     }
   }
@@ -1468,35 +1535,18 @@ fn belt_workflow_attempts_http_status(
 }
 
 type BeltStopResult
-  = StopStopped { node_id: String, session_name: String }
+  = StopProcessStopped { node_id: String, session_name: String }
+  | StopRetainedSessionCleared {
+      node_id: String,
+      session_name: String,
+      exit_code: Int,
+    }
   | StopDisabled { node_id: String, instance_id: String, reason: String }
   | StopRefusedResult { node_id: String, reason: String }
   | StopObserveRefused { node_id: String, reason: String }
   | StopTeardownFailed { node_id: String, session_name: String, detail: String }
 
-data belt_stop_note: String = "U4 (stop from the UI): the R5 owned-only teardown as a wire actuation. The decision chain is observation-first and refuses at every unknowable: tmux ls refused → StopObserveRefused (503); pane read refused → the observation stays name-only and the gate refuses fingerprint-unobserved (409) — a pane-read failure NEVER widens into a kill; the gate itself refuses foreign/absent/inaccessible per verdict (409/404); only a Converged-or-Drifted observation reaches tmux kill-session, and a kill that fails is its own typed arm (502). The operator's hand-made sleep session wearing a dispatch name is the standing negative control: it observes Conflict and the button refuses to kill it."
-
-fn belt_observe_panes_for_instance(instance: HostDashboardInstance) -> List<TmuxPaneEntry>? {
-  let cmd = tmux_list_panes_argv_for_instance(instance: instance)
-  if belt_program_available(program: cmd.program) {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: cmd.program as FilePath,
-      args: cmd.args,
-    )
-    if result.success {
-      Present { value: parse_tmux_panes_output(output: result.stdout) }
-    } else {
-      none
-    }
-  } else {
-    none
-  }
-}
-
-fn belt_observe_panes() -> List<TmuxPaneEntry>? {
-  belt_observe_panes_for_instance(instance: srv1_live_dashboard_instance())
-}
+data belt_stop_note: String = "U4 (stop/clear from the UI): cleanup consumes the same independently observed session and process facts served to the page. Session-list refusal yields StopObserveRefused. A present running pane is stop-eligible only with the configured provider fingerprint; a foreign or unobserved running process refuses. A retained dead pane is a different operation: clear removes tmux metadata after the process has already exited, so its historical wrapper command is never misclassified as a live foreign process. Teardown failure remains its own typed 502 arm."
 
 fn belt_stop_node_for_instance(
   instance: HostDashboardInstance,
@@ -1509,26 +1559,58 @@ fn belt_stop_node_for_instance(
       reason: "dashboard instance is observe-only; stop refused before tmux observation",
     }
   } else {
-  match belt_observe_for_instance(instance: instance) {
+  match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason: r } => StopObserveRefused { node_id: node_id, reason: r }
     Observed { live } => {
       let scope = dispatch_tmux_session_scope(node_id: node_id)
-      let entries = live
-        |> filter(sess => sess.session_name == (scope.session_name as String))
-        |> map(sess => TmuxLsEntry { session_name: sess.session_name, windows: sess.windows })
-      let obs = match belt_observe_panes_for_instance(instance: instance) {
-        Present { value: panes } =>
-          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: panes)
+      let matched = live
+        |> filter(sess =>
+          sess.session_name == (scope.session_name as String))
+      match matched.first() {
         Absent =>
-          tmux_session_observation_with_panes(scope: scope, entries: entries, panes: [])
-      }
-      match dispatch_stop_gate(scope: scope, obs: obs) {
-        StopRefused { reason: r2 } => StopRefusedResult { node_id: node_id, reason: r2 }
-        StopPermitted { session_name: sn } =>
-          match belt_actuate_teardown_for_instance(instance: instance, session_name: sn) {
-            ReapedSession { session_name: sn2 } => StopStopped { node_id: node_id, session_name: sn2 }
-            TeardownFailed { session_name: sn3, detail: d } =>
-              StopTeardownFailed { node_id: node_id, session_name: sn3, detail: d }
+          StopRefusedResult {
+            node_id: node_id,
+            reason: "no session container for this node",
+          }
+        Present { value: session } =>
+          match dispatch_session_cleanup(scope: scope, session: session) {
+            DispatchCleanupRefused { reason } =>
+              StopRefusedResult { node_id: node_id, reason: reason }
+            DispatchStopRunningProcess { session_name } =>
+              match belt_actuate_teardown_for_instance(
+                instance: instance,
+                session_name: session_name,
+              ) {
+                ReapedSession { session_name: stopped } =>
+                  StopProcessStopped {
+                    node_id: node_id,
+                    session_name: stopped,
+                  }
+                TeardownFailed { session_name: failed, detail } =>
+                  StopTeardownFailed {
+                    node_id: node_id,
+                    session_name: failed,
+                    detail: detail,
+                  }
+              }
+            DispatchClearRetainedSession { session_name, exit_code } =>
+              match belt_actuate_teardown_for_instance(
+                instance: instance,
+                session_name: session_name,
+              ) {
+                ReapedSession { session_name: cleared } =>
+                  StopRetainedSessionCleared {
+                    node_id: node_id,
+                    session_name: cleared,
+                    exit_code: exit_code,
+                  }
+                TeardownFailed { session_name: failed, detail } =>
+                  StopTeardownFailed {
+                    node_id: node_id,
+                    session_name: failed,
+                    detail: detail,
+                  }
+              }
           }
       }
     }
@@ -1545,16 +1627,32 @@ fn belt_stop_node(node_id: String) -> BeltStopResult {
 
 fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
   match r {
-    StopStopped { node_id: nid, session_name: sn } =>
+    StopProcessStopped { node_id: nid, session_name: sn } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
-        json_kv(key: "status", value: json_string(s: "stopped")),
+        json_kv(key: "status", value: json_string(s: "process_stopped")),
+        json_kv(key: "action", value: json_string(s: "stop")),
+        json_kv(key: "ok", value: json_bool(b: true)),
         json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    StopRetainedSessionCleared {
+      node_id: nid,
+      session_name: sn,
+      exit_code,
+    } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "session_cleared")),
+        json_kv(key: "action", value: json_string(s: "clear")),
+        json_kv(key: "ok", value: json_bool(b: true)),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "exit_code", value: json_int(n: exit_code)),
       ])
     StopDisabled { node_id: nid, instance_id: iid, reason: why } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "stop_disabled")),
+        json_kv(key: "ok", value: json_bool(b: false)),
         json_kv(key: "instance", value: json_string(s: iid)),
         json_kv(key: "reason", value: json_string(s: why)),
       ])
@@ -1562,18 +1660,21 @@ fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "stop_refused")),
+        json_kv(key: "ok", value: json_bool(b: false)),
         json_kv(key: "reason", value: json_string(s: r2)),
       ])
     StopObserveRefused { node_id: nid, reason: r3 } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "observe_refused")),
+        json_kv(key: "ok", value: json_bool(b: false)),
         json_kv(key: "reason", value: json_string(s: r3)),
       ])
     StopTeardownFailed { node_id: nid, session_name: sn, detail: d } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "teardown_failed")),
+        json_kv(key: "ok", value: json_bool(b: false)),
         json_kv(key: "session_name", value: json_string(s: sn)),
         json_kv(key: "detail", value: json_string(s: d)),
       ])
@@ -1582,10 +1683,19 @@ fn belt_stop_result_json_value(r: BeltStopResult) -> JsonValue {
 
 fn belt_stop_http_status(r: BeltStopResult) -> Int {
   match r {
-    StopStopped { node_id: _, session_name: _ } => 200
+    StopProcessStopped { node_id: _, session_name: _ } => 200
+    StopRetainedSessionCleared {
+      node_id: _,
+      session_name: _,
+      exit_code: _,
+    } => 200
     StopDisabled { node_id: _, instance_id: _, reason: _ } => 403
     StopRefusedResult { node_id: _, reason: r2 } =>
-      if string_contains(s: r2, pattern: "no live session") { 404 } else { 409 }
+      if string_contains(s: r2, pattern: "no session container") {
+        404
+      } else {
+        409
+      }
     StopObserveRefused { node_id: _, reason: _ } => 503
     StopTeardownFailed { node_id: _, session_name: _, detail: _ } => 502
   }
@@ -1595,7 +1705,7 @@ fn belt_stop_json(node_id: String) -> String {
   serialize_json(v: belt_stop_result_json_value(r: belt_stop_node(node_id: node_id)))
 }
 
-data belt_sessions_json_note: String = "U2 (sessions panel v0): the belt observation projected as wire JSON so the PAGE can know what is live without the render losing purity — the healthz digest is taken over the pure page body, so live state must arrive by fetch, exactly as dispatch answers do. The projection is a pure fn over BeltObserve (every arm witnessed on synthetic values); the effectful wrapper only threads belt_observe() in. The refusal arm stays a refusal on the wire (observe_refused true + reason, served 503): an unknowable session set renders loud at the client, never as an empty panel."
+data belt_sessions_json_note: String = "The sessions wire projects independent session-container, process-lifecycle, provider, readiness, phase, and cleanup facts. Inclusion in sessions proves only `session_presence=present`. process_state comes from the exact dead/status pane observation; cleanup_action is derived separately from process state plus ownership policy. A refused pane probe stays per-session as process unobserved and cleanup unavailable while the known session set remains a 200. Only refusal of the tmux session-list source produces top-level observe_refused/503."
 
 fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
   match o {
@@ -1609,11 +1719,32 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
-        json_kv(key: "sessions", value: json_array(elements: live |> map(sess =>
+        json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
+          let cleanup = dispatch_session_cleanup(
+            scope: dispatch_tmux_session_scope(node_id: sess.node_id),
+            session: sess,
+          )
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: sess.node_id)),
             json_kv(key: "session_name", value: json_string(s: sess.session_name)),
-          ])))),
+            json_kv(key: "session_presence", value: json_string(s: "present")),
+            json_kv(key: "process_state", value: json_string(
+              s: worker_process_evidence_label(evidence: sess.worker.process))),
+            json_kv(key: "process_detail", value: json_string(
+              s: worker_process_evidence_detail(evidence: sess.worker.process))),
+            json_kv(key: "configured_provider", value: json_string(s: provider_kind_label(kind: sess.worker.configured_provider.kind))),
+            json_kv(key: "provider", value: json_string(s: provider_evidence_label(evidence: sess.worker.provider_instance))),
+            json_kv(key: "provider_readiness", value: json_string(s: provider_readiness_label(readiness: sess.worker.provider_readiness))),
+            json_kv(key: "tool_execution_readiness", value: json_string(s: tool_execution_readiness_label(readiness: sess.worker.tool_readiness))),
+            json_kv(key: "worker_phase", value: json_string(s: worker_phase_label(phase: sess.worker.phase))),
+            json_kv(key: "cleanup_action", value: json_string(
+              s: dispatch_session_cleanup_action(cleanup: cleanup))),
+            json_kv(key: "cleanup_allowed", value: json_bool(
+              b: dispatch_session_cleanup_allowed(cleanup: cleanup))),
+            json_kv(key: "cleanup_detail", value: json_string(
+              s: dispatch_session_cleanup_detail(cleanup: cleanup))),
+          ])
+        }))),
       ])
   }
 }
@@ -1623,7 +1754,7 @@ fn belt_sessions_observed_json(o: BeltObserve) -> String {
 }
 
 fn belt_sessions_json() -> String {
-  belt_sessions_observed_json(o: belt_observe())
+  belt_sessions_observed_json(o: belt_sessions_observe())
 }
 
 fn belt_sessions_http_status(o: BeltObserve) -> Int {

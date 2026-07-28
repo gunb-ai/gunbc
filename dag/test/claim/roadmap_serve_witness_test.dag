@@ -69,6 +69,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: GET, path: sandbox_asset_path, want: SandboxAssetHandler)
     && selects(method: POST, path: "/sandbox/echo", want: SandboxEchoHandler)
     && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+    && selects(method: POST, path: "/cleanup/some-node", want: BeltStopHandler)
     && selects(method: POST, path: "/stop/some-node", want: BeltStopHandler)
 }
 
@@ -86,7 +87,7 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && string_contains(s: r.body, pattern: "fetch('/workflow.json')")
     && string_contains(s: r.body, pattern: "'dispatch · disabled'")
     && string_contains(s: r.body, pattern: "posture === 'observe-only'")
-    && !string_contains(s: r.body, pattern: "j.ok")
+    && string_contains(s: r.body, pattern: "fetch('/cleanup/' + sess.node_id")
 }
 
 test fn witness_dispatch_param_bound() -> Bool {
@@ -169,7 +170,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
 
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
-    RoadmapServeTable { table: t } => count(t.routes) == 15
+    RoadmapServeTable { table: t } => count(t.routes) == 16
     RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
   }
 }

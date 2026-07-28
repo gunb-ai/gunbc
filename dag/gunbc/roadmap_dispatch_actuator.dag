@@ -57,11 +57,34 @@ import extdeps.tmux {
 import extdeps.exec.command { shell_quote }
 import extdeps.llm.cli {
   shape_claude_invoke_argv,
+  claude_cli_program,
+  codex_cli_program,
   shape_codex_exec_argv,
   shape_codex_exec_argv_for_programs,
   CodexExecSpec,
   CodexWorkspaceWrite,
   CodexApprovalNever,
+}
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  ClaudeCliProvider,
+}
+import gunbc.worker_lifecycle {
+  WorkerObservation,
+  worker_observation_without_provider_probe,
+  worker_observation_without_provider_probe_for_process,
+  WorkerProcessEvidence,
+  WorkerProcessUnobserved,
+  WorkerProcessAbsent,
+  WorkerProcessRunning,
+  WorkerProcessExited,
+  AttemptEvidence,
+  WorktreeUnobserved,
+  ProviderEvidenceUnobserved,
+  ProcessIdentityUnobserved,
+  TranscriptUnobserved,
+  TerminalOutcomeUnobserved,
 }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -215,6 +238,60 @@ type DispatchLiveSession {
   node_id: String
   windows: Int
   lease_verdict: ObservationVerdict
+  worker: WorkerObservation
+}
+
+data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. dispatch_provider_instance_for is total over the same closed DispatchCliProvider choice that owns argv and expected process fingerprint: Claude consumes claude_cli_program; Codex consumes codex_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
+
+fn dispatch_provider_executable(provider: DispatchCliProvider) -> NonEmptyStr {
+  match provider {
+    ClaudeCodeProvider => claude_cli_program as NonEmptyStr
+    CodexCliProvider => codex_cli_program as NonEmptyStr
+  }
+}
+
+fn dispatch_provider_instance_for(
+  provider: DispatchCliProvider,
+) -> ProviderInstance {
+  ProviderInstance {
+    kind: match provider {
+      ClaudeCodeProvider => ClaudeCliProvider
+      CodexCliProvider => extdeps.llm.cli_lifecycle.CodexCliProvider
+    },
+    host: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read host identity" as NonEmptyStr,
+    },
+    executable: dispatch_provider_executable(provider: provider),
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not execute the provider version probe" as NonEmptyStr,
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect provider state" as NonEmptyStr,
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not inspect credential storage" as NonEmptyStr,
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "session observation does not read process ownership" as NonEmptyStr,
+    },
+  }
+}
+
+fn dispatch_provider_instance() -> ProviderInstance {
+  dispatch_provider_instance_for(provider: dispatch_cli_provider)
+}
+
+fn dispatch_worker_observation_for_process(
+  process: WorkerProcessEvidence,
+) -> WorkerObservation {
+  worker_observation_without_provider_probe_for_process(
+    instance: dispatch_provider_instance(),
+    process: process,
+  )
+}
+
+fn dispatch_worker_observation() -> WorkerObservation {
+  worker_observation_without_provider_probe(instance: dispatch_provider_instance())
 }
 
 fn intricacy_label(i: Intricacy) -> String {
@@ -1282,6 +1359,7 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
     node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
     windows: entry.windows,
     lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: dispatch_worker_observation(),
   }
 }
 
@@ -1296,12 +1374,35 @@ fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
   entries |> map(e => dispatch_live_session_for_entry(entry: e))
 }
 
-data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
+data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
 
 type DispatchAttemptRef {
-  node_id: String
-  branch: String
+  node_id: NonEmptyStr
+  branch: NonEmptyStr
   attempt_key: String
+}
+
+fn dispatch_attempt_evidence(attempt: DispatchAttemptRef) -> AttemptEvidence {
+  AttemptEvidence {
+    node_id: attempt.node_id,
+    attempt_key: attempt.attempt_key,
+    branch: attempt.branch,
+    worktree: WorktreeUnobserved {
+      reason: "branch observation does not inspect the attempt worktree" as NonEmptyStr,
+    },
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "branch observation does not identify the provider instance" as NonEmptyStr,
+    },
+    process_identity: ProcessIdentityUnobserved {
+      reason: "branch observation does not inspect PID, start time, or ownership" as NonEmptyStr,
+    },
+    transcript: TranscriptUnobserved {
+      reason: "branch observation does not locate a provider transcript" as NonEmptyStr,
+    },
+    terminal_outcome: TerminalOutcomeUnobserved {
+      reason: "branch existence does not imply a terminal outcome" as NonEmptyStr,
+    },
+  }
 }
 
 fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
@@ -1313,13 +1414,22 @@ fn parse_dispatch_attempt_branch(line: String) -> DispatchAttemptRef? {
       let segs = split(s: rest, delimiter: "-a")
       let last = segs |> fold(init: "", f: (acc, x) => x)
       if count(segs) >= 2 && string_length(s: last) == 16 {
-        Present { value: DispatchAttemptRef {
-          node_id: substring(s: rest, start: 0, end: string_length(s: rest) - 18),
-          branch: line,
-          attempt_key: last,
-        } }
+        let node_id = substring(s: rest, start: 0, end: string_length(s: rest) - 18)
+        if node_id == "" {
+          none
+        } else {
+          Present { value: DispatchAttemptRef {
+            node_id: node_id as NonEmptyStr,
+            branch: line as NonEmptyStr,
+            attempt_key: last,
+          } }
+        }
       } else {
-        Present { value: DispatchAttemptRef { node_id: rest, branch: line, attempt_key: "" } }
+        Present { value: DispatchAttemptRef {
+          node_id: rest as NonEmptyStr,
+          branch: line as NonEmptyStr,
+          attempt_key: "",
+        } }
       }
     }
   } else {
@@ -1523,6 +1633,190 @@ fn parse_tmux_attempt_panes_output(
     }
   } else {
     AttemptPanesParsed { panes: state.panes }
+  }
+}
+
+type DispatchSessionCleanup
+  = DispatchStopRunningProcess { session_name: String }
+  | DispatchClearRetainedSession {
+      session_name: String,
+      exit_code: Int,
+    }
+  | DispatchCleanupRefused { reason: String }
+
+fn dispatch_session_cleanup_action(
+  cleanup: DispatchSessionCleanup,
+) -> String {
+  match cleanup {
+    DispatchStopRunningProcess { session_name: _ } => "stop"
+    DispatchClearRetainedSession { session_name: _, exit_code: _ } => "clear"
+    DispatchCleanupRefused { reason: _ } => "unavailable"
+  }
+}
+
+fn dispatch_session_cleanup_allowed(
+  cleanup: DispatchSessionCleanup,
+) -> Bool {
+  match cleanup {
+    DispatchStopRunningProcess { session_name: _ } => true
+    DispatchClearRetainedSession { session_name: _, exit_code: _ } => true
+    DispatchCleanupRefused { reason: _ } => false
+  }
+}
+
+fn dispatch_session_cleanup_detail(
+  cleanup: DispatchSessionCleanup,
+) -> String {
+  match cleanup {
+    DispatchStopRunningProcess { session_name: _ } =>
+      "owned running provider process may be stopped"
+    DispatchClearRetainedSession { session_name: _, exit_code } =>
+      join([
+        "provider process already exited ",
+        to_string(exit_code),
+        "; only retained tmux session metadata will be removed",
+      ], "")
+    DispatchCleanupRefused { reason } => reason
+  }
+}
+
+data dispatch_process_cleanup_separation_note: String = "Session presence, pane/process lifecycle, and cleanup authority are independent facts. A running process is stop-eligible only when its observed command matches the provider fingerprint. A dead remain-on-exit pane is clear-eligible from the exact dead/status observation because no live process can be killed; its last command is historical evidence and is never re-used as a running ownership fingerprint. A present session with an absent/refused pane observation remains cleanup-refused. The wire therefore says stop, clear, or unavailable mechanically from DispatchSessionCleanup instead of presenting every tmux container as a live agent."
+
+fn worker_process_from_attempt_pane(
+  pane: TmuxAttemptPaneEntry,
+) -> WorkerProcessEvidence {
+  if pane.dead {
+    match pane.exit_code {
+      Present { value: code } =>
+        WorkerProcessExited {
+          exit_code: code,
+          last_command: pane.command,
+        }
+      Absent =>
+        WorkerProcessUnobserved {
+          reason: "dead pane did not carry an exit status" as NonEmptyStr,
+        }
+    }
+  } else if pane.command == "" {
+    WorkerProcessUnobserved {
+      reason: "running pane did not expose pane_current_command" as NonEmptyStr,
+    }
+  } else {
+    WorkerProcessRunning { command: pane.command as NonEmptyStr }
+  }
+}
+
+fn worker_process_for_session(
+  panes: List<TmuxAttemptPaneEntry>,
+  session_name: String,
+  pane_observation_refusal: String,
+) -> WorkerProcessEvidence {
+  if pane_observation_refusal != "" {
+    WorkerProcessUnobserved {
+      reason: pane_observation_refusal as NonEmptyStr,
+    }
+  } else {
+    let matched = panes
+      |> filter(pane => pane.session_name == session_name)
+    match matched.first() {
+      Present { value: pane } =>
+        worker_process_from_attempt_pane(pane: pane)
+      Absent =>
+        WorkerProcessUnobserved {
+          reason: "session was observed but no pane row was returned" as NonEmptyStr,
+        }
+    }
+  }
+}
+
+fn live_session_row_with_process(
+  entry: TmuxLsEntry,
+  scope: TmuxSessionScope,
+  process: WorkerProcessEvidence,
+) -> DispatchLiveSession {
+  let obs = match process {
+    WorkerProcessRunning { command } =>
+      SessionObserved {
+        session_name: entry.session_name as NonEmptyStr,
+        windows: entry.windows,
+        process_fingerprint: command,
+      }
+    _ =>
+      SessionNameObserved {
+        session_name: entry.session_name as NonEmptyStr,
+        windows: entry.windows,
+      }
+  }
+  DispatchLiveSession {
+    session_name: entry.session_name,
+    node_id: dispatch_node_id_from_session_name(
+      session_name: entry.session_name),
+    windows: entry.windows,
+    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+    worker: dispatch_worker_observation_for_process(process: process),
+  }
+}
+
+fn dispatch_live_sessions_with_process(
+  tmux_ls_output: String,
+  panes: List<TmuxAttemptPaneEntry>,
+  pane_observation_refusal: String,
+) -> List<DispatchLiveSession> {
+  filter_dispatch_tmux_sessions(
+    entries: parse_tmux_ls_output(output: tmux_ls_output),
+  )
+    |> map(entry => {
+      let node_id = dispatch_node_id_from_session_name(
+        session_name: entry.session_name)
+      live_session_row_with_process(
+        entry: entry,
+        scope: dispatch_tmux_session_scope(node_id: node_id),
+        process: worker_process_for_session(
+          panes: panes,
+          session_name: entry.session_name,
+          pane_observation_refusal: pane_observation_refusal,
+        ),
+      )
+    })
+}
+
+fn dispatch_session_cleanup(
+  scope: TmuxSessionScope,
+  session: DispatchLiveSession,
+) -> DispatchSessionCleanup {
+  if session.session_name != (scope.session_name as String) {
+    DispatchCleanupRefused {
+      reason: "tmux session name does not match the requested node",
+    }
+  } else {
+    match session.worker.process {
+      WorkerProcessRunning { command } =>
+        if command == scope.expected_process_fingerprint {
+          DispatchStopRunningProcess {
+            session_name: session.session_name,
+          }
+        } else {
+          DispatchCleanupRefused {
+            reason: "a foreign running process wears the dispatch session name — refusing to kill what we cannot prove ours",
+          }
+        }
+      WorkerProcessExited { exit_code, last_command: _ } =>
+        DispatchClearRetainedSession {
+          session_name: session.session_name,
+          exit_code: exit_code,
+        }
+      WorkerProcessAbsent =>
+        DispatchCleanupRefused {
+          reason: "session is present but provider process is absent",
+        }
+      WorkerProcessUnobserved { reason } =>
+        DispatchCleanupRefused {
+          reason: join([
+            "process lifecycle unobserved — no cleanup authority: ",
+            reason as String,
+          ], ""),
+        }
+    }
   }
 }
 

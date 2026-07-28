@@ -819,7 +819,7 @@ pub fn check_match_exhaustiveness(
                     for arm in arms.clone().iter().cloned() {
                         if match (*arm_pattern(arm.clone())).clone() {
                             MatchPattern::Wildcard => true,
-                            MatchPattern::Bind { name: _, .. } => true,
+                            MatchPattern::Bind { declaration: _, .. } => true,
                             _ => false,
                         } {
                             __found = true;

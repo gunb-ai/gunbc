@@ -152,6 +152,22 @@ test fn oversized_event_refuses_without_echoing_payload() -> Bool {
   }
 }
 
+test fn refusal_marks_prior_activity_as_historical() -> Bool {
+  let parsed = parse_codex_jsonl_with_line_budget(
+    text: join([
+      "{\"type\":\"item.started\",\"item\":{\"type\":\"command_execution\"}}\n",
+      "{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"aggregated_output\":\"payload too large\"}}\n",
+    ], ""),
+    max_line_chars: 80,
+  )
+  match provider_execution_state(parsed: parsed) {
+    ProviderEventsRefused { activity, detail } =>
+      activity == "last observed · running command"
+        && string_contains(s: detail, pattern: "observation line budget 80")
+    _ => false
+  }
+}
+
 test fn roadmap_provider_events_keystone_holds() -> Bool {
   codex_stream_classifies_running_activity()
     && codex_completed_is_terminal_only_from_provider_event()
@@ -163,4 +179,5 @@ test fn roadmap_provider_events_keystone_holds() -> Bool {
     && nested_type_token_cannot_fabricate_terminal_success()
     && braced_but_invalid_json_cannot_fabricate_terminal_success()
     && oversized_event_refuses_without_echoing_payload()
+    && refusal_marks_prior_activity_as_historical()
 }

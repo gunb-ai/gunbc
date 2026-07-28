@@ -364,11 +364,16 @@ fn provider_execution_state(parsed: CodexEventParse) -> ProviderExecutionState {
       ProviderEventsRefused {
         activity: match prior {
           ProviderNotStarted => "event stream refused"
-          ProviderStarting { activity } => activity
-          ProviderRunning { activity } => activity
-          ProviderCompleted { activity } => activity
-          ProviderFailed { activity, detail: _ } => activity
-          ProviderEventsRefused { activity, detail: _ } => activity
+          ProviderStarting { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderRunning { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderCompleted { activity } =>
+            join(["last observed · ", activity], "")
+          ProviderFailed { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
+          ProviderEventsRefused { activity, detail: _ } =>
+            join(["last observed · ", activity], "")
         },
         detail: join([
           "line ", to_string(line_number), ": ", reason, "; raw=", raw,

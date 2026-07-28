@@ -151,26 +151,6 @@ pub fn dag_collect_inferred(
     }
 }
 
-pub fn dag_collect_match_pattern(
-    pattern: Rc<MatchPattern>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind { name: _, .. } => slots,
-        MatchPattern::LitPattern { value: _, .. } => slots,
-        MatchPattern::VariantPattern { field_bindings, .. } => {
-            field_bindings.clone().iter().cloned().fold(
-                slots,
-                |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, fb: Rc<Node>| {
-                    dag_collect_insert_slots(fb.clone(), s, collision_errors.clone())
-                },
-            )
-        }
-        MatchPattern::Wildcard => slots,
-    }
-}
-
 pub fn dag_collect_node_tree(
     node: Rc<Node>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
@@ -206,17 +186,11 @@ pub fn dag_collect_node_tree(
             slots.clone(),
             collision_errors.clone(),
         );
-        let slots = dag_collect_inferred(
+        dag_collect_inferred(
             node.inferred.clone(),
             slots.clone(),
             collision_errors.clone(),
-        );
-        match node.match_pattern.clone() {
-            Some(p) => {
-                dag_collect_match_pattern(p.clone(), slots.clone(), collision_errors.clone())
-            }
-            None => slots.clone(),
-        }
+        )
     }
 }
 

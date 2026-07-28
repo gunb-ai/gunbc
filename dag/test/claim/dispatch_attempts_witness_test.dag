@@ -34,6 +34,7 @@ test fn attempts_parse_roundtrips_the_minted_branch() -> Bool {
 test fn attempts_parse_holds_on_the_three_shapes() -> Bool {
   let modern = parse_dispatch_attempt_branch(line: "dispatch/5-regen-cutover-afeedfacefeedface")
   let legacy = parse_dispatch_attempt_branch(line: "dispatch/ts-authority-converge")
+  let empty_node = parse_dispatch_attempt_branch(line: "dispatch/-afeedfacefeedface")
   let garbage = parse_dispatch_attempt_branch(line: "refs/stash")
   return match modern {
     Present { value: m } => m.node_id == "5-regen-cutover" && m.attempt_key == "feedfacefeedface"
@@ -41,6 +42,9 @@ test fn attempts_parse_holds_on_the_three_shapes() -> Bool {
   } && match legacy {
     Present { value: l } => l.node_id == "ts-authority-converge" && l.attempt_key == ""
     Absent => false
+  } && match empty_node {
+    Present { value: e } => false
+    Absent => true
   } && match garbage {
     Present { value: g2 } => false
     Absent => true
@@ -60,6 +64,11 @@ test fn attempts_observed_projects_to_wire() -> Bool {
   return string_contains(s: j, pattern: "\"schema\": \"roadmap-attempts/v1\"")
     && string_contains(s: j, pattern: "\"attempts_refused\": false")
     && string_contains(s: j, pattern: "\"branch\": \"dispatch/5-regen-cutover-afeedfacefeedface\"")
+    && string_contains(s: j, pattern: "\"worktree_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"provider_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"process_identity_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"transcript_evidence\": \"unobserved\"")
+    && string_contains(s: j, pattern: "\"terminal_outcome_evidence\": \"unobserved\"")
     && belt_attempts_http_status(a: AttemptsObserved { attempts: [] }) == 200
 }
 

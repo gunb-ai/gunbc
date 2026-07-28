@@ -7,7 +7,7 @@ import gunbc.client_observation_state {
   client_observation_state_reason,
 }
 import gunbc.roadmap_component {
-  WorkflowLamp, LiveWorkflowLamp, AttemptedWorkflowLamp,
+  WorkflowLamp, SessionWorkflowLamp, AttemptWorkflowLamp,
   workflow_lamps_v0, workflow_lamp_key, workflow_lamp_state,
   workflow_controls_class, workflow_lamp_class, workflow_lamp_indicator_class,
   workflow_lamp_data_attribute, workflow_observation_data_attribute,
@@ -19,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data workflow_lamps_witness_note: String = "Workflow lamps v0 receipts. The shared client observation authority proves all four states and the fail-closed precedence RED: refused + asserted cannot light. The independence controls are symmetric so a comparator hardwired to either Live or Attempted cannot pass: each source refuses while the other remains On, then both On coexist. Served-surface checks pin the stable li identity, always-present workflow-controls wrapper, pending lamp markup, independent client selectors, and flat state materials."
+data workflow_lamps_witness_note: String = "Session/Attempt lamp receipts. The shared client observation authority proves all four states and the fail-closed precedence RED: refused + asserted cannot light. The independence controls are symmetric so a comparator hardwired to either Session or Attempt cannot pass: each source refuses while the other remains On, then both On coexist. Served-surface checks pin the stable li identity, always-present workflow-controls wrapper, pending lamp markup, independent client selectors, and flat state materials."
 
 fn state_key(state: ClientObservationState) -> String {
   client_observation_state_key(state: state)
@@ -46,35 +46,35 @@ test fn workflow_lamps_refusals_are_symmetric_and_independent() -> Bool {
   let attempts_refused = ClientObservationRefused { reason: "git refused" }
   let on = ClientObservationOn
   state_key(state: workflow_lamp_state(
-    lamp: LiveWorkflowLamp,
-    live: sessions_refused,
-    attempted: on)) == "refused"
+    lamp: SessionWorkflowLamp,
+    session: sessions_refused,
+    attempt: on)) == "refused"
     && state_key(state: workflow_lamp_state(
-      lamp: AttemptedWorkflowLamp,
-      live: sessions_refused,
-      attempted: on)) == "on"
+      lamp: AttemptWorkflowLamp,
+      session: sessions_refused,
+      attempt: on)) == "on"
     && state_key(state: workflow_lamp_state(
-      lamp: LiveWorkflowLamp,
-      live: on,
-      attempted: attempts_refused)) == "on"
+      lamp: SessionWorkflowLamp,
+      session: on,
+      attempt: attempts_refused)) == "on"
     && state_key(state: workflow_lamp_state(
-      lamp: AttemptedWorkflowLamp,
-      live: on,
-      attempted: attempts_refused)) == "refused"
+      lamp: AttemptWorkflowLamp,
+      session: on,
+      attempt: attempts_refused)) == "refused"
 }
 
 test fn workflow_lamps_can_both_be_lit() -> Bool {
   state_key(state: workflow_lamp_state(
-    lamp: LiveWorkflowLamp,
-    live: ClientObservationOn,
-    attempted: ClientObservationOn)) == "on"
+    lamp: SessionWorkflowLamp,
+    session: ClientObservationOn,
+    attempt: ClientObservationOn)) == "on"
     && state_key(state: workflow_lamp_state(
-      lamp: AttemptedWorkflowLamp,
-      live: ClientObservationOn,
-      attempted: ClientObservationOn)) == "on"
+      lamp: AttemptWorkflowLamp,
+      session: ClientObservationOn,
+      attempt: ClientObservationOn)) == "on"
     && count(workflow_lamps_v0) == 2
-    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "live")
-    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "attempted")
+    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "session")
+    && any(workflow_lamps_v0, lamp => workflow_lamp_key(lamp: lamp) == "attempt")
 }
 
 fn authority_page_html() -> String {
@@ -90,19 +90,19 @@ test fn workflow_lamps_render_on_stable_rows() -> Bool {
     && string_contains(s: h, pattern: join(["class=\"", workflow_controls_class, "\""], ""))
     && string_contains(s: h, pattern: join([
       "class=\"", workflow_lamp_class, "\" ",
-      workflow_lamp_data_attribute, "=\"live\" ",
+      workflow_lamp_data_attribute, "=\"session\" ",
       workflow_observation_data_attribute, "=\"pending\"",
     ], ""))
     && string_contains(s: h, pattern: join([
-      workflow_lamp_data_attribute, "=\"attempted\" ",
+      workflow_lamp_data_attribute, "=\"attempt\" ",
       workflow_observation_data_attribute, "=\"pending\"",
     ], ""))
 }
 
 test fn workflow_lamps_client_folds_sources_separately() -> Bool {
   let js = dispatch_client_js_source()
-  string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"live\"]')")
-    && string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"attempted\"]')")
+  string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"session\"]')")
+    && string_contains(s: js, pattern: "querySelectorAll('[data-workflow-lamp=\"attempt\"]')")
     && string_contains(s: js, pattern: "const sr = document.querySelector('li[data-node=\"' + sess.node_id + '\"]')")
     && string_contains(s: js, pattern: "const ar = document.querySelector('li[data-node=\"' + att.node_id + '\"]')")
     && string_contains(s: js, pattern: "gunbcSetClientObservation(lamp, 'refused', why)")

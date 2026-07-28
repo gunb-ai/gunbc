@@ -1,0 +1,193 @@
+module gunbc.worker_lifecycle
+
+import std.types { String, NonEmptyStr, Timestamp, Int }
+import std.integer { PositiveInt }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderReadiness,
+  ProviderReadinessUnobserved,
+  ToolExecutionReadiness,
+  ToolExecutionReadinessUnobserved,
+}
+
+type WorkerTerminalOutcome
+  = WorkerTerminalCompleted
+  | WorkerTerminalFailed { reason: NonEmptyStr }
+  | WorkerTerminalRefused { reason: NonEmptyStr }
+
+fn worker_terminal_outcome_label(outcome: WorkerTerminalOutcome) -> String {
+  match outcome {
+    WorkerTerminalCompleted => "completed"
+    WorkerTerminalFailed { reason: _ } => "failed"
+    WorkerTerminalRefused { reason: _ } => "refused"
+  }
+}
+
+type WorkerPhase
+  = WorkerPhaseUnobserved { reason: NonEmptyStr }
+  | WorkerStarting
+  | WorkerWaitingForHumanSetup
+  | WorkerRequestingModel
+  | WorkerReasoning
+  | WorkerRunningTool
+  | WorkerWaitingOnBuild
+  | WorkerTerminal { outcome: WorkerTerminalOutcome }
+
+fn worker_phase_label(phase: WorkerPhase) -> String {
+  match phase {
+    WorkerPhaseUnobserved { reason: _ } => "phase unobserved"
+    WorkerStarting => "starting"
+    WorkerWaitingForHumanSetup => "waiting for human setup"
+    WorkerRequestingModel => "requesting model"
+    WorkerReasoning => "reasoning"
+    WorkerRunningTool => "running tool"
+    WorkerWaitingOnBuild => "waiting on build/test"
+    WorkerTerminal { outcome } => worker_terminal_outcome_label(outcome: outcome)
+  }
+}
+
+type ProcessIdentityEvidence
+  = ProcessIdentityObserved {
+      pid: PositiveInt
+      started_at: Timestamp
+      owner: NonEmptyStr
+    }
+  | ProcessIdentityUnobserved { reason: NonEmptyStr }
+
+type TranscriptEvidence
+  = TranscriptObserved { location: NonEmptyStr }
+  | TranscriptUnobserved { reason: NonEmptyStr }
+
+type TerminalOutcomeEvidence
+  = TerminalOutcomeObserved { outcome: WorkerTerminalOutcome }
+  | TerminalOutcomeUnobserved { reason: NonEmptyStr }
+
+type WorkerProcessEvidence
+  = WorkerProcessUnobserved { reason: NonEmptyStr }
+  | WorkerProcessAbsent
+  | WorkerProcessRunning { command: NonEmptyStr }
+  | WorkerProcessExited { exit_code: Int, last_command: String }
+
+fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
+  match evidence {
+    WorkerProcessUnobserved { reason: _ } => "process unobserved"
+    WorkerProcessAbsent => "process absent"
+    WorkerProcessRunning { command: _ } => "process running"
+    WorkerProcessExited { exit_code: _, last_command: _ } => "process exited"
+  }
+}
+
+fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
+  match evidence {
+    WorkerProcessUnobserved { reason } => reason as String
+    WorkerProcessAbsent => "no provider pane was observed"
+    WorkerProcessRunning { command } =>
+      join(["running command=", command as String], "")
+    WorkerProcessExited { exit_code, last_command } =>
+      join([
+        "exit=",
+        to_string(exit_code),
+        if last_command == "" {
+          ""
+        } else {
+          join([" last-command=", last_command], "")
+        },
+      ], "")
+  }
+}
+
+type AttemptEvidence {
+  node_id: NonEmptyStr
+  attempt_key: String
+  branch: NonEmptyStr
+  worktree: WorktreeEvidence
+  provider_instance: ProviderEvidence
+  process_identity: ProcessIdentityEvidence
+  transcript: TranscriptEvidence
+  terminal_outcome: TerminalOutcomeEvidence
+}
+
+type WorktreeEvidence
+  = WorktreeObserved { path: NonEmptyStr }
+  | WorktreeUnobserved { reason: NonEmptyStr }
+
+fn worktree_evidence_label(evidence: WorktreeEvidence) -> String {
+  match evidence {
+    WorktreeObserved { path: _ } => "observed"
+    WorktreeUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+type ProviderEvidence
+  = ProviderEvidenceObserved { instance: ProviderInstance }
+  | ProviderEvidenceUnobserved { reason: NonEmptyStr }
+
+fn provider_evidence_label(evidence: ProviderEvidence) -> String {
+  match evidence {
+    ProviderEvidenceObserved { instance: _ } => "observed"
+    ProviderEvidenceUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+fn process_identity_evidence_label(evidence: ProcessIdentityEvidence) -> String {
+  match evidence {
+    ProcessIdentityObserved { pid: _, started_at: _, owner: _ } => "observed"
+    ProcessIdentityUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+fn transcript_evidence_label(evidence: TranscriptEvidence) -> String {
+  match evidence {
+    TranscriptObserved { location: _ } => "observed"
+    TranscriptUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+fn terminal_outcome_evidence_label(evidence: TerminalOutcomeEvidence) -> String {
+  match evidence {
+    TerminalOutcomeObserved { outcome: _ } => "observed"
+    TerminalOutcomeUnobserved { reason: _ } => "unobserved"
+  }
+}
+
+type WorkerObservation {
+  configured_provider: ProviderInstance
+  process: WorkerProcessEvidence
+  provider_instance: ProviderEvidence
+  provider_readiness: ProviderReadiness
+  tool_readiness: ToolExecutionReadiness
+  phase: WorkerPhase
+}
+
+fn worker_observation_without_provider_probe_for_process(
+  instance: ProviderInstance,
+  process: WorkerProcessEvidence,
+) -> WorkerObservation {
+  WorkerObservation {
+    configured_provider: instance,
+    process: process,
+    provider_instance: ProviderEvidenceUnobserved {
+      reason: "tmux name presence does not identify the provider process tree" as NonEmptyStr,
+    },
+    provider_readiness: ProviderReadinessUnobserved {
+      reason: "tmux presence does not observe provider authentication or model access" as NonEmptyStr,
+    },
+    tool_readiness: ToolExecutionReadinessUnobserved {
+      reason: "tmux presence does not execute a sandbox shell probe" as NonEmptyStr,
+    },
+    phase: WorkerPhaseUnobserved {
+      reason: "tmux presence does not observe provider progress" as NonEmptyStr,
+    },
+  }
+}
+
+fn worker_observation_without_provider_probe(instance: ProviderInstance) -> WorkerObservation {
+  worker_observation_without_provider_probe_for_process(
+    instance: instance,
+    process: WorkerProcessUnobserved {
+      reason: "tmux name presence does not observe pane liveness or exit" as NonEmptyStr,
+    },
+  )
+}
+
+data worker_lifecycle_separation_note: String = "spawned != session present != process running != provider ready != agent executing != work completed. WorkerObservation keeps pane/process evidence separate from the configured provider, observed ProviderEvidence, provider readiness, sandbox readiness, and worker phase. A retained tmux session can therefore carry WorkerProcessExited while provider phase or terminal outcome remains refused; a tmux name can report configured_provider=Codex while provider_instance remains Unobserved. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer."

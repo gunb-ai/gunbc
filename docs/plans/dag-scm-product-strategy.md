@@ -30,6 +30,12 @@ The first product is deliberately smaller:
 > current target, safely lands every mechanically determined result, and asks a developer only
 > for an irreducible choice about what they want.
 
+Git is the first adoption realization, not the native interface or the source of the technical
+abstraction. The architecture is SCM-plural: independently grounded Git, Mercurial, and Pijul
+models must falsify the compatibility boundary before a shared adapter shape is accepted.
+Product-grade Mercurial or Pijul support still requires partner evidence; design coverage is not a
+launch promise.
+
 The first proof is smaller again:
 
 > Run the same high-concurrency proposal workload through the existing Git path and through the
@@ -42,7 +48,7 @@ This is the governing sequence:
 ```text
 prove the mechanism
   -> shadow a real workflow
-  -> earn authority to land into an existing Git target
+  -> earn authority to land into an existing SCM target (Git first)
   -> capture native authored proposals
   -> earn authority to host the native source state
   -> offer adjacent compute/agent/infra products
@@ -118,7 +124,7 @@ The Daglang claim is narrower: a typed program model, authenticated proposal ope
 effects, dependency closure, and reusable receipts can safely determine cases that a text/branch
 system cannot, without exposing the proof machinery to the user.
 
-## 3. The adoption rule — Git-compatible, adoption-light
+## 3. The adoption rule — SCM-compatible, adoption-light; Git first
 
 The first customer must not adopt a language, forge, object store, editor, CI provider, and source
 control workflow simultaneously in order to test one integration claim.
@@ -144,6 +150,34 @@ The wedge changes:
 It does not buy trust by assertion. Trust is earned through shadow comparison, fail-closed
 behavior, reversible Git output, an inspectable/checkable core, customer-controlled code
 boundaries, and a growing public falsifier corpus.
+
+### Git-first product, SCM-plural architecture
+
+The first product keeps Git because replacement cost would contaminate the value experiment.
+That market choice must not make `commit`, `ref`, branch topology, or exact-old-object update the
+native compatibility interface.
+
+Before a common adapter carrier lands, three upstream authorities are modeled independently:
+
+- **Git** supplies the dominant snapshot/object/ref boundary and the first product-grade
+  compare-and-advance target;
+- **Mercurial** stresses changeset/manifest/file-revision structure, clone-local versus portable
+  identity, bookmarks and named branches, and phase/publication metadata orthogonal to history;
+  and
+- **Pijul** stresses first-class changes and dependencies, pristine graph state, conflicts retained
+  in that graph, and channels as sets of channel-independent changes rather than pointers to one
+  commit.
+
+Each model first uses its own upstream vocabulary under `extdeps/`; none imports a common SCM
+carrier. Only after all three have bounded executing fixtures may DFS extract the smallest shared
+roles for observation, capture fidelity, named-target binding, conditional advance, projection,
+read-back, and repair. Unsupported roles remain typed capabilities. The core never branches on an
+`ScmKind` vendor enum, and a fourth SCM must enter through peripheral bindings without changing the
+proof kernel or primary interaction.
+
+This is deliberately asymmetric: Git receives product-grade fidelity first; Mercurial and Pijul
+initially exist to keep the architecture honest. A design partner can promote another realization,
+but implementation volume, symmetry, or enthusiasm cannot.
 
 ## 4. Design-partner profile
 
@@ -182,7 +216,8 @@ The design-partner agreement should state:
 - no training or secondary use of source by default;
 - raw source is not a business moat;
 - derived mechanism gaps or aggregate performance leave the boundary only by explicit consent;
-- every result can be inspected and every accepted state can be exported as ordinary Git; and
+- every result can be inspected and every accepted state can be exported through the partner's
+  declared compatibility realization, with ordinary Git required for the first wedge; and
 - the partner can exit without converting repository history or losing source.
 
 ## 5. Adoption milestones
@@ -203,6 +238,8 @@ technical prerequisites.
 - a bounded proof-kernel slice over real Daglang proposals;
 - a replay harness that presents the identical accepted state, proposal set, safety contract, and
   validation policy to the Git baseline and Daglang path;
+- bounded Git, Mercurial, and Pijul compatibility fixtures proving that changing only the
+  realization does not change the semantic/admission/primary receipt;
 - a 50-agent/10-overlap stress realization using measured rather than invented proposal and CI
   costs; and
 - a public, inspectable receipt bundle.
@@ -216,7 +253,8 @@ technical prerequisites.
 - wall time from proposal-ready to accepted;
 - human minutes and agent tokens spent on integration;
 - safe partial assessments preserved when a batch cannot commit; and
-- result distribution by native-authored versus Git endpoint-import fidelity.
+- result distribution by native-authored versus compatibility endpoint-import fidelity, reported
+  separately by realization.
 
 **Promotion gate:** at least one real gunbc workload demonstrates lower judgment or repeated
 validation than the Git baseline under the same declared safety contract; every automatic result
@@ -361,8 +399,9 @@ Compounding assets that are harder to copy together:
    erase them.
 3. **A small checkable kernel and public falsifier corpus:** proposed candidates may come from
    sophisticated procedures or LLMs, while acceptance depends on bounded, inspectable receipts.
-4. **Fidelity inventory and graceful downgrade:** native, Git, opaque, and unavailable inputs
-   state exactly what conclusions they license.
+4. **Fidelity inventory and graceful downgrade:** native, Git, Mercurial, Pijul, opaque, and
+   unavailable inputs state exactly what conclusions they license without flattening upstream
+   distinctions.
 5. **Reversibility:** every accepted state projects to ordinary Git, so trying the product does
    not create a hostage decision.
 6. **Trust and visibility by construction:** customer code, diagnostics, telemetry, and effects
@@ -415,7 +454,7 @@ eliminate product work, trust work, support, or sales.
 | circular trust: an unproven language asks to own source | Git-backed shadow first, public checker/receipts, ordinary Git exit |
 | unsafe automatic integration costs more than conflicts | fixed safety contract, active RED corpus, wrong-result accounting before auto-land rate |
 | Daglang-only value is too narrow | measure a real agent-heavy Daglang wedge first; do not claim arbitrary-language semantics |
-| Git compatibility consumes the roadmap | complete only the fidelity required by the selected partner; typed refusal elsewhere |
+| compatibility work consumes the roadmap | Git is product-grade first; Mercurial/Pijul stop at bounded design-stress fixtures until partner evidence promotes them; typed refusal elsewhere |
 | incumbent queue/rebase tools capture most value | identical-workload benchmark separates synchronization/cache benefit from semantic benefit |
 | customer-code “visibility” becomes surveillance | no training/secondary use by default; placement and publication grants; derived opt-in telemetry |
 | hosted authority creates reliability/compliance burden too early | A4 is customer-pull and exit-drill gated; A2/A3 remain viable standalone products |
@@ -426,6 +465,11 @@ eliminate product work, trust work, support, or sales.
 ## 9. Decisions to litigate
 
 These remain explicit decisions; implementation must not choose them accidentally.
+
+One architectural decision is already fixed for the next slices: the product is Git-first while the
+compatibility boundary is stress-tested against independently modeled Git, Mercurial, and Pijul.
+That is not a commitment to launch three products, and it is not reopenable by naming a Git-derived
+carrier “generic.”
 
 1. **First external surface.** GitHub matches the current dogfood repository; GitLab may offer a
    better first partner. Choose from the first qualified partner and available event/ref fidelity,
@@ -452,24 +496,31 @@ These remain explicit decisions; implementation must not choose them accidentall
 
 The next practical sequence is:
 
-1. finish review of the C0 native interaction carrier and its journey witnesses;
-2. land P−1 shared claim-indexed evidence before an SCM-local evidence vocabulary appears;
-3. choose a bounded P1 kernel slice with real gunbc proposals;
-4. define the A0 replay corpus and capture the current Git/CI/token baseline before optimizing it;
-5. publish the benchmark method and receipts, including cases where Daglang refuses;
-6. recruit one design partner for workload discovery and read-only shadow requirements;
-7. build only the minimum forge/local adapter that partner's fidelity and placement require; and
-8. return to this document with the A0/A1 receipts before authorizing a managed target, native
+1. retain the landed C0 native interaction carrier as presentation evidence, not an adapter or
+   proof-kernel authority;
+2. in three independent R0 slices, complete the Git upstream boundary and model Mercurial and
+   Pijul with bounded fixtures and upstream-specific RED controls;
+3. in parallel, land P−1 shared claim-indexed evidence before an SCM-local evidence vocabulary
+   appears;
+4. after all three R0 slices, extract and witness the smallest common compatibility realization
+   shape; dissolve C0's Git-only fixture slot without changing its primary behavior;
+5. choose a bounded P1 kernel slice with real gunbc proposals;
+6. define the A0 replay corpus and capture the current Git/CI/token baseline before optimizing it;
+7. publish the benchmark method and receipts, including cases where Daglang refuses;
+8. recruit one design partner for workload discovery and read-only shadow requirements;
+9. build only the minimum forge/local adapter that partner's fidelity and placement require; and
+10. return to this document with the A0/A1 receipts before authorizing a managed target, native
    object store, or forge UI.
 
-The child C0 implementation in PR #7334 is model evidence for step 1. It does not by itself prove
-the kernel, customer value, Git fidelity, or authority boundary.
+The C0 implementation merged in PR #7334 is model evidence for step 1. It does not by itself prove
+the kernel, customer value, any upstream's fidelity, or the compatibility/authority boundary.
 
 ## 11. Strategy acceptance and dissolution
 
 This strategy is accepted when the operator has ruled on the eight decisions above and the roadmap
-contains the A0/A1 wedge, managed-Git promotion, native-proposal proof, hosted-authority gate, and
-vertical-platform option in dependency order.
+contains the three upstream-model slices, extracted compatibility shape, A0/A1 wedge, managed-Git
+promotion, native-proposal proof, hosted-authority gate, and vertical-platform option in dependency
+order.
 
 It is falsified or narrowed when the receipts show that:
 
@@ -484,7 +535,7 @@ Sections dissolve as their authority transfers:
 - workload and value measures -> cited benchmark/workload carriers and executing receipts;
 - interaction rules -> source-intent carriers and witnesses;
 - design-partner access/privacy -> visibility, grant, and placement carriers;
-- Git/native authority transitions -> target/admission/projection carriers;
+- upstream/native authority transitions -> target/admission/projection carriers;
 - serving and packing -> existing economics/storage carriers; and
 - commercial choices -> operator-signed roadmap/decision carriers once tested.
 

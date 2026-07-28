@@ -41,7 +41,8 @@ import gunbc.roadmap_style { roadmap_css, roadmap_rules }
 import gunbc.roadmap_component {
   dispatch_client_js_source, sound_toggle_class,
   dispatch_class_requested, dispatch_class_ok,
-  dispatch_receipt_chip_prefix, dispatch_session_chip_prefix,
+  dispatch_ack_prefix, dispatch_ack_word,
+  dispatch_session_chip_prefix,
   dispatch_caption_present_word,
   sound_toggle_label_on, sound_toggle_label_off,
 }
@@ -259,9 +260,9 @@ test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
     && string_contains(s: source, pattern: sound_toggle_label_off)
 }
 
-test fn witness_dispatch_receipt_and_session_presence_are_distinct() -> Bool {
+test fn witness_button_reports_dispatch_acceptance() -> Bool {
   let source = js()
-  string_contains(s: source, pattern: join(["ok ? '", dispatch_receipt_chip_prefix, "' + s"], ""))
+  string_contains(s: source, pattern: concat(dispatch_ack_prefix, dispatch_ack_word))
     && string_contains(
       s: source,
       pattern: join([dispatch_session_chip_prefix, dispatch_caption_present_word], ""))

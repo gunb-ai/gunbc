@@ -1,6 +1,7 @@
 module gunbc.roadmap_component
 
 import std.types { Int, String, Bool }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
 import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
 import gunbc.roadmap_altitude { band_expands }
@@ -119,19 +120,16 @@ fn dispatch_reserved_ch_for(labels: List<String>) -> Int {
 }
 
 fn dispatch_caption_set() -> List<String> {
-  concat(
-    [
-      dispatch_caption_idle,
-      dispatch_caption_requested,
-      dispatch_caption_fail,
-      dispatch_caption_loud,
-      join([dispatch_session_chip_prefix, dispatch_caption_present_word], ""),
-      join([dispatch_receipt_chip_prefix, belt_dispatch_disabled_status_label()], ""),
-    ],
-    concat(
-      map(belt_dispatch_ok_status_labels(), l => join([dispatch_receipt_chip_prefix, l], "")),
-      map(belt_dispatch_ok_status_labels(), l =>
-        join([dispatch_receipt_chip_prefix, l, " · ", belt_dispatch_provider_label()], ""))))
+  concat([
+    dispatch_caption_idle,
+    dispatch_caption_requested,
+    dispatch_caption_fail,
+    dispatch_caption_loud,
+  ], [
+    concat(dispatch_ack_prefix, dispatch_ack_word),
+    concat(dispatch_ack_prefix, belt_dispatch_disabled_status_label()),
+    concat(dispatch_session_chip_prefix, dispatch_caption_present_word),
+  ])
 }
 
 fn dispatch_reserved_ch() -> Int {
@@ -146,11 +144,12 @@ fn dispatch_reserved_width() -> String {
   css_length_wire(l: dispatch_reserved_length())
 }
 
-data dispatch_session_chip_note: String = "Dispatch receipt and session presence are two state spaces. An accepted fresh spawn renders the belt's exact status plus its selected provider (`dispatch · spawned · codex`); already_live has no provider field because the name-only session observation cannot prove which provider owns an older pane, so it stays `dispatch · already_live`. Both are actuator receipts, never claims that a provider is executing. Only /sessions.json may render the separate `session · present` chip, because that source actually observed the node-grain tmux session. The client re-observes after an accepted dispatch and on a bounded cadence, so a receipt can become observed presence and an exited observed session can return to the idle actuator without a page reload.
+data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`: worktree/process creation returned success, or the idempotent request found the desired dispatch already accepted. Only the independent /sessions.json observation may render `session · present`, and that wording claims tmux/process presence only — never provider readiness, execution, or completion. The response's exact spawned/already_live wire label remains in the title channel.
 
-Both prefixes stay inside the reserved width derived from every caption the control can wear, so either morph is layout-stable. Neither receipt nor session presence says provider-ready, executing, or complete; those require their own modeled observations."
+The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. All three captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row. The session chip remains type-distinct from the node's status chip at the head of the row."
 
-data dispatch_receipt_chip_prefix: String = "dispatch · "
+data dispatch_ack_prefix: String = "dispatch · "
+data dispatch_ack_word: String = "accepted"
 data dispatch_session_chip_prefix: String = "session · "
 
 data sessions_route_path: String = "/sessions.json"
@@ -254,7 +253,7 @@ fn dashboard_instance_fetch_statements() -> List<TsStmt> {
                       left: ts_member(object: ts_ident(name: "db"), property: "textContent"),
                       op: "=",
                       right: ts_lit_str(value: join([
-                        dispatch_receipt_chip_prefix,
+                        dispatch_ack_prefix,
                         belt_dispatch_disabled_status_label(),
                       ], "")))),
                     ts_expr_stmt(expr: ts_binop(
@@ -299,44 +298,44 @@ data attempts_route_path: String = "/attempts.json"
 data workflow_route_path: String = "/workflow.json"
 
 type WorkflowLamp
-  = LiveWorkflowLamp
-  | AttemptedWorkflowLamp
+  = SessionWorkflowLamp
+  | AttemptWorkflowLamp
 
 data workflow_lamps_v0: List<WorkflowLamp> = [
-  LiveWorkflowLamp,
-  AttemptedWorkflowLamp,
+  SessionWorkflowLamp,
+  AttemptWorkflowLamp,
 ]
 
 fn workflow_lamp_key(lamp: WorkflowLamp) -> String {
   match lamp {
-    LiveWorkflowLamp => "live"
-    AttemptedWorkflowLamp => "attempted"
+    SessionWorkflowLamp => "session"
+    AttemptWorkflowLamp => "attempt"
   }
 }
 
 fn workflow_lamp_label(lamp: WorkflowLamp) -> String {
   match lamp {
-    LiveWorkflowLamp => "Live"
-    AttemptedWorkflowLamp => "Attempted"
+    SessionWorkflowLamp => "Session"
+    AttemptWorkflowLamp => "Attempt"
   }
 }
 
 fn workflow_lamp_state(
   lamp: WorkflowLamp,
-  live: ClientObservationState,
-  attempted: ClientObservationState,
+  session: ClientObservationState,
+  attempt: ClientObservationState,
 ) -> ClientObservationState {
   match lamp {
-    LiveWorkflowLamp => live
-    AttemptedWorkflowLamp => attempted
+    SessionWorkflowLamp => session
+    AttemptWorkflowLamp => attempt
   }
 }
 
 fn workflow_lamp_initial_state(lamp: WorkflowLamp) -> ClientObservationState {
   workflow_lamp_state(
     lamp: lamp,
-    live: ClientObservationPending,
-    attempted: ClientObservationPending)
+    session: ClientObservationPending,
+    attempt: ClientObservationPending)
 }
 
 data workflow_controls_class: String = "workflow-controls"
@@ -364,11 +363,11 @@ data workflow_activity_class: String = "workflow-activity"
 data workflow_stage_data_attribute: String = "data-workflow-stage"
 data workflow_segment_state_data_attribute: String = "data-state"
 
-data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Live/Attempted facts. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with process exit; Verify, Publish, Review, and Audit remain visibly pending until their own producers exist. Both markup and server desired facts consume roadmap_attempt_workflow_segment_kinds, while the client writes only each segment's observed state/detail from the route. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
+data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Session/Attempt facts. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain visibly pending until their own producers exist. Both markup and server desired facts consume roadmap_attempt_workflow_segment_kinds, while the client writes each segment's observed state/detail and makes failed/refused state visible in the stage label rather than relying on border style alone. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
 
-data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26): Live and Attempted are two independent projections over the existing /sessions.json and /attempts.json observations. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
+data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26, vocabulary corrected 2026-07-28): Session and Attempt are two independent projections over /sessions.json and /attempts.json. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. Session means the tmux container is present—not that its process is running—and process lifecycle is rendered separately. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
 
-data dispatch_caption_present_word_note: String = "U2: /sessions.json observes tmux session presence, not provider progress. The caption therefore says `present`; the Live lamp retains its v0 key for compatibility, but neither this word nor that lamp may be projected as authenticated, executing, or complete."
+data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its caption is therefore `present`, never `live` or `executing`; the Session lamp names that same narrow fact. A neighboring process chip renders running, exited, absent, or unobserved from the pane source."
 
 data dispatch_caption_present_word: String = "present"
 
@@ -377,7 +376,7 @@ data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
 
-data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic Stop also lands inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing Stop or a lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic process evidence and its stop/clear/unavailable cleanup action also land inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing a cleanup action or lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
 
 type RowTrack
   = AutoTrack
@@ -753,15 +752,8 @@ data dispatch_requested_read_dwell_note: String = "The requested phase's minimum
 data dispatch_requested_read_dwell_ms: Int = 300
 
 data js_dwell_const: String = "gunbcDwellMs"
-data js_refresh_sessions_fn: String = "gunbcRefreshSessions"
-data js_poll_sessions_fn: String = "gunbcPollSessions"
-data js_refresh_attempts_fn: String = "gunbcRefreshAttempts"
 data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
 data js_poll_workflow_fn: String = "gunbcPollWorkflow"
-
-data session_observation_refresh_note: String = "Session presence is a live read, not page-load state. gunbcRefreshSessions performs one read, so an accepted dispatch can re-observe immediately without minting another timer chain. The single gunbcPollSessions loop schedules itself with setTimeout. Two seconds keeps a short-lived provider/setup failure visible without turning tmux observation into a hot loop. This is observation cadence, not animation; setInterval remains absent under the tactile motion wall."
-
-data session_observation_refresh_ms: Int = 2000
 
 fn dispatch_preamble_statements() -> List<TsStmt> {
   [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms)))]
@@ -816,7 +808,6 @@ fn dispatch_expand_chain_expr() -> TsExpr {
 fn dispatch_terminal_apply_body() -> TsStmt {
   ts_block(stmts: [
     ts_const(name: "s", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: ""))),
-    ts_const(name: "p", value: ts_binop(left: js_j_member(name: "provider"), op: "||", right: ts_lit_str(value: ""))),
     ts_const(name: "band", value: dispatch_band_chain_expr()),
     ts_const(name: "ok", value: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "ok"))),
     ts_expr_stmt(expr: ts_binop(
@@ -824,28 +815,14 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       op: "=",
       right: ts_cond(
         test: ts_ident(name: "ok"),
-        consequent: ts_binop(
-          left: ts_binop(
-            left: ts_lit_str(value: dispatch_receipt_chip_prefix),
-            op: "+",
-            right: ts_ident(name: "s"),
-          ),
-          op: "+",
-          right: ts_cond(
-            test: ts_ident(name: "p"),
-            consequent: ts_binop(
-              left: ts_lit_str(value: " · "),
-              op: "+",
-              right: ts_ident(name: "p")),
-            alternate: ts_lit_str(value: "")),
-        ),
+        consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
         alternate: ts_cond(
           test: ts_binop(
             left: ts_ident(name: "s"),
             op: "===",
             right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
           consequent: ts_binop(
-            left: ts_lit_str(value: dispatch_receipt_chip_prefix),
+            left: ts_lit_str(value: dispatch_ack_prefix),
             op: "+",
             right: ts_ident(name: "s")),
           alternate: ts_cond(
@@ -980,8 +957,8 @@ fn dispatch_terminal_apply_body() -> TsStmt {
     ts_if(
       cond: ts_ident(name: "ok"),
       then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_sessions_fn), args: [])),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_attempts_fn), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_workflow_fn), args: [])),
       ]),
       else_stmt: none,
@@ -1430,7 +1407,59 @@ fn workflow_observation_preamble_statements() -> List<TsStmt> {
   ]
 }
 
-data sessions_panel_note: String = "U2 plus workflow lamps v0: one polling loop reads the belt session observation at load and every two seconds; accepted dispatches also request an immediate one-shot read without creating another loop. Each successful read resolves every Live lamp Off, marks observed rows On, renders `session · present` plus Stop, and retracts stale observed-session controls after exit. The stable lookup is li[data-node], so done and superseded rows retain the observation even without an actuator. Refusal resolves every Live lamp to Refused and upserts one source-labeled loud banner — unknowable never rounds to Off; recovery removes that banner. Sessions and attempts remain independent."
+data sessions_panel_note: String = "U2 plus workflow lamps v0, corrected for lifecycle truth: one named observer per endpoint runs at load, immediately after an accepted dispatch, and on the modeled poll cadence while the page is open. Each observation recomputes its own axis; neither endpoint can suppress the other. /sessions.json proves tmux/process presence only, so it renders `session · present` plus the provider/readiness evidence carried by the wire, never `live` as agent execution. Refusal resolves every Live lamp to Refused and inserts a source-specific loud banner — unknowable never rounds to Off."
+
+data js_sessions_observe_fn: String = "gunbcObserveSessions"
+data js_attempts_observe_fn: String = "gunbcObserveAttempts"
+data js_sessions_observe_in_flight: String = "gunbcSessionsObservationInFlight"
+data js_attempts_observe_in_flight: String = "gunbcAttemptsObservationInFlight"
+data js_sessions_observe_pending: String = "gunbcSessionsObservationPending"
+data js_attempts_observe_pending: String = "gunbcAttemptsObservationPending"
+data js_observation_poll_tick: String = "gunbcObservationPollTick"
+data observation_poll_interval: Millisecond = millisecond(count: 3000)
+data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; a recursive one-shot timeout schedules the next observation without introducing the dashboard's forbidden animation/interval loop, and page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
+
+fn observation_complete_stmts(
+  observer: String,
+  in_flight: String,
+  pending: String,
+) -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: in_flight),
+      op: "=",
+      right: ts_ident(name: "false"))),
+    ts_if(
+      cond: ts_ident(name: pending),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: pending),
+          op: "=",
+          right: ts_ident(name: "false"))),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: observer), args: [])),
+      ]),
+      else_stmt: none),
+  ]
+}
+
+fn observation_begin_stmts(in_flight: String, pending: String) -> List<TsStmt> {
+  [
+    ts_if(
+      cond: ts_ident(name: in_flight),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: pending),
+          op: "=",
+          right: ts_ident(name: "true"))),
+        ts_return(expr: none),
+      ]),
+      else_stmt: none),
+    ts_expr_stmt(expr: ts_binop(
+      left: ts_ident(name: in_flight),
+      op: "=",
+      right: ts_ident(name: "true"))),
+  ]
+}
 
 fn sessions_mark_live_stmts() -> List<TsStmt> {
   [
@@ -1439,7 +1468,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "sess"), property: "node_id"))])),
     workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: LiveWorkflowLamp),
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: SessionWorkflowLamp),
       state: ClientObservationOn,
       reason_expr: ts_lit_str(value: "")),
     ts_const(name: "sb", value: ts_binop(
@@ -1454,35 +1483,125 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(
             object: ts_member(object: ts_ident(name: "sb"), property: "dataset"),
-            property: "sessionObserved"),
+            property: "sessionPresence"),
           op: "=",
-          right: ts_lit_str(value: "true"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
-          op: "=",
-          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
-          args: [ts_lit_str(value: dispatch_class_ok)])),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "sb"), property: "title"),
-          op: "=",
-          right: ts_member(object: ts_ident(name: "sess"), property: "session_name"))),
-        ts_let(name: "sc", value: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"), property: "querySelector"),
-          args: [ts_lit_str(value: ".stop-chip")])),
+          right: ts_lit_str(value: "present"))),
         ts_if(
-          cond: ts_prefix(op: "!", expr: ts_ident(name: "sc")),
+          cond: ts_binop(
+            left: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "===",
+              right: ts_lit_str(value: dispatch_caption_idle)),
+            op: "||",
+            right: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "===",
+              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
           then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "sc"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "button")]))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "className"), op: "=", right: ts_lit_str(value: "stop-chip"))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "type"), op: "=", right: ts_lit_str(value: "button"))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
+              op: "=",
+              right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word)))),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sc"), property: "addEventListener"),
+              callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "classList"), property: "add"),
+              args: [ts_lit_str(value: dispatch_class_ok)])),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "sb"), property: "title"),
+              op: "=",
+              right: ts_binop(
+                left: ts_binop(
+                  left: ts_binop(
+                    left: ts_binop(
+                      left: ts_member(object: ts_ident(name: "sess"), property: "configured_provider"),
+                      op: "+",
+                      right: ts_lit_str(value: " configured · ")),
+                    op: "+",
+                    right: ts_member(object: ts_ident(name: "sess"), property: "provider")),
+                  op: "+",
+                  right: ts_lit_str(value: " · ")),
+                op: "+",
+                right: ts_binop(
+                  left: ts_member(object: ts_ident(name: "sess"), property: "provider_readiness"),
+                  op: "+",
+                  right: ts_binop(
+                    left: ts_lit_str(value: " — "),
+                    op: "+",
+                    right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
+          ]),
+          else_stmt: none),
+        ts_let(name: "pc", value: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
+            property: "querySelector"),
+          args: [ts_lit_str(value: ".process-chip")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "pc")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "pc"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "span")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "pc"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "process-chip"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
+              args: [ts_lit_str(value: "afterend"), ts_ident(name: "pc")])),
+          ]),
+          else_stmt: none),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "pc"), property: "textContent"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "process_state"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "pc"), property: "title"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "process_detail"))),
+        ts_let(name: "cc", value: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
+            property: "querySelector"),
+          args: [ts_lit_str(value: ".cleanup-chip")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "cc")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "cc"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "button")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "cleanup-chip"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "type"),
+              op: "=",
+              right: ts_lit_str(value: "button"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "cc"), property: "addEventListener"),
               args: [ts_lit_str(value: "click"), ts_arrow(params: ["ev"], body: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stopping…"))),
-                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
+                ts_const(name: "action", value: ts_binop(
+                  left: ts_member(
+                    object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
+                    property: "cleanupAction"),
+                  op: "||",
+                  right: ts_lit_str(value: "cleanup"))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+                  op: "=",
+                  right: ts_binop(
+                    left: ts_ident(name: "action"),
+                    op: "+",
+                    right: ts_lit_str(value: "…")))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                  op: "=",
+                  right: ts_ident(name: "true"))),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
                     object: ts_call(
@@ -1490,119 +1609,183 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                         object: ts_call(
                           callee: ts_member(
                             object: ts_call(callee: ts_ident(name: "fetch"), args: [
-                              ts_binop(left: ts_lit_str(value: "/stop/"), op: "+", right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
-                              ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))]),
+                              ts_binop(
+                                left: ts_lit_str(value: "/cleanup/"),
+                                op: "+",
+                                right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
+                              ts_object(fields: [
+                                ts_field(key: "method", value: ts_lit_str(value: "POST")),
+                              ]),
                             ]),
                             property: "then"),
-                          args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
+                          args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                            ts_return(expr: ts_call(
+                              callee: ts_member(object: ts_ident(name: "r"), property: "json"),
+                              args: [])),
+                          ]))]),
                         property: "then"),
                       args: [ts_arrow(params: ["j"], body: ts_block(stmts: [
                         ts_if(
-                          cond: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "status"), op: "===", right: ts_lit_str(value: "stopped")),
+                          cond: ts_binop(
+                            left: ts_member(object: ts_ident(name: "j"), property: "ok"),
+                            op: "===",
+                            right: ts_ident(name: "true")),
                           then: ts_block(stmts: [
-                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "window"), property: "location"), property: "reload"), args: [])),
+                            ts_expr_stmt(expr: ts_call(
+                              callee: ts_member(
+                                object: ts_member(object: ts_ident(name: "window"), property: "location"),
+                                property: "reload"),
+                              args: [])),
                           ]),
                           else_stmt: Present { value: ts_block(stmts: [
-                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop refused"))),
                             ts_expr_stmt(expr: ts_binop(
-                              left: ts_member(object: ts_ident(name: "sc"), property: "title"),
+                              left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
                               op: "=",
                               right: ts_binop(
-                                left: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "reason"), op: "||", right: ts_member(object: ts_ident(name: "j"), property: "detail")),
+                                left: ts_ident(name: "action"),
+                                op: "+",
+                                right: ts_lit_str(value: " refused")))),
+                            ts_expr_stmt(expr: ts_binop(
+                              left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+                              op: "=",
+                              right: ts_binop(
+                                left: ts_binop(
+                                  left: ts_member(object: ts_ident(name: "j"), property: "reason"),
+                                  op: "||",
+                                  right: ts_member(object: ts_ident(name: "j"), property: "detail")),
                                 op: "||",
                                 right: ts_lit_str(value: "no reason on the wire")))),
-                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                            ts_expr_stmt(expr: ts_binop(
+                              left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                              op: "=",
+                              right: ts_ident(name: "false"))),
                           ]) },
                         ),
                       ]))]),
                     property: "catch"),
                   args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop failed"))),
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "title"), op: "=", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: "")))),
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+                      op: "=",
+                      right: ts_binop(
+                        left: ts_ident(name: "action"),
+                        op: "+",
+                        right: ts_lit_str(value: " failed")))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+                      op: "=",
+                      right: ts_binop(
+                        left: ts_ident(name: "e"),
+                        op: "+",
+                        right: ts_lit_str(value: "")))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                      op: "=",
+                      right: ts_ident(name: "false"))),
                   ]))])),
               ]))])),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
-              args: [ts_lit_str(value: "afterend"), ts_ident(name: "sc")])),
+              callee: ts_member(object: ts_ident(name: "pc"), property: "insertAdjacentElement"),
+              args: [ts_lit_str(value: "afterend"), ts_ident(name: "cc")])),
           ]),
-          else_stmt: none,
-        ),
+          else_stmt: none),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(
+            object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
+            property: "cleanupAction"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_detail"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+          op: "=",
+          right: ts_prefix(
+            op: "!",
+            expr: ts_member(object: ts_ident(name: "sess"), property: "cleanup_allowed")))),
       ]),
       else_stmt: none,
     ),
   ]
 }
 
-fn sessions_reconcile_absent_stmts() -> List<TsStmt> {
-  [
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_call(
-          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: ".dispatch-btn[data-session-observed=\"true\"]")]),
-        property: "forEach"),
-      args: [ts_arrow(params: ["sb"], body: ts_block(stmts: [
-        ts_const(name: "sr", value: ts_call(
-          callee: ts_member(object: ts_ident(name: "sb"), property: "closest"),
-          args: [ts_lit_str(value: "li")])),
-        ts_const(name: "sl", value: ts_binop(
-          left: ts_ident(name: "sr"),
-          op: "&&",
-          right: ts_call(
-            callee: ts_member(object: ts_ident(name: "sr"), property: "querySelector"),
-            args: [ts_lit_str(value: workflow_lamp_selector(lamp: LiveWorkflowLamp))]))),
-        ts_if(
-          cond: ts_binop(
-            left: ts_prefix(op: "!", expr: ts_ident(name: "sl")),
-            op: "||",
-            right: ts_binop(
-              left: ts_member(
-                object: ts_member(object: ts_ident(name: "sl"), property: "dataset"),
-                property: "observation"),
-              op: "!==",
-              right: ts_lit_str(value: workflow_observation_key(state: ClientObservationOn)))),
-          then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "textContent"),
-              op: "=",
-              right: ts_lit_str(value: dispatch_caption_idle))),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(
-                object: ts_member(object: ts_ident(name: "sb"), property: "classList"),
-                property: "remove"),
-              args: [ts_lit_str(value: dispatch_class_ok)])),
-            ts_expr_stmt(expr: ts_binop(
-              left: ts_member(object: ts_ident(name: "sb"), property: "title"),
-              op: "=",
-              right: ts_lit_str(value: ""))),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sb"), property: "removeAttribute"),
-              args: [ts_lit_str(value: "data-session-observed")])),
-            ts_const(name: "sc", value: ts_call(
-              callee: ts_member(
-                object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
-                property: "querySelector"),
-              args: [ts_lit_str(value: ".stop-chip")])),
-            ts_if(
-              cond: ts_ident(name: "sc"),
-              then: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(object: ts_ident(name: "sc"), property: "remove"),
-                  args: [])),
-              ]),
-              else_stmt: none),
-          ]),
-          else_stmt: none),
-      ]))])),
-  ]
+fn remove_all_selector_stmt(selector: String, item_name: String) -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: selector)]),
+      property: "forEach"),
+    args: [ts_arrow(
+      params: [item_name],
+      body: ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: item_name), property: "remove"),
+        args: [])))]))
 }
 
-fn observation_refused_banner_stmts(source: String) -> List<TsStmt> {
+fn sessions_reset_presence_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
+        args: [ts_lit_str(value: ".dispatch-btn[data-session-presence=\"present\"]")]),
+      property: "forEach"),
+    args: [ts_arrow(params: ["pb"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(
+          object: ts_member(object: ts_ident(name: "pb"), property: "dataset"),
+          property: "sessionPresence"),
+        op: "=",
+        right: ts_lit_str(value: ""))),
+      ts_if(
+        cond: ts_binop(
+          left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
+          op: "===",
+          right: ts_lit_str(value: concat(dispatch_session_chip_prefix, dispatch_caption_present_word))),
+        then: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "pb"), property: "textContent"),
+            op: "=",
+            right: ts_lit_str(value: dispatch_caption_idle))),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "pb"), property: "classList"),
+              property: "remove"),
+            args: [ts_lit_str(value: dispatch_class_ok)])),
+          ts_expr_stmt(expr: ts_binop(
+            left: ts_member(object: ts_ident(name: "pb"), property: "title"),
+            op: "=",
+            right: ts_lit_str(value: ""))),
+        ]),
+        else_stmt: none),
+      ts_const(name: "oldProcess", value: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
+        args: [ts_lit_str(value: ".process-chip")])),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "oldProcess"),
+        op: "&&",
+        right: ts_call(callee: ts_member(object: ts_ident(name: "oldProcess"), property: "remove"), args: []))),
+      ts_const(name: "oldCleanup", value: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
+        args: [ts_lit_str(value: ".cleanup-chip")])),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "oldCleanup"),
+        op: "&&",
+        right: ts_call(callee: ts_member(object: ts_ident(name: "oldCleanup"), property: "remove"), args: []))),
+    ]))]))
+}
+
+fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
   [
     ts_let(name: "bn", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".observe-refused[data-source=\"", source, "\"]"], ""))])),
+      args: [ts_lit_str(value: concat(".", source_class))])),
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "bn")),
       then: ts_block(stmts: [
@@ -1615,13 +1798,7 @@ fn observation_refused_banner_stmts(source: String) -> List<TsStmt> {
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "bn"), property: "className"),
           op: "=",
-          right: ts_lit_str(value: "observe-refused"))),
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_member(
-            object: ts_member(object: ts_ident(name: "bn"), property: "dataset"),
-            property: "source"),
-          op: "=",
-          right: ts_lit_str(value: source))),
+          right: ts_lit_str(value: join(["observe-refused", source_class], " ")))),
         ts_const(name: "mn", value: ts_call(
           callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
           args: [ts_lit_str(value: "main")])),
@@ -1640,23 +1817,7 @@ fn observation_refused_banner_stmts(source: String) -> List<TsStmt> {
   ]
 }
 
-fn observation_clear_refused_banner_stmt(source: String) -> TsStmt {
-  ts_block(stmts: [
-    ts_const(name: "cb", value: ts_call(
-      callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-      args: [ts_lit_str(value: join([".observe-refused[data-source=\"", source, "\"]"], ""))])),
-    ts_if(
-      cond: ts_ident(name: "cb"),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "cb"), property: "remove"),
-          args: [])),
-      ]),
-      else_stmt: none),
-  ])
-}
-
-fn sessions_fetch_request_statements() -> List<TsStmt> {
+fn sessions_fetch_effect_statements() -> List<TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -1668,7 +1829,7 @@ fn sessions_fetch_request_statements() -> List<TsStmt> {
                 property: "then"),
               args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
             property: "then"),
-          args: [ts_arrow(params: ["sj"], body: ts_block(stmts: [
+          args: [ts_arrow(params: ["sj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "sj"), property: "observe_refused"),
               then: ts_block(stmts: concat(
@@ -1683,66 +1844,51 @@ fn sessions_fetch_request_statements() -> List<TsStmt> {
                     right: ts_ident(name: "wireWhy"))),
                 ],
                 concat(
-                  [workflow_set_all_observations_stmt(
-                    lamp: LiveWorkflowLamp,
-                    state: ClientObservationRefused { reason: "" },
-                    reason_expr: ts_ident(name: "why"))],
-                  observation_refused_banner_stmts(source: "session")))),
-              else_stmt: Present { value: ts_block(stmts: concat(
-                [
-                  observation_clear_refused_banner_stmt(source: "session"),
-                  workflow_set_all_observations_stmt(
-                    lamp: LiveWorkflowLamp,
-                    state: ClientObservationOff,
-                    reason_expr: ts_lit_str(value: "")),
-                  ts_expr_stmt(expr: ts_call(
-                    callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
-                    args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
-                ],
-                sessions_reconcile_absent_stmts())) },
+                  [
+                    sessions_reset_presence_stmt(),
+                    workflow_set_all_observations_stmt(
+                      lamp: SessionWorkflowLamp,
+                      state: ClientObservationRefused { reason: "" },
+                      reason_expr: ts_ident(name: "why")),
+                  ],
+                  observation_refused_banner_stmts(source_class: "sessions-observe-refused")))),
+              else_stmt: Present { value: ts_block(stmts: [
+                remove_all_selector_stmt(selector: ".sessions-observe-refused", item_name: "oldBanner"),
+                sessions_reset_presence_stmt(),
+                workflow_set_all_observations_stmt(
+                  lamp: SessionWorkflowLamp,
+                  state: ClientObservationOff,
+                  reason_expr: ts_lit_str(value: "")),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_member(object: ts_ident(name: "sj"), property: "sessions"), property: "forEach"),
+                  args: [ts_arrow(params: ["sess"], body: ts_block(stmts: sessions_mark_live_stmts()))])),
+              ]) },
             ),
-          ]))]),
+          ], observation_complete_stmts(
+            observer: js_sessions_observe_fn,
+            in_flight: js_sessions_observe_in_flight,
+            pending: js_sessions_observe_pending))))]),
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "session observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
         concat(
-          [workflow_set_all_observations_stmt(
-            lamp: LiveWorkflowLamp,
-            state: ClientObservationRefused { reason: "" },
-            reason_expr: ts_ident(name: "why"))],
-          observation_refused_banner_stmts(source: "session")))))])),
+          [
+            sessions_reset_presence_stmt(),
+            workflow_set_all_observations_stmt(
+              lamp: SessionWorkflowLamp,
+              state: ClientObservationRefused { reason: "" },
+              reason_expr: ts_ident(name: "why")),
+          ],
+          concat(
+            observation_refused_banner_stmts(source_class: "sessions-observe-refused"),
+            observation_complete_stmts(
+              observer: js_sessions_observe_fn,
+              in_flight: js_sessions_observe_in_flight,
+              pending: js_sessions_observe_pending))))))])),
   ]
 }
 
-fn sessions_schedule_refresh_stmt() -> TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_ident(name: "setTimeout"),
-    args: [
-      ts_ident(name: js_poll_sessions_fn),
-      ts_lit_num(text: to_string(session_observation_refresh_ms)),
-    ]))
-}
-
-fn sessions_fetch_statements() -> List<TsStmt> {
-  [
-    ts_const(
-      name: js_refresh_sessions_fn,
-      value: ts_arrow(
-        params: [],
-        body: ts_block(stmts: sessions_fetch_request_statements()))),
-    ts_const(
-      name: js_poll_sessions_fn,
-      value: ts_arrow(
-        params: [],
-        body: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_sessions_fn), args: [])),
-          sessions_schedule_refresh_stmt(),
-        ]))),
-    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_poll_sessions_fn), args: [])),
-  ]
-}
-
-data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). The one-shot refresh clears the prior rendered projection before rebuilding it, so the immediate post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud banner; recovery clears it."
+data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). Each observation clears the prior rendered projection before rebuilding it, so the immediate post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud banner; recovery clears it."
 
 fn attempts_mark_stmts() -> List<TsStmt> {
   [
@@ -1751,7 +1897,7 @@ fn attempts_mark_stmts() -> List<TsStmt> {
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "att"), property: "node_id"))])),
     workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptedWorkflowLamp),
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptWorkflowLamp),
       state: ClientObservationOn,
       reason_expr: ts_lit_str(value: "")),
     ts_const(name: "adt", value: ts_binop(
@@ -1785,23 +1931,7 @@ fn attempts_mark_stmts() -> List<TsStmt> {
   ]
 }
 
-fn attempts_clear_rendered_stmts() -> List<TsStmt> {
-  [
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_call(
-          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: ".dispatch-attempts")]),
-        property: "forEach"),
-      args: [ts_arrow(
-        params: ["al"],
-        body: ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "al"), property: "remove"),
-          args: [])))])),
-  ]
-}
-
-fn attempts_fetch_request_statements() -> List<TsStmt> {
+fn attempts_fetch_effect_statements() -> List<TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -1813,7 +1943,7 @@ fn attempts_fetch_request_statements() -> List<TsStmt> {
                 property: "then"),
               args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
             property: "then"),
-          args: [ts_arrow(params: ["aj"], body: ts_block(stmts: [
+          args: [ts_arrow(params: ["aj"], body: ts_block(stmts: concat([
             ts_if(
               cond: ts_member(object: ts_ident(name: "aj"), property: "attempts_refused"),
               then: ts_block(stmts: concat(
@@ -1828,48 +1958,90 @@ fn attempts_fetch_request_statements() -> List<TsStmt> {
                     right: ts_ident(name: "wireWhy"))),
                 ],
                 concat(
-                  [workflow_set_all_observations_stmt(
-                    lamp: AttemptedWorkflowLamp,
-                    state: ClientObservationRefused { reason: "" },
-                    reason_expr: ts_ident(name: "why"))],
-                  observation_refused_banner_stmts(source: "attempt")))),
-              else_stmt: Present { value: ts_block(stmts: concat(
-                [
-                  observation_clear_refused_banner_stmt(source: "attempt"),
-                  workflow_set_all_observations_stmt(
-                    lamp: AttemptedWorkflowLamp,
-                    state: ClientObservationOff,
-                    reason_expr: ts_lit_str(value: "")),
-                ],
-                concat(
-                  attempts_clear_rendered_stmts(),
                   [
-                    ts_expr_stmt(expr: ts_call(
-                      callee: ts_member(object: ts_member(object: ts_ident(name: "aj"), property: "attempts"), property: "forEach"),
-                      args: [ts_arrow(params: ["att"], body: ts_block(stmts: attempts_mark_stmts()))])),
-                  ]))) },
+                    remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
+                    workflow_set_all_observations_stmt(
+                      lamp: AttemptWorkflowLamp,
+                      state: ClientObservationRefused { reason: "" },
+                      reason_expr: ts_ident(name: "why")),
+                  ],
+                  observation_refused_banner_stmts(source_class: "attempts-observe-refused")))),
+              else_stmt: Present { value: ts_block(stmts: [
+                remove_all_selector_stmt(selector: ".attempts-observe-refused", item_name: "oldBanner"),
+                remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "oldAttempts"),
+                workflow_set_all_observations_stmt(
+                  lamp: AttemptWorkflowLamp,
+                  state: ClientObservationOff,
+                  reason_expr: ts_lit_str(value: "")),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(object: ts_member(object: ts_ident(name: "aj"), property: "attempts"), property: "forEach"),
+                  args: [ts_arrow(params: ["att"], body: ts_block(stmts: attempts_mark_stmts()))])),
+              ]) },
             ),
-          ]))]),
+          ], observation_complete_stmts(
+            observer: js_attempts_observe_fn,
+            in_flight: js_attempts_observe_in_flight,
+            pending: js_attempts_observe_pending))))]),
         property: "catch"),
       args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
         [ts_const(name: "why", value: ts_binop(left: ts_lit_str(value: "attempt observation refused: "), op: "+", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: ""))))],
         concat(
-          [workflow_set_all_observations_stmt(
-            lamp: AttemptedWorkflowLamp,
-            state: ClientObservationRefused { reason: "" },
-            reason_expr: ts_ident(name: "why"))],
-          observation_refused_banner_stmts(source: "attempt")))))])),
+          [
+            remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
+            workflow_set_all_observations_stmt(
+              lamp: AttemptWorkflowLamp,
+              state: ClientObservationRefused { reason: "" },
+              reason_expr: ts_ident(name: "why")),
+          ],
+          concat(
+            observation_refused_banner_stmts(source_class: "attempts-observe-refused"),
+            observation_complete_stmts(
+              observer: js_attempts_observe_fn,
+              in_flight: js_attempts_observe_in_flight,
+              pending: js_attempts_observe_pending))))))])),
   ]
 }
 
-fn attempts_fetch_statements() -> List<TsStmt> {
+fn observation_fetch_statements() -> List<TsStmt> {
   [
+    ts_let(name: js_sessions_observe_in_flight, value: ts_ident(name: "false")),
+    ts_let(name: js_attempts_observe_in_flight, value: ts_ident(name: "false")),
+    ts_let(name: js_sessions_observe_pending, value: ts_ident(name: "false")),
+    ts_let(name: js_attempts_observe_pending, value: ts_ident(name: "false")),
     ts_const(
-      name: js_refresh_attempts_fn,
-      value: ts_arrow(
-        params: [],
-        body: ts_block(stmts: attempts_fetch_request_statements()))),
-    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_attempts_fn), args: [])),
+      name: js_sessions_observe_fn,
+      value: ts_arrow(params: [], body: ts_block(stmts: concat(
+        observation_begin_stmts(
+          in_flight: js_sessions_observe_in_flight,
+          pending: js_sessions_observe_pending),
+        sessions_fetch_effect_statements())))),
+    ts_const(
+      name: js_attempts_observe_fn,
+      value: ts_arrow(params: [], body: ts_block(stmts: concat(
+        observation_begin_stmts(
+          in_flight: js_attempts_observe_in_flight,
+          pending: js_attempts_observe_pending),
+        attempts_fetch_effect_statements())))),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
+    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
+    ts_const(
+      name: js_observation_poll_tick,
+      value: ts_arrow(params: [], body: ts_block(stmts: [
+          ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
+          ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
+          ts_expr_stmt(expr: ts_call(
+            callee: ts_ident(name: "setTimeout"),
+            args: [
+              ts_ident(name: js_observation_poll_tick),
+              ts_lit_num(text: to_string(millisecond_count(m: observation_poll_interval))),
+            ])),
+        ]))),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: "setTimeout"),
+      args: [
+        ts_ident(name: js_observation_poll_tick),
+        ts_lit_num(text: to_string(millisecond_count(m: observation_poll_interval))),
+      ])),
   ]
 }
 
@@ -2144,6 +2316,53 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
                 ts_expr_stmt(expr: ts_binop(
                   left: ts_member(
                     object: ts_ident(name: "stage"),
+                    property: "textContent",
+                  ),
+                  op: "=",
+                  right: ts_cond(
+                    test: ts_binop(
+                      left: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                        op: "===",
+                        right: ts_lit_str(value: "failed"),
+                      ),
+                      op: "||",
+                      right: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                        op: "===",
+                        right: ts_lit_str(value: "refused"),
+                      ),
+                    ),
+                    consequent: ts_binop(
+                      left: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "short_label",
+                        ),
+                        op: "+",
+                        right: ts_lit_str(value: " · "),
+                      ),
+                      op: "+",
+                      right: ts_member(
+                        object: ts_ident(name: "seg"),
+                        property: "state",
+                      ),
+                    ),
+                    alternate: ts_member(
+                      object: ts_ident(name: "seg"),
+                      property: "short_label",
+                    ),
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_ident(name: "stage"),
                     property: "title",
                   ),
                   op: "=",
@@ -2255,10 +2474,13 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
                   )),
                   workflow_refuse_visible_stmt(),
                 ],
-                observation_refused_banner_stmts(source: "workflow"),
+                observation_refused_banner_stmts(
+                  source_class: "workflow-observe-refused"),
               )),
               else_stmt: Present { value: ts_block(stmts: [
-                observation_clear_refused_banner_stmt(source: "workflow"),
+                remove_all_selector_stmt(
+                  selector: ".workflow-observe-refused",
+                  item_name: "oldWorkflowBanner"),
                 workflow_clear_rendered_stmt(),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
@@ -2292,18 +2514,22 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
           )),
           workflow_refuse_visible_stmt(),
         ],
-        observation_refused_banner_stmts(source: "workflow"),
+        observation_refused_banner_stmts(
+          source_class: "workflow-observe-refused"),
       )))],
     )),
   ]
 }
+
+data workflow_observation_poll_interval: Millisecond = millisecond(count: 2000)
 
 fn workflow_schedule_refresh_stmt() -> TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_ident(name: "setTimeout"),
     args: [
       ts_ident(name: js_poll_workflow_fn),
-      ts_lit_num(text: to_string(session_observation_refresh_ms)),
+      ts_lit_num(text: to_string(
+        millisecond_count(m: workflow_observation_poll_interval))),
     ],
   ))
 }
@@ -2372,12 +2598,10 @@ fn dispatch_client_program_for(
                   concat(
                     swatch_toggle_bind_statements(),
                     concat(
-                      sessions_fetch_statements(),
-                    concat(
-                      attempts_fetch_statements(),
+                      observation_fetch_statements(),
                       concat(
                         workflow_fetch_statements(),
-                        instance_statements))))))))))),
+                        instance_statements)))))))))),
   }
 }
 
@@ -2438,9 +2662,9 @@ fn dispatch_state_display_text(state: ComponentState) -> String {
     RequestedState => dispatch_caption_requested
     TerminalState { wire_label: wl, ok: ok } =>
       if ok {
-        join([dispatch_receipt_chip_prefix, wl], "")
+        concat(dispatch_ack_prefix, dispatch_ack_word)
       } else if wl == belt_dispatch_disabled_status_label() {
-        join([dispatch_receipt_chip_prefix, wl], "")
+        concat(dispatch_ack_prefix, wl)
       } else if belt_dispatch_label_band_key(wire_label: wl) == "loud" {
         dispatch_caption_loud
       } else {

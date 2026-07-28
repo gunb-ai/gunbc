@@ -45,6 +45,13 @@ test fn witness_authority_serializes_with_structure() -> Bool {
     && string_contains(s: h, pattern: "class=\"status status-")
 }
 
+test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
+  string_contains(
+    s: authority_page_html(),
+    pattern: "requires all: 2-scm-git-upstream-model, 2-scm-mercurial-upstream-model, 2-scm-pijul-upstream-model",
+  )
+}
+
 fn empty_doc_html() -> String {
   let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
   match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
@@ -246,10 +253,14 @@ test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
 }
 
 fn blocked_dispatch_workspace_html() -> String {
-  let blocker = gunbc.roadmap_authority.authored(
-    id: "disp-blocker",
+  let policy_blocker = gunbc.roadmap_authority.authored(
+    id: "disp-policy-blocker",
     done: false,
     content: "policy prerequisite")
+  let model_blocker = gunbc.roadmap_authority.authored(
+    id: "disp-model-blocker",
+    done: false,
+    content: "model prerequisite")
   let blocked = gunbc.roadmap_authority.authored_wi(
     id: "disp-blocked",
     done: false,
@@ -257,10 +268,13 @@ fn blocked_dispatch_workspace_html() -> String {
     intricacy: IntricacyLow,
     volume: VolumeSmall,
     repo: "gunbc")
-  let edge = RoadmapEdge { child: blocked.node, parent: blocker.node }
+  let edges = [
+    RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
+    RoadmapEdge { child: blocked.node, parent: model_blocker.node },
+  ]
   let sec = RoadmapSection {
     title: "Belt",
-    elements: [ section_group(label: "", nodes: [blocker, blocked], edges: [edge]) ],
+    elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
   let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: [])) {
@@ -275,6 +289,13 @@ test fn witness_upcoming_node_keeps_manual_out_of_order_dispatch() -> Bool {
     && string_contains(s: h, pattern: "data-node=\"disp-blocked\"")
     && string_contains(s: h, pattern: "class=\"workflow-controls\"")
     && string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
+test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
+  string_contains(
+    s: blocked_dispatch_workspace_html(),
+    pattern: "requires all: disp-policy-blocker, disp-model-blocker",
+  )
 }
 
 fn superseded_dispatch_node() -> RoadmapNode {

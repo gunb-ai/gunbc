@@ -15,6 +15,7 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   host_exec_argv,
   DispatchLiveSession,
+  dispatch_worker_observation,
 }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
@@ -76,6 +77,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
     node_id: node_id,
     windows: 1,
     lease_verdict: verdict,
+    worker: dispatch_worker_observation(),
   }
 }
 

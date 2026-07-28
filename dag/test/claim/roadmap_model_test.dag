@@ -11,7 +11,7 @@ import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
   NodeSizing, Unsized,
-  roadmap_parent, is_top_level,
+  roadmap_primary_parent, roadmap_parent_ids, is_top_level,
   node_carrier_clean,
   node_status_drift,
 }
@@ -21,6 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parent_node: RoadmapNodeId = "invert-hand-maintained"
+data second_parent_node: RoadmapNodeId = "model-before-implement"
 data child_node: RoadmapNodeId = "pr-checkbox-status"
 data orphan_node: RoadmapNodeId = "no-parent-node"
 
@@ -32,10 +33,22 @@ fn verdict_is_drifted(v: DriftVerdict) -> Bool {
   match v { Drifted => true  Clean => false  Underivable => false }
 }
 test fn witness_child_has_parent() -> Bool {
-  match roadmap_parent(edges: edges(), node: child_node) {
+  match roadmap_primary_parent(edges: edges(), node: child_node) {
     UnderParent { parent: p } => p == parent_node
     TopLevel => false
   }
+}
+
+test fn witness_multi_parent_dependencies_are_not_flattened() -> Bool {
+  let es = [
+    RoadmapEdge { child: child_node, parent: parent_node },
+    RoadmapEdge { child: child_node, parent: second_parent_node },
+  ]
+  roadmap_parent_ids(edges: es, node: child_node) == [parent_node, second_parent_node]
+    && match roadmap_primary_parent(edges: es, node: child_node) {
+      UnderParent { parent: p } => p == parent_node
+      TopLevel => false
+    }
 }
 
 test fn witness_orphan_is_top_level() -> Bool {

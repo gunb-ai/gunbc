@@ -54,6 +54,7 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
   belt_observe, belt_observe_for_instance,
+  belt_sessions_observe_for_instance,
   belt_sessions_observed_json, belt_sessions_http_status,
   BeltAttempts, AttemptsObserved, AttemptsRefused,
   belt_attempts_observe, belt_attempts_observe_for_instance,
@@ -132,6 +133,7 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
 }
@@ -367,7 +369,7 @@ fn serve_stop_handler_response_for_instance(
     serve_text_response(
       status: 400,
       content_type: text_plain_utf8,
-      body: "stop requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+      body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
     let r = belt_stop_node_for_instance(instance: instance, node_id: node_id)
@@ -418,12 +420,12 @@ fn serve_workflow_response() -> ServeHttpResponse {
   serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-data serve_sessions_note: String = "U2: the live-session observation as a wire route (GET /sessions.json), so the client marks live rows without the page render losing purity (the healthz digest is over the pure body; live state arrives by fetch exactly as dispatch answers do). ONE observation feeds both the status and the body — observing twice could disagree between them. Refusal serves 503 with the typed reason: an unknowable session set is loud at the client, never an empty panel."
+data serve_sessions_note: String = "GET /sessions.json performs one session-container observation and one independently adjudicated pane/process observation. Session-list refusal serves 503 because container presence is unknowable. Pane refusal stays in each known session as process unobserved and cleanup unavailable; it cannot erase session presence. The same combined observation feeds both status and body so the route never races two reads."
 
 fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let o = belt_observe_for_instance(instance: instance)
+  let o = belt_sessions_observe_for_instance(instance: instance)
   serve_text_response(
     status: belt_sessions_http_status(o: o),
     content_type: application_json_utf8,
