@@ -6,7 +6,8 @@
     "__tag": "Record",
     "__type": "AuthPrintAccessToken",
     "fields": {
-      "access_token": { "__tag": "Str", "value": "ya29.WITNESS_GCLOUD_CLI_TOKEN" }
+      "access_token": { "__tag": "Str", "value": "ya29.WITNESS_GCLOUD_CLI_TOKEN" },
+      "success": { "__tag": "Bool", "value": true }
     }
   },
   "recorded_at": 1784518399

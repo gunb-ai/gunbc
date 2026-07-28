@@ -62,6 +62,33 @@ service redfish.Http {
     }
   }
 
+  operation GetSystemWithNetrcStdin {
+    input { bmc_host: NonEmptyStr, netrc_content: Secret }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "/dev/stdin", "https://{bmc_host}/redfish/v1/Systems/system"]
+      stdin: netrc_content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system GET (netrc stdin) failed"
+    }
+  }
+
+  operation GetManagerWithNetrc {
+    input { bmc_host: NonEmptyStr, manager_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Managers/{manager_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish manager GET (netrc) failed"
+    }
+  }
+
   operation GetChassisSensors {
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -72,6 +99,32 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish chassis sensors GET failed"
+    }
+  }
+
+  operation GetChassisThermalWithNetrc {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/Thermal"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis legacy thermal GET (netrc) failed"
+    }
+  }
+
+  operation GetChassisThermalSubsystemWithNetrc {
+    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "https://{bmc_host}/redfish/v1/Chassis/{chassis_id}/ThermalSubsystem"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish chassis thermal subsystem GET (netrc) failed"
     }
   }
 
@@ -137,3 +190,5 @@ service redfish.Http {
     }
   }
 }
+
+data redfish_stdin_credential_transport_note: String = "GetSystemWithNetrcStdin sends netrc content through inherited stdin and keeps the Secret out of argv and the environment by construction. New credential-probe consumers use this operation. The older Basic-Auth argv operations remain compatibility debt for callers outside this stack and must not be selected by BMC convergence."

@@ -16,10 +16,38 @@ data redfish_http_mock_case_get_system_with_netrc: PublishedMockCase = Published
   case_id: 0
 }
 
+data redfish_http_mock_case_get_system_with_netrc_stdin: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetSystemWithNetrcStdin",
+  service: "redfish.Http",
+  operation: "GetSystemWithNetrcStdin",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_manager_with_netrc: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetManagerWithNetrc",
+  service: "redfish.Http",
+  operation: "GetManagerWithNetrc",
+  case_id: 0
+}
+
 data redfish_http_mock_case_get_chassis_sensors: PublishedMockCase = PublishedMockCase {
   operation_key: "redfish.Http.GetChassisSensors",
   service: "redfish.Http",
   operation: "GetChassisSensors",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_chassis_thermal_with_netrc: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetChassisThermalWithNetrc",
+  service: "redfish.Http",
+  operation: "GetChassisThermalWithNetrc",
+  case_id: 0
+}
+
+data redfish_http_mock_case_get_chassis_thermal_subsystem_with_netrc: PublishedMockCase = PublishedMockCase {
+  operation_key: "redfish.Http.GetChassisThermalSubsystemWithNetrc",
+  service: "redfish.Http",
+  operation: "GetChassisThermalSubsystemWithNetrc",
   case_id: 0
 }
 
@@ -61,7 +89,11 @@ data bmc_ipmi_tool_mock_case_sel_list: PublishedMockCase = PublishedMockCase {
 data bmc_published_mock_corpus: List<PublishedMockCase> = [
   redfish_http_mock_case_get_system,
   redfish_http_mock_case_get_system_with_netrc,
+  redfish_http_mock_case_get_system_with_netrc_stdin,
+  redfish_http_mock_case_get_manager_with_netrc,
   redfish_http_mock_case_get_chassis_sensors,
+  redfish_http_mock_case_get_chassis_thermal_with_netrc,
+  redfish_http_mock_case_get_chassis_thermal_subsystem_with_netrc,
   redfish_http_mock_case_get_power,
   redfish_http_mock_case_get_thermal,
   bmc_ipmi_tool_mock_case_sensor_list,
