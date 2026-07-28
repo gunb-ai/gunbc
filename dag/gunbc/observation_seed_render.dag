@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, StatusBlocked }
 import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
-import std.measure { nanosecond }
+import std.measure { nanosecond, nanosecond_count }
 import std.disposition { Disposition, Terminal }
 import std.observation {
   ObservationSubject,
@@ -164,9 +164,12 @@ fn scoped_run_project_measured(
   event: ObservationEvent,
   addressable: Bool,
   emoji: Bool,
-  prior_open: Bool,
-  wall_ns: Nat
+  prior_open: Bool
 ) -> ScopedRunMeasuredProjection {
+  let wall_ns = match event.wall {
+    MeasuredValue { value: w } => nanosecond_count(n: w)
+    MeasuredUnavailable { cause: _ } => 0
+  }
   match scoped_run_project(event: event, addressable: addressable, emoji: emoji, prior_open: prior_open) {
     ScopedRunWriteRefused { cause: c } => ScopedRunMeasuredRefused { cause: c }
     ScopedRunWriteProjected { bytes: b, next_open: n } => ScopedRunMeasuredProjected { bytes: b, next_open: n, wall_ns: wall_ns }
@@ -178,8 +181,7 @@ fn scoped_run_begin_write_measured(entry_file: NonEmptyStr, module_path: NonEmpt
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Begin),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open,
-    wall_ns: wall_ns
+    prior_open: prior_open
   )
 }
 
@@ -188,8 +190,7 @@ fn scoped_run_final_write_measured(entry_file: NonEmptyStr, module_path: NonEmpt
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Final { shown_failures: 0 } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open,
-    wall_ns: wall_ns
+    prior_open: prior_open
   )
 }
 
@@ -198,8 +199,7 @@ fn scoped_run_refused_write_measured(entry_file: NonEmptyStr, module_path: NonEm
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open,
-    wall_ns: wall_ns
+    prior_open: prior_open
   )
 }
 
@@ -208,8 +208,7 @@ fn scoped_run_failed_write_measured(entry_file: NonEmptyStr, module_path: NonEmp
     event: scoped_run_measured_event(entry_file: entry_file, module_path: module_path, function: function, wall_ns: wall_ns, transition: Concluded { outcome: Failed { error: error, output: "" } }),
     addressable: addressable,
     emoji: emoji,
-    prior_open: prior_open,
-    wall_ns: wall_ns
+    prior_open: prior_open
   )
 }
 
