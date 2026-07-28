@@ -9,6 +9,13 @@ import extdeps.git {
 }
 import extdeps.git.object_store {
   GitPath,
+  GitTreeEntryName,
+  GitTreeEntryNameOctet,
+  GitTreeEntryNameBeforeSlashValue,
+  GitTreeEntryNameAfterSlashValue,
+  GitTreeEntryNameOctetBeforeSlash,
+  GitTreeEntryNameOctetAfterSlash,
+  GitTreeWireName,
   GitObjectFormatSha1,
   GitObjectFormatSha256,
   GitSha1ObjectId,
@@ -41,11 +48,18 @@ import extdeps.git.object_store {
   SymbolicTarget,
   GitIndexEntry,
   GitIndexStageNormal,
+  GitRegularBlobMode,
+  GitExecutableBlobMode,
+  GitSymlinkMode,
+  GitlinkMode,
   GitWorktreeRegular,
   GitWorktreeSymlink,
   GitTreeWireEntry,
   GitTreeDecoded,
   GitTreeDecodeRefused,
+  GitTreeEntryNameRefused,
+  GitTreeEntryNameEmpty,
+  GitTreeEntryNameForbiddenOctet,
   GitLsTreeZDecoded,
   GitLsTreeZRefused,
   GitLsFilesStageZDecoded,
@@ -87,6 +101,7 @@ import extdeps.git.object_store {
   stored_object_oid,
   git_object_id_format,
   git_object_id_content_hash,
+  git_tree_entry_name_octets,
   git_r0_unsupported_boundary,
 }
 import std.types { Bytes }
@@ -171,18 +186,96 @@ data fixture_author: GitAuthor = GitAuthor {
   timestamp: "946684800 +0000",
 }
 
-data path_regular: GitPath = GitPath { octets: [114, 101, 97, 100, 109, 101] }
-data path_executable: GitPath = GitPath { octets: [114, 117, 110] }
-data path_symlink: GitPath = GitPath { octets: [108, 105, 110, 107] }
-data path_subtree: GitPath = GitPath { octets: [115, 114, 99] }
+fn git_tree_name_before_slash(
+  value: GitTreeEntryNameBeforeSlashValue,
+) -> GitTreeEntryNameOctet {
+  GitTreeEntryNameOctetBeforeSlash { value: value }
+}
+
+fn git_tree_name_after_slash(
+  value: GitTreeEntryNameAfterSlashValue,
+) -> GitTreeEntryNameOctet {
+  GitTreeEntryNameOctetAfterSlash { value: value }
+}
+
+fn git_tree_name(
+  first: GitTreeEntryNameOctet,
+  rest: List<GitTreeEntryNameOctet>,
+) -> GitTreeEntryName {
+  GitTreeEntryName { first: first, rest: rest }
+}
+
+data name_regular: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 114),
+  rest: [101, 97, 100, 109, 101]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_executable: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 114),
+  rest: [117, 110]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_symlink: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 108),
+  rest: [105, 110, 107]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_subtree: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 115),
+  rest: [114, 99]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_subtree_member: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 107),
+  rest: [101, 101, 112]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_gitlink: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 118),
+  rest: [101, 110, 100, 111, 114]
+    |> map(value => git_tree_name_after_slash(value: value)),
+)
+data name_non_ascii: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 195),
+  rest: [
+    git_tree_name_after_slash(value: 191),
+    git_tree_name_before_slash(value: 46),
+    git_tree_name_after_slash(value: 100),
+    git_tree_name_after_slash(value: 97),
+    git_tree_name_after_slash(value: 103),
+  ],
+)
+data name_non_utf8: GitTreeEntryName = git_tree_name(
+  first: git_tree_name_after_slash(value: 255),
+  rest: [
+    git_tree_name_before_slash(value: 46),
+    git_tree_name_after_slash(value: 100),
+    git_tree_name_after_slash(value: 97),
+    git_tree_name_after_slash(value: 103),
+  ],
+)
+
+fn root_git_path(name: GitTreeEntryName) -> GitPath {
+  GitPath { first: name, rest: [] }
+}
+
+data path_regular: GitPath = root_git_path(name: name_regular)
+data path_executable: GitPath = root_git_path(name: name_executable)
+data path_symlink: GitPath = root_git_path(name: name_symlink)
+data path_subtree: GitPath = root_git_path(name: name_subtree)
 data path_subtree_member: GitPath = GitPath {
-  octets: [115, 114, 99, 47, 107, 101, 101, 112],
+  first: name_subtree,
+  rest: [name_subtree_member],
 }
-data path_gitlink: GitPath = GitPath { octets: [118, 101, 110, 100, 111, 114] }
-data path_non_ascii: GitPath = GitPath {
-  octets: [195, 191, 46, 100, 97, 103],
+data path_gitlink: GitPath = root_git_path(name: name_gitlink)
+data path_non_ascii: GitPath = root_git_path(name: name_non_ascii)
+data path_non_utf8: GitPath = root_git_path(name: name_non_utf8)
+
+fn wire_name(name: GitTreeEntryName) -> GitTreeWireName {
+  GitTreeWireName {
+    octets: git_tree_entry_name_octets(name: name)
+  }
 }
-data path_non_utf8: GitPath = GitPath { octets: [255, 46, 100, 97, 103] }
 
 fn fixture_wire_entries() -> List<GitTreeWireEntry> {
   [
@@ -190,37 +283,37 @@ fn fixture_wire_entries() -> List<GitTreeWireEntry> {
       mode: "120000",
       object_type: "blob",
       oid: sha1_blob_symlink,
-      path: path_symlink,
+      name: wire_name(name: name_symlink),
     },
     GitTreeWireEntry {
       mode: "100644",
       object_type: "blob",
       oid: sha1_blob_regular,
-      path: path_regular,
+      name: wire_name(name: name_regular),
     },
     GitTreeWireEntry {
       mode: "100755",
       object_type: "blob",
       oid: sha1_blob_executable,
-      path: path_executable,
+      name: wire_name(name: name_executable),
     },
     GitTreeWireEntry {
       mode: "040000",
       object_type: "tree",
       oid: sha1_subtree,
-      path: path_subtree,
+      name: wire_name(name: name_subtree),
     },
     GitTreeWireEntry {
       mode: "160000",
       object_type: "commit",
       oid: sha1_gitlink,
-      path: path_gitlink,
+      name: wire_name(name: name_gitlink),
     },
     GitTreeWireEntry {
       mode: "100644",
       object_type: "blob",
       oid: sha1_blob_regular,
-      path: path_non_ascii,
+      name: wire_name(name: name_non_ascii),
     },
   ]
 }
@@ -228,12 +321,12 @@ fn fixture_wire_entries() -> List<GitTreeWireEntry> {
 fn fixture_tree() -> Tree {
   Tree {
     entries: [
-      SymlinkEntry { path: path_symlink, oid: sha1_blob_symlink },
-      RegularBlobEntry { path: path_regular, oid: sha1_blob_regular },
-      ExecutableBlobEntry { path: path_executable, oid: sha1_blob_executable },
-      SubtreeEntry { path: path_subtree, oid: sha1_subtree },
-      GitlinkEntry { path: path_gitlink, oid: sha1_gitlink },
-      RegularBlobEntry { path: path_non_ascii, oid: sha1_blob_regular },
+      SymlinkEntry { name: name_symlink, oid: sha1_blob_symlink },
+      RegularBlobEntry { name: name_regular, oid: sha1_blob_regular },
+      ExecutableBlobEntry { name: name_executable, oid: sha1_blob_executable },
+      SubtreeEntry { name: name_subtree, oid: sha1_subtree },
+      GitlinkEntry { name: name_gitlink, oid: sha1_gitlink },
+      RegularBlobEntry { name: name_non_ascii, oid: sha1_blob_regular },
     ],
   }
 }
@@ -298,7 +391,7 @@ fn fixture_objects() -> List<StoredObject> {
         tree: Tree {
           entries: [
             RegularBlobEntry {
-              path: GitPath { octets: [107, 101, 101, 112] },
+              name: name_subtree_member,
               oid: sha1_empty_blob,
             },
           ],
@@ -325,7 +418,7 @@ fn fixture_objects() -> List<StoredObject> {
           parents: [],
           author: fixture_author,
           committer: fixture_author,
-          message: "gitlink",
+          message: utf8_encode_bytes(s: "gitlink\n"),
         }
       },
     ),
@@ -341,7 +434,7 @@ fn fixture_objects() -> List<StoredObject> {
           parents: [],
           author: fixture_author,
           committer: fixture_author,
-          message: "parent",
+          message: utf8_encode_bytes(s: "parent\n"),
         }
       },
     ),
@@ -353,7 +446,7 @@ fn fixture_objects() -> List<StoredObject> {
           parents: [sha1_parent_commit],
           author: fixture_author,
           committer: fixture_author,
-          message: "next",
+          message: utf8_encode_bytes(s: "next\n"),
         }
       },
     ),
@@ -365,7 +458,7 @@ fn fixture_objects() -> List<StoredObject> {
           target_type: CommitObj,
           name: "v0",
           tagger: fixture_author,
-          message: "bounded annotated tag",
+          message: utf8_encode_bytes(s: "bounded annotated tag\n"),
         }
       },
     ),
@@ -395,27 +488,39 @@ fn fixture_repository() -> GitRepositoryState {
     ],
     index: [
       GitIndexEntry {
-        entry: SymlinkEntry { path: path_symlink, oid: sha1_blob_symlink },
+        path: path_symlink,
+        mode: GitSymlinkMode,
+        oid: sha1_blob_symlink,
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        entry: RegularBlobEntry { path: path_regular, oid: sha1_blob_regular },
+        path: path_regular,
+        mode: GitRegularBlobMode,
+        oid: sha1_blob_regular,
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        entry: ExecutableBlobEntry { path: path_executable, oid: sha1_blob_executable },
+        path: path_executable,
+        mode: GitExecutableBlobMode,
+        oid: sha1_blob_executable,
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        entry: RegularBlobEntry { path: path_subtree_member, oid: sha1_empty_blob },
+        path: path_subtree_member,
+        mode: GitRegularBlobMode,
+        oid: sha1_empty_blob,
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        entry: GitlinkEntry { path: path_gitlink, oid: sha1_gitlink },
+        path: path_gitlink,
+        mode: GitlinkMode,
+        oid: sha1_gitlink,
         stage: GitIndexStageNormal,
       },
       GitIndexEntry {
-        entry: RegularBlobEntry { path: path_non_ascii, oid: sha1_blob_regular },
+        path: path_non_ascii,
+        mode: GitRegularBlobMode,
+        oid: sha1_blob_regular,
         stage: GitIndexStageNormal,
       },
     ],
@@ -458,17 +563,67 @@ test fn witness_git_tree_modes_and_raw_paths_decode_without_collapse() -> Bool {
             mode: "100644",
             object_type: "blob",
             oid: sha1_blob_regular,
-            path: path_non_utf8,
+            name: wire_name(name: name_non_utf8),
           },
         ]) {
           GitTreeDecoded { entries: raw_entries } =>
             match raw_entries.first() {
-              Present { value: RegularBlobEntry { path, oid: _ } } =>
-                path == path_non_utf8
+              Present { value: RegularBlobEntry { name, oid: _ } } =>
+                name == name_non_utf8
               _ => false
             }
           GitTreeDecodeRefused { cause: _ } => false
         }
+  }
+}
+
+test fn witness_git_tree_entry_names_refuse_empty_slash_and_nul() -> Bool {
+  let empty = GitTreeWireEntry {
+    mode: "100644",
+    object_type: "blob",
+    oid: sha1_blob_regular,
+    name: GitTreeWireName { octets: [] },
+  }
+  let slash = GitTreeWireEntry {
+    mode: "100644",
+    object_type: "blob",
+    oid: sha1_blob_regular,
+    name: GitTreeWireName { octets: [115, 114, 99, 47, 107, 101, 101, 112] },
+  }
+  let nul = GitTreeWireEntry {
+    mode: "100644",
+    object_type: "blob",
+    oid: sha1_blob_regular,
+    name: GitTreeWireName { octets: [0] },
+  }
+  match git_decode_tree(entries: [empty]) {
+    GitTreeDecodeRefused {
+      cause: GitTreeEntryNameRefused {
+        name: _,
+        cause: GitTreeEntryNameEmpty,
+      },
+    } => match git_decode_tree(entries: [slash]) {
+      GitTreeDecodeRefused {
+        cause: GitTreeEntryNameRefused {
+          name: _,
+          cause: GitTreeEntryNameForbiddenOctet { octet: slash_octet },
+        },
+      } => if slash_octet == 47 {
+        match git_decode_tree(entries: [nul]) {
+          GitTreeDecodeRefused {
+            cause: GitTreeEntryNameRefused {
+              name: _,
+              cause: GitTreeEntryNameForbiddenOctet { octet: nul_octet },
+            },
+          } => nul_octet == 0
+          _ => false
+        }
+      } else {
+        false
+      }
+      _ => false
+    }
+    _ => false
   }
 }
 
@@ -544,7 +699,7 @@ test fn witness_git_ls_tree_z_preserves_non_utf8_path_octets() -> Bool {
           mode: "100644",
           object_type: "blob",
           oid: sha1_blob_regular,
-          path: path_non_utf8,
+          name: wire_name(name: name_non_utf8),
         },
       ]
     GitLsTreeZRefused { cause: _ } => false
@@ -594,10 +749,45 @@ test fn witness_git_ls_files_stage_z_observes_mode_identity_stage_and_raw_path()
     GitLsFilesStageZDecoded { entries } =>
       entries == [
         GitIndexEntry {
-          entry: RegularBlobEntry {
-            path: path_non_utf8,
-            oid: sha1_blob_regular,
-          },
+          path: path_non_utf8,
+          mode: GitRegularBlobMode,
+          oid: sha1_blob_regular,
+          stage: GitIndexStageNormal,
+        },
+      ]
+    GitLsFilesStageZRefused { cause: _ } => false
+  }
+}
+
+test fn witness_git_index_path_preserves_component_boundaries() -> Bool {
+  let nul = from_code_point(0)
+  let header = concat(
+    join(
+      [
+        "100644",
+        git_object_id_content_hash(oid: sha1_empty_blob) as String,
+        "0",
+      ],
+      nul,
+    ),
+    nul,
+  )
+  let payload = octets_bytes(
+    o: append(
+      bytes_octets(b: utf8_encode_bytes(s: header)),
+      items: [115, 114, 99, 47, 107, 101, 101, 112, 0],
+    ),
+  )
+  match git_decode_ls_files_stage_z(
+    payload: payload,
+    format: GitObjectFormatSha1,
+  ) {
+    GitLsFilesStageZDecoded { entries } =>
+      entries == [
+        GitIndexEntry {
+          path: path_subtree_member,
+          mode: GitRegularBlobMode,
+          oid: sha1_empty_blob,
           stage: GitIndexStageNormal,
         },
       ]
@@ -633,6 +823,36 @@ fn fixture_read_back_observation() -> GitR0ReadBackObservation {
   }
 }
 
+test fn witness_git_empty_commit_and_tag_messages_are_representable() -> Bool {
+  let empty = octets_bytes(o: [])
+  let commit = ObjectCommit {
+    commit: Commit {
+      tree: sha1_empty_tree,
+      parents: [],
+      author: fixture_author,
+      committer: fixture_author,
+      message: empty,
+    }
+  }
+  let tag = ObjectTag {
+    tag: AnnotatedTag {
+      target: sha1_parent_commit,
+      target_type: CommitObj,
+      name: "empty-message",
+      tagger: fixture_author,
+      message: empty,
+    }
+  }
+  match git_store_object_canonical_hash_input(object: commit) {
+    GitCanonicalHashInputReady { bytes: _ } =>
+      match git_store_object_canonical_hash_input(object: tag) {
+        GitCanonicalHashInputReady { bytes: _ } => true
+        GitCanonicalHashInputRefused { cause: _ } => false
+      }
+    GitCanonicalHashInputRefused { cause: _ } => false
+  }
+}
+
 test fn witness_git_readback_comparison_rejects_perturbed_observation() -> Bool {
   match git_project_repository(repo: fixture_repository(), tree_oid: sha1_root_tree) {
     GitProjectionRefused { cause: _ } => false
@@ -665,7 +885,7 @@ test fn witness_git_mode_object_mismatch_refuses() -> Bool {
       mode: "100755",
       object_type: "commit",
       oid: sha1_gitlink,
-      path: path_executable,
+      name: wire_name(name: name_executable),
     },
   ]) {
     GitTreeDecodeRefused { cause: _ } => true
@@ -715,7 +935,7 @@ test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
         target_type: CommitObj,
         name: "forged",
         tagger: fixture_author,
-        message: "forged",
+        message: utf8_encode_bytes(s: "forged\n"),
       }
     },
   }

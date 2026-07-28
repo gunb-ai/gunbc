@@ -59,12 +59,15 @@ data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+type GitTreeEntryNameBeforeSlashValue = Int where range(min: 1, max: 46)
+type GitTreeEntryNameAfterSlashValue = Int where range(min: 48, max: 255)
+
 type GitTreeEntryNameOctet
   = GitTreeEntryNameOctetBeforeSlash {
-      value: Int where range(min: 1, max: 46),
+      value: GitTreeEntryNameBeforeSlashValue,
     }
   | GitTreeEntryNameOctetAfterSlash {
-      value: Int where range(min: 48, max: 255),
+      value: GitTreeEntryNameAfterSlashValue,
     }
 
 type GitTreeEntryName {
@@ -79,6 +82,214 @@ type GitPath {
 
 type GitTreeWireName {
   octets: List<UInt8>
+}
+
+fn git_tree_entry_name_octet_value(
+  octet: GitTreeEntryNameOctet,
+) -> UInt8 {
+  match octet {
+    GitTreeEntryNameOctetBeforeSlash { value } => value
+    GitTreeEntryNameOctetAfterSlash { value } => value
+  }
+}
+
+fn git_tree_entry_name_octets(
+  name: GitTreeEntryName,
+) -> List<UInt8> {
+  append(
+    [git_tree_entry_name_octet_value(octet: name.first)],
+    items: name.rest
+      |> map(octet => git_tree_entry_name_octet_value(octet: octet)),
+  )
+}
+
+fn git_path_octets(path: GitPath) -> List<UInt8> {
+  fold(
+    path.rest,
+    init: git_tree_entry_name_octets(name: path.first),
+    f: fn(octets, component) {
+      append(
+        octets,
+        items: append(
+          [47],
+          items: git_tree_entry_name_octets(name: component),
+        ),
+      )
+    },
+  )
+}
+
+type GitTreeEntryNameDecodeRefusal
+  = GitTreeEntryNameEmpty
+  | GitTreeEntryNameForbiddenOctet { octet: UInt8 }
+
+type GitTreeEntryNameDecodeOutcome
+  = GitTreeEntryNameDecoded { name: GitTreeEntryName }
+  | GitTreeEntryNameDecodeRefused {
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+type GitTreeEntryNameOctetsDecodeOutcome
+  = GitTreeEntryNameOctetsDecoded {
+      octets: List<GitTreeEntryNameOctet>,
+    }
+  | GitTreeEntryNameOctetsDecodeRefused {
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+fn git_decode_tree_entry_name_octet(
+  octet: UInt8,
+) -> GitTreeEntryNameOctet? {
+  if octet >= 1 && octet <= 46 {
+    Present {
+      value: GitTreeEntryNameOctetBeforeSlash { value: octet }
+    }
+  } else if octet >= 48 && octet <= 255 {
+    Present {
+      value: GitTreeEntryNameOctetAfterSlash { value: octet }
+    }
+  } else {
+    none
+  }
+}
+
+fn git_decode_tree_entry_name_octet_step(
+  state: GitTreeEntryNameOctetsDecodeOutcome,
+  octet: UInt8,
+) -> GitTreeEntryNameOctetsDecodeOutcome {
+  match state {
+    GitTreeEntryNameOctetsDecodeRefused { cause } =>
+      GitTreeEntryNameOctetsDecodeRefused { cause: cause }
+    GitTreeEntryNameOctetsDecoded { octets } =>
+      match git_decode_tree_entry_name_octet(octet: octet) {
+        Absent => GitTreeEntryNameOctetsDecodeRefused {
+          cause: GitTreeEntryNameForbiddenOctet { octet: octet }
+        }
+        Present { value } =>
+          GitTreeEntryNameOctetsDecoded {
+            octets: append(octets, items: [value])
+          }
+      }
+  }
+}
+
+fn git_decode_tree_entry_name(
+  wire: GitTreeWireName,
+) -> GitTreeEntryNameDecodeOutcome {
+  match fold(
+    wire.octets,
+    init: GitTreeEntryNameOctetsDecoded { octets: [] },
+    f: git_decode_tree_entry_name_octet_step,
+  ) {
+    GitTreeEntryNameOctetsDecodeRefused { cause } =>
+      GitTreeEntryNameDecodeRefused { cause: cause }
+    GitTreeEntryNameOctetsDecoded { octets } =>
+      match octets.first() {
+        Absent => GitTreeEntryNameDecodeRefused {
+          cause: GitTreeEntryNameEmpty
+        }
+        Present { value: first } =>
+          GitTreeEntryNameDecoded {
+            name: GitTreeEntryName {
+              first: first,
+              rest: octets.skip(n: 1),
+            }
+          }
+      }
+  }
+}
+
+type GitPathDecodeRefusal
+  = GitPathComponentRefused {
+      component_index: NonNegativeInt,
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+type GitPathDecodeOutcome
+  = GitPathDecoded { path: GitPath }
+  | GitPathDecodeRefused { cause: GitPathDecodeRefusal }
+
+type GitPathDecodeState
+  = GitPathDecodeBuilding {
+      components: List<GitTreeEntryName>,
+      current: List<UInt8>,
+    }
+  | GitPathDecodeStopped { cause: GitPathDecodeRefusal }
+
+fn git_path_decode_step(
+  state: GitPathDecodeState,
+  octet: UInt8,
+) -> GitPathDecodeState {
+  match state {
+    GitPathDecodeStopped { cause } => GitPathDecodeStopped { cause: cause }
+    GitPathDecodeBuilding { components, current } =>
+      if octet == 47 {
+        match git_decode_tree_entry_name(
+          wire: GitTreeWireName { octets: current },
+        ) {
+          GitTreeEntryNameDecodeRefused { cause } =>
+            GitPathDecodeStopped {
+              cause: GitPathComponentRefused {
+                component_index: count(components),
+                cause: cause,
+              }
+            }
+          GitTreeEntryNameDecoded { name } =>
+            GitPathDecodeBuilding {
+              components: append(components, items: [name]),
+              current: [],
+            }
+        }
+      } else {
+        GitPathDecodeBuilding {
+          components: components,
+          current: append(current, items: [octet]),
+        }
+      }
+  }
+}
+
+fn git_decode_path_octets(octets: List<UInt8>) -> GitPathDecodeOutcome {
+  match fold(
+    octets,
+    init: GitPathDecodeBuilding {
+      components: [],
+      current: [],
+    },
+    f: git_path_decode_step,
+  ) {
+    GitPathDecodeStopped { cause } => GitPathDecodeRefused { cause: cause }
+    GitPathDecodeBuilding { components, current } =>
+      match git_decode_tree_entry_name(
+        wire: GitTreeWireName { octets: current },
+      ) {
+        GitTreeEntryNameDecodeRefused { cause } =>
+          GitPathDecodeRefused {
+            cause: GitPathComponentRefused {
+              component_index: count(components),
+              cause: cause,
+            }
+          }
+        GitTreeEntryNameDecoded { name } =>
+          let all_components = append(components, items: [name])
+          match all_components.first() {
+            Absent =>
+              GitPathDecodeRefused {
+                cause: GitPathComponentRefused {
+                  component_index: 0,
+                  cause: GitTreeEntryNameEmpty,
+                }
+              }
+            Present { value: first } =>
+              GitPathDecoded {
+                path: GitPath {
+                  first: first,
+                  rest: all_components.skip(n: 1),
+                }
+              }
+          }
+      }
+  }
 }
 
 type GitObjectFormat
@@ -341,7 +552,7 @@ fn git_object_id_raw_octets(oid: GitObjectId) -> List<UInt8>? {
 
 type GitTreeEntryCanonicalParts {
   mode: NonEmptyStr
-  path: GitPath
+  name: GitTreeEntryName
   oid: GitObjectId
 }
 
@@ -349,16 +560,16 @@ fn git_tree_entry_canonical_parts(
   entry: TreeEntry,
 ) -> GitTreeEntryCanonicalParts {
   match entry {
-    RegularBlobEntry { path, oid } =>
-      GitTreeEntryCanonicalParts { mode: "100644", path: path, oid: oid }
-    ExecutableBlobEntry { path, oid } =>
-      GitTreeEntryCanonicalParts { mode: "100755", path: path, oid: oid }
-    SymlinkEntry { path, oid } =>
-      GitTreeEntryCanonicalParts { mode: "120000", path: path, oid: oid }
-    SubtreeEntry { path, oid } =>
-      GitTreeEntryCanonicalParts { mode: "40000", path: path, oid: oid }
-    GitlinkEntry { path, oid } =>
-      GitTreeEntryCanonicalParts { mode: "160000", path: path, oid: oid }
+    RegularBlobEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "100644", name: name, oid: oid }
+    ExecutableBlobEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "100755", name: name, oid: oid }
+    SymlinkEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "120000", name: name, oid: oid }
+    SubtreeEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "40000", name: name, oid: oid }
+    GitlinkEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "160000", name: name, oid: oid }
   }
 }
 
@@ -403,7 +614,7 @@ fn git_tree_canonical_payload_step(
                     ),
                   ),
                   items: append(
-                    parts.path.octets,
+                    git_tree_entry_name_octets(name: parts.name),
                     items: append([0], items: raw_oid),
                   ),
                 ),
@@ -472,7 +683,7 @@ fn git_commit_canonical_payload(
       "",
     ))
     |> join(separator: "")
-  let payload = join(
+  let header = join(
     [
       "tree ",
       git_object_id_content_hash(oid: commit.tree) as String,
@@ -480,8 +691,6 @@ fn git_commit_canonical_payload(
       parent_lines,
       git_author_wire_line(role: "author", author: commit.author),
       git_author_wire_line(role: "committer", author: commit.committer),
-      "\n",
-      commit.message as String,
       "\n",
     ],
     "",
@@ -497,7 +706,12 @@ fn git_commit_canonical_payload(
   match invalid {
     Absent =>
       GitCanonicalHashInputReady {
-        bytes: utf8_encode_bytes(s: payload)
+        bytes: octets_bytes(
+          o: append(
+            bytes_octets(b: utf8_encode_bytes(s: header)),
+            items: bytes_octets(b: commit.message),
+          ),
+        )
       }
     Present { value: oid } => GitCanonicalHashInputRefused {
       cause: GitCanonicalHashInputInvalidObjectId { oid: oid }
@@ -508,7 +722,7 @@ fn git_commit_canonical_payload(
 fn git_tag_canonical_payload(
   tag: AnnotatedTag,
 ) -> GitCanonicalHashInputOutcome {
-  let payload = join(
+  let header = join(
     [
       "object ",
       git_object_id_content_hash(oid: tag.target) as String,
@@ -521,15 +735,18 @@ fn git_tag_canonical_payload(
       "\n",
       git_author_wire_line(role: "tagger", author: tag.tagger),
       "\n",
-      tag.message as String,
-      "\n",
     ],
     "",
   )
   match git_object_id_raw_octets(oid: tag.target) {
     Present { value: _ } =>
       GitCanonicalHashInputReady {
-        bytes: utf8_encode_bytes(s: payload)
+        bytes: octets_bytes(
+          o: append(
+            bytes_octets(b: utf8_encode_bytes(s: header)),
+            items: bytes_octets(b: tag.message),
+          ),
+        )
       }
     Absent => GitCanonicalHashInputRefused {
       cause: GitCanonicalHashInputInvalidObjectId { oid: tag.target }
@@ -696,14 +913,18 @@ type GitTreeWireEntry {
   mode: NonEmptyStr
   object_type: NonEmptyStr
   oid: GitObjectId
-  path: GitPath
+  name: GitTreeWireName
 }
 
 type GitTreeDecodeRefusal
   = GitTreeModeObjectMismatch {
       mode: NonEmptyStr,
       object_type: NonEmptyStr,
-      path: GitPath,
+      name: GitTreeWireName,
+    }
+  | GitTreeEntryNameRefused {
+      name: GitTreeWireName,
+      cause: GitTreeEntryNameDecodeRefusal,
     }
 
 type GitTreeDecodeOutcome
@@ -753,44 +974,54 @@ fn git_tree_mode_object_type(mode: GitTreeMode) -> NonEmptyStr {
 
 fn git_tree_entry_from_mode(
   mode: GitTreeMode,
-  path: GitPath,
+  name: GitTreeEntryName,
   oid: GitObjectId,
 ) -> TreeEntry {
   match mode {
-    GitRegularBlobMode => RegularBlobEntry { path: path, oid: oid }
-    GitExecutableBlobMode => ExecutableBlobEntry { path: path, oid: oid }
-    GitSymlinkMode => SymlinkEntry { path: path, oid: oid }
-    GitSubtreeMode => SubtreeEntry { path: path, oid: oid }
-    GitlinkMode => GitlinkEntry { path: path, oid: oid }
+    GitRegularBlobMode => RegularBlobEntry { name: name, oid: oid }
+    GitExecutableBlobMode => ExecutableBlobEntry { name: name, oid: oid }
+    GitSymlinkMode => SymlinkEntry { name: name, oid: oid }
+    GitSubtreeMode => SubtreeEntry { name: name, oid: oid }
+    GitlinkMode => GitlinkEntry { name: name, oid: oid }
   }
 }
 
 fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
-  match git_decode_tree_mode(text: entry.mode) {
-    GitTreeModeRefused => GitTreeEntryDecodeRefused {
-      cause: GitTreeModeObjectMismatch {
-        mode: entry.mode,
-        object_type: entry.object_type,
-        path: entry.path,
-      }
-    }
-    GitTreeModeDecoded { mode } =>
-      if git_tree_mode_object_type(mode: mode) == entry.object_type {
-        GitTreeEntryDecoded {
-          entry: git_tree_entry_from_mode(
-            mode: mode,
-            path: entry.path,
-            oid: entry.oid,
-          )
+  match git_decode_tree_entry_name(wire: entry.name) {
+    GitTreeEntryNameDecodeRefused { cause } =>
+      GitTreeEntryDecodeRefused {
+        cause: GitTreeEntryNameRefused {
+          name: entry.name,
+          cause: cause,
         }
-      } else {
-        GitTreeEntryDecodeRefused {
+      }
+    GitTreeEntryNameDecoded { name } =>
+      match git_decode_tree_mode(text: entry.mode) {
+        GitTreeModeRefused => GitTreeEntryDecodeRefused {
           cause: GitTreeModeObjectMismatch {
             mode: entry.mode,
             object_type: entry.object_type,
-            path: entry.path,
+            name: entry.name,
           }
         }
+        GitTreeModeDecoded { mode } =>
+          if git_tree_mode_object_type(mode: mode) == entry.object_type {
+            GitTreeEntryDecoded {
+              entry: git_tree_entry_from_mode(
+                mode: mode,
+                name: name,
+                oid: entry.oid,
+              )
+            }
+          } else {
+            GitTreeEntryDecodeRefused {
+              cause: GitTreeModeObjectMismatch {
+                mode: entry.mode,
+                object_type: entry.object_type,
+                name: entry.name,
+              }
+            }
+          }
       }
   }
 }
@@ -1088,7 +1319,7 @@ fn git_ls_tree_z_row_step(
                         mode: mode,
                         object_type: object_type,
                         oid: oid,
-                        path: GitPath { octets: row.fourth },
+                        name: GitTreeWireName { octets: row.fourth },
                       }
                       match git_decode_tree_entry(entry: wire) {
                         GitTreeEntryDecodeRefused { cause } =>
@@ -1153,6 +1384,7 @@ type GitLsFilesStageZRefusal
   | GitLsFilesStageZModeRefused { mode: NonEmptyStr }
   | GitLsFilesStageZObjectIdRefused { cause: GitObjectIdTextRefusal }
   | GitLsFilesStageZStageRefused { stage: NonEmptyStr }
+  | GitLsFilesStageZPathRefused { cause: GitPathDecodeRefusal }
 
 type GitLsFilesStageZDecodeOutcome
   = GitLsFilesStageZDecoded { entries: List<GitIndexEntry> }
@@ -1208,21 +1440,29 @@ fn git_ls_files_stage_z_row_step(
                                 }
                               }
                             GitIndexStageDecoded { stage } =>
-                              let path = GitPath { octets: row.fourth }
-                              GitLsFilesStageZDecoded {
-                                entries: append(
-                                  entries,
-                                  items: [
-                                    GitIndexEntry {
-                                      entry: git_tree_entry_from_mode(
-                                        mode: mode,
-                                        path: path,
-                                        oid: oid,
-                                      ),
-                                      stage: stage,
-                                    },
-                                  ],
-                                )
+                              match git_decode_path_octets(
+                                octets: row.fourth,
+                              ) {
+                                GitPathDecodeRefused { cause } =>
+                                  GitLsFilesStageZRefused {
+                                    cause: GitLsFilesStageZPathRefused {
+                                      cause: cause
+                                    }
+                                  }
+                                GitPathDecoded { path } =>
+                                  GitLsFilesStageZDecoded {
+                                    entries: append(
+                                      entries,
+                                      items: [
+                                        GitIndexEntry {
+                                          path: path,
+                                          mode: mode,
+                                          oid: oid,
+                                          stage: stage,
+                                        },
+                                      ],
+                                    )
+                                  }
                               }
                           }
                       }
@@ -1257,16 +1497,51 @@ fn git_decode_ls_files_stage_z(
 
 fn git_project_tree_entry(entry: TreeEntry) -> GitTreeWireEntry {
   match entry {
-    RegularBlobEntry { path, oid } =>
-      GitTreeWireEntry { mode: "100644", object_type: "blob", oid: oid, path: path }
-    ExecutableBlobEntry { path, oid } =>
-      GitTreeWireEntry { mode: "100755", object_type: "blob", oid: oid, path: path }
-    SymlinkEntry { path, oid } =>
-      GitTreeWireEntry { mode: "120000", object_type: "blob", oid: oid, path: path }
-    SubtreeEntry { path, oid } =>
-      GitTreeWireEntry { mode: "040000", object_type: "tree", oid: oid, path: path }
-    GitlinkEntry { path, oid } =>
-      GitTreeWireEntry { mode: "160000", object_type: "commit", oid: oid, path: path }
+    RegularBlobEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "100644",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    ExecutableBlobEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "100755",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    SymlinkEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "120000",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    SubtreeEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "040000",
+        object_type: "tree",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    GitlinkEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "160000",
+        object_type: "commit",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
   }
 }
 
