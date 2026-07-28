@@ -13494,63 +13494,97 @@ fn is_top_level_lens_module(module: &str) -> bool {
     }
 }
 
-fn inert_lens_modules(
-    rows: &[DiscoveryRow],
-    path_imports: &std::collections::HashMap<String, Vec<String>>,
-    module_to_path: &std::collections::HashMap<String, String>,
-) -> Vec<String> {
-    let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+/// Reachability walk for the inert-lens hygiene census over the module-graph facts
+/// SELECTION tier (import edges + strict-tier reference edges) — the same
+/// `v2.lens.module_graph` authority affected-set selection reads. 6A repoint: replaces
+/// the deleted `build_floor_lens_import_graph`, which re-scanned the whole corpus into
+/// a second module-name-grain adjacency beside the facts build the roster already
+/// performs. One edge authority, walked at path grain; module names derive from the
+/// same facts' declaration rows. The legacy walk also carried undeclared raw import
+/// names in its reached set; `build_import_adjacency` drops edges to undeclared
+/// targets, and an undeclared name can never be a declared lens module, so the inert
+/// set is unchanged (proven by the legacy-oracle equivalence test:
+/// `facts_walk_matches_legacy_floor_lens_graph_on_live_corpus`).
+fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Vec<String> {
+    // Seed reachability from ALL *_test.dag files the facts scan saw (declared modules
+    // plus edge-bearing importers — a file with neither contributes no module and no
+    // edges, so omitting it cannot change reachability), not just enrolled rows, so
+    // witnesses in the execution corpus also count for lens coverage even though they
+    // are excluded from the main corpus rows.
+    let mut seeds: BTreeSet<String> = rows
+        .iter()
+        .map(|r| repo_relative_dag_path(&r.entry))
+        .collect();
+    for path in facts
+        .declared_paths
+        .iter()
+        .chain(facts.selection_adjacency.keys())
+    {
+        if path.ends_with("_test.dag") {
+            seeds.insert(path.clone());
+        }
+    }
+    let mut reached_paths: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = Vec::new();
-    let path_to_module: std::collections::HashMap<&String, &String> =
-        module_to_path.iter().map(|(m, p)| (p, m)).collect();
-    // Seed reachability from ALL *_test.dag files found in the source tree (not
-    // just enrolled rows), so that witnesses in the execution corpus also count
-    // for lens coverage even though they are excluded from the main corpus rows.
-    let entry_paths: std::collections::BTreeSet<String> = {
-        let mut s: std::collections::BTreeSet<String> = rows
-            .iter()
-            .map(|r| repo_relative_dag_path(&r.entry))
-            .collect();
-        for path in path_imports.keys() {
-            if path.ends_with("_test.dag") {
-                s.insert(path.clone());
-            }
+    for path in seeds {
+        if reached_paths.insert(path.clone()) {
+            queue.push(path);
         }
-        s
-    };
-    for ep in &entry_paths {
-        if let Some(module) = path_to_module.get(ep) {
-            if reached.insert((*module).clone()) {
-                queue.push((*module).clone());
-            }
-        }
-        if let Some(imports) = path_imports.get(ep) {
-            for imp in imports {
-                if reached.insert(imp.clone()) {
-                    queue.push(imp.clone());
-                }
+    }
+    while let Some(path) = queue.pop() {
+        for target in facts.selection_adjacency.get(&path).into_iter().flatten() {
+            if reached_paths.insert(target.clone()) {
+                queue.push(target.clone());
             }
         }
     }
-    while let Some(module) = queue.pop() {
-        if let Some(mpath) = module_to_path.get(&module) {
-            if let Some(imports) = path_imports.get(mpath) {
-                for imp in imports {
-                    if reached.insert(imp.clone()) {
-                        queue.push(imp.clone());
-                    }
-                }
-            }
-        }
-    }
-    let mut inert: Vec<String> = module_to_path
-        .keys()
-        .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+    let reached_modules: HashSet<&String> = reached_paths
+        .iter()
+        .filter_map(|p| facts.path_to_module.get(p))
+        .collect();
+    let mut inert: Vec<String> = facts
+        .nodes
+        .iter()
+        .map(|n| &n.module)
+        .filter(|m| is_top_level_lens_module(m) && !reached_modules.contains(m))
         .cloned()
         .collect();
     inert.sort();
     inert.dedup();
     inert
+}
+
+/// Top-level `v2.lens.*` (module → path) rows from the module-graph facts, plus the
+/// subset recording a `construction_justification`. Fail-closed per file: a lens file
+/// that cannot be read refuses, never counts as justified (the arm the deleted
+/// `build_floor_lens_import_graph` carried for the whole corpus, kept here scoped to
+/// the lens declarations — the only file reads left on this census path).
+fn lens_justification_census(
+    facts: &ModuleGraphFactsLive,
+) -> Result<
+    (
+        std::collections::HashMap<String, String>,
+        std::collections::BTreeSet<String>,
+    ),
+    String,
+> {
+    let ws = workspace_root();
+    let mut lens_module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut justified: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for node in &facts.nodes {
+        if !is_top_level_lens_module(&node.module) {
+            continue;
+        }
+        let rel = workspace_relative_repo_path(&node.path);
+        let content =
+            std::fs::read_to_string(ws.join(&rel)).map_err(|e| format!("read {rel}: {e}"))?;
+        if declares_construction_justification(&content) {
+            justified.insert(node.module.clone());
+        }
+        lens_module_to_path.insert(node.module.clone(), rel);
+    }
+    Ok((lens_module_to_path, justified))
 }
 
 /// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
@@ -19969,11 +20003,11 @@ mod source_root_ingest_manifest_tests {
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        default_source_roots, discover_floor_witness_roster, inert_lens_modules,
-        is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
-        DiscoveryRow,
+        build_import_adjacency, build_module_graph_facts_live, default_source_roots,
+        discover_floor_witness_roster, inert_lens_modules, is_top_level_lens_module,
+        witness_discovery_scan_dirs, witness_exclusion_substrings, DiscoveryRow,
+        ImportResolutionFactRaw, ModuleDeclarationFactRaw, ModuleGraphFactsLive,
     };
-    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -19990,6 +20024,52 @@ mod inert_lens_hygiene_tests {
             entry: entry.to_string(),
             function: function.to_string(),
             reads_live_tree: false,
+        }
+    }
+
+    /// Synthetic `ModuleGraphFactsLive` through the SAME construction path the live
+    /// build uses (`build_import_adjacency`), so the walk tests exercise real
+    /// adjacency construction, not a parallel hand map.
+    fn synthetic_facts(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> ModuleGraphFactsLive {
+        let node_rows: Vec<ModuleDeclarationFactRaw> = nodes
+            .iter()
+            .map(|(module, path)| ModuleDeclarationFactRaw {
+                module: module.to_string(),
+                path: path.to_string(),
+            })
+            .collect();
+        let declared_modules: std::collections::HashSet<&str> =
+            nodes.iter().map(|(module, _)| *module).collect();
+        let edge_rows: Vec<ImportResolutionFactRaw> = edges
+            .iter()
+            .map(|(path, target)| ImportResolutionFactRaw {
+                path: path.to_string(),
+                import_module: target.to_string(),
+                target_declared: declared_modules.contains(*target),
+            })
+            .collect();
+        let adjacency = build_import_adjacency(&edge_rows, &node_rows);
+        let declared_paths: std::collections::HashSet<String> = node_rows
+            .iter()
+            .map(|n| super::workspace_relative_repo_path(&n.path))
+            .collect();
+        let path_to_module: super::HashMap<String, String> = node_rows
+            .iter()
+            .map(|n| {
+                (
+                    super::workspace_relative_repo_path(&n.path),
+                    n.module.clone(),
+                )
+            })
+            .collect();
+        ModuleGraphFactsLive {
+            edges: edge_rows,
+            nodes: node_rows,
+            adjacency: adjacency.clone(),
+            selection_adjacency: adjacency,
+            declared_paths,
+            reference_unaccounted: std::collections::HashSet::new(),
+            path_to_module,
         }
     }
 
@@ -20011,40 +20091,251 @@ mod inert_lens_hygiene_tests {
 
     #[test]
     fn detector_red_on_unreached_green_on_wired() {
-        let mut module_to_path: HashMap<String, String> = HashMap::new();
-        let mut path_imports: HashMap<String, Vec<String>> = HashMap::new();
-        module_to_path.insert(
-            "v2.lens.demo".to_string(),
-            "src/v2/lens/demo.dag".to_string(),
-        );
-        path_imports.insert("src/v2/lens/demo.dag".to_string(), vec![]);
-
-        let inert = inert_lens_modules(&[], &path_imports, &module_to_path);
+        // Discriminating RED for the facts-tier walk: an unwired lens flags inert…
+        let facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
+        let inert = inert_lens_modules(&[], &facts);
         assert_eq!(inert, vec!["v2.lens.demo".to_string()]);
 
-        module_to_path.insert(
-            "v2.test.lens_demo.w".to_string(),
-            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
-        );
-        path_imports.insert(
-            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
-            vec!["v2.lens.demo".to_string()],
+        // …wiring a discovered witness clears it…
+        let facts = synthetic_facts(
+            &[
+                ("v2.lens.demo", "src/v2/lens/demo.dag"),
+                (
+                    "v2.test.lens_demo.w",
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                ),
+            ],
+            &[(
+                "src/v2/workflow/lens_demo_family_eval_test.dag",
+                "v2.lens.demo",
+            )],
         );
         let rows = vec![row("src/v2/workflow/lens_demo_family_eval_test.dag", "w")];
         assert!(
-            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            inert_lens_modules(&rows, &facts).is_empty(),
             "wiring a discovered witness must clear the inert flag"
         );
 
-        module_to_path.insert("v2.lens.sib".to_string(), "src/v2/lens/sib.dag".to_string());
-        path_imports.insert("src/v2/lens/sib.dag".to_string(), vec![]);
-        path_imports.insert(
-            "src/v2/lens/demo.dag".to_string(),
-            vec!["v2.lens.sib".to_string()],
+        // …and reachability is transitive through the selection adjacency.
+        let facts = synthetic_facts(
+            &[
+                ("v2.lens.demo", "src/v2/lens/demo.dag"),
+                ("v2.lens.sib", "src/v2/lens/sib.dag"),
+                (
+                    "v2.test.lens_demo.w",
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                ),
+            ],
+            &[
+                (
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                    "v2.lens.demo",
+                ),
+                ("src/v2/lens/demo.dag", "v2.lens.sib"),
+            ],
         );
         assert!(
-            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            inert_lens_modules(&rows, &facts).is_empty(),
             "a transitively-reached sibling lens must count as wired"
+        );
+    }
+
+    // ── 6A closure repoint receipts ─────────────────────────────────────────────
+    //
+    // Legacy oracle, retained TEST-SIDE only (the Phase-1 pattern:
+    // `resolve_transitively_bfs_legacy`): the deleted `build_floor_lens_import_graph`
+    // corpus scan + module-name-grain walk, kept to prove the facts-tier walk computes
+    // the identical inert set and edge relation over the live corpus.
+
+    fn floor_lens_graph_legacy(
+        source_roots: &[String],
+    ) -> (
+        std::collections::HashMap<String, Vec<String>>,
+        std::collections::HashMap<String, String>,
+    ) {
+        let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        let mut module_to_path: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for root in source_roots {
+            let mut dag_files: Vec<std::path::PathBuf> = Vec::new();
+            super::collect_dag_files_tolerant(std::path::Path::new(root), &mut dag_files);
+            dag_files.sort();
+            for path in dag_files {
+                let entry = path.to_string_lossy().into_owned();
+                let content = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+                let rel = super::repo_relative_dag_path(&entry);
+                if let Some(m) = super::extract_module_path(&content) {
+                    module_to_path.insert(m, rel.clone());
+                }
+                path_imports.insert(rel, super::extract_import_paths(&content));
+            }
+        }
+        for edge in super::reference_edges_as_import_facts(
+            &super::reference_resolution_facts(source_roots, source_roots, &[]),
+            true,
+        ) {
+            let importer = super::repo_relative_dag_path(&edge.path);
+            let entry = path_imports.entry(importer).or_default();
+            if !entry.contains(&edge.import_module) {
+                entry.push(edge.import_module);
+            }
+        }
+        (path_imports, module_to_path)
+    }
+
+    fn inert_lens_modules_legacy(
+        rows: &[DiscoveryRow],
+        path_imports: &std::collections::HashMap<String, Vec<String>>,
+        module_to_path: &std::collections::HashMap<String, String>,
+    ) -> Vec<String> {
+        let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut queue: Vec<String> = Vec::new();
+        let path_to_module: std::collections::HashMap<&String, &String> =
+            module_to_path.iter().map(|(m, p)| (p, m)).collect();
+        let entry_paths: std::collections::BTreeSet<String> = {
+            let mut s: std::collections::BTreeSet<String> = rows
+                .iter()
+                .map(|r| super::repo_relative_dag_path(&r.entry))
+                .collect();
+            for path in path_imports.keys() {
+                if path.ends_with("_test.dag") {
+                    s.insert(path.clone());
+                }
+            }
+            s
+        };
+        for ep in &entry_paths {
+            if let Some(module) = path_to_module.get(ep) {
+                if reached.insert((*module).clone()) {
+                    queue.push((*module).clone());
+                }
+            }
+            if let Some(imports) = path_imports.get(ep) {
+                for imp in imports {
+                    if reached.insert(imp.clone()) {
+                        queue.push(imp.clone());
+                    }
+                }
+            }
+        }
+        while let Some(module) = queue.pop() {
+            if let Some(mpath) = module_to_path.get(&module) {
+                if let Some(imports) = path_imports.get(mpath) {
+                    for imp in imports {
+                        if reached.insert(imp.clone()) {
+                            queue.push(imp.clone());
+                        }
+                    }
+                }
+            }
+        }
+        let mut inert: Vec<String> = module_to_path
+            .keys()
+            .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+            .cloned()
+            .collect();
+        inert.sort();
+        inert.dedup();
+        inert
+    }
+
+    #[test]
+    fn facts_walk_matches_legacy_floor_lens_graph_on_live_corpus() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let (path_imports, module_to_path) = floor_lens_graph_legacy(&roots);
+        let facts = build_module_graph_facts_live(&roots);
+
+        // Edge-set equivalence at the grain the walk consumes: (importer path →
+        // declared target module). The legacy map carries undeclared raw names and the
+        // facts adjacency carries paths; projected to the shared grain they must agree
+        // row-for-row.
+        let mut mismatches: Vec<String> = Vec::new();
+        for (path, imports) in &path_imports {
+            let legacy_targets: std::collections::BTreeSet<String> = imports
+                .iter()
+                .filter(|m| module_to_path.contains_key(*m))
+                .cloned()
+                .collect();
+            let facts_targets: std::collections::BTreeSet<String> = facts
+                .selection_adjacency
+                .get(path)
+                .into_iter()
+                .flatten()
+                .filter_map(|p| facts.path_to_module.get(p).cloned())
+                .collect();
+            if legacy_targets != facts_targets {
+                mismatches.push(format!(
+                    "{path}: legacy {legacy_targets:?} vs facts {facts_targets:?}"
+                ));
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "6A repoint: selection-tier edge sets diverged from the legacy corpus scan \
+             ({} importer(s)):\n{}",
+            mismatches.len(),
+            mismatches.join("\n")
+        );
+
+        // Inert-set equivalence (the census answer itself).
+        let legacy = inert_lens_modules_legacy(&[], &path_imports, &module_to_path);
+        let repointed = inert_lens_modules(&[], &facts);
+        assert_eq!(
+            repointed, legacy,
+            "6A repoint: facts-tier inert set diverged from the legacy walk"
+        );
+
+        // Discriminating RED control: sever the edge tier and the same comparison must
+        // diverge — proves the equality receipts above can go red on a real divergence.
+        let mut severed = facts.clone();
+        severed.selection_adjacency = super::HashMap::new();
+        let inert_severed = inert_lens_modules(&[], &severed);
+        assert!(
+            !inert_severed.is_empty(),
+            "severed-edge control: with no edges some lens must flag inert"
+        );
+        assert_ne!(
+            inert_severed, legacy,
+            "severed-edge control must diverge from the legacy answer \
+             (the equality receipt discriminates)"
+        );
+    }
+
+    // 6A cost receipt: the whole lens census (reach + justification) runs on ONE
+    // module-graph facts build — the deleted second corpus scan cannot come back
+    // silently. Uses the same instruments as
+    // `resolve_transitively_threads_prebuilt_facts_without_rescan`.
+    #[test]
+    fn lens_census_single_facts_build_receipt() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        super::reset_module_graph_facts_cache_for_test();
+        super::reset_module_graph_facts_build_count_for_test();
+        super::reset_import_resolution_facts_call_counts_for_test();
+        let facts = build_module_graph_facts_live(&roots);
+        let _ = inert_lens_modules(&[], &facts);
+        let (lens_module_to_path, justified) =
+            super::lens_justification_census(&facts).expect("justification census");
+        let _ = super::unjustified_lens_modules(&lens_module_to_path, &justified);
+        assert_eq!(
+            super::module_graph_facts_build_count_for_test(),
+            1,
+            "one facts build must serve the whole lens census"
+        );
+        assert_eq!(
+            super::import_resolution_facts_call_count_for_test(),
+            1,
+            "the census must not trigger a second import-facts corpus scan"
+        );
+        assert_eq!(
+            super::module_declaration_facts_call_count_for_test(),
+            1,
+            "the census must not trigger a second module-declaration scan"
         );
     }
 
