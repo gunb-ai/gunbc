@@ -10641,6 +10641,113 @@ fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter:
         .collect()
 }
 
+struct ScopedRunObservation {
+    ctx: v1_interpreter::InterpContext,
+    entry_file: String,
+    function: String,
+    addressable: bool,
+    emoji: bool,
+    open: bool,
+}
+
+impl ScopedRunObservation {
+    fn resolve(source_roots: &[String], entry_file: &str, function: &str) -> Result<Self, String> {
+        use std::io::IsTerminal;
+        let authority = "dag/gunbc/observation_seed_render.dag";
+        let (graph, indices) =
+            resolve_entry_graph_shared(source_roots, authority).map_err(|e| {
+                format!("scoped run observation authority resolve failed for {authority}: {e}")
+            })?;
+        Ok(Self {
+            ctx: make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
+            entry_file: entry_file.to_string(),
+            function: function.to_string(),
+            addressable: std::io::stderr().is_terminal(),
+            emoji: std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true"),
+            open: false,
+        })
+    }
+
+    fn emit(&mut self, projection: &str, detail: Option<(&str, &str)>) -> Result<(), String> {
+        use std::io::Write;
+        use v1_interpreter::Value;
+
+        let mut args = vec![
+            (
+                Some("entry_file".to_string()),
+                Value::Str(self.entry_file.clone()),
+            ),
+            (
+                Some("function".to_string()),
+                Value::Str(self.function.clone()),
+            ),
+        ];
+        if let Some((name, value)) = detail {
+            args.push((Some(name.to_string()), Value::Str(value.to_string())));
+        }
+        args.extend([
+            (
+                Some("addressable".to_string()),
+                Value::Bool(self.addressable),
+            ),
+            (Some("emoji".to_string()), Value::Bool(self.emoji)),
+            (Some("prior_open".to_string()), Value::Bool(self.open)),
+        ]);
+        let projected =
+            v1_interpreter::run_in_context_with_args(&self.ctx, projection, &args, false)
+                .map_err(|e| format!("scoped run observation projection failed: {e}"))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = &projected
+        else {
+            return Err(format!(
+                "scoped run observation projection returned {}, expected ScopedRunWriteProjection",
+                projected.type_label_public()
+            ));
+        };
+        if self.ctx.sym_eq(*variant_name, "ScopedRunWriteRefused") {
+            let cause = match self.ctx.field(fields, "cause") {
+                Some(Value::Str(cause)) => cause,
+                _ => "typed refusal without a String cause",
+            };
+            return Err(format!("scoped run observation refused: {cause}"));
+        }
+        if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
+            return Err("scoped run observation returned an unknown projection arm".to_string());
+        }
+        let bytes = match self.ctx.field(fields, "bytes") {
+            Some(Value::Str(bytes)) => bytes,
+            _ => return Err("scoped run observation projected non-String bytes".to_string()),
+        };
+        let next_open = match self.ctx.field(fields, "next_open") {
+            Some(Value::Bool(next_open)) => *next_open,
+            _ => return Err("scoped run observation projected non-Bool state".to_string()),
+        };
+        let mut stderr = std::io::stderr().lock();
+        stderr
+            .write_all(bytes.as_bytes())
+            .and_then(|_| stderr.flush())
+            .map_err(|e| format!("scoped run observation stderr write failed: {e}"))?;
+        self.open = next_open;
+        Ok(())
+    }
+
+    fn begin(&mut self) -> Result<(), String> {
+        self.emit("scoped_run_begin_write", None)
+    }
+    fn finish(&mut self) -> Result<(), String> {
+        self.emit("scoped_run_final_write", None)
+    }
+    fn refused(&mut self, cause: &str) -> Result<(), String> {
+        self.emit("scoped_run_refused_write", Some(("diagnostic", cause)))
+    }
+    fn failed(&mut self, cause: &str) -> Result<(), String> {
+        self.emit("scoped_run_failed_write", Some(("error", cause)))
+    }
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -10748,7 +10855,20 @@ pub fn handle_run_with_options(
         }
     };
 
-    eprintln!("running {}()...", function);
+    let mut scoped_observation = entry_file.as_deref().map(|entry| {
+        ScopedRunObservation::resolve(&source_roots, entry, &function).unwrap_or_else(|cause| {
+            eprintln!("error: {cause}");
+            std::process::exit(1);
+        })
+    });
+    if let Some(observation) = scoped_observation.as_mut() {
+        observation.begin().unwrap_or_else(|cause| {
+            eprintln!("error: {cause}");
+            std::process::exit(1);
+        });
+    } else {
+        eprintln!("running {}()...", function);
+    }
     let execution_mode = if dry_run {
         v1_interpreter::ExecutionMode::Hermetic
     } else {
@@ -10764,47 +10884,99 @@ pub fn handle_run_with_options(
         v1_interpreter::print_eval_recompute_trace(&ctx);
         match run_outcome {
             Ok(val) => {
-                println!("{}", val);
                 if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
                     dump_residual_hunt_instrumentation();
                 }
                 if claim_run {
                     match &val {
-                        v1_interpreter::Value::Bool(false) => std::process::exit(1),
-                        v1_interpreter::Value::Bool(true) => return,
+                        v1_interpreter::Value::Bool(false) => {
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation.refused("claim returned false").unwrap_or_else(
+                                    |cause| {
+                                        eprintln!("error: {cause}");
+                                        std::process::exit(1);
+                                    },
+                                );
+                            }
+                            println!("{}", val);
+                            std::process::exit(1)
+                        }
+                        v1_interpreter::Value::Bool(true) => {
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation.finish().unwrap_or_else(|cause| {
+                                    eprintln!("error: {cause}");
+                                    std::process::exit(1);
+                                });
+                            }
+                            println!("{}", val);
+                            return;
+                        }
                         other => {
-                            eprintln!(
-                                "error: function `{}` returned `{}`, not `Bool`. \
-                                 With --claim-run the entry must return Bool (false → exit 1).",
+                            let cause = format!(
+                                "function `{}` returned `{}`, not Bool; --claim-run requires Bool",
                                 function, other
                             );
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation
+                                    .refused(&cause)
+                                    .unwrap_or_else(|projection_cause| {
+                                        eprintln!("error: {projection_cause}");
+                                        std::process::exit(1);
+                                    });
+                            }
+                            println!("{}", val);
                             std::process::exit(2);
                         }
                     }
                 }
                 match classify_exit(&val, &ctx) {
-                    ExitClass::Success => {}
-                    ExitClass::Failure { code, reason } => {
-                        if let Some(message) = reason {
-                            eprintln!("{message}");
+                    ExitClass::Success => {
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation.finish().unwrap_or_else(|cause| {
+                                eprintln!("error: {cause}");
+                                std::process::exit(1);
+                            });
                         }
+                    }
+                    ExitClass::Failure { code, reason } => {
+                        let cause = reason.unwrap_or_else(|| format!("process exited {code}"));
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation
+                                .failed(&cause)
+                                .unwrap_or_else(|projection_cause| {
+                                    eprintln!("error: {projection_cause}");
+                                    std::process::exit(1);
+                                });
+                        }
+                        println!("{}", val);
                         std::process::exit(code);
                     }
                     ExitClass::NotProcessExit { type_name } => {
-                        eprintln!(
-                            "error: function `{}` returned `{}`, not `ProcessExit`. \
-                             Functions invoked via `dag run` must return std/process.dag's \
-                             ProcessExit so the host can map success/failure to an exit code. \
-                             Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                             --claim-run for Bool witness entry points under src/v2.",
+                        let cause = format!(
+                            "function `{}` returned `{}`, not ProcessExit",
                             function, type_name
                         );
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation
+                                .refused(&cause)
+                                .unwrap_or_else(|projection_cause| {
+                                    eprintln!("error: {projection_cause}");
+                                    std::process::exit(1);
+                                });
+                        }
+                        println!("{}", val);
                         std::process::exit(2);
                     }
                 }
+                println!("{}", val);
             }
             Err(e) => {
-                eprintln!("runtime error: {}", e);
+                if let Some(observation) = scoped_observation.as_mut() {
+                    observation.failed(&e.to_string()).unwrap_or_else(|cause| {
+                        eprintln!("error: {cause}");
+                        std::process::exit(1);
+                    });
+                }
                 std::process::exit(1);
             }
         }

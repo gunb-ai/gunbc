@@ -7,6 +7,8 @@ import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_po
 import std.disposition { Disposition, Terminal }
 import std.observation {
   ObservationSubject,
+  RunSegment,
+  EntrySegment,
   BatchSegment,
   PhaseSegment,
   ModuleSegment,
@@ -17,11 +19,28 @@ import std.observation {
   Concluded,
   Done,
   Failed,
+  Refused,
+  TimedOut,
+  Final,
   AttentionBasis,
   Anomaly,
   SchedulerHold,
   PsiPressure,
   CurrentHighWater,
+}
+import std.render { RenderCapability }
+import gunbc.observation_tty_render {
+  TtyEmissionProjected,
+  TtyEmissionRefused,
+  tty_event_emission_under,
+  tty_render_emission,
+}
+import extdeps.render.terminal {
+  DynamicLineClosed,
+  DynamicLineOpen,
+  TerminalWriteProjected,
+  TerminalWriteRefused,
+  project_terminal_write,
 }
 import gunbc.observation_ci_render {
   ci_event_line,
@@ -39,6 +58,154 @@ data observation_seed_render_basis_note: String = "The attention basis governs P
 
 fn seed_tier(emoji: Bool) -> Tier {
   if emoji { Emoji } else { Unicode }
+}
+
+type ScopedRunWriteProjection
+  = ScopedRunWriteProjected { bytes: String, next_open: Bool }
+  | ScopedRunWriteRefused { cause: NonEmptyStr }
+
+data scoped_run_observation_note: String = "The first real density-aware seed consumer. The user program's entry graph stays independent: cli_run resolves this authority as a dedicated graph and transports only the scoped run facts it already owns. This module constructs the Run/Entry/Phase subject, derives attention and cursor action through observation_tty_render, and delegates every terminal byte and dynamic-line transition to extdeps.render.terminal. The seed may write returned bytes and retain next_open; it may not spell a fallback line or reinterpret a refusal."
+
+fn scoped_run_subject(entry_file: NonEmptyStr, function: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "gunbc run" as NonEmptyStr },
+      EntrySegment { source_path: entry_file },
+      PhaseSegment { name: function }
+    ]
+  }
+}
+
+fn scoped_run_capability(addressable: Bool, emoji: Bool) -> RenderCapability {
+  RenderCapability {
+    color: false,
+    tier: seed_tier(emoji: emoji),
+    cursor_addressable: addressable
+  }
+}
+
+fn scoped_run_project(
+  event: ObservationEvent,
+  addressable: Bool,
+  emoji: Bool,
+  prior_open: Bool
+) -> ScopedRunWriteProjection {
+  let cap = scoped_run_capability(addressable: addressable, emoji: emoji)
+  match tty_event_emission_under(
+    event: event,
+    basis: MeasuredUnavailable { cause: "scoped run has no attention basis" as NonEmptyStr },
+    cap: cap
+  ) {
+    TtyEmissionRefused { cause: c } => ScopedRunWriteRefused { cause: c }
+    TtyEmissionProjected { emission: e } =>
+      match project_terminal_write(
+        prior: if prior_open { DynamicLineOpen } else { DynamicLineClosed },
+        requested: e.cursor,
+        capability: cap,
+        rendered: tty_render_emission(emission: e, tier: cap.tier)
+      ) {
+        TerminalWriteRefused { cause: c } => ScopedRunWriteRefused { cause: c }
+        TerminalWriteProjected { bytes: b, next: n } =>
+          ScopedRunWriteProjected {
+            bytes: b,
+            next_open: match n {
+              DynamicLineOpen => true
+              DynamicLineClosed => false
+            }
+          }
+      }
+  }
+}
+
+fn scoped_run_event(
+  entry_file: NonEmptyStr,
+  function: NonEmptyStr,
+  transition: std.observation.ObservationTransition
+) -> ObservationEvent {
+  ObservationEvent {
+    subject: scoped_run_subject(entry_file: entry_file, function: function),
+    transition: transition,
+    wall: MeasuredUnavailable { cause: "scoped run wall is not measured" as NonEmptyStr },
+    rss: MeasuredUnavailable { cause: "scoped run rss is not sampled" as NonEmptyStr }
+  }
+}
+
+fn scoped_run_begin_write(entry_file: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project(
+    event: scoped_run_event(entry_file: entry_file, function: function, transition: Begin),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_final_write(entry_file: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project(
+    event: scoped_run_event(entry_file: entry_file, function: function, transition: Concluded { outcome: Final { shown_failures: 0 } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_refused_write(entry_file: NonEmptyStr, function: NonEmptyStr, diagnostic: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project(
+    event: scoped_run_event(entry_file: entry_file, function: function, transition: Concluded { outcome: Refused { diagnostic: diagnostic } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_failed_write(entry_file: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project(
+    event: scoped_run_event(entry_file: entry_file, function: function, transition: Concluded { outcome: Failed { error: error, output: "" } }),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_timed_out_write(entry_file: NonEmptyStr, function: NonEmptyStr, budget_ms: Nat, elapsed_ms: Nat, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  scoped_run_project(
+    event: scoped_run_event(
+      entry_file: entry_file,
+      function: function,
+      transition: Concluded {
+        outcome: TimedOut {
+          budget: millisecond(count: budget_ms),
+          elapsed: millisecond(count: elapsed_ms)
+        }
+      }
+    ),
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
+}
+
+fn scoped_run_routine_measured_without_basis(
+  entry_file: NonEmptyStr,
+  function: NonEmptyStr,
+  elapsed_ms: Nat,
+  addressable: Bool,
+  emoji: Bool,
+  prior_open: Bool
+) -> ScopedRunWriteProjection {
+  let event = ObservationEvent {
+    subject: scoped_run_subject(entry_file: entry_file, function: function),
+    transition: Concluded { outcome: Done },
+    wall: MeasuredValue {
+      value: millisecond_to_nanosecond(m: millisecond(count: elapsed_ms))
+    },
+    rss: MeasuredUnavailable { cause: "scoped run rss is not sampled" as NonEmptyStr }
+  }
+  scoped_run_project(
+    event: event,
+    addressable: addressable,
+    emoji: emoji,
+    prior_open: prior_open
+  )
 }
 
 fn seed_phase_basis(overhead_ms: Nat) -> AttentionBasis {

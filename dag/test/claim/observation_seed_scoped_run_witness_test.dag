@@ -1,0 +1,155 @@
+module test.claim.observation_seed_scoped_run_witness
+
+import std.types { Bool }
+import extdeps.render.ansi {
+  ansi_carriage_return,
+  ansi_line_feed,
+  ansi_erase_entire_line,
+}
+import gunbc.observation_seed_render {
+  ScopedRunWriteProjected,
+  ScopedRunWriteRefused,
+  scoped_run_begin_write,
+  scoped_run_final_write,
+  scoped_run_refused_write,
+  scoped_run_failed_write,
+  scoped_run_timed_out_write,
+  scoped_run_routine_measured_without_basis,
+}
+
+fn entry() -> NonEmptyStr {
+  "dag/example/scoped_run.dag" as NonEmptyStr
+}
+
+fn function() -> NonEmptyStr {
+  "check_scoped_run" as NonEmptyStr
+}
+
+test fn scoped_run_pty_begin_projects_exact_overwrite_bytes_and_open_state() -> Bool {
+  match scoped_run_begin_write(
+    entry_file: entry(),
+    function: function(),
+    addressable: true,
+    emoji: false,
+    prior_open: false
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      b == concat(
+        ansi_carriage_return,
+        concat(ansi_erase_entire_line(), "◐ started check_scoped_run")
+      ) && n
+  }
+}
+
+test fn scoped_run_pipe_begin_appends_without_terminal_controls() -> Bool {
+  match scoped_run_begin_write(
+    entry_file: entry(),
+    function: function(),
+    addressable: false,
+    emoji: false,
+    prior_open: false
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      b == concat("◐ started check_scoped_run", ansi_line_feed) && !n
+  }
+}
+
+test fn scoped_run_refused_is_persistent_append_and_closes_open_line() -> Bool {
+  match scoped_run_refused_write(
+    entry_file: entry(),
+    function: function(),
+    diagnostic: "claim returned non-Bool" as NonEmptyStr,
+    addressable: true,
+    emoji: false,
+    prior_open: true
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      b == concat(
+        ansi_carriage_return,
+        concat(
+          ansi_erase_entire_line(),
+          concat(
+            "⛔ check_scoped_run refused: claim returned non-Bool (duration unmeasured: scoped run wall is not measured)",
+            ansi_line_feed
+          )
+        )
+      ) && !n
+  }
+}
+
+test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
+  match scoped_run_failed_write(
+    entry_file: entry(),
+    function: function(),
+    error: "runtime failed" as NonEmptyStr,
+    addressable: true,
+    emoji: false,
+    prior_open: false
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      string_contains(s: b, pattern: "failed: runtime failed") && string_contains(s: b, pattern: "\n") && !n
+  } &&
+  match scoped_run_timed_out_write(
+    entry_file: entry(),
+    function: function(),
+    budget_ms: 10,
+    elapsed_ms: 11,
+    addressable: true,
+    emoji: false,
+    prior_open: false
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      string_contains(s: b, pattern: "timed out after") && string_contains(s: b, pattern: "\n") && !n
+  }
+}
+
+test fn scoped_run_clean_final_appends_and_closes_dynamic_line() -> Bool {
+  match scoped_run_final_write(
+    entry_file: entry(),
+    function: function(),
+    addressable: true,
+    emoji: false,
+    prior_open: true
+  ) {
+    ScopedRunWriteRefused { cause: _ } => false
+    ScopedRunWriteProjected { bytes: b, next_open: n } =>
+      string_contains(s: b, pattern: ansi_carriage_return) &&
+      string_contains(s: b, pattern: ansi_erase_entire_line()) &&
+      string_contains(s: b, pattern: "finished with 0 problems shown") &&
+      string_contains(s: b, pattern: "\n") &&
+      !n
+  }
+}
+
+test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -> Bool {
+  match scoped_run_routine_measured_without_basis(
+    entry_file: entry(),
+    function: function(),
+    elapsed_ms: 7,
+    addressable: true,
+    emoji: false,
+    prior_open: false
+  ) {
+    ScopedRunWriteProjected { bytes: _, next_open: _ } => false
+    ScopedRunWriteRefused { cause: c } => c == "scoped run has no attention basis"
+  }
+}
+
+test fn scoped_run_propagates_terminal_state_refusal() -> Bool {
+  match scoped_run_begin_write(
+    entry_file: entry(),
+    function: function(),
+    addressable: false,
+    emoji: false,
+    prior_open: true
+  ) {
+    ScopedRunWriteProjected { bytes: _, next_open: _ } => false
+    ScopedRunWriteRefused { cause: c } =>
+      c == "non-addressable terminal cannot continue an open dynamic line"
+  }
+}
