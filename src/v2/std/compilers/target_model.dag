@@ -98,6 +98,10 @@ import v2.std.node {
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,
+<<<<<<< HEAD
+=======
+  coproduct_nullary_inhabitant_by_discriminant,
+>>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
   find_arrow_body_child,
   find_named_child,
   node_labeled_child_edges,
@@ -9117,6 +9121,382 @@ type TargetCollectionRealization {
   text_carrier: Optional<TargetTextCarrier>
 }
 
+<<<<<<< HEAD
+=======
+type TargetDeriveSupplementalGenericBoundContract {
+  derive_trait: ReprGroundingDeriveTrait
+  requirements: List<TargetDeriveSupplementalGenericBoundRequirement>
+}
+
+type TargetDeriveSupplementalGenericBoundRequirement {
+  representation_parameter: Symbol
+  required_trait: ReprGroundingDeriveTrait
+}
+
+fn target_grounding_derive_trait_discriminant(
+  derive_trait: ReprGroundingDeriveTrait
+) -> Symbol {
+  discriminant(v: derive_trait)
+}
+
+fn target_representation_choice_has_parameter(
+  choice: TargetRepresentationChoice,
+  representation_parameter: Symbol
+) -> Bool {
+  any(
+    xs: choice.representation_parameters,
+    predicate: fn(candidate) { candidate == representation_parameter }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_requirement_from_node(
+  node: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundRequirement> {
+  bind_outcome(
+    o: find_named_child(
+      root: node,
+      name: ^target_derive_supplemental_generic_bound_requirement_field_representation_parameter
+    ),
+    f: fn(parameter_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: parameter_node),
+        f: fn(representation_parameter) {
+          bind_outcome(
+            o: find_named_child(
+              root: node,
+              name: ^target_derive_supplemental_generic_bound_requirement_field_required_trait
+            ),
+            f: fn(required_trait_node) {
+              bind_outcome(
+                o: target_collection_node_atom_identity(node: required_trait_node),
+                f: fn(required_trait_id) {
+                  bind_outcome(
+                    o: coproduct_nullary_inhabitant_by_discriminant(
+                      type_name: ^ReprGroundingDeriveTrait,
+                      discriminant_of: target_grounding_derive_trait_discriminant,
+                      wanted: required_trait_id
+                    ),
+                    f: fn(required_trait) {
+                      outcome_accepted(
+                        TargetDeriveSupplementalGenericBoundRequirement {
+                          representation_parameter: representation_parameter,
+                          required_trait: required_trait
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_from_node(
+  node: Node
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  bind_outcome(
+    o: find_named_child(
+      root: node,
+      name: ^target_derive_supplemental_generic_bound_contract_field_derive_trait
+    ),
+    f: fn(derive_trait_node) {
+      bind_outcome(
+        o: target_collection_node_atom_identity(node: derive_trait_node),
+        f: fn(derive_trait_id) {
+          bind_outcome(
+            o: coproduct_nullary_inhabitant_by_discriminant(
+              type_name: ^ReprGroundingDeriveTrait,
+              discriminant_of: target_grounding_derive_trait_discriminant,
+              wanted: derive_trait_id
+            ),
+            f: fn(derive_trait) {
+              bind_outcome(
+                o: find_named_child(
+                  root: node,
+                  name: ^target_derive_supplemental_generic_bound_contract_field_requirements
+                ),
+                f: fn(requirements_node) {
+                  bind_outcome(
+                    o: node_list_from_node(
+                      node: requirements_node,
+                      decode_item: target_derive_supplemental_generic_bound_requirement_from_node
+                    ),
+                    f: fn(requirements) {
+                      outcome_accepted(
+                        TargetDeriveSupplementalGenericBoundContract {
+                          derive_trait: derive_trait,
+                          requirements: requirements
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contracts_from_node(
+  node: Node
+) -> Outcome<List<TargetDeriveSupplementalGenericBoundContract>> {
+  node_list_from_node(
+    node: node,
+    decode_item: target_derive_supplemental_generic_bound_contract_from_node
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+  at: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_choice_malformed,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_representation_choice_empty_parameter_validation(
+) -> Outcome<List<Symbol>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_contract_empty_requirement_validation(
+) -> Outcome<List<TargetDeriveSupplementalGenericBoundRequirement>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_contract_empty_trait_validation(
+) -> Outcome<List<ReprGroundingDeriveTrait>> {
+  outcome_accepted(Empty)
+}
+
+fn target_derive_supplemental_generic_bound_requirements_equal(
+  left: TargetDeriveSupplementalGenericBoundRequirement,
+  right: TargetDeriveSupplementalGenericBoundRequirement
+) -> Bool {
+  left.representation_parameter == right.representation_parameter
+    && left.required_trait == right.required_trait
+}
+
+fn target_representation_choice_validate_parameter_slots(
+  choice: TargetRepresentationChoice,
+  at: Node
+) -> Outcome<List<Symbol>> {
+  fold_list(
+    xs: choice.representation_parameters,
+    empty: target_representation_choice_empty_parameter_validation(),
+    cons: fn(acc, representation_parameter) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: seen, diagnostics: _ } =>
+          if any(
+            xs: seen,
+            predicate: fn(candidate) { candidate == representation_parameter }
+          ) {
+            outcome_rejected(
+              target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+                at: at
+              )
+            )
+          } else {
+            outcome_accepted(
+              list_snoc_item(xs: seen, item: representation_parameter)
+            )
+          }
+      }
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_validate_requirements(
+  choice: TargetRepresentationChoice,
+  row: TargetDeriveSupplementalGenericBoundContract,
+  at: Node
+) -> Outcome<List<TargetDeriveSupplementalGenericBoundRequirement>> {
+  fold_list(
+    xs: row.requirements,
+    empty: target_derive_supplemental_generic_bound_contract_empty_requirement_validation(),
+    cons: fn(acc, requirement) {
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: seen, diagnostics: _ } =>
+          if !target_representation_choice_has_parameter(
+            choice: choice,
+            representation_parameter: requirement.representation_parameter
+          ) {
+            outcome_rejected(
+              target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+                at: at
+              )
+            )
+          } else if any(
+            xs: seen,
+            predicate: fn(candidate) {
+              target_derive_supplemental_generic_bound_requirements_equal(
+                left: candidate,
+                right: requirement
+              )
+            }
+          ) {
+            outcome_rejected(
+              target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+                at: at
+              )
+            )
+          } else {
+            outcome_accepted(list_snoc_item(xs: seen, item: requirement))
+          }
+      }
+    }
+  )
+}
+
+fn target_representation_choice_validate_supplemental_generic_bound_contracts(
+  choice: TargetRepresentationChoice,
+  at: Node
+) -> Outcome<TargetRepresentationChoice> {
+  bind_outcome(
+    o: target_representation_choice_validate_parameter_slots(
+      choice: choice,
+      at: at
+    ),
+    f: fn(_) {
+      bind_outcome(
+        o: fold_list(
+          xs: choice.supplemental_generic_bound_contracts,
+          empty: target_derive_supplemental_generic_bound_contract_empty_trait_validation(),
+          cons: fn(acc, row) {
+            match acc {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: seen_traits, diagnostics: _ } =>
+                if any(
+                  xs: seen_traits,
+                  predicate: fn(candidate) { candidate == row.derive_trait }
+                ) {
+                  outcome_rejected(
+                    target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(
+                      at: at
+                    )
+                  )
+                } else {
+                  bind_outcome(
+                    o: target_derive_supplemental_generic_bound_contract_validate_requirements(
+                      choice: choice,
+                      row: row,
+                      at: at
+                    ),
+                    f: fn(_) {
+                      outcome_accepted(
+                        list_snoc_item(xs: seen_traits, item: row.derive_trait)
+                      )
+                    }
+                  )
+                }
+            }
+          }
+        ),
+        f: fn(_) { outcome_accepted(choice) }
+      )
+    }
+  )
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_lookup_miss,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_ambiguous_diagnostic(
+  source_carrier: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_derive_supplemental_generic_bound_contract_lookup_ambiguous,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+type TargetDeriveSupplementalGenericBoundContractLookup
+  = TargetDeriveSupplementalGenericBoundContractMissing
+  | TargetDeriveSupplementalGenericBoundContractUnique {
+      row: TargetDeriveSupplementalGenericBoundContract
+    }
+  | TargetDeriveSupplementalGenericBoundContractAmbiguous
+
+fn target_derive_supplemental_generic_bound_contract_lookup_step(
+  acc: TargetDeriveSupplementalGenericBoundContractLookup,
+  row: TargetDeriveSupplementalGenericBoundContract,
+  derive_trait: ReprGroundingDeriveTrait
+) -> TargetDeriveSupplementalGenericBoundContractLookup {
+  if row.derive_trait == derive_trait {
+    match acc {
+      TargetDeriveSupplementalGenericBoundContractMissing =>
+        TargetDeriveSupplementalGenericBoundContractUnique { row: row }
+      TargetDeriveSupplementalGenericBoundContractUnique { row: _ } =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
+      TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+        TargetDeriveSupplementalGenericBoundContractAmbiguous
+    }
+  } else {
+    acc
+  }
+}
+
+fn target_derive_supplemental_generic_bound_contract_lookup_in_choice(
+  choice: TargetRepresentationChoice,
+  source_carrier: Node,
+  derive_trait: ReprGroundingDeriveTrait
+) -> Outcome<TargetDeriveSupplementalGenericBoundContract> {
+  bind_outcome(
+    o: target_representation_choice_validate_supplemental_generic_bound_contracts(
+      choice: choice,
+      at: source_carrier
+    ),
+    f: fn(valid_choice) {
+      match fold_list(
+        xs: valid_choice.supplemental_generic_bound_contracts,
+        empty: TargetDeriveSupplementalGenericBoundContractMissing,
+        cons: fn(acc, row) {
+          target_derive_supplemental_generic_bound_contract_lookup_step(
+            acc: acc,
+            row: row,
+            derive_trait: derive_trait
+          )
+        }
+      ) {
+        TargetDeriveSupplementalGenericBoundContractMissing =>
+          outcome_rejected(
+            target_derive_supplemental_generic_bound_contract_lookup_miss_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+        TargetDeriveSupplementalGenericBoundContractUnique { row: row } =>
+          outcome_accepted(row)
+        TargetDeriveSupplementalGenericBoundContractAmbiguous =>
+          outcome_rejected(
+            target_derive_supplemental_generic_bound_contract_lookup_ambiguous_diagnostic(
+              source_carrier: source_carrier
+            )
+          )
+      }
+    }
+  )
+}
+
+>>>>>>> 4c51f6d9c6 (WIP: P-derive model authority: per-derive supplemental generic-bound contract)
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^target_collection_set_no_representation,
