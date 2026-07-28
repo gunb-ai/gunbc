@@ -39,6 +39,7 @@ import v2.workflow.ci_placement {
   PlacementShadowReport,
   PlacementShadowWarmState,
   PlacementShadowCacheState,
+  PlacementShadowWarmCostEvidence,
   placement_is_admissible,
   placement_shadow_report,
   placement_shadow_row_report
@@ -78,7 +79,8 @@ fn placement_shadow_receipt(
   binary_sha: String,
   roster_sha: String,
   warm_state: PlacementShadowWarmState,
-  cache_state: PlacementShadowCacheState
+  cache_state: PlacementShadowCacheState,
+  warm_cost: PlacementShadowWarmCostEvidence
 ) -> PlacementShadowDatedReceipt {
   PlacementShadowDatedReceipt {
     identity: identity,
@@ -90,8 +92,22 @@ fn placement_shadow_receipt(
     binary_sha: binary_sha,
     roster_sha: roster_sha,
     warm_state: warm_state,
-    cache_state: cache_state
+    cache_state: cache_state,
+    warm_cost: warm_cost
   }
+}
+
+fn placement_shadow_measured_warm_cost(run_ref: String, measured_ms: Nat) -> PlacementShadowWarmCostEvidence {
+  ShadowWarmCostMeasured {
+    receipt: WarmCostReceipt {
+      measured_ms: measured_ms,
+      run_ref: run_ref
+    }
+  }
+}
+
+fn placement_shadow_unavailable_warm_cost() -> PlacementShadowWarmCostEvidence {
+  ShadowWarmCostUnavailable { reason: "warm measurement unavailable" }
 }
 
 fn placement_shadow_multi_fn_identity() -> CommitCheckEnrollment {
@@ -162,7 +178,8 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bo
         binary_sha: shared_binary,
         roster_sha: shared_roster,
         warm_state: ShadowWarm,
-        cache_state: ShadowCacheWarm
+        cache_state: ShadowCacheWarm,
+        warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-a", measured_ms: 1400)
       ),
       placement_shadow_receipt(
         identity: multi_identity,
@@ -172,8 +189,9 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bo
         source_sha: shared_source,
         binary_sha: shared_binary,
         roster_sha: shared_roster,
-        warm_state: ShadowCold,
-        cache_state: ShadowCacheCold
+        warm_state: ShadowWarm,
+        cache_state: ShadowCacheWarm,
+        warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-b", measured_ms: 1500)
       ),
       placement_shadow_receipt(
         identity: entrywide_identity,
@@ -183,8 +201,9 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bo
         source_sha: shared_source,
         binary_sha: shared_binary,
         roster_sha: shared_roster,
-        warm_state: ShadowWarmUnknown,
-        cache_state: ShadowCacheUnknown
+        warm_state: ShadowWarm,
+        cache_state: ShadowCacheWarm,
+        warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-c", measured_ms: 900)
       ),
       placement_shadow_receipt(
         identity: entrywide_identity,
@@ -195,7 +214,8 @@ test fn ci_placement_shadow_row_qualifies_multi_and_entrywide_rows_holds() -> Bo
         binary_sha: shared_binary,
         roster_sha: shared_roster,
         warm_state: ShadowWarm,
-        cache_state: ShadowCacheWarm
+        cache_state: ShadowCacheWarm,
+        warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-d", measured_ms: 1000)
       )
     ]
   }
@@ -231,7 +251,8 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
           binary_sha: shared_binary,
           roster_sha: shared_roster,
           warm_state: ShadowWarm,
-          cache_state: ShadowCacheWarm
+          cache_state: ShadowCacheWarm,
+          warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-a", measured_ms: 800)
         )
       ]
     }
@@ -249,7 +270,8 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
           binary_sha: shared_binary,
           roster_sha: shared_roster,
           warm_state: ShadowWarm,
-          cache_state: ShadowCacheWarm
+          cache_state: ShadowCacheWarm,
+          warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-a", measured_ms: 800)
         ),
         placement_shadow_receipt(
           identity: placement_shadow_missing_identity(),
@@ -260,7 +282,8 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
           binary_sha: shared_binary,
           roster_sha: shared_roster,
           warm_state: ShadowCold,
-          cache_state: ShadowCacheCold
+          cache_state: ShadowCacheCold,
+          warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-b", measured_ms: 700)
         )
       ]
     }
@@ -275,6 +298,45 @@ test fn ci_placement_shadow_row_missing_incomplete_ambiguous_holds() -> Bool {
           }
         _ => false
       }
+    _ => false
+  }
+}
+
+test fn ci_placement_shadow_unknown_cold_and_missing_cost_stay_incomplete_holds() -> Bool {
+  let identity = placement_shadow_entry_wide_identity()
+  let shared_source = "src-sha-2026-07-27"
+  let shared_binary = "bin-sha-2026-07-27"
+  let shared_roster = "roster-sha-2026-07-27"
+  let basis = PlacementShadowSignedBasis {
+    receipts: [
+      placement_shadow_receipt(
+        identity: identity,
+        observed_on: "2026-07-26",
+        host_ref: "srv-a",
+        run_ref: "run-a",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowWarmUnknown,
+        cache_state: ShadowCacheUnknown,
+        warm_cost: placement_shadow_unavailable_warm_cost()
+      ),
+      placement_shadow_receipt(
+        identity: identity,
+        observed_on: "2026-07-27",
+        host_ref: "srv-b",
+        run_ref: "run-b",
+        source_sha: shared_source,
+        binary_sha: shared_binary,
+        roster_sha: shared_roster,
+        warm_state: ShadowCold,
+        cache_state: ShadowCacheCold,
+        warm_cost: placement_shadow_measured_warm_cost(run_ref: "run-b", measured_ms: 700)
+      )
+    ]
+  }
+  match placement_shadow_row_report(identity: identity, basis: basis).outcome {
+    Incomplete { reason: _ } => true
     _ => false
   }
 }

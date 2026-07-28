@@ -67,6 +67,10 @@ type PlacementShadowCacheState
   | ShadowCacheCold
   | ShadowCacheUnknown
 
+type PlacementShadowWarmCostEvidence
+  = ShadowWarmCostMeasured { receipt: WarmCostReceipt }
+  | ShadowWarmCostUnavailable { reason: String }
+
 type PlacementShadowDatedReceipt {
   identity: CommitCheckEnrollment
   observed_on: String
@@ -78,6 +82,7 @@ type PlacementShadowDatedReceipt {
   roster_sha: String
   warm_state: PlacementShadowWarmState
   cache_state: PlacementShadowCacheState
+  warm_cost: PlacementShadowWarmCostEvidence
 }
 
 type PlacementShadowSignedBasis {
@@ -166,7 +171,7 @@ fn commit_check_kind_eq(left: CommitCheckKind, right: CommitCheckKind) -> Bool {
         CommitSpecGate { gate: _ } => false
         CommitWitnessClaim { entry: right_entry, check_fns: right_check_fns, kind: right_kind, span: right_span } =>
           (left_entry == right_entry)
-            && string_list_eq(a: left_check_fns, b: right_check_fns)
+            && string_list_eq(left: left_check_fns, right: right_check_fns)
             && witness_kind_eq(a: left_kind, b: right_kind)
             && witness_span_eq(left: left_span, right: right_span)
         CommitCargoFmtCheck => false
@@ -223,10 +228,38 @@ fn placement_shadow_basis_conflicts(receipts: List<PlacementShadowDatedReceipt>)
   })
 }
 
-fn placement_shadow_has_two_hosts(receipts: List<PlacementShadowDatedReceipt>) -> Bool {
+fn placement_shadow_warm_state_is_warm(state: PlacementShadowWarmState) -> Bool {
+  match state {
+    ShadowWarm => true
+    ShadowCold => false
+    ShadowWarmUnknown => false
+  }
+}
+
+fn placement_shadow_cache_state_is_warm(state: PlacementShadowCacheState) -> Bool {
+  match state {
+    ShadowCacheWarm => true
+    ShadowCacheCold => false
+    ShadowCacheUnknown => false
+  }
+}
+
+fn placement_shadow_receipt_has_warm_cost(receipt: PlacementShadowDatedReceipt) -> Bool {
+  placement_shadow_warm_state_is_warm(state: receipt.warm_state)
+    && placement_shadow_cache_state_is_warm(state: receipt.cache_state)
+    && match receipt.warm_cost {
+      ShadowWarmCostMeasured { receipt: cost } =>
+        (cost.run_ref != "") && (cost.run_ref == receipt.run_ref)
+      ShadowWarmCostUnavailable { reason: _ } => false
+    }
+}
+
+fn placement_shadow_has_two_measured_warm_hosts(receipts: List<PlacementShadowDatedReceipt>) -> Bool {
   any(xs: receipts, predicate: fn(left) {
     any(xs: receipts, predicate: fn(right) {
-      (left.host_ref != right.host_ref)
+      placement_shadow_receipt_has_warm_cost(receipt: left)
+        && placement_shadow_receipt_has_warm_cost(receipt: right)
+        && (left.host_ref != right.host_ref)
         && (left.source_sha == right.source_sha)
         && (left.binary_sha == right.binary_sha)
         && (left.roster_sha == right.roster_sha)
@@ -240,10 +273,10 @@ fn placement_shadow_row_outcome(receipts: List<PlacementShadowDatedReceipt>) -> 
     _ =>
       if placement_shadow_basis_conflicts(receipts: receipts) {
         Ambiguous { reason: "joined receipts disagree on source/binary/roster identity" }
-      } else if placement_shadow_has_two_hosts(receipts: receipts) {
+      } else if placement_shadow_has_two_measured_warm_hosts(receipts: receipts) {
         Qualified
       } else {
-        Incomplete { reason: "joined evidence is short of two distinct arm64 hosts" }
+        Incomplete { reason: "joined evidence is short of two distinct arm64 hosts with measured warm cost and warm cache state" }
       }
   }
 }
