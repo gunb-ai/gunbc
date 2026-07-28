@@ -107,12 +107,37 @@ method-projection steps via **`body_lower_postfix_projection_step`** — the sam
 accessor `body_lower_try_postfix_projection` uses to build its `Transform`, not a
 second walker.
 
-* **RED control** (inline source text carrying all three methods):
-  `[any=3, clone=1, is_empty=1, iter=1]` — the detector demonstrably fires.
-* **Site-bearing corpus files**: `clone`, `is_empty`, `iter` counts — MEASUREMENT
-  PENDING, filled from the executed run before this PR leaves draft. `algebra.dag`
-  carries only **5** postfix method projections in total, against 413 R1/R2/R3
-  diagnostics emitted from it.
+**RED control** (inline source text carrying all three methods):
+`[any=3, clone=1, is_empty=1, iter=1]` — the detector demonstrably fires.
+
+**Site-bearing corpus files**, `[any, clone, is_empty, iter]`:
+
+| source | any projections | clone | is_empty | iter | R1/R2/R3 emitted from it |
+|---|---:|---:|---:|---:|---:|
+| `src/v2/std/algebra.dag` | 5 | **0** | **0** | **0** | 413 |
+| `src/v2/std/diagnostic.dag` | 24 | **0** | **0** | **0** | 112 |
+| `src/v2/std/optional.dag` | 0 | 0 | 0 | 0 | 18 |
+| `src/v2/std/node.dag` | **−1 refused** | −1 | −1 | −1 | 14 |
+| `src/v2/std/collection.dag` | 6 | **0** | **0** | **0** | 6 |
+| `src/v2/std/witness.dag` | 0 | 0 | 0 | 0 | 6 |
+| **measured total** | **35** | **0** | **0** | **0** | **555** |
+
+**35 real postfix method projections exist in these files; zero of them are
+`clone`, `is_empty` or `iter`.** `algebra.dag` emits 413 R1/R2/R3 diagnostics from
+5 method projections, none of which is one of the three.
+
+Two honest gaps, neither counted as evidence-present:
+
+* `src/v2/std/node.dag` **refused** — `parse_module` returned `Rejected`, so the probe
+  yields the `−1` sentinel rather than a fabricated `0` (14 diagnostics). Why that file
+  fails to reparse standalone is a real, separate question this probe does not answer.
+* Three files carrying 21 diagnostics
+  (`extdeps_communication_fidelity_carriers`, `v2_compiler_translate`,
+  `v2_std_staging`) are outside the probe roster.
+
+Measured sources therefore account for **555 of 590 (94.1%)** of the R1/R2/R3
+population. The residue is 35 diagnostics, all of it either typed-refused or
+unmeasured — none of it evidence-present.
 
 A zero here is a measurement, not a dead detector.
 
@@ -190,7 +215,11 @@ and it takes 100%:
 | evidence-present | 0 | 0 | no `clone`/`is_empty`/`iter` projection step exists in any site-bearing source |
 | wrapper-retained | 0 | 0 | **not the deficit** — these bodies lower; `body_lower_wrapper_retained_shell` is not reached for them |
 | ambiguous | 0 | 0 | the operand is absent, not undecidable |
-| **no-modeled-operation (emitter-synthesized)** | **79** | **590** | the reported methods are inserted by emitter lowering templates |
+| **no-modeled-operation (emitter-synthesized)** | **79** | **555 measured + 35 unmeasured/refused** | the reported methods are inserted by emitter lowering templates |
+
+`distinct_sites` are `(file, line, method, receiver)` positions; `diagnostics` is the
+raw R1+R2+R3 count, which exceeds sites×modules because one position can be reported at
+several columns.
 
 **The wrapper-retained row is the load-bearing correction.** The plan framed the risk
 as body-lowering *coverage* — that Stage-A might not lower enough shapes. That is not
