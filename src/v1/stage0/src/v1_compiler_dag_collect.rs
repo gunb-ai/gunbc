@@ -107,33 +107,39 @@ pub fn dag_authored_occurrence_key(occurrence: Rc<AuthoredOccurrence>) -> String
 }
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
-    match node.authored_occurrence.clone() {
-        Some(occurrence) => dag_authored_occurrence_key(occurrence.clone()),
-        None => {
-            let anchor = dag_node_collection_anchor(node.clone());
-            if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0))
-            {
-                v1_rt::concat(
-                    ":0..0:".to_string(),
-                    dag_node_surface_fingerprint_memo(anchor.clone()),
-                )
-            } else {
-                v1_rt::concat(
+    {
+        let anchor = dag_node_collection_anchor(node.clone());
+        match anchor.authored_occurrence.clone() {
+            Some(occurrence) => dag_authored_occurrence_key(occurrence.clone()),
+            None => {
+                if ((anchor.span.clone().start.clone() == 0)
+                    && (anchor.span.clone().end.clone() == 0))
+                {
+                    v1_rt::concat(
+                        ":0..0:".to_string(),
+                        dag_node_surface_fingerprint_memo(anchor.clone()),
+                    )
+                } else {
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                                (anchor.span.clone().start.clone()).to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        anchor.span.clone().file.clone(),
+                                        ":".to_string(),
+                                    ),
+                                    (anchor.span.clone().start.clone()).to_string(),
+                                ),
+                                "..".to_string(),
                             ),
-                            "..".to_string(),
+                            (anchor.span.clone().end.clone()).to_string(),
                         ),
-                        (anchor.span.clone().end.clone()).to_string(),
-                    ),
-                    match anchor.ident.clone() {
-                        Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                        None => "".to_string(),
-                    },
-                )
+                        match anchor.ident.clone() {
+                            Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
+                            None => "".to_string(),
+                        },
+                    )
+                }
             }
         }
     }

@@ -19,14 +19,19 @@ pub use crate::v1_compiler_parse::{
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::ExprData::{ExprLambda, ExprLet, ExprMatch};
+use crate::v1_std_core::Cardinality::Required;
+use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::ExprData::{ExprLambda, ExprLet, ExprMatch, NoExprData};
+use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
     arm_body, arm_pattern, build_newline_index, empty_intern_table, field_binding_pattern,
     int_type, leaf_node_with_span, make_arm_node, make_expr_node, make_span,
     node_with_authored_occurrence,
 };
-pub use crate::v1_std_core::{ExprData, MatchPattern, NewlineIndex, Node};
+pub use crate::v1_std_core::{
+    Cardinality, Connective, ExprData, InferredNode, MatchPattern, NewlineIndex, Node,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -509,7 +514,43 @@ pub fn collector_reaches_pattern_declaration() -> bool {
     }
 }
 
+pub fn collector_anchor_key_uses_authored_target() -> bool {
+    {
+        let target = reference_node_at("T".to_string(), 905, 202, 203);
+        let shell = Rc::new(Node {
+            authored_occurrence: None,
+            name: "identity".to_string(),
+            span: make_span(192, 200),
+            ident_span: Some(make_span(192, 200)),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: target.clone(),
+            })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        });
+        let slots = collector_insert(
+            shell.clone(),
+            v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),
+        );
+        ((dag_node_key(shell.clone()) == dag_node_key(target.clone()))
+            && v1_rt::map_has(&slots, dag_node_key(shell.clone())))
+    }
+}
+
 pub fn occurrence_transport_collector_is_occurrence_safe() -> bool {
-    ((collector_dedupes_one_occurrence() && collector_keeps_structurally_equal_occurrences())
+    (((collector_dedupes_one_occurrence() && collector_keeps_structurally_equal_occurrences())
         && collector_reaches_pattern_declaration())
+        && collector_anchor_key_uses_authored_target())
 }

@@ -20,6 +20,9 @@ import v1.std.core {
   ExprLet,
   ExprLambda,
   ExprMatch,
+  NoExprData,
+  NoConnective,
+  Required,
   NewlineIndex,
   make_span,
   leaf_node_with_span,
@@ -459,13 +462,26 @@ fn collector_anchor_key_uses_authored_target() -> Bool {
     start: 202,
     end: 203,
   )
-  let shell = with(
-    leaf_node_with_span(
-      name: "identity",
-      span: make_span(start: 192, end: 200),
-    ),
-    { inferred: Present { value: Resolved { node: target } } },
-  )
+  let shell = Node {
+    authored_occurrence: none,
+    name: "identity",
+    span: make_span(start: 192, end: 200),
+    ident_span: Present { value: make_span(start: 192, end: 200) },
+    children: [],
+    connective: NoConnective,
+    params: [],
+    inferred: Present { value: Resolved { node: target } },
+    return_cardinality: Required,
+    uses: [],
+    body: none,
+    transport: none,
+    properties: [],
+    type_annotation: none,
+    is_self_recursive: false,
+    has_non_tail_self_call: false,
+    match_pattern: none,
+    expr_data: NoExprData,
+  }
   let slots = collector_insert(node: shell, slots: empty_map())
   dag_node_key(node: shell) == dag_node_key(node: target) &&
   map_has(slots, dag_node_key(node: shell))
