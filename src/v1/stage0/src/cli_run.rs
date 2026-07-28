@@ -10652,72 +10652,21 @@ struct ScopedRunObservation {
     started: std::time::Instant,
 }
 
-fn observation_seed_authority_entry() -> Result<String, String> {
-    fn visit(dir: &Path) -> Option<String> {
-        let entries = std::fs::read_dir(dir).ok()?;
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(found) = visit(&path) {
-                    return Some(found);
-                }
-            } else if path.extension().and_then(|ext| ext.to_str()) == Some("dag") {
-                let source = std::fs::read_to_string(&path).ok()?;
-                if source
-                    .lines()
-                    .any(|line| line.trim() == "module gunbc.observation_seed_render")
-                {
-                    return Some(path.to_string_lossy().into_owned());
-                }
-            }
-        }
-        None
-    }
-    witness_layer_roots()
-        .into_iter()
-        .find_map(|root| visit(Path::new(&root)))
-        .ok_or_else(|| {
-            "modeled gunbc.observation_seed_render binding is not visible in witness roots"
-                .to_string()
-        })
-}
-
-/// Resolve the declaration identity using the same module-qualified function
-/// namespace that `InterpContext::with_runtime_options` installs in `fn_nodes`.
-/// `item_registry` is intentionally flat and therefore cannot answer this
-/// question for imported or qualified selections.
-fn selected_scoped_function_identity(
-    graph: &ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    requested: &str,
-) -> Result<(String, String), usize> {
-    let (requested_module, bare_name) = requested
-        .rsplit_once('.')
-        .map_or((None, requested), |(module, bare)| (Some(module), bare));
-    let mut candidates = Vec::new();
-    for module in graph.modules.iter() {
-        let module_path = authored_name_at(source_indices.clone(), module.module.clone());
-        if requested_module.map_or(false, |requested| requested != module_path) {
-            continue;
-        }
-        for item in module.items.iter() {
-            let name = authored_name_at(source_indices.clone(), item.clone());
-            if name == bare_name {
-                candidates.push((module_path.clone(), name));
-            }
-        }
-    }
-    if candidates.len() == 1 {
-        Ok(candidates.into_iter().next().expect("one candidate"))
-    } else {
-        Err(candidates.len())
-    }
-}
-
 impl ScopedRunObservation {
-    fn resolve(entry_file: &str, module_path: &str, function: &str) -> Result<Self, String> {
+    fn resolve(
+        entry_file: &str,
+        module_path: &str,
+        function: &str,
+        started: std::time::Instant,
+    ) -> Result<Self, String> {
         use std::io::IsTerminal;
-        let authority = observation_seed_authority_entry()?;
+        let authority_index = build_module_path_index_from_witness_roots();
+        let authority = authority_index
+            .get("gunbc.observation_seed_render")
+            .cloned()
+            .ok_or_else(|| {
+                "cached module-path index has no gunbc.observation_seed_render binding".to_string()
+            })?;
         let authority_roots = witness_layer_roots();
         let (graph, indices) =
             resolve_entry_graph_shared(&authority_roots, &authority).map_err(|e| {
@@ -10732,7 +10681,7 @@ impl ScopedRunObservation {
             emoji: std::io::stderr().is_terminal()
                 && std::env::var("TERM").map_or(true, |term| term != "dumb"),
             open: false,
-            started: std::time::Instant::now(),
+            started,
         })
     }
 
@@ -11059,19 +11008,26 @@ pub fn handle_run_with_options(
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     let scoped_identity = entry_file.as_ref().map(|_| {
-        selected_scoped_function_identity(graph, result.source_indices.clone(), &function)
-            .unwrap_or_else(|count| {
+        ctx.selected_function_identity(&function)
+            .filter(|identity| !identity.bare_name_ambiguous || function.contains('.'))
+            .unwrap_or_else(|| {
                 eprintln!(
-                    "error: scoped run function `{function}` resolved to {count} declaration candidates; refusing ambiguous observation identity"
+                    "error: scoped run function `{function}` has no unique runtime-selected declaration identity"
                 );
                 std::process::exit(1);
             })
     });
     let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        let (module_path, bare_name) = scoped_identity
+        let identity = scoped_identity
             .as_ref()
             .expect("scoped identity exists for scoped entry");
-        ScopedRunObservation::resolve(entry, module_path, bare_name).unwrap_or_else(|cause| {
+        ScopedRunObservation::resolve(
+            entry,
+            &identity.module_path,
+            &identity.decl_name,
+            std::time::Instant::now(),
+        )
+        .unwrap_or_else(|cause| {
             eprintln!("error: {cause}");
             std::process::exit(1);
         })
