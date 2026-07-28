@@ -14,7 +14,8 @@ import v2.extdeps.languages.bash {
   bash_conj_emitted_from_tokens,
   bash_relation_translation_rules_node,
   bash_make_bound_tokens_target_model,
-  bash_stmt_assign_target_model
+  bash_stmt_assign_target_model,
+  bash_word_cmdsubst_source_text
 }
 
 fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
@@ -126,6 +127,13 @@ fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel 
   bash_stmt_assign_target_model(
     name: name,
     value: concat("\"$(", concat(body, ")\""))
+  )
+}
+
+fn orch_cmdsubst_assign_raw_target_model(name: String, body: String) -> TargetModel {
+  bash_stmt_assign_target_model(
+    name: name,
+    value: bash_word_cmdsubst_source_text(body: body)
   )
 }
 

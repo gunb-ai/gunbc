@@ -35,7 +35,9 @@ import v2.extdeps.languages.bash {
   bash_stmt_negation_target_model,
   bash_stmt_andor_target_model,
 }
-import v2.extdeps.languages.bash_orch_tier2 { orch_cmdsubst_assign_target_model }
+import v2.extdeps.languages.bash_orch_tier2 {
+  orch_cmdsubst_assign_raw_target_model
+}
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
 data bash_path_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
@@ -306,7 +308,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(
-          orch_cmdsubst_assign_target_model(
+          orch_cmdsubst_assign_raw_target_model(
             name: n,
             body: concat("dirname \"", concat(concat("$", n), "\""))
           )
@@ -317,7 +319,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         outcome_rejected(bash_path_intent_invalid_diagnostic())
       } else {
         outcome_accepted(
-          orch_cmdsubst_assign_target_model(
+          orch_cmdsubst_assign_raw_target_model(
             name: "d",
             body: concat("dirname \"", concat(bash_absolute_parts_text(parts: p), "\""))
           )
@@ -328,7 +330,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
         o: bash_path_intent_text(path: PathJoin { base: b, suffix: s }),
         f: fn(text) {
           outcome_accepted(
-            orch_cmdsubst_assign_target_model(
+            orch_cmdsubst_assign_raw_target_model(
               name: "d",
               body: concat("dirname \"", concat(text, "\""))
             )
