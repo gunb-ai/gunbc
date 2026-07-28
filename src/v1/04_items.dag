@@ -23,8 +23,9 @@ import v1.std.core {
   expr_has_self_call, expr_has_non_tail_self_call,
   Connective, Conj, Disj, NoConnective,
   node_name_span, no_span,
-  NewlineIndex, authored_name_at
+  NewlineIndex, authored_name_at,
 }
+import std.occurrence_identity { OccurrenceTransport }
 
 import v1.compiler.infer_types {
   child_type_node
@@ -72,6 +73,7 @@ type TypedModule {
   interface: ModuleInterface
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
+  occurrence_transport: OccurrenceTransport?
 }
 
 type TypedGraph {

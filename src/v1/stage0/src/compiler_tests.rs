@@ -319,6 +319,53 @@ mod compiler_tests {
     }
 
     #[test]
+    fn pipeline_occurrence_sidecar_serde_round_trip() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "occurrence_sidecar_serde.dag".to_string(),
+                    content: "module occurrence.sidecar_serde\nfn left(x: Int) -> Int { x }\nfn right(x: Int) -> Int { left(x) }\n".to_string(),
+                });
+                let resolved = crate::v1_compiler_compile::compile_to_resolved(
+                    std::rc::Rc::new(im::vector![source]),
+                );
+                let graph = resolved
+                    .graph
+                    .as_ref()
+                    .expect("production compile must preserve a resolved graph");
+                let typed_module = graph
+                    .modules
+                    .get(0)
+                    .expect("production compile must preserve its typed module");
+                let transport = typed_module
+                    .occurrence_transport
+                    .as_ref()
+                    .expect("typed module must preserve occurrence transport");
+                assert!(!transport.index.entries.is_empty());
+                assert!(!transport.declarations.is_empty());
+                assert!(!transport.references.is_empty());
+
+                let graph_bytes = serde_json::to_vec(graph)
+                    .expect("serialize resolved graph occurrence sidecar");
+                let decoded_graph: std::rc::Rc<crate::v1_compiler_infer_items::ResolvedGraph> =
+                    serde_json::from_slice(&graph_bytes)
+                        .expect("deserialize resolved graph occurrence sidecar");
+                assert_eq!(&decoded_graph, graph);
+
+                let resolved_bytes = serde_json::to_vec(&resolved)
+                    .expect("serialize resolved pipeline occurrence sidecar");
+                let decoded: std::rc::Rc<crate::v1_compiler_compile::ResolvedPipelineResult> =
+                    serde_json::from_slice(&resolved_bytes)
+                        .expect("deserialize resolved pipeline occurrence sidecar");
+                assert_eq!(decoded, resolved);
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("pipeline_occurrence_sidecar_serde_round_trip panicked");
+    }
+
+    #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
         // (resolve_node_bounded masked boundary). module_b references `Widget`

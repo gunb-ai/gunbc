@@ -1,0 +1,127 @@
+module test.claim.occurrence_identity_witness_test
+
+import std.types { Bool }
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  NodeOccurrenceIdentity,
+  OccurrenceSynthetic,
+  OccurrenceMinted,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+  occurrence_id_eq,
+  occurrence_id_allocator_advance_to,
+  node_occurrence_identity_minted,
+}
+import v2.std.node {
+  NodeOccurrenceId,
+  SyntheticOccurrence,
+  MintedOccurrence,
+  node_occurrence_id_to_shared,
+  node_occurrence_id_from_shared,
+}
+
+test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
+  occurrence_id_allocator_initial().next_id == 0
+}
+
+test fn occurrence_identity_allocates_distinct_ordered_ids_holds() -> Bool {
+  let first = alloc_occurrence_id(alloc: occurrence_id_allocator_initial())
+  let second = alloc_occurrence_id(alloc: first.alloc)
+  first.id.value == 0
+    && second.id.value == 1
+    && !occurrence_id_eq(left: first.id, right: second.id)
+}
+
+test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
+  let initial = occurrence_id_allocator_initial()
+  let advanced = occurrence_id_allocator_advance_to(
+    alloc: initial,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 7 }
+    ),
+  )
+  let unchanged = occurrence_id_allocator_advance_to(
+    alloc: advanced,
+    min_next: authored_token_ordinal_space_from_allocator(
+      alloc: OccurrenceIdAllocator { next_id: 3 }
+    ),
+  )
+  advanced.next_id == 7 && unchanged.next_id == 7
+}
+
+fn occurrence_identity_typed_ordinal_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinaltyped\n\nimport std.occurrence_identity { OccurrenceIdAllocator, authored_token_ordinal_space_from_allocator, occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: authored_token_ordinal_space_from_allocator(\n      alloc: OccurrenceIdAllocator { next_id: 7 }\n    )\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinaltyped.rs",
+    [],
+    []
+  )
+}
+
+fn occurrence_identity_raw_scalar_advance_compiles() -> Bool {
+  compile_dag_rust_emit_check(
+    "module occurrenceordinalraw\n\nimport std.occurrence_identity { occurrence_id_allocator_advance_to, occurrence_id_allocator_initial }\n\nfn advance() -> Bool {\n  occurrence_id_allocator_advance_to(\n    alloc: occurrence_id_allocator_initial(),\n    min_next: 7\n  ).next_id == 7\n}\n",
+    "src/occurrenceordinalraw.rs",
+    [],
+    []
+  )
+}
+
+test fn occurrence_identity_typed_ordinal_boundary_refuses_raw_scalar_holds() -> Bool {
+  occurrence_identity_typed_ordinal_advance_compiles()
+    && !occurrence_identity_raw_scalar_advance_compiles()
+}
+
+test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
+  let minted = std.occurrence_identity.node_occurrence_identity_minted(
+    id: std.occurrence_identity.OccurrenceId { value: 4 }
+  )
+  let minted_holds = match minted {
+    OccurrenceMinted { id: id } =>
+      id.value == 4
+    _ => false
+  }
+  let synthetic: NodeOccurrenceIdentity = OccurrenceSynthetic
+  let synthetic_holds = match synthetic {
+    OccurrenceSynthetic => true
+    _ => false
+  }
+  minted_holds && synthetic_holds
+}
+
+test fn occurrence_identity_v2_synthetic_facade_round_trip_holds() -> Bool {
+  let facade: NodeOccurrenceId = SyntheticOccurrence
+  match node_occurrence_id_from_shared(
+    occurrence: node_occurrence_id_to_shared(occurrence: facade)
+  ) {
+    SyntheticOccurrence => true
+    _ => false
+  }
+}
+
+test fn occurrence_identity_v2_minted_facade_round_trip_holds() -> Bool {
+  let facade: NodeOccurrenceId = MintedOccurrence {
+    id: std.occurrence_identity.OccurrenceId { value: 11 },
+  }
+  match node_occurrence_id_from_shared(
+    occurrence: node_occurrence_id_to_shared(occurrence: facade)
+  ) {
+    MintedOccurrence { id: id } => id.value == 11
+    _ => false
+  }
+}
+
+test fn occurrence_identity_v2_shared_constructor_equivalence_holds() -> Bool {
+  let shared: std.occurrence_identity.NodeOccurrenceIdentity = std.occurrence_identity.OccurrenceMinted {
+    id: std.occurrence_identity.OccurrenceId { value: 12 },
+  }
+  match node_occurrence_id_to_shared(
+    occurrence: node_occurrence_id_from_shared(occurrence: shared)
+  ) {
+    std.occurrence_identity.OccurrenceMinted { id: id } => id.value == 12
+    _ => false
+  }
+}
