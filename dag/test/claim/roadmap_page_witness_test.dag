@@ -163,7 +163,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     sizing: base.sizing,
     execution: base.execution,
     owner: base.owner,
-    signoff: gunbc.roadmap_authority.signed(by: "op", works: true, scope_equivalent: true, as_expected: true),
+    signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
 }
 
