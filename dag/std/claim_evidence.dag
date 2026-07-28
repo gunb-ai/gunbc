@@ -210,7 +210,8 @@ fn claim_assessment_supports_without_challenge<F, C, A, FidelityBoundary, Indepe
 }
 
 type ClaimReadinessPolicy<C> {
-  required: List<C>
+  first_required: C
+  remaining_required: List<C>
 }
 
 type ClaimReadinessAssessment<C>
@@ -251,7 +252,10 @@ fn claim_readiness_assessment<F, C, A, FidelityBoundary, Independence>(
   policy: ClaimReadinessPolicy<C>,
   assessments: List<ClaimAssessment<F, C, A, FidelityBoundary, Independence>>,
 ) -> List<ClaimReadinessAssessment<C>> {
-  policy.required |> map(required =>
+  append(
+    [policy.first_required],
+    items: policy.remaining_required,
+  ) |> map(required =>
     if claim_supported_without_challenge_across_assessments(
       claim: required,
       assessments: assessments,
@@ -266,15 +270,16 @@ fn claim_readiness_assessment<F, C, A, FidelityBoundary, Independence>(
 fn claim_readiness_is_ready<C>(
   assessment: List<ClaimReadinessAssessment<C>>,
 ) -> Bool {
-  all(assessment, row =>
-    claim_readiness_assessment_fold(
-      assessment: row,
-      fold: ClaimReadinessAssessmentFold {
-        satisfied: fn(_) { true },
-        blocking: fn(_) { false },
-      },
+  count(assessment) > 0
+    && all(assessment, row =>
+      claim_readiness_assessment_fold(
+        assessment: row,
+        fold: ClaimReadinessAssessmentFold {
+          satisfied: fn(_) { true },
+          blocking: fn(_) { false },
+        },
+      )
     )
-  )
 }
 
 data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. Freshness owns the exact maximum conclusion it qualifies, so there is no independently writable attempt bound that can disagree with the claim's bound. ClaimAssessment stores only canonical links, never caller-supplied support or challenge lists; every information-state and readiness query re-indexes those links by freshness.maximum_conclusion and consumes direction through the canonical fold. EvidenceInference is an exclusive Applicable-with-that-canonical-link | Insufficient outcome. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy produces one exclusive Satisfied | Blocking assessment for each named requirement and admits only support without challenge; missing, conflicting, and challenge-only assessments remain blocking."

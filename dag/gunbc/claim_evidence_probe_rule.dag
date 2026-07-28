@@ -18,7 +18,8 @@ import std.claim_evidence {
 }
 import gunbc.readback_independence {
   ReadBackProbe,
-  readback_probe_is_independent,
+  ProbeEffectOnSubjectFold,
+  probe_effect_on_subject_fold,
 }
 
 fn infer_probe_evidence<F, C, A, FidelityBoundary>(
@@ -38,7 +39,15 @@ fn infer_probe_evidence<F, C, A, FidelityBoundary>(
       challenges: false,
     },
   )
-  if supports && !readback_probe_is_independent(p: probe) {
+  let probe_is_independent = probe_effect_on_subject_fold(
+    effect: probe.effect_on_subject,
+    fold: ProbeEffectOnSubjectFold {
+      inert: true,
+      may_establish: fn(_) { false },
+      unknown: fn(_) { false },
+    },
+  )
+  if supports && !probe_is_independent {
     insufficient_evidence_inference(
       insufficiency: EvidenceInsufficiency {
         fact: fact,
