@@ -72,7 +72,6 @@ fn evidence_direction_fold<R>(
 
 type EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence> {
   fact: RecordedFact<F>
-  claim: C
   direction: EvidenceDirection
   inference_rule: InferenceRuleId
   authority: A
@@ -159,7 +158,7 @@ fn claim_assessment_add_link<F, C, A, FreshBound, FidelityBoundary, Independence
   assessment: ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>>,
   link: EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>,
 ) -> ClaimAssessment<C, EvidenceLink<F, C, A, FreshBound, FidelityBoundary, Independence>> {
-  if !(link.claim == assessment.claim) {
+  if !(link.maximum_conclusion == assessment.claim) {
     assessment
   } else {
     evidence_direction_fold(
@@ -260,4 +259,4 @@ fn claim_readiness_is_ready<C>(
   assessment.blocking.length() == 0
 }
 
-data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. EvidenceInference is an exclusive Applicable | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."
+data claim_evidence_boundary_note: NonEmptyStr = "A recorded fact enters a claim assessment only through an explicit EvidenceLink. The link's one claim identity is maximum_conclusion, so no independently writable stronger claim can bypass that bound. EvidenceInference is an exclusive Applicable | Insufficient outcome, and EvidenceDirection is consumed through one canonical fold. ClaimInformationState is the product of two independent assessment bits, so conflict and insufficiency cannot collapse into chronology or a Boolean last observation. ClaimReadinessPolicy admits only support without challenge for every named requirement; missing, conflicting, and challenge-only assessments remain blocking."

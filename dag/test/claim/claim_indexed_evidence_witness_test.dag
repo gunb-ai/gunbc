@@ -231,7 +231,6 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
   }
   let support = infer_probe_evidence(
     fact: fact,
-    claim: claim,
     direction: EvidenceSupports,
     inference_rule: "self-establishing-provider-probe",
     authority: codex_cli_auth_external_authority,
@@ -253,7 +252,6 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
   )
   let challenge = infer_probe_evidence(
     fact: fact,
-    claim: claim,
     direction: EvidenceChallenges,
     inference_rule: "self-establishing-provider-probe",
     authority: codex_cli_auth_external_authority,

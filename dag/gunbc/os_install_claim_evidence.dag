@@ -104,7 +104,6 @@ fn os_install_kvm_attestation_inference(
       id: fact_id,
       value: attestation,
     },
-    claim: claim,
     direction: EvidenceSupports,
     inference_rule: "kvm-screen-supports-runtime-diagnostic-only",
     authority: attestation.attested_by,

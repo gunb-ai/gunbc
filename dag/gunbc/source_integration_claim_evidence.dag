@@ -84,7 +84,6 @@ fn source_binding_capture_inference(
       id: fact_id,
       value: fact,
     },
-    claim: claim,
     direction: EvidenceSupports,
     inference_rule: "decoded-binding-supports-capture-only",
     authority: "dag-source-decoder",

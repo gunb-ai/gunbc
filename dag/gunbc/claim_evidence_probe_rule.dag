@@ -23,7 +23,6 @@ import gunbc.readback_independence {
 
 fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
   fact: RecordedFact<F>,
-  claim: C,
   direction: EvidenceDirection,
   inference_rule: InferenceRuleId,
   authority: A,
@@ -44,7 +43,7 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
     insufficient_evidence_inference(
       insufficiency: EvidenceInsufficiency {
         fact: fact,
-        claim: claim,
+        claim: maximum_conclusion,
         inference_rule: inference_rule,
         probe_independence: probe,
         reason: "a positive result from this probe may establish the subject it reports",
@@ -54,7 +53,6 @@ fn infer_probe_evidence<F, C, A, FreshBound, FidelityBoundary>(
     applicable_evidence_inference(
       link: EvidenceLink {
         fact: fact,
-        claim: claim,
         direction: direction,
         inference_rule: inference_rule,
         authority: authority,
