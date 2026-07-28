@@ -11,9 +11,13 @@ import gunbc.roadmap_model {
   Pointer,
   RoadmapNodeId,
   Intricacy,
+  IntricacyLow,
   IntricacyMedium,
+  IntricacyHigh,
   Volume,
+  VolumeSmall,
   VolumeMedium,
+  VolumeLarge,
   Sized,
   Unsized,
   PrsMerged,
@@ -188,7 +192,7 @@ fn fields(
     headline: headline,
     brief: boundary,
     displaced_cost: displaced_cost,
-    current_state: "Remaining committed deliverable. Implementation evidence is reviewed separately from acceptance.",
+    current_state: concat("Unaccepted; next executable slice: ", first_slice),
     first_slice: first_slice,
     red_control: red_control,
     out_of_scope: out_of_scope,
@@ -199,10 +203,12 @@ fn fields(
   }
 }
 
-fn active(
+fn active_sized(
   id: String,
   owner: String,
   path: String,
+  intricacy: Intricacy,
+  volume: Volume,
   t: TicketFields
 ) -> RoadmapNode {
   RoadmapNode {
@@ -210,14 +216,47 @@ fn active(
     line: TicketLine { done: false, ticket: t },
     carriers: carrier(path: path),
     sizing: Sized {
-      intricacy: IntricacyMedium,
-      volume: VolumeMedium,
+      intricacy: intricacy,
+      volume: volume,
       repo: "gunbc",
-      acceptance: PrsMerged,
+      acceptance: ManualAcceptance,
     },
     owner: owner,
     signoff: Unsigned,
   }
+}
+
+fn active(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+  active_sized(
+    id: id,
+    owner: owner,
+    path: path,
+    intricacy: IntricacyMedium,
+    volume: VolumeMedium,
+    t: t,
+  )
+}
+
+fn active_small(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+  active_sized(
+    id: id,
+    owner: owner,
+    path: path,
+    intricacy: IntricacyLow,
+    volume: VolumeSmall,
+    t: t,
+  )
+}
+
+fn active_large(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+  active_sized(
+    id: id,
+    owner: owner,
+    path: path,
+    intricacy: IntricacyHigh,
+    volume: VolumeLarge,
+    t: t,
+  )
 }
 
 fn queued(
@@ -256,7 +295,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the typed transport plus an executed same-leaf/different-path discriminator."
       )
     ),
-    active(
+    active_large(
       id: "namespace-canonical-binding",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -284,7 +323,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the consumer receipt and the refusal that proves no legacy fallback ran."
       )
     ),
-    active(
+    active_small(
       id: "namespace-legacy-choice-retirement",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -299,7 +338,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_small(
       id: "pderive-typesafe-nullary-reflection",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -327,7 +366,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return lossless round-trip and refusal receipts."
       )
     ),
-    active(
+    active_large(
       id: "pderive-source-slot-binding",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -341,7 +380,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return exact-node/slot correspondence plus a swap discriminator."
       )
     ),
-    active(
+    active_large(
       id: "pderive-single-emitter",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -355,7 +394,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return emitted source and cargo execution for the discriminating fixture."
       )
     ),
-    active(
+    active_small(
       id: "pderive-error-movement-receipt",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -384,7 +423,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the PTY/pipe byte matrix and real gunbc run receipt."
       )
     ),
-    active(
+    active_large(
       id: "observation-ci-event-grouping",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -412,7 +451,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return green-collapse, orphan-watchdog, and refusal-restatement receipts."
       )
     ),
-    active(
+    active_small(
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -427,7 +466,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_small(
       id: "placement-live-roster-preflight",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -469,7 +508,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return total per-row equality and any explained divergence."
       )
     ),
-    active(
+    active_large(
       id: "placement-atomic-authority-flip",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -484,7 +523,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_small(
       id: "v1-test-hygiene-producer-retirement",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -512,7 +551,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the complete role roster and migrated family receipt."
       )
     ),
-    active(
+    active_large(
       id: "v1-materialization-kernel",
       owner: "self-host",
       path: "docs/plans/witness-realization-plan.md",
@@ -540,7 +579,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return artifact inspection, product runs, floor receipts, and zero-consumer census."
       )
     ),
-    active(
+    active_large(
       id: "v1-interpreter-delete",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -555,7 +594,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_small(
       id: "shell-typed-invocation",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -569,7 +608,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return typed intent, execution equivalence, and deleted raw construction site."
       )
     ),
-    active(
+    active_large(
       id: "shell-effectplan-to-bash",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -597,7 +636,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return typed gate execution and generated-artifact fixed-point receipts."
       )
     ),
-    active(
+    active_small(
       id: "shell-residue-zero",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -612,7 +651,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_large(
       id: "roadmap-runtime-identity-join",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -654,7 +693,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return accepted/idempotent dispatch and refusal matrix."
       )
     ),
-    active(
+    active_small(
       id: "roadmap-runtime-readback",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -669,7 +708,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active(
+    active_small(
       id: "fleet-state-frontier",
       owner: "fleet",
       path: "docs/plans/host-converge-inventory.md",
@@ -683,7 +722,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the classified frontier and one unclassified-state refusal."
       )
     ),
-    active(
+    active_large(
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",
       path: "docs/runbooks/bmc-redfish-operator-access.md",
@@ -697,7 +736,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return apply, no-op, rollback, reboot-persistence, and unsupported-host receipts."
       )
     ),
-    active(
+    active_large(
       id: "fleet-closed-loop-converge",
       owner: "fleet",
       path: "docs/plans/host-effect-orchestration.md",
