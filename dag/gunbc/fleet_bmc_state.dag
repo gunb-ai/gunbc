@@ -1,0 +1,186 @@
+module gunbc.fleet_bmc_state
+
+import extdeps.bmc.types {
+  On,
+  ResetGracefulRestart,
+}
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  RenameReplaceWithinTargetDirectory,
+  SyncAllFilesystemsAfterReplacement,
+}
+import gunbc.bmc_intent {
+  fleet_bmc_fan_graceful_restart_boundary,
+  fleet_bmc_valid_state,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanConfigReadbackSubject,
+  BmcFanDurabilityAdmission,
+  BmcFanDurabilityEvidence,
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_durability_admission,
+}
+import gunbc.fleet_bmc_observation {
+  BmcFanRebootPersistenceReceipt,
+  srv4_bmc_fan_active_config_digest,
+  srv4_bmc_fan_observed_aggregate_entry,
+  srv4_bmc_fan_observed_config_path,
+  srv4_bmc_fan_observed_controller_service,
+  srv4_bmc_fan_observed_controller_zone_path,
+  srv4_bmc_fan_observed_tach_inputs,
+  srv4_bmc_fan_perturbation_generation,
+  srv4_bmc_fan_realization,
+  srv4_bmc_fan_reboot_persistence_receipt,
+  srv4_bmc_firmware_observation,
+}
+import gunbc.fleet_intent {
+  srv4_baseboard,
+  srv4_host,
+}
+import product.placement_supply { HostIdentity }
+import std.content_hash { content_hash_atom }
+import std.state_durability {
+  ActivationUnverified,
+  ActivationVerified,
+  StateActivationEvidence,
+  StateDurabilityBoundary,
+  StateDurabilityCapabilityVersion,
+  StateDurabilityEvidence,
+  StatePerturbationReceipt,
+  StatePreservationObservationRefused,
+  StatePreservationOutcome,
+  StatePreserved,
+  StateReadbackReceipt,
+}
+import std.types { Bool, List, String }
+
+data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "openbmc-overlay-config-graceful-restart-v2",
+  definition_hash: content_hash_atom(
+    value: "rename-in-target-directory-sync-all-filesystems-graceful-bmc-restart-readback-v2",
+  ),
+}
+
+data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = LinuxFilePublicationProtocol {
+  stage_in_target_directory: true,
+  staged_content_validated: true,
+  replacement: RenameReplaceWithinTargetDirectory,
+  synchronization: SyncAllFilesystemsAfterReplacement,
+}
+
+data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = BmcFanPolicyProjectionCapability {
+  board: srv4_baseboard.catalog.model,
+  firmware: srv4_bmc_firmware_observation.firmware,
+  projected_curve: fleet_bmc_valid_state.fan_policy.curve,
+  projected_config_digest: srv4_bmc_fan_active_config_digest,
+  config_path: srv4_bmc_fan_observed_config_path,
+  controller_service: srv4_bmc_fan_observed_controller_service,
+  controller_zone_path: srv4_bmc_fan_observed_controller_zone_path,
+  aggregate_fan_pid_entry: srv4_bmc_fan_observed_aggregate_entry,
+  realization: srv4_bmc_fan_realization,
+  durability_capability_version: srv4_bmc_fan_durability_capability_version,
+  publication_protocol: srv4_bmc_fan_publication_protocol,
+  durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
+  required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+}
+
+data srv4_bmc_fan_durability_admission: BmcFanDurabilityAdmission = bmc_fan_policy_projection_durability_admission(
+  host: srv4_host.identity,
+  capability: srv4_bmc_fan_projection_capability,
+  perturbation_generation: srv4_bmc_fan_perturbation_generation,
+)
+
+fn bmc_fan_reboot_host_power_stayed_on(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> Bool {
+  match receipt.host_power_before {
+    On =>
+      match receipt.host_power_after {
+        On => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn bmc_fan_reboot_activation_evidence(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> StateActivationEvidence {
+  if receipt.reset.reset_type == ResetGracefulRestart
+    && receipt.reset.http_status == 200
+    && receipt.reset.accepted
+    && receipt.bmc_down_observed
+    && receipt.bmc_returned
+    && receipt.observed_outage_seconds > 0
+    && bmc_fan_reboot_host_power_stayed_on(receipt: receipt)
+    && receipt.host_os_ssh_reachable_throughout
+    && receipt.post_reboot_controller_active
+    && !receipt.post_reboot_zone_failsafe_active
+    && receipt.post_reboot_observer_exit_success
+    && receipt.post_reboot_converge_noop_exit_success {
+    ActivationVerified
+  } else {
+    ActivationUnverified {
+      reason: "graceful BMC restart did not carry complete preservation and post-restart activation readback",
+    }
+  }
+}
+
+fn bmc_fan_reboot_preservation_outcome(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
+  if receipt.bmc_returned {
+    StatePreserved {
+      before: StateReadbackReceipt {
+        target: receipt.before.host,
+        subject: BmcFanConfigReadbackSubject {
+          config_path: receipt.before.policy.board_config_path,
+        },
+        state_digest: receipt.before.active_config_digest,
+        observed_at: receipt.before.observed_at,
+      },
+      after: StateReadbackReceipt {
+        target: receipt.host,
+        subject: BmcFanConfigReadbackSubject {
+          config_path: receipt.post_reboot_policy.board_config_path,
+        },
+        state_digest: receipt.post_reboot_active_config_digest,
+        observed_at: receipt.observed_at,
+      },
+      activation: bmc_fan_reboot_activation_evidence(receipt: receipt),
+    }
+  } else {
+    StatePreservationObservationRefused {
+      reason: "BMC did not return for post-boundary content and activation readback",
+    }
+  }
+}
+
+fn bmc_fan_reboot_durability_evidence(
+  receipt: BmcFanRebootPersistenceReceipt,
+  admission: BmcFanDurabilityAdmission,
+  boundary: StateDurabilityBoundary,
+) -> BmcFanDurabilityEvidence {
+  StateDurabilityEvidence {
+    admission: admission,
+    perturbation: StatePerturbationReceipt {
+      receipt_id: receipt.perturbation_receipt_id,
+      target: receipt.host,
+      boundary: boundary,
+      generation: receipt.perturbation_generation,
+      started_at: receipt.reset.observed_at,
+      completed_at: receipt.observed_at,
+    },
+    outcome: bmc_fan_reboot_preservation_outcome(receipt: receipt),
+  }
+}
+
+data srv4_bmc_fan_durability_evidence: List<BmcFanDurabilityEvidence> = [
+  bmc_fan_reboot_durability_evidence(
+    receipt: srv4_bmc_fan_reboot_persistence_receipt,
+    admission: srv4_bmc_fan_durability_admission,
+    boundary: fleet_bmc_fan_graceful_restart_boundary,
+  ),
+]
+
+data srv4_bmc_fan_policy_qualification_note: String = "The desired curve and projected file digest are admitted independently of the raw live observations. Qualification succeeds only because the typed srv4 receipt binds the same host, exact desired digest, realization content identity, capability definition version, perturbation generation, readback subject, and graceful-restart boundary, with before and after readback both equal to the desired digest."

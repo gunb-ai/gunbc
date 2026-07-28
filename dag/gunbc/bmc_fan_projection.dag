@@ -1,0 +1,141 @@
+module gunbc.bmc_fan_projection
+
+import extdeps.bmc.capability { BmcFirmwareVersion }
+import extdeps.bmc.types {
+  BmcFanCurve,
+  BmcFanPolicyObservation,
+  FanPidAggregatedEntry,
+  FanPidIndependentEntries,
+}
+import extdeps.boards.types { BaseboardModel }
+import extdeps.crypto.hash { Digest }
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
+  linux_file_publication_has_synchronized_commit,
+}
+import product.placement_supply { HostIdentity }
+import std.state_durability {
+  NoDurabilityCommitBarrier,
+  StateDurabilityAdmission,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  StateDurabilityCapabilityVersion,
+  StateDurabilityEvidence,
+  StatePerturbationGeneration,
+  StateRealizationIdentity,
+  SynchronizedCommit,
+  durability_commit_barrier_is_synchronized,
+}
+import std.types { Bool, List, NonEmptyStr }
+
+type BmcFanConfigReadbackSubject {
+  config_path: NonEmptyStr
+}
+
+type BmcFanDurabilityAdmission =
+  StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>
+
+type BmcFanDurabilityEvidence =
+  StateDurabilityEvidence<HostIdentity, BmcFanConfigReadbackSubject>
+
+type BmcFanPolicyProjectionCapability {
+  board: BaseboardModel
+  firmware: BmcFirmwareVersion
+  projected_curve: BmcFanCurve
+  projected_config_digest: Digest
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  controller_zone_path: NonEmptyStr
+  aggregate_fan_pid_entry: NonEmptyStr
+  realization: StateRealizationIdentity
+  durability_capability_version: StateDurabilityCapabilityVersion
+  publication_protocol: LinuxFilePublicationProtocol
+  durability_boundaries: List<StateDurabilityBoundary>
+  required_tach_inputs: List<NonEmptyStr>
+}
+
+fn bmc_fan_policy_projection_supports_apply(
+  capability: BmcFanPolicyProjectionCapability,
+  board: BaseboardModel,
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+) -> Bool {
+  capability.board == board
+    && capability.firmware == observation.firmware
+    && capability.projected_curve == desired_curve
+    && capability.config_path == observation.board_config_path
+    && capability.controller_service == observation.controller_service
+    && linux_file_publication_has_synchronized_commit(
+      protocol: capability.publication_protocol,
+    )
+    && durability_commit_barrier_is_synchronized(
+      barrier: bmc_fan_policy_projection_durability_capability(
+        capability: capability,
+      ).commit_barrier,
+    )
+}
+
+fn bmc_fan_state_durability_capability(
+  realization: StateRealizationIdentity,
+  capability_version: StateDurabilityCapabilityVersion,
+  boundaries: List<StateDurabilityBoundary>,
+  publication_protocol: LinuxFilePublicationProtocol,
+) -> StateDurabilityCapability {
+  StateDurabilityCapability {
+    realization: realization,
+    capability_version: capability_version,
+    supported_boundaries: boundaries,
+    commit_barrier: if linux_file_publication_has_synchronized_commit(
+      protocol: publication_protocol,
+    ) {
+        SynchronizedCommit
+      } else {
+        NoDurabilityCommitBarrier
+      },
+  }
+}
+
+fn bmc_fan_policy_projection_durability_capability(
+  capability: BmcFanPolicyProjectionCapability,
+) -> StateDurabilityCapability {
+  bmc_fan_state_durability_capability(
+    realization: capability.realization,
+    capability_version: capability.durability_capability_version,
+    boundaries: capability.durability_boundaries,
+    publication_protocol: capability.publication_protocol,
+  )
+}
+
+fn bmc_fan_policy_projection_durability_admission(
+  host: HostIdentity,
+  capability: BmcFanPolicyProjectionCapability,
+  perturbation_generation: StatePerturbationGeneration,
+) -> BmcFanDurabilityAdmission {
+  StateDurabilityAdmission {
+    target: host,
+    desired_state_digest: capability.projected_config_digest,
+    realization: capability.realization,
+    capability_version: capability.durability_capability_version,
+    perturbation_generation: perturbation_generation,
+    readback_subject: BmcFanConfigReadbackSubject {
+      config_path: capability.config_path,
+    },
+  }
+}
+
+fn bmc_fan_policy_projection_topology_matches(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> Bool {
+  match observation.controller_shape {
+    FanPidAggregatedEntry {
+      entry_name: entry_name,
+      tach_inputs: tach_inputs,
+    } =>
+      entry_name == capability.aggregate_fan_pid_entry
+        && tach_inputs == capability.required_tach_inputs
+    FanPidIndependentEntries { entry_names: _ } => false
+  }
+}
+
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently qualified projection."
