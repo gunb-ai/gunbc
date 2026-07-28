@@ -148,7 +148,7 @@ test fn orch_while_typed_ascent_matches_golden_holds() -> Bool {
 }
 
 test fn orch_while_live_cond_matches_literal_holds() -> Bool {
-  ci_floor_peak_while_cond_command == "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]"
+  ci_floor_peak_while_cond_command == "[ -n \"$d\" ] && ! [ \"$d\" = \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
 }
 
 test fn orch_while_live_body_matches_literal_holds() -> Bool {
