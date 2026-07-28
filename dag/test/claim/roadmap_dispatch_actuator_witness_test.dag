@@ -49,6 +49,9 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_codex_exec_spec,
   dispatch_spawn_commands_for_provider,
   dispatch_spawn_commands_for_instance,
+  DispatchSpawnCommands,
+  DispatchSpawnReady,
+  DispatchSpawnRefused,
   git_worktree_add_argv,
   tmux_spawn_argv,
   tmux_kill_session_argv,
@@ -81,8 +84,9 @@ import extdeps.llm.cli {
   reasoning_effort_label,
 }
 import gunbc.dispatch_pipe_pane_emit {
-  dispatch_event_pipe_command,
-  dispatch_event_pipe_body_is_poisoned,
+  PipeEmitted,
+  PipeEmitRefused,
+  dispatch_event_pipe_emission,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -209,14 +213,7 @@ test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
     && !string_contains(s: wire, pattern: "--ephemeral")
 }
 
-test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
-  let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
-  let cmds = dispatch_spawn_commands_for_provider(
-    node: node,
-    session_uuid: "uuid-unused-by-codex",
-    attempt_key: "feedfacefeedface",
-    provider: CodexCliProvider,
-  )
+fn codex_tmux_command_shape_holds(cmds: DispatchSpawnCommands) -> Bool {
   let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
   let provider_wire = join(cmds.provider_start.args, separator: "\0")
   cmds.tmux_spawn.program == "/usr/bin/tmux"
@@ -229,19 +226,21 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     && !string_contains(s: provider_wire, pattern: "\0claude\0")
 }
 
-test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let commands = dispatch_spawn_commands_for_instance(
-    instance: lab,
-    node: sized_derivable(
-      id: "ts-dispatch-provider-events",
-      prs: [],
-      title: "Provider execution facts",
-    ),
-    session_uuid: "00000000-0000-4000-8000-000000000001",
+test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
+  let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
+  match dispatch_spawn_commands_for_provider(
+    node: node,
+    session_uuid: "uuid-unused-by-codex",
     attempt_key: "feedfacefeedface",
     provider: CodexCliProvider,
-  )
+  ) {
+    DispatchSpawnRefused { step: _, detail: _ } => false
+    DispatchSpawnReady { commands: cmds } =>
+      codex_tmux_command_shape_holds(cmds: cmds)
+  }
+}
+
+fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands) -> Bool {
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
@@ -277,6 +276,25 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
     )
 }
 
+test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dispatch_spawn_commands_for_instance(
+    instance: lab,
+    node: sized_derivable(
+      id: "ts-dispatch-provider-events",
+      prs: [],
+      title: "Provider execution facts",
+    ),
+    session_uuid: "00000000-0000-4000-8000-000000000001",
+    attempt_key: "feedfacefeedface",
+    provider: CodexCliProvider,
+  ) {
+    DispatchSpawnRefused { step: _, detail: _ } => false
+    DispatchSpawnReady { commands } =>
+      lab_instance_command_shape_holds(commands: commands)
+  }
+}
+
 test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
@@ -304,14 +322,19 @@ test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
 
 data event_pipe_emission_witness_note: String = "review 44063. The claim is no longer 'the caller remembered to quote' — quoting is the lit-word production's job now, so the exact emitted spelling is the oracle: every word single-quoted, and an embedded quote closed/escaped/reopened as '\\''. The metacharacter fixture stays because it is what a spelling regression would smuggle: a $(...) inside the events path must be inert text in the payload, never a command substitution. The poison RED holds the serializer-refusal arm dead in corpus."
 
+fn emitted_pipe_body_matches(body: String) -> Bool {
+  body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"
+}
+
 test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
-  let command = dispatch_event_pipe_command(
+  match dispatch_event_pipe_emission(
     tee_program: "/usr/bin/tee",
     events_path: "/tmp/a';$(touch nope)",
-  )
-  let body = command.body as String
-  body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"
-    && !dispatch_event_pipe_body_is_poisoned(command: command)
+  ) {
+    PipeEmitRefused { detail: _ } => false
+    PipeEmitted { command } =>
+      emitted_pipe_body_matches(body: command.body as String)
+  }
 }
 
 test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {

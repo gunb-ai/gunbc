@@ -9,6 +9,16 @@ import v2.std.node { Node }
 
 data dispatch_event_pipe_emit_note: String = "review 44063. tmux pipe-pane's input contract IS one shell-command string, so the SEAM is permanent — but the payload is no longer hand-assembled. dispatch_event_pipe_intent builds the command as a bash AST (one command, five literal words) and dispatch_event_pipe_emission renders it through the signed v2.workflow.bash_command_fold_serialize backend, which is the same grammar the ingest side reads forward (DESIGN 4, one grammar read in both directions). This module exists BECAUSE the payload construction has to sit on a realization edge: v2.lens.realization_vocabulary_containment confines the bash-AST vocabulary to realization_edge_path_prefixes, and dag/gunbc/roadmap_dispatch_actuator.dag is a workflow module, not an emitter. The split is the containment rule working as designed, not an exception to it — the precedent is dag/gunbc/live_deploy/emit. Quoting is now the grammar's job, not the caller's: the lit-word production single-quotes every word and escapes an embedded quote, so extdeps.exec.command.shell_quote is no longer applied at this site. Verified by execution that the emitted spelling is behaviourally identical for this payload — a quoted command name still resolves the exec builtin (quoting suppresses alias and reserved-word recognition, not builtin lookup)."
 
+fn dispatch_event_pipe_intent(tee_program: String, events_path: String) -> Node {
+  bash_build_command_from_lits(lits: [
+    "exec",
+    tee_program,
+    "-a",
+    "--",
+    events_path,
+  ])
+}
+
 type PipePaneEmission
   = PipeEmitted { command: TmuxPipeCommand }
   | PipeEmitRefused { detail: String }

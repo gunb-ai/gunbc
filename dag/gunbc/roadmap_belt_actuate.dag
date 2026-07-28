@@ -32,6 +32,9 @@ import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
   DispatchLiveSession,
   DispatchSpawnCommands,
+  DispatchSpawnPlan,
+  DispatchSpawnReady,
+  DispatchSpawnRefused,
   dispatch_spawn_commands_for_instance,
   dispatch_capability_program,
   dispatch_attempt_key,
@@ -671,13 +674,20 @@ fn belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
   )
   let session_name = dispatch_tmux_session_name(node_id: node.node)
-  let cmds = dispatch_spawn_commands_for_instance(
+  match dispatch_spawn_commands_for_instance(
     instance: instance,
     node: node,
     session_uuid: belt_spawn_session_uuid(node_id: node.node as String, probed_at: probed_at),
     attempt_key: attempt_key,
     provider: dispatch_cli_provider,
-  )
+  ) {
+    DispatchSpawnRefused { step, detail } =>
+      SpawnFailed {
+        node_id: node.node as String,
+        step: step as String,
+        detail: detail,
+      }
+    DispatchSpawnReady { commands: cmds } =>
   match belt_exec_steps(
     steps: [
       BeltExecStep { step: "worktree-add", command: cmds.worktree_add },
@@ -799,6 +809,7 @@ fn belt_actuate_spawn_exec_modeled(
           }
       }
   }
+}
 }
 
 fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
