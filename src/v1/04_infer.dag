@@ -93,12 +93,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name,
-  V1NodeContainmentPathCapture,
-  NamespaceIdentityCapture,
-  empty_namespace_identity_capture,
-  concat_namespace_identity_capture,
-  namespace_identity_capture_singleton
+  lookup_binding_by_name, binding_declares_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -217,174 +212,6 @@ type VariantExportSurface {
 type TypeNameExportFacts {
   exporter_count: Int
   canonical_binding: TypeBinding?
-}
-
-fn namespace_containment_ancestors_snoc(
-  ancestors: FreeMonoid<Node>,
-  node: Node
-) -> FreeMonoid<Node> {
-  match ancestors {
-    Empty => Cons { head: node, tail: Empty }
-    Cons { head: head, tail: tail } =>
-      Cons {
-        head: head,
-        tail: namespace_containment_ancestors_snoc(
-          ancestors: tail,
-          node: node
-        )
-      }
-  }
-}
-
-fn namespace_containment_path_at(
-  ancestors: FreeMonoid<Node>,
-  terminal: Node
-) -> V1NodeContainmentPathCapture {
-  V1NodeContainmentPathCapture {
-    ancestors: ancestors,
-    terminal: terminal
-  }
-}
-
-fn namespace_identity_capture_pattern(
-  match_pattern_value: MatchPattern,
-  ancestors: FreeMonoid<Node>
-) -> NamespaceIdentityCapture {
-  match match_pattern_value {
-    Bind { declaration: declaration } =>
-      namespace_identity_capture_singleton(
-        containment: namespace_containment_path_at(
-          ancestors: ancestors,
-          terminal: declaration
-        )
-      )
-    LitPattern { value: _ } => empty_namespace_identity_capture()
-    Wildcard => empty_namespace_identity_capture()
-    VariantPattern { name: _, parent_enum: _, field_bindings: bindings } =>
-      fold(
-        bindings,
-        init: empty_namespace_identity_capture(),
-        f: (acc, binding) =>
-          let binding_capture = namespace_identity_capture_singleton(
-            containment: namespace_containment_path_at(
-              ancestors: ancestors,
-              terminal: binding
-            )
-          )
-          let binding_ancestors = namespace_containment_ancestors_snoc(
-            ancestors: ancestors,
-            node: binding
-          )
-          let nested_capture = namespace_identity_capture_pattern(
-            match_pattern_value: field_binding_pattern(n: binding),
-            ancestors: binding_ancestors
-          )
-          concat_namespace_identity_capture(
-            left: acc,
-            right: concat_namespace_identity_capture(
-              left: binding_capture,
-              right: nested_capture
-            )
-          )
-      )
-  }
-}
-
-fn namespace_identity_capture_node(
-  node: Node,
-  ancestors: FreeMonoid<Node>
-) -> NamespaceIdentityCapture {
-  let current = namespace_identity_capture_singleton(
-    containment: namespace_containment_path_at(
-      ancestors: ancestors,
-      terminal: node
-    )
-  )
-  let child_ancestors = namespace_containment_ancestors_snoc(
-    ancestors: ancestors,
-    node: node
-  )
-  let child_capture = fold(
-    concat(node.children, concat(node.params, concat(node.uses, node.properties))),
-    init: empty_namespace_identity_capture(),
-    f: (acc, child) =>
-      concat_namespace_identity_capture(
-        left: acc,
-        right: namespace_identity_capture_node(
-          node: child,
-          ancestors: child_ancestors
-        )
-      )
-  )
-  let body_capture = match node.body {
-    Present { value: body } =>
-      namespace_identity_capture_node(
-        node: body,
-        ancestors: child_ancestors
-      )
-    Absent => empty_namespace_identity_capture()
-  }
-  let transport_capture = match node.transport {
-    Present { value: transport } =>
-      namespace_identity_capture_node(
-        node: transport,
-        ancestors: child_ancestors
-      )
-    Absent => empty_namespace_identity_capture()
-  }
-  let annotation_capture = match node.type_annotation {
-    Present { value: annotation } =>
-      namespace_identity_capture_node(
-        node: annotation,
-        ancestors: child_ancestors
-      )
-    Absent => empty_namespace_identity_capture()
-  }
-  let pattern_capture = namespace_identity_capture_pattern(
-    match_pattern_value: arm_pattern(n: node),
-    ancestors: child_ancestors
-  )
-  concat_namespace_identity_capture(
-    left: current,
-    right: concat_namespace_identity_capture(
-      left: child_capture,
-      right: concat_namespace_identity_capture(
-        left: body_capture,
-        right: concat_namespace_identity_capture(
-          left: transport_capture,
-          right: concat_namespace_identity_capture(
-            left: annotation_capture,
-            right: pattern_capture
-          )
-        )
-      )
-    )
-  )
-}
-
-fn namespace_identity_capture_module(
-  module: Node,
-  items: List<Node>
-) -> NamespaceIdentityCapture {
-  let module_capture = namespace_identity_capture_singleton(
-    containment: namespace_containment_path_at(
-      ancestors: Empty,
-      terminal: module
-    )
-  )
-  let module_ancestors = Cons { head: module, tail: Empty }
-  fold(
-    items,
-    init: module_capture,
-    f: (acc, item) =>
-      concat_namespace_identity_capture(
-        left: acc,
-        right: namespace_identity_capture_node(
-          node: item,
-          ancestors: module_ancestors
-        )
-      )
-  )
 }
 
 type InferScope {
@@ -7704,10 +7531,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       typed: TypedModule {
         module: resolved.module,
         items: [],
-        namespace_identity: namespace_identity_capture_module(
-          module: resolved.module,
-          items: []
-        ),
         type_env: env,
         type_env_cache: env_cache,
         interface: build_module_interface(
@@ -7790,10 +7613,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     typed: TypedModule {
       module: typed_module,
       items: reannotated_items,
-      namespace_identity: namespace_identity_capture_module(
-        module: typed_module,
-        items: reannotated_items
-      ),
       type_env: env,
       type_env_cache: TypeEnvCache {
         deps_map: env_cache.deps_map,
@@ -8274,7 +8093,6 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
     TypedModule {
       module: m.module,
       items: m.items,
-      namespace_identity: m.namespace_identity,
       type_env: TypeEnv { module_path: m.type_env.module_path,
         bindings: m.type_env.bindings,
         str_bindings: rewired.str_bindings,
@@ -8351,7 +8169,6 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     TypedModule {
       module: m.module,
       items: m.items,
-      namespace_identity: m.namespace_identity,
       type_env: TypeEnv { module_path: m.type_env.module_path,
         bindings: m.type_env.bindings,
         str_bindings: m.type_env.str_bindings,
@@ -8388,7 +8205,6 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     TypedModule {
       module: m.module,
       items: m.items,
-      namespace_identity: m.namespace_identity,
       type_env: m.type_env,
       type_env_cache: m.type_env_cache,
       interface: m.interface,

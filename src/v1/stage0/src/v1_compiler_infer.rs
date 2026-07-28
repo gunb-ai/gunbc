@@ -53,22 +53,20 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    bare_name_miss_diagnostic, binding_declares_name, concat_namespace_identity_capture,
-    empty_namespace_identity_capture, empty_symbol_index, empty_type_env_cache,
+    bare_name_miss_diagnostic, binding_declares_name, empty_symbol_index, empty_type_env_cache,
     env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
     is_recursive_type, is_recursive_type_by_name, lookup_binding_by_name, lookup_type,
     lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
-    merge_type_env_cache_guarded, namespace_identity_capture_singleton, node_with_children,
-    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup,
+    merge_type_env_cache_guarded, node_with_children, node_with_inferred, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, str_bindings_from_bindings,
+    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, NamespaceIdentityCapture,
-    ServiceCensusEntry, SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
-    V1NodeContainmentPathCapture,
+    GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
+    SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
 };
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
@@ -232,177 +230,6 @@ pub struct VariantExportSurface {
 pub struct TypeNameExportFacts {
     pub exporter_count: i64,
     pub canonical_binding: Option<Rc<TypeBinding>>,
-}
-
-pub fn namespace_containment_ancestors_snoc(
-    ancestors: Rc<Vec<Rc<Node>>>,
-    node: Rc<Node>,
-) -> Rc<Vec<Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = ancestors.clone();
-        if __fm.is_empty() {
-            Rc::new({
-                let mut __cons_v = (*Rc::new(vec![])).clone();
-                __cons_v.insert(0, node.clone());
-                __cons_v
-            })
-        } else {
-            let head = (*__fm)[0].clone();
-            let tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-            Rc::new({
-                let mut __cons_v =
-                    (*namespace_containment_ancestors_snoc(tail.clone(), node.clone())).clone();
-                __cons_v.insert(0, head.clone());
-                __cons_v
-            })
-        }
-    })
-}
-
-pub fn namespace_containment_path_at(
-    ancestors: Rc<Vec<Rc<Node>>>,
-    terminal: Rc<Node>,
-) -> Rc<V1NodeContainmentPathCapture> {
-    Rc::new(V1NodeContainmentPathCapture {
-        ancestors: ancestors.clone(),
-        terminal: terminal.clone(),
-    })
-}
-
-pub fn namespace_identity_capture_pattern(
-    match_pattern_value: Rc<MatchPattern>,
-    ancestors: Rc<Vec<Rc<Node>>>,
-) -> Rc<NamespaceIdentityCapture> {
-    stacker::maybe_grow(
-        512 * 1024,
-        2 * 1024 * 1024,
-        || match (*match_pattern_value.clone()).clone() {
-            MatchPattern::Bind {
-                declaration: declaration,
-                ..
-            } => namespace_identity_capture_singleton(namespace_containment_path_at(
-                ancestors.clone(),
-                declaration.clone(),
-            )),
-            MatchPattern::LitPattern { value: _, .. } => empty_namespace_identity_capture(),
-            MatchPattern::Wildcard => empty_namespace_identity_capture(),
-            MatchPattern::VariantPattern {
-                field_bindings: bindings,
-                ..
-            } => bindings.clone().iter().cloned().fold(
-                empty_namespace_identity_capture(),
-                |acc: Rc<NamespaceIdentityCapture>, binding: Rc<Node>| {
-                    let binding_capture = namespace_identity_capture_singleton(
-                        namespace_containment_path_at(ancestors.clone(), binding.clone()),
-                    );
-                    let binding_ancestors =
-                        namespace_containment_ancestors_snoc(ancestors.clone(), binding.clone());
-                    let nested_capture = namespace_identity_capture_pattern(
-                        field_binding_pattern(binding.clone()),
-                        binding_ancestors.clone(),
-                    );
-                    concat_namespace_identity_capture(
-                        acc,
-                        concat_namespace_identity_capture(
-                            binding_capture.clone(),
-                            nested_capture.clone(),
-                        ),
-                    )
-                },
-            ),
-        },
-    )
-}
-
-pub fn namespace_identity_capture_node(
-    node: Rc<Node>,
-    ancestors: Rc<Vec<Rc<Node>>>,
-) -> Rc<NamespaceIdentityCapture> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let current = namespace_identity_capture_singleton(namespace_containment_path_at(
-            ancestors.clone(),
-            node.clone(),
-        ));
-        let child_ancestors = namespace_containment_ancestors_snoc(ancestors.clone(), node.clone());
-        let child_capture = v1_rt::concat(
-            node.children.clone(),
-            v1_rt::concat(
-                node.params.clone(),
-                v1_rt::concat(node.uses.clone(), node.properties.clone()),
-            ),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            empty_namespace_identity_capture(),
-            |acc: Rc<NamespaceIdentityCapture>, child: Rc<Node>| {
-                concat_namespace_identity_capture(
-                    acc,
-                    namespace_identity_capture_node(child.clone(), child_ancestors.clone()),
-                )
-            },
-        );
-        let body_capture = match node.body.clone() {
-            Some(body) => namespace_identity_capture_node(body.clone(), child_ancestors.clone()),
-            None => empty_namespace_identity_capture(),
-        };
-        let transport_capture = match node.transport.clone() {
-            Some(transport) => {
-                namespace_identity_capture_node(transport.clone(), child_ancestors.clone())
-            }
-            None => empty_namespace_identity_capture(),
-        };
-        let annotation_capture = match node.type_annotation.clone() {
-            Some(annotation) => {
-                namespace_identity_capture_node(annotation.clone(), child_ancestors.clone())
-            }
-            None => empty_namespace_identity_capture(),
-        };
-        let pattern_capture =
-            namespace_identity_capture_pattern(arm_pattern(node.clone()), child_ancestors.clone());
-        concat_namespace_identity_capture(
-            current.clone(),
-            concat_namespace_identity_capture(
-                child_capture.clone(),
-                concat_namespace_identity_capture(
-                    body_capture.clone(),
-                    concat_namespace_identity_capture(
-                        transport_capture.clone(),
-                        concat_namespace_identity_capture(
-                            annotation_capture.clone(),
-                            pattern_capture.clone(),
-                        ),
-                    ),
-                ),
-            ),
-        )
-    })
-}
-
-pub fn namespace_identity_capture_module(
-    module: Rc<Node>,
-    items: Rc<Vec<Rc<Node>>>,
-) -> Rc<NamespaceIdentityCapture> {
-    {
-        let module_capture = namespace_identity_capture_singleton(namespace_containment_path_at(
-            Rc::new(vec![]),
-            module.clone(),
-        ));
-        let module_ancestors = Rc::new({
-            let mut __cons_v = (*Rc::new(vec![])).clone();
-            __cons_v.insert(0, module.clone());
-            __cons_v
-        });
-        items.clone().iter().cloned().fold(
-            module_capture.clone(),
-            |acc: Rc<NamespaceIdentityCapture>, item: Rc<Node>| {
-                concat_namespace_identity_capture(
-                    acc,
-                    namespace_identity_capture_node(item.clone(), module_ancestors.clone()),
-                )
-            },
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -16935,10 +16762,6 @@ pub fn typecheck_module(
                 typed: Rc::new(TypedModule {
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
-                    namespace_identity: namespace_identity_capture_module(
-                        resolved.module.clone(),
-                        Rc::new(vec![]),
-                    ),
                     type_env: env.clone(),
                     type_env_cache: env_cache.clone(),
                     interface: build_module_interface(
@@ -17086,10 +16909,6 @@ pub fn typecheck_module(
             typed: Rc::new(TypedModule {
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
-                namespace_identity: namespace_identity_capture_module(
-                    typed_module.clone(),
-                    reannotated_items.clone(),
-                ),
                 type_env: env.clone(),
                 type_env_cache: Rc::new(TypeEnvCache {
                     deps_map: env_cache.deps_map.clone(),
@@ -18192,7 +18011,6 @@ pub fn rewire_type_env_import_str_binding_identity(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        namespace_identity: m.namespace_identity.clone(),
                         type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
@@ -18498,7 +18316,6 @@ pub fn rewire_type_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        namespace_identity: m.namespace_identity.clone(),
                         type_env: Rc::new(TypeEnv {
                             module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
@@ -18568,7 +18385,6 @@ pub fn rewire_func_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        namespace_identity: m.namespace_identity.clone(),
                         type_env: m.type_env.clone(),
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
