@@ -128,10 +128,6 @@ data sha256_object: GitObjectId = GitSha256ObjectId {
   digest: "cd12b0326b0ea9f272a6dc91e21e490f4cee87b47e6bffa03801420cf81f6bab",
 }
 
-fn fixture_oid_text(oid: GitObjectId) -> String {
-  git_object_id_content_hash(oid: oid) as String
-}
-
 fn git_r0_fixture_expected_readback_receipt() -> String {
   "sha1_blobs=grounded|sha256_blob=grounded|tree_modes=100644,100755,120000,040000,160000|non_ascii_path=preserved|index_entries=6|ref_cas=advanced|stale=refused|missing_target=refused|tag_type=tag|fsck=ok"
 }

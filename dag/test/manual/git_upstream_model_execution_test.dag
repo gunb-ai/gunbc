@@ -3,6 +3,7 @@ module test.manual.git_upstream_model_execution
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.gunbc
+import extdeps.git.object_store { git_object_id_content_hash }
 import gunbc.output_policy { ExpectSuccess, ExpectFailure }
 import test.claim.git_upstream_model_witness {
   sha1_blob_regular,
@@ -10,7 +11,6 @@ import test.claim.git_upstream_model_witness {
   sha1_blob_symlink,
   sha1_subtree,
   sha256_object,
-  fixture_oid_text,
   git_r0_fixture_expected_readback_receipt,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -345,11 +345,11 @@ fn git_r0_typed_execution_read_back() -> String {
           && cleaned_fixture.success
           && cleaned_sha256.success
 
-      let content_addresses_grounded = trim(s: regular_oid.stdout) == fixture_oid_text(oid: sha1_blob_regular)
-          && trim(s: executable_oid.stdout) == fixture_oid_text(oid: sha1_blob_executable)
-          && trim(s: symlink_oid.stdout) == fixture_oid_text(oid: sha1_blob_symlink)
-          && trim(s: empty_tree.stdout) == fixture_oid_text(oid: sha1_subtree)
-          && trim(s: sha256_blob.stdout) == fixture_oid_text(oid: sha256_object)
+      let content_addresses_grounded = trim(s: regular_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_regular) as String)
+          && trim(s: executable_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_executable) as String)
+          && trim(s: symlink_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_symlink) as String)
+          && trim(s: empty_tree.stdout) == (git_object_id_content_hash(oid: sha1_subtree) as String)
+          && trim(s: sha256_blob.stdout) == (git_object_id_content_hash(oid: sha256_object) as String)
           && trim(s: sha256_format.stdout) == "sha256"
 
       let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
