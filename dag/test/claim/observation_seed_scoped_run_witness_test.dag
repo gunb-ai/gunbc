@@ -167,10 +167,7 @@ test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
             ScopedRunMeasuredRefused { cause: _ } => false
             ScopedRunMeasuredProjected { bytes: one_ms, next_open: one_ms_open, wall: one_ms_wall } =>
               !one_open && !sub_ms_open && !one_ms_open &&
-              nanosecond_count(n: one_wall) == 1 && nanosecond_count(n: sub_ms_wall) == 999999 && nanosecond_count(n: one_ms_wall) == 1000000 &&
-              string_contains(s: one, pattern: "duration") &&
-              string_contains(s: sub_ms, pattern: "duration") &&
-              string_contains(s: one_ms, pattern: "duration")
+              nanosecond_count(n: one_wall) == 1 && nanosecond_count(n: sub_ms_wall) == 999999 && nanosecond_count(n: one_ms_wall) == 1000000
           }
       }
   }

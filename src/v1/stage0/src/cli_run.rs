@@ -10822,8 +10822,20 @@ impl ScopedRunObservation {
         self.emit("scoped_run_begin_write_measured", None, true)
     }
     fn finish(&mut self) -> Result<(), String> {
-        // Clean Final has no attention basis; timing is carried by the typed receipt.
-        self.emit("scoped_run_final_write", None, false)
+        // Clean Final has no attention basis; carry end timing in the separate typed receipt.
+        let end_wall_ns = self.started.elapsed().as_nanos();
+        if end_wall_ns < self.last_wall_ns {
+            return Err("scoped run monotonic Nanosecond wall regressed at Final".to_string());
+        }
+        self.last_wall_ns = end_wall_ns;
+        self.emit("scoped_run_final_write", None, false)?;
+        if std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
+            eprintln!(
+                "[scoped-observation-receipt wall_ns={} seed_resolution_ns={}]",
+                self.last_wall_ns, self.seed_resolution_ns
+            );
+        }
+        Ok(())
     }
     fn refused(&mut self, cause: &str) -> Result<(), String> {
         self.emit(
