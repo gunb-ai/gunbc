@@ -34,6 +34,9 @@ import gunbc.roadmap_status {
   DerivableLine,
   Unsigned,
   SignedOff,
+  line_ticket,
+  item_is_done,
+  signoff_is_present,
 }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
@@ -73,11 +76,8 @@ fn node_names() -> List<String> {
   nodes() |> map(n => n.node as String)
 }
 
-fn active_ticket_complete(n: RoadmapNode) -> Bool {
-  match n.line {
-    TicketLine { done, ticket } =>
-      !done
-        && !(ticket.headline == "")
+fn ticket_fields_complete(ticket: TicketFields) -> Bool {
+  !(ticket.headline == "")
         && !(ticket.brief == "")
         && !(ticket.displaced_cost == "")
         && !(ticket.current_state == "")
@@ -85,21 +85,21 @@ fn active_ticket_complete(n: RoadmapNode) -> Bool {
         && !(ticket.red_control == "")
         && !(ticket.out_of_scope == "")
         && !(ticket.handback == "")
-        && count(n.carriers) > 0
-        && !(n.owner == "")
-        && match n.sizing {
-          Sized { intricacy: _, volume: _, repo, acceptance } =>
-            repo == "gunbc" && match acceptance { ManualAcceptance => true _ => false }
-          Unsized => false
-        }
-        && match n.signoff {
-          Unsigned => true
-          _ => false
-        }
-    SupersededLine { by: _, content: _ } => false
-    AuthoredLine { done: _, content: _ } => false
-    PlainLine { content: _ } => false
-    DerivableLine { prs: _, title: _, description: _ } => false
+}
+
+fn active_node_admissible(n: RoadmapNode) -> Bool {
+  !item_is_done(item: n.line, merged: [])
+    && !signoff_is_present(s: n.signoff)
+    && match line_ticket(item: n.line) {
+      Present { value } => ticket_fields_complete(ticket: value)
+      Absent => false
+    }
+    && count(n.carriers) > 0
+    && !(n.owner == "")
+    && match n.sizing {
+      Sized { intricacy: _, volume: _, repo, acceptance } =>
+        repo == "gunbc" && acceptance == ManualAcceptance
+      Unsized => false
   }
 }
 
@@ -156,15 +156,15 @@ test fn witness_active_graph_is_mechanically_acyclic() -> Bool {
 }
 
 test fn witness_every_active_row_is_complete_unsigned_ticket() -> Bool {
-  all(nodes(), n => active_ticket_complete(n: n))
+  all(nodes(), n => active_node_admissible(n: n))
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_ticket_complete(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
 }
 
 test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
-  !active_ticket_complete(n: red_fixture(
+  !active_node_admissible(n: red_fixture(
     line: red_ticket(done: false),
     signoff: SignedOff {
       by: "operator",
@@ -176,7 +176,7 @@ test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
 }
 
 test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
-  !active_ticket_complete(n: red_fixture(
+  !active_node_admissible(n: red_fixture(
     line: SupersededLine { by: "replacement", content: "retired history" },
     signoff: Unsigned,
   ))
