@@ -14,11 +14,14 @@ test fn srv3_capabilities_are_grounded() -> Bool {
 }
 
 test fn altrad8ud_firmware_catalog_is_board_grounded() -> Bool {
-  list_length(items: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 2
+  list_length(items: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 3
     && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
     && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityFirmwareUpdate)
     && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityVirtualMedia) == false
     && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_22_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
     && catalog_has_vm_capable_firmware(catalog: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == false
 }
 

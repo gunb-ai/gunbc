@@ -1,0 +1,339 @@
+module gunbc.fleet_bmc_observation
+
+import extdeps.bmc.capability {
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+}
+import extdeps.bmc.types {
+  BmcConfigPersistenceObservation,
+  BmcFanCurve,
+  BmcFanCurveStep,
+  BmcFanPolicyObservation,
+  BmcOverlayConfigObserved,
+  BmcRedfishSurfaceObservation,
+  BmcUpdateServiceObservation,
+  FanPidAggregatedEntry,
+  On,
+  RedfishManagerResetObservation,
+  RedfishFanControlResourceAbsent,
+  RedfishInitialDutyControlResource,
+  RedfishLegacyChassisThermal,
+  RedfishPowerState,
+  ResetGracefulRestart,
+  RedfishThermalSubsystemSensorCollection,
+}
+import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.filesystem.linux {
+  LinuxJffs2,
+  LinuxMountObservation,
+  LinuxOverlayFs,
+  LinuxOverlayObservation,
+  LinuxSquashFs,
+}
+import gunbc.fleet_intent {
+  srv3_baseboard,
+  srv4_baseboard,
+  srv4_host,
+}
+import product.placement_supply { HostIdentity }
+import std.bmc { OpenBmc }
+import std.content_hash { content_hash_atom }
+import std.measure {
+  Celsius,
+  RevolutionsPerMinute,
+  byte_size,
+  celsius,
+  percent,
+  rpm,
+}
+import std.nat { Nat }
+import std.state_durability {
+  StatePerturbationGeneration,
+  StateRealizationIdentity,
+}
+import std.types { Bool, ContentHash, List, NonEmptyStr, String }
+
+type BmcFanTachReceipt {
+  sensor: NonEmptyStr
+  reading: RevolutionsPerMinute
+}
+
+type BmcFanConvergenceReceipt {
+  host: HostIdentity
+  policy: BmcFanPolicyObservation
+  persistence: BmcConfigPersistenceObservation
+  realization: StateRealizationIdentity
+  active_config_digest: Digest
+  previous_config_digest: Digest
+  zone_control_path: NonEmptyStr
+  zone_failsafe_active: Bool
+  monitoring_sample_count: Nat
+  monitoring_duration_seconds: Nat
+  temp_soc_minimum: Celsius
+  temp_soc_maximum: Celsius
+  temp_soc_final: Celsius
+  guarded_component_maximum: Celsius
+  final_tachs: List<BmcFanTachReceipt>
+  observed_at: NonEmptyStr
+}
+
+type BmcFanRebootPersistenceReceipt {
+  host: HostIdentity
+  perturbation_receipt_id: NonEmptyStr
+  perturbation_generation: StatePerturbationGeneration
+  before: BmcFanConvergenceReceipt
+  post_reboot_policy: BmcFanPolicyObservation
+  reset: RedfishManagerResetObservation
+  bmc_down_observed: Bool
+  bmc_returned: Bool
+  bmc_down_observed_at: NonEmptyStr
+  bmc_returned_at: NonEmptyStr
+  observed_outage_seconds: Nat
+  host_power_before: RedfishPowerState
+  host_power_after: RedfishPowerState
+  host_os_ssh_reachable_throughout: Bool
+  pre_reboot_temp_soc: Celsius
+  post_reboot_temp_soc: Celsius
+  pre_reboot_tachs: List<BmcFanTachReceipt>
+  post_reboot_tachs: List<BmcFanTachReceipt>
+  post_reboot_active_config_digest: Digest
+  post_reboot_controller_active: Bool
+  post_reboot_zone_failsafe_active: Bool
+  post_reboot_observer_exit_success: Bool
+  post_reboot_converge_noop_exit_success: Bool
+  observed_at: NonEmptyStr
+}
+
+data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+  endpoint: srv3_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "2.07.00",
+  },
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+  endpoint: srv4_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: "3.22.00",
+  },
+  observed_at: "2026-07-27",
+}
+
+data srv3_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
+  firmware: srv3_bmc_firmware_observation,
+  thermal_surface: RedfishThermalSubsystemSensorCollection,
+  chassis_sensor_collection_member_count: 51,
+  fan_control_surface: RedfishFanControlResourceAbsent,
+}
+
+data srv4_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
+  firmware: srv4_bmc_firmware_observation,
+  thermal_surface: RedfishLegacyChassisThermal,
+  chassis_sensor_collection_member_count: 9,
+  fan_control_surface: RedfishInitialDutyControlResource,
+}
+
+data srv3_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
+  firmware: srv3_bmc_firmware_observation,
+  http_push_uri: "/redfish/v1/UpdateService/update",
+  multipart_http_push_uri: "/redfish/v1/UpdateService/update",
+  active_bmc_image_id: "c1789ba5",
+  active_bmc_image_updateable: true,
+  firmware_inventory_member_count: 2,
+  bmc_image_member_count: 1,
+  backup_bmc_image_observed: false,
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
+  firmware: srv4_bmc_firmware_observation,
+  http_push_uri: "/redfish/v1/UpdateService/update",
+  multipart_http_push_uri: "/redfish/v1/UpdateService/update",
+  active_bmc_image_id: "14c085a0",
+  active_bmc_image_updateable: true,
+  firmware_inventory_member_count: 3,
+  bmc_image_member_count: 1,
+  backup_bmc_image_observed: false,
+  observed_at: "2026-07-27",
+}
+
+data srv4_bmc_fan_observed_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
+  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
+  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
+  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+]
+
+data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: srv4_bmc_fan_observed_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(75),
+  positive_hysteresis_degrees_celsius: 1,
+  negative_hysteresis_degrees_celsius: 2,
+}
+
+data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
+data srv4_bmc_fan_observed_controller_service: NonEmptyStr = "phosphor-pid-control.service"
+data srv4_bmc_fan_observed_controller_zone_path: NonEmptyStr = "/xyz/openbmc_project/settings/fanctrl/zone0"
+data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
+data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
+
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data srv4_bmc_fan_realization_content_hash: ContentHash = content_hash_atom(
+  value: "typed-openbmc-fan-config-project-validate-publish-restart-readback-v2",
+)
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  content_hash: srv4_bmc_fan_realization_content_hash,
+}
+
+data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
+  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+)
+
+data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
+
+data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  curve: srv4_bmc_fan_observed_curve,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: srv4_bmc_fan_observed_config_path,
+  controller_service: srv4_bmc_fan_observed_controller_service,
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidAggregatedEntry {
+    entry_name: srv4_bmc_fan_observed_aggregate_entry,
+    tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+  },
+  observed_at: "2026-07-27T22:31:25Z",
+}
+
+data srv4_bmc_root_overlay_observation: LinuxOverlayObservation = LinuxOverlayObservation {
+  merged_mount: LinuxMountObservation {
+    source: "cow",
+    target: "/",
+    filesystem: LinuxOverlayFs,
+  },
+  lower_directory: "/run/initramfs/ro",
+  upper_directory: "/run/initramfs/rw/cow",
+  lower_backing_mount: LinuxMountObservation {
+    source: "/dev/mtdblock4",
+    target: "/run/initramfs/ro",
+    filesystem: LinuxSquashFs,
+  },
+  upper_backing_mount: LinuxMountObservation {
+    source: "/dev/mtdblock5",
+    target: "/run/initramfs/rw",
+    filesystem: LinuxJffs2,
+  },
+}
+
+data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = BmcOverlayConfigObserved {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  config_path: srv4_bmc_fan_observed_config_path,
+  overlay: srv4_bmc_root_overlay_observation,
+  writable: true,
+  upper_override_present: true,
+  available_bytes: byte_size(20365312),
+  observed_at: "2026-07-27T22:31:25Z",
+}
+
+data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConvergenceReceipt {
+  host: srv4_host.identity,
+  policy: srv4_bmc_fan_converged_policy_observation,
+  persistence: srv4_bmc_config_persistence_observation,
+  realization: srv4_bmc_fan_realization,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
+  previous_config_digest: sha256_digest(
+    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
+  ),
+  zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
+  zone_failsafe_active: false,
+  monitoring_sample_count: 12,
+  monitoring_duration_seconds: 360,
+  temp_soc_minimum: celsius(72),
+  temp_soc_maximum: celsius(77),
+  temp_soc_final: celsius(73),
+  guarded_component_maximum: celsius(69),
+  final_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3616) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(943) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(933) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(889) },
+  ],
+  observed_at: "2026-07-27T22:31:25Z",
+}
+
+data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
+  firmware: srv4_bmc_firmware_observation.firmware,
+  curve: srv4_bmc_fan_observed_curve,
+  selected_config_path: "/usr/share/swampd/config.json",
+  board_config_path: srv4_bmc_fan_observed_config_path,
+  controller_service: srv4_bmc_fan_observed_controller_service,
+  controller_binary: "/usr/bin/swampd",
+  controller_shape: FanPidAggregatedEntry {
+    entry_name: srv4_bmc_fan_observed_aggregate_entry,
+    tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+  },
+  observed_at: "2026-07-27T23:14:45Z",
+}
+
+data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
+  host: srv4_host.identity,
+  perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
+  perturbation_generation: srv4_bmc_fan_perturbation_generation,
+  before: srv4_bmc_fan_convergence_receipt,
+  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
+  reset: RedfishManagerResetObservation {
+    action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
+    reset_type: ResetGracefulRestart,
+    http_status: 200,
+    accepted: true,
+    observed_at: "2026-07-27T23:09:42Z",
+  },
+  bmc_down_observed: true,
+  bmc_returned: true,
+  bmc_down_observed_at: "2026-07-27T23:09:49Z",
+  bmc_returned_at: "2026-07-27T23:12:26Z",
+  observed_outage_seconds: 157,
+  host_power_before: On,
+  host_power_after: On,
+  host_os_ssh_reachable_throughout: true,
+  pre_reboot_temp_soc: celsius(85),
+  post_reboot_temp_soc: celsius(83),
+  pre_reboot_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3676) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(960) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(948) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(896) },
+  ],
+  post_reboot_tachs: [
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3659) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(961) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(944) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(906) },
+  ],
+  post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
+  post_reboot_controller_active: true,
+  post_reboot_zone_failsafe_active: false,
+  post_reboot_observer_exit_success: true,
+  post_reboot_converge_noop_exit_success: true,
+  observed_at: "2026-07-27T23:14:45Z",
+}
+
+data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
+
+data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
+
+data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
+
+data fleet_bmc_update_service_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. Both srv3 2.07.00 and srv4 3.22.00 advertise /redfish/v1/UpdateService/update through HttpPushUri and MultipartHttpPushUri, and each active BMC image is Updateable=true. Each FirmwareInventory exposed exactly one BMC image plus non-BMC members; neither exposed a backup BMC image. This is update-surface capability evidence, not an approved image, apply receipt, or recovery proof."

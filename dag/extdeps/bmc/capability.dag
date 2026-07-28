@@ -1,5 +1,8 @@
 module extdeps.bmc.capability
 
+import std.bmc { BmcFirmwareFamily, BmcEndpoint }
+import std.nat { Nat }
+import std.types { Bool, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,9 +26,49 @@ type BmcFirmwareVersion {
   version: NonEmptyStr
 }
 
+type BmcFirmwareTrack {
+  family: BmcFirmwareFamily
+  major_version: Nat
+}
+
+type BmcFirmwareIntent
+  = BmcFirmwareUnpinned
+  | BmcFirmwareTrackRequired { track: BmcFirmwareTrack }
+
+type BmcFirmwareObservation {
+  endpoint: BmcEndpoint
+  firmware: BmcFirmwareVersion
+  observed_at: NonEmptyStr
+}
+
 type BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion
   capabilities: List<BmcCapability>
+}
+
+fn bmc_firmware_version_matches_track(
+  firmware: BmcFirmwareVersion,
+  track: BmcFirmwareTrack
+) -> Bool {
+  firmware.family == track.family
+    && starts_with(
+      s: firmware.version,
+      prefix: concat(to_string(track.major_version), ".")
+    )
+}
+
+fn bmc_firmware_observation_matches_intent(
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation
+) -> Bool {
+  match intent {
+    BmcFirmwareUnpinned => true
+    BmcFirmwareTrackRequired { track: t } =>
+      bmc_firmware_version_matches_track(
+        firmware: observation.firmware,
+        track: t
+      )
+  }
 }
 
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
