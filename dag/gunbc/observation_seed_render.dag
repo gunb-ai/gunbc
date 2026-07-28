@@ -30,7 +30,7 @@ import std.observation {
   CurrentHighWater,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.render { RenderCapability }
+import std.render { RenderCapability, Clear }
 import gunbc.observation_tty_render {
   TtyEmissionProjected,
   TtyEmissionRefused,
@@ -177,6 +177,26 @@ fn scoped_run_projection_refusal_write(entry_file: NonEmptyStr, module_path: Non
     emoji: emoji,
     prior_open: prior_open
   )
+}
+
+fn scoped_run_close_before_deferred_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {
+  let cap = scoped_run_capability(addressable: addressable, emoji: emoji)
+  match project_terminal_write(
+    prior: if prior_open { DynamicLineOpen } else { DynamicLineClosed },
+    requested: Clear,
+    capability: cap,
+    rendered: ""
+  ) {
+    TerminalWriteRefused { cause: c } => ScopedRunWriteRefused { cause: c }
+    TerminalWriteProjected { bytes: b, next: n } =>
+      ScopedRunWriteProjected {
+        bytes: b,
+        next_open: match n {
+          DynamicLineOpen => true
+          DynamicLineClosed => false
+        }
+      }
+  }
 }
 
 fn scoped_run_failed_write(entry_file: NonEmptyStr, module_path: NonEmptyStr, function: NonEmptyStr, error: NonEmptyStr, addressable: Bool, emoji: Bool, prior_open: Bool) -> ScopedRunWriteProjection {

@@ -10761,6 +10761,9 @@ impl ScopedRunObservation {
     fn failed(&mut self, cause: &str) -> Result<(), String> {
         self.emit("scoped_run_failed_write", Some(("error", cause)))
     }
+    fn close_before_deferred(&mut self) -> Result<(), String> {
+        self.emit("scoped_run_close_before_deferred_write", None)
+    }
 }
 
 #[cfg(unix)]
@@ -10885,9 +10888,21 @@ pub fn handle_run_with_options(
     install_output_policy(&source_roots);
     install_group_syntax(&source_roots);
 
-    if entry_file.is_none() {
-        if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
-            if let Ok(secs) = secs.parse::<u64>() {
+    let mut scoped_periodic_dump = None;
+    if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
+        if let Ok(secs) = secs.parse::<u64>() {
+            if entry_file.is_some() {
+                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+                let handle = std::thread::spawn(move || loop {
+                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            dump_residual_hunt_instrumentation()
+                        }
+                    }
+                });
+                scoped_periodic_dump = Some((stop_tx, handle));
+            } else {
                 std::thread::spawn(move || loop {
                     std::thread::sleep(std::time::Duration::from_secs(secs));
                     dump_residual_hunt_instrumentation();
@@ -10955,13 +10970,17 @@ pub fn handle_run_with_options(
         }
     };
 
-    let scoped_module_path = entry_file.as_deref().and_then(|entry| {
-        graph
-            .modules
-            .iter()
-            .find(|module| module.module.span.file == entry)
-            .map(|module| authored_name_at(result.source_indices.clone(), module.module.clone()))
-    });
+    let execution_mode = if dry_run {
+        v1_interpreter::ExecutionMode::Hermetic
+    } else {
+        v1_interpreter::ExecutionMode::Wet
+    };
+    let ctx =
+        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
+    let scoped_module_path = ctx
+        .item_registry
+        .get(&function)
+        .map(|info| info.module_name.clone());
     let mut scoped_observation = entry_file.as_deref().map(|entry| {
         let module_path = scoped_module_path.as_deref().unwrap_or_else(|| {
             eprintln!("error: scoped run entry `{entry}` has no resolved module identity");
@@ -10980,13 +10999,6 @@ pub fn handle_run_with_options(
     } else {
         eprintln!("running {}()...", function);
     }
-    let execution_mode = if dry_run {
-        v1_interpreter::ExecutionMode::Hermetic
-    } else {
-        v1_interpreter::ExecutionMode::Wet
-    };
-    let ctx =
-        v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
     v1_interpreter::with_active_context(&ctx, || {
         // One path, not two: with an empty `--arg` list this is byte-identical
         // to `run_in_context`, which passes the same empty slice.
@@ -10997,9 +11009,13 @@ pub fn handle_run_with_options(
             if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
                 dump_residual_hunt_instrumentation();
             }
+            if let Some((stop, handle)) = scoped_periodic_dump.take() {
+                let _ = stop.send(());
+                let _ = handle.join();
+            }
             outcome
         };
-        let (run_outcome, deferred_stderr) = if scoped_observation.is_some() {
+        let (run_outcome, mut deferred_stderr) = if scoped_observation.is_some() {
             capture_scoped_run_stderr(run).unwrap_or_else(|cause| {
                 if let Some(observation) = scoped_observation.as_mut() {
                     observation
@@ -11014,6 +11030,18 @@ pub fn handle_run_with_options(
         } else {
             (run(), Vec::new())
         };
+        if !deferred_stderr.is_empty() {
+            if let Some(observation) = scoped_observation.as_mut() {
+                observation
+                    .close_before_deferred()
+                    .unwrap_or_else(|projection_cause| {
+                        eprintln!("error: {projection_cause}");
+                        std::process::exit(1);
+                    });
+            }
+            replay_scoped_run_stderr(&deferred_stderr);
+            deferred_stderr.clear();
+        }
         match run_outcome {
             Ok(val) => {
                 if claim_run {
