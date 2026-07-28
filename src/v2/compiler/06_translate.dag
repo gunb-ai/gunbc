@@ -82,7 +82,7 @@ import v2.std.node {
   SyntheticOccurrence
 }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
-import v2.std.node_list_codec { node_list_from_node }
+import v2.std.fold_assembly { node_list_from_node }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
   TargetValueExpression,

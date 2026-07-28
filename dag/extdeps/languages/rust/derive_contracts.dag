@@ -10,12 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data rust_1_93_vec_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "doc.rust-lang.org/1.93.0/std/vec/struct.Vec.html#trait-implementations"
-  }
-}
+data rust_1_93_vec_trait_implementations_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 data rust_1_93_btree_set_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

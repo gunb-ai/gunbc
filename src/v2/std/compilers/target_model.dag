@@ -116,7 +116,7 @@ import v2.std.host_transport {
   configured_emit_host_runtime_row_from_target_row
 }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
-import v2.std.node_list_codec { node_list_from_node }
+import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme }
 
