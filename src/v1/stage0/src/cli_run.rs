@@ -10651,6 +10651,41 @@ struct ScopedRunObservation {
     open: bool,
 }
 
+/// Resolve the declaration identity using the same module-qualified function
+/// namespace that `InterpContext::with_runtime_options` installs in `fn_nodes`.
+/// `item_registry` is intentionally flat and therefore cannot answer this
+/// question for imported or qualified selections.
+fn selected_scoped_function_identity(
+    graph: &v1_compiler_infer_items::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    requested: &str,
+) -> Result<(String, String), usize> {
+    let (requested_module, bare_name) = requested
+        .rsplit_once('.')
+        .map_or((None, requested), |(module, bare)| (Some(module), bare));
+    let candidates: Vec<(String, String)> = graph
+        .modules
+        .iter()
+        .flat_map(|module| {
+            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+            module.items.iter().filter_map({
+                let module_path = module_path.clone();
+                move |item| {
+                    let name = authored_name_at(source_indices.clone(), item.clone());
+                    let module_matches =
+                        requested_module.is_none_or(|requested| requested == module_path);
+                    (module_matches && name == bare_name).then(|| (module_path.clone(), name))
+                }
+            })
+        })
+        .collect();
+    if candidates.len() == 1 {
+        Ok(candidates.into_iter().next().expect("one candidate"))
+    } else {
+        Err(candidates.len())
+    }
+}
+
 impl ScopedRunObservation {
     fn resolve(entry_file: &str, module_path: &str, function: &str) -> Result<Self, String> {
         use std::io::IsTerminal;
@@ -10889,19 +10924,15 @@ pub fn handle_run_with_options(
     install_group_syntax(&source_roots);
 
     let mut scoped_periodic_dump = None;
+    let mut scoped_periodic_secs = None;
     if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
             if entry_file.is_some() {
-                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
-                let handle = std::thread::spawn(move || loop {
-                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
-                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            dump_residual_hunt_instrumentation()
-                        }
-                    }
-                });
-                scoped_periodic_dump = Some((stop_tx, handle));
+                // The producer is started only after capture_scoped_run_stderr
+                // has installed fd 2.  Starting it here leaves a timeout window
+                // between Begin and capture in which raw diagnostics can corrupt
+                // the Open dynamic line.
+                scoped_periodic_secs = Some(secs);
             } else {
                 std::thread::spawn(move || loop {
                     std::thread::sleep(std::time::Duration::from_secs(secs));
@@ -10977,31 +11008,20 @@ pub fn handle_run_with_options(
     };
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
-    let requested_decl_name = function.rsplit('.').next().unwrap_or(&function);
-    let selected_decl_count = graph
-        .modules
-        .iter()
-        .flat_map(|module| module.items.iter())
-        .filter(|item| {
-            authored_name_at(result.source_indices.clone(), (*item).clone()) == requested_decl_name
-        })
-        .count();
-    if entry_file.is_some() && selected_decl_count != 1 {
-        eprintln!(
-            "error: scoped run function `{function}` resolved to {selected_decl_count} declaration candidates; refusing ambiguous observation identity"
-        );
-        std::process::exit(1);
-    }
-    let scoped_module_path = ctx
-        .item_registry
-        .get(&function)
-        .map(|info| info.module_name.clone());
+    let scoped_identity = entry_file.as_ref().map(|_| {
+        selected_scoped_function_identity(graph, result.source_indices.clone(), &function)
+            .unwrap_or_else(|count| {
+                eprintln!(
+                    "error: scoped run function `{function}` resolved to {count} declaration candidates; refusing ambiguous observation identity"
+                );
+                std::process::exit(1);
+            })
+    });
     let mut scoped_observation = entry_file.as_deref().map(|entry| {
-        let module_path = scoped_module_path.as_deref().unwrap_or_else(|| {
-            eprintln!("error: scoped run entry `{entry}` has no resolved module identity");
-            std::process::exit(1);
-        });
-        ScopedRunObservation::resolve(entry, module_path, &function).unwrap_or_else(|cause| {
+        let (module_path, bare_name) = scoped_identity
+            .as_ref()
+            .expect("scoped identity exists for scoped entry");
+        ScopedRunObservation::resolve(entry, module_path, bare_name).unwrap_or_else(|cause| {
             eprintln!("error: {cause}");
             std::process::exit(1);
         })
@@ -11018,6 +11038,18 @@ pub fn handle_run_with_options(
         // One path, not two: with an empty `--arg` list this is byte-identical
         // to `run_in_context`, which passes the same empty slice.
         let mut run = || {
+            if let Some(secs) = scoped_periodic_secs {
+                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+                let handle = std::thread::spawn(move || loop {
+                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            dump_residual_hunt_instrumentation()
+                        }
+                    }
+                });
+                scoped_periodic_dump = Some((stop_tx, handle));
+            }
             let outcome =
                 v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
             v1_interpreter::print_eval_recompute_trace(&ctx);
