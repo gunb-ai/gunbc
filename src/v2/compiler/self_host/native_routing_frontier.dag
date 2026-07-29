@@ -5,6 +5,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { length, any, contains }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.compiler.self_host.parity_window { ParityObservation, parity_routing_admitted }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   module_declaration_facts_live,
@@ -14,12 +15,12 @@ import v2.lens.module_graph {
   ImportClosureBfsState
 }
 
-data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA gated by the parity window (v2.compiler.self_host.parity_window): N consecutive green falsifier cadence windows (agreement + warm compile_skipped=true) are required evidence; a refusal or divergence resets the window. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation. All 9 families start InterpretedRetained with reason parity_window_open at landing; the PR ships the machine, receipts flip it."
+data native_routing_frontier_note: String = "Per-family execution-routing frontier (P6 cutover mechanism, planned 2026-07-22): each enrolled emit-on-demand witness family is EXACTLY one of NativeRouted (its equals_eval agreement legs run native in the per-PR floor via gunbc_pr_native_batch, warm against GUNBC_NATIVE_CACHE_ROOT) or InterpretedRetained (a declared row with reason + dissolve_on — countable, prioritizable, never a silent default; the self-host-frontier pattern applied to execution routing). The flip NativeRouted is DATA, and since 2026-07-28 it is NOT pre-gated by a parity streak (demotion — see parity_window_note and routed_flip_reverted_note): the flip bar is a no-evict cached agreement leg for the family plus one warm green agreement receipt, and v2.compiler.self_host.parity_window is the LAW a post-flip revert decision is judged by — a red cadence window (agreement red, or warm compile_skipped=false) LATCHES ParityRevertRequired naming the first red window (a later green never clears it; only an explicit RevertAcknowledged observation opens a new epoch — operator rework ruling 2026-07-28), and the row reverts by one data edit while the investigation proceeds off the merge-critical path (the reverted-first-flip incident below, promoted to law). THE VERDICT CONTROLS ROUTING BY CONSTRUCTION (reviews 44206 and 44216, 2026-07-29 — the monitor is a production consumer, not authoring guidance): NativeRouted CARRIES its evidence (observation_family + observations), so a routed claim and the receipt justifying it are one inseparable value, and routing_row_is_native — the single predicate native_routed_rows and interpreted_retained_rows both fold — ADMITS only when parity_routing_admitted holds on that carried evidence. Every other state denies: a latched red (a recorded red observation, even with later greens appended — the intermittent case an agreement leg alone cannot catch), an empty history (Unobserved), and refused evidence (mixed-family or out-of-cadence) all fall to interpreted. So 'NativeRouted with red-or-absent parity' is UNWRITABLE — not flagged after the fact, not dependent on someone remembering to edit the roster (DESIGN section 5, construction over validation). Denial degrades to interpreted rather than to nothing: the two fold complements partition the roster, and the agreement entries are discovered under the corpus scan regardless, so a denied family loses NATIVE execution and keeps its coverage — a refusal that narrows, never a silent widen and never a dropped witness. The evidence a row carries is authored from observed runs (parity_receipts_local is the operator-sourced example, the sibling shape realize_advisory_soundness names); its freshness is therefore an authoring fact, and DISSOLVE-ON stays: when falsifier-derived observations land, the carried lists become projections of that feed and the admission predicate above keeps its exact shape — the wall is already in place, only the evidence source moves. One authority decides both sides of the floor: the per-PR native batch enrolls NativeRouted families and interpreted discovery drops exactly those — no dual representation."
 
 data native_routing_subject_key_note: String = "Subject re-key (group-of-units ruling 2026-07-22, gunbc.roster_registry): a family's identity is its SUBJECT — a DeclarationRef to the construct/fixture declaration the family exercises — never a bare family: String nickname. Membership is DERIVED: an agreement entry is a member of a family exactly when its dependency closure (import + reference edges, the v2.lens.module_graph authority) reaches the subject's module — native_routing_row_membership_derived below is the ByDerivation predicate gunbc.roster_registry names, witnessed by the equivalence receipt in native_routing_membership_receipt_test (derived membership == the bound agreement entry, per row, plus a RED control: an entry whose closure does not reach the subject is not a member). The parity-window receipts (parity_receipts_local) stay keyed by their falsifier-observation family names; the frontier test binds those receipts to subject-keyed rows explicitly — observation data, not a second row key."
 
 type NativeRoutingDisposition
-  = NativeRouted
+  = NativeRouted { observation_family: String, observations: List<ParityObservation> }
   | InterpretedRetained { reason: String, dissolve_on: String }
 
 type NativeRoutingFrontierRow {
@@ -37,7 +38,7 @@ fn family_subject(module_path: String, decl_name: String) -> DeclarationRef {
   }
 }
 
-fn retained_parity_open(
+fn retained_no_cached_carrier(
   subject: DeclarationRef,
   entry: String,
   f: String
@@ -48,24 +49,31 @@ fn retained_parity_open(
     agreement_function: f,
     disposition: InterpretedRetained {
       reason: "no_cached_no_evict_carrier",
-      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) AND its parity window is green per v2.compiler.self_host.parity_window; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run"
+      dissolve_on: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)"
     }
   }
 }
 
-data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms. ROOT-CAUSED 2026-07-28: the outer key covered inferred trees but omitted target runtime-row realization inputs; the durable warm handler trusted the old marker and could serve a pre-change dispatcher. Construction fix: artifact_realization_digest(exact workspace files + build argv) is now the effective child workspace identity. Executing RED control family_crate_dispatch_change_cold_rebuild_holds holds the tree/source/outer key fixed, changes meet dispatch, and observes cold meet=1, cold meet=0, warm meet=0 (keys d2242e574084a711 then d04f722d8b60c4fa); the companion original agreement is green cold+warm+warm. #7111 separately closed the failure-loudness gap. The policy rows remain InterpretedRetained until fresh independent-host evidence satisfies their dissolve_on; root-cause closure never silently re-flips routing."
+data routed_flip_reverted_note: String = "FIRST FLIP REVERTED BY RECEIPT (2026-07-22): complement + meet_join were NativeRouted at #7069 landing; main run 29963619401 (2a226829f, srv2-05, 23:28Z) redded emit_on_demand_family_crate_pr_native_agreement_holds WARM — native-cache key=8f21f541808ddb22, compile_skipped=true on all three members, witness false in 496ms. ROOT-CAUSED 2026-07-28: the outer key covered inferred trees but omitted target runtime-row realization inputs; the durable warm handler trusted the old marker and could serve a pre-change dispatcher. Construction fix: artifact_realization_digest(exact workspace files + build argv) is now the effective child workspace identity. Executing RED control family_crate_dispatch_change_cold_rebuild_holds holds the tree/source/outer key fixed, changes meet dispatch, and observes cold meet=1, cold meet=0, warm meet=0 (keys d2242e574084a711 then d04f722d8b60c4fa); the companion original agreement is green cold+warm+warm. #7111 separately closed the failure-loudness gap. The policy rows remain InterpretedRetained until fresh independent-host evidence satisfies their dissolve_on; root-cause closure never silently re-flips routing. DEMOTION RECEIPT (2026-07-29, this PR): both families had SATISFIED the retired pre-flip parity streak (three green srv1 probe windows) and the flip still redded — and the root cause above is exactly WHY a pre-flip streak could not have prevented it: the defect was a stale realization key whose trigger was a LATER dispatcher change, so no number of green windows observed BEFORE the flip carries any information about it. Consecutive-green-before-flip was measuring the wrong thing; what actually caught the red was the live agreement leg plus this one-data-edit revert. Hence parity_window is demoted from pre-flip gate to post-flip monitoring (parity_window_note), and NativeRouted now CARRIES its observations so a recorded red, an absent history, or refused evidence DENIES native routing by construction rather than relying on someone remembering to edit this row."
 
-fn routed_via_family_crate(subject: DeclarationRef) -> NativeRoutingFrontierRow {
+fn routed_via_family_crate(
+  subject: DeclarationRef,
+  observation_family: String,
+  observations: List<ParityObservation>
+) -> NativeRoutingFrontierRow {
   NativeRoutingFrontierRow {
     subject: subject,
     agreement_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
-    disposition: NativeRouted
+    disposition: NativeRouted {
+      observation_family: observation_family,
+      observations: observations
+    }
   }
 }
 
 data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.manual.rust_add_emit_translate",
       decl_name: "rust_add_inferred_tree"
@@ -73,7 +81,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     f: "emit_host_add_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_field_access_equals_eval",
       decl_name: "emit_field_eval_subgraph_node"
@@ -93,7 +101,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
       dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
     }
   },
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.complexity_gate.table_fixture_match_subject_producer",
       decl_name: "table_fixture_match_arrow_with_body"
@@ -101,7 +109,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
     f: "emit_host_match_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.complexity_gate.table_fixture_loop_subject_producer",
       decl_name: "table_fixture_loop_arrow_with_body"
@@ -109,7 +117,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
     f: "emit_host_loop_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.emit.fold_call_closure_fixture",
       decl_name: "fold_fixture_param_call_body"
@@ -129,7 +137,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
       dissolve_on: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate"
     }
   },
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_variant_construct_equals_eval",
       decl_name: "emit_variant_construct_eval_subgraph_node"
@@ -137,7 +145,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
     f: "emit_host_variant_construct_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.test.execution.emit_host_classical_not_ingested_equals_eval",
       decl_name: "ingested_classical_not_source"
@@ -145,7 +153,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
     f: "emit_host_classical_not_ingested_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_filesystem_read_family_target_model_staging"
@@ -153,7 +161,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     entry: "src/v2/test/claim/execution/emit_host_filesystem_read_equals_eval_test.dag",
     f: "emit_host_filesystem_read_equals_eval_holds"
   ),
-  retained_parity_open(
+  retained_no_cached_carrier(
     subject: family_subject(
       module_path: "v2.extdeps.languages.rust_test",
       decl_name: "rust_shell_exec_run_family_target_model_staging"
@@ -171,7 +179,8 @@ fn routing_frontier_total_holds() -> Bool {
 
 fn routing_row_is_native(row: NativeRoutingFrontierRow) -> Bool {
   match row.disposition {
-    NativeRouted => true
+    NativeRouted { observation_family: f, observations: obs } =>
+      parity_routing_admitted(family: f, observations: obs)
     InterpretedRetained { reason: _, dissolve_on: _ } => false
   }
 }

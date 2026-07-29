@@ -3,7 +3,16 @@ module v2.workflow.ci_placement
 import std.logic { Bool }
 import std.nat { Nat }
 import v2.std.text { String }
+import v2.std.collection { List }
+import v2.std.algebra { any, filter, length }
 import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
+import gunbc.commit_workflow {
+  CommitCheckEnrollment,
+  CommitWorkflowSurface,
+  commit_gate_roster,
+  commit_workflow_surface_eq,
+  commit_check_kind_eq
+}
 
 data ci_placement_law_note: String = "The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check rides the PR path iff its measured warm cost is within the fast-lane budget OR its cost is proportional to the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction: PrTier is admissible ONLY with (a) a measured warm-cost receipt within the fast-lane budget and (b) a hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold is REUSED from the single fast-lane authority (gunbc_ci_fast_lane_eval_budget_ms, v2.workflow.ci_floor_plan gunbc_ci_fast_lane_rule_note), never a second 5s definition. The roster of real checks and their PrTier flips are FILLED from the D2 warm-cost probe on fleet srv hardware; until a check has a measured receipt it stays Gauntlet, so this mechanism is correct-by-construction with an empty PrTier set. Wiring the placement onto the live check rows (gates, ci-job steps, floor batches) and the Gauntlet workflow split ride PR-1 (D3b)."
 
@@ -21,6 +30,183 @@ type WarmCostReceipt {
 type Placement
   = PrTier { warm_cost: WarmCostReceipt, classification: PlacementClassification }
   | Gauntlet { reason: String }
+
+type PlacementShadowWarmState
+  = ShadowWarm
+  | ShadowCold
+  | ShadowWarmUnknown
+
+type PlacementShadowCacheState
+  = ShadowCacheWarm
+  | ShadowCacheCold
+  | ShadowCacheUnknown
+
+type PlacementShadowWarmCostEvidence
+  = ShadowWarmCostMeasured { receipt: WarmCostReceipt }
+  | ShadowWarmCostUnavailable { reason: String }
+
+type PlacementShadowDatedReceipt {
+  identity: CommitCheckEnrollment
+  observed_on: String
+  host_class: String
+  host_ref: String
+  run_ref: String
+  source_sha: String
+  binary_sha: String
+  roster_sha: String
+  warm_state: PlacementShadowWarmState
+  cache_state: PlacementShadowCacheState
+  warm_cost: PlacementShadowWarmCostEvidence
+}
+
+type PlacementShadowSignedBasis {
+  receipts: List<PlacementShadowDatedReceipt>
+}
+
+type PlacementShadowOutcome
+  = Missing { reason: String }
+  | Ambiguous { reason: String }
+  | Incomplete { reason: String }
+  | Qualified
+
+type PlacementShadowRowReport {
+  identity: CommitCheckEnrollment
+  receipts: List<PlacementShadowDatedReceipt>
+  outcome: PlacementShadowOutcome
+}
+
+type PlacementShadowReport {
+  basis: PlacementShadowSignedBasis
+  rows: List<PlacementShadowRowReport>
+}
+
+fn commit_workflow_surface_list_eq(left: List<CommitWorkflowSurface>, right: List<CommitWorkflowSurface>) -> Bool {
+  (length(xs: left) == length(xs: right))
+    && !any(xs: left, predicate: fn(surface) { !commit_workflow_surface_present(surface: surface, surfaces: right) })
+    && !any(xs: right, predicate: fn(surface) { !commit_workflow_surface_present(surface: surface, surfaces: left) })
+}
+
+fn commit_workflow_surface_present(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
+  any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
+}
+
+fn commit_check_enrollment_eq(left: CommitCheckEnrollment, right: CommitCheckEnrollment) -> Bool {
+  commit_check_kind_eq(a: left.check, b: right.check)
+    && commit_workflow_surface_list_eq(left: left.surfaces, right: right.surfaces)
+}
+
+fn placement_shadow_receipt_is_joinable(receipt: PlacementShadowDatedReceipt) -> Bool {
+  (receipt.observed_on != "")
+    && (receipt.host_class == "srv_fleet_arm64")
+    && (receipt.host_ref != "")
+    && (receipt.run_ref != "")
+    && (receipt.source_sha != "")
+    && (receipt.binary_sha != "")
+    && (receipt.roster_sha != "")
+}
+
+fn placement_shadow_receipt_matches_identity(
+  identity: CommitCheckEnrollment,
+  receipt: PlacementShadowDatedReceipt
+) -> Bool {
+  placement_shadow_receipt_is_joinable(receipt: receipt)
+    && commit_check_enrollment_eq(left: identity, right: receipt.identity)
+}
+
+fn placement_shadow_receipts_for_identity(
+  identity: CommitCheckEnrollment,
+  receipts: List<PlacementShadowDatedReceipt>
+) -> List<PlacementShadowDatedReceipt> {
+  filter(
+    xs: receipts,
+    predicate: fn(receipt) { placement_shadow_receipt_matches_identity(identity: identity, receipt: receipt) }
+  )
+}
+
+fn placement_shadow_basis_conflicts(receipts: List<PlacementShadowDatedReceipt>) -> Bool {
+  any(xs: receipts, predicate: fn(left) {
+    any(xs: receipts, predicate: fn(right) {
+      (left.source_sha != right.source_sha)
+        || (left.binary_sha != right.binary_sha)
+        || (left.roster_sha != right.roster_sha)
+    })
+  })
+}
+
+fn placement_shadow_warm_state_is_warm(state: PlacementShadowWarmState) -> Bool {
+  match state {
+    ShadowWarm => true
+    ShadowCold => false
+    ShadowWarmUnknown => false
+  }
+}
+
+fn placement_shadow_cache_state_is_warm(state: PlacementShadowCacheState) -> Bool {
+  match state {
+    ShadowCacheWarm => true
+    ShadowCacheCold => false
+    ShadowCacheUnknown => false
+  }
+}
+
+fn placement_shadow_receipt_has_warm_cost(receipt: PlacementShadowDatedReceipt) -> Bool {
+  placement_shadow_warm_state_is_warm(state: receipt.warm_state)
+    && placement_shadow_cache_state_is_warm(state: receipt.cache_state)
+    && match receipt.warm_cost {
+      ShadowWarmCostMeasured { receipt: cost } =>
+        (cost.run_ref != "") && (cost.run_ref == receipt.run_ref)
+      ShadowWarmCostUnavailable { reason: _ } => false
+    }
+}
+
+fn placement_shadow_has_two_measured_warm_hosts(receipts: List<PlacementShadowDatedReceipt>) -> Bool {
+  any(xs: receipts, predicate: fn(left) {
+    any(xs: receipts, predicate: fn(right) {
+      placement_shadow_receipt_has_warm_cost(receipt: left)
+        && placement_shadow_receipt_has_warm_cost(receipt: right)
+        && (left.host_ref != right.host_ref)
+        && (left.source_sha == right.source_sha)
+        && (left.binary_sha == right.binary_sha)
+        && (left.roster_sha == right.roster_sha)
+    })
+  })
+}
+
+fn placement_shadow_row_outcome(receipts: List<PlacementShadowDatedReceipt>) -> PlacementShadowOutcome {
+  match length(xs: receipts) {
+    0 => Missing { reason: "no dated srv_fleet_arm64 receipt joined to row identity" }
+    _ =>
+      if placement_shadow_basis_conflicts(receipts: receipts) {
+        Ambiguous { reason: "joined receipts disagree on source/binary/roster identity" }
+      } else if placement_shadow_has_two_measured_warm_hosts(receipts: receipts) {
+        Qualified
+      } else {
+        Incomplete { reason: "joined evidence is short of two distinct arm64 hosts with measured warm cost and warm cache state" }
+      }
+  }
+}
+
+fn placement_shadow_row_report(
+  identity: CommitCheckEnrollment,
+  basis: PlacementShadowSignedBasis
+) -> PlacementShadowRowReport {
+  let receipts = placement_shadow_receipts_for_identity(identity: identity, receipts: basis.receipts)
+  PlacementShadowRowReport {
+    identity: identity,
+    receipts: receipts,
+    outcome: placement_shadow_row_outcome(receipts: receipts)
+  }
+}
+
+fn placement_shadow_report(
+  roster: List<CommitCheckEnrollment>,
+  basis: PlacementShadowSignedBasis
+) -> PlacementShadowReport {
+  PlacementShadowReport {
+    basis: basis,
+    rows: map(xs: roster, f: fn(identity) { placement_shadow_row_report(identity: identity, basis: basis) })
+  }
+}
 
 fn classification_admits_pr_tier(c: PlacementClassification) -> Bool {
   match c {
