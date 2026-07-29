@@ -117,6 +117,21 @@ fn ci_native_cache_root_script() -> String {
   ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
 }
 
+data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
+
+fn ci_native_cache_segment_script_refuses_fabrication(script: String) -> Bool {
+  string_contains(s: script, pattern: "rustc -V") &&
+    string_contains(s: script, pattern: "exit 1") &&
+    !string_contains(s: script, pattern: ci_native_cache_fabricated_segment_literal)
+}
+
+fn ci_isolate_toolchain_script_excludes_segment_derivation(isolate_script: String) -> Bool {
+  !string_contains(s: isolate_script, pattern: "rustc -V") &&
+    !string_contains(s: isolate_script, pattern: "GUNBC_TOOLCHAIN_SEG") &&
+    !string_contains(s: isolate_script, pattern: "GUNBC_NATIVE_CACHE_ROOT") &&
+    !string_contains(s: isolate_script, pattern: ci_native_cache_fabricated_segment_literal)
+}
+
 fn ci_pin_rustup_default_intent() -> Pipeline {
   Pipeline {
     steps: [
