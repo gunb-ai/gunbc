@@ -44,13 +44,24 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[doc(hidden)]
+pub use materialization_provider_consumer::{
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
+};
+pub use materialization_provider_consumer::{
+    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    transform_content_digest, write as cross_process_write, CacheLookupResult,
+    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
+    probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
+    supports_faithful_probe, transform_content_digest, write as cross_process_write,
+    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
 };
 use crate::std_interface_summary::{module_key, typed_module_key};
 
@@ -654,14 +665,6 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
             "cli_run_compile_clean_diagnostic_histogram"
-        );
-    }
-
-    #[test]
-    fn resolved_graph_cache_compile_clean_diag_union_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER,
-            "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal"
         );
     }
 
@@ -3098,13 +3101,6 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 // ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
-
-/// INTERIM hand-Rust scaffold (issue 11 / extdeps.realization.resolved_graph
-/// `resolved_graph_cache_compile_clean_diagnostic_union_scaffold`): cross-process
-/// resolved-graph cache hits are refused until the disk artifact carries the
-/// compile-clean diagnostic union. Receipt: `rg resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal src/v1/stage0` == 1 until dissolution.
-pub(crate) const CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER: &str =
-    "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal";
 
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.
@@ -5667,6 +5663,34 @@ thread_local! {
     #[allow(clippy::type_complexity)]
     static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
         const { RefCell::new(None) };
+
+    // While loading the materialization-provider authority, cross-process disk hits
+    // must not re-enter provider routing (review 44268: bootstrap recursion).
+    static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
+}
+
+pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+                c.set(c.get().saturating_sub(1));
+            });
+        }
+    }
+
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+        c.set(c.get().saturating_add(1));
+    });
+    let _guard = Guard;
+    f()
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -7966,6 +7990,44 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
+fn serve_resolved_graph_disk_hit_through_provider(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    ),
+    String,
+> {
+    let closure_digest = closure_content_digest(sources);
+    let compiler_digest = transform_content_digest();
+    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
+        ResolvedGraphProviderOutcome::Hit => Err(
+            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
+                .to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
+            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
+        )),
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
+            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::Miss => Err(
+            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
+            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
+            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
+            "resolved-graph-cache provider refused disk hit: {label}"
+        )),
+    }
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -8010,20 +8072,28 @@ fn resolved_graph_from_sources_with_index(
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode.
+    // the share above on hit so later same-subject demands never re-decode. CI leaves
+    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
+    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(_) => {
-                // SCAFFOLD (§7 — CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER;
-                // dissolve trigger: extdeps.realization.resolved_graph
-                // resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger):
-                // v1 disk artifacts carry only the typed graph — refuse hit, cold resolve.
-                eprintln!(
-                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve ({})",
-                    CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER
-                );
+        match cross_process_probe(&cache_root, &subject) {
+            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
+                if !supports_faithful_probe() {
+                    return Err(format!(
+                        "resolved-graph-cache provider refused faithful probe: {}",
+                        faithful_probe_unavailable_gap()
+                    ));
+                }
+                match cross_process_lookup(&cache_root, &subject) {
+                    CacheLookupResult::Hit(_cached) => {
+                        return serve_resolved_graph_disk_hit_through_provider(&sources);
+                    }
+                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+                }
             }
-            CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+            CacheProbeResult::Hit(_)
+            | CacheProbeResult::RejectedHit(_)
+            | CacheProbeResult::Miss => {}
         }
     }
 
@@ -13037,7 +13107,10 @@ pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
-fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+pub(crate) fn resolve_entry_file_under_roots(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<String, String> {
     let path = Path::new(entry);
     if path.is_file() {
         return Ok(path.to_string_lossy().into_owned());
@@ -28038,7 +28111,28 @@ fn test_migration_delete_guard_deleted_v1_test_paths(
 ) -> Result<Vec<String>, String> {
     let out = if test_migration_delete_guard_merge_base_mode() {
         let range = format!("{base}...{head}");
-        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?
+        match test_migration_delete_guard_run_git(&[
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            &range,
+        ]) {
+            Ok(out) => out,
+            Err(err) => {
+                // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
+                // always be computed even though the base ref itself exists. Fall back to the
+                // two-point diff in that case so the delete guard still evaluates the real branch
+                // delta instead of red-ing on missing history.
+                test_migration_delete_guard_run_git(&[
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=D",
+                    base,
+                    head,
+                ])
+                .map_err(|fallback_err| format!("{err}; fallback diff failed: {fallback_err}"))?
+            }
+        }
     } else {
         test_migration_delete_guard_run_git(&[
             "diff",
@@ -28087,10 +28181,11 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
         return Ok(Vec::new());
     }
     let floor_stems = test_migration_delete_authorize_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
+    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev)?;
     let mut violations = Vec::new();
     for path in deleted {
-        let content = test_migration_delete_guard_run_git(&["show", &format!("{base}:{path}")])?;
+        let content =
+            test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])?;
         if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
             continue;
         }
