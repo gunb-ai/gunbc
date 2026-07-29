@@ -165,9 +165,11 @@ pub fn interpret_provider_lookup(
         return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
     }
     if call_lookup_bool(ctx, "lookup_is_refused_faithful_probe_unavailable", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
-            gap: lookup_refused_faithful_probe_unavailable_gap(ctx, &lookup)?,
-        });
+        return Ok(
+            ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
+                gap: lookup_refused_faithful_probe_unavailable_gap(ctx, &lookup)?,
+            },
+        );
     }
     let missing = lookup_missing_outputs(ctx, &lookup)?;
     if !missing.is_empty() {
