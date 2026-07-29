@@ -21,6 +21,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   generated_repo_paths_cover_authority_holds,
   generated_stage0_files_authority_ref,
   lifecycle_row_well_formed,
+  lifecycle_row_well_formed_query_scaffold,
   list_paths_all_unique,
   partition_crate_paths_complete_holds,
   path_occurrence_count,
@@ -46,6 +47,13 @@ test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
 
 test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
   match rust_source_manifest_state_verdict_query_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
+  match lifecycle_row_well_formed_query_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }

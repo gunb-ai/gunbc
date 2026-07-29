@@ -16,7 +16,7 @@ import gunbc.stage0_rust_source_lifecycle_hand_rust_scaffold {
 import std.disposition { Scaffold, SingleAuthority }
 import v2.std.text { String }
 
-data stage0_rust_source_lifecycle_hand_rust_witness_note: String = "HAND-Rust scaffold receipt (review 44325): Disposition rows for cargo-manifest + git-tracked census, ROADMAP.md:30 / v1-zero-hand-maintained-rust lane, measured +406 net Rust LOC delta, discriminating Rust tests."
+data stage0_rust_source_lifecycle_hand_rust_witness_note: String = "HAND-Rust scaffold receipt (review 44325): Disposition rows for cargo-manifest + git-tracked census, ROADMAP.md:30 / v1-zero-hand-maintained-rust lane, measured +447 net Rust LOC delta, discriminating Rust tests."
 
 test fn stage0_cargo_manifest_host_bridge_scaffold_is_seed_retained() -> Bool {
   match stage0_cargo_manifest_host_bridge_scaffold {
@@ -49,12 +49,12 @@ test fn stage0_rust_lifecycle_hand_rust_receipt_anchor_is_checkable() -> Bool {
   string_contains(
     s: stage0_rust_lifecycle_hand_rust_receipt_plan_anchor,
     pattern: "rust_source_tracked_manifest_note"
-  ) && stage0_rust_lifecycle_hand_rust_loc_delta_net == 406
+  ) && stage0_rust_lifecycle_hand_rust_loc_delta_net == 447
 }
 
 test fn stage0_rust_lifecycle_hand_rust_census_shrink_honest() -> Bool {
-  string_contains(s: stage0_rust_lifecycle_hand_rust_census_shrink_note, pattern: "+406")
-    && string_contains(s: stage0_rust_lifecycle_hand_rust_census_shrink_note, pattern: "cli_run.rs +347")
+  string_contains(s: stage0_rust_lifecycle_hand_rust_census_shrink_note, pattern: "+447")
+    && string_contains(s: stage0_rust_lifecycle_hand_rust_census_shrink_note, pattern: "cli_run.rs +388")
     && string_contains(s: stage0_rust_lifecycle_hand_rust_census_shrink_note, pattern: "not counted in loc_delta_net")
 }
 

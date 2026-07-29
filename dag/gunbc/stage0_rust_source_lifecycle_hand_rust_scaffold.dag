@@ -4,7 +4,7 @@ import gunbc.stage0_cargo_manifest { stage0_cargo_bin_repo_paths_from_manifest_r
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-data stage0_rust_lifecycle_hand_rust_lane_note: String = "Lane: ROADMAP.md:30 → Get hand-written Rust in this repository down to zero (authority dag/gunbc/v1_deletion_plan.dag V1FinishLine ZeroHandMaintainedRust, node v1-zero-hand-maintained-rust). This PR's +406 net Rust LOC host census is interim scaffold growth for stage0 rust-path classification — dissolves into the PR #7393 ZeroHandMaintainedRust finish-line acceptance graph, not a terminus."
+data stage0_rust_lifecycle_hand_rust_lane_note: String = "Lane: ROADMAP.md:30 → Get hand-written Rust in this repository down to zero (authority dag/gunbc/v1_deletion_plan.dag V1FinishLine ZeroHandMaintainedRust, node v1-zero-hand-maintained-rust). This PR's +447 net Rust LOC host census is interim scaffold growth for stage0 rust-path classification — dissolves into the PR #7393 ZeroHandMaintainedRust finish-line acceptance graph, not a terminus."
 
 data stage0_rust_lifecycle_hand_rust_roadmap_anchor: String = "ROADMAP.md:30 — Get hand-written Rust in this repository down to zero [authority dag/gunbc/v1_deletion_plan.dag V1FinishLine ZeroHandMaintainedRust → gunbc.roadmap_authority node v1-zero-hand-maintained-rust]"
 
@@ -26,9 +26,9 @@ data stage0_rust_lifecycle_hand_rust_dissolve_trigger: String = "🟡 dissolve-o
 
 data stage0_rust_lifecycle_hand_rust_receipt_plan_anchor: String = "dag/gunbc/stage0_rust_source_lifecycle_scaffold.dag#rust_source_tracked_manifest_note"
 
-data stage0_rust_lifecycle_hand_rust_loc_delta_net: Int = 406
+data stage0_rust_lifecycle_hand_rust_loc_delta_net: Int = 447
 
-data stage0_rust_lifecycle_hand_rust_census_shrink_note: String = "This PR vs main adds +406 net Rust LOC (cli_run.rs +347, v1_compiler_infer_method.rs +35, v1_interpreter.rs +24 net) for host-derived cargo manifest + git ls-files census builtins, plus src/v1/04_method.dag +7 builtin registration rows (not counted in loc_delta_net). Net .dag delta deletes no hand-Rust in this PR — the stage0_cargo_bins hand list lived only on the branch during rework and is absent from the merge-base diff."
+data stage0_rust_lifecycle_hand_rust_census_shrink_note: String = "This PR vs main adds +447 net Rust LOC (cli_run.rs +388, v1_compiler_infer_method.rs +35, v1_interpreter.rs +24 net) for host-derived cargo manifest + git ls-files census builtins, plus src/v1/04_method.dag +7 builtin registration rows (not counted in loc_delta_net). Net .dag delta deletes no hand-Rust in this PR — the stage0_cargo_bins hand list lived only on the branch during rework and is absent from the merge-base diff."
 
 data stage0_cargo_manifest_hand_rust_test_discriminator_parse_complete: String = "parses_bin_path_entries_from_manifest_fragment"
 

@@ -310,6 +310,33 @@ fn file_grain_lifecycle_repo_paths() -> List<String> {
   list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
 }
 
+fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
+  !(ref.module_path == "") && !(ref.decl_name == "")
+}
+
+fn rust_source_lifecycle_obligation_well_formed(obligation: RustSourceLifecycleObligation) -> Bool {
+  match obligation {
+    DerivedGenerated { authority: ref } => declaration_ref_populated(ref: ref)
+    DerivedHandMaintainedLayout { authority: ref } => declaration_ref_populated(ref: ref)
+    DerivedCargoBinManifest { authority: ref } => declaration_ref_populated(ref: ref)
+    DerivedPartitionCrateRoot { authority: ref } => declaration_ref_populated(ref: ref)
+    CitedBehavioralOracleCarrier { carrier: ref } => declaration_ref_populated(ref: ref)
+    ResidueHandMaintenance { reason: reason, dissolve_on: dissolve_on } =>
+      !(reason == "") && !(dissolve_on == "")
+  }
+}
+
+data lifecycle_row_well_formed_query_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
+    decl_name: "lifecycle_row_well_formed",
+    field: WholeDeclaration
+  }
+}
+
+data lifecycle_row_well_formed_query_dissolve_trigger: String = "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN PR #7393 ZeroHandMaintainedRust V1FinishLine lands and row well-formedness derives from the finish-line acceptance graph"
+
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")
     && length(xs: row.obligations) > 0
@@ -317,15 +344,7 @@ fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
       xs: row.obligations,
       init: true,
       cons: fn(ok, obligation) {
-        ok && match obligation {
-          DerivedGenerated { authority: ref } => !(ref.module_path == "") && !(ref.decl_name == "")
-          DerivedHandMaintainedLayout { authority: ref } => !(ref.module_path == "") && !(ref.decl_name == "")
-          DerivedCargoBinManifest { authority: ref } => !(ref.module_path == "") && !(ref.decl_name == "")
-          DerivedPartitionCrateRoot { authority: ref } => !(ref.module_path == "") && !(ref.decl_name == "")
-          CitedBehavioralOracleCarrier { carrier: ref } => !(ref.module_path == "") && !(ref.decl_name == "")
-          ResidueHandMaintenance { reason: reason, dissolve_on: dissolve_on } =>
-            !(reason == "") && !(dissolve_on == "")
-        }
+        ok && rust_source_lifecycle_obligation_well_formed(obligation: obligation)
       }
     )
 }
