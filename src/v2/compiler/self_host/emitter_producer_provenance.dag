@@ -230,6 +230,8 @@ fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionO
   producer_emission_oracle_probe_is_enrolled(row: row)
 }
 
+data producer_emission_canonical_receipt_for_executed_verdict_note: String = "Construction wall (review 44468): always Absent at baseline — unwritable until witness-realization + frontier_probe_survey bind execution-measured wet_execution_digest. No synthesizable digest check from declarative oracle fields."
+
 fn producer_emission_canonical_receipt_for_executed_verdict(
   row: ProducerEmissionOracleRow,
   executed: ProducerEmissionExecutedGreenReceipt
