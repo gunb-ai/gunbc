@@ -1,0 +1,380 @@
+module extdeps.filesystem.linux
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import std.types { Bool, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/filesystems/overlayfs.html",
+  },
+}
+
+data linux_rename_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/rename.2.html",
+  },
+}
+
+data linux_sync_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/sync.2.html",
+  },
+}
+
+type LinuxFilesystemKind
+  = LinuxOverlayFs
+  | LinuxSquashFs
+  | LinuxJffs2
+  | OtherLinuxFilesystem { mount_type: NonEmptyStr }
+
+type LinuxMountObservation {
+  source: NonEmptyStr
+  target: NonEmptyStr
+  filesystem: LinuxFilesystemKind
+}
+
+type LinuxOverlayObservation {
+  merged_mount: LinuxMountObservation
+  lower_directory: NonEmptyStr
+  upper_directory: NonEmptyStr
+  lower_backing_mount: LinuxMountObservation
+  upper_backing_mount: LinuxMountObservation
+}
+
+type LinuxProcMountRow {
+  mount: LinuxMountObservation
+  options: List<String>
+}
+
+type LinuxFileReplacement
+  = RenameReplaceWithinTargetDirectory
+  | ReplacementAtomicityUnspecified
+
+type LinuxFilesystemSynchronization
+  = NoExplicitFilesystemSynchronization
+  | SyncAllFilesystemsAfterReplacement
+
+type LinuxFilePublicationProtocol {
+  stage_in_target_directory: Bool
+  staged_content_validated: Bool
+  replacement: LinuxFileReplacement
+  synchronization: LinuxFilesystemSynchronization
+}
+
+fn linux_filesystem_kind_from_mount_type(
+  mount_type: NonEmptyStr,
+) -> LinuxFilesystemKind {
+  if mount_type == "overlay" {
+    LinuxOverlayFs
+  } else if mount_type == "squashfs" {
+    LinuxSquashFs
+  } else if mount_type == "jffs2" {
+    LinuxJffs2
+  } else {
+    OtherLinuxFilesystem { mount_type: mount_type }
+  }
+}
+
+fn linux_nonempty_whitespace_tokens(raw: String) -> List<NonEmptyStr> {
+  split(s: trim(raw), delimiter: " ")
+    |> filter(token => trim(token) != "")
+    |> map(token => trim(token) as NonEmptyStr)
+}
+
+fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountRow? {
+  let fields = linux_nonempty_whitespace_tokens(raw: line)
+  if fields.length() < 4 {
+    none
+  } else {
+    let source = fields.first()
+    let target = fields.skip(n: 1).first()
+    let mount_type = fields.skip(n: 2).first()
+    let raw_options = fields.skip(n: 3).first()
+    Present {
+      value: LinuxProcMountRow {
+        mount: LinuxMountObservation {
+          source: source,
+          target: target,
+          filesystem: linux_filesystem_kind_from_mount_type(
+            mount_type: mount_type,
+          ),
+        },
+        options: split(s: raw_options as String, delimiter: ",")
+          |> filter(option => trim(option) != "")
+          |> map(option => trim(option)),
+      },
+    }
+  }
+}
+
+fn linux_proc_mount_row_for_target_rec(
+  lines: List<String>,
+  target: NonEmptyStr,
+) -> LinuxProcMountRow? {
+  match lines.first() {
+    Absent => none
+    Present { value: line } =>
+      match linux_proc_mount_row_from_line(line: line) {
+        Present { value: row } =>
+          if row.mount.target == target {
+            Present { value: row }
+          } else {
+            linux_proc_mount_row_for_target_rec(
+              lines: lines.skip(n: 1),
+              target: target,
+            )
+          }
+        Absent =>
+          linux_proc_mount_row_for_target_rec(
+            lines: lines.skip(n: 1),
+            target: target,
+          )
+      }
+  }
+}
+
+fn linux_proc_mount_row_for_target(
+  proc_mounts: String,
+  target: NonEmptyStr,
+) -> LinuxProcMountRow? {
+  linux_proc_mount_row_for_target_rec(
+    lines: split(s: proc_mounts, delimiter: "\n"),
+    target: target,
+  )
+}
+
+fn linux_mount_target_contains_directory(
+  target: NonEmptyStr,
+  directory: NonEmptyStr,
+) -> Bool {
+  target == directory
+    || target == "/"
+    || starts_with(
+      s: directory as String,
+      prefix: concat(target as String, "/"),
+    )
+}
+
+fn linux_more_specific_backing_mount(
+  current: LinuxProcMountRow?,
+  candidate: LinuxProcMountRow,
+) -> LinuxProcMountRow? {
+  match current {
+    Absent => Present { value: candidate }
+    Present { value: selected } =>
+      if string_length(s: candidate.mount.target as String) > string_length(s: selected.mount.target as String) {
+        Present { value: candidate }
+      } else {
+        current
+      }
+  }
+}
+
+fn linux_proc_mount_backing_row_rec(
+  lines: List<String>,
+  directory: NonEmptyStr,
+  excluded_target: NonEmptyStr,
+  selected: LinuxProcMountRow?,
+) -> LinuxProcMountRow? {
+  match lines.first() {
+    Absent => selected
+    Present { value: line } => {
+      let next = match linux_proc_mount_row_from_line(line: line) {
+        Absent => selected
+        Present { value: row } =>
+          if row.mount.target != excluded_target
+            && linux_mount_target_contains_directory(
+              target: row.mount.target,
+              directory: directory,
+            ) {
+            linux_more_specific_backing_mount(
+              current: selected,
+              candidate: row,
+            )
+          } else {
+            selected
+          }
+      }
+      linux_proc_mount_backing_row_rec(
+        lines: lines.skip(n: 1),
+        directory: directory,
+        excluded_target: excluded_target,
+        selected: next,
+      )
+    }
+  }
+}
+
+fn linux_proc_mount_backing_row(
+  proc_mounts: String,
+  directory: NonEmptyStr,
+  excluded_target: NonEmptyStr,
+) -> LinuxProcMountRow? {
+  linux_proc_mount_backing_row_rec(
+    lines: split(s: proc_mounts, delimiter: "\n"),
+    directory: directory,
+    excluded_target: excluded_target,
+    selected: none,
+  )
+}
+
+fn linux_mount_option_value_rec(
+  options: List<String>,
+  name: NonEmptyStr,
+) -> NonEmptyStr? {
+  let prefix = concat(name as String, "=")
+  if options.length() == 0 {
+    none
+  } else {
+    let option = options.first()
+    if starts_with(s: option, prefix: prefix)
+      && option.length() > prefix.length() {
+      Present {
+        value: substring(
+          s: option,
+          start: prefix.length(),
+          end: option.length(),
+        ) as NonEmptyStr,
+      }
+    } else {
+      linux_mount_option_value_rec(
+        options: options.skip(n: 1),
+        name: name,
+      )
+    }
+  }
+}
+
+fn linux_mount_option_value(
+  row: LinuxProcMountRow,
+  name: NonEmptyStr,
+) -> NonEmptyStr? {
+  linux_mount_option_value_rec(options: row.options, name: name)
+}
+
+fn linux_absolute_mount_directory(path: NonEmptyStr) -> NonEmptyStr {
+  if starts_with(s: path as String, prefix: "/") {
+    path
+  } else {
+    concat("/", path as String) as NonEmptyStr
+  }
+}
+
+fn linux_overlay_observation_from_proc_mounts(
+  proc_mounts: String,
+) -> LinuxOverlayObservation? {
+  match linux_proc_mount_row_for_target(
+    proc_mounts: proc_mounts,
+    target: "/",
+  ) {
+    Absent => none
+    Present { value: root } =>
+      match linux_mount_option_value(row: root, name: "lowerdir") {
+        Absent => none
+        Present { value: lower_raw } =>
+          match linux_mount_option_value(row: root, name: "upperdir") {
+            Absent => none
+            Present { value: upper_raw } => {
+              let lower = linux_absolute_mount_directory(path: lower_raw)
+              let upper = linux_absolute_mount_directory(path: upper_raw)
+              match linux_proc_mount_backing_row(
+                proc_mounts: proc_mounts,
+                directory: lower,
+                excluded_target: root.mount.target,
+              ) {
+                Absent => none
+                Present { value: lower_row } =>
+                  match linux_proc_mount_backing_row(
+                    proc_mounts: proc_mounts,
+                    directory: upper,
+                    excluded_target: root.mount.target,
+                  ) {
+                    Absent => none
+                    Present { value: upper_row } =>
+                      Present {
+                        value: LinuxOverlayObservation {
+                          merged_mount: root.mount,
+                          lower_directory: lower,
+                          upper_directory: upper,
+                          lower_backing_mount: lower_row.mount,
+                          upper_backing_mount: upper_row.mount,
+                        },
+                      }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn linux_filesystem_kind_is_overlay(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxOverlayFs => true
+    LinuxSquashFs => false
+    LinuxJffs2 => false
+    OtherLinuxFilesystem { mount_type: _ } => false
+  }
+}
+
+fn linux_filesystem_kind_is_squashfs(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxOverlayFs => false
+    LinuxSquashFs => true
+    LinuxJffs2 => false
+    OtherLinuxFilesystem { mount_type: _ } => false
+  }
+}
+
+fn linux_filesystem_kind_is_jffs2(kind: LinuxFilesystemKind) -> Bool {
+  match kind {
+    LinuxOverlayFs => false
+    LinuxSquashFs => false
+    LinuxJffs2 => true
+    OtherLinuxFilesystem { mount_type: _ } => false
+  }
+}
+
+fn linux_overlay_observation_is_flash_backed(
+  observation: LinuxOverlayObservation,
+) -> Bool {
+  observation.merged_mount.target == "/"
+    && linux_filesystem_kind_is_overlay(
+      kind: observation.merged_mount.filesystem,
+    )
+    && linux_filesystem_kind_is_squashfs(
+      kind: observation.lower_backing_mount.filesystem,
+    )
+    && linux_filesystem_kind_is_jffs2(
+      kind: observation.upper_backing_mount.filesystem,
+    )
+    && starts_with(
+      s: observation.lower_directory as String,
+      prefix: observation.lower_backing_mount.target as String,
+    )
+    && starts_with(
+      s: observation.upper_directory as String,
+      prefix: observation.upper_backing_mount.target as String,
+    )
+}
+
+fn linux_file_publication_has_synchronized_commit(
+  protocol: LinuxFilePublicationProtocol,
+) -> Bool {
+  protocol.stage_in_target_directory
+    && protocol.staged_content_validated
+    && match protocol.replacement {
+      RenameReplaceWithinTargetDirectory =>
+        match protocol.synchronization {
+          SyncAllFilesystemsAfterReplacement => true
+          NoExplicitFilesystemSynchronization => false
+        }
+      ReplacementAtomicityUnspecified => false
+    }
+}
+
+data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
