@@ -35,26 +35,22 @@ type ToolPin {
 
 type PinFreshness
   = PinFresh
-  | PinStale { channel: NonEmptyStr, age_days: Int, window_days: Int }
+  | PinFreshnessUnderivable { channel: NonEmptyStr }
 
-data pin_freshness_purity_note: String = "age_days is SUPPLIED by the caller rather than read here: the clock read is an effect and stays outside the decision, so every arm of this fold is witnessable from literals and the fold itself is deterministic (the belt_observe_from_result shape — decide in a pure fn, thread observed values in). An ExactPin is never stale: it was authored, not resolved from a moving reference, so there is no upstream drift for a window to bound."
+data pin_freshness_fail_closed_note: String = "CORRECTED after review 44242, which found a real fail-open in the first shape and was right. That version stored no resolution evidence on TrackedChannel and took age_days as a CALLER-SUPPLIED parameter, so the freshness verdict was entirely at the caller's discretion: passing 0 forever admitted a permanently-stale pin, and the design note meanwhile claimed the resolution was 'recorded'. That is DESIGN section 5's exact tell — a check satisfiable by editing the caller while the model lies — and deleting the resolution date as an 'unread field' was the wrong correction; the right one is to make the fold READ it. Grounding it properly needs two things this tree does not have: a carried resolution date, and calendar day arithmetic to derive an age from it. v2.std.datetime models CalendarDate but has NO day-difference, epoch-day, or days-between fn, and has ZERO constructors in use anywhere in the corpus, so deriving an age here would mean both becoming that type's first consumer and forking calendar arithmetic into extdeps — a section 3 fork of a std concern. So P1 does NOT offer a verdict it cannot ground: the fabricable parameter is deleted outright and a TrackedChannel pin is UNDERIVABLE, never fresh, so it can never be admitted. ExactPin is unaffected and remains fully usable (P3's Rust toolchain is an exact pin). Dissolve-on: v2.std.datetime gains day arithmetic and TrackedChannel carries resolved_on: CalendarDate, at which point this arm becomes a real fresh/stale decision derived from stored evidence and an observed date."
 
-fn pin_freshness(pin: ToolPin, age_days: Int) -> PinFreshness {
+fn pin_freshness(pin: ToolPin) -> PinFreshness {
   match pin.selection {
     ExactPin => PinFresh
-    TrackedChannel { channel: c, refresh_window_days: w } =>
-      if age_days > w {
-        PinStale { channel: c, age_days: age_days, window_days: w }
-      } else {
-        PinFresh
-      }
+    TrackedChannel { channel: c, refresh_window_days: _ } =>
+      PinFreshnessUnderivable { channel: c }
   }
 }
 
 type PinRefusalCause
   = ConstraintIsNotIdentity { constraint: VersionConstraint }
   | PinAbsent
-  | PinStaleBeyondWindow { channel: NonEmptyStr, age_days: Int, window_days: Int }
+  | FreshnessEvidenceUnavailable { channel: NonEmptyStr }
   | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
 
 type PinAdmission
@@ -77,14 +73,14 @@ fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission {
   }
 }
 
-data pin_admission_note: String = "The admission a P2 consumer calls: a pin is admitted only when it is BOTH fresh and identity-matched against the observed digest. Freshness is checked before identity deliberately — a stale tracked pin whose binary happens to match is still refused, because the pin no longer represents a current decision and greening it would zero the very signal the refresh window exists to raise. Both arms refuse rather than widen; neither ever substitutes a superset, re-resolves, or proceeds on mismatch."
+data pin_admission_note: String = "The admission a P2 consumer calls: a pin is admitted only when its freshness is DERIVABLE and its identity matches the observed digest. Freshness is decided before identity deliberately — a pin whose currency cannot be established is refused even when its binary happens to match, because admitting on a coincidental digest match would zero the very signal the refresh axis exists to raise. Today that means every TrackedChannel pin refuses (see pin_freshness_fail_closed_note); ExactPin proceeds to the identity check. Both arms refuse rather than widen; neither substitutes a superset, silently re-resolves, or proceeds on mismatch."
 
-fn admit_pin(pin: ToolPin, observed_identity: ContentHash, age_days: Int) -> PinAdmission {
-  match pin_freshness(pin: pin, age_days: age_days) {
-    PinStale { channel: c, age_days: a, window_days: w } =>
+fn admit_pin(pin: ToolPin, observed_identity: ContentHash) -> PinAdmission {
+  match pin_freshness(pin: pin) {
+    PinFreshnessUnderivable { channel: c } =>
       PinRefused {
         tool_name: pin.tool_name,
-        cause: PinStaleBeyondWindow { channel: c, age_days: a, window_days: w }
+        cause: FreshnessEvidenceUnavailable { channel: c }
       }
     PinFresh =>
       if pin.expected_identity == observed_identity {
