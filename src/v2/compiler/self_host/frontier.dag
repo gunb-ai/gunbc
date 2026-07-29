@@ -5,18 +5,22 @@ import v2.compiler.self_host.frontier_band_a_emit_readiness {
   compiler_frontier_band_a_emit_readiness_core_holds,
   compiler_frontier_band_a_emit_readiness_roster
 }
-import v2.compiler.self_host.gate_a_oracle {
-  GateAExecutedProbeReceipt,
-  GateASelfEmitOracleRow,
-  gate_a_executed_probe_from_oracle_row,
-  gate_a_oracle_authorizes_self_emit,
-  gate_a_oracle_row_body_producer,
-  gate_a_oracle_row_03_normalize,
-  gate_a_oracle_row_07_target_carriers,
-  gate_a_oracle_row_discovery_enumeration,
-  gate_a_oracle_row_parse_engine_hooks,
-  gate_a_oracle_row_use_site_verdict,
-  gate_a_self_emit_oracle_rows
+import v2.compiler.self_host.emitter_producer_provenance {
+  EmitterProducer,
+  ProducerEmissionOracleRow,
+  ProducerEmissionReceipt,
+  producer_emission_oracle_authorizes_row,
+  producer_emission_oracle_row_03_normalize,
+  producer_emission_oracle_row_body_producer,
+  producer_emission_oracle_row_07_target_carriers,
+  producer_emission_oracle_row_discovery_enumeration,
+  producer_emission_oracle_row_parse_engine_hooks,
+  producer_emission_oracle_row_use_site_verdict,
+  producer_emission_oracle_row_count,
+  producer_emission_oracle_rows,
+  producer_qualified_baselines_holds,
+  seed_emitter_behavioral_green_baseline,
+  seed_emitter_behavioral_green_count
 }
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
@@ -111,7 +115,7 @@ data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = E
 data compiler_frontier_probe_kernel_receipt_note: String = "probe_kernel_receipt binds the fail-closed classifier RED control (frontier_classify_unlisted_reason_refuses_holds), not per-module frontier_probe_emit_from_ingest execution. Structural census invariants are compiler_frontier_structural_census_invariants_holds; per-module receipts deferred via CompilerFrontierAttributedDebt dissolution triggers."
 
 type SelfHostFrontierDisposition
-  = SelfEmitted
+  = EmitterProduced { provenance: ProducerEmissionReceipt }
   | SeedRetained { reason: Symbol, migration_trigger: Symbol }
 
 type CompilerModuleFrontierRow {
@@ -121,9 +125,7 @@ type CompilerModuleFrontierRow {
   tractability_rank: Int
 }
 
-data compiler_frontier_self_emitted_baseline_ratchet_note: String = "Class-5 carve-out: this baseline is a progress ratchet on SelfEmitted disposition count, not a duplicate of roster length. compiler_frontier_self_emitted_count() filters the roster by disposition; the baseline is an independent floor that reds when modules silently regress SelfEmitted -> SeedRetained. Deriving it from the same filter would tautologize the check (same rule as languages_consumer_census and test_migration_debt ratchets)."
-
-data compiler_frontier_self_emitted_baseline: Int = 6
+data compiler_frontier_producer_qualified_baseline_note: String = "Producer-qualified progress ratchets (calm-badger-682 ruling 2026-07-29): replaces compiler_frontier_self_emitted_baseline. seed_emitter_behavioral_green_count is the independent floor for V1SeedEmitter + BehavioralEquivalent rows; v2_* counters start at zero and derive from producer-identified executing receipts, never source location. Retired SelfEmitted vocabulary atomically with this ratchet set — reclassifying the six rows to V1SeedEmitter without retiring the old baseline would trip the guard."
 
 data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
 
@@ -234,36 +236,18 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_self_emitted_row_note: String = "Construction wall (gate_a_oracle, 2026-07-29): SelfEmitted is reachable only via GateAExecutedProbeReceipt minted from gate_a_self_emit_oracle_rows — never from a raw FrontierProbeReceipt. The 2026-07-20 flip-wave reverted six modules after curated_cargo_probe_one.sh showed 0/6 cargo-green; witness_flip_wave_dishonest_self_emit_reds is the discriminating RED."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, 2026-07-29): EmitterProduced is reachable only via ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored producer claim. Structural refusal: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. witness_seed_emit_rust_poison_structural_refusal_reds is the primary discriminating RED."
 
-fn execution_measured_self_emitted_row(
-  module_path: String,
-  closure_reads: Int,
-  executed_probe: GateAExecutedProbeReceipt,
+fn emitter_produced_row_from_oracle(
+  oracle_row: ProducerEmissionOracleRow,
   tractability_rank: Int
 ) -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
-    module_path: module_path,
-    disposition: SelfEmitted,
-    measured_probe: executed_probe.measured_probe,
+    module_path: oracle_row.module_path,
+    disposition: EmitterProduced { provenance: oracle_row.receipt },
+    measured_probe: oracle_row.measured_probe,
     tractability_rank: tractability_rank
   }
-}
-
-fn self_emitted_row_from_oracle(
-  oracle_row: GateASelfEmitOracleRow,
-  closure_reads: Int,
-  pre_flip_blocker: FrontierBlockerClass
-) -> CompilerModuleFrontierRow {
-  execution_measured_self_emitted_row(
-    module_path: oracle_row.module_path,
-    closure_reads: closure_reads,
-    executed_probe: gate_a_executed_probe_from_oracle_row(row: oracle_row),
-    tractability_rank: self_emitted_tractability_rank_at_flip(
-      closure_reads: closure_reads,
-      pre_flip_blocker: pre_flip_blocker
-    )
-  )
 }
 
 fn knowledge_attributed_blocker_class_seed_retained_row(
@@ -309,10 +293,9 @@ data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measu
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_body_producer,
-  closure_reads: 36,
-  pre_flip_blocker: NameResolutionGap
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_body_producer,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
 )
 
 data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -333,10 +316,9 @@ data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = executio
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_03_normalize,
-  closure_reads: 37,
-  pre_flip_blocker: EmitSurfaceGap
+data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_03_normalize,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 37, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -393,16 +375,14 @@ data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_m
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_07_target_carriers,
-  closure_reads: 36,
-  pre_flip_blocker: EmitSurfaceGap
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_07_target_carriers,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: EmitSurfaceGap)
 )
 
-data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_discovery_enumeration,
-  closure_reads: 12,
-  pre_flip_blocker: EmitSurfaceGap
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_discovery_enumeration,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 12, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -459,10 +439,9 @@ data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow =
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_parse_engine_hooks,
-  closure_reads: 2,
-  pre_flip_blocker: EmitSurfaceGap
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_parse_engine_hooks,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 2, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -499,10 +478,9 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = executi
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = self_emitted_row_from_oracle(
-  oracle_row: gate_a_oracle_row_use_site_verdict,
-  closure_reads: 9,
-  pre_flip_blocker: EmitSurfaceGap
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+  oracle_row: producer_emission_oracle_row_use_site_verdict,
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 9, pre_flip_blocker: EmitSurfaceGap)
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
@@ -589,13 +567,13 @@ fn compiler_frontier_roster_paths_unique_holds() -> Bool {
   )
 }
 
-fn count_self_emitted_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
+fn count_emitter_produced_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int {
   fold_list(
     xs: xs,
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        SelfEmitted => count + 1
+        EmitterProduced { provenance: _ } => count + 1
         SeedRetained { reason: _, migration_trigger: _ } => count
       }
     }
@@ -608,19 +586,24 @@ fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        SelfEmitted => count
+        EmitterProduced { provenance: _ } => count
         SeedRetained { reason: _, migration_trigger: _ } => count + 1
       }
     }
   )
 }
 
-fn compiler_frontier_self_emitted_count() -> Int {
-  count_self_emitted_frontier_rows(xs: compiler_frontier_roster)
+fn compiler_frontier_emitter_produced_count() -> Int {
+  count_emitter_produced_frontier_rows(xs: compiler_frontier_roster)
 }
 
-fn compiler_frontier_self_emitted_baseline_holds() -> Bool {
-  compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline
+fn compiler_frontier_producer_qualified_baselines_holds() -> Bool {
+  producer_qualified_baselines_holds()
+}
+
+fn compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds() -> Bool {
+  producer_emission_oracle_row_count() == seed_emitter_behavioral_green_baseline
+    && compiler_frontier_emitter_produced_count() == seed_emitter_behavioral_green_count()
 }
 
 fn compiler_frontier_seed_retained_count() -> Int {
@@ -671,7 +654,7 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        SelfEmitted => true
+        EmitterProduced { provenance: _ } => true
         SeedRetained { reason: _, migration_trigger: _ } =>
           !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
       }
@@ -679,13 +662,13 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
   )
 }
 
-fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
+fn compiler_frontier_emitter_produced_located_reason_holds() -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        SelfEmitted =>
+        EmitterProduced { provenance: _ } =>
           frontier_blocker_class_matches(
             blocker: row.measured_probe.blocker_class,
             target: SelfEmitReady
@@ -697,25 +680,21 @@ fn compiler_frontier_self_emitted_located_reason_holds() -> Bool {
   )
 }
 
-fn compiler_frontier_self_emitted_oracle_backed_holds() -> Bool {
+fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        SelfEmitted =>
-          gate_a_oracle_authorizes_self_emit(
+        EmitterProduced { provenance: receipt } =>
+          producer_emission_oracle_authorizes_row(
             module_path: row.module_path,
-            receipt: row.measured_probe
+            receipt: receipt
           )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
   )
-}
-
-fn compiler_frontier_self_emitted_oracle_count_matches_baseline_holds() -> Bool {
-  length(xs: gate_a_self_emit_oracle_rows) == compiler_frontier_self_emitted_baseline
 }
 
 fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
@@ -841,21 +820,21 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   if module_path == row.module_path {
     match row.disposition {
       SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
-      SelfEmitted => false
+      EmitterProduced { provenance: _ } => false
     }
   } else {
     false
   }
 }
 
-fn band_a_emit_readiness_module_is_self_emitted(module_path: String) -> Bool {
+fn band_a_emit_readiness_module_is_emitter_produced(module_path: String) -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
     empty: false,
     cons: fn(matched, row) {
       if row.module_path == module_path {
         match row.disposition {
-          SelfEmitted => true
+          EmitterProduced { provenance: _ } => true
           SeedRetained { reason: _, migration_trigger: _ } => false
         }
       } else {
@@ -870,7 +849,7 @@ fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadiness
     FlippableNow => true
     BodyProducerGated => false
     OtherGate { migration_trigger: trigger } =>
-      band_a_emit_readiness_module_is_self_emitted(module_path: row.module_path)
+      band_a_emit_readiness_module_is_emitter_produced(module_path: row.module_path)
         || band_a_emit_readiness_roster_row_trigger_matches(
         module_path: row.module_path,
         trigger: trigger,
@@ -995,19 +974,19 @@ fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) ->
   )
 }
 
-fn frontier_hand_rows_self_emitted_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
+fn frontier_hand_rows_emitter_produced_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
   match row.disposition {
-    SelfEmitted => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    EmitterProduced { provenance: _ } => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
     SeedRetained { reason: _, migration_trigger: _ } => []
   }
 }
 
-fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
+fn compiler_frontier_emitter_produced_stage0_mod_basenames() -> List<String> {
   fold(
     compiler_frontier_roster,
     init: [],
     f: fn(acc, row) {
-      concat(acc, frontier_hand_rows_self_emitted_row_basename(row: row))
+      concat(acc, frontier_hand_rows_emitter_produced_row_basename(row: row))
     }
   )
 }

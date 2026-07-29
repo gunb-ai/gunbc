@@ -1,0 +1,79 @@
+module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
+
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data seed_emitter_behavioral_wet_known_red_entries_note: String = "Single authority for the six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under emitter_producer_provenance 2026-07-29). Consumed by v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate). Cycle-free leaf: neither consumer is imported here."
+
+fn seed_emitter_behavioral_wet_known_red_entry(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+}
+
+data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+    f: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+  ),
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    f: "self_host_use_site_verdict_behavioral_receipt_holds"
+  ),
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+    f: "self_host_discovery_enumeration_behavioral_receipt_holds"
+  ),
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+    f: "self_host_target_carriers_behavioral_receipt_holds"
+  ),
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+    f: "self_host_body_producer_behavioral_receipt_holds"
+  ),
+  seed_emitter_behavioral_wet_known_red_entry(
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    f: "self_host_03_normalize_behavioral_receipt_holds"
+  )
+]
+
+fn schedule_witness_entry_eq(left: ScheduleWitnessEntry, right: ScheduleWitnessEntry) -> Bool {
+  (left.entry == right.entry) && (left.function == right.function)
+}
+
+fn schedule_witness_entry_cited(
+  probe_entry: String,
+  probe_function: String,
+  entries: List<ScheduleWitnessEntry>
+) -> Bool {
+  any(
+    xs: entries,
+    predicate: fn(entry) {
+      (entry.entry == probe_entry) && (entry.function == probe_function)
+    }
+  )
+}
+
+fn schedule_witness_entries_structurally_equal(
+  left: List<ScheduleWitnessEntry>,
+  right: List<ScheduleWitnessEntry>
+) -> Bool {
+  if length(xs: left) != length(xs: right) {
+    false
+  } else {
+    fold(
+      left,
+      init: true,
+      f: fn(ok, left_entry) {
+        ok && any(
+          xs: right,
+          predicate: fn(right_entry) {
+            schedule_witness_entry_eq(left: left_entry, right: right_entry)
+          }
+        )
+      }
+    )
+  }
+}
