@@ -342,6 +342,10 @@ for key, occs in sorted(SITES.items()):
         "root_family": f0["root_family"],
         "occurrences": len(occs),
         "modules": ",".join(sorted({o["module"] for o in occs})),
+        # Diagnostic-only: not in `cols`, so the TSV shape is unchanged. These are what the
+        # classifier actually failed on, so an Unresolved refusal can name it.
+        "probe_method": f0["method"],
+        "probe_receiver_expr": f0["receiver_expr"],
     })
 
 unresolved = [r for r in out_rows if r["requirement_cause"] == "Unresolved"]
@@ -438,4 +442,23 @@ for r in out_rows:
 
 with (WORK / "b0_census.json").open("w") as fh:
     json.dump(out_rows, fh, indent=1)
+
+# DESIGN §5, the factory model: a deficit stops the line. The census above is emitted first
+# so every deficit is inspectable and located (the sanctioned stopped-line audit "reports,
+# it does not green"), and THEN the line stops. An unrecognized emitter shape must never
+# leave this probe with a zero exit, because a green incomplete census is indistinguishable
+# from a complete one to any consumer.
+if unresolved:
+    shown = unresolved[:20]
+    detail = "; ".join(
+        "{}:{} {} (method={!r} receiver={!r})".format(
+            r["emitted_file"], r["emitted_line"], r["emitted_fn"],
+            r["probe_method"], r["probe_receiver_expr"])
+        for r in shown)
+    more = "" if len(unresolved) <= len(shown) else " ... and {} more".format(len(unresolved) - len(shown))
+    raise SystemExit(
+        "REFUSED: {} site(s) reached the Unresolved arm — the census above is INCOMPLETE "
+        "and must not be consumed as a measurement. No lowering row in "
+        "tools.e0599_emitter_decision_census names these shapes, so their requirement cause "
+        "is unknown, not absent. Located: {}{}".format(len(unresolved), detail, more))
 PY
