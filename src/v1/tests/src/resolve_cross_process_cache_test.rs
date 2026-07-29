@@ -35,10 +35,10 @@ impl Drop for CacheEnvGuard {
 }
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, serve_resolved_graph_v1_disk_probe_for_test,
+    build_multi_entry_index, load_sources_for_entry, make_eval_context,
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
-    ClaimOutcome,
+    resolve_entry_graph, resolve_entry_with_index, run_claim,
+    serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
     build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,

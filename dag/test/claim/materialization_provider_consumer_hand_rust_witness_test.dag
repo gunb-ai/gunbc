@@ -13,6 +13,8 @@ import test.claim.materialization_provider_witness {
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 
+data witness_model_refusal_controls_note: String = "Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge."
+
 test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() -> Bool {
   match materialization_provider_consumer_hand_rust_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
@@ -26,8 +28,6 @@ test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> B
     && !(materialization_provider_consumer_roadmap_lane_anchor == "")
 }
 
-// Model-layer control only: this reuses pre-existing witness assertions on main and does
-// not exercise the Rust bridge. Keep the name honest until a bridge-level witness exists.
 test fn witness_model_refusal_controls_remain_distinct() -> Bool {
   incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union()
     && red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact()
