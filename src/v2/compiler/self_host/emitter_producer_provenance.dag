@@ -273,6 +273,8 @@ data producer_emission_oracle_rows: List<ProducerEmissionOracleRow> = [
   producer_emission_oracle_row_use_site_verdict
 ]
 
+data producer_emission_oracle_rows_empty: List<ProducerEmissionOracleRow> = []
+
 data producer_emission_flip_wave_reverted_module_paths: List<String> = [
   "src/v2/compiler/00_compile.dag",
   "src/v2/compiler/02_parse.dag",
@@ -383,7 +385,7 @@ fn producer_emission_oracle_probe_is_enrolled(row: ProducerEmissionOracleRow) ->
 fn producer_emission_oracle_row_for_module(module_path: String) -> List<ProducerEmissionOracleRow> {
   fold_list(
     xs: producer_emission_oracle_rows,
-    empty: [],
+    empty: producer_emission_oracle_rows_empty,
     cons: fn(acc, row) {
       if row.module_path == module_path {
         concat(acc, [row])
