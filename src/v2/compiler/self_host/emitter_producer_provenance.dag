@@ -55,6 +55,59 @@ type EmissionQualification
   | BehavioralEquivalent
   | ProductionRouted
 
+type EmissionQualificationAxis
+  = EmissionQualificationSourceProduced
+  | EmissionQualificationCargoGreen
+  | EmissionQualificationBehavioralEquivalent
+  | EmissionQualificationProductionRouted
+
+data emission_qualification_axis_note: String = "Canonical query surface for EmissionQualification (reviews 44328/44477 predicate-dissolution): classify through emission_qualification_axis once and match the tag — not a hand-rolled qualification_eq Bool over the coproduct."
+
+fn emission_qualification_axis(qualification: EmissionQualification) -> EmissionQualificationAxis {
+  match qualification {
+    SourceProduced => EmissionQualificationSourceProduced
+    CargoGreen => EmissionQualificationCargoGreen
+    BehavioralEquivalent => EmissionQualificationBehavioralEquivalent
+    ProductionRouted => EmissionQualificationProductionRouted
+  }
+}
+
+fn emission_qualification_axis_eq(
+  left: EmissionQualificationAxis,
+  right: EmissionQualificationAxis
+) -> Bool {
+  match left {
+    EmissionQualificationSourceProduced =>
+      match right {
+        EmissionQualificationSourceProduced => true
+        EmissionQualificationCargoGreen => false
+        EmissionQualificationBehavioralEquivalent => false
+        EmissionQualificationProductionRouted => false
+      }
+    EmissionQualificationCargoGreen =>
+      match right {
+        EmissionQualificationSourceProduced => false
+        EmissionQualificationCargoGreen => true
+        EmissionQualificationBehavioralEquivalent => false
+        EmissionQualificationProductionRouted => false
+      }
+    EmissionQualificationBehavioralEquivalent =>
+      match right {
+        EmissionQualificationSourceProduced => false
+        EmissionQualificationCargoGreen => false
+        EmissionQualificationBehavioralEquivalent => true
+        EmissionQualificationProductionRouted => false
+      }
+    EmissionQualificationProductionRouted =>
+      match right {
+        EmissionQualificationSourceProduced => false
+        EmissionQualificationCargoGreen => false
+        EmissionQualificationBehavioralEquivalent => false
+        EmissionQualificationProductionRouted => true
+      }
+  }
+}
+
 type EmissionBuildResult
   = BuildGreen
   | BuildRefused { cause: Symbol }
@@ -230,13 +283,71 @@ fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionO
   producer_emission_oracle_probe_is_enrolled(row: row)
 }
 
-data producer_emission_canonical_receipt_for_executed_verdict_note: String = "Construction wall (review 44468): always Absent at baseline — unwritable until witness-realization + frontier_probe_survey bind execution-measured wet_execution_digest. No synthesizable digest check from declarative oracle fields."
+data producer_emission_canonical_receipt_for_executed_verdict_note: String = "Executed-verdict authorization pipeline (reviews 44468/44477): matches oracle row + enrolled probe, refuses synthesizable declarative digests (44468), then requires producer_emission_executed_digest_is_execution_measured (false at baseline until witness-realization binds host-measured claim_executor verdict digests). Static oracle derivation never mints BuildGreen."
+
+fn producer_emission_executed_receipt_matches_oracle_row(
+  row: ProducerEmissionOracleRow,
+  executed: ProducerEmissionExecutedGreenReceipt
+) -> Bool {
+  (row.module_path == executed.module_path)
+    && (row.behavioral_probe_entry == executed.behavioral_probe_entry)
+    && (row.behavioral_probe_function == executed.behavioral_probe_function)
+}
+
+fn producer_emission_executed_digest_is_synthesizable_from_declarative_inputs(
+  row: ProducerEmissionOracleRow,
+  executed: ProducerEmissionExecutedGreenReceipt
+) -> Bool {
+  let digest = executed.wet_execution_digest
+  digest == content_hash_atom(value: row.behavioral_probe_entry)
+    || digest == content_hash_atom(value: row.behavioral_probe_function)
+    || digest == content_hash_atom(value: row.module_path)
+    || digest == scaffold_digest_for_module_path(module_path: row.module_path)
+    || digest == symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest)
+}
+
+data producer_emission_execution_measured_digest_admissible_note: String = "Construction wall (reviews 44468/44477): unwritable at baseline — witness-realization + frontier_probe_survey bind host-measured verdict digests. Refusing synthesizable declarative digests alone is insufficient (any other Hash is forgeable in-model); this predicate is the dissolve-on hook."
+
+fn producer_emission_executed_digest_is_execution_measured(
+  row: ProducerEmissionOracleRow,
+  executed: ProducerEmissionExecutedGreenReceipt
+) -> Bool {
+  false
+}
 
 fn producer_emission_canonical_receipt_for_executed_verdict(
   row: ProducerEmissionOracleRow,
   executed: ProducerEmissionExecutedGreenReceipt
 ) -> Optional<ProducerEmissionReceipt> {
-  optional_absent()
+  if !producer_emission_executed_receipt_matches_oracle_row(row: row, executed: executed) {
+    optional_absent()
+  } else if !producer_emission_oracle_probe_is_enrolled(row: row) {
+    optional_absent()
+  } else if producer_emission_executed_digest_is_synthesizable_from_declarative_inputs(
+    row: row,
+    executed: executed
+  ) {
+    optional_absent()
+  } else if !producer_emission_executed_digest_is_execution_measured(row: row, executed: executed) {
+    optional_absent()
+  } else {
+    match mint_producer_emission_receipt(
+      module_path: row.module_path,
+      producer: V1SeedEmitter,
+      qualifications: behavioral_equivalent_qualifications,
+      build_result: BuildGreen,
+      behavioral_probe_entry: row.behavioral_probe_entry,
+      behavioral_probe_function: row.behavioral_probe_function,
+      realized_closure: cssl_harness_realized_closure
+    ) {
+      Present { value: receipt } =>
+        match emission_build_result_axis(result: receipt.build_result) {
+          EmissionBuildResultGreen => optional_present(value: receipt)
+          EmissionBuildResultRefused { cause: _ } => optional_absent()
+        }
+      Absent => optional_absent()
+    }
+  }
 }
 
 fn producer_emission_build_result_for_oracle_row(row: ProducerEmissionOracleRow) -> EmissionBuildResult {
@@ -395,7 +506,12 @@ fn qualifications_list_eq(
       cons: fn(ok, left_q) {
         ok && any(
           xs: right,
-          predicate: fn(right_q) { qualification_eq(left: left_q, right: right_q) }
+          predicate: fn(right_q) {
+            emission_qualification_axis_eq(
+              left: emission_qualification_axis(qualification: left_q),
+              right: emission_qualification_axis(qualification: right_q)
+            )
+          }
         )
       }
     )
@@ -653,22 +769,19 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
   }
 }
 
-fn qualification_eq(left: EmissionQualification, right: EmissionQualification) -> Bool {
-  match left {
-    SourceProduced => match right { SourceProduced => true _ => false }
-    CargoGreen => match right { CargoGreen => true _ => false }
-    BehavioralEquivalent => match right { BehavioralEquivalent => true _ => false }
-    ProductionRouted => match right { ProductionRouted => true _ => false }
-  }
-}
-
 fn row_has_qualification(
   qualifications: List<EmissionQualification>,
   target: EmissionQualification
 ) -> Bool {
+  let target_axis = emission_qualification_axis(qualification: target)
   any(
     xs: qualifications,
-    predicate: fn(q) { qualification_eq(left: q, right: target) }
+    predicate: fn(q) {
+      emission_qualification_axis_eq(
+        left: emission_qualification_axis(qualification: q),
+        right: target_axis
+      )
+    }
   )
 }
 

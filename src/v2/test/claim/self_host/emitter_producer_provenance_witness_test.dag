@@ -3,11 +3,13 @@ module v2.test.claim.self_host.emitter_producer_provenance_witness_test
 import v2.compiler.self_host.emitter_producer_provenance {
   EmissionBuildResultGreen,
   EmissionBuildResultRefused,
+  ProducerEmissionExecutedGreenReceipt,
   emission_build_result_axis,
   emitter_produced_baseline,
   fabricated_v1_seed_producer_receipt,
   fabricated_v2_interpreted_producer_receipt,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
+  producer_emission_canonical_receipt_for_executed_verdict,
   producer_emission_canonical_receipt_for_oracle_row,
   producer_emission_flip_wave_reverted_module_paths,
   producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
@@ -61,6 +63,7 @@ import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.content_hash { content_hash_atom }
 
 data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until witness-realization mints via producer_emission_canonical_receipt_for_executed_verdict (review 44460). Static oracle derivation never mints BuildGreen. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
 
@@ -91,6 +94,22 @@ data witness_executed_verdict_minting_refused_at_baseline_red_note: String = "Re
 
 test fn witness_executed_verdict_minting_refused_at_baseline_reds() -> Bool {
   producer_emission_executed_verdict_minting_refused_at_baseline_holds()
+}
+
+data witness_synthesizable_executed_digest_refused_red_note: String = "Review 44477 RED: declarative-input wet_execution_digest (content_hash_atom of probe entry) is refused before execution_measured admissibility — synthesizable digest cannot mint BuildGreen even when row identity matches."
+
+test fn witness_synthesizable_executed_digest_refused_reds() -> Bool {
+  let row = producer_emission_oracle_row_body_producer
+  let executed = ProducerEmissionExecutedGreenReceipt {
+    module_path: row.module_path,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
+  }
+  match producer_emission_canonical_receipt_for_executed_verdict(row: row, executed: executed) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen canonical — enrollment and authorization are split (review 44393)."
