@@ -8027,6 +8027,9 @@ fn serve_resolved_graph_disk_hit_through_provider(
         ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
             "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
         ),
+        ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable { gap } => Err(format!(
+            "resolved-graph-cache provider refused faithful probe: {gap}"
+        )),
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),

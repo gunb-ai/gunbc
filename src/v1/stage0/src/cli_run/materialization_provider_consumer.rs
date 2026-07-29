@@ -19,6 +19,7 @@ pub enum ResolvedGraphProviderOutcome {
     RefusedWrongArtifact,
     RefusedKindMismatch,
     RefusedWrongContent,
+    RefusedFaithfulProbeUnavailable { gap: String },
     LookupUnclassified { label: String },
 }
 
@@ -162,30 +163,10 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    let payload_bytes = byte_size_value_in_ctx(ctx, payload_byte_count)?;
-    let args = [
-        (
-            Some("closure_digest".to_string()),
-            Value::Str(closure_digest.to_string()),
-        ),
-        (
-            Some("compiler_digest".to_string()),
-            Value::Str(compiler_digest.to_string()),
-        ),
-        (
-            Some("content_digest".to_string()),
-            Value::Str(content_digest.to_string()),
-        ),
-        (Some("payload_bytes".to_string()), payload_bytes),
-    ];
-    let lookup = v1_interpreter::run_in_context_with_args(
-        ctx,
-        "serve_resolved_graph_v1_disk_probe",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("serve_resolved_graph_v1_disk_probe: {e}"))?;
-    interpret_provider_lookup(ctx, lookup)
+    let _ = (ctx, closure_digest, compiler_digest, content_digest, payload_byte_count);
+    Ok(ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
+        gap: "faithful resolved-graph disk probe unavailable: resolved_graph_cache only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant".to_string(),
+    })
 }
 
 pub fn serve_resolved_graph_v1_disk_probe(

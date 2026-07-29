@@ -2,7 +2,7 @@ use v1_compiler::cli_run::{
     build_multi_entry_index, make_eval_context, materialization_provider_ctx_build_count_for_test,
     reset_materialization_provider_ctx_for_test, resolve_entry_graph, resolve_entry_with_index,
     run_claim, serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
-    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+    ResolvedGraphProviderOutcome,
 };
 use v1_compiler::resolved_graph_cache::{closure_content_digest, transform_content_digest};
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -39,7 +39,7 @@ fn witness_ctx() -> v1_compiler::v1_interpreter::InterpContext {
 }
 
 #[test]
-fn v1_disk_probe_refuses_incomplete_naming_compile_clean_diagnostic_union() {
+fn v1_disk_probe_refuses_until_faithful_parts_exist() {
     let sources = fixture_sources();
     let closure_digest = closure_content_digest(&sources);
     let compiler_digest = transform_content_digest();
@@ -54,11 +54,13 @@ fn v1_disk_probe_refuses_incomplete_naming_compile_clean_diagnostic_union() {
     .expect("provider serve");
 
     match outcome {
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => {
-            assert_eq!(missing.len(), 1);
-            assert_eq!(missing[0], OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION);
+        ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable { gap } => {
+            assert!(
+                gap.contains("per-output digests") && gap.contains("byte sizes"),
+                "gap must name the missing faithful facts: {gap}"
+            );
         }
-        other => panic!("expected ProviderRefusedIncomplete, got {other:?}"),
+        other => panic!("expected faithful-probe refusal, got {other:?}"),
     }
 }
 
@@ -129,7 +131,7 @@ fn v1_disk_hit_provider_refusal_stops_resolve_line() {
     let _ = std::fs::remove_dir_all(&dir);
 
     assert!(
-        err.contains("provider refused incomplete disk hit"),
+        err.contains("provider refused faithful probe"),
         "typed provider refusal must stop the line: {err}"
     );
 }
