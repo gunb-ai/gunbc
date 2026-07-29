@@ -15,9 +15,17 @@
 
 This is indistinguishable from a member-run failure, a semantic mismatch, or a harness false without further triage — exactly the loudness gap Lane B item (1) closes.
 
-## Classification: R2 stale-artifact (suspected primary class)
+## Classification: R2 stale-artifact (confirmed construction defect)
 
-**Hypothesis:** srv2-05 retained a **toolchain-keyed native cache artifact** from the pre-#7069 window. After #7069 keyed `GUNBC_NATIVE_CACHE_ROOT` to the rustc/toolchain identity, the runner could still serve **byte-identical compile_skipped hits** while the **emitted family source or member dispatch surface** no longer matched the interpreted eval oracle.
+The cache key was not a digest of the native realization. It combined the
+inferred member-tree digest with constant labels (`"v2.compiler.emit"`,
+`"rust"`, and `"native-artifact"`). `inferred_tree_digest` covers the source
+tree and evaluated facts, but not the target model's runtime row: emitted
+workspace suffixes, the family dispatcher, toolchain manifest, and build argv
+were absent. The warm handler then treated the existence of a one-byte
+`.native_ready` marker as sufficient and did not materialize the currently
+requested files. A durable cross-branch workspace could therefore serve an
+older family binary under the unchanged outer key.
 
 Evidence supporting R2 stale-artifact over cold-cache miss:
 
@@ -26,23 +34,48 @@ Evidence supporting R2 stale-artifact over cold-cache miss:
 | `compile_skipped=true` ×3 | All members warm | Not a cold-build failure |
 | 496ms wall | Fast | Interpreter + cached native only |
 | srv2-05 only (initial report) | Divergence on one runner class | Persistent local cache state |
-| #7069 landed toolchain-keyed root | Cache root semantics changed | Stale hit class opens |
+| `toolchain_for_grain(NativeArtifact)` | Literal `"native-artifact"`, not a toolchain digest | The modeled key claim exceeded its construction |
 | srv1 4-run hermetic probe (parity_receipts_local) | Runs 2–4 green on same key | Repro is host-state dependent, not deterministic code bug |
 
-**R2 definition (this receipt):** A native cache entry whose **key still matches** (compile skipped) but whose **stored artifact is semantically stale** relative to the current emitter/eval contract — the absorbing-failure mode where the transport reports success (cache hit) while the agreement oracle redds.
+The fix retains the outer computation key but appends a derived
+`artifact_realization_digest` over the exact materialized workspace paths/texts
+and structured build argv, followed by a host-observed resolved-build-context
+digest over the actual executable bytes/version (and Cargo's selected rustc),
+the exact constructed subprocess environment, and every Cargo configuration
+file discoverable from the workspace.
+The host probe runs from the materialized input-realization root, so the same
+workspace `rust-toolchain.toml` selection that governs Cargo governs the probe.
+Build and run commands clear the ambient environment and receive only the
+environment rows incorporated in that identity, so unmodeled ambient variables
+cannot change a cached artifact. The marker now belongs to that
+input-and-build-context realization child.
+The executable `family_crate_dispatch_change_cold_rebuild_holds` control holds
+the inferred trees and emitted member source constant, changes only the family
+dispatcher, and requires cold → cold → warm. Before the fix its second leg was
+a warm stale hit. The pure
+`native_realization_toolchain_change_cold_rebuild_holds` control holds files and
+build argv constant and changes only the resolved toolchain identity. The
+`native_realization_environment_change_cold_rebuild_holds` companion keeps the
+toolchain and Cargo configuration fixed and changes only an admitted environment
+row.
 
-## Alternate hypotheses (lower prior)
+## Rejected alternatives
 
-1. **Genuine semantic divergence** — interpreted eval and native disagree on a member (meet/join/complement) under warm cache. Would be reproducible on a clean root; srv1 probe argues against this as the steady-state main-line failure.
-2. **Member dispatch run failure** — stdout octet mismatch masked as agreement `false`. Loudness fix (member + both values) discriminates this on the next red.
-3. **Workspace path collision** — `pr_native` test_id workspace shared across jobs without eviction. Less likely given hermetic no-evict design and distinct keys per family digest.
+1. **Deterministic emitter/evaluator disagreement:** rejected by the clean srv1
+   cold/warm sequence on the same source revision.
+2. **Cold build or member-run failure:** rejected by three
+   `compile_skipped=true` receipts and the 496ms wall time.
+3. **Hash collision between distinct inferred trees:** unnecessary; the target
+   realization was absent from the hashed inputs by construction.
 
 ## Remediation sequence (mandate order)
 
-1. **Agreement loudness (LANDING THIS PR):** `v2.std.native_agreement` + `*_failure_receipt` companion — failures name `member=` and `interpreted=` / `native=` octet labels.
-2. **Do not re-flip** complement/meet_join until warm agreement greens on **≥2 distinct runner hosts** with loud receipts.
-3. **srvN hygeine:** Evict `GUNBC_NATIVE_CACHE_ROOT` for key `8f21f541808ddb22` on affected runners before re-flip experiment; falsifier cold control continues exercising both legs.
-4. **744-entry census:** The classification rules are `v2.compiler.self_host.witness_entry_eligibility_census` — the roster is derived from them at run time. (This step used to name `docs/probes/witness_entry_eligibility_census.tsv`; that committed carrier and its hand-synced count pin were deleted 2026-07-23 because they were a materialized copy of those same rules that drifted between regens.) Per-entry cssl first-error sweep on srvN still names the remaining `EmitIneligible` classes before bulk flip.
+1. Agreement loudness landed in #7111 and names the member plus both values.
+2. The effective workspace identity now includes exact realization inputs.
+3. The same-tree/different-dispatch execution control prevents regression.
+4. Complement/meet_join remain `InterpretedRetained` until the routing
+   frontier's independent warm-host evidence requirement is met; this diagnosis
+   does not silently re-flip policy.
 
 ## Receipt hooks
 
@@ -53,4 +86,4 @@ Evidence supporting R2 stale-artifact over cold-cache miss:
 
 ## Status
 
-**Diagnosis-complete, re-flip blocked.** Next red on agreement must carry located member + both values; if R2 stale-artifact reproduces, eviction receipt is the counted remediation before any `NativeRouted` data flip.
+**Root cause closed in construction; re-flip remains evidence-gated.**
