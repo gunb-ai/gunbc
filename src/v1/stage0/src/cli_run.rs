@@ -249,6 +249,14 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
     )
 }
 
+fn toml_line_without_comment(trimmed: &str) -> &str {
+    if let Some(idx) = trimmed.find(" #") {
+        trimmed[..idx].trim_end()
+    } else {
+        trimmed
+    }
+}
+
 pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
     content: &str,
     package_root: &str,
@@ -263,7 +271,8 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if trimmed == "[[bin]]" {
+        let line_body = toml_line_without_comment(trimmed);
+        if line_body == "[[bin]]" {
             if in_bin && !current_bin_has_path {
                 return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
             }
@@ -272,7 +281,7 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
             bin_section_count += 1;
             continue;
         }
-        if trimmed.starts_with("[[") {
+        if line_body.starts_with("[[") {
             if in_bin && !current_bin_has_path {
                 return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
             }
@@ -281,7 +290,7 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
             continue;
         }
         if in_bin {
-            if let Some(path_val) = parse_bin_table_path_line(trimmed) {
+            if let Some(path_val) = parse_bin_table_path_line(line_body) {
                 paths.push(format!("{package_root}{path_val}"));
                 current_bin_has_path = true;
             }
@@ -31976,6 +31985,16 @@ path = "src/bin/claim_batch.rs"
                 "src/v1/stage0/src/main.rs".to_string(),
                 "src/v1/stage0/src/bin/claim_batch.rs".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn parses_bin_table_header_with_inline_comment() {
+        let fragment = "[[bin]] # cache-bust\nname = \"regen\"\npath=\"src/bin/regen_stage0.rs\"\n";
+        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
+        assert_eq!(
+            paths,
+            vec!["src/v1/stage0/src/bin/regen_stage0.rs".to_string()]
         );
     }
 

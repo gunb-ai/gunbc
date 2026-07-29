@@ -16,7 +16,7 @@ import gunbc.stage0_rust_source_lifecycle_hand_rust_scaffold {
 import std.disposition { Scaffold, SingleAuthority }
 import v2.std.text { String }
 
-data stage0_rust_source_lifecycle_hand_rust_witness_note: String = "HAND-Rust scaffold receipt (review 44325): Disposition rows for cargo-manifest + git-tracked census, ROADMAP.md:42 / v1_deletion_plan ^hand_queue_drain lane, measured +406 net Rust LOC delta, discriminating Rust tests."
+data stage0_rust_source_lifecycle_hand_rust_witness_note: String = "HAND-Rust scaffold receipt (review 44325): Disposition rows for cargo-manifest + git-tracked census, ROADMAP.md:30 / v1-zero-hand-maintained-rust lane, measured +406 net Rust LOC delta, discriminating Rust tests."
 
 test fn stage0_cargo_manifest_host_bridge_scaffold_is_seed_retained() -> Bool {
   match stage0_cargo_manifest_host_bridge_scaffold {
@@ -33,16 +33,16 @@ test fn git_tracked_rust_repo_paths_host_bridge_scaffold_is_seed_retained() -> B
 }
 
 test fn stage0_rust_lifecycle_hand_rust_lane_names_roadmap_row() -> Bool {
-  string_contains(s: stage0_rust_lifecycle_hand_rust_lane_note, pattern: "ROADMAP.md")
-    && string_contains(s: stage0_rust_lifecycle_hand_rust_lane_note, pattern: "hand_queue_drain")
-    && string_contains(s: stage0_rust_lifecycle_hand_rust_roadmap_anchor, pattern: "ROADMAP.md:42")
+  string_contains(s: stage0_rust_lifecycle_hand_rust_lane_note, pattern: "ROADMAP.md:30")
+    && string_contains(s: stage0_rust_lifecycle_hand_rust_lane_note, pattern: "v1-zero-hand-maintained-rust")
+    && string_contains(s: stage0_rust_lifecycle_hand_rust_roadmap_anchor, pattern: "ROADMAP.md:30")
 }
 
 test fn stage0_rust_lifecycle_dissolve_trigger_names_finish_line_and_lane() -> Bool {
   string_contains(s: stage0_rust_lifecycle_hand_rust_dissolve_trigger, pattern: "stage0_cargo_bin_repo_paths_from_manifest")
     && string_contains(s: stage0_rust_lifecycle_hand_rust_dissolve_trigger, pattern: "git_tracked_rust_repo_paths")
     && string_contains(s: stage0_rust_lifecycle_hand_rust_dissolve_trigger, pattern: "#7393")
-    && string_contains(s: stage0_rust_lifecycle_hand_rust_dissolve_trigger, pattern: "hand-maintained-Rust-to-zero")
+    && string_contains(s: stage0_rust_lifecycle_hand_rust_dissolve_trigger, pattern: "v1-zero-hand-maintained-rust")
 }
 
 test fn stage0_rust_lifecycle_hand_rust_receipt_anchor_is_checkable() -> Bool {
