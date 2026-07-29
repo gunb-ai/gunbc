@@ -80,8 +80,8 @@ fn compile_clean_scope_disposition_probe(
   pool_roots: List<String>
 ) -> CompileCleanScopeDisposition {
   if list_length(items: touched_paths) == 0 {
-    SkipNoAffectedEntries {
-      reason: "no touched paths in diff observation"
+    RequireWholeTree {
+      reason: "empty touched-path set — a diff that observed nothing is indistinguishable from a diff that could not be observed, so the whole tree is the only sound baseline (a main-push squash merge lands here)"
     }
   } else if compile_clean_all_touched_paths_docs_universe(touched_paths: touched_paths) {
     SkipNoAffectedEntries {
@@ -156,11 +156,11 @@ fn witness_entry_roots_are_witness_layer_roots() -> Bool {
   compile_clean_entry_roots() == witness_layer_roots
 }
 
-fn witness_empty_touched_skips() -> Bool {
+fn witness_empty_touched_requires_whole_tree() -> Bool {
   match compile_clean_scope_disposition_from_touched(touched_paths: []) {
-    SkipNoAffectedEntries { reason: _ } => true
+    RequireWholeTree { reason: _ } => true
+    SkipNoAffectedEntries { reason: _ } => false
     ScopedRun { entry_paths: _ } => false
-    RequireWholeTree { reason: _ } => false
   }
 }
 
@@ -277,7 +277,7 @@ fn witness_docs_only_departure_still_skips() -> Bool {
 }
 
 fn lever_a_local_receipts_hold() -> Bool {
-  witness_empty_touched_skips()
+  witness_empty_touched_requires_whole_tree()
     && witness_touched_path_dispositions_hold()
     && witness_entry_roots_are_witness_layer_roots()
     && witness_pool_roots_match_witness_layer_roots()

@@ -1,7 +1,7 @@
 module test.claim.dag_compile_clean_scope_witness
 
 import tools.dag_compile_clean_scope {
-  witness_empty_touched_skips,
+  witness_empty_touched_requires_whole_tree,
   witness_touched_path_dispositions_hold,
   touched_path_disposition_matches,
   scope_disposition_rows,
@@ -21,7 +21,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
-  witness_empty_touched_skips()
+  witness_empty_touched_requires_whole_tree()
 }
 
 test fn dag_compile_clean_scope_all_disposition_rows_hold() -> Bool {
