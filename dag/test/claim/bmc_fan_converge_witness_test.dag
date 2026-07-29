@@ -12,7 +12,7 @@ import extdeps.bmc.types {
   BmcFanCurveStep,
   validate_bmc_fan_curve,
 }
-import std.measure { celsius, percent, rpm, second, second_count }
+import std.measure { celsius, celsius_delta, percent, rpm, second, second_count }
 import gunbc.bmc_fan_converge {
   BmcFanAppliedAndVerified,
   BmcFanAppliedWithCleanupDebt,
@@ -45,8 +45,8 @@ test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
       minimum_duty: percent(30),
       sensor_unavailable_duty: percent(100),
       zone_failsafe_duty: percent(100),
-      positive_hysteresis: celsius(1),
-      negative_hysteresis: celsius(1),
+      positive_hysteresis: celsius_delta(1),
+      negative_hysteresis: celsius_delta(1),
     },
   ) {
     BmcFanCurveInvalid { cause: _ } => true

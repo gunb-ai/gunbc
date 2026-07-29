@@ -5,11 +5,13 @@ import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
   Celsius,
+  CelsiusDelta,
   HardwareThreadCount,
   Percent,
   RevolutionsPerMinute,
   Watt,
   celsius_count,
+  celsius_delta_count,
   percent_count,
 }
 import std.nat { Nat }
@@ -143,8 +145,8 @@ type BmcFanCurve {
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
   zone_failsafe_duty: Percent
-  positive_hysteresis: Celsius
-  negative_hysteresis: Celsius
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
 }
 
 type ValidatedBmcFanCurve {
@@ -285,7 +287,7 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
         || (
           percent_count(step.duty) == 100
             && (
-              celsius_count(step.at_or_above) + celsius_count(curve.positive_hysteresis)
+              celsius_count(step.at_or_above) + celsius_delta_count(curve.positive_hysteresis)
             ) < celsius_count(temperature)
         )
   )

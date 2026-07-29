@@ -26,6 +26,7 @@ type Quantity =
   | Energy
 
   | Temperature
+  | TemperatureDifference
 
   | RotationalSpeed
 
@@ -232,6 +233,8 @@ type Joule = Measure<Energy, One, Nat>
 
 type Celsius = Measure<Temperature, One, Int>
 
+type CelsiusDelta = Measure<TemperatureDifference, One, Nat>
+
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
 fn watt(count: Nat) -> Watt {
@@ -256,6 +259,14 @@ fn celsius(count: Int) -> Celsius {
 
 fn celsius_count(c: Celsius) -> Int {
   measure_count(c)
+}
+
+fn celsius_delta(count: Nat) -> CelsiusDelta {
+  CelsiusDelta { count: count }
+}
+
+fn celsius_delta_count(delta: CelsiusDelta) -> Nat {
+  measure_count(delta)
 }
 
 fn rpm(count: Nat) -> RevolutionsPerMinute {

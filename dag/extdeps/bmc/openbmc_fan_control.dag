@@ -19,11 +19,14 @@ import extdeps.languages.json.emit {
 import extdeps.uri { Https, Uri }
 import std.measure {
   Celsius,
+  CelsiusDelta,
   Percent,
   RevolutionsPerMinute,
   Second,
   celsius,
   celsius_count,
+  celsius_delta,
+  celsius_delta_count,
   percent,
   percent_count,
   rpm,
@@ -155,8 +158,8 @@ type OpenBmcStepwiseController {
   minimum_duty: Percent
   zone_failsafe_duty: Percent
   sensor_failsafe_duty: Percent
-  positive_hysteresis: Celsius
-  negative_hysteresis: Celsius
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
   readings: List<Celsius>
   outputs: List<Percent>
 }
@@ -165,8 +168,8 @@ type OpenBmcFanConfigDesired {
   minimum_duty: Percent
   zone_failsafe_duty: Percent
   sensor_failsafe_duty: Percent
-  positive_hysteresis: Celsius
-  negative_hysteresis: Celsius
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
   readings: List<Celsius>
   outputs: List<Percent>
   fan_controller_name: NonEmptyStr
@@ -178,8 +181,8 @@ fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
     json_kv(key: "minimum", value: json_int(n: percent_count(desired.minimum_duty))),
     json_kv(key: "zone_failsafe_duty", value: json_int(n: percent_count(desired.zone_failsafe_duty))),
     json_kv(key: "sensor_failsafe", value: json_int(n: percent_count(desired.sensor_failsafe_duty))),
-    json_kv(key: "positive_hysteresis", value: json_int(n: celsius_count(desired.positive_hysteresis))),
-    json_kv(key: "negative_hysteresis", value: json_int(n: celsius_count(desired.negative_hysteresis))),
+    json_kv(key: "positive_hysteresis", value: json_int(n: celsius_delta_count(desired.positive_hysteresis))),
+    json_kv(key: "negative_hysteresis", value: json_int(n: celsius_delta_count(desired.negative_hysteresis))),
     json_kv(
       key: "readings",
       value: json_array(elements: desired.readings |> map(value => json_int(n: celsius_count(value)))),
@@ -1249,8 +1252,8 @@ fn openbmc_fan_config_observe_one(
                       minimum_duty: percent(scalars.first()),
                       zone_failsafe_duty: percent(scalars.skip(n: 1).first()),
                       sensor_failsafe_duty: percent(scalars.skip(n: 2).first()),
-                      positive_hysteresis: celsius(scalars.skip(n: 3).first()),
-                      negative_hysteresis: celsius(scalars.skip(n: 4).first()),
+                      positive_hysteresis: celsius_delta(scalars.skip(n: 3).first()),
+                      negative_hysteresis: celsius_delta(scalars.skip(n: 4).first()),
                       readings: readings |> map(value => celsius(value)),
                       outputs: outputs |> map(value => percent(value)),
                     },

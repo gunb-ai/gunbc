@@ -20,7 +20,7 @@ import extdeps.bmc.types {
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
 import std.bmc { OpenBmc }
-import std.measure { celsius, celsius_count, percent }
+import std.measure { celsius, celsius_count, celsius_delta, percent }
 import std.state_durability {
   ControlPlaneRestartBoundary,
   DurableAcross,
@@ -67,8 +67,8 @@ data fleet_quiet_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis: celsius(1),
-  negative_hysteresis: celsius(2),
+  positive_hysteresis: celsius_delta(1),
+  negative_hysteresis: celsius_delta(2),
 }
 
 data fleet_fan_acoustic_policy: BmcFanAcousticPolicy = BmcFanAcousticPolicy {
