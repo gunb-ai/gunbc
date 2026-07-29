@@ -13704,7 +13704,7 @@ fn floor_filename_hygiene_refusal_for_dag_paths(
 ) -> Result<(), String> {
     let dag_paths: Vec<String> = dag_paths.to_vec();
     let (graph, indices) =
-        resolve_entry_graph_shared(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        resolve_entry_graph_shared(producer_roots, &floor_discovery_producer_entry_anchored())
             .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
@@ -13750,6 +13750,28 @@ fn floor_filename_hygiene_refusal_for_dag_paths(
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+/// The producer entry above is repo-relative, and every resolve of it ultimately reads the
+/// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
+/// The floor runs from the repo root, so that ambient dependency is invisible in production
+/// — but it is not invisible under `cargo test`, whose process cwd is the crate directory:
+/// the resolve then fails with `entry file does not exist`, and that refusal fires *before*
+/// whatever the caller was actually asking about, masking it. `set_current_dir` is not the
+/// fix; this crate's harness is multi-threaded and chdir is process-global (the race is
+/// already documented at the sibling fixture tests in this file).
+///
+/// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
+/// derived, hence identical in both worlds. Both resolve sites go through this one function
+/// so the `resolve_entry_graph_shared` cache stays keyed on a single spelling of the entry —
+/// two spellings would resolve the same closure twice.
+///
+/// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
+/// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
+/// anchoring plumbing when entry resolution stops reading cwd.
+fn floor_discovery_producer_entry_anchored() -> String {
+    let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
+    anchored.to_string_lossy().into_owned()
+}
 
 fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
@@ -13935,8 +13957,9 @@ fn invoke_floor_discovery_producer(
         let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let source_root_values: Vec<v1_interpreter::Value> = source_roots
         .iter()
@@ -21495,6 +21518,13 @@ mod sidecar_placement_hygiene_tests {
         // `discover_floor_witness_roster` itself, because the whole-corpus scan is that outer
         // wrapper's only other job — the wiring between them is the single `?` at the
         // `floor_filename_hygiene_refusal_via_producer(source_roots)?` call site.
+        //
+        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
+        // `floor_discovery_producer_entry_anchored` (git-toplevel, not cwd), so this test is
+        // the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo root).
+        // Before that anchoring it passed only when some *other* test in the suite happened
+        // to have chdir'd to the workspace root first — green by neighbour, and red run
+        // standalone.
         let ws = super::process_workspace_root();
         let producer_roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
