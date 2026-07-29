@@ -1238,6 +1238,55 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
   }
 }
 
+test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_children() -> Bool {
+  let changesets = [
+    MercurialChangeset {
+      node: hg_c0,
+      manifest: hg_manifest,
+      parents: MercurialNoParents,
+      branch: "default",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-0",
+      description: "default root",
+    },
+    MercurialChangeset {
+      node: hg_c1,
+      manifest: hg_manifest,
+      parents: MercurialOneParent { parent: hg_c0 },
+      branch: "feature",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-1",
+      description: "feature bridge",
+    },
+    MercurialChangeset {
+      node: hg_c2,
+      manifest: hg_manifest,
+      parents: MercurialOneParent { parent: hg_c1 },
+      branch: "default",
+      user: "author@example.invalid",
+      authored_at: "provenance-only-2",
+      description: "default descendant",
+    },
+  ]
+  let with_changesets = projection_with_changesets(
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
+    changesets: changesets,
+  )
+  let complete = projection_with_heads(
+    projection: with_changesets,
+    heads: [
+      MercurialHead { changeset: hg_c1 },
+      MercurialHead { changeset: hg_c2 },
+    ],
+  )
+  match mercurial_decode_projection(projection: complete) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
 test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
   let with_missing_head = projection_with_heads(
     projection: fixture_projection(),

@@ -168,6 +168,22 @@ fn graph_cycle_members(
   )
 }
 
+fn graph_reverse_reachable_members(
+  names: List<String>,
+  graph: CallGraph,
+  start: String,
+) -> List<String> {
+  let reached = dfs_collect_component(
+    node: start,
+    adjacency: reverse_adjacency(names: names, graph: graph),
+    acc: SccComponentAcc {
+      visited: empty_set(),
+      members: [],
+    },
+  )
+  reached.members |> filter(member => member != start)
+}
+
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
   match evidence |> first {
     Absent => false

@@ -315,6 +315,32 @@ pub fn graph_cycle_members(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> Rc<V
     }
 }
 
+pub fn graph_reverse_reachable_members(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+    start: String,
+) -> Rc<Vec<String>> {
+    {
+        let reached = dfs_collect_component(
+            start.clone(),
+            reverse_adjacency(names.clone(), graph.clone()),
+            Rc::new(SccComponentAcc {
+                visited: v1_rt::rc_empty_set::<String>(),
+                members: Rc::new(vec![]),
+            }),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for member in reached.members.clone().iter().cloned() {
+                if (member.clone() != start.clone()) {
+                    __result.push(member);
+                }
+            }
+            __result
+        })
+    }
+}
+
 pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool {
     loop {
         match evidence.clone().first().cloned() {

@@ -2,7 +2,12 @@ module extdeps.mercurial
 
 import std.types { NonEmptyStr, Bytes, Timestamp }
 import std.integer { NonNegativeInt, UInt8 }
-import std.graph { GraphEdge, CallGraph, graph_cycle_members }
+import std.graph {
+  GraphEdge,
+  CallGraph,
+  graph_cycle_members,
+  graph_reverse_reachable_members,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.uri { Uri, Https }
@@ -1180,16 +1185,27 @@ fn mercurial_node_sets_equal(
 fn mercurial_derived_open_branch_heads(
   changesets: List<MercurialChangeset>,
 ) -> List<MercurialNodeId> {
+  let names = changesets
+    |> map(changeset =>
+      mercurial_node_id_text(node: changeset.node)
+    )
+  let graph = mercurial_changeset_parent_graph(
+    changesets: changesets,
+  )
   changesets
-    |> filter(candidate =>
-      !any(changesets, child =>
-        child.branch == candidate.branch
-          && mercurial_node_present(
-            nodes: mercurial_revision_parent_nodes(parents: child.parents),
-            wanted: candidate.node,
+    |> filter(candidate => {
+      let descendants = graph_reverse_reachable_members(
+        names: names,
+        graph: graph,
+        start: mercurial_node_id_text(node: candidate.node),
+      )
+      !any(changesets, descendant =>
+        descendant.branch == candidate.branch
+          && descendants |> any(member =>
+            member == mercurial_node_id_text(node: descendant.node)
           )
       )
-    )
+    })
     |> map(changeset => changeset.node)
 }
 
