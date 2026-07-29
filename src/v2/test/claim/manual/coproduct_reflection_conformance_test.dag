@@ -1,11 +1,16 @@
 module v2.test.manual.coproduct_reflection_conformance
 
+import std.trait_derive_shape { ReprGroundingDeriveTrait }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+import v2.test.fixture.coproduct_reflection_generic_wrapper {
+  nullary_reflection_through_generic_wrapper
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
+data reflect_imported_derive_trait_type: Symbol = ^ReprGroundingDeriveTrait
 
 type NullaryReflectionRequestedA
   = NullaryReflectionRequestedAFirst
@@ -25,6 +30,42 @@ fn behavior_discriminant(value: Behavior) -> Symbol {
 
 fn connective_discriminant(value: Connective) -> Symbol {
   discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminant(
+  value: ReprGroundingDeriveTrait
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminants(
+  inhabitants: List<ReprGroundingDeriveTrait>
+) -> List<Symbol> {
+  fold_list(
+    xs: inhabitants,
+    empty: Empty,
+    cons: fn(acc, value) {
+      list_snoc_item(
+        xs: acc,
+        item: imported_derive_trait_discriminant(value: value)
+      )
+    }
+  )
+}
+
+test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
+  match nullary_reflection_through_generic_wrapper(
+    type_name: reflect_imported_derive_trait_type,
+    discriminant_of: imported_derive_trait_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      bag_eq(
+        xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
+        ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
+        eq: symbol_eq
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn nullary_reflection_context_b_discriminant(
