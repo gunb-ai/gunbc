@@ -1,0 +1,175 @@
+module test.claim.tool_pin_witness
+
+import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
+import extdeps.version { VersionIdentity, VersionConstraint }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.tools.pin {
+  ToolPin,
+  PinSelection,
+  ExactPin,
+  TrackedChannel,
+  PinFreshness,
+  PinFresh,
+  PinStale,
+  PinAdmission,
+  PinAdmitted,
+  PinRefused,
+  PinRefusalCause,
+  ConstraintIsNotIdentity,
+  PinAbsent,
+  PinStaleBeyondWindow,
+  ObservedIdentityMismatch,
+  pin_freshness,
+  admit_legacy_cli_tool,
+  admit_pin,
+  pin_value_eq,
+  pin_key_of,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cargo_identity: ContentHash = "sha256-cargo-1930-aarch64" as ContentHash
+data other_identity: ContentHash = "sha256-cargo-1920-aarch64" as ContentHash
+
+data authored_pin: ToolPin = ToolPin {
+  tool_name: "cargo",
+  version: "1.93.0" as VersionIdentity,
+  expected_identity: cargo_identity,
+  selection: ExactPin,
+}
+
+data tracked_pin: ToolPin = ToolPin {
+  tool_name: "jq",
+  version: "1.7.1" as VersionIdentity,
+  expected_identity: cargo_identity,
+  selection: TrackedChannel {
+    channel: "latest",
+    refresh_window_days: 30,
+  },
+}
+
+data freshness_family_note: String = "Freshness family: an authored pin has no upstream drift for a window to bound, so it is never stale; a tracked pin is fresh inside its window. RED CONTROL is tracked_pin_past_window_is_stale — one day past the window must flip to PinStale carrying the channel, the age, and the window. If the window were ignored, a 'latest' pin would sit unnoticed at a years-old version forever, which is the freeze the refresh axis exists to prevent; the control fails if staleness is never raised."
+
+test fn exact_pin_is_never_stale() -> Bool {
+  match pin_freshness(pin: authored_pin, age_days: 4000) {
+    PinFresh => true
+    PinStale { channel: _, age_days: _, window_days: _ } => false
+  }
+}
+
+test fn tracked_pin_inside_window_is_fresh() -> Bool {
+  match pin_freshness(pin: tracked_pin, age_days: 29) {
+    PinFresh => true
+    PinStale { channel: _, age_days: _, window_days: _ } => false
+  }
+}
+
+test fn tracked_pin_past_window_is_stale() -> Bool {
+  match pin_freshness(pin: tracked_pin, age_days: 31) {
+    PinStale { channel: c, age_days: a, window_days: w } =>
+      ((c as String) == "latest") && (a == 31) && (w == 30)
+    PinFresh => false
+  }
+}
+
+data admission_family_note: String = "Admission family: a pin is admitted only when it is BOTH fresh and identity-matched. RED CONTROL mismatched_identity_refuses covers the case a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where identity comparison refuses. RED CONTROL stale_pin_refuses_even_when_identity_matches pins the ORDER: staleness is decided before identity, so a stale pin whose binary coincidentally matches is still refused and the refresh signal cannot be greened by a lucky digest."
+
+test fn matching_identity_admits() -> Bool {
+  match admit_pin(pin: authored_pin, observed_identity: cargo_identity, age_days: 0) {
+    PinAdmitted { pin: p } => (p.tool_name as String) == "cargo"
+    PinRefused { tool_name: _, cause: _ } => false
+  }
+}
+
+test fn mismatched_identity_refuses() -> Bool {
+  match admit_pin(pin: authored_pin, observed_identity: other_identity, age_days: 0) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "cargo") && match c {
+        ObservedIdentityMismatch { expected: e, observed: o } =>
+          ((e as String) == (cargo_identity as String))
+            && ((o as String) == (other_identity as String))
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+      }
+    PinAdmitted { pin: _ } => false
+  }
+}
+
+test fn stale_pin_refuses_even_when_identity_matches() -> Bool {
+  match admit_pin(pin: tracked_pin, observed_identity: cargo_identity, age_days: 400) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "jq") && match c {
+        PinStaleBeyondWindow { channel: ch, age_days: a, window_days: w } =>
+          ((ch as String) == "latest") && (a == 400) && (w == 30)
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+      }
+    PinAdmitted { pin: _ } => false
+  }
+}
+
+data legacy_ranged_tool: CliTool = CliTool {
+  name: "curl",
+  min_version: Present { value: ">= 7.68" as VersionConstraint },
+  installable_via: [SourceApt { package: "curl" }],
+}
+
+data legacy_unversioned_tool: CliTool = CliTool {
+  name: "jq",
+  min_version: none,
+  installable_via: [SourceApt { package: "jq" }],
+}
+
+data legacy_ingest_family_note: String = "Migration-frontier family, and the load-bearing RED for P1: EVERY CliTool row in the corpus today refuses conversion, which is the correct answer rather than a gap. ranged_legacy_tool_refuses_as_not_an_identity fails if a range is silently promoted to an identity — two hosts satisfying '>= 7.68' run different binaries, exactly the variance a pin removes, so widening here would be the absorbing fallback DESIGN section 5 forbids. unversioned_legacy_tool_refuses_as_absent keeps 'no version stated' a DISTINCT cause from 'a range stated'; collapsing the two would be a state-space conflation and would hide which deficit a given row actually has."
+
+test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
+  match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "curl") && match c {
+        ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
+        PinAbsent => false
+        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+      }
+    PinAdmitted { pin: _ } => false
+  }
+}
+
+test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
+  match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "jq") && match c {
+        PinAbsent => true
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+      }
+    PinAdmitted { pin: _ } => false
+  }
+}
+
+data reconcile_bundle_family_note: String = "The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close."
+
+test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
+  let bumped = ToolPin {
+    tool_name: "cargo",
+    version: "1.94.0" as VersionIdentity,
+    expected_identity: other_identity,
+    selection: ExactPin,
+  }
+  ((pin_key_of(pin: authored_pin) as String) == (pin_key_of(pin: bumped) as String))
+    && !pin_value_eq(a: authored_pin, b: bumped)
+}
+
+test fn value_eq_covers_digest_not_only_version() -> Bool {
+  let same_version_new_binary = ToolPin {
+    tool_name: "cargo",
+    version: "1.93.0" as VersionIdentity,
+    expected_identity: other_identity,
+    selection: ExactPin,
+  }
+  !pin_value_eq(a: authored_pin, b: same_version_new_binary)
+}

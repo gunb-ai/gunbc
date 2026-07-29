@@ -5,7 +5,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.tools { CliTool }
-import v2.std.datetime { CalendarDate }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -18,11 +17,12 @@ data tool_pin_authority_note: String = "P1 of the hermetic tool-provisioning lan
 
 data tool_pin_selection_note: String = "The refresh axis, which keeps a pin from being a freeze. Execution ALWAYS resolves an exact identity — there is no moving reference at run time, because resolving 'latest' at execution is nondeterminism at the substrate boundary (v2.std.determinism) and would make two runs of one spec disagree. How the exact identity was CHOSEN is the separable fact: ExactPin is authored directly; TrackedChannel records that the identity was resolved FROM a moving reference (a release channel, 'latest', a semver range) on a stated date, with a declared refresh window. Re-resolution is an explicit action producing a reviewable diff — the Cargo.lock / flake.lock shape. Staleness therefore refuses loudly and countably instead of either floating forward silently (nondeterminism) or sitting unnoticed at a years-old version (the freeze this axis exists to prevent). refresh_window_days is a bare Int day count; dissolve-on: ground it as a calendar Duration beside std.measure's Time magnitudes when a second consumer needs day arithmetic — do not mint a second day wrapper (same discipline as std.measure amortization_months_dissolve_on)."
 
+data tracked_channel_resolution_date_deferred_note: String = "TrackedChannel deliberately carries the refresh WINDOW and not the resolution DATE. The freshness fold takes age_days from its caller (the clock read is an effect and stays outside the decision), so a stored date would be a field no fold reads — modeling ahead of a consumer, and an unread field is a liability rather than completeness. Deferred, not forgotten: dissolve-on — when P2 needs to DERIVE age from a recorded resolution rather than receive it, resolved_on lands here grounded on v2.std.datetime.CalendarDate (a Refined<CalendarDateFields>, so it arrives with a real constructor and validity), never a bare date string."
+
 type PinSelection
   = ExactPin
   | TrackedChannel {
       channel: NonEmptyStr
-      resolved_on: CalendarDate
       refresh_window_days: Int
     }
 
@@ -42,7 +42,7 @@ data pin_freshness_purity_note: String = "age_days is SUPPLIED by the caller rat
 fn pin_freshness(pin: ToolPin, age_days: Int) -> PinFreshness {
   match pin.selection {
     ExactPin => PinFresh
-    TrackedChannel { channel: c, resolved_on: _, refresh_window_days: w } =>
+    TrackedChannel { channel: c, refresh_window_days: w } =>
       if age_days > w {
         PinStale { channel: c, age_days: age_days, window_days: w }
       } else {
