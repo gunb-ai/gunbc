@@ -28765,6 +28765,107 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
+    /// suite's closure skips. Paired with the four RUN arms below — that pair is what makes
+    /// this a decision rather than a constant.
+    #[test]
+    fn selection_control_skip_skips_on_unrelated_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000docs/plans/example.md\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 1 — a declared entry of the suite is touched.
+    #[test]
+    fn selection_control_skip_runs_on_declared_entry() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/workflow/affected_set_floor_runner.dag\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 2 — a TRANSITIVELY imported module, not a declared entry. This is the arm
+    /// that proves the import walk is load-bearing: the path is chosen from the computed
+    /// closure at test time, so if the walk ever stopped at the declared entries this test
+    /// would fail to find a subject and panic rather than silently weaken.
+    #[test]
+    fn selection_control_skip_runs_on_transitively_imported_module() {
+        let closure = selection_control_input_sources(&workspace_root())
+            .expect("selection-control closure must compute");
+        let transitive = closure
+            .iter()
+            .find(|p| !SELECTION_CONTROL_DECLARED_ENTRIES.contains(&p.as_str()))
+            .expect("closure must reach past the declared entries (import walk is dead)")
+            .clone();
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{transitive}\\000"),
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a transitively imported closure member ({transitive}) must run the suite"
+                );
+            });
+        });
+    }
+
+    /// RUN arm 3 — the `src/v1/**` prefix: the selection implementation and the witness bin
+    /// live there, and neither is reachable through the `.dag` import walk.
+    #[test]
+    fn selection_control_skip_runs_on_src_v1_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v1/stage0/src/cli_run.rs\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 4 — departed non-docs path. The closure is computed from the CURRENT tree, so
+    /// a deletion is invisible to the intersection; the guard discriminates on D, not on
+    /// path (the same path as a modification is the skip control above's shape).
+    #[test]
+    fn selection_control_skip_runs_on_departed_non_docs_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
     /// itself through the import-closure grain (the discriminating RED for this arm is
     /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
