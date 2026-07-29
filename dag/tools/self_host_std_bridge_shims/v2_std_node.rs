@@ -1,8 +1,8 @@
 // Shared std-bridge shim — curated minimal v2.std.node surface.
 //
 // AUTHORITY: src/v2/std/node.dag. Hand-authored scaffold; see the header of
-// v2_std_diagnostic.rs in this directory for why the bridge exists and what dissolves it.
-// Drift is caught by tools.self_host_shim_surface_wall, not by a wet cargo build days later.
+// v2_std_diagnostic.rs in this directory for why the bridge exists, what dissolves it, and
+// why drift against the authority is caught only by the wet receipt's cargo build today.
 use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 

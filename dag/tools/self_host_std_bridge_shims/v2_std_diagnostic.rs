@@ -6,11 +6,16 @@
 // parallel representation of a canonical fact and is therefore drift-prone BY CONSTRUCTION —
 // the public type surface here must stay a superset of what emitted entry modules import.
 //
-// Drift is no longer silent: tools.self_host_shim_surface_wall reads the emitted
-// `use crate::<shim_module>::{..}` names and refuses when this file does not provide them.
-// Before this wall existed, a widened v2.std.diagnostic (Locus struct -> coproduct, plus
-// Extent / LocusAnchor / Diagnostics / NonEmptyDiagnostics) rotted here unnoticed for days,
-// visible only on the wet falsifier cadence.
+// DRIFT DETECTION TODAY — stated plainly because it is weak: the only thing that catches a
+// missing name is the emitted crate's own cargo build inside the wet behavioral receipt, and
+// that receipt runs on the falsifier cadence, not per-PR (the selection axis is reads, and
+// src/v2/std/*.dag is this file's AUTHORITY, not its read — see
+// tools.self_host_03_normalize_declared_source_refs's authority-gap note). That is how a
+// widened v2.std.diagnostic (Locus struct -> coproduct, plus Extent / LocusAnchor /
+// Diagnostics / NonEmptyDiagnostics) rotted here unnoticed for days. This file re-syncs that
+// widening; it does NOT close the gap. The intended mechanism is a shim-surface wall reading
+// the emitted `use crate::<shim_module>::{..}` names and refusing when this file does not
+// provide them; it DOES NOT EXIST YET and its medium is undecided.
 //
 // dissolve-on: emitted v2 std closure compiles; then this bridge is deleted, not re-synced.
 use im::Vector as Vec;
