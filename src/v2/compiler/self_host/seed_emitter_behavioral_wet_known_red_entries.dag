@@ -70,7 +70,7 @@ fn schedule_witness_entries_structurally_equal(
         ok && any(
           xs: right,
           predicate: fn(right_entry) {
-            schedule_witness_entry_eq(left: left_entry, right: right_entry)
+            schedule_witness_entry_eq(a: left_entry, b: right_entry)
           }
         )
       }
