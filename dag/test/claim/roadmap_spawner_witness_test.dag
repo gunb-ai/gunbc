@@ -20,6 +20,7 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_AEFPP8RJQ523MPCZQ7WR" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -32,6 +33,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
 
 fn accepted_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_Z9KZSNBGMW86W36XPHHP" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -44,6 +46,7 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
 
 fn rejected_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_BDFRJM5H1F0VB3E58P5N" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -56,6 +59,7 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
 
 fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_NHF9FERTMRDJHGNW226Y" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -217,6 +221,7 @@ test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
 
 fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_3RQ5SZ48Q7R3RWGH84BY" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: SupersededLine { by: by, content: content },
     carriers: [],
@@ -243,6 +248,7 @@ test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
 
 test fn witness_superseded_control_open_parent_still_gates() -> Bool {
   let node_open = RoadmapNode {
+    identity: "rnfx_DY0Y547BC2HK2V12KA6T" as RoadmapNodeIdentity,
     node: nid(s: "sp-old"),
     line: AuthoredLine { done: false, content: "Old Lane Row" },
     carriers: [],
