@@ -18,6 +18,30 @@ import gunbc.native_scm_interaction_contract {
   native_scm_primary_label,
   native_scm_attach_projection,
 }
+import gunbc.scm_compatibility.git {
+  GitCompatibilityBound,
+  GitCompatibilityBindingRefused,
+  git_compatibility_projection_handler,
+}
+import gunbc.scm_compatibility.mercurial {
+  MercurialCompatibilityBound,
+  MercurialCompatibilityBindingRefused,
+  mercurial_compatibility_projection_handler,
+}
+import gunbc.scm_compatibility.pijul {
+  PijulCompatibilityBound,
+  PijulCompatibilityBindingRefused,
+  pijul_compatibility_projection_handler,
+}
+import test.claim.scm_compatibility_git_witness {
+  git_fixture_binding,
+}
+import test.claim.scm_compatibility_mercurial_witness {
+  mercurial_fixture_binding,
+}
+import test.claim.scm_compatibility_pijul_witness {
+  pijul_fixture_binding,
+}
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type SyntheticFourthReceipt {
@@ -84,27 +108,6 @@ fn synthetic_projection(
   )
 }
 
-fn named_fixture_projection(
-  realization: NonEmptyStr,
-  target: NonEmptyStr,
-  generation: NonEmptyStr,
-) -> CompatibilityProjectionReceipt {
-  let synthetic = synthetic_projection(
-    target: target,
-    generation: generation,
-  )
-  CompatibilityProjectionReceipt {
-    realization: realization,
-    target: synthetic.target,
-    generation_evidence: synthetic.generation_evidence,
-    capture: synthetic.capture,
-    projection: synthetic.projection,
-    read_back: synthetic.read_back,
-    advance: synthetic.advance,
-    fidelity: synthetic.fidelity,
-  }
-}
-
 test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
@@ -165,38 +168,54 @@ test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
-  let with_git = native_scm_attach_projection(
-    receipt: original,
-    projection: named_fixture_projection(
-      realization: "git-r0",
-      target: "refs/heads/main",
-      generation: "git-generation",
-    ),
-  )
-  let with_mercurial = native_scm_attach_projection(
-    receipt: with_git,
-    projection: named_fixture_projection(
-      realization: "mercurial-r0",
-      target: "default",
-      generation: "mercurial-generation",
-    ),
-  )
-  let with_all = native_scm_attach_projection(
-    receipt: with_mercurial,
-    projection: named_fixture_projection(
-      realization: "pijul-r0",
-      target: "main",
-      generation: "pijul-generation",
-    ),
-  )
-  with_all.identity == original.identity
-    && with_all.transition == original.transition
-    && with_all.primary == original.primary
-    && count(with_all.projections.realizations) == 3
-    && with_all.projections.realizations
-      |> any(row => row.realization == "git-r0")
-    && with_all.projections.realizations
-      |> any(row => row.realization == "mercurial-r0")
-    && with_all.projections.realizations
-      |> any(row => row.realization == "pijul-r0")
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt: git_receipt } => {
+      let git_projection = compatibility_projection_from_handler(
+        handler: git_compatibility_projection_handler(),
+        receipt: git_receipt,
+      )
+      let with_git = native_scm_attach_projection(
+        receipt: original,
+        projection: git_projection,
+      )
+      match mercurial_fixture_binding() {
+        MercurialCompatibilityBindingRefused { cause: _ } => false
+        MercurialCompatibilityBound { receipt: mercurial_receipt } => {
+          let mercurial_projection = compatibility_projection_from_handler(
+            handler: mercurial_compatibility_projection_handler(),
+            receipt: mercurial_receipt,
+          )
+          let with_mercurial = native_scm_attach_projection(
+            receipt: with_git,
+            projection: mercurial_projection,
+          )
+          match pijul_fixture_binding() {
+            PijulCompatibilityBindingRefused { cause: _ } => false
+            PijulCompatibilityBound { receipt: pijul_receipt } => {
+              let pijul_projection = compatibility_projection_from_handler(
+                handler: pijul_compatibility_projection_handler(),
+                receipt: pijul_receipt,
+              )
+              let with_all = native_scm_attach_projection(
+                receipt: with_mercurial,
+                projection: pijul_projection,
+              )
+              with_all.identity == original.identity
+                && with_all.transition == original.transition
+                && with_all.primary == original.primary
+                && native_scm_primary_label(primary: with_all.primary) == "Landed"
+                && count(with_all.projections.realizations) == 3
+                && git_projection.realization == "git-r0"
+                && git_projection.target == "refs/heads/main"
+                && mercurial_projection.realization == "mercurial-r0"
+                && mercurial_projection.target == "default"
+                && pijul_projection.realization == "pijul-r0"
+                && pijul_projection.target == "main"
+            }
+          }
+        }
+      }
+    }
+  }
 }
