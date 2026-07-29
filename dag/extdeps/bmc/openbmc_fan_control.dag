@@ -585,7 +585,7 @@ fn openbmc_object_mapper_services_rec(
     )
     if !projected.success || trim(projected.value) == "" {
       OpenBmcSensorServicesRefused {
-        reason: concat("ObjectMapper service projection failed: ", projected.stderr),
+        reason: join(["ObjectMapper service projection failed: ", projected.stderr], ""),
       }
     } else {
       openbmc_object_mapper_services_rec(
@@ -614,7 +614,7 @@ fn openbmc_sensor_service(
     )
     if !count_result.success {
       OpenBmcSensorServicesRefused {
-        reason: concat("ObjectMapper service count failed: ", count_result.stderr),
+        reason: join(["ObjectMapper service count failed: ", count_result.stderr], ""),
       }
     } else {
       match parse_int(s: trim(count_result.value)) {
