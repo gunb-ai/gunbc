@@ -7,14 +7,13 @@ import v2.compiler.self_host.frontier_band_a_emit_readiness {
 }
 import v2.compiler.self_host.emitter_producer_provenance {
   EmitterProducer,
+  EmitterProducedAuthorizationBinding,
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
   ProducerEmissionExecutedGreenReceipt,
   authorized_emitter_produced_disposition_mint_consistent,
   authorized_emitter_produced_provenance,
-  emitter_produced_authorization_for_module,
-  emitter_produced_authorization_registry_length,
-  emitter_produced_authorization_registry_mint_consistent_holds,
+  AuthorizedEmitterProducedDisposition,
   mint_emitter_produced_authorization_registry_binding,
   producer_emission_oracle_enrolls_row,
   producer_emission_oracle_row_03_normalize,
@@ -73,7 +72,7 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection {
   List
 }
@@ -134,6 +133,15 @@ type CompilerModuleFrontierRow {
   measured_probe: FrontierProbeReceipt
   tractability_rank: Int
 }
+
+type EmitterProducedFrontierPromotion {
+  frontier_row: CompilerModuleFrontierRow
+  authorization_binding: EmitterProducedAuthorizationBinding
+}
+
+data emitter_produced_frontier_promotions_note: String = "Review 44509 single authority: EmitterProduced roster rows and authorization bindings are minted together via mint_emitter_produced_frontier_promotion and stored here — never as parallel hand-edited authorities. The authorization registry is a derived projection (emitter_produced_authorization_registry_from_promotions). Baseline empty until witness-realization appends promotions atomically with roster flips."
+
+data emitter_produced_frontier_promotions: List<EmitterProducedFrontierPromotion> = freemonoid_empty<EmitterProducedFrontierPromotion>()
 
 data compiler_frontier_producer_qualified_baseline_note: String = "Producer-qualified progress ratchets (calm-badger-682 ruling 2026-07-29): replaces compiler_frontier_self_emitted_baseline. seed_emitter_behavioral_green_count is the independent floor for V1SeedEmitter + BehavioralEquivalent rows; v2_* counters start at zero and derive from producer-identified executing receipts, never source location. Retired SelfEmitted vocabulary atomically with this ratchet set — reclassifying the six rows to V1SeedEmitter without retiring the old baseline would trip the guard."
 
@@ -246,7 +254,118 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487/44504): EmitterProduced is tag-only; authorization is registry-backed via mint_emitter_produced_authorization_registry_binding (derivation-checked token + oracle authorize). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0; registry empty."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487/44504/44509): EmitterProduced is tag-only; authorization is registry-backed via mint_emitter_produced_frontier_promotion (row+binding atomic). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0; promotions empty."
+
+fn emitter_produced_authorization_bindings_from_promotions(
+  promotions: List<EmitterProducedFrontierPromotion>
+) -> List<EmitterProducedAuthorizationBinding> {
+  fold_list(
+    xs: promotions,
+    empty: freemonoid_empty<EmitterProducedAuthorizationBinding>(),
+    cons: fn(acc, promotion) {
+      list_snoc_item(xs: acc, item: promotion.authorization_binding)
+    }
+  )
+}
+
+fn emitter_produced_authorization_registry_from_promotions() -> List<EmitterProducedAuthorizationBinding> {
+  emitter_produced_authorization_bindings_from_promotions(
+    promotions: emitter_produced_frontier_promotions
+  )
+}
+
+fn emitter_produced_authorization_for_module_in_registry(
+  module_path: String,
+  registry: List<EmitterProducedAuthorizationBinding>
+) -> Optional<AuthorizedEmitterProducedDisposition> {
+  fold_list(
+    xs: registry,
+    empty: optional_absent(),
+    cons: fn(found, binding) {
+      match found {
+        Present { value: authorization } => optional_present(value: authorization)
+        Absent =>
+          if binding.module_path == module_path {
+            optional_present(value: binding.authorization)
+          } else {
+            optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn emitter_produced_authorization_registry_mint_consistent_in_registry(
+  registry: List<EmitterProducedAuthorizationBinding>
+) -> Bool {
+  fold_list(
+    xs: registry,
+    empty: true,
+    cons: fn(ok, binding) {
+      ok && authorized_emitter_produced_disposition_mint_consistent(
+        module_path: binding.module_path,
+        authorization: binding.authorization
+      )
+    }
+  )
+}
+
+fn emitter_produced_tag_without_registry_binding_fails_holds() -> Bool {
+  match emitter_produced_authorization_for_module_in_registry(
+    module_path: producer_emission_oracle_row_body_producer.module_path,
+    registry: emitter_produced_authorization_registry_from_promotions()
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn emitter_produced_frontier_promotions_registry_coherent_holds() -> Bool {
+  fold_list(
+    xs: emitter_produced_frontier_promotions,
+    empty: true,
+    cons: fn(ok, promotion) {
+      ok
+        && (promotion.authorization_binding.module_path == promotion.frontier_row.module_path)
+        && (match promotion.frontier_row.disposition {
+          EmitterProduced => true
+          SeedRetained { reason: _, migration_trigger: _ } => false
+        })
+        && authorized_emitter_produced_disposition_mint_consistent(
+          module_path: promotion.authorization_binding.module_path,
+          authorization: promotion.authorization_binding.authorization
+        )
+    }
+  )
+}
+
+fn mint_emitter_produced_frontier_promotion(
+  module_path: String,
+  measured_probe: FrontierProbeReceipt,
+  tractability_rank: Int,
+  provenance: ProducerEmissionReceipt,
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+) -> Optional<EmitterProducedFrontierPromotion> {
+  match mint_emitter_produced_authorization_registry_binding(
+    module_path: module_path,
+    provenance: provenance,
+    executed_verdict: executed_verdict
+  ) {
+    Present { value: binding } =>
+      optional_present(
+        value: EmitterProducedFrontierPromotion {
+          frontier_row: CompilerModuleFrontierRow {
+            module_path: module_path,
+            disposition: EmitterProduced,
+            measured_probe: measured_probe,
+            tractability_rank: tractability_rank
+          },
+          authorization_binding: binding
+        }
+      )
+    Absent => optional_absent()
+  }
+}
 
 fn mint_compiler_frontier_emitter_produced_row(
   module_path: String,
@@ -255,20 +374,14 @@ fn mint_compiler_frontier_emitter_produced_row(
   provenance: ProducerEmissionReceipt,
   executed_verdict: ProducerEmissionExecutedGreenReceipt
 ) -> Optional<CompilerModuleFrontierRow> {
-  match mint_emitter_produced_authorization_registry_binding(
+  match mint_emitter_produced_frontier_promotion(
     module_path: module_path,
+    measured_probe: measured_probe,
+    tractability_rank: tractability_rank,
     provenance: provenance,
     executed_verdict: executed_verdict
   ) {
-    Present { value: _binding } =>
-      optional_present(
-        value: CompilerModuleFrontierRow {
-          module_path: module_path,
-          disposition: EmitterProduced,
-          measured_probe: measured_probe,
-          tractability_rank: tractability_rank
-        }
-      )
+    Present { value: promotion } => optional_present(value: promotion.frontier_row)
     Absent => optional_absent()
   }
 }
@@ -732,7 +845,10 @@ fn compiler_frontier_emitter_produced_oracle_enrolled_holds() -> Bool {
     cons: fn(ok, row) {
       ok && match row.disposition {
         EmitterProduced =>
-          match emitter_produced_authorization_for_module(module_path: row.module_path) {
+          match emitter_produced_authorization_for_module_in_registry(
+            module_path: row.module_path,
+            registry: emitter_produced_authorization_registry_from_promotions()
+          ) {
             Present { value: authorization } =>
               producer_emission_oracle_enrolls_row(
                 module_path: row.module_path,
@@ -753,7 +869,10 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
     cons: fn(ok, row) {
       ok && match row.disposition {
         EmitterProduced =>
-          match emitter_produced_authorization_for_module(module_path: row.module_path) {
+          match emitter_produced_authorization_for_module_in_registry(
+            module_path: row.module_path,
+            registry: emitter_produced_authorization_registry_from_promotions()
+          ) {
             Present { value: authorization } =>
               authorized_emitter_produced_disposition_mint_consistent(
                 module_path: row.module_path,
@@ -768,11 +887,15 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
 }
 
 fn compiler_frontier_emitter_produced_registry_count_matches_roster_holds() -> Bool {
-  emitter_produced_authorization_registry_length() == compiler_frontier_emitter_produced_count()
+  (length(xs: emitter_produced_authorization_registry_from_promotions()) == compiler_frontier_emitter_produced_count())
+    && (length(xs: emitter_produced_frontier_promotions) == compiler_frontier_emitter_produced_count())
 }
 
 fn compiler_frontier_emitter_produced_authorization_mint_consistent_holds() -> Bool {
-  emitter_produced_authorization_registry_mint_consistent_holds()
+  emitter_produced_authorization_registry_mint_consistent_in_registry(
+    registry: emitter_produced_authorization_registry_from_promotions()
+  )
+    && emitter_produced_frontier_promotions_registry_coherent_holds()
     && compiler_frontier_emitter_produced_oracle_backed_holds()
     && compiler_frontier_emitter_produced_registry_count_matches_roster_holds()
 }

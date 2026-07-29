@@ -9,7 +9,6 @@ import v2.compiler.self_host.emitter_producer_provenance {
   fabricated_v2_interpreted_producer_receipt,
   hand_forged_emitter_produced_authorization_fails_mint_consistency_holds,
   hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds,
-  emitter_produced_tag_without_registry_binding_fails_holds,
   mint_authorized_emitter_produced_disposition_refused_at_baseline_holds,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
   producer_emission_canonical_receipt_for_executed_verdict,
@@ -54,7 +53,8 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_emitter_produced_oracle_enrolled_holds,
   compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds,
   compiler_frontier_emitter_produced_count,
-  compiler_frontier_producer_qualified_baselines_holds
+  compiler_frontier_producer_qualified_baselines_holds,
+  emitter_produced_tag_without_registry_binding_fails_holds
 }
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,

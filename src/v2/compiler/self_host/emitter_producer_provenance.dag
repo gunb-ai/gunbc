@@ -612,7 +612,7 @@ fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> B
   )
 }
 
-data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487/44504 construction boundary (materialization_provider_identity_derivation_note class): records are freely constructible in .dag — custody theater. SelfHostFrontierDisposition.EmitterProduced is tag-only; authorization lives in emitter_produced_authorization_registry, populated only via mint_emitter_produced_authorization_registry_binding. Derivation: authorization_token from (module_path, provenance digests, executed wet_execution_digest); census requires registry row + mint_consistent per EmitterProduced roster row. Live roster emitter_produced_baseline=0 and registry empty at baseline."
+data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487/44504/44509 construction boundary (materialization_provider_identity_derivation_note class): records are freely constructible in .dag — custody theater. SelfHostFrontierDisposition.EmitterProduced is tag-only; authorization lives in emitter_produced_frontier_promotions (frontier.dag), derived to registry bindings via emitter_produced_authorization_registry_from_promotions. Derivation: authorization_token from (module_path, provenance digests, executed wet_execution_digest); census requires promotion row+binding atomicity + mint_consistent per EmitterProduced roster row. Live roster emitter_produced_baseline=0 and promotions empty at baseline."
 
 fn authorized_emitter_produced_authorization_token(
   module_path: String,
@@ -645,9 +645,7 @@ type EmitterProducedAuthorizationBinding {
   authorization: AuthorizedEmitterProducedDisposition
 }
 
-data emitter_produced_authorization_registry: List<EmitterProducedAuthorizationBinding> = freemonoid_empty<EmitterProducedAuthorizationBinding>()
-
-data emitter_produced_authorization_registry_note: String = "Review 44504: authorization registry paired with tag-only EmitterProduced frontier rows. A row tagged EmitterProduced without a registry binding fails census — the disposition API cannot carry a forged authorization record. Dissolve-on: witness-realization adds registry bindings atomically with roster flips via mint_emitter_produced_authorization_registry_binding."
+data emitter_produced_authorization_binding_note: String = "Review 44504/44509: authorization bindings pair with tag-only EmitterProduced frontier rows inside EmitterProducedFrontierPromotion (frontier.dag). The registry is a derived projection — never a parallel hand-edited authority. Dissolve-on: witness-realization appends promotions atomically with roster flips via mint_emitter_produced_frontier_promotion."
 
 fn authorized_emitter_produced_disposition_mint_consistent(
   module_path: String,
@@ -703,36 +701,6 @@ fn mint_authorized_emitter_produced_disposition(
   }
 }
 
-fn emitter_produced_authorization_for_module_in_registry(
-  module_path: String,
-  registry: List<EmitterProducedAuthorizationBinding>
-) -> Optional<AuthorizedEmitterProducedDisposition> {
-  fold_list(
-    xs: registry,
-    empty: optional_absent(),
-    cons: fn(found, binding) {
-      match found {
-        Present { value: authorization } => optional_present(value: authorization)
-        Absent =>
-          if binding.module_path == module_path {
-            optional_present(value: binding.authorization)
-          } else {
-            optional_absent()
-          }
-      }
-    }
-  )
-}
-
-fn emitter_produced_authorization_for_module(
-  module_path: String
-) -> Optional<AuthorizedEmitterProducedDisposition> {
-  emitter_produced_authorization_for_module_in_registry(
-    module_path: module_path,
-    registry: emitter_produced_authorization_registry
-  )
-}
-
 fn mint_emitter_produced_authorization_registry_binding(
   module_path: String,
   provenance: ProducerEmissionReceipt,
@@ -751,40 +719,6 @@ fn mint_emitter_produced_authorization_registry_binding(
         }
       )
     Absent => optional_absent()
-  }
-}
-
-fn emitter_produced_authorization_registry_length() -> Int {
-  length(xs: emitter_produced_authorization_registry)
-}
-
-fn emitter_produced_authorization_registry_mint_consistent_in_registry(
-  registry: List<EmitterProducedAuthorizationBinding>
-) -> Bool {
-  fold_list(
-    xs: registry,
-    empty: true,
-    cons: fn(ok, binding) {
-      ok && authorized_emitter_produced_disposition_mint_consistent(
-        module_path: binding.module_path,
-        authorization: binding.authorization
-      )
-    }
-  )
-}
-
-fn emitter_produced_authorization_registry_mint_consistent_holds() -> Bool {
-  emitter_produced_authorization_registry_mint_consistent_in_registry(
-    registry: emitter_produced_authorization_registry
-  )
-}
-
-fn emitter_produced_tag_without_registry_binding_fails_holds() -> Bool {
-  match emitter_produced_authorization_for_module(
-    module_path: producer_emission_oracle_row_body_producer.module_path
-  ) {
-    Present { value: _ } => false
-    Absent => true
   }
 }
 
