@@ -2,8 +2,11 @@ module test.claim.bmc_live_receipts_witness
 
 import extdeps.bmc.types {
   BmcFanCurve,
+  BmcFanCurveDutyAboveFull,
   BmcFanCurveDutyDecreased,
   BmcFanCurveInvalid,
+  BmcFanCurveMinimumDuty,
+  BmcFanCurveMinimumExceedsFirstStep,
   BmcFanCurveStep,
   BmcFanCurveValid,
   BmcConfigPersistenceUnsupported,
@@ -116,6 +119,53 @@ test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
     BmcFanCurveInvalid {
       cause: BmcFanCurveDutyDecreased { previous: _, current: _ },
     } => true
+    _ => false
+  }
+}
+
+test fn fan_curve_refuses_duty_above_full() -> Bool {
+  let above_full = BmcFanCurve {
+    control_sensor: "TEMP_SOC",
+    steps: [
+      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+    ],
+    minimum_duty: percent(101),
+    sensor_unavailable_duty: percent(100),
+    zone_failsafe_duty: percent(100),
+    positive_hysteresis: celsius_delta(count: 1),
+    negative_hysteresis: celsius_delta(count: 1),
+  }
+  match validate_bmc_fan_curve(curve: above_full) {
+    BmcFanCurveInvalid {
+      cause: BmcFanCurveDutyAboveFull {
+        field: BmcFanCurveMinimumDuty,
+        duty: duty,
+      },
+    } => duty == percent(101)
+    _ => false
+  }
+}
+
+test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
+  let below_minimum = BmcFanCurve {
+    control_sensor: "TEMP_SOC",
+    steps: [
+      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+      BmcFanCurveStep { at_or_above: celsius(95), duty: percent(100) },
+    ],
+    minimum_duty: percent(40),
+    sensor_unavailable_duty: percent(100),
+    zone_failsafe_duty: percent(100),
+    positive_hysteresis: celsius_delta(count: 1),
+    negative_hysteresis: celsius_delta(count: 1),
+  }
+  match validate_bmc_fan_curve(curve: below_minimum) {
+    BmcFanCurveInvalid {
+      cause: BmcFanCurveMinimumExceedsFirstStep {
+        minimum: minimum,
+        first_step: first_step,
+      },
+    } => minimum == percent(40) && first_step == percent(30)
     _ => false
   }
 }
