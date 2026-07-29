@@ -269,10 +269,6 @@ fn pijul_r0_fixture_tree() -> PijulTree {
   }
 }
 
-fn fixture_tree() -> PijulTree {
-  pijul_r0_fixture_tree()
-}
-
 fn fixture_working_copy() -> PijulWorkingCopy {
   PijulWorkingCopy {
     entries: [
