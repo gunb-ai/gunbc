@@ -207,6 +207,15 @@ So of the 359 ownership-removable occurrences, 222 are gated by a verdict that a
 exists and 137 need new emitter capability. That is a sizing fact B2 should inherit rather
 than rediscover.
 
+**What this column is not.** It records *which ownership predicate governs the site* and
+*whether a move arm exists*, not the per-site boolean `make_decision` verdict
+(`SoleOwner` or not). Producing that boolean means running `ownership.dag`'s analysis at
+emit time, which needs either an instrumented emitter — deliberately out of scope, the
+fence keeps `05_emit_rust.dag` unmodified — or a re-implementation of the analysis here,
+which would be exactly the §3 fork this lane exists to remove. B2 consumes that verdict
+by construction anyway, so it is the right place to read it; B0 stops at naming the
+predicate. Stated so the column is not read as more than it is.
+
 The `FieldAccessClone` row makes the ownership seam mechanical: the emitter picks a
 **move** at `:6435` (`base_is_owned`) and this **clone** at `:6438` otherwise, so the copy
 fires exactly when the ownership verdict says not-owned — and that verdict comes from
