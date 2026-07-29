@@ -1620,6 +1620,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
           [section_prose(content: focus_notice(
             focus: focus,
             nodes: active_roadmap_nodes(),
+            edges: active_roadmap_edges(),
           ))]
         } else {
           []
@@ -1630,6 +1631,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
             nodes: focus_visible_nodes(
               focus: focus,
               nodes: active_roadmap_nodes(),
+              edges: active_roadmap_edges(),
             ),
             edges: focus_visible_edges(
               focus: focus,
