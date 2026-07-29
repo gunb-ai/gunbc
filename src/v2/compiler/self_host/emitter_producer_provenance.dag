@@ -8,7 +8,6 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady
 }
 import tools.self_host_module_behavioral_transport_roster {
-  ModuleBehavioralTransportConfig,
   module_behavioral_transport_config_for
 }
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
@@ -22,16 +21,13 @@ import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
 import v2.std.optional {
   Absent,
   Optional,
-  OptionalAbsent,
-  OptionalPresent,
   Present,
   optional_absent,
-  optional_axis,
   optional_present
 }
 import v2.std.text { String }
 
-data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity; static oracle derivation never mints BuildGreen (reviews 44441/44455/44460). producer_emission_canonical_receipt_for_executed_verdict is the future witness-realization mint path; its wet_execution_digest check is scaffold subject-binding today (review 44465), pending frontier_probe_survey execution-measured hashes. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
+data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Static oracle derivation never mints BuildGreen (reviews 44441/44455/44460/44468). producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline (always Absent) until witness-realization + frontier_probe_survey bind execution-measured verdict digests. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure."
 
 type EmitterProducer
   = V1SeedEmitter
@@ -108,7 +104,7 @@ type ProducerEmissionExecutedGreenReceipt {
   wet_execution_digest: Hash
 }
 
-data producer_emission_executed_green_receipts_note: String = "Witness-realization mint contract (reviews 44455/44460/44465): ProducerEmissionExecutedGreenReceipt is minted only via producer_emission_canonical_receipt_for_executed_verdict — never as hand-authored data rows (review 44441). SCAFFOLD (44465): wet_execution_digest is checked against producer_emission_wet_verdict_digest, which today hashes only declared inputs (probe identity + transport pass_marker) — subject-binding, not execution evidence. Real execution grounding lands when frontier_probe_survey binds execution-measured verdict digests and a live consumer wires this path. Static oracle derivation never mints BuildGreen; emitter_produced_baseline stays 0 until then."
+data producer_emission_executed_green_receipts_note: String = "Witness-realization mint contract (reviews 44455/44460/44465/44468): ProducerEmissionExecutedGreenReceipt type names the future executed-verdict carrier. producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline (always Absent) — no synthesizable digest from declarative oracle fields can mint BuildGreen. Dissolve-on: frontier_probe_survey binds execution-measured verdict digests; witness-realization becomes the sole host minter. Static oracle derivation never mints BuildGreen."
 
 data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
 
@@ -234,65 +230,11 @@ fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionO
   producer_emission_oracle_probe_is_enrolled(row: row)
 }
 
-fn producer_emission_oracle_row_transport_config_axis(
-  row: ProducerEmissionOracleRow
-) -> OptionalAxis<ModuleBehavioralTransportConfig> {
-  optional_axis(opt: module_behavioral_transport_config_for(module_path: row.module_path))
-}
-
-data producer_emission_wet_verdict_digest_scaffold_note: String = "SCAFFOLD (review 44465): producer_emission_wet_verdict_digest hashes declared inputs only (probe entry/function, module_path, transport pass_marker). producer_emission_executed_green_receipt_admissible consumes wet_execution_digest against this subject-binding — not claim_executor verdict evidence. Dissolve-on: frontier_probe_survey binds execution-measured verdict digests; witness-realization becomes the sole minter with no synthesizable digest from the row alone."
-
-fn producer_emission_wet_verdict_digest(
-  row: ProducerEmissionOracleRow,
-  transport_pass_marker: String
-) -> Hash {
-  combine_hash(
-    a: content_hash_atom(value: row.behavioral_probe_entry),
-    b: combine_hash(
-      a: content_hash_atom(value: row.behavioral_probe_function),
-      b: combine_hash(
-        a: content_hash_atom(value: row.module_path),
-        b: content_hash_atom(value: transport_pass_marker)
-      )
-    )
-  )
-}
-
-fn producer_emission_executed_green_receipt_admissible(
-  row: ProducerEmissionOracleRow,
-  executed: ProducerEmissionExecutedGreenReceipt
-) -> Bool {
-  match producer_emission_oracle_row_transport_config_axis(row: row) {
-    OptionalAbsent => false
-    OptionalPresent { value: cfg } =>
-      (executed.module_path == row.module_path)
-        && (executed.behavioral_probe_entry == row.behavioral_probe_entry)
-        && (executed.behavioral_probe_function == row.behavioral_probe_function)
-        && (executed.wet_execution_digest == producer_emission_wet_verdict_digest(
-          row: row,
-          transport_pass_marker: cfg.pass_marker
-        ))
-        && (executed.wet_execution_digest != scaffold_digest_for_module_path(module_path: row.module_path))
-  }
-}
-
 fn producer_emission_canonical_receipt_for_executed_verdict(
   row: ProducerEmissionOracleRow,
   executed: ProducerEmissionExecutedGreenReceipt
 ) -> Optional<ProducerEmissionReceipt> {
-  if producer_emission_executed_green_receipt_admissible(row: row, executed: executed) {
-    mint_producer_emission_receipt(
-      module_path: row.module_path,
-      producer: V1SeedEmitter,
-      qualifications: behavioral_equivalent_qualifications,
-      build_result: BuildGreen,
-      behavioral_probe_entry: row.behavioral_probe_entry,
-      behavioral_probe_function: row.behavioral_probe_function,
-      realized_closure: cssl_harness_realized_closure
-    )
-  } else {
-    optional_absent()
-  }
+  optional_absent()
 }
 
 fn producer_emission_build_result_for_oracle_row(row: ProducerEmissionOracleRow) -> EmissionBuildResult {
@@ -332,7 +274,7 @@ fn producer_emission_canonical_receipt_for_oracle_row(
 
 data emitter_produced_baseline: Int = 0
 
-data emitter_produced_baseline_note: String = "Review 44362/44441/44455/44460/44465: frontier EmitterProduced count stays zero until witness-realization wires producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests (frontier_probe_survey dissolve-on). Today's wet_execution_digest check is scaffold subject-binding only — no live consumer at baseline 0. Static oracle derivation never mints BuildGreen."
+data emitter_produced_baseline_note: String = "Review 44362/44441/44455/44460/44465/44468: frontier EmitterProduced count stays zero until witness-realization enables producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests (frontier_probe_survey dissolve-on). That mint path is unwritable at baseline — no synthesizable executed receipt from declarative fields. Static oracle derivation never mints BuildGreen."
 
 data producer_emission_oracle_row_body_producer: ProducerEmissionOracleRow = seed_emitter_behavioral_oracle_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
@@ -502,9 +444,9 @@ fn producer_emission_oracle_rows_match_transport_roster_holds() -> Bool {
     xs: producer_emission_oracle_rows,
     empty: true,
     cons: fn(ok, row) {
-      ok && match producer_emission_oracle_row_transport_config_axis(row: row) {
-        OptionalPresent { value: _ } => true
-        OptionalAbsent => false
+      ok && match module_behavioral_transport_config_for(module_path: row.module_path) {
+        Present { value: _ } => true
+        Absent => false
       }
     }
   )
@@ -524,7 +466,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455/44460/44465: enrollment binds minted BuildRefused quarantine receipts + transport roster (optional_axis). Authorization requires BuildGreen canonical receipt — static oracle derivation always Absent at baseline; future witness-realization path via producer_emission_canonical_receipt_for_executed_verdict (digest check is scaffold subject-binding until frontier_probe_survey). No declarative executed-receipt list. Green wet nightly enrollment keys on binding presence (44453)."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455/44460/44465/44468: enrollment binds minted BuildRefused quarantine receipts + transport roster (match Optional coproduct directly). Authorization requires BuildGreen canonical receipt — static oracle derivation always Absent; producer_emission_canonical_receipt_for_executed_verdict unwritable at baseline until witness-realization + frontier_probe_survey. No declarative executed-receipt list. Green wet nightly enrollment keys on binding presence (44453)."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
@@ -537,9 +479,9 @@ fn producer_emission_oracle_enrolls_row(
         Present { value: canonical } =>
           producer_emission_receipt_eq(left: canonical, right: receipt)
             && producer_emission_oracle_probe_is_enrolled(row: row)
-            && match producer_emission_oracle_row_transport_config_axis(row: row) {
-              OptionalPresent { value: _ } => true
-              OptionalAbsent => false
+            && match module_behavioral_transport_config_for(module_path: row.module_path) {
+              Present { value: _ } => true
+              Absent => false
             }
         Absent => false
       }
@@ -559,9 +501,9 @@ fn producer_emission_oracle_authorizes_row(
           match producer_emission_canonical_receipt_for_oracle_row(row: row) {
             Present { value: canonical } =>
               producer_emission_receipt_eq(left: canonical, right: receipt)
-                && match producer_emission_oracle_row_transport_config_axis(row: row) {
-                  OptionalPresent { value: _ } => true
-                  OptionalAbsent => false
+                && match module_behavioral_transport_config_for(module_path: row.module_path) {
+                  Present { value: _ } => true
+                  Absent => false
                 }
             Absent => false
           }
@@ -579,13 +521,13 @@ fn producer_emission_binding_only_does_not_authorize_holds() -> Bool {
   }
 }
 
-fn producer_emission_fabricated_executed_receipt_with_scaffold_digest_refuses_holds() -> Bool {
+fn producer_emission_executed_verdict_minting_refused_at_baseline_holds() -> Bool {
   let row = producer_emission_oracle_row_body_producer
   let executed = ProducerEmissionExecutedGreenReceipt {
     module_path: row.module_path,
     behavioral_probe_entry: row.behavioral_probe_entry,
     behavioral_probe_function: row.behavioral_probe_function,
-    wet_execution_digest: scaffold_digest_for_module_path(module_path: row.module_path)
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
   }
   match producer_emission_canonical_receipt_for_executed_verdict(row: row, executed: executed) {
     Absent => true

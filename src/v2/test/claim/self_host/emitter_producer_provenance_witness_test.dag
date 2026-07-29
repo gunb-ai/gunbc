@@ -12,7 +12,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_flip_wave_reverted_module_paths,
   producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
   producer_emission_binding_only_does_not_authorize_holds,
-  producer_emission_fabricated_executed_receipt_with_scaffold_digest_refuses_holds,
+  producer_emission_executed_verdict_minting_refused_at_baseline_holds,
   producer_emission_oracle_authorization_promotion_path_holds,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
@@ -87,10 +87,10 @@ test fn witness_restored_binding_without_executed_receipt_does_not_authorize_red
   producer_emission_binding_only_does_not_authorize_holds()
 }
 
-data witness_fabricated_executed_receipt_scaffold_digest_red_note: String = "Review 44460 RED: producer_emission_canonical_receipt_for_executed_verdict refuses scaffold wet_execution_digest — digest must match producer_emission_wet_verdict_digest and cannot be scaffold."
+data witness_executed_verdict_minting_refused_at_baseline_red_note: String = "Review 44468 RED: producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline — no synthesizable executed receipt from declarative oracle fields can mint BuildGreen."
 
-test fn witness_fabricated_executed_receipt_scaffold_digest_reds() -> Bool {
-  producer_emission_fabricated_executed_receipt_with_scaffold_digest_refuses_holds()
+test fn witness_executed_verdict_minting_refused_at_baseline_reds() -> Bool {
+  producer_emission_executed_verdict_minting_refused_at_baseline_holds()
 }
 
 data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen canonical — enrollment and authorization are split (review 44393)."
