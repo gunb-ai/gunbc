@@ -1,5 +1,25 @@
 module test.claim.asrock_live_probe
 
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_srv3_live_probe_firmware_version,
+  asrock_srv3_live_readonly_probe_rows,
+  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+  live_probe_confirms_shipped_firmware_version,
+  live_probe_confirms_redfish_virtual_media_absent,
+  live_probe_confirms_nbd_proxy_vm_slot_ws_present,
+  live_probe_confirms_nbd_slot_ws_absent,
+  ProbeAbsent,
+}
+import extdeps.bmc.capability {
+  firmware_has_capability,
+  CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
+}
+import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
+
+data asrock_live_probe_binding_note: String = "review-cycle repair, gunbc#7398: this file previously declared no imports at all and bound every name by bare reference. That resolves only when an unrelated module elsewhere in the assembled closure happens to drag extdeps.boards.asrock_rack into the pool — the Class B pool-membership coincidence DESIGN.md records as blocking further import-stripping. Adding one witness root in an unrelated lane re-shaped witness_layer_roots and ProbeAbsent stopped resolving, with the other names in this same file still binding by luck. The imports above make the binding closure-independent, which is the remedy that thread names; they restore explicit dependency edges rather than removing any."
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
