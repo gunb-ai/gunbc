@@ -245,11 +245,13 @@ bound `A`, while every one of them needs `T`.
 
 ## 4. The legacy helper cross-reference: the bounds are disjoint, not merely insufficient
 
-`v1_generic_params_needing_clone_bound` produces **17** bounds in the `04_infer` closure
-(reproducing Phase A exactly) and **20** across the union of all seven, once `v1_rt.rs` —
-the hand-written seed runtime, not emitter output — is excluded.
+`v1_generic_params_needing_clone_bound` produces **18** bounds in the `04_infer` closure
+and **22** across the union of all seven, once `v1_rt.rs` — the hand-written seed runtime,
+not emitter output — is excluded. (At the sha the brief was written against these were
+**17** and **20**, matching the brief's acceptance figure and reproducing Phase A exactly;
+#7324 moved them along with everything else — see §3.1. The receipt is the authority.)
 
-Of those 20, only **3** host any of the 78 defect sites, and in every one the helper bound
+Of those 22, only **3** host any of the 78 defect sites, and in every one the helper bound
 a **different type parameter** than the site requires:
 
 | emitted fn | helper bound | site requires | disjoint |
