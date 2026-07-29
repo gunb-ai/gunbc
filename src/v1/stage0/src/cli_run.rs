@@ -3025,7 +3025,11 @@ pub fn selection_control_skip_label_for_ci() -> String {
     // The regen/compile-clean departed arms exempt `docs/` because markdown is genuinely
     // outside THEIR closures; it is inside this one (see the `.md` arm in
     // `selection_control_path_affects_suite`), so copying their carve-out here was the bug.
-    if let Some(gone) = departed_paths.first() {
+    // `min()` rather than `iter().next()`: the set's iteration order is not stable, and this
+    // path is printed into the CI log as the reason. A nondeterministic diagnostic is the
+    // determinism class `v2.lens.determinism` gates on — the arm fires on ANY departed path,
+    // so which one it names must not vary run to run.
+    if let Some(gone) = departed_paths.iter().min() {
         eprintln!(
             "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
             normalize_repo_path(gone)
