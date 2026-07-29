@@ -42,6 +42,8 @@ import gunbc.roadmap_component {
   dispatch_client_js_source, sound_toggle_class,
   dispatch_class_requested, dispatch_class_ok,
   dispatch_ack_prefix, dispatch_ack_word,
+  dispatch_session_chip_prefix,
+  dispatch_caption_present_word,
   sound_toggle_label_on, sound_toggle_label_off,
 }
 import gunbc.roadmap_page { roadmap_header, roadmap_page_for_authority }
@@ -259,7 +261,12 @@ test fn witness_mute_is_persisted_and_defaults_to_sounding() -> Bool {
 }
 
 test fn witness_button_reports_dispatch_acceptance() -> Bool {
-  string_contains(s: js(), pattern: concat(dispatch_ack_prefix, dispatch_ack_word))
+  let source = js()
+  string_contains(s: source, pattern: concat(dispatch_ack_prefix, dispatch_ack_word))
+    && string_contains(
+      s: source,
+      pattern: join([dispatch_session_chip_prefix, dispatch_caption_present_word], ""))
+    && !string_contains(s: source, pattern: "session · spawned")
 }
 
 fn header_has_sound_toggle(h: Fragment) -> Bool {

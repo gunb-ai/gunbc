@@ -8,6 +8,7 @@ import gunbc.roadmap_authority {
   observation_scoped_run_seed_growth_justification,
   caret_parse_smoke_seed_growth_justification,
 }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -66,6 +67,10 @@ fn node_has_carrier_path(path: String) -> Bool {
   nodes() |> any(n => n.carriers |> any(p => p.path == path))
 }
 
+fn node_count_with_carrier_path(path: String) -> Int {
+  nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
+}
+
 fn mechanical_graph() -> CallGraph {
   CallGraph {
     edges: edges() |> map(e => GraphEdge {
@@ -117,6 +122,7 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "roadmap-authority",
     signoff: signoff,
   }
@@ -316,7 +322,7 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
     && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
 }
 
-test fn witness_scm_context_is_reachable_but_cannot_spawn() -> Bool {
+test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
       doc: roadmap_authority(),
@@ -326,9 +332,17 @@ test fn witness_scm_context_is_reachable_but_cannot_spawn() -> Bool {
   string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
     && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
     && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
-    && !node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 4
     && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
+    && id_exists(id: "2-scm-git-upstream-model")
+    && id_exists(id: "2-scm-mercurial-upstream-model")
+    && id_exists(id: "2-scm-pijul-upstream-model")
+    && id_exists(id: "2-claim-indexed-evidence")
+    && !id_exists(id: "2-scm-compatibility-shape")
+    && !id_exists(id: "2-scm-node-merge")
+    && !id_exists(id: "2-scm-design-partner-shadow")
 }
 
 test fn witness_projection_is_active_only() -> Bool {

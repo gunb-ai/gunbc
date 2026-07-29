@@ -10,6 +10,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data ssh_typed_argv_exec_note: String = "Structured remote argv dispatch: ssh host -- argv... (OpenSSH end-of-options separator). ExecArgv splices a List<String> remote argv without embedding a shell command string. Portable-argv allowlist is enforced at the gunbc realization edge before calling this transport (Wave C5 / bash-emit #5828 slice)."
 
+fn shape_scp_copy_to_argv(
+  host: NonEmptyStr,
+  local_path: FilePath,
+  remote_path: FilePath,
+) -> List<String> {
+  [local_path as String, join([host as String, ":", remote_path as String], "")]
+}
+
 type SshSessionExecResult {
   exit_code: Int
   success: Bool

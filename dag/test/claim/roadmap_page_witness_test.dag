@@ -1,6 +1,7 @@
 module test.claim.roadmap_page_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
@@ -21,8 +22,11 @@ import gunbc.roadmap_model {
   section_group,
 }
 import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dispatch_asset_status_contract_note: String = "The dispatch client consumes the belt's LABEL authority, so the discriminating assertion is total coverage of belt_dispatch_all_status_labels() in the emitted band chain — a boolean-ok wire contract cannot satisfy it, and a new belt label that the client cannot band reds here. The former blob-wide `!j.ok` negative did not scope to the dispatch handler: the separately-modeled POST /cleanup/ route legitimately answers a boolean, so scanning the whole asset for `j.ok` reported a contract violation that the dispatch path never committed."
 
 fn authority_page_html() -> String {
   match try_serialize_html_source(node: roadmap_page_for_authority()) {
@@ -157,6 +161,7 @@ fn signed_off_dispatch_node() -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
     signoff: gunbc.roadmap_authority.signed(by: "op", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   }
@@ -172,6 +177,11 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
   let h = dispatch_doc_html_for(rn: ready_dispatch_node())
   string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
     && string_contains(s: h, pattern: "data-node=")
+    && string_contains(s: h, pattern: "class=\"workflow-progress\" hidden")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"environment\"")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"publish\"")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"review\"")
+    && string_contains(s: h, pattern: "data-workflow-stage=\"audit\"")
     && string_contains(s: h, pattern: "<script src=\"/assets/roadmap-dispatch.js\"")
     && !string_contains(s: h, pattern: "querySelectorAll")
     && !string_contains(s: h, pattern: "j.status")
@@ -180,9 +190,18 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
 test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
+    && string_contains(s: js, pattern: "fetch('/workflow.json')")
+    && string_contains(s: js, pattern: "provider_activity")
+    && string_contains(s: js, pattern: "workflow_status")
+    && string_contains(s: js, pattern: "remaining_obligations")
+    && string_contains(s: js, pattern: "attempt.segments.forEach")
+    && string_contains(s: js, pattern: "gunbcRefreshWorkflow().finally")
     && string_contains(s: js, pattern: "s === 'spawned' ? 'ok'")
     && string_contains(s: js, pattern: "s === 'already_live' ? 'ok'")
-    && !string_contains(s: js, pattern: "j.ok")
+    && all(
+      belt_dispatch_all_status_labels(),
+      label => string_contains(s: js, pattern: join(["'", label, "'"], "")),
+    )
     && !string_contains(s: js, pattern: "j.node)")
 }
 

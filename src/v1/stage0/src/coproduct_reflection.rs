@@ -1244,7 +1244,21 @@ fn nullary_coproduct_variant_value(
     }
 }
 
-fn typed_nullary_coproduct_item_from_call(call: &Rc<Node>) -> InterpResult<Rc<Node>> {
+// DESIGN section 7 seed-retained repair. This bridge retires with
+// `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
+// queue" (`dag/gunbc/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
+// Checkable receipt: the imported-named-coproduct generic-wrapper witness must
+// resolve, while the wrong-A/context-B and payload-bearing controls must refuse.
+struct TypedNullaryCoproductWitness {
+    declaration: Rc<Node>,
+    resolution_owner: Rc<Node>,
+}
+
+fn typed_nullary_coproduct_item_from_call(
+    ctx: &InterpContext,
+    call: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+) -> InterpResult<TypedNullaryCoproductWitness> {
     let discriminator_expr = call
         .children
         .get(1)
@@ -1266,33 +1280,71 @@ fn typed_nullary_coproduct_item_from_call(call: &Rc<Node>) -> InterpResult<Rc<No
         .ok_or_else(|| InterpError::TypeError {
             msg: "coproduct_nullary_inhabitants: discriminator parameter missing".to_string(),
         })?;
-    let item = parameter
-        .inferred
-        .as_ref()
-        .and_then(|inferred| inferred_to_node(inferred.clone()))
-        .filter(|node| node.connective == Connective::Disj)
-        .ok_or_else(|| InterpError::TypeError {
-            msg: "coproduct_nullary_inhabitants: discriminator parameter is not a closed coproduct"
-                .to_string(),
-        })?;
-    Ok(item)
+    let parameter_type = param_node_type_expr(parameter.clone());
+    let parameter_type_name = authored_name_at(ctx.source_indices(), parameter_type);
+    match visible_coproduct_declaration_from_syntax_node(ctx, call, &parameter_type_name) {
+        Ok(declaration) => Ok(TypedNullaryCoproductWitness {
+            declaration,
+            resolution_owner: call.clone(),
+        }),
+        Err(_) => {
+            let runtime_discriminator = args
+                .iter()
+                .find(|(name, _)| name.as_deref() == Some("discriminant_of"))
+                .or_else(|| args.get(1))
+                .map(|(_, value)| value)
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "coproduct_nullary_inhabitants: runtime discriminator missing".to_string(),
+                })?;
+            let runtime_fn = match runtime_discriminator {
+                Value::Fn { node } => node,
+                _ => {
+                    return Err(InterpError::TypeError {
+                        msg: "coproduct_nullary_inhabitants: generic discriminator lacks a declaration-backed function witness"
+                            .to_string(),
+                    });
+                }
+            };
+            let runtime_parameter =
+                runtime_fn
+                    .params
+                    .first()
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg:
+                            "coproduct_nullary_inhabitants: runtime discriminator parameter missing"
+                                .to_string(),
+                    })?;
+            let runtime_parameter_type = param_node_type_expr(runtime_parameter.clone());
+            let runtime_parameter_type_name =
+                authored_name_at(ctx.source_indices(), runtime_parameter_type);
+            let declaration = visible_coproduct_declaration_from_syntax_node(
+                ctx,
+                runtime_fn,
+                &runtime_parameter_type_name,
+            )?;
+            Ok(TypedNullaryCoproductWitness {
+                declaration,
+                resolution_owner: runtime_fn.clone(),
+            })
+        }
+    }
 }
 
-fn syntax_tree_contains_call(root: &Rc<Node>, call: &Rc<Node>) -> bool {
-    Rc::ptr_eq(root, call)
+fn syntax_tree_contains_node(root: &Rc<Node>, needle: &Rc<Node>) -> bool {
+    Rc::ptr_eq(root, needle)
         || root
             .children
             .iter()
-            .any(|child| syntax_tree_contains_call(child, call))
+            .any(|child| syntax_tree_contains_node(child, needle))
         || root
             .body
             .as_ref()
-            .is_some_and(|body| syntax_tree_contains_call(body, call))
+            .is_some_and(|body| syntax_tree_contains_node(body, needle))
 }
 
-fn requested_declaration_from_call(
+fn visible_coproduct_declaration_from_syntax_node(
     ctx: &InterpContext,
-    call: &Rc<Node>,
+    syntax_node: &Rc<Node>,
     type_name: &str,
 ) -> InterpResult<Rc<Node>> {
     let module = ctx
@@ -1302,17 +1354,18 @@ fn requested_declaration_from_call(
             module
                 .items
                 .iter()
-                .any(|item| syntax_tree_contains_call(item, call))
+                .any(|item| syntax_tree_contains_node(item, syntax_node))
         })
         .ok_or_else(|| InterpError::TypeError {
-            msg: "coproduct_nullary_inhabitants: typed call owner missing".to_string(),
+            msg: "coproduct_nullary_inhabitants: typed syntax owner missing".to_string(),
         })?;
     lookup_binding_by_name(module.type_env.clone(), type_name.to_string())
         .map(|binding| binding.resolved.clone())
         .filter(|node| node.connective == Connective::Disj)
         .ok_or_else(|| InterpError::TypeError {
-            msg: "coproduct_nullary_inhabitants: requested type is not a visible closed coproduct"
-                .to_string(),
+            msg: format!(
+                "coproduct_nullary_inhabitants: `{type_name}` is not a visible closed coproduct"
+            ),
         })
 }
 
@@ -1325,9 +1378,13 @@ pub fn eval_coproduct_nullary_inhabitants(
         args.first().map(|(_, v)| v),
         "coproduct_nullary_inhabitants",
     )?;
-    let requested_declaration = requested_declaration_from_call(ctx, call, type_name)?;
-    let typed_item = typed_nullary_coproduct_item_from_call(call)?;
-    if !Rc::ptr_eq(&requested_declaration, &typed_item) {
+    let typed_witness = typed_nullary_coproduct_item_from_call(ctx, call, args)?;
+    let requested_declaration = visible_coproduct_declaration_from_syntax_node(
+        ctx,
+        &typed_witness.resolution_owner,
+        type_name,
+    )?;
+    if !Rc::ptr_eq(&requested_declaration, &typed_witness.declaration) {
         return Ok(outcome_rejected_value(
             ctx,
             "coproduct_nullary_inhabitants: requested type does not match typed discriminator",
