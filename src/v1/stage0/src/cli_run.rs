@@ -28111,7 +28111,12 @@ fn test_migration_delete_guard_deleted_v1_test_paths(
 ) -> Result<Vec<String>, String> {
     let out = if test_migration_delete_guard_merge_base_mode() {
         let range = format!("{base}...{head}");
-        match test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range]) {
+        match test_migration_delete_guard_run_git(&[
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            &range,
+        ]) {
             Ok(out) => out,
             Err(err) => {
                 // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
@@ -28176,10 +28181,11 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
         return Ok(Vec::new());
     }
     let floor_stems = test_migration_delete_authorize_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
+    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev)?;
     let mut violations = Vec::new();
     for path in deleted {
-        let content = test_migration_delete_guard_run_git(&["show", &format!("{base}:{path}")])?;
+        let content =
+            test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])?;
         if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
             continue;
         }
