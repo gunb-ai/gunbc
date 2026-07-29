@@ -1,0 +1,1642 @@
+module gunbc.roadmap_dashboard_instance_apply
+
+import std.types { String, NonEmptyStr, Bool, Int, Seconds, List, FilePath, GitRef, CommitSha }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.gunbc
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.git {
+  shape_git_bundle_create_argv,
+  shape_git_bundle_verify_argv,
+  shape_git_is_shallow_repository_argv,
+  shape_git_remote_get_url_argv,
+  shape_git_fetch_unshallow_argv,
+  shape_git_init_bare_argv,
+  shape_git_bare_fetch_argv,
+  shape_git_bare_update_ref_argv,
+  shape_git_clone_branch_argv,
+  shape_git_status_porcelain_argv,
+  shape_git_fetch_remote_argv,
+  shape_git_reset_hard_argv,
+  shape_git_rev_parse_argv,
+}
+import extdeps.tmux {
+  shape_tmux_has_session_argv_for,
+  shape_tmux_kill_session_argv_for,
+  shape_tmux_new_session_argv_for,
+}
+import extdeps.ssh.session { shape_scp_copy_to_argv }
+import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+  codex_cli_identity_contains,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  serialize_json,
+  json_string,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+}
+import gunbc.typed_argv_exec {
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+  typed_argv_exec_over_ssh,
+  typed_argv_probe_over_ssh,
+}
+import extdeps.uri { Uri, Http, uri_wire }
+import extdeps.languages.json.grammar { json_text_parseable }
+import gunbc.roadmap_dashboard_instance {
+  dashboard_instance_health_identity_prefix,
+  DashboardProvisionTransport,
+  DashboardLocalProvision,
+  DashboardSshProvision,
+  DashboardSourceSeed,
+  DashboardExistingRepo,
+  DashboardGitBundle,
+  HostDashboardInstance,
+  DashboardInstanceProvisionOp,
+  DashboardHydrateControllerHistory,
+  DashboardPrepareGitBundle,
+  DashboardStageGitBundle,
+  DashboardEnsureDirectory,
+  DashboardEnsureOwnershipMarker,
+  DashboardEnsureLocalOrigin,
+  DashboardEnsureSourceRepo,
+  DashboardEnsureService,
+  DashboardVerifyProviderRuntime,
+  DashboardVerifyProviderAuth,
+  DashboardVerifyHealth,
+  DashboardInstanceObserved,
+  DashboardInstanceReconcile,
+  DashboardInstanceConverged,
+  DashboardInstanceApply,
+  DashboardInstanceRefused,
+  srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_dispatch_platform_executables,
+  dashboard_environment_binding_executable,
+  dashboard_instance_ownership_marker_path,
+  dashboard_instance_service_session_name,
+  dashboard_instance_checkout_branch,
+  dashboard_instance_controller_workdir,
+  dashboard_instance_serve_argv,
+  dashboard_instance_paths_are_owned,
+  dashboard_instances_have_disjoint_owned_paths,
+  dashboard_instance_provision_plan,
+  dashboard_instance_provision_op_row,
+  dashboard_instance_reconcile,
+}
+
+data dashboard_instance_apply_note: String = "The wet path is an interpreter of HostDashboardInstance, not a parallel provisioning script. Its high-level provision plan is pure and browser-visible; this module projects each operation to typed argv, executes locally or through the instance's explicit SSH transport, records a typed receipt, and performs a second independent observation before claiming convergence. Preflight resolves the modeled controller ref once and carries that exact CommitSha through initial observation and post-apply read-back; a target checkout that is clean against its own origin but stale against the requested commit derives Apply, never false convergence. Codex runtime identity (`--version` must realize `codex-cli`) and OAuth state (`login status`) are separate observations and provision steps, so a broken npm/Node launcher cannot masquerade as an auth refusal; successful stderr is retained in receipts rather than dropping runtime warnings. Source transport has no handoff gap: inspect shallow state -> hydrate from the modeled remote when needed -> mktemp directory -> git bundle -> metadata verify -> import into a new empty bare repository -> scp to .next -> target mv -> local cleanup. The empty-repository import is the closure proof; target mutation does not begin until it succeeds. A matching ownership-marker filename gates every mutation of an existing isolated source clone. Production is read before mutation and again after; repo HEAD plus /healthz must remain byte-identical. Recursive deletion is confined to the fresh controller-side mktemp directory minted by this invocation; no instance or target state is recursively deleted by apply."
+
+data dashboard_host_program_literal_scaffold_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 6). This module pins ~42 absolute /usr/bin/* program literals while the SAME programs are already realized once, with identity probes and Ensure policies, in gunbc.roadmap_dashboard_instance.dashboard_execution_environment — a DESIGN 3 fork. It is marked rather than substituted because the substitution is not mechanical: the sites split across TWO hosts (dashboard_local_exec runs on the controller, dashboard_target_exec on the instance) and only the target host has an environment to resolve against, while the controller-side residue (cp, scp, mv, test, sleep, nc, sudo, chown) names provisioning tools that are deliberately NOT dispatch capabilities — adding them to ExecutionCapability would put provisioning tools on the roster dispatch admission requires. Picking the right carrier is a model decision (which layer owns a host program token: the tool's extdeps model, the OS/host-layout layer, or a second CapabilityRealization environment for the controller), and DESIGN 6 says that lands model-first, not improvised inside this change. DISSOLVES ON: a controller DispatchHostEnvironment resolved through the existing dispatch_capability_program — one concept at both breadths (DESIGN 2 horizontal) — at which point every literal here becomes a resolver call and this row deletes."
+
+data dashboard_exec_result_carrier_note: String = "DECLARED SCAFFOLD (review 44058, DESIGN 5). DashboardExecResult carries failure as success: Bool plus prose, and every stage dispatches on `if !r.success` and repackages through dashboard_exec_refused(detail: String). That is a Bool where the typed refusal carriers this same PR introduces (gunbc.ensure's UpsertDecision/Refuse, DashboardApplyRefused) already exist — a parallel error representation, not a missing one. It is marked rather than migrated because the carrier threads through every stage of the apply pipeline in one piece: the fold is sequential and each stage returns the previous result on failure, so converting the carrier converts the pipeline, and doing that inside this change would bury the recursive-workflow model it exists to land. What is NOT deferred is fail-closedness: no arm fabricates success, every refusal carries its own located detail, and the refusal reaches the caller as DashboardApplyRefused. DISSOLVES ON: the apply pipeline folding over a typed step outcome — Converged, or Refused carrying its cause — instead of a Bool, with dashboard_exec_refused deleted and the per-cause arms named — the same shape roadmap_dispatch_environment already uses for admission. dispatch_capability_program's unrealized-capability marker (roadmap_dispatch_actuator) closes with it."
+
+type DashboardExecResult {
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn dashboard_exec_ok(stdout: String) -> DashboardExecResult {
+  DashboardExecResult { success: true, stdout: stdout, stderr: "" }
+}
+
+fn dashboard_exec_refused(detail: String) -> DashboardExecResult {
+  DashboardExecResult { success: false, stdout: "", stderr: detail }
+}
+
+fn dashboard_local_exec(
+  workdir: FilePath,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  let result = gunbc.WitnessBin.Run(
+    workdir: workdir,
+    bin_path: program,
+    args: args,
+    expect: OutcomeIsData,
+  )
+  DashboardExecResult {
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
+}
+
+fn dashboard_target_exec(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  match instance.provision_transport {
+    DashboardLocalProvision =>
+      dashboard_local_exec(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        program: program,
+        args: args,
+      )
+    DashboardSshProvision { host } =>
+      match typed_argv_exec_over_ssh(
+        host: host,
+        argv: concat([program as String], args),
+      ) {
+        TypedArgvExecConverged { result } =>
+          DashboardExecResult {
+            success: result.success,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        TypedArgvExecRefused { reason } =>
+          dashboard_exec_refused(detail: reason)
+      }
+  }
+}
+
+fn dashboard_target_probe(
+  instance: HostDashboardInstance,
+  program: FilePath,
+  args: List<String>,
+) -> DashboardExecResult {
+  match instance.provision_transport {
+    DashboardLocalProvision =>
+      dashboard_local_exec(
+        workdir: dashboard_instance_controller_workdir(instance: instance),
+        program: program,
+        args: args,
+      )
+    DashboardSshProvision { host } =>
+      match typed_argv_probe_over_ssh(
+        host: host,
+        argv: concat([program as String], args),
+      ) {
+        TypedArgvExecConverged { result } =>
+          DashboardExecResult {
+            success: result.success,
+            stdout: result.stdout,
+            stderr: result.stderr,
+          }
+        TypedArgvExecRefused { reason } =>
+          dashboard_exec_refused(detail: reason)
+      }
+  }
+}
+
+type DashboardArgv {
+  program: FilePath
+  args: List<String>
+}
+
+fn dashboard_run_target_argvs(
+  instance: HostDashboardInstance,
+  commands: List<DashboardArgv>,
+) -> DashboardExecResult {
+  fold(
+    commands,
+    init: dashboard_exec_ok(stdout: ""),
+    f: (acc, command) =>
+      if acc.success {
+        dashboard_target_exec(
+          instance: instance,
+          program: command.program,
+          args: command.args,
+        )
+      } else {
+        acc
+      },
+  )
+}
+
+fn dashboard_target_path_present(
+  instance: HostDashboardInstance,
+  flag: String,
+  path: FilePath,
+) -> Bool {
+  dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/test" as FilePath,
+    args: [flag, path as String],
+  ).success
+}
+
+fn dashboard_target_directory_present(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> Bool {
+  dashboard_target_path_present(instance: instance, flag: "-d", path: path)
+}
+
+fn dashboard_target_file_present(
+  instance: HostDashboardInstance,
+  path: FilePath,
+) -> Bool {
+  dashboard_target_path_present(instance: instance, flag: "-f", path: path)
+}
+
+fn dashboard_next_path(path: FilePath) -> FilePath {
+  concat(path as String, ".next") as FilePath
+}
+
+fn dashboard_copy_to_target_atomically(
+  instance: HostDashboardInstance,
+  controller_workdir: FilePath,
+  local_path: FilePath,
+  remote_path: FilePath,
+) -> DashboardExecResult {
+  let next = dashboard_next_path(path: remote_path)
+  let copied = match instance.provision_transport {
+    DashboardLocalProvision =>
+      dashboard_local_exec(
+        workdir: controller_workdir,
+        program: "/usr/bin/cp" as FilePath,
+        args: [local_path as String, next as String],
+      )
+    DashboardSshProvision { host } =>
+      dashboard_local_exec(
+        workdir: controller_workdir,
+        program: "/usr/bin/scp" as FilePath,
+        args: shape_scp_copy_to_argv(
+          host: host,
+          local_path: local_path,
+          remote_path: next,
+        ),
+      )
+  }
+  if copied.success {
+    dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/mv" as FilePath,
+      args: [next as String, remote_path as String],
+    )
+  } else {
+    copied
+  }
+}
+
+fn dashboard_hydrate_controller_history(
+  controller_repo: FilePath,
+  history_remote: NonEmptyStr,
+) -> DashboardExecResult {
+  let shallow = dashboard_local_exec(
+    workdir: controller_repo,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_is_shallow_repository_argv(repo: controller_repo),
+  )
+  if !shallow.success {
+    shallow
+  } else if trim(shallow.stdout) == "false" {
+    dashboard_exec_ok(stdout: "controller history already complete")
+  } else if trim(shallow.stdout) == "true" {
+    dashboard_local_exec(
+      workdir: controller_repo,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_fetch_unshallow_argv(
+        repo: controller_repo,
+        remote: history_remote,
+      ),
+    )
+  } else {
+    dashboard_exec_refused(detail: join([
+      "git returned an unknown shallow-repository state: ",
+      shallow.stdout,
+      shallow.stderr,
+    ], ""))
+  }
+}
+
+fn dashboard_prepare_bundle(
+  controller_repo: FilePath,
+  anchor_ref: NonEmptyStr,
+  temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
+) -> DashboardExecResult {
+  let created = dashboard_local_exec(
+    workdir: controller_repo,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_bundle_create_argv(
+      repo: controller_repo,
+      bundle: temp_bundle,
+      source_ref: anchor_ref as GitRef,
+    ),
+  )
+  if !created.success {
+    created
+  } else {
+    let metadata_verified = dashboard_local_exec(
+      workdir: controller_repo,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_bundle_verify_argv(bundle: temp_bundle),
+    )
+    if !metadata_verified.success {
+      metadata_verified
+    } else {
+      let verifier_initialized = dashboard_local_exec(
+        workdir: controller_repo,
+        program: "/usr/bin/git" as FilePath,
+        args: shape_git_init_bare_argv(path: temp_verify_repo),
+      )
+      if !verifier_initialized.success {
+        verifier_initialized
+      } else {
+        let imported = dashboard_local_exec(
+          workdir: controller_repo,
+          program: "/usr/bin/git" as FilePath,
+          args: shape_git_bare_fetch_argv(
+            repo: temp_verify_repo,
+            bundle: temp_bundle,
+            source_ref: anchor_ref as GitRef,
+          ),
+        )
+        if imported.success {
+          dashboard_exec_ok(
+            stdout: "bundle imported into a new empty bare repository",
+          )
+        } else {
+          dashboard_exec_refused(detail: join([
+            "bundle failed empty-repository import closure proof: ",
+            imported.stderr,
+            imported.stdout,
+          ], ""))
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_stage_bundle(
+  instance: HostDashboardInstance,
+  controller_repo: FilePath,
+  staged_bundle: FilePath,
+  temp_bundle: FilePath,
+) -> DashboardExecResult {
+  dashboard_copy_to_target_atomically(
+    instance: instance,
+    controller_workdir: controller_repo,
+    local_path: temp_bundle,
+    remote_path: staged_bundle,
+  )
+}
+
+fn dashboard_ensure_local_origin(
+  instance: HostDashboardInstance,
+  bundle: FilePath,
+  origin: FilePath,
+  source_ref: NonEmptyStr,
+  publish_ref: NonEmptyStr,
+) -> DashboardExecResult {
+  dashboard_run_target_argvs(instance: instance, commands: [
+    DashboardArgv {
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_init_bare_argv(path: origin),
+    },
+    DashboardArgv {
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_bare_fetch_argv(
+        repo: origin,
+        bundle: bundle,
+        source_ref: source_ref as GitRef,
+      ),
+    },
+    DashboardArgv {
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_bare_update_ref_argv(
+        repo: origin,
+        publish_ref: publish_ref as GitRef,
+      ),
+    },
+  ])
+}
+
+fn dashboard_ensure_source_repo(
+  instance: HostDashboardInstance,
+  origin: FilePath,
+  repo: FilePath,
+  anchor_ref: NonEmptyStr,
+) -> DashboardExecResult {
+  let git_dir = concat(repo as String, "/.git") as FilePath
+  if !dashboard_target_directory_present(instance: instance, path: git_dir) {
+    dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_clone_branch_argv(
+        origin: origin,
+        repo: repo,
+        branch: dashboard_instance_checkout_branch(instance: instance),
+      ),
+    )
+  } else {
+    let status = dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_status_porcelain_argv(repo: repo),
+    )
+    if !status.success {
+      status
+    } else if trim(status.stdout) != "" {
+      dashboard_exec_refused(
+        detail: join([
+          "owned source repo is dirty; refusing reset: ",
+          repo as String,
+          " status=",
+          status.stdout,
+        ], ""),
+      )
+    } else {
+      dashboard_run_target_argvs(instance: instance, commands: [
+        DashboardArgv {
+          program: "/usr/bin/git" as FilePath,
+          args: shape_git_fetch_remote_argv(
+            repo: repo,
+            remote: "origin" as NonEmptyStr,
+          ),
+        },
+        DashboardArgv {
+          program: "/usr/bin/git" as FilePath,
+          args: shape_git_reset_hard_argv(
+            repo: repo,
+            target: anchor_ref as GitRef,
+          ),
+        },
+      ])
+    }
+  }
+}
+
+fn dashboard_ensure_service(
+  instance: HostDashboardInstance,
+) -> DashboardExecResult {
+  let service_session = dashboard_instance_service_session_name(instance: instance)
+  let present = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/tmux" as FilePath,
+    args: shape_tmux_has_session_argv_for(
+      scope: instance.tmux_server,
+      session_name: service_session as String,
+    ),
+  ).success
+  let stopped = if present {
+    dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/tmux" as FilePath,
+      args: shape_tmux_kill_session_argv_for(
+        scope: instance.tmux_server,
+        session_name: service_session as String,
+      ),
+    )
+  } else {
+    dashboard_exec_ok(stdout: "service session absent")
+  }
+  if !stopped.success {
+    stopped
+  } else {
+    dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/tmux" as FilePath,
+      args: shape_tmux_new_session_argv_for(
+        scope: instance.tmux_server,
+        session_name: service_session as String,
+        working_dir: instance.repo_root as String,
+        inner_argv: concat(
+          [instance.serve_binary as String],
+          dashboard_instance_serve_argv(instance: instance),
+        ),
+      ),
+    )
+  }
+}
+
+data dashboard_health_loopback_host: String = "127.0.0.1"
+
+data dashboard_health_path: String = "/instance.json"
+
+fn dashboard_instance_health_uri(instance: HostDashboardInstance) -> Uri {
+  Uri {
+    scheme: Http,
+    locator: join([
+      dashboard_health_loopback_host,
+      ":",
+      to_string(instance.listen_port),
+      dashboard_health_path,
+    ], "") as NonEmptyStr,
+  }
+}
+
+fn dashboard_instance_health_url(instance: HostDashboardInstance) -> String {
+  uri_wire(uri: dashboard_instance_health_uri(instance: instance)) as String
+}
+
+fn dashboard_read_instance_health(
+  instance: HostDashboardInstance,
+) -> DashboardExecResult {
+  dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/curl" as FilePath,
+    args: ["-fsS", dashboard_instance_health_url(instance: instance)],
+  )
+}
+
+data dashboard_health_identity_note: String = "Health readback identifies the served document POSITIONALLY, never by scanning it: the body must parse as one JSON value and START with the emitter's own schema+instance_id prefix (gunbc.roadmap_dashboard_instance.dashboard_instance_health_identity_prefix). The scan this replaces accepted the fragment from any nested value, so a foreign or stale server answering the polled port — or a document merely mentioning the instance id — could report a converged apply that never happened (DESIGN 5). Same rule as the dispatch admission receipt; one reading, two consumers."
+
+fn dashboard_health_names_instance(
+  instance: HostDashboardInstance,
+  result: DashboardExecResult,
+) -> Bool {
+  result.success
+    && json_text_parseable(s: result.stdout)
+    && starts_with(
+      s: result.stdout,
+      prefix: dashboard_instance_health_identity_prefix(
+        instance_id: instance.instance_id as String,
+      ),
+    )
+}
+
+data dashboard_health_poll_attempts: Int = 31
+data dashboard_health_poll_seconds: Seconds = 2
+
+fn dashboard_verify_health_after_attempts(
+  instance: HostDashboardInstance,
+  remaining: Int,
+) -> DashboardExecResult {
+  let health = dashboard_read_instance_health(instance: instance)
+  if dashboard_health_names_instance(instance: instance, result: health) {
+    health
+  } else if remaining <= 1 {
+    dashboard_exec_refused(
+      detail: join([
+        "health did not name intended instance ",
+        instance.instance_id as String,
+        " within ",
+        to_string(dashboard_health_poll_attempts),
+        " probes; stdout=",
+        health.stdout,
+        "; stderr=",
+        health.stderr,
+      ], ""),
+    )
+  } else {
+    let delay = dashboard_local_exec(
+      workdir: dashboard_instance_controller_workdir(instance: instance),
+      program: "/usr/bin/sleep" as FilePath,
+      args: [to_string(dashboard_health_poll_seconds)],
+    )
+    if delay.success {
+      dashboard_verify_health_after_attempts(
+        instance: instance,
+        remaining: remaining - 1,
+      )
+    } else {
+      dashboard_exec_refused(
+        detail: join(["health retry delay failed: ", delay.stderr], ""),
+      )
+    }
+  }
+}
+
+fn dashboard_verify_health(instance: HostDashboardInstance) -> DashboardExecResult {
+  dashboard_verify_health_after_attempts(
+    instance: instance,
+    remaining: dashboard_health_poll_attempts,
+  )
+}
+
+fn dashboard_apply_provision_op(
+  instance: HostDashboardInstance,
+  op: DashboardInstanceProvisionOp,
+  temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
+) -> DashboardExecResult {
+  match op {
+    DashboardHydrateControllerHistory { controller_repo, history_remote } =>
+      dashboard_hydrate_controller_history(
+        controller_repo: controller_repo,
+        history_remote: history_remote,
+      )
+    DashboardPrepareGitBundle { controller_repo, anchor_ref } =>
+      dashboard_prepare_bundle(
+        controller_repo: controller_repo,
+        anchor_ref: anchor_ref,
+        temp_bundle: temp_bundle,
+        temp_verify_repo: temp_verify_repo,
+      )
+    DashboardStageGitBundle { controller_repo, staged_bundle } =>
+      dashboard_stage_bundle(
+        instance: instance,
+        controller_repo: controller_repo,
+        staged_bundle: staged_bundle,
+        temp_bundle: temp_bundle,
+      )
+    DashboardEnsureDirectory { path } =>
+      dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/mkdir" as FilePath,
+        args: ["-p", path as String],
+      )
+    DashboardEnsureOwnershipMarker { path, instance_id: _ } =>
+      dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/touch" as FilePath,
+        args: [path as String],
+      )
+    DashboardEnsureLocalOrigin { bundle, origin, source_ref, publish_ref } =>
+      dashboard_ensure_local_origin(
+        instance: instance,
+        bundle: bundle,
+        origin: origin,
+        source_ref: source_ref,
+        publish_ref: publish_ref,
+      )
+    DashboardEnsureSourceRepo { origin, repo, anchor_ref } =>
+      dashboard_ensure_source_repo(
+        instance: instance,
+        origin: origin,
+        repo: repo,
+        anchor_ref: anchor_ref,
+      )
+    DashboardEnsureService {
+      instance_id: _,
+      binary: _,
+      workdir: _,
+      handler: _,
+      host: _,
+      port: _,
+      tmux_server: _,
+    } =>
+      dashboard_ensure_service(instance: instance)
+    DashboardVerifyProviderRuntime { executable, state_root } => {
+      let result = dashboard_target_exec(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_version_env_args_for_program(
+          program: executable as String,
+          codex_home: state_root as String,
+        ),
+      )
+      if result.success
+          && string_contains(
+            s: join([result.stdout, "\n", result.stderr], ""),
+            pattern: codex_cli_identity_contains,
+          ) {
+        result
+      } else {
+        DashboardExecResult {
+          success: false,
+          stdout: result.stdout,
+          stderr: join([
+            "provider runtime identity did not realize ",
+            codex_cli_identity_contains,
+            if result.stderr == "" { "" } else { join([": ", result.stderr], "") },
+          ], ""),
+        }
+      }
+    }
+    DashboardVerifyProviderAuth { executable, state_root } =>
+      dashboard_target_exec(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_login_status_env_args_for_program(
+          program: executable as String,
+          codex_home: state_root as String,
+        ),
+      )
+    DashboardVerifyHealth { host: _, port: _ } =>
+      dashboard_verify_health(instance: instance)
+  }
+}
+
+type DashboardProvisionStepReceipt {
+  kind: NonEmptyStr
+  target: String
+  success: Bool
+  detail: String
+}
+
+type DashboardApplyFold {
+  running: Bool
+  receipts: List<DashboardProvisionStepReceipt>
+  refused_step: String
+  refused_detail: String
+}
+
+fn dashboard_apply_plan(
+  instance: HostDashboardInstance,
+  plan: List<DashboardInstanceProvisionOp>,
+  temp_bundle: FilePath,
+  temp_verify_repo: FilePath,
+) -> DashboardApplyFold {
+  fold(
+    plan,
+    init: DashboardApplyFold {
+      running: true,
+      receipts: [],
+      refused_step: "",
+      refused_detail: "",
+    },
+    f: (acc, op) => {
+      let row = dashboard_instance_provision_op_row(op: op)
+      if !acc.running {
+        acc
+      } else {
+        let result = dashboard_apply_provision_op(
+          instance: instance,
+          op: op,
+          temp_bundle: temp_bundle,
+          temp_verify_repo: temp_verify_repo,
+        )
+        let detail = if result.success {
+          trim(join([result.stdout, "\n", result.stderr], ""))
+        } else {
+          join([result.stderr, result.stdout], "\n")
+        }
+        DashboardApplyFold {
+          running: result.success,
+          receipts: concat(acc.receipts, [
+            DashboardProvisionStepReceipt {
+              kind: row.kind,
+              target: row.target,
+              success: result.success,
+              detail: detail,
+            },
+          ]),
+          refused_step: if result.success { "" } else { row.kind as String },
+          refused_detail: if result.success { "" } else { detail },
+        }
+      }
+    },
+  )
+}
+
+type DashboardProductionSnapshot {
+  observed: Bool
+  head: String
+  health: String
+  detail: String
+}
+
+fn dashboard_production_snapshot(
+  production: HostDashboardInstance,
+) -> DashboardProductionSnapshot {
+  let head = dashboard_target_probe(
+    instance: production,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_rev_parse_argv(
+      repo: production.repo_root,
+      target: "HEAD" as GitRef,
+    ),
+  )
+  let health = dashboard_target_probe(
+    instance: production,
+    program: "/usr/bin/curl" as FilePath,
+    args: [
+      "-fsS",
+      join(["http://127.0.0.1:", to_string(production.listen_port), "/healthz"], ""),
+    ],
+  )
+  DashboardProductionSnapshot {
+    observed: head.success && health.success,
+    head: trim(head.stdout),
+    health: trim(health.stdout),
+    detail: join([head.stderr, health.stderr], "\n"),
+  }
+}
+
+fn dashboard_production_snapshots_equal(
+  before: DashboardProductionSnapshot,
+  after: DashboardProductionSnapshot,
+) -> Bool {
+  before.observed
+    && after.observed
+    && before.head == after.head
+    && before.health == after.health
+}
+
+fn dashboard_source_anchor_matches(
+  instance: HostDashboardInstance,
+) -> Bool {
+  if !dashboard_target_directory_present(
+    instance: instance,
+    path: concat(instance.repo_root as String, "/.git") as FilePath,
+  ) {
+    false
+  } else {
+    let head = dashboard_target_probe(
+      instance: instance,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_rev_parse_argv(
+        repo: instance.repo_root,
+        target: "HEAD" as GitRef,
+      ),
+    )
+    let base = dashboard_target_probe(
+      instance: instance,
+      program: "/usr/bin/git" as FilePath,
+      args: shape_git_rev_parse_argv(
+        repo: instance.repo_root,
+        target: instance.dispatch_base_ref as GitRef,
+      ),
+    )
+    head.success && base.success && trim(head.stdout) == trim(base.stdout)
+  }
+}
+
+fn dashboard_source_revision_readback(
+  instance: HostDashboardInstance,
+  desired_source_revision: CommitSha,
+) -> DashboardExecResult {
+  let head = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/git" as FilePath,
+    args: shape_git_rev_parse_argv(
+      repo: instance.repo_root,
+      target: "HEAD" as GitRef,
+    ),
+  )
+  let observed = trim(head.stdout)
+  if !head.success {
+    dashboard_exec_refused(detail: join([
+      "git rev-parse HEAD refused: ",
+      head.stderr,
+      head.stdout,
+    ], ""))
+  } else if desired_source_revision == "" {
+    dashboard_exec_refused(detail: "controller source revision is empty")
+  } else if observed == desired_source_revision {
+    dashboard_exec_ok(stdout: observed)
+  } else {
+    DashboardExecResult {
+      success: true,
+      stdout: observed,
+      stderr: join([
+        "source revision drift: desired=",
+        desired_source_revision,
+        " observed=",
+        observed,
+      ], ""),
+    }
+  }
+}
+
+fn dashboard_instance_observe(
+  instance: HostDashboardInstance,
+  production_untouched: Bool,
+  desired_source_revision: CommitSha,
+) -> DashboardInstanceObserved {
+  let health = dashboard_read_instance_health(instance: instance)
+  let provider_runtime = dashboard_target_probe(
+    instance: instance,
+    program: dashboard_environment_binding_executable,
+    args: shape_codex_version_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: instance) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    ),
+  )
+  let provider = dashboard_target_probe(
+    instance: instance,
+    program: dashboard_environment_binding_executable,
+    args: shape_codex_login_status_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: instance) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    ),
+  )
+  let service = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/tmux" as FilePath,
+    args: shape_tmux_has_session_argv_for(
+      scope: instance.tmux_server,
+      session_name: dashboard_instance_service_session_name(instance: instance) as String,
+    ),
+  )
+  let bundle_present = match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle,
+      anchor_ref: _,
+      history_remote: _,
+    } =>
+      dashboard_target_file_present(instance: instance, path: staged_bundle)
+  }
+  let source_revision = dashboard_source_revision_readback(
+    instance: instance,
+    desired_source_revision: desired_source_revision,
+  )
+  DashboardInstanceObserved {
+    root_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.instance_root,
+    ),
+    ownership_marker_present: dashboard_target_file_present(
+      instance: instance,
+      path: dashboard_instance_ownership_marker_path(instance: instance),
+    ),
+    bundle_present: bundle_present,
+    origin_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.local_origin_root,
+    ),
+    source_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.repo_root,
+    ),
+    source_revision_observed: source_revision.success,
+    source_revision_current: source_revision.success
+      && trim(source_revision.stdout) == desired_source_revision,
+    source_revision_detail: trim(join([
+      source_revision.stdout,
+      "\n",
+      source_revision.stderr,
+    ], "")),
+    attempts_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.dispatch_worktree_root,
+    ),
+    attempt_state_present: dashboard_target_directory_present(
+      instance: instance,
+      path: instance.dispatch_attempt_state_root,
+    ),
+    provider_runtime_ready: provider_runtime.success
+      && string_contains(
+        s: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
+        pattern: codex_cli_identity_contains,
+      ),
+    provider_runtime_detail: trim(join([
+      provider_runtime.stdout,
+      "\n",
+      provider_runtime.stderr,
+    ], "")),
+    provider_authenticated: provider.success,
+    provider_auth_detail: trim(join([
+      provider.stdout,
+      "\n",
+      provider.stderr,
+    ], "")),
+    service_present: service.success,
+    health_current: dashboard_health_names_instance(instance: instance, result: health),
+    production_untouched: production_untouched,
+    source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
+  }
+}
+
+type DashboardApplyPreflightResult
+  = DashboardApplyPreflightReady {
+      instance_id: NonEmptyStr,
+      source_revision: CommitSha,
+    }
+  | DashboardApplyPreflightRefused {
+      instance_id: NonEmptyStr,
+      step: NonEmptyStr,
+      detail: String,
+    }
+
+fn dashboard_apply_preflight_refused(
+  instance: HostDashboardInstance,
+  step: String,
+  detail: String,
+) -> DashboardApplyPreflightResult {
+  DashboardApplyPreflightRefused {
+    instance_id: instance.instance_id,
+    step: step as NonEmptyStr,
+    detail: detail,
+  }
+}
+
+fn dashboard_source_preflight_decision(
+  instance: HostDashboardInstance,
+  ref_read: DashboardExecResult,
+  status_read: DashboardExecResult,
+  shallow_read: DashboardExecResult,
+  history_remote_read: DashboardExecResult,
+) -> DashboardApplyPreflightResult {
+  if !ref_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-source-ref",
+      detail: join([
+        "source ref is not bundleable: ",
+        ref_read.stderr,
+        ref_read.stdout,
+      ], ""),
+    )
+  } else if !status_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-source-status",
+      detail: join([
+        "source worktree status could not be read: ",
+        status_read.stderr,
+        status_read.stdout,
+      ], ""),
+    )
+  } else if trim(ref_read.stdout) == "" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-source-ref",
+      detail: "source ref resolved successfully but returned an empty revision",
+    )
+  } else if trim(status_read.stdout) != "" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-source-dirty",
+      detail: join([
+        "git bundle carries committed objects only; commit or otherwise model these source changes before apply: ",
+        status_read.stdout,
+      ], ""),
+    )
+  } else if !shallow_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-state",
+      detail: join([
+        "could not determine whether controller history is shallow: ",
+        shallow_read.stderr,
+        shallow_read.stdout,
+      ], ""),
+    )
+  } else if trim(shallow_read.stdout) != "true"
+      && trim(shallow_read.stdout) != "false" {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-state",
+      detail: join([
+        "git returned an unknown shallow-repository state: ",
+        shallow_read.stdout,
+      ], ""),
+    )
+  } else if trim(shallow_read.stdout) == "true"
+      && !history_remote_read.success {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "controller-history-remote",
+      detail: join([
+        "controller history is shallow but the modeled hydration remote is unavailable: ",
+        history_remote_read.stderr,
+      ], ""),
+    )
+  } else {
+    DashboardApplyPreflightReady {
+      instance_id: instance.instance_id,
+      source_revision: trim(ref_read.stdout) as CommitSha,
+    }
+  }
+}
+
+fn dashboard_required_target_executables(
+  instance: HostDashboardInstance,
+) -> List<FilePath> {
+  fold(
+    concat(
+      [
+        "/usr/bin/git" as FilePath,
+        "/usr/bin/tmux" as FilePath,
+        "/usr/bin/curl" as FilePath,
+        "/usr/bin/mkdir" as FilePath,
+        "/usr/bin/touch" as FilePath,
+        "/usr/bin/mv" as FilePath,
+        "/usr/bin/nc" as FilePath,
+        instance.serve_binary,
+        dashboard_instance_provider_executable(instance: instance),
+      ],
+      dashboard_instance_dispatch_platform_executables(instance: instance),
+    ),
+    init: [],
+    f: fn(acc, path) {
+      if any(acc, existing => existing == path) {
+        acc
+      } else {
+        append(acc, [path])
+      }
+    },
+  )
+}
+
+fn dashboard_missing_target_executables(
+  instance: HostDashboardInstance,
+) -> List<FilePath> {
+  filter(
+    dashboard_required_target_executables(instance: instance),
+    path => !dashboard_target_path_present(
+      instance: instance,
+      flag: "-x",
+      path: path,
+    ),
+  )
+}
+
+type DashboardBootstrapPreflight
+  = DashboardBootstrapReady { bootstrap_root: FilePath }
+  | DashboardBootstrapRefused {
+      bootstrap_root: FilePath,
+      reason: NonEmptyStr,
+    }
+
+fn dashboard_bootstrap_preflight_decision(
+  instance: HostDashboardInstance,
+  root_present: Bool,
+  bootstrap_present: Bool,
+  bootstrap_writable: Bool,
+) -> DashboardBootstrapPreflight {
+  let bootstrap_root = if root_present {
+    instance.instance_root
+  } else {
+    instance.provision_parent_root
+  }
+  if !bootstrap_present {
+    DashboardBootstrapRefused {
+      bootstrap_root: bootstrap_root,
+      reason: "nearest modeled bootstrap parent is absent" as NonEmptyStr,
+    }
+  } else if !bootstrap_writable {
+    DashboardBootstrapRefused {
+      bootstrap_root: bootstrap_root,
+      reason: "nearest modeled bootstrap parent is not writable" as NonEmptyStr,
+    }
+  } else {
+    DashboardBootstrapReady { bootstrap_root: bootstrap_root }
+  }
+}
+
+fn dashboard_instance_apply_preflight(
+  instance: HostDashboardInstance,
+  production: HostDashboardInstance,
+) -> DashboardApplyPreflightResult {
+  if !dashboard_instance_paths_are_owned(instance: instance)
+      || !dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
+      || instance.listen_port == production.listen_port {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "isolation-preflight",
+      detail: "instance path or port isolation failed",
+    )
+  } else {
+    let production_read = dashboard_production_snapshot(production: production)
+    if !production_read.observed {
+      dashboard_apply_preflight_refused(
+        instance: instance,
+        step: "production-preflight",
+        detail: join(["production read-back refused: ", production_read.detail], ""),
+      )
+    } else {
+      let root_present = dashboard_target_directory_present(
+        instance: instance,
+        path: instance.instance_root,
+      )
+      let bootstrap_root = if root_present {
+        instance.instance_root
+      } else {
+        instance.provision_parent_root
+      }
+      let bootstrap = dashboard_bootstrap_preflight_decision(
+        instance: instance,
+        root_present: root_present,
+        bootstrap_present: dashboard_target_directory_present(
+          instance: instance,
+          path: bootstrap_root,
+        ),
+        bootstrap_writable: dashboard_target_path_present(
+          instance: instance,
+          flag: "-w",
+          path: bootstrap_root,
+        ),
+      )
+      match bootstrap {
+        DashboardBootstrapRefused { bootstrap_root: refused_root, reason } =>
+          dashboard_apply_preflight_refused(
+            instance: instance,
+            step: "instance-bootstrap-parent",
+            detail: join([
+              reason as String,
+              ": ",
+              refused_root as String,
+            ], ""),
+          )
+        DashboardBootstrapReady { bootstrap_root: _ } =>
+      match instance.source_seed {
+        DashboardExistingRepo { anchor_ref: _ } =>
+          dashboard_apply_preflight_refused(
+            instance: instance,
+            step: "source-seed",
+            detail: "isolated instance apply requires a modeled Git-bundle seed",
+          )
+        DashboardGitBundle {
+          controller_repo,
+          staged_bundle: _,
+          anchor_ref,
+          history_remote,
+        } => {
+          let source = dashboard_source_preflight_decision(
+            instance: instance,
+            ref_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_rev_parse_argv(
+                repo: controller_repo,
+                target: anchor_ref as GitRef,
+              ),
+            ),
+            status_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_status_porcelain_argv(repo: controller_repo),
+            ),
+            shallow_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_is_shallow_repository_argv(repo: controller_repo),
+            ),
+            history_remote_read: dashboard_local_exec(
+              workdir: controller_repo,
+              program: "/usr/bin/git" as FilePath,
+              args: shape_git_remote_get_url_argv(
+                repo: controller_repo,
+                remote: history_remote,
+              ),
+            ),
+          )
+          match source {
+            DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
+              source
+            DashboardApplyPreflightReady {
+              instance_id: _,
+              source_revision,
+            } => {
+              let missing = dashboard_missing_target_executables(instance: instance)
+              if count(missing) > 0 {
+                dashboard_apply_preflight_refused(
+                  instance: instance,
+                  step: "target-dependencies",
+                  detail: join([
+                    "required executable paths absent: ",
+                    join(map(missing, p => p as String), ", "),
+                  ], ""),
+                )
+              } else {
+                let observed = dashboard_instance_observe(
+                  instance: instance,
+                  production_untouched: true,
+                  desired_source_revision: source_revision,
+                )
+                match dashboard_instance_reconcile(instance: instance, observed: observed) {
+                  DashboardInstanceRefused { reason } =>
+                    dashboard_apply_preflight_refused(
+                      instance: instance,
+                      step: "initial-reconcile",
+                      detail: reason as String,
+                    )
+                  _ => {
+                    let listener = dashboard_target_probe(
+                      instance: instance,
+                      program: "/usr/bin/nc" as FilePath,
+                      args: [
+                        "-z",
+                        "127.0.0.1",
+                        to_string(instance.listen_port),
+                      ],
+                    )
+                    if listener.success && !observed.health_current {
+                      dashboard_apply_preflight_refused(
+                        instance: instance,
+                        step: "listen-port-conflict",
+                        detail: join([
+                          "port ",
+                          to_string(instance.listen_port),
+                          " already accepts TCP but does not identify as this dashboard instance",
+                        ], ""),
+                      )
+                    } else if !observed.provider_runtime_ready {
+                      dashboard_apply_preflight_refused(
+                        instance: instance,
+                        step: "provider-runtime",
+                        detail: join([
+                          "codex --version did not realize ",
+                          codex_cli_identity_contains,
+                          " through ",
+                          dashboard_environment_binding_executable as String,
+                          if observed.provider_runtime_detail == "" {
+                            ""
+                          } else {
+                            join([": ", observed.provider_runtime_detail], "")
+                          },
+                        ], ""),
+                      )
+                    } else if !observed.provider_authenticated {
+                      dashboard_apply_preflight_refused(
+                        instance: instance,
+                        step: "provider-auth",
+                        detail: join([
+                          "codex login status failed for ",
+                          dashboard_instance_provider_state_root(instance: instance) as String,
+                          if observed.provider_auth_detail == "" {
+                            ""
+                          } else {
+                            join([": ", observed.provider_auth_detail], "")
+                          },
+                        ], ""),
+                      )
+                    } else {
+                      DashboardApplyPreflightReady {
+                        instance_id: instance.instance_id,
+                        source_revision: source_revision,
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      }
+    }
+  }
+}
+
+fn dashboard_apply_preflight_json_value(
+  result: DashboardApplyPreflightResult,
+) -> JsonValue {
+  match result {
+    DashboardApplyPreflightReady { instance_id, source_revision } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "dashboard-instance-preflight/v1")),
+        json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
+        json_kv(key: "status", value: json_string(s: "ready")),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
+      ])
+    DashboardApplyPreflightRefused { instance_id, step, detail } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "dashboard-instance-preflight/v1")),
+        json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "step", value: json_string(s: step as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+type DashboardInstanceApplyResult
+  = DashboardApplyConverged {
+      instance_id: NonEmptyStr,
+      receipts: List<DashboardProvisionStepReceipt>,
+      observed: DashboardInstanceObserved,
+    }
+  | DashboardApplyRefused {
+      instance_id: NonEmptyStr,
+      step: NonEmptyStr,
+      detail: String,
+      receipts: List<DashboardProvisionStepReceipt>,
+    }
+
+fn dashboard_apply_result_json_value(
+  result: DashboardInstanceApplyResult,
+) -> JsonValue {
+  match result {
+    DashboardApplyConverged { instance_id, receipts, observed } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "dashboard-instance-apply/v1")),
+        json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
+        json_kv(key: "status", value: json_string(s: "converged")),
+        json_kv(key: "health_current", value: json_bool(b: observed.health_current)),
+        json_kv(key: "production_untouched", value: json_bool(b: observed.production_untouched)),
+        json_kv(key: "source_revision_current", value: json_bool(b: observed.source_revision_current)),
+        json_kv(key: "source_revision_detail", value: json_string(s: observed.source_revision_detail)),
+        json_kv(key: "steps", value: json_array(elements: receipts |> map(r =>
+          dashboard_step_receipt_json_value(receipt: r)))),
+      ])
+    DashboardApplyRefused { instance_id, step, detail, receipts } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "dashboard-instance-apply/v1")),
+        json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
+        json_kv(key: "status", value: json_string(s: "refused")),
+        json_kv(key: "step", value: json_string(s: step as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+        json_kv(key: "steps", value: json_array(elements: receipts |> map(r =>
+          dashboard_step_receipt_json_value(receipt: r)))),
+      ])
+  }
+}
+
+fn dashboard_step_receipt_json_value(
+  receipt: DashboardProvisionStepReceipt,
+) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "kind", value: json_string(s: receipt.kind as String)),
+    json_kv(key: "target", value: json_string(s: receipt.target)),
+    json_kv(key: "success", value: json_bool(b: receipt.success)),
+    json_kv(key: "detail", value: json_string(s: receipt.detail)),
+  ])
+}
+
+fn dashboard_apply_refused(
+  instance: HostDashboardInstance,
+  step: String,
+  detail: String,
+  receipts: List<DashboardProvisionStepReceipt>,
+) -> DashboardInstanceApplyResult {
+  DashboardApplyRefused {
+    instance_id: instance.instance_id,
+    step: step as NonEmptyStr,
+    detail: detail,
+    receipts: receipts,
+  }
+}
+
+fn dashboard_instance_apply_after_preflight(
+  instance: HostDashboardInstance,
+  production: HostDashboardInstance,
+  desired_source_revision: CommitSha,
+) -> DashboardInstanceApplyResult {
+  if !dashboard_instance_paths_are_owned(instance: instance)
+      || !dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
+      || instance.listen_port == production.listen_port {
+    dashboard_apply_refused(
+      instance: instance,
+      step: "isolation-preflight",
+      detail: "instance path or port isolation failed before any mutation",
+      receipts: [],
+    )
+  } else {
+    let production_before = dashboard_production_snapshot(production: production)
+    if !production_before.observed {
+      dashboard_apply_refused(
+        instance: instance,
+        step: "production-preflight",
+        detail: join(["production read-back refused before mutation: ", production_before.detail], ""),
+        receipts: [],
+      )
+    } else {
+      let before = dashboard_instance_observe(
+        instance: instance,
+        production_untouched: true,
+        desired_source_revision: desired_source_revision,
+      )
+      match dashboard_instance_reconcile(instance: instance, observed: before) {
+        DashboardInstanceConverged =>
+          DashboardApplyConverged {
+            instance_id: instance.instance_id,
+            receipts: [],
+            observed: before,
+          }
+        DashboardInstanceRefused { reason } =>
+          dashboard_apply_refused(
+            instance: instance,
+            step: "initial-reconcile",
+            detail: reason as String,
+            receipts: [],
+          )
+        DashboardInstanceApply { plan } => {
+          let temp = shell.Mktemp.Dir()
+          if !temp.success {
+            dashboard_apply_refused(
+              instance: instance,
+              step: "source-temp",
+              detail: "mktemp -d failed before source materialization",
+              receipts: [],
+            )
+          } else {
+            let temp_bundle = join([temp.path as String, "/source.bundle"], "") as FilePath
+            let temp_verify_repo = join([temp.path as String, "/verify.git"], "") as FilePath
+            let applied = dashboard_apply_plan(
+              instance: instance,
+              plan: plan,
+              temp_bundle: temp_bundle,
+              temp_verify_repo: temp_verify_repo,
+            )
+            let cleaned = shell.Remove.RecursiveForce(path: temp.path)
+            if !applied.running {
+              dashboard_apply_refused(
+                instance: instance,
+                step: applied.refused_step,
+                detail: applied.refused_detail,
+                receipts: applied.receipts,
+              )
+            } else if !cleaned.success {
+              dashboard_apply_refused(
+                instance: instance,
+                step: "source-temp-cleanup",
+                detail: "provision operations completed but temporary source bundle cleanup failed",
+                receipts: applied.receipts,
+              )
+            } else {
+              let production_after = dashboard_production_snapshot(production: production)
+              let untouched = dashboard_production_snapshots_equal(
+                before: production_before,
+                after: production_after,
+              )
+              let after = dashboard_instance_observe(
+                instance: instance,
+                production_untouched: untouched,
+                desired_source_revision: desired_source_revision,
+              )
+              match dashboard_instance_reconcile(instance: instance, observed: after) {
+                DashboardInstanceConverged =>
+                  DashboardApplyConverged {
+                    instance_id: instance.instance_id,
+                    receipts: applied.receipts,
+                    observed: after,
+                  }
+                DashboardInstanceRefused { reason } =>
+                  dashboard_apply_refused(
+                    instance: instance,
+                    step: "readback-reconcile",
+                    detail: reason as String,
+                    receipts: applied.receipts,
+                  )
+                DashboardInstanceApply { plan: remaining } =>
+                  dashboard_apply_refused(
+                    instance: instance,
+                    step: "readback-incomplete",
+                    detail: join([
+                      "post-apply observation did not converge; remaining desired operations=",
+                      to_string(count(remaining)),
+                    ], ""),
+                    receipts: applied.receipts,
+                  )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_instance_apply(
+  instance: HostDashboardInstance,
+  production: HostDashboardInstance,
+) -> DashboardInstanceApplyResult {
+  match dashboard_instance_apply_preflight(
+    instance: instance,
+    production: production,
+  ) {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      dashboard_apply_refused(
+        instance: instance,
+        step: step as String,
+        detail: detail,
+        receipts: [],
+      )
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision,
+    } =>
+      dashboard_instance_apply_after_preflight(
+        instance: instance,
+        production: production,
+        desired_source_revision: source_revision,
+      )
+  }
+}
+
+fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
+  dashboard_instance_apply(
+    instance: srv1_lab_dashboard_instance(),
+    production: srv1_live_dashboard_instance(),
+  )
+}
+
+fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
+  dashboard_instance_apply_preflight(
+    instance: srv1_lab_dashboard_instance(),
+    production: srv1_live_dashboard_instance(),
+  )
+}
+
+fn srv1_lab_dashboard_preflight_json() -> String {
+  serialize_json(v: dashboard_apply_preflight_json_value(
+    result: srv1_lab_dashboard_preflight(),
+  ))
+}
+
+func srv1_lab_dashboard_preflight_wet() -> ProcessExit {
+  let result = srv1_lab_dashboard_preflight()
+  match result {
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => ExitSuccess
+    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
+        result: result,
+      )))
+  }
+}
+
+fn srv1_lab_dashboard_apply_json() -> String {
+  serialize_json(v: dashboard_apply_result_json_value(result: srv1_lab_dashboard_apply()))
+}
+
+func srv1_lab_dashboard_apply_wet() -> ProcessExit {
+  let result = srv1_lab_dashboard_apply()
+  match result {
+    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
+    DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
+  }
+}

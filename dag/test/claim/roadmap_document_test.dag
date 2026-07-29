@@ -4,6 +4,7 @@ import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
 import gunbc.roadmap_model { RoadmapNodeId, RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import std.markdown { MarkdownBlock, HeadingBlock, ParagraphBlock, TextInline, H1 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -19,6 +20,7 @@ fn audit_node() -> RoadmapNode {
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -30,6 +32,7 @@ fn status_node() -> RoadmapNode {
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -40,6 +43,7 @@ fn child_node() -> RoadmapNode {
     line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -134,4 +138,3 @@ test fn witness_drift_receipt() -> Bool {
   emit(merged: [5491]) == expected_roadmap()
     && !(emit(merged: []) == expected_roadmap())
 }
-
