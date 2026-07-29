@@ -69,13 +69,12 @@ Insert a new assimilation phase **`BuildCacheProvision`** on `HostStandupAssimil
 host_standup_assimilation_step(
   phase: BuildCacheProvision,
   label: "P1b:build-cache-provision",
-  disposition: PhaseDisposition {
+  disposition: ModeledCompose {
     authorities: [
       decl_ref("gunbc.host_build_cache_provision", "provision_build_cache"),
       decl_ref("gunbc.host_toolchain_ensure", "host_toolchain_ensure"),
       decl_ref("extdeps.cache.sccache", "sccache_local_facts"),
-    ],
-    gaps: [],
+    ]
   },
   effect_evidence: host_effect_identity_evidence,
 )
