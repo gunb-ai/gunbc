@@ -86,7 +86,7 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
   let empty = empty_doc_html()
   string_contains(s: authority, pattern: "class=\"finish-line-progress\"")
     && string_contains(s: authority, pattern: "v1 exit: four finish lines")
-    && string_contains(s: authority, pattern: "62 declared · 2 accepted · 60 active")
+    && string_contains(s: authority, pattern: "63 declared · 6 accepted · 57 active")
     && string_contains(s: authority, pattern: "Compiler fixed point")
     && string_contains(s: authority, pattern: "Interpreter deleted")
     && string_contains(s: authority, pattern: "Products v1-free")
@@ -98,8 +98,8 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
 }
 
 fn depth_chain_html(fuel: Int) -> String {
-  let parent = gunbc.roadmap_authority.authored(id: "p", done: false, content: "parent-node")
-  let child = gunbc.roadmap_authority.authored(id: "c", done: false, content: "child-node-title")
+  let parent = gunbc.roadmap_authority.authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
+  let child = gunbc.roadmap_authority.authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
     EmitOk { html: h } => h
@@ -108,7 +108,7 @@ fn depth_chain_html(fuel: Int) -> String {
 }
 
 fn bold_title_html() -> String {
-  let rn = gunbc.roadmap_authority.authored(id: "bold1", done: false, content: "**bold** item")
+  let rn = gunbc.roadmap_authority.authored(identity: "rnfx_4JKJ1ZMAYSR30YJW8T8B", id: "bold1", done: false, content: "**bold** item")
   match try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
@@ -149,8 +149,7 @@ fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> Stri
 }
 
 fn ready_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored_wi(
-    id: "disp1",
+  gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
     done: false,
     content: "dispatch-me",
     intricacy: IntricacyLow,
@@ -159,12 +158,13 @@ fn ready_dispatch_node() -> RoadmapNode {
 }
 
 fn unsized_open_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.authored(id: "disp-unsized", done: false, content: "observe-only")
+  gunbc.roadmap_authority.authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
 fn signed_off_dispatch_node() -> RoadmapNode {
   let base = ready_dispatch_node()
   RoadmapNode {
+    identity: "rnfx_08P5JSFSS1NH1YY20PWV" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -247,8 +247,7 @@ test fn witness_signed_off_node_doc_has_no_button() -> Bool {
 }
 
 test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
-  let node = gunbc.roadmap_authority.derivable_wi(
-    id: "disp-review",
+  let node = gunbc.roadmap_authority.derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
     prs: [7301],
     title: "review-me",
     description: "",
@@ -267,16 +266,13 @@ test fn witness_unsized_open_node_keeps_manual_dispatch() -> Bool {
 }
 
 fn blocked_dispatch_workspace_html() -> String {
-  let policy_blocker = gunbc.roadmap_authority.authored(
-    id: "disp-policy-blocker",
+  let policy_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_ENDCMSJ7A7XTXK91KKZD", id: "disp-policy-blocker",
     done: false,
     content: "policy prerequisite")
-  let model_blocker = gunbc.roadmap_authority.authored(
-    id: "disp-model-blocker",
+  let model_blocker = gunbc.roadmap_authority.authored(identity: "rnfx_2R3ZJWEHE8BDYVGJ82Z9", id: "disp-model-blocker",
     done: false,
     content: "model prerequisite")
-  let blocked = gunbc.roadmap_authority.authored_wi(
-    id: "disp-blocked",
+  let blocked = gunbc.roadmap_authority.authored_wi(identity: "rnfx_VRBYQ6ZVRKNMCNVXFCG6", id: "disp-blocked",
     done: false,
     content: "blocked work",
     intricacy: IntricacyLow,
@@ -313,7 +309,7 @@ test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
 }
 
 fn superseded_dispatch_node() -> RoadmapNode {
-  gunbc.roadmap_authority.superseded(id: "disp1", by: "successor-lane", content: "dispatch-me")
+  gunbc.roadmap_authority.superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
 }
 
 test fn witness_superseded_node_marked_no_button() -> Bool {
@@ -335,7 +331,7 @@ test fn witness_ticket_rows_render_structured() -> Bool {
 }
 
 fn long_brief_fixture() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_row(id: "brief-overrun-fixture", done: false, t: TicketFields {
+  gunbc.roadmap_authority.ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: TicketFields {
     headline: "fixture",
     brief: "w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w",
     displaced_cost: "",
@@ -403,8 +399,7 @@ test fn witness_authority_leads_within_budget() -> Bool {
 
 fn overlong_lead_node() -> RoadmapNode {
   let chunk = "a lead with no separator so the whole line stands "
-  gunbc.roadmap_authority.authored(
-    id: "overlong-lead",
+  gunbc.roadmap_authority.authored(identity: "rnfx_FKEE5NQSZN982W3TF9SS", id: "overlong-lead",
     done: false,
     content: join([chunk, chunk, chunk, chunk, chunk, chunk, chunk], ""),
   )

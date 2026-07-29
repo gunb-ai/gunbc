@@ -97,6 +97,7 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -563,7 +564,7 @@ test fn witness_session_lease_shape_reused() -> Bool {
 }
 
 fn ticket_fixture_node() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_wi(id: "ticket-fixture", done: false, t: TicketFields {
+  gunbc.roadmap_authority.ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",
