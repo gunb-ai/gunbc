@@ -394,6 +394,59 @@ test fn carried_roster_is_the_content_digest_preimage() -> Bool {
     && (witness_closure_digest() == artifact_content_digest(artifact: witness_complete_closure_artifact()))
 }
 
+data size_authentication_witness_note: String = "codex review 44300, and it is a distinct attack from the one below: keep every part DIGEST identical and understate only the BYTE COUNTS. Under the earlier preimage — (id, digest) per part — the derived content digest was unchanged, so the read-back still matched, BindingOk was returned, and the understated size was trusted by the budget check and handed to store_put. The earlier witness did not reach this: it varied the parts themselves, so it exercised a different path. These vary bytes ALONE, holding every digest fixed, which is the discriminating input the previous test set lacked. With bytes inside the preimage the understated artifact is refused wrong-content; the honest one at the same budget is admitted, so the pair discriminates rather than going blanket red."
+
+fn witness_size_understated_closure_artifact() -> MaterializedArtifact {
+  ResolvedGraphArtifact {
+    request_key: request_key(req: witness_closure_request()),
+    resolved_graph: ArtifactPart { digest: content_hash_atom(value: "closure-graph-1"), bytes: byte_size(count: 6) },
+    source_indices: ArtifactPart { digest: content_hash_atom(value: "closure-indices-1"), bytes: byte_size(count: 2) },
+    compile_clean_diagnostic_union: ArtifactPart { digest: content_hash_atom(value: "closure-diagnostics-1"), bytes: byte_size(count: 1) }
+  }
+}
+
+fn witness_hash_list_contains(xs: List<ContentHash>, wanted: ContentHash) -> Bool {
+  xs |> fold(init: false, f: (acc, x) => acc || (x == wanted))
+}
+
+fn witness_carries_the_canonical_three_digests(a: MaterializedArtifact) -> Bool {
+  let ds = artifact_carried_outputs(artifact: a) |> map(o => o.digest)
+  (ds.count() == 3)
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-graph-1"))
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-indices-1"))
+    && witness_hash_list_contains(xs: ds, wanted: content_hash_atom(value: "closure-diagnostics-1"))
+}
+
+test fn understated_bytes_alone_hold_every_part_digest_fixed() -> Bool {
+  witness_carries_the_canonical_three_digests(a: witness_complete_closure_artifact())
+    && witness_carries_the_canonical_three_digests(a: witness_size_understated_closure_artifact())
+    && (measure_count(m: artifact_bytes(artifact: witness_size_understated_closure_artifact())) == 9)
+    && (measure_count(m: artifact_bytes(artifact: witness_complete_closure_artifact())) == 100)
+}
+
+test fn red_understated_bytes_are_inside_the_authenticated_preimage() -> Bool {
+  let understated_digest = artifact_content_digest(artifact: witness_size_understated_closure_artifact())
+  (understated_digest == witness_closure_digest()) == false
+}
+
+test fn red_understated_bytes_alone_are_refused_wrong_content_not_admitted() -> Bool {
+  let understated = provider_admit(
+    store: witness_empty_store(budget_count: 50),
+    req: witness_closure_request(),
+    artifact: witness_size_understated_closure_artifact(),
+    observed_digest: witness_closure_digest()
+  )
+  let honest_at_the_same_budget = provider_admit(
+    store: witness_empty_store(budget_count: 1000),
+    req: witness_closure_request(),
+    artifact: witness_complete_closure_artifact(),
+    observed_digest: witness_closure_digest()
+  )
+  admission_is_refused_wrong_content_write(a: understated)
+    && (admission_is_admitted(a: understated) == false)
+    && admission_is_admitted(a: honest_at_the_same_budget)
+}
+
 data derivation_invariant_witness_note: String = "The fourth instance of the one defect (parent finding, after reviews 44175 / 44265 / 44278): artifact_bytes was a caller-authored field that request_artifact_binding never verified and structurally COULD not verify, while provider_admit_bound branched the budget check on it and handed the same number to store_put as the stored size. So the 7406 construction wall — store_put refuses when the artifact exceeds the budget — was a wall against an honest caller only: an understated size walked past ProviderBudgetExhausted, was admitted, and then corrupted store_bytes_used for every subsequent eviction decision. The size is now folded over the carried parts, exactly parallel to the digest, so the roster is the preimage of both. The witnesses below show what that buys: the size IS the parts fold, and the only way to derive a smaller size is to shrink the parts — which changes the digest and is caught by the read-back comparison the door already runs. Understating the size is therefore not a bypass, it is the wrong-content refusal."
 
 test fn artifact_size_is_the_carried_parts_fold() -> Bool {
