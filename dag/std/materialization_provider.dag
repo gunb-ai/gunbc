@@ -438,9 +438,7 @@ fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
 
 fn serve_resolved_graph_v1_disk_probe(
   closure_digest: ContentHash,
-  compiler_digest: ContentHash,
-  content_digest: ContentHash,
-  payload_bytes: ByteSize
+  compiler_digest: ContentHash
 ) -> ProviderLookup {
   let req = ResolveClosureRequest {
     closure_digest: closure_digest,
