@@ -214,12 +214,13 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
   let key = request_key(req: req)
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
-    ProbeFound { artifact: a, observed_digest: obs } =>
-      match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
+    ProbeFound { artifact: a, observed_digest: obs } => {
+      let b = request_artifact_binding(req: req, artifact: a, observed_digest: obs)
+      match b {
         BindingOk =>
           ProviderHit {
             artifact: a,
-            identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: a, observed_digest: obs))
+            identity: binding_identity_grade(b: b)
           }
         BindingKindMismatch { requested: rk, found: fk } =>
           ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
@@ -230,6 +231,7 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
         BindingIncomplete { missing: m } =>
           ProviderRefusedIncomplete { key: key, missing: m }
       }
+    }
   }
 }
 
@@ -296,8 +298,7 @@ fn serve_resolved_graph_v1_disk_probe(
         artifact_bytes: byte_size(count: payload_byte_count)
       },
       observed_digest: content_digest
-    },
-    identity: StructurallyIdentical
+    }
   )
 }
 

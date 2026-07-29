@@ -19,8 +19,6 @@ pub enum ResolvedGraphProviderOutcome {
     RefusedWrongArtifact,
     RefusedKindMismatch,
     RefusedWrongContent,
-    RefusedIdentityUnshareable,
-    RefusedIdentityGradeUnsupported,
     LookupUnclassified { label: String },
 }
 
@@ -114,12 +112,6 @@ fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, S
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup)? {
         return Ok("ProviderRefusedWrongContent".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_unshareable", lookup)? {
-        return Ok("ProviderRefusedIdentityUnshareable".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_grade_unsupported", lookup)? {
-        return Ok("ProviderRefusedIdentityGradeUnsupported".to_string());
-    }
     let missing = lookup_missing_outputs(ctx, lookup)?;
     if !missing.is_empty() {
         return Ok(format!("ProviderRefusedIncomplete({missing:?})"));
@@ -145,12 +137,6 @@ pub fn interpret_provider_lookup(
     }
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", &lookup)? {
         return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_unshareable", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedIdentityUnshareable);
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_grade_unsupported", &lookup)? {
-        return Ok(ResolvedGraphProviderOutcome::RefusedIdentityGradeUnsupported);
     }
     let missing = lookup_missing_outputs(ctx, &lookup)?;
     if !missing.is_empty() {

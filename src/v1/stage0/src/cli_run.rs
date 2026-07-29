@@ -5666,12 +5666,20 @@ pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
 {
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+                c.set(c.get().saturating_sub(1));
+            });
+        }
+    }
+
     CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
         c.set(c.get().saturating_add(1));
-        let out = f();
-        c.set(c.get().saturating_sub(1));
-        out
-    })
+    });
+    let _guard = Guard;
+    f()
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -8009,13 +8017,6 @@ fn serve_resolved_graph_disk_hit_through_provider(
         ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
             "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
         ),
-        ResolvedGraphProviderOutcome::RefusedIdentityUnshareable => Err(
-            "resolved-graph-cache provider refused disk hit: identity unshareable".to_string(),
-        ),
-        ResolvedGraphProviderOutcome::RefusedIdentityGradeUnsupported => Err(
-            "resolved-graph-cache provider refused disk hit: identity grade unsupported"
-                .to_string(),
-        ),
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
@@ -8066,7 +8067,9 @@ fn resolved_graph_from_sources_with_index(
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode.
+    // the share above on hit so later same-subject demands never re-decode. CI leaves
+    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
+    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(cached) if !cross_process_provider_routing_suppressed() => {
