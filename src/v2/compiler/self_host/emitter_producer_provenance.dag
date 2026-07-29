@@ -31,7 +31,7 @@ import v2.std.optional {
 }
 import v2.std.text { String }
 
-data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity; static oracle derivation never mints BuildGreen (reviews 44441/44455/44460). BuildGreen authorization is witness-realization-only via producer_emission_canonical_receipt_for_executed_verdict with consumed wet_execution_digest. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
+data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity; static oracle derivation never mints BuildGreen (reviews 44441/44455/44460). producer_emission_canonical_receipt_for_executed_verdict is the future witness-realization mint path; its wet_execution_digest check is scaffold subject-binding today (review 44465), pending frontier_probe_survey execution-measured hashes. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
 
 type EmitterProducer
   = V1SeedEmitter
@@ -108,7 +108,7 @@ type ProducerEmissionExecutedGreenReceipt {
   wet_execution_digest: Hash
 }
 
-data producer_emission_executed_green_receipts_note: String = "Execution-grounded authorization contract (reviews 44455/44460): ProducerEmissionExecutedGreenReceipt is minted only by witness-realization via producer_emission_canonical_receipt_for_executed_verdict — never as hand-authored data rows in a declarative list (same class as deleted seed_emitter_behavioral_wet_green_entries, review 44441). wet_execution_digest must match producer_emission_wet_verdict_digest and is consumed in producer_emission_executed_green_receipt_admissible. Static oracle derivation (producer_emission_build_result_for_oracle_row) never mints BuildGreen."
+data producer_emission_executed_green_receipts_note: String = "Witness-realization mint contract (reviews 44455/44460/44465): ProducerEmissionExecutedGreenReceipt is minted only via producer_emission_canonical_receipt_for_executed_verdict — never as hand-authored data rows (review 44441). SCAFFOLD (44465): wet_execution_digest is checked against producer_emission_wet_verdict_digest, which today hashes only declared inputs (probe identity + transport pass_marker) — subject-binding, not execution evidence. Real execution grounding lands when frontier_probe_survey binds execution-measured verdict digests and a live consumer wires this path. Static oracle derivation never mints BuildGreen; emitter_produced_baseline stays 0 until then."
 
 data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
 
@@ -240,6 +240,8 @@ fn producer_emission_oracle_row_transport_config_axis(
   optional_axis(opt: module_behavioral_transport_config_for(module_path: row.module_path))
 }
 
+data producer_emission_wet_verdict_digest_scaffold_note: String = "SCAFFOLD (review 44465): producer_emission_wet_verdict_digest hashes declared inputs only (probe entry/function, module_path, transport pass_marker). producer_emission_executed_green_receipt_admissible consumes wet_execution_digest against this subject-binding — not claim_executor verdict evidence. Dissolve-on: frontier_probe_survey binds execution-measured verdict digests; witness-realization becomes the sole minter with no synthesizable digest from the row alone."
+
 fn producer_emission_wet_verdict_digest(
   row: ProducerEmissionOracleRow,
   transport_pass_marker: String
@@ -330,7 +332,7 @@ fn producer_emission_canonical_receipt_for_oracle_row(
 
 data emitter_produced_baseline: Int = 0
 
-data emitter_produced_baseline_note: String = "Review 44362/44441/44455/44460: frontier EmitterProduced count stays zero until witness-realization mints via producer_emission_canonical_receipt_for_executed_verdict with an admissible wet_execution_digest — static oracle derivation never mints BuildGreen. SelfHostWetReceiptBinding restoration alone does not authorize."
+data emitter_produced_baseline_note: String = "Review 44362/44441/44455/44460/44465: frontier EmitterProduced count stays zero until witness-realization wires producer_emission_canonical_receipt_for_executed_verdict with execution-measured verdict digests (frontier_probe_survey dissolve-on). Today's wet_execution_digest check is scaffold subject-binding only — no live consumer at baseline 0. Static oracle derivation never mints BuildGreen."
 
 data producer_emission_oracle_row_body_producer: ProducerEmissionOracleRow = seed_emitter_behavioral_oracle_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
@@ -522,7 +524,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455/44460: enrollment binds minted BuildRefused quarantine receipts + transport roster (optional_axis). Authorization requires BuildGreen canonical receipt from static oracle derivation (always Absent at baseline) or witness-realization mint via producer_emission_canonical_receipt_for_executed_verdict with admissible wet_execution_digest. No declarative executed-receipt list. Green wet nightly enrollment keys on binding presence (44453); authorization is execution-grounded."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455/44460/44465: enrollment binds minted BuildRefused quarantine receipts + transport roster (optional_axis). Authorization requires BuildGreen canonical receipt — static oracle derivation always Absent at baseline; future witness-realization path via producer_emission_canonical_receipt_for_executed_verdict (digest check is scaffold subject-binding until frontier_probe_survey). No declarative executed-receipt list. Green wet nightly enrollment keys on binding presence (44453)."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
