@@ -8,6 +8,7 @@ import gunbc.roadmap_document {
 import std.types { ContentHash }
 import gunbc.roadmap_model {
   RoadmapNode,
+  RoadmapNodeIdentity,
   RoadmapEdge,
   Pointer,
   RoadmapNodeId,
@@ -71,8 +72,10 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
 
 data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
 
-fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
+fn authored(identity: String,
+  id: String, done: Bool, content: String) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
@@ -83,8 +86,10 @@ fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
   }
 }
 
-fn derivable(id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
+fn derivable(identity: String,
+  id: String, prs: List<Int>, title: String, description: String) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
@@ -96,6 +101,7 @@ fn derivable(id: String, prs: List<Int>, title: String, description: String) -> 
 }
 
 fn derivable_wi(
+  identity: String,
   id: String,
   prs: List<Int>,
   title: String,
@@ -105,6 +111,7 @@ fn derivable_wi(
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
@@ -121,6 +128,7 @@ fn derivable_wi(
 }
 
 fn authored_wi(
+  identity: String,
   id: String,
   done: Bool,
   content: String,
@@ -129,6 +137,7 @@ fn authored_wi(
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
@@ -144,8 +153,10 @@ fn authored_wi(
   }
 }
 
-fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
+fn ticket_row(identity: String,
+  id: String, done: Bool, t: TicketFields) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: TicketLine { done: done, ticket: t },
     carriers: [],
@@ -157,6 +168,7 @@ fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
 }
 
 fn ticket_wi(
+  identity: String,
   id: String,
   done: Bool,
   t: TicketFields,
@@ -165,6 +177,7 @@ fn ticket_wi(
   repo: String
 ) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: TicketLine { done: done, ticket: t },
     carriers: [],
@@ -180,8 +193,10 @@ fn ticket_wi(
   }
 }
 
-fn superseded(id: String, by: String, content: String) -> RoadmapNode {
+fn superseded(identity: String,
+  id: String, by: String, content: String) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: SupersededLine { by: by, content: content },
     carriers: [],
@@ -194,6 +209,7 @@ fn superseded(id: String, by: String, content: String) -> RoadmapNode {
 
 fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
   RoadmapNode {
+    identity: rn.identity,
     node: rn.node,
     line: rn.line,
     carriers: rn.carriers,
@@ -233,6 +249,7 @@ fn fields(
 }
 
 fn active_sized(
+  identity: String,
   id: String,
   owner: String,
   path: String,
@@ -241,6 +258,7 @@ fn active_sized(
   t: TicketFields
 ) -> RoadmapNode {
   RoadmapNode {
+    identity: identity as RoadmapNodeIdentity,
     node: nid(s: id),
     line: TicketLine { done: false, ticket: t },
     carriers: carrier(path: path),
@@ -256,8 +274,10 @@ fn active_sized(
   }
 }
 
-fn active(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+fn active(identity: String,
+  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
   active_sized(
+    identity: identity,
     id: id,
     owner: owner,
     path: path,
@@ -267,8 +287,10 @@ fn active(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNo
   )
 }
 
-fn active_small(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+fn active_small(identity: String,
+  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
   active_sized(
+    identity: identity,
     id: id,
     owner: owner,
     path: path,
@@ -278,8 +300,10 @@ fn active_small(id: String, owner: String, path: String, t: TicketFields) -> Roa
   )
 }
 
-fn active_large(id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
+fn active_large(identity: String,
+  id: String, owner: String, path: String, t: TicketFields) -> RoadmapNode {
   active_sized(
+    identity: identity,
     id: id,
     owner: owner,
     path: path,
@@ -369,6 +393,7 @@ fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFie
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   [
     active_sized(
+      identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
@@ -385,6 +410,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_sized(
+      identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
       id: "2-scm-mercurial-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
@@ -401,6 +427,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_sized(
+      identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
       id: "2-scm-pijul-upstream-model",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
@@ -417,6 +444,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_sized(
+      identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
       id: "2-claim-indexed-evidence",
       owner: "deduction",
       path: "docs/plans/dag-scm-design.md",
@@ -434,6 +462,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active(
+      identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
       id: "namespace-occurrence-transport",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -448,6 +477,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_KH24WPK0FFKWHK5J0QM40AYMZZ",
       id: "namespace-canonical-binding",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -462,6 +492,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_F8Q9J015C5V8JKZMAGW556KVP0",
       id: "namespace-bound-only-consumers",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -476,6 +507,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_154WYEVN9KBKQ6FVGPSQR4Y2H2",
       id: "namespace-v2-import-completion",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -490,6 +522,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_HPYW6X0NEMYVNAKZJFA6TQPK0Q",
       id: "namespace-legacy-choice-retirement",
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
@@ -505,6 +538,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_E414RDCS728VRFA9QZ0NX76SYN",
       id: "pderive-typesafe-nullary-reflection",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -519,6 +553,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_HVYDDT9844FY806ZKBDV5KVQDR",
       id: "pderive-static-supplemental-contract",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -533,6 +568,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_0CPDNZRQA7JMPR0SDG5XSG5987",
       id: "pderive-source-slot-binding",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -547,6 +583,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_W3JP9BYW55W695XXAGS4KRVS8K",
       id: "pderive-v2-emitter-consumer",
       owner: "self-host",
       path: "src/v2/compiler/05_emit.dag",
@@ -561,6 +598,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_DR9YT28ZT3CW3QBQJE4FDVAGFB",
       id: "pderive-error-movement-receipt",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -576,12 +614,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_R5GXMKEWDKNV87EQQ3BJRBS998",
       id: "observation-scoped-run-seed-growth-justification",
       owner: "ci-observation",
       path: "dag/gunbc/plans/cli_run_hollowing_plan.dag",
       t: seed_growth_fields(j: observation_scoped_run_seed_growth_justification())
     ),
     active(
+      identity: "rn_RADD6MACVYS70705B1S830DHNX",
       id: "observation-scoped-run-consumer",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -596,6 +636,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_CYFS96A1S7K88Y1JDCDCG9N6KC",
       id: "observation-ci-event-grouping",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -610,6 +651,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_JV9JZNAZDQCB041MSNKCW0FSEW",
       id: "observation-collapse-watchdog-restatement",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -624,6 +666,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -639,6 +682,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
       id: "placement-live-roster-preflight",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -653,6 +697,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_9MFAAQX8CWS2ZTGFZ1BZGTAR38",
       id: "placement-two-host-warm-qualification",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -667,6 +712,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_KM2MW4V0T1NY4CNCAJ066P7NPZ",
       id: "placement-shadow-equality",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -681,6 +727,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_XA5X71V90AVWZZ6BSKYH6MG0Q4",
       id: "placement-atomic-authority-flip",
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
@@ -696,6 +743,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_SZKN5YRA7FH46J1Z6THGN080G1",
       id: "v1-test-hygiene-producer-retirement",
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
@@ -710,6 +758,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_KSJNTEDB15YG37HBQXP8P62XJ8",
       id: "v2-emitter-producer-provenance",
       owner: "self-host",
       path: "src/v2/compiler/self_host/frontier.dag",
@@ -724,6 +773,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_B7PXF6JQRHY19AEQPXGBP12DCT",
       id: "v2-emitter-direct-rust-door",
       owner: "self-host",
       path: "src/v2/compiler/self_host/candidate_generation.dag",
@@ -738,6 +788,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_KD37MRQ3ZA6F502DBKE6FE0VB8",
       id: "v2-emitter-first-behavioral-module",
       owner: "self-host",
       path: "src/v2/compiler/self_host/frontier.dag",
@@ -752,6 +803,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_5E7W23B34MW5Z7XMATBBJ11QFS",
       id: "v2-emitter-native-bootstrap",
       owner: "self-host",
       path: "src/v2/compiler/self_host/frontier.dag",
@@ -766,6 +818,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_C90239W2TBQX58KQHHPXE9S9VP",
       id: "v1-emitter-fixed-point",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -780,6 +833,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_M5WCJ1GDZVJ67JXQN2NBPJKB58",
       id: "v1-honest-frontier",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -794,6 +848,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_53JPH6BB7G588K7DMZNWM0E3AS",
       id: "v1-materialization-kernel",
       owner: "self-host",
       path: "docs/plans/witness-realization-plan.md",
@@ -808,6 +863,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_X9RY6N9HJX29GHHGDRGP86T6NV",
       id: "v1-verification-ledger",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -822,6 +878,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_FWSQ19QP41ARPXBM0HFW4MFXGG",
       id: "v1-ci-floor-cutover",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -836,6 +893,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_HM8EEVB6DDD417CJ8RM79T4F3M",
       id: "v1-hand-queue-drain",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -850,6 +908,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_0X0GRWB1KQ6KR0SAK1HDKEDGPR",
       id: "v1-test-migration",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -864,6 +923,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
       id: "v1-seed-honesty-decision",
       owner: "operator",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -878,6 +938,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_C99CKWVBCHDQ35TQRST1AT3N8V",
       id: "v1-emitter-quarantine",
       owner: "self-host",
       path: "src/v1/05_emit_rust.dag",
@@ -892,6 +953,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_1QZDB4P83FP5GPBQMVHPJ4JWQZ",
       id: "v1-emitter-delete",
       owner: "self-host",
       path: "src/v1/05_emit_rust.dag",
@@ -906,6 +968,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_J4Q81A4BJ8TXN6ZE4481RMB3Y9",
       id: "v1-interpreter-quarantine",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -920,6 +983,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_SSW55NRPT0931Q12PB8YQ3Q2BH",
       id: "v1-interpreter-delete",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -934,6 +998,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_NTQJM3ECTNN49NG2SSR9TNX2RX",
       id: "v1-products-v1-free",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -948,12 +1013,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_VK5TWKCDCMR1G8PQY0GK9TKSRR",
       id: "caret-parse-smoke-seed-growth-justification",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: caret_parse_smoke_seed_growth_fields(j: caret_parse_smoke_seed_growth_justification())
     ),
     active_large(
+      identity: "rn_RSBHA36N72JKQ0NAVKJ5AV153R",
       id: "v1-zero-hand-maintained-rust",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -969,6 +1036,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_7T6WSS1JYCV6GQNW1PZG73B0G3",
       id: "shell-typed-invocation",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -983,6 +1051,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_MRCH9RMA0WPEEM73AKTS5HX9TT",
       id: "shell-effectplan-to-bash",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -997,6 +1066,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_F4VSZD7T1FNFMGB57YZK1EKQAP",
       id: "shell-gate-migration",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -1011,6 +1081,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_Y27H49GJ9JCXHQRG5HD3N3FDMJ",
       id: "shell-residue-zero",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -1026,6 +1097,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_large(
+      identity: "rn_E8Y0PHW82DNMMYZ6SB2KKX2K76",
       id: "roadmap-runtime-identity-join",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -1040,6 +1112,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_YXN9NF28719TKA46VYQ5JA9ZP9",
       id: "roadmap-runtime-ready-override",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -1054,6 +1127,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_S6E48C3P7A3GCT4D12Y4M095EQ",
       id: "roadmap-runtime-dispatch-consumer",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -1068,6 +1142,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_WJDVJZSNQSWQ3XS55NM5VXV18R",
       id: "roadmap-runtime-readback",
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
@@ -1083,6 +1158,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_WWVQ07RC0HF55DPM2CXNKWY8RR",
       id: "fleet-state-frontier",
       owner: "fleet",
       path: "docs/plans/host-converge-inventory.md",
@@ -1097,6 +1173,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_PEH90XVR97GYYA5FXGDJXZ70PF",
       id: "fleet-bmc-policy-convergence",
       owner: "fleet",
       path: "docs/runbooks/bmc-redfish-operator-access.md",
@@ -1111,6 +1188,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_TAPSSCRTTBBV274TFK1PAGAP49",
       id: "fleet-closed-loop-converge",
       owner: "fleet",
       path: "docs/plans/host-effect-orchestration.md",
@@ -1125,6 +1203,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_Y33HNQA0BZ3S6FGMNT96M526MM",
       id: "fleet-dashboard-instance-membership",
       owner: "fleet",
       path: "docs/plans/gunbc-served-dashboard-design.md",
@@ -1139,6 +1218,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_DMMM7YQHT05Q01CD10Q7B6R1DK",
       id: "fleet-anti-entropy-hygiene",
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
@@ -1153,6 +1233,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_MDB59T769G88WS89Y6AD2M8MSS",
       id: "fleet-receipt-qualified-control",
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
@@ -1168,6 +1249,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active(
+      identity: "rn_3B3802MNXFPG4VS2VFT7BNBN1Y",
       id: "toolchain-pin-model",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
@@ -1182,6 +1264,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
+      identity: "rn_VTF6P0GG5N1A2SQ9X70TPH6K49",
       id: "toolchain-single-resolver",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
@@ -1196,6 +1279,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      identity: "rn_P57S06JDC8MG7V71CTYX3NRJHH",
       id: "toolchain-rust-hermetic",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
@@ -1210,6 +1294,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_sized(
+      identity: "rn_MVG7ADQA5NTV1Z3PJRTQZ73BF0",
       id: "toolchain-residue-zero",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
@@ -1226,6 +1311,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_small(
+      identity: "rn_EK3HGNHSK769BWC9Z34MAN6X8J",
       id: "toolchain-system-floor",
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",

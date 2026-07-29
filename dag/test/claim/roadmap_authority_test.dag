@@ -195,6 +195,7 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
 
 fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
     node: "red-fixture",
     line: line,
     carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
