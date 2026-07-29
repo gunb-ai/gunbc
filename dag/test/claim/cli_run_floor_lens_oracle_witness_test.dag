@@ -1,5 +1,22 @@
 module test.claim.cli_run_floor_lens_oracle_witness
 
+import v2.lens.disposition_redundancy { disposition_is_terminal }
+import gunbc.cli_run_floor_lens_oracle_scaffold {
+  cli_run_floor_lens_legacy_graph_oracle_scaffold,
+  cli_run_floor_lens_legacy_walk_oracle_scaffold,
+  cli_run_floor_lens_census_walk_hand_rust_scaffold,
+  cli_run_floor_lens_justification_hand_rust_scaffold,
+  cli_run_floor_lens_read_refusal_hand_rust_scaffold,
+  cli_run_floor_lens_observation_hand_rust_scaffold,
+  cli_run_floor_lens_scaffold_shape_red_control,
+  cli_run_floor_lens_oracle_dissolve_trigger,
+  cli_run_floor_lens_hand_rust_dissolve_trigger,
+  cli_run_floor_lens_hand_rust_loc_delta_net,
+  cli_run_floor_lens_oracle_equality_receipt_test,
+  cli_run_floor_lens_oracle_build_count_receipt_test,
+  cli_run_floor_lens_oracle_read_refusal_receipt_test,
+}
+
 
 test fn floor_lens_legacy_graph_oracle_is_declared_scaffold() -> Bool {
   !disposition_is_terminal(d: cli_run_floor_lens_legacy_graph_oracle_scaffold)
