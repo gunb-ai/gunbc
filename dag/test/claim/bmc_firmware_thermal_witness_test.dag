@@ -60,9 +60,12 @@ import gunbc.fleet_bmc_state {
   srv4_bmc_fan_projection_capability,
 }
 import gunbc.bmc_fan_projection {
+  AdmittedConfigDigestKnown,
+  AdmittedConfigDigestUnavailable,
   BmcFanPolicyProjectionCapability,
+  bmc_fan_admitted_config_digest,
   bmc_fan_policy_projection_durability_admission,
-  bmc_fan_quiet_curve_changed_digest,
+  bmc_fan_witness_digest_mismatch_sentinel,
 }
 import std.state_durability { StateDurabilityCapabilityVersion }
 import std.types { ContentHash }
@@ -787,7 +790,7 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
     firmware: srv4_bmc_fan_converged_policy_observation.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
     curve: fleet_quiet_temp_soc_fan_curve,
-    active_config_digest: bmc_fan_quiet_curve_changed_digest,
+    active_config_digest: bmc_fan_witness_digest_mismatch_sentinel,
     selected_config_path: srv4_bmc_fan_converged_policy_observation.selected_config_path,
     board_config_path: srv4_bmc_fan_converged_policy_observation.board_config_path,
     controller_service: srv4_bmc_fan_converged_policy_observation.controller_service,
@@ -843,4 +846,20 @@ test fn srv4_fixture_durability_evidence_is_constructed_not_relabelled() -> Bool
         evidence.admission == srv4_bmc_fan_durability_admission
       BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
     }
+}
+
+test fn fleet_quiet_curve_admits_srv4_active_config_digest() -> Bool {
+  match bmc_fan_admitted_config_digest(curve: fleet_quiet_temp_soc_fan_curve) {
+    AdmittedConfigDigestKnown { digest: digest } =>
+      digest == srv4_bmc_fan_active_config_digest
+        && digest == srv4_bmc_fan_projection_capability.projected_config_digest
+    AdmittedConfigDigestUnavailable => false
+  }
+}
+
+test fn non_fleet_curve_admitted_config_digest_is_unavailable() -> Bool {
+  match bmc_fan_admitted_config_digest(curve: asrock_altrad8ud_factory_temp_soc_fan_curve) {
+    AdmittedConfigDigestKnown { digest: _ } => false
+    AdmittedConfigDigestUnavailable => true
+  }
 }
