@@ -180,8 +180,31 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
-const STAGE0_CARGO_TOML_REL: &str = "src/v1/stage0/Cargo.toml";
-const STAGE0_PACKAGE_ROOT: &str = "src/v1/stage0/";
+const STAGE0_CARGO_MANIFEST_AUTHORITY_REL: &str = "dag/gunbc/stage0_cargo_manifest.dag";
+const STAGE0_CARGO_TOML_REPO_PATH_DATA_NAME: &str = "stage0_cargo_toml_repo_path";
+const STAGE0_PACKAGE_ROOT_DATA_NAME: &str = "stage0_package_root";
+
+fn stage0_cargo_toml_repo_path() -> &'static str {
+    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PATH.get_or_init(|| {
+        lens_string_data(
+            STAGE0_CARGO_MANIFEST_AUTHORITY_REL,
+            STAGE0_CARGO_TOML_REPO_PATH_DATA_NAME,
+        )
+    })
+    .as_str()
+}
+
+fn stage0_package_root() -> &'static str {
+    static ROOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ROOT.get_or_init(|| {
+        lens_string_data(
+            STAGE0_CARGO_MANIFEST_AUTHORITY_REL,
+            STAGE0_PACKAGE_ROOT_DATA_NAME,
+        )
+    })
+    .as_str()
+}
 
 /// Typed parse refusal for stage0 `Cargo.toml` `[[bin]]` extraction (DESIGN §5 — observe refusal without unwind).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,7 +230,7 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
 /// Authority: `gunbc.stage0_cargo_manifest` (no hand-listed bin rows in `.dag`).
 pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
     let root = workspace_root();
-    let manifest = root.join(STAGE0_CARGO_TOML_REL);
+    let manifest = root.join(stage0_cargo_toml_repo_path());
     let content = std::fs::read_to_string(&manifest).unwrap_or_else(|e| {
         panic!(
             "stage0_cargo_bin_repo_paths_from_manifest: failed to read {}: {e}",
@@ -219,6 +242,16 @@ pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
 
 pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
     content: &str,
+) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
+    try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+        content,
+        stage0_package_root(),
+    )
+}
+
+pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+    content: &str,
+    package_root: &str,
 ) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
     let mut paths = Vec::new();
     let mut in_bin = false;
@@ -249,7 +282,7 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
         }
         if in_bin {
             if let Some(path_val) = parse_bin_table_path_line(trimmed) {
-                paths.push(format!("{STAGE0_PACKAGE_ROOT}{path_val}"));
+                paths.push(format!("{package_root}{path_val}"));
                 current_bin_has_path = true;
             }
         }
@@ -337,9 +370,10 @@ pub fn stage0_cargo_bin_manifest_paths_unique_holds() -> bool {
 }
 
 pub fn stage0_cargo_bin_manifest_all_under_package_root_holds() -> bool {
+    let package_root = stage0_package_root();
     stage0_cargo_bin_repo_paths_from_manifest()
         .iter()
-        .all(|p| p.starts_with(STAGE0_PACKAGE_ROOT))
+        .all(|p| p.starts_with(package_root))
 }
 
 pub fn git_tracked_rust_repo_path_count() -> i64 {
@@ -31896,8 +31930,9 @@ pub mod census_exclude_derive;
 #[cfg(test)]
 mod stage0_cargo_manifest_tests {
     use super::{
-        stage0_cargo_bin_repo_paths_from_manifest_str,
-        try_stage0_cargo_bin_repo_paths_from_manifest_str, Stage0CargoBinManifestParseRefusal,
+        stage0_cargo_bin_repo_paths_from_manifest_str, stage0_package_root,
+        try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root,
+        Stage0CargoBinManifestParseRefusal,
     };
 
     #[test]
@@ -31915,7 +31950,10 @@ path="src/bin/demo.rs"
     fn rejects_bin_table_missing_path() {
         let fragment = "[[bin]]\nname = \"orphan\"\n";
         assert_eq!(
-            try_stage0_cargo_bin_repo_paths_from_manifest_str(fragment),
+            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+                fragment,
+                stage0_package_root()
+            ),
             Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
         );
     }
