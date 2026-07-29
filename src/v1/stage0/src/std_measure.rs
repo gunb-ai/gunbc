@@ -585,6 +585,21 @@ pub fn millisecond_count(m: Millisecond) -> Nat {
     measure_count(m.clone())
 }
 
+pub type PositiveMeasureCount = i64;
+
+pub type PositiveMillisecond = Rc<Measure<(), (), i64>>;
+
+pub fn positive_millisecond(count: i64) -> PositiveMillisecond {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn positive_millisecond_count(m: PositiveMillisecond) -> i64 {
+    measure_count(m.clone())
+}
+
 pub fn nanoseconds_per_millisecond() -> Nat {
     1000000
 }
