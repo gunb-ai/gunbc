@@ -1,7 +1,12 @@
 module test.claim.roadmap_focus_witness_test
 
 import std.types { Bool, String, Int, List }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer, Sized, IntricacyMedium, VolumeMedium, ManualAcceptance,
+}
+import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+
 import gunbc.roadmap_authority {
   active_roadmap_nodes,
   active_roadmap_edges,
@@ -14,6 +19,9 @@ import gunbc.roadmap_focus {
   focus_visible_nodes,
   focus_visible_edges,
   focus_hidden_node_count,
+  focus_prerequisite_ids,
+  focus_lane_nodes,
+  focus_prerequisite_ids,
   focus_is_active,
   focus_notice,
 }
@@ -26,19 +34,20 @@ data focus_witness_note: String = "Focus is a VIEW, so the property that matters
 fn all_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
 
 fn visible() -> List<RoadmapNode> {
-  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes())
+  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
 }
 
 test fn focus_partitions_rather_than_deletes() -> Bool {
   count(visible()) + focus_hidden_node_count(
     focus: roadmap_focus_selection,
     nodes: all_nodes(),
+    edges: active_roadmap_edges(),
   ) == count(all_nodes())
 }
 
 test fn clearing_focus_restores_every_node() -> Bool {
-  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes())) == count(all_nodes())
-    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes()) == 0
+  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges())) == count(all_nodes())
+    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == 0
 }
 
 test fn focus_actually_narrows_the_page() -> Bool {
@@ -61,16 +70,110 @@ test fn every_visible_edge_has_both_endpoints_visible() -> Bool {
 }
 
 test fn focus_notice_states_the_derived_hidden_count() -> Bool {
-  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes())
+  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
   string_contains(
     s: notice,
     pattern: to_string(focus_hidden_node_count(
       focus: roadmap_focus_selection,
       nodes: all_nodes(),
+      edges: active_roadmap_edges(),
     )),
   ) && string_contains(s: notice, pattern: "Focused view")
 }
 
 test fn unfocused_projection_emits_no_notice() -> Bool {
-  focus_notice(focus: NoFocus, nodes: all_nodes()) == ""
+  focus_notice(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == ""
+}
+
+data focus_closure_witness_note: String = "THE CLAIM THAT WOULD HAVE CAUGHT THE ORIGINAL BUG, stated over a SYNTHETIC graph rather than the live focus. The first focus shipped owner-membership as the whole visibility rule, and the page rendered pderive-source-slot-binding as ready while its prerequisite in a hidden lane was nowhere on it. Nothing was red; the page lied by omission, which is worse for a dispatched agent than for a person — a worker reads a ready-looking node, starts, and stalls on work the roadmap never mentioned.\n\nThe discriminator is synthetic because a live-focus assertion would contradict the carrier's own promise that changing or clearing the focus is a one-row view edit. A claim like `count(pulled) > 0` against roadmap_focus_selection fails the moment the focus is set to NoFocus, or to a lane that legitimately has no cross-owner prerequisite — reporting a defect where none exists and making the focus row un-editable in practice. The fixture below owns its two lanes and its transitive cross-lane edge, so it holds no matter what the live focus is set to, and it exercises TRANSITIVITY (b3 pulls b2 pulls b1) which is the part manual inspection misses.\n\nThe live-tree claim beside it is stated conditionally: whatever the current focus is, no visible node may have a hidden prerequisite. That invariant is true under every focus including NoFocus, so it constrains the projection without pinning the selection."
+
+fn fx(id: String, owner: String) -> RoadmapNode {
+  RoadmapNode {
+    node: id,
+    line: TicketLine { done: false, ticket: TicketFields {
+      headline: "fixture", brief: "fixture", displaced_cost: "fixture",
+      current_state: "fixture", first_slice: "fixture", red_control: "fixture",
+      out_of_scope: "fixture", handback: "fixture",
+      updates: [], authored_on: "", last_verified_on: "",
+    } },
+    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    sizing: Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
+    execution: ExecutionContractUnspecified,
+    owner: owner,
+    signoff: Unsigned,
+  }
+}
+
+fn fixture_nodes() -> List<RoadmapNode> {
+  [
+    fx(id: "a1", owner: "lane-a"),
+    fx(id: "b1", owner: "lane-b"),
+    fx(id: "b2", owner: "lane-b"),
+    fx(id: "b3", owner: "lane-b"),
+  ]
+}
+
+fn fixture_edges() -> List<RoadmapEdge> {
+  [
+    RoadmapEdge { child: "a1", parent: "b3" },
+    RoadmapEdge { child: "b3", parent: "b2" },
+    RoadmapEdge { child: "b2", parent: "b1" },
+  ]
+}
+
+fn fixture_focus() -> RoadmapFocus {
+  FocusOnOwners { label: "lane a", owners: ["lane-a"] }
+}
+
+test fn synthetic_closure_pulls_transitive_cross_lane_prerequisites() -> Bool {
+  let pulled = focus_prerequisite_ids(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+  )
+  count(pulled) == 3
+    && any(pulled, p => p == "b3")
+    && any(pulled, p => p == "b2")
+    && any(pulled, p => p == "b1")
+}
+
+test fn synthetic_visible_set_is_lane_plus_pulled() -> Bool {
+  count(focus_visible_nodes(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+  )) == 4
+}
+
+test fn synthetic_no_visible_node_has_a_hidden_prerequisite() -> Bool {
+  let vis = focus_visible_nodes(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+  )
+  all(
+    fixture_edges() |> filter(e => any(vis, n => (n.node as String) == (e.child as String))),
+    e => any(vis, n => (n.node as String) == (e.parent as String)),
+  )
+}
+
+test fn synthetic_focus_with_no_external_prerequisite_pulls_nothing() -> Bool {
+  count(focus_prerequisite_ids(
+    focus: FocusOnOwners { label: "lane b", owners: ["lane-b"] },
+    nodes: fixture_nodes(),
+    edges: fixture_edges(),
+  )) == 0
+}
+
+test fn synthetic_notice_names_every_pulled_prerequisite() -> Bool {
+  let notice = focus_notice(
+    focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges(),
+  )
+  all(
+    focus_prerequisite_ids(focus: fixture_focus(), nodes: fixture_nodes(), edges: fixture_edges()),
+    id => string_contains(s: notice, pattern: id),
+  )
+}
+
+test fn no_visible_node_has_a_hidden_prerequisite() -> Bool {
+  let vis = visible()
+  all(
+    active_roadmap_edges() |> filter(e =>
+      any(vis, n => (n.node as String) == (e.child as String))),
+    e => any(vis, n => (n.node as String) == (e.parent as String)),
+  )
 }
