@@ -1,0 +1,228 @@
+# CI invocation fixed tax — the pre-evaluation whole-corpus passes
+
+**Status:** measurement receipt, 2026-07-29. **No behavior changes in this note** (its sibling
+commit demotes the affected-set selection control; that is a scheduling change, not a fix to
+anything measured here). Prose + reproduction only; DESIGN.md and the `.dag` carriers remain
+authority.
+
+**Product:** an attribution of where a `gunbc run` / `claim_batch` invocation actually spends its
+wall clock, measured on the live fleet and re-derived locally by stack sampling. The headline is a
+single number: **the merge-admission gate spends 108 seconds to perform 0.09 seconds of work.**
+
+**Dissolves when** the pre-evaluation passes below are either persisted across processes or
+derived from the containment tree (namespace-only resolution lane), at which point the levers in
+§6 are priced against a new baseline rather than this one.
+
+---
+
+## 1. Why this note exists (and what it corrects)
+
+[ci-floor-time-45-72-band-attribution.md](ci-floor-time-45-72-band-attribution.md) §9 named the
+class **cold-index-per-PROCESS** and proposed per-gate pooled children as the fix. That fix
+**landed** — `dag/tools/host_prelude.dag` `run_gunbc_claims` now takes `claims: List<ClaimRun>`
+and passes the whole list to ONE `claim_batch` invocation via `claim_batch_claims_argv`. The
+"~25 serial cold children" mechanism is **historical**; do not price levers against it.
+
+That audit's own closing lesson — *"receipt freshness applies at the DIAGNOSIS grain, not only
+dispatch"* — is the reason this note re-measures rather than re-cites. Its **rank-1 lever was
+already marked STALE** and its §4 asked for a re-diagnosis of the discovery walk. §4 below is
+that re-diagnosis.
+
+---
+
+## 2. The receipt — merge-admission gate, decomposed to the second
+
+Run `30485116707`, ci job `90691769205`, runner `srv3-02`, green. The step is
+`'git' 'fetch' '--no-tags' 'origin' 'main' && 'env' '-C' '.' 'target/release/gunbc' 'run'
+'--source-root' 'dag' '--entry' 'dag/tools/merge_admission_gate.dag' '--function' 'main'`.
+
+| interval | wall | what |
+|---|---:|---|
+| `20:19:29.01 → 20:20:07.80` | **38.79s** | before `resolved 159 sources` — source load |
+| `20:20:07.80 → 20:20:12.08` | 4.28s | `compile.frontend` 1.31 + `normalize` 0.08 + `reconcile` 2.84 + `analyses` 0.05 |
+| `20:20:12.08 → 20:21:16.97` | **64.89s** | **gap** — compile finished, declaration not yet started |
+| `20:21:16.97 → 20:21:17.06` | **0.09s** | `decl=tools.merge_admission_gate::main#whole` → `ExitSuccess` |
+| | **108.1s** | total |
+
+`merge_admission_gate.dag` is 84 lines. Its `main` reads one receipt file, resolves one
+`git merge-base` tree hash, compares two content hashes, and exits. That is the 0.09s. Everything
+else is tax, and **103.7 of the 108.1 seconds is spent before the declaration begins evaluating.**
+
+Ratio of wall to work: **1200:1.**
+
+---
+
+## 3. The tax is fixed, not entry-dependent (local probes)
+
+Two probe modules, `--source-root dag` (1,428 `.dag` files), 4-core x86 dev box.
+
+**Probe A** — imports only `std.process`, body is `ExitSuccess`:
+
+```
+resolved 9 sources
+✓ compile.frontend 26ms   ✓ compile.normalize  3ms
+✓ compile.reconcile 52ms  ✓ compile.analyses   1ms
+ExitSuccess
+real 1m20.574s   user 1m17.661s
+```
+
+**80.6 seconds, ~100% CPU-bound, to do nothing.** Compile is 82ms of it.
+
+**Probe B** — same body, but additionally imports `gunbc.merge_admission { current_gate_roster_hash }`
+(and never uses it): 144 resolved sources, **86.0s**.
+
+**Control — same probe, wider source roots:** `--source-root dag --source-root src/v2` (2,677
+files) measured **68.0s**, *faster* than the 1,428-file run's 77.2s on a repeat. So the tax is
+**not linear in corpus file count**; run-to-run variance is ~10s and closure shape dominates.
+
+Reading: a 16× difference in entry closure size (9 → 144 sources) moves the wall by ~7%. The cost
+is not the entry.
+
+---
+
+## 4. Where it goes — live stack sampling
+
+`gdb -p <pid> -batch -ex "bt 40"`, 24 samples at 2.5s intervals against Probe A. Every non-idle
+sample landed in one of two **whole-corpus passes**, both running before the entry's 9 sources are
+touched:
+
+| pass | share of identified samples | stack |
+|---|---:|---|
+| **module-path index** | ~40% | `build_module_path_index_from_witness_roots` → `build_module_path_index_uncached` → `module_path_index::index::parse_module_binding` → `tokenize` |
+| **bare-reference census + fn-sig inference** | ~55% | `load_sources_for_entry_with_pool` → `extend_sources_to_both_closure_fixpoint` → `both_closure_edge_index` → `build_both_closure_edge_index` → `tree_bare_census_for_root` → `pool_parse` → `tokenize`; and `build_symbol_index_census_nodes` → `census_with_resolved_fn_sigs` → `census_upgrade_binding` |
+| reconcile (typed cache) | ~6% | `resolved_graph_from_sources_with_index` → `reconcile_with_typed_cache` → `build_symbol_index_qualified_fill` |
+
+Two facts worth stating plainly:
+
+1. **`parse_module_binding` runs the full tokenizer over every `.dag` file to read one header
+   line** (`module x.y`). Sampled frames include `scan_ident`, `is_reserved_emit_sentinel`,
+   `sentinel_prefix_matches`, `build_newline_index` — full lexical work per file, to extract a
+   binding.
+2. **`tree_bare_census_for_root` parses the whole tree again** for the bare-reference edge index,
+   and drags fn-signature inference (`census_with_resolved_fn_sigs`) across it. This is the
+   `#6848` bare-reference fixpoint. It is **still live** and it is a **whole-tree parse plus
+   inference per invocation**.
+
+Both caches are process-local (`MODULE_GRAPH_FACTS_CACHE` is a `thread_local!`;
+`build_module_path_index` memoizes inside `LocalKey`), so they amortize *within* one process and
+are paid in full by every new one.
+
+**Scoping honesty:** the sampling above is on the local dev box. The CI decomposition in §2 shows
+the same *shape* (38.8s pre-`resolved`, 64.9s post-compile pre-eval) but no sampler ran on the
+runner, so the CI attribution to these two specific passes is **by analogy, not by measurement on
+that host.** Confirming it needs a `perf`/gdb sample on a fleet host.
+
+---
+
+## 5. The same disease at the per-entry grain (floor discovery)
+
+Same job log, discovery batch. Per affected entry, the repeating cycle is:
+
+```
+20:16:17.879  [floor-drain] schedule-retention ARMED: entries=1 modules_refcounted=309
+20:16:51.403  ✓ floor_disc_witness_transitive_holds (...leg=InterpretedLeg) 0.1ms
+```
+
+**33.5 seconds** between arming and verdict. Measured across four consecutive cycles in this log:
+33.52s, 33.73s, 33.23s, 33.6s — tight. Per cycle the compile phases total **~0.64s**
+(`frontend` ~190ms + `normalize` ~33ms + `reconcile` ~400ms + `analyses` ~11ms), and the witness
+evaluation itself is **0.1–0.5 milliseconds**.
+
+So inside the floor process the ratio is ~33s of resolution per ~0.3ms of witness. This is the
+same pre-evaluation tax, paid per entry instead of per process, and it is what the audit doc's
+"~971ms/group" figure has grown into on the current tree for *affected* (non-skipped) entries.
+
+---
+
+## 6. Ranked levers (priced against §2/§3, not the stale audit)
+
+| # | lever | displaces | risk | notes |
+|---|---|---|---|---|
+| 1 | **Cross-process module-path index cache** | ~40% of every invocation | low | pure function of file contents ⇒ content-addressable. DESIGN §5 cache-impurity rule applies: key on declared-input content; byte-identical cached-vs-cold is the purity oracle. |
+| 2 | **Stop full-tokenizing to read a module header** | large share of pass 1 | low | terminate the parse once the module binding is bound. Same parser, earlier stop — not a second representation, no new authority. |
+| 3 | **Fuse merge-admission stamp + gate** | ~108s/run | low | two cold processes where one suffices; after 1–2 both approach seconds. |
+| 4 | **Bare-reference census (`tree_bare_census_for_root`)** | ~55% of every invocation, and the §5 per-entry walk | high | the `#6848` class. Dissolves via the namespace-only resolution lane (`build_module_path_index` becomes a projection of `v2.compiler.source_authority`). Biggest prize, deepest change. |
+| 5 | **`regen` → `ci` `needs:` edge** | ~8.5 min of PR critical path | low | independent of the above; `ci` consumes only `build`'s artifact. Counter-argument: it is a deliberate fail-fast before the 34-min floor. |
+
+Levers 1+2 are mechanical and share one oracle. Lever 4 is the real fix and already has a
+designed lane. Note the interaction: **every lever above multiplies with invocation count**, so
+reducing process count (lever 3, and the heal job's separate regen) is only worth doing *after*
+1–2, or it optimizes the wrong term.
+
+---
+
+## 7. Workflow-level timings this note was derived from
+
+359 `ci.yml` `pull_request` runs across 37 branches, 2026-07-29 05:07–22:32 UTC, plus 30 `main`
+push runs. 8 runs instrumented at step grain.
+
+| | n | median | range |
+|---|---:|---:|---|
+| green PR run | 31 | **39.5 min** | 32.5–52.6 |
+| `main` push run | 25 | 48.4 min | 44.9–54.3 |
+| failed run | 81 | 9.6 min | p90 34.6 |
+| cancelled (superseded) | 230 | 10.8 min | — |
+
+Critical path is `build → regen → ci` (`heal_generated_artifacts` runs parallel off `build` and
+never gates; `deploy_dashboard_srv1` is skipped on PRs). Step medians across the 6 green
+instrumented runs:
+
+| job / step | median | min | max |
+|---|---:|---:|---:|
+| **build** job | 2m44s | 1m04s | 7m54s |
+| **regen** job | 8m33s | 1m39s | 9m19s |
+| *heal* (parallel) | 2m20s | 2m13s | 2m37s |
+| **ci** job | **33m56s** | 29m23s | 36m23s |
+| ↳ `gunbc ci` floor | 21m44s | 18m53s | 23m58s |
+| ↳ affected-set selection control | 10m09s | 8m41s | 10m32s |
+| ↳ merge-admission gate | 1m52s | 1m35s | 1m57s |
+| ↳ setup + checkout + artifact | 0m11s | — | — |
+
+The `ci` job is 75% of the critical path; setup/checkout/artifact overhead is 11 seconds total.
+There is no scaffolding to trim — the wall is the invocation tax in §2–§5.
+
+Two workflow-level observations recorded without being acted on here: **230 of 359 runs (64%)
+were cancelled by supersede, burning 2,514 of 5,007 runner-minutes (50.2%)**, median survival
+10.8 min into a ~40-min pipeline; and one branch consumed 58 runs in the window. Separately,
+`gunbc-ci-auto-heal` pushed 8 regeneration commits and 85 skew-remedy merge commits across all
+954 remote branches in 3 days — each push restarts CI on its branch. Neither is an invocation-tax
+problem; both are workflow-shape questions.
+
+---
+
+## 8. Reproduction
+
+```bash
+# §2 — CI decomposition (any green ci job)
+#   read the merge-admission step timestamps: git fetch -> "resolved N sources"
+#   -> compile.* -> "started decl" -> ExitSuccess
+
+# §3 — the fixed tax, locally
+cargo build --release --bin gunbc
+mkdir -p dag/zzprobe && cat > dag/zzprobe/min.dag <<'EOF'
+module zzprobe.min
+import std.process { ProcessExit, ExitSuccess }
+func main() -> ProcessExit { ExitSuccess }
+EOF
+time ./target/release/gunbc run --source-root dag --entry dag/zzprobe/min.dag --function main
+rm -rf dag/zzprobe   # do not leave probes in tree
+
+# §4 — attribution
+./target/release/gunbc run --source-root dag --entry dag/zzprobe/min.dag --function main & PID=$!
+for i in $(seq 1 24); do gdb -p $PID -batch -ex "bt 40" 2>/dev/null \
+  | grep -oE 'build_module_path_index_uncached|tree_bare_census_for_root|census_with_resolved_fn_sigs'; sleep 2.5; done
+```
+
+---
+
+## 9. Provenance
+
+- 2026-07-29, session `pr-timing-analysis`. Workflow/step timings from the GitHub Actions API
+  (359 runs; 8 job-level pulls). §2 from job `90691769205` log, re-derived to the second.
+  §3/§4 measured locally by execution and by gdb stack sampling.
+- Corrects [ci-floor-time-45-72-band-attribution.md](ci-floor-time-45-72-band-attribution.md)
+  §9 on the child-spawn mechanism (pooling landed) and supplies the §4 re-diagnosis that doc
+  asked for.
+- Related: [floor-shared-compute-memoization.md](floor-shared-compute-memoization.md),
+  [namespace-resolution-design.md](namespace-resolution-design.md),
+  [v1-run-stability-throughline.md](v1-run-stability-throughline.md).
