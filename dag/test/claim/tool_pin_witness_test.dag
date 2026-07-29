@@ -206,8 +206,3 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
   pin_value_eq(a: tracked_pin, b: same)
     && (tracked_pin.selection == same.selection)
 }
-
-data probe_zero_window: PinSelection = TrackedChannel {
-  channel: "latest"
-  refresh_window_days: 0
-}
