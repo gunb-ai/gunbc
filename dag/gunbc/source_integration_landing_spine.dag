@@ -13,19 +13,23 @@ import std.measure { Minute, minute }
 import std.claim_evidence {
   ClaimId,
   ClaimReadinessAssessment,
+  ClaimReadinessAssessmentFold,
+  claim_readiness_assessment_fold,
   claim_readiness_is_ready,
 }
-import v2.std.optional { Present, Absent }
 import gunbc.native_scm_interaction_contract {
   NativeScmProposalIdentity,
   NativeScmContinuation,
   NativeScmContinuationOption,
+  NativeScmContinuationOptions,
+  NativeScmContinuationChoiceLookupFold,
   NativeScmPrimaryOutcome,
   NativeScmRefusal,
   Landed,
   ChoiceRequired,
   CouldNotLand,
   native_scm_continuation_option,
+  native_scm_continuation_choice_lookup_fold,
 }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
@@ -33,7 +37,7 @@ import gunbc.scm_compatibility_shape {
   CompatibilityTargetHandle,
 }
 
-data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. This carrier is the first semantic consumer behind the landed C0 presentation fixture and R1 compatibility boundary. It keeps proposal contract, admitted claim assessments, bounded result-space classification, admission, transition, and projection status in separate layers, then projects them through one user boundary. A committed result is writable only together with independent read-back. Stale-parent, approval, retryable-effect, projection-repair, and unfinished-investigation states retain machine continuations and cannot become user questions. A terminal refusal is typed, located, counted, and also carries a plain explanation. This is an executing scenario model, not the P1 reconciliation kernel, P2 source capture, P3 effect transport, or a CLI."
+data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. This carrier is the first semantic consumer behind the landed C0 presentation fixture and R1 compatibility boundary. It keeps proposal contract, admitted claim assessments, bounded result-space classification, admission, transition, and projection status in separate layers, then projects them through one user boundary. Closed-one carries only a ready-evidence profile plus all eight closure receipts; admission consumes that closed-one receipt; transition consumes the admitted receipt; no later stage accepts an unrelated proposal or raw result. A normative question owns the proposal contract and derives its C0 continuation identity from that one authority; duplicate visible choice labels refuse as ambiguous rather than selecting a token. A committed result is writable only together with independent read-back. Stale-parent, approval, retryable-effect, projection-repair, and unfinished-investigation states retain machine continuations and cannot become user questions. A terminal refusal is typed, located, counted, and also carries a plain explanation. This is an executing scenario model, not the P1 reconciliation kernel, P2 source capture, P3 effect transport, or a CLI."
 
 type LandingProposalOccurrenceId = NonEmptyStr where brand("LandingProposalOccurrenceId")
 type LandingAttemptId = NonEmptyStr where brand("LandingAttemptId")
@@ -91,6 +95,11 @@ type LandingEvidenceProfile {
   remaining_required: List<ClaimReadinessAssessment<ClaimId>>
 }
 
+type LandingReadyEvidenceProfile {
+  first_required: ClaimId
+  remaining_required: List<ClaimId>
+}
+
 fn landing_evidence_assessments(
   profile: LandingEvidenceProfile,
 ) -> List<ClaimReadinessAssessment<ClaimId>> {
@@ -106,6 +115,32 @@ fn landing_evidence_profile_ready(
   claim_readiness_is_ready(
     assessment: landing_evidence_assessments(profile: profile),
   )
+}
+
+fn landing_assessment_claim(
+  assessment: ClaimReadinessAssessment<ClaimId>,
+) -> ClaimId {
+  claim_readiness_assessment_fold(
+    assessment: assessment,
+    fold: ClaimReadinessAssessmentFold {
+      satisfied: fn(claim) { claim },
+      blocking: fn(claim) { claim },
+    },
+  )
+}
+
+fn landing_ready_evidence_profile(
+  profile: LandingEvidenceProfile,
+) -> LandingReadyEvidenceProfile {
+  LandingReadyEvidenceProfile {
+    first_required: landing_assessment_claim(
+      assessment: profile.first_required,
+    ),
+    remaining_required: profile.remaining_required
+      |> map(assessment =>
+        landing_assessment_claim(assessment: assessment)
+      ),
+  }
 }
 
 type LandingClosureCertificate {
@@ -205,8 +240,18 @@ type LandingMachineContinuation {
 }
 
 type LandingNormativeQuestion {
+  proposal: LandingProposalContract
   question: NonEmptyStr
-  continuation: NativeScmContinuation
+  options: NativeScmContinuationOptions
+}
+
+fn landing_question_continuation(
+  question: LandingNormativeQuestion,
+) -> NativeScmContinuation {
+  NativeScmContinuation {
+    proposal: landing_native_identity(proposal: question.proposal),
+    options: question.options,
+  }
 }
 
 type LandingChoiceResolution
@@ -218,26 +263,42 @@ type LandingChoiceResolution
       proposal: NativeScmProposalIdentity,
       answer: String,
     }
+  | LandingChoiceAmbiguous {
+      proposal: NativeScmProposalIdentity,
+      answer: String,
+    }
 
 fn landing_resolve_question(
   question: LandingNormativeQuestion,
   answer: String,
 ) -> LandingChoiceResolution {
-  match native_scm_continuation_option(
-    continuation: question.continuation,
-    choice: answer,
-  ) {
-    Present { value: option } =>
-      LandingChoiceResumed {
-        proposal: question.continuation.proposal,
-        resume_token: option.resume_token,
-      }
-    Absent =>
-      LandingChoiceNotOffered {
-        proposal: question.continuation.proposal,
-        answer: answer,
-      }
-  }
+  let continuation = landing_question_continuation(question: question)
+  native_scm_continuation_choice_lookup_fold(
+    lookup: native_scm_continuation_option(
+      continuation: continuation,
+      choice: answer,
+    ),
+    fold: NativeScmContinuationChoiceLookupFold {
+      matched: fn(option) {
+        LandingChoiceResumed {
+          proposal: continuation.proposal,
+          resume_token: option.resume_token,
+        }
+      },
+      not_offered: fn() {
+        LandingChoiceNotOffered {
+          proposal: continuation.proposal,
+          answer: answer,
+        }
+      },
+      ambiguous: fn(_, _, _, _) {
+        LandingChoiceAmbiguous {
+          proposal: continuation.proposal,
+          answer: answer,
+        }
+      },
+    },
+  )
 }
 
 type LandingClosedZeroDisposition
@@ -304,22 +365,29 @@ type LandingUniqueResult {
   result: LandingResultHandle
   preview: NonEmptyStr
   closure: LandingClosureCertificates
-  obligation_assessments: LandingEvidenceProfile
+  ready_obligations: LandingReadyEvidenceProfile
+}
+
+type LandingClosedOneReceipt {
+  proposal: LandingProposalContract
+  unique: LandingUniqueResult
 }
 
 type LandingSemanticResultSpace
   = LandingClosedZero {
+      proposal: LandingProposalContract,
       witnessed_core: NonEmptyStr,
       counterexample: NonEmptyStr,
       disposition: LandingClosedZeroDisposition,
     }
   | LandingClosedOne {
-      unique: LandingUniqueResult,
+      receipt: LandingClosedOneReceipt,
     }
   | LandingClosedMany {
       question: LandingNormativeQuestion,
     }
   | LandingUnclosed {
+      proposal: LandingProposalContract,
       cause: LandingUnclosedCause,
       partial_results: List<LandingResultHandle>,
       disposition: LandingUnclosedDisposition,
@@ -327,13 +395,15 @@ type LandingSemanticResultSpace
 
 type LandingSemanticResultSpaceFold<R> {
   closed_zero: fn(
+    LandingProposalContract,
     NonEmptyStr,
     NonEmptyStr,
     LandingClosedZeroDisposition,
   ) -> R
-  closed_one: fn(LandingUniqueResult) -> R
+  closed_one: fn(LandingClosedOneReceipt) -> R
   closed_many: fn(LandingNormativeQuestion) -> R
   unclosed: fn(
+    LandingProposalContract,
     LandingUnclosedCause,
     List<LandingResultHandle>,
     LandingUnclosedDisposition,
@@ -346,29 +416,33 @@ fn landing_semantic_result_space_fold<R>(
 ) -> R {
   match semantic {
     LandingClosedZero {
+      proposal,
       witnessed_core,
       counterexample,
       disposition,
     } =>
       fold.closed_zero(
+        proposal,
         witnessed_core,
         counterexample,
         disposition,
       )
-    LandingClosedOne { unique } =>
-      fold.closed_one(unique)
+    LandingClosedOne { receipt } =>
+      fold.closed_one(receipt)
     LandingClosedMany { question } =>
       fold.closed_many(question)
     LandingUnclosed {
+      proposal,
       cause,
       partial_results,
       disposition,
     } =>
-      fold.unclosed(cause, partial_results, disposition)
+      fold.unclosed(proposal, cause, partial_results, disposition)
   }
 }
 
 fn landing_unique_candidate(
+  proposal: LandingProposalContract,
   result: LandingResultHandle,
   preview: NonEmptyStr,
   evidence: LandingEvidenceProfile,
@@ -377,6 +451,7 @@ fn landing_unique_candidate(
 ) -> LandingSemanticResultSpace {
   if !landing_evidence_profile_ready(profile: evidence) {
     LandingUnclosed {
+      proposal: proposal,
       cause: LandingRequiredClaimBlocking,
       partial_results: [result],
       disposition: LandingInvestigationContinues {
@@ -389,16 +464,22 @@ fn landing_unique_candidate(
       fold: LandingClosureAttemptFold {
         complete: fn(certificates) {
           LandingClosedOne {
-            unique: LandingUniqueResult {
-              result: result,
-              preview: preview,
-              closure: certificates,
-              obligation_assessments: evidence,
+            receipt: LandingClosedOneReceipt {
+              proposal: proposal,
+              unique: LandingUniqueResult {
+                result: result,
+                preview: preview,
+                closure: certificates,
+                ready_obligations: landing_ready_evidence_profile(
+                  profile: evidence,
+                ),
+              },
             },
           }
         },
         incomplete: fn(missing, cause) {
           LandingUnclosed {
+            proposal: proposal,
             cause: LandingClosureCertificateMissing {
               certificate: missing,
               cause: cause,
@@ -457,8 +538,18 @@ fn landing_admission_decision_fold<R>(
 }
 
 type LandingAdmittedResult {
-  unique: LandingUniqueResult
+  semantic: LandingClosedOneReceipt
   admission_receipt: ContentHash
+}
+
+fn landing_admitted_result(
+  semantic: LandingClosedOneReceipt,
+  admission_receipt: ContentHash,
+) -> LandingAdmittedResult {
+  LandingAdmittedResult {
+    semantic: semantic,
+    admission_receipt: admission_receipt,
+  }
 }
 
 type LandingProjectionStatus
@@ -529,32 +620,24 @@ fn landing_transition_outcome_fold<R>(
 
 type LandingSpineReceipt
   = LandingSemanticSpine {
-      proposal: LandingProposalContract,
-      semantic: LandingSemanticResultSpace,
+      result: LandingSemanticResultSpace,
     }
   | LandingAdmissionSpine {
-      proposal: LandingProposalContract,
-      unique: LandingUniqueResult,
+      semantic: LandingClosedOneReceipt,
       admission: LandingAdmissionDecision,
     }
   | LandingTransitionSpine {
-      proposal: LandingProposalContract,
       admitted: LandingAdmittedResult,
       transition: LandingTransitionOutcome,
     }
 
 type LandingSpineReceiptFold<R> {
-  semantic: fn(
-    LandingProposalContract,
-    LandingSemanticResultSpace,
-  ) -> R
+  semantic: fn(LandingSemanticResultSpace) -> R
   admission: fn(
-    LandingProposalContract,
-    LandingUniqueResult,
+    LandingClosedOneReceipt,
     LandingAdmissionDecision,
   ) -> R
   transition: fn(
-    LandingProposalContract,
     LandingAdmittedResult,
     LandingTransitionOutcome,
   ) -> R
@@ -566,22 +649,19 @@ fn landing_spine_receipt_fold<R>(
 ) -> R {
   match receipt {
     LandingSemanticSpine {
-      proposal,
-      semantic,
+      result,
     } =>
-      fold.semantic(proposal, semantic)
+      fold.semantic(result)
     LandingAdmissionSpine {
-      proposal,
-      unique,
+      semantic,
       admission,
     } =>
-      fold.admission(proposal, unique, admission)
+      fold.admission(semantic, admission)
     LandingTransitionSpine {
-      proposal,
       admitted,
       transition,
     } =>
-      fold.transition(proposal, admitted, transition)
+      fold.transition(admitted, transition)
   }
 }
 
@@ -619,7 +699,7 @@ fn landing_user_question(
   LandingUserOutcome {
     outcome: ChoiceRequired {
       question: question.question as String,
-      continuation: question.continuation,
+      continuation: landing_question_continuation(question: question),
     },
   }
 }
@@ -662,7 +742,7 @@ fn landing_semantic_user_boundary(
   landing_semantic_result_space_fold(
     semantic: semantic,
     fold: LandingSemanticResultSpaceFold {
-      closed_zero: fn(_, _, disposition) {
+      closed_zero: fn(_, _, _, disposition) {
         landing_closed_zero_user_boundary(disposition: disposition)
       },
       closed_one: fn(_) {
@@ -677,7 +757,7 @@ fn landing_semantic_user_boundary(
       closed_many: fn(question) {
         landing_user_question(question: question)
       },
-      unclosed: fn(_, _, disposition) {
+      unclosed: fn(_, _, _, disposition) {
         landing_unclosed_user_boundary(disposition: disposition)
       },
     },
@@ -725,7 +805,7 @@ fn landing_transition_user_boundary(
       committed: fn(_, _, _) {
         LandingUserOutcome {
           outcome: Landed {
-            result_preview: admitted.unique.preview as String,
+            result_preview: admitted.semantic.unique.preview as String,
           },
         }
       },
@@ -748,13 +828,13 @@ fn landing_user_boundary(
   landing_spine_receipt_fold(
     receipt: receipt,
     fold: LandingSpineReceiptFold {
-      semantic: fn(_, semantic) {
-        landing_semantic_user_boundary(semantic: semantic)
+      semantic: fn(result) {
+        landing_semantic_user_boundary(semantic: result)
       },
-      admission: fn(_, _, admission) {
+      admission: fn(_, admission) {
         landing_admission_user_boundary(admission: admission)
       },
-      transition: fn(_, admitted, transition) {
+      transition: fn(admitted, transition) {
         landing_transition_user_boundary(
           admitted: admitted,
           transition: transition,

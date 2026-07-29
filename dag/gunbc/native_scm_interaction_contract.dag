@@ -7,7 +7,7 @@ import gunbc.scm_compatibility_shape {
   compatibility_projection_upsert,
 }
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed choice is backed by a stored resumable option, the user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed choice is backed by a stored resumable option, and choice lookup distinguishes zero, one, and many matching labels so an ambiguous answer cannot select the first token. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -41,12 +41,69 @@ type NativeScmContinuationOption {
   resume_token: NonEmptyStr
 }
 
-type NativeScmContinuation {
-  proposal: NativeScmProposalIdentity
+type NativeScmContinuationOptions {
   first_option: NativeScmContinuationOption
   second_option: NativeScmContinuationOption
   additional_options: List<NativeScmContinuationOption>
 }
+
+type NativeScmContinuation {
+  proposal: NativeScmProposalIdentity
+  options: NativeScmContinuationOptions
+}
+
+type NativeScmContinuationChoiceLookup
+  = NativeScmContinuationChoiceMatched {
+      option: NativeScmContinuationOption,
+    }
+  | NativeScmContinuationChoiceNotOffered
+  | NativeScmContinuationChoiceAmbiguous {
+      choice: String,
+      first: NativeScmContinuationOption,
+      second: NativeScmContinuationOption,
+      additional: List<NativeScmContinuationOption>,
+    }
+
+type NativeScmContinuationChoiceLookupFold<R> {
+  matched: fn(NativeScmContinuationOption) -> R
+  not_offered: fn() -> R
+  ambiguous: fn(
+    String,
+    NativeScmContinuationOption,
+    NativeScmContinuationOption,
+    List<NativeScmContinuationOption>,
+  ) -> R
+}
+
+fn native_scm_continuation_choice_lookup_fold<R>(
+  lookup: NativeScmContinuationChoiceLookup,
+  fold: NativeScmContinuationChoiceLookupFold<R>,
+) -> R {
+  match lookup {
+    NativeScmContinuationChoiceMatched { option } =>
+      fold.matched(option)
+    NativeScmContinuationChoiceNotOffered =>
+      fold.not_offered()
+    NativeScmContinuationChoiceAmbiguous {
+      choice,
+      first,
+      second,
+      additional,
+    } =>
+      fold.ambiguous(choice, first, second, additional)
+  }
+}
+
+type NativeScmContinuationChoiceLookupState
+  = NativeScmContinuationChoiceLookupZero
+  | NativeScmContinuationChoiceLookupOne {
+      first: NativeScmContinuationOption,
+    }
+  | NativeScmContinuationChoiceLookupMany {
+      first: NativeScmContinuationOption,
+      second: NativeScmContinuationOption,
+      additional_reversed: List<NativeScmContinuationOption>,
+    }
 
 type NativeScmRefusal {
   plain_reason: String
@@ -209,34 +266,38 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
       question: "The call can follow the rename or stay separate. Which meaning should land?",
       continuation: NativeScmContinuation {
         proposal: identity,
-        first_option: NativeScmContinuationOption {
-          choice: "follow the rename",
-          result_preview: "follow the rename: keep the new spelling and move the call",
-          resume_token: "resume-follow-the-rename",
+        options: NativeScmContinuationOptions {
+          first_option: NativeScmContinuationOption {
+            choice: "follow the rename",
+            result_preview: "follow the rename: keep the new spelling and move the call",
+            resume_token: "resume-follow-the-rename",
+          },
+          second_option: NativeScmContinuationOption {
+            choice: "keep a separate name",
+            result_preview: "keep a separate name: preserve the old spelling as a distinct meaning",
+            resume_token: "resume-keep-separate-name",
+          },
+          additional_options: [],
         },
-        second_option: NativeScmContinuationOption {
-          choice: "keep a separate name",
-          result_preview: "keep a separate name: preserve the old spelling as a distinct meaning",
-          resume_token: "resume-keep-separate-name",
-        },
-        additional_options: [],
       },
     }
     IncompatibleGoalsNeedAuthorizedDecider => ChoiceRequired {
       question: "Two requested goals cannot both be retained. Which one should the authorized decider keep?",
       continuation: NativeScmContinuation {
         proposal: identity,
-        first_option: NativeScmContinuationOption {
-          choice: "retain goal A",
-          result_preview: "retain goal A and drop goal B",
-          resume_token: "resume-retain-goal-a",
+        options: NativeScmContinuationOptions {
+          first_option: NativeScmContinuationOption {
+            choice: "retain goal A",
+            result_preview: "retain goal A and drop goal B",
+            resume_token: "resume-retain-goal-a",
+          },
+          second_option: NativeScmContinuationOption {
+            choice: "retain goal B",
+            result_preview: "retain goal B and drop goal A",
+            resume_token: "resume-retain-goal-b",
+          },
+          additional_options: [],
         },
-        second_option: NativeScmContinuationOption {
-          choice: "retain goal B",
-          result_preview: "retain goal B and drop goal A",
-          resume_token: "resume-retain-goal-b",
-        },
-        additional_options: [],
       },
     }
     EvidenceGatheredInternally => Landed {
@@ -470,10 +531,10 @@ fn native_scm_continuation_options(
 ) -> List<NativeScmContinuationOption> {
   append(
     [
-      continuation.first_option,
-      continuation.second_option,
+      continuation.options.first_option,
+      continuation.options.second_option,
     ],
-    items: continuation.additional_options,
+    items: continuation.options.additional_options,
   )
 }
 
@@ -487,10 +548,61 @@ fn native_scm_choice_previews(
 fn native_scm_continuation_option(
   continuation: NativeScmContinuation,
   choice: String,
-) -> Optional<NativeScmContinuationOption> {
-  native_scm_continuation_options(continuation: continuation)
-    |> filter(option => option.choice == choice)
-    |> first
+) -> NativeScmContinuationChoiceLookup {
+  let state = fold(
+    native_scm_continuation_options(continuation: continuation),
+    init: NativeScmContinuationChoiceLookupZero,
+    f: fn(state, option) {
+      if option.choice != choice {
+        state
+      } else {
+        match state {
+          NativeScmContinuationChoiceLookupZero =>
+            NativeScmContinuationChoiceLookupOne {
+              first: option,
+            }
+          NativeScmContinuationChoiceLookupOne { first } =>
+            NativeScmContinuationChoiceLookupMany {
+              first: first,
+              second: option,
+              additional_reversed: [],
+            }
+          NativeScmContinuationChoiceLookupMany {
+            first,
+            second,
+            additional_reversed,
+          } =>
+            NativeScmContinuationChoiceLookupMany {
+              first: first,
+              second: second,
+              additional_reversed: append(
+                [option],
+                items: additional_reversed,
+              ),
+            }
+        }
+      }
+    },
+  )
+  match state {
+    NativeScmContinuationChoiceLookupZero =>
+      NativeScmContinuationChoiceNotOffered
+    NativeScmContinuationChoiceLookupOne { first } =>
+      NativeScmContinuationChoiceMatched {
+        option: first,
+      }
+    NativeScmContinuationChoiceLookupMany {
+      first,
+      second,
+      additional_reversed,
+    } =>
+      NativeScmContinuationChoiceAmbiguous {
+        choice: choice,
+        first: first,
+        second: second,
+        additional: reverse(additional_reversed),
+      }
+  }
 }
 
 fn native_scm_resolve_choice(
@@ -499,22 +611,40 @@ fn native_scm_resolve_choice(
 ) -> NativeScmPrimaryOutcome {
   match receipt.primary {
     ChoiceRequired { question: _, continuation } =>
-      match native_scm_continuation_option(
-        continuation: continuation,
-        choice: choice,
-      ) {
-        Present { value: option } =>
-          Landed { result_preview: option.result_preview }
-        Absent =>
-          CouldNotLand {
-            refusal: NativeScmRefusal {
-              plain_reason: "the answer did not match a stored choice",
-              responsible_party: "authorized decider",
-              next_action: "select one of the displayed choices",
-              refusal_receipt: continuation.proposal.attempt_key,
-            },
-          }
-      }
+      native_scm_continuation_choice_lookup_fold(
+        lookup: native_scm_continuation_option(
+          continuation: continuation,
+          choice: choice,
+        ),
+        fold: NativeScmContinuationChoiceLookupFold {
+          matched: fn(option) {
+            Landed { result_preview: option.result_preview }
+          },
+          not_offered: fn() {
+            CouldNotLand {
+              refusal: NativeScmRefusal {
+                plain_reason: "the answer did not match a stored choice",
+                responsible_party: "authorized decider",
+                next_action: "select one of the displayed choices",
+                refusal_receipt: continuation.proposal.attempt_key,
+              },
+            }
+          },
+          ambiguous: fn(answer, _, _, _) {
+            CouldNotLand {
+              refusal: NativeScmRefusal {
+                plain_reason: "the answer matches more than one stored choice",
+                responsible_party: "workspace owner",
+                next_action: "repair the duplicated choice labels before asking again",
+                refusal_receipt: concat(
+                  continuation.proposal.attempt_key,
+                  concat(":", answer),
+                ),
+              },
+            }
+          },
+        },
+      )
     Landed { result_preview: p } => Landed { result_preview: p }
     InProgress { progress_preview } => InProgress { progress_preview: progress_preview }
     CouldNotLand { refusal } => CouldNotLand { refusal: refusal }

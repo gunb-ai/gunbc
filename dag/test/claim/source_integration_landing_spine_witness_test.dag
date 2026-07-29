@@ -15,8 +15,8 @@ import std.claim_evidence {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
-  NativeScmContinuation,
   NativeScmContinuationOption,
+  NativeScmContinuationOptions,
   NativeScmPrimaryOutcome,
   Landed,
   ChoiceRequired,
@@ -41,6 +41,7 @@ import gunbc.source_integration_landing_spine {
   LandingStressProfile,
   gunbc_landing_stress_profile,
   LandingEvidenceProfile,
+  LandingReadyEvidenceProfile,
   LandingClosureCertificate,
   LandingClosureCertificates,
   LandingClosureComplete,
@@ -58,12 +59,14 @@ import gunbc.source_integration_landing_spine {
   LandingNormativeQuestion,
   LandingChoiceResumed,
   LandingChoiceNotOffered,
+  LandingChoiceAmbiguous,
   LandingRequiredClaimBlocking,
   LandingClosureCertificateMissing,
   LandingSearchBoundExhausted,
   LandingInvestigationContinues,
   LandingUnclosedTerminal,
   LandingUniqueResult,
+  LandingClosedOneReceipt,
   LandingClosedOne,
   LandingClosedMany,
   LandingUnclosed,
@@ -81,8 +84,10 @@ import gunbc.source_integration_landing_spine {
   LandingUserOutcome,
   LandingMachineOwned,
   landing_native_identity,
+  landing_question_continuation,
   landing_native_refusal,
   landing_unique_candidate,
+  landing_admitted_result,
   landing_resolve_question,
   landing_user_boundary,
 }
@@ -180,15 +185,27 @@ fn p0_unique_result() -> LandingUniqueResult {
     result: "unique-result-42",
     preview: "Worker was renamed and its callers were updated.",
     closure: p0_complete_closure(),
-    obligation_assessments: p0_ready_evidence(),
+    ready_obligations: LandingReadyEvidenceProfile {
+      first_required: "builds",
+      remaining_required: ["preserves-public-behavior"],
+    },
+  }
+}
+
+fn p0_closed_one_receipt() -> LandingClosedOneReceipt {
+  LandingClosedOneReceipt {
+    proposal: p0_proposal_at(
+      submitted_at: "2026-07-29T08:00:00Z",
+    ),
+    unique: p0_unique_result(),
   }
 }
 
 fn p0_admitted_result() -> LandingAdmittedResult {
-  LandingAdmittedResult {
-    unique: p0_unique_result(),
+  landing_admitted_result(
+    semantic: p0_closed_one_receipt(),
     admission_receipt: "admission-receipt-42",
-  }
+  )
 }
 
 fn p0_refusal(
@@ -212,9 +229,9 @@ fn p0_question() -> LandingNormativeQuestion {
     submitted_at: "2026-07-29T08:00:00Z",
   )
   LandingNormativeQuestion {
+    proposal: proposal,
     question: "Should the new call use the renamed function or keep a separate function?",
-    continuation: NativeScmContinuation {
-      proposal: landing_native_identity(proposal: proposal),
+    options: NativeScmContinuationOptions {
       first_option: NativeScmContinuationOption {
         choice: "use the renamed function",
         result_preview: "The new call uses the renamed function.",
@@ -273,43 +290,65 @@ fn p0_message_is_plain(
 }
 
 test fn witness_p0_unique_admitted_commit_lands_with_git_projection() -> Bool {
-  match git_fixture_binding() {
-    GitCompatibilityBindingRefused { cause: _ } => false
-    GitCompatibilityBound { receipt } => {
-      let projection = compatibility_projection_from_handler(
-        handler: git_compatibility_projection_handler(),
-        receipt: receipt,
-      )
-      let boundary = landing_user_boundary(
-        receipt: LandingTransitionSpine {
-          proposal: p0_proposal_at(
-            submitted_at: "2026-07-29T08:00:00Z",
-          ),
-          admitted: p0_admitted_result(),
-          transition: LandingCommittedAndReadBack {
-            transition_receipt: "committed-transition-42",
-            independent_read_back: "independent-read-back-42",
-            projections: [
-              LandingProjected { receipt: projection },
-            ],
-          },
-        },
-      )
-      projection.realization == "git-r0"
-        && projection.target == "refs/heads/main"
-        && match boundary {
-          LandingUserOutcome {
-            outcome: Landed { result_preview },
-          } =>
-            result_preview == "Worker was renamed and its callers were updated."
-          _ => false
+  let proposal = p0_proposal_at(
+    submitted_at: "2026-07-29T08:00:00Z",
+  )
+  match landing_unique_candidate(
+    proposal: proposal,
+    result: "unique-result-42",
+    preview: "Worker was renamed and its callers were updated.",
+    evidence: p0_ready_evidence(),
+    closure: LandingClosureComplete {
+      certificates: p0_complete_closure(),
+    },
+    continuation: p0_machine_continuation(
+      status: "checking the result before it lands",
+    ),
+  ) {
+    LandingClosedOne { receipt: semantic } =>
+      match git_fixture_binding() {
+        GitCompatibilityBindingRefused { cause: _ } => false
+        GitCompatibilityBound { receipt } => {
+          let projection = compatibility_projection_from_handler(
+            handler: git_compatibility_projection_handler(),
+            receipt: receipt,
+          )
+          let admitted = landing_admitted_result(
+            semantic: semantic,
+            admission_receipt: "admission-receipt-42",
+          )
+          let boundary = landing_user_boundary(
+            receipt: LandingTransitionSpine {
+              admitted: admitted,
+              transition: LandingCommittedAndReadBack {
+                transition_receipt: "committed-transition-42",
+                independent_read_back: "independent-read-back-42",
+                projections: [
+                  LandingProjected { receipt: projection },
+                ],
+              },
+            },
+          )
+          projection.realization == "git-r0"
+            && projection.target == "refs/heads/main"
+            && match boundary {
+              LandingUserOutcome {
+                outcome: Landed { result_preview },
+              } =>
+                result_preview == "Worker was renamed and its callers were updated."
+              _ => false
+            }
         }
-    }
+      }
+    _ => false
   }
 }
 
 test fn witness_p0_missing_closure_stays_machine_owned() -> Bool {
   let semantic = landing_unique_candidate(
+    proposal: p0_proposal_at(
+      submitted_at: "2026-07-29T08:00:00Z",
+    ),
     result: "unique-result-42",
     preview: "Worker was renamed and its callers were updated.",
     evidence: p0_ready_evidence(),
@@ -323,6 +362,7 @@ test fn witness_p0_missing_closure_stays_machine_owned() -> Bool {
   )
   match semantic {
     LandingUnclosed {
+      proposal: _,
       cause: LandingClosureCertificateMissing {
         certificate: LandingCommitValidityCertificate,
         cause: _,
@@ -334,10 +374,7 @@ test fn witness_p0_missing_closure_stays_machine_owned() -> Bool {
     } =>
       match landing_user_boundary(
         receipt: LandingSemanticSpine {
-          proposal: p0_proposal_at(
-            submitted_at: "2026-07-29T08:00:00Z",
-          ),
-          semantic: semantic,
+          result: semantic,
         },
       ) {
         LandingMachineOwned { status, continuation: _ } =>
@@ -350,6 +387,9 @@ test fn witness_p0_missing_closure_stays_machine_owned() -> Bool {
 
 test fn witness_p0_blocking_claim_stays_machine_owned() -> Bool {
   let semantic = landing_unique_candidate(
+    proposal: p0_proposal_at(
+      submitted_at: "2026-07-29T08:00:00Z",
+    ),
     result: "unique-result-42",
     preview: "Worker was renamed and its callers were updated.",
     evidence: p0_blocking_evidence(),
@@ -362,6 +402,7 @@ test fn witness_p0_blocking_claim_stays_machine_owned() -> Bool {
   )
   match semantic {
     LandingUnclosed {
+      proposal: _,
       cause: LandingRequiredClaimBlocking,
       partial_results: _,
       disposition: LandingInvestigationContinues {
@@ -370,10 +411,7 @@ test fn witness_p0_blocking_claim_stays_machine_owned() -> Bool {
     } =>
       match landing_user_boundary(
         receipt: LandingSemanticSpine {
-          proposal: p0_proposal_at(
-            submitted_at: "2026-07-29T08:00:00Z",
-          ),
-          semantic: semantic,
+          result: semantic,
         },
       ) {
         LandingMachineOwned { status: _, continuation: _ } => true
@@ -385,16 +423,19 @@ test fn witness_p0_blocking_claim_stays_machine_owned() -> Bool {
 
 test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
   let question = p0_question()
+  let expected_identity = landing_native_identity(
+    proposal: question.proposal,
+  )
   let boundary = landing_user_boundary(
     receipt: LandingSemanticSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
-      semantic: LandingClosedMany { question: question },
+      result: LandingClosedMany {
+        question: question,
+      },
     },
   )
+  let continuation = landing_question_continuation(question: question)
   count(native_scm_continuation_options(
-    continuation: question.continuation,
+    continuation: continuation,
   )) == 2
     && match landing_resolve_question(
       question: question,
@@ -403,6 +444,7 @@ test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
       LandingChoiceResumed { proposal: _, resume_token } =>
         resume_token == "resume-use-renamed-function"
       LandingChoiceNotOffered { proposal: _, answer: _ } => false
+      LandingChoiceAmbiguous { proposal: _, answer: _ } => false
     }
     && match landing_resolve_question(
       question: question,
@@ -411,17 +453,53 @@ test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
       LandingChoiceResumed { proposal: _, resume_token } =>
         resume_token == "resume-keep-separate-function"
       LandingChoiceNotOffered { proposal: _, answer: _ } => false
+      LandingChoiceAmbiguous { proposal: _, answer: _ } => false
     }
     && match boundary {
       LandingUserOutcome {
         outcome: ChoiceRequired {
           question: prompt,
-          continuation: _,
+          continuation: presented,
         },
       } =>
         prompt == "Should the new call use the renamed function or keep a separate function?"
+          && presented.proposal.attempt_key == expected_identity.attempt_key
       _ => false
     }
+}
+
+test fn witness_p0_duplicate_choice_labels_refuse_ambiguity() -> Bool {
+  let proposal = p0_proposal_at(
+    submitted_at: "2026-07-29T08:00:00Z",
+  )
+  let expected_identity = landing_native_identity(proposal: proposal)
+  let question = LandingNormativeQuestion {
+    proposal: proposal,
+    question: "Which same-named result did you intend?",
+    options: NativeScmContinuationOptions {
+      first_option: NativeScmContinuationOption {
+        choice: "use this result",
+        result_preview: "first result",
+        resume_token: "resume-first-result",
+      },
+      second_option: NativeScmContinuationOption {
+        choice: "use this result",
+        result_preview: "second result",
+        resume_token: "resume-second-result",
+      },
+      additional_options: [],
+    },
+  }
+  match landing_resolve_question(
+    question: question,
+    answer: "use this result",
+  ) {
+    LandingChoiceAmbiguous { proposal: identity, answer } =>
+      identity.attempt_key == expected_identity.attempt_key
+        && answer == "use this result"
+    LandingChoiceResumed { proposal: _, resume_token: _ } => false
+    LandingChoiceNotOffered { proposal: _, answer: _ } => false
+  }
 }
 
 test fn witness_p0_unauthorized_unique_is_plain_refusal() -> Bool {
@@ -431,10 +509,7 @@ test fn witness_p0_unauthorized_unique_is_plain_refusal() -> Bool {
   )
   let boundary = landing_user_boundary(
     receipt: LandingAdmissionSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
-      unique: p0_unique_result(),
+      semantic: p0_closed_one_receipt(),
       admission: LandingUnauthorized { refusal: refusal },
     },
   )
@@ -455,10 +530,7 @@ test fn witness_p0_self_amendment_is_plain_refusal() -> Bool {
   )
   match landing_user_boundary(
     receipt: LandingAdmissionSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
-      unique: p0_unique_result(),
+      semantic: p0_closed_one_receipt(),
       admission: LandingSelfAmendmentRefused { refusal: refusal },
     },
   ) {
@@ -477,6 +549,9 @@ test fn witness_p0_exhausted_bound_is_typed_plain_refusal() -> Bool {
     reason: "This change is too large for the current operation.",
   )
   let semantic = LandingUnclosed {
+    proposal: p0_proposal_at(
+      submitted_at: "2026-07-29T08:00:00Z",
+    ),
     cause: LandingSearchBoundExhausted {
       cause: "the bounded search was exhausted",
     },
@@ -485,10 +560,7 @@ test fn witness_p0_exhausted_bound_is_typed_plain_refusal() -> Bool {
   }
   match landing_user_boundary(
     receipt: LandingSemanticSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
-      semantic: semantic,
+      result: semantic,
     },
   ) {
     LandingUserOutcome {
@@ -507,9 +579,6 @@ test fn witness_p0_permanent_effect_failure_is_typed_plain_refusal() -> Bool {
   )
   match landing_user_boundary(
     receipt: LandingTransitionSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
       admitted: p0_admitted_result(),
       transition: LandingEffectFailed { refusal: refusal },
     },
@@ -526,9 +595,6 @@ test fn witness_p0_permanent_effect_failure_is_typed_plain_refusal() -> Bool {
 test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
   match landing_user_boundary(
     receipt: LandingTransitionSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
       admitted: p0_admitted_result(),
       transition: LandingRetryStaleParent {
         continuation: LandingMachineContinuation {
@@ -549,9 +615,6 @@ test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
 test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
   match landing_user_boundary(
     receipt: LandingTransitionSpine {
-      proposal: p0_proposal_at(
-        submitted_at: "2026-07-29T08:00:00Z",
-      ),
       admitted: p0_admitted_result(),
       transition: LandingCommittedAndReadBack {
         transition_receipt: "committed-transition-42",
@@ -581,17 +644,38 @@ test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
   let late = p0_proposal_at(
     submitted_at: "2026-07-29T09:00:00Z",
   )
-  let semantic = LandingClosedOne { unique: p0_unique_result() }
+  let early_semantic = landing_unique_candidate(
+    proposal: early,
+    result: "unique-result-42",
+    preview: "Worker was renamed and its callers were updated.",
+    evidence: p0_ready_evidence(),
+    closure: LandingClosureComplete {
+      certificates: p0_complete_closure(),
+    },
+    continuation: p0_machine_continuation(
+      status: "checking the result before it lands",
+    ),
+  )
+  let late_semantic = landing_unique_candidate(
+    proposal: late,
+    result: "unique-result-42",
+    preview: "Worker was renamed and its callers were updated.",
+    evidence: p0_ready_evidence(),
+    closure: LandingClosureComplete {
+      certificates: p0_complete_closure(),
+    },
+    continuation: p0_machine_continuation(
+      status: "checking the result before it lands",
+    ),
+  )
   let early_boundary = landing_user_boundary(
     receipt: LandingSemanticSpine {
-      proposal: early,
-      semantic: semantic,
+      result: early_semantic,
     },
   )
   let late_boundary = landing_user_boundary(
     receipt: LandingSemanticSpine {
-      proposal: late,
-      semantic: semantic,
+      result: late_semantic,
     },
   )
   let stress: LandingStressProfile = gunbc_landing_stress_profile
@@ -608,7 +692,7 @@ test fn witness_p0_primary_messages_are_plain_and_git_ritual_free() -> Bool {
   let normative = p0_question()
   let question = ChoiceRequired {
     question: normative.question as String,
-    continuation: normative.continuation,
+    continuation: landing_question_continuation(question: normative),
   }
   let refused = CouldNotLand {
     refusal: landing_native_refusal(
