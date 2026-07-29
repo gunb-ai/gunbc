@@ -362,6 +362,20 @@ data e0599_rollup_cause_order: List<E0599RequirementCause> = [
   UnresolvedCause { method: "", receiver_expr: "", reason: "" },
 ]
 
+data e0599_measured_producer_caveat: String = "DIAGNOSTIC COMPARISON ONLY - not CompilerFixedPoint progress, not a v2 sizing authority, and NOT a roadmap node: this census has no dependency edge into CompilerFixedPoint and does not gate v2 bootstrap. CompilerFixedPoint recenters on the V2 emitter, a different producer (operator ruling 2026-07-29). The bootstrap adapter queue is NOT this census: it is the intersection of this population with the exact native-v2-emitter bootstrap closure and the defects that demonstrably block generation 1 - an intersection that is unknown until the direct v2 Rust door exists (operator verdict 2026-07-29)."
+
+fn e0599_producer_blob() -> String {
+  concat(e0599_measured_producer, concat("\n", e0599_measured_producer_caveat))
+}
+
+fn e0599_write_producer_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_producer_blob(),
+    label: "e0599_producer_blob"
+  )
+}
+
 fn e0599_rollup_cause_labels_blob() -> String {
   fold(e0599_rollup_cause_order, init: "", f: fn(acc, cause) {
     let line = e0599_requirement_cause_label(cause: cause)
