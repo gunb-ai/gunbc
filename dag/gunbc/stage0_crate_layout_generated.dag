@@ -61,5 +61,6 @@ data generated_stage0_filenames: List<String> = [
 ]
 
 data generated_stage0_dirs: List<String> = [
+  "cli_run",
   "module_path_index"
 ]
