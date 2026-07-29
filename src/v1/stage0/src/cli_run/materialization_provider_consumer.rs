@@ -1,3 +1,4 @@
+use crate::resolved_graph_cache::{faithful_probe_unavailable_gap, supports_faithful_probe};
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,7 +20,6 @@ pub enum ResolvedGraphProviderOutcome {
     RefusedWrongArtifact,
     RefusedKindMismatch,
     RefusedWrongContent,
-    RefusedFaithfulProbeUnavailable { gap: String },
     LookupUnclassified { label: String },
 }
 
@@ -97,27 +97,6 @@ fn lookup_missing_outputs(ctx: &InterpContext, lookup: &Value) -> Result<Vec<Str
         .collect::<Result<Vec<_>, _>>()?)
 }
 
-fn lookup_refused_faithful_probe_unavailable_gap(
-    ctx: &InterpContext,
-    lookup: &Value,
-) -> Result<String, String> {
-    let args = [(Some("l".to_string()), lookup.clone())];
-    let gap = v1_interpreter::run_in_context_with_args(
-        ctx,
-        "lookup_refused_faithful_probe_unavailable_gap",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("lookup_refused_faithful_probe_unavailable_gap: {e}"))?;
-    match gap {
-        Value::Str(s) => Ok(s),
-        other => Err(format!(
-            "lookup_refused_faithful_probe_unavailable_gap returned `{}`, expected String",
-            ctx.format_value(&other)
-        )),
-    }
-}
-
 fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, String> {
     if call_lookup_bool(ctx, "lookup_is_hit", lookup)? {
         return Ok("ProviderHit".to_string());
@@ -133,10 +112,6 @@ fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, S
     }
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup)? {
         return Ok("ProviderRefusedWrongContent".to_string());
-    }
-    if call_lookup_bool(ctx, "lookup_is_refused_faithful_probe_unavailable", lookup)? {
-        let gap = lookup_refused_faithful_probe_unavailable_gap(ctx, lookup)?;
-        return Ok(format!("ProviderRefusedFaithfulProbeUnavailable({gap})"));
     }
     let missing = lookup_missing_outputs(ctx, lookup)?;
     if !missing.is_empty() {
@@ -164,13 +139,6 @@ pub fn interpret_provider_lookup(
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", &lookup)? {
         return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_faithful_probe_unavailable", &lookup)? {
-        return Ok(
-            ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
-                gap: lookup_refused_faithful_probe_unavailable_gap(ctx, &lookup)?,
-            },
-        );
-    }
     let missing = lookup_missing_outputs(ctx, &lookup)?;
     if !missing.is_empty() {
         return Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { missing });
@@ -187,6 +155,12 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
+    if !supports_faithful_probe() {
+        return Err(format!(
+            "resolved-graph-cache provider refused faithful probe: {}",
+            faithful_probe_unavailable_gap()
+        ));
+    }
     let payload_byte_count_i64 = i64::try_from(payload_byte_count).map_err(|_| {
         "payload byte count exceeds i64 range for faithful probe request".to_string()
     })?;
@@ -224,6 +198,12 @@ pub fn serve_resolved_graph_v1_disk_probe(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
+    if !supports_faithful_probe() {
+        return Err(format!(
+            "resolved-graph-cache provider refused faithful probe: {}",
+            faithful_probe_unavailable_gap()
+        ));
+    }
     let ctx = materialization_provider_ctx()?;
     serve_resolved_graph_v1_disk_probe_in_ctx(
         &ctx,

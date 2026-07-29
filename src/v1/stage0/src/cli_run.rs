@@ -58,9 +58,10 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, lookup as cross_process_lookup, resolved_graph_cache_root_from_env,
-    subject_digest_for_closure, transform_content_digest, write as cross_process_write,
-    CacheLookupResult, CachedResolvedGraph,
+    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
+    probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
+    supports_faithful_probe, transform_content_digest, write as cross_process_write,
+    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
 };
 use crate::std_interface_summary::{module_key, typed_module_key};
 
@@ -8027,9 +8028,6 @@ fn serve_resolved_graph_disk_hit_through_provider(
         ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
             "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
         ),
-        ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable { gap } => Err(format!(
-            "resolved-graph-cache provider refused faithful probe: {gap}"
-        )),
         ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
@@ -8084,13 +8082,24 @@ fn resolved_graph_from_sources_with_index(
     // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
     // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(cached) if !cross_process_provider_routing_suppressed() => {
-                return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
+        match cross_process_probe(&cache_root, &subject) {
+            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
+                if !supports_faithful_probe() {
+                    return Err(format!(
+                        "resolved-graph-cache provider refused faithful probe: {}",
+                        faithful_probe_unavailable_gap()
+                    ));
+                }
+                match cross_process_lookup(&cache_root, &subject) {
+                    CacheLookupResult::Hit(cached) => {
+                        return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
+                    }
+                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+                }
             }
-            CacheLookupResult::Hit(_)
-            | CacheLookupResult::RejectedHit(_)
-            | CacheLookupResult::Miss => {}
+            CacheProbeResult::Hit(_)
+            | CacheProbeResult::RejectedHit(_)
+            | CacheProbeResult::Miss => {}
         }
     }
 

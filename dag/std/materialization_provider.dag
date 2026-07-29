@@ -446,20 +446,9 @@ fn serve_resolved_graph_v1_disk_probe(
     closure_digest: closure_digest,
     compiler: compiler_identity_input(digest: compiler_digest)
   }
-  let key = request_key(req: req)
   provider_serve(
     req: req,
-    probe: ProbeFound {
-      artifact: MaterializedArtifact {
-        kind: ResolveClosure,
-        request_key: key,
-        carried_outputs: no_output_ids,
-        content_digest: content_digest,
-        artifact_bytes: payload_bytes,
-        completeness: ArtifactComplete
-      },
-      observed_digest: content_digest
-    }
+    probe: ProbeAbsent
   )
 }
 
