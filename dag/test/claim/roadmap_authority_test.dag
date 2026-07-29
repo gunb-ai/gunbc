@@ -391,8 +391,19 @@ test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool 
     edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
     && edge_exists(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract")
     && edge_exists(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding")
-    && edge_exists(child: "pderive-single-emitter", parent: "pderive-source-slot-binding")
-    && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer")
+}
+
+test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool {
+    edge_exists(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance")
+    && edge_exists(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module")
+    && edge_exists(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap")
+    && edge_exists(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover")
+    && edge_exists(child: "v1-emitter-delete", parent: "v1-emitter-quarantine")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-emitter-delete")
 }
 
 test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
