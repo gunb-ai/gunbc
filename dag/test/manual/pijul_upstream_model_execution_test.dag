@@ -19,6 +19,8 @@ import extdeps.pijul {
   PijulDependencyTextObservation,
   PijulDependencyMentionGrounded,
   PijulDependencyMentionNotGrounded,
+  pijul_upstream_version,
+  pijul_upstream_cli_version,
   pijul_decode_channel_log_observation,
   pijul_assess_channel_log_read_back,
   pijul_assess_rendered_order_conflict,
@@ -647,7 +649,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
             ),
           }
         } else if trim(s: pristine_diff.stdout) != ""
-          || !string_contains(s: version.stdout, pattern: "pijul 1.0.0-beta.20")
+          || trim(s: version.stdout) != pijul_upstream_cli_version
           || !string_contains(s: channels.stdout, pattern: "left-right")
           || !string_contains(s: channels.stdout, pattern: "right-left") {
           PijulR0LiveRefused {
@@ -662,7 +664,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
           }
         } else {
           match pijul_decode_channel_log_observation(
-            pijul_version: trim(s: version.stdout),
+            pijul_version: pijul_upstream_version,
             channel: "left-right",
             head_plaintext: forward_head.stdout,
             hash_only: forward_hashes.stdout,
@@ -671,7 +673,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
               PijulR0LiveRefused { diagnostic: "forward-log-decode-refused" }
             PijulChannelLogObserved { observation: forward } =>
               match pijul_decode_channel_log_observation(
-                pijul_version: trim(s: version.stdout),
+                pijul_version: pijul_upstream_version,
                 channel: "right-left",
                 head_plaintext: reverse_head.stdout,
                 hash_only: reverse_hashes.stdout,
@@ -689,7 +691,7 @@ fn pijul_r0_typed_execution_read_back() -> PijulR0LiveOutcome {
                     state: forward.head.state,
                     changes: forward.changes,
                     producer: PijulLogStateObserved {
-                      pijul_version: trim(s: version.stdout),
+                      pijul_version: pijul_upstream_version,
                     },
                   }
                   match pijul_assess_channel_log_read_back(

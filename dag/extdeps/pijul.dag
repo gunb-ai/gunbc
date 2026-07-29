@@ -8,44 +8,62 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/getting_started.html"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/README.md"
   }
 }
 
 data pijul_channels_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/workflows/channels"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/channel.rs"
   }
 }
 
 data pijul_theory_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/theory"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/change.rs"
   }
 }
 
 data pijul_conflicts_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/conflicts.html"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/alive/output.rs"
   }
 }
 
 data pijul_apply_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/reference/apply.html"
+    locator: "static.crates.io/crates/pijul-core/pijul-core-1.0.0-beta.20.crate#pijul-core-1.0.0-beta.20/src/apply.rs"
   }
 }
 
 data pijul_partial_clone_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "pijul.org/manual/reference/clone.html"
+    locator: "static.crates.io/crates/pijul/pijul-1.0.0-beta.20.crate#pijul-1.0.0-beta.20/src/commands/clone.rs"
   }
 }
+
+type PijulUpstreamVersion {
+  major: NonNegativeInt
+  minor: NonNegativeInt
+  patch: NonNegativeInt
+  beta: NonNegativeInt
+}
+
+data pijul_upstream_version: PijulUpstreamVersion = PijulUpstreamVersion {
+  major: 1
+  minor: 0
+  patch: 0
+  beta: 20
+}
+
+data pijul_upstream_cli_version: NonEmptyStr = "pijul 1.0.0-beta.20"
+
+data pijul_upstream_version_note: NonEmptyStr = "This R0 authority models Pijul CLI and pijul-core 1.0.0-beta.20. Every external anchor resolves into an immutable exact-version crates.io archive, and the wet receipt refuses any CLI version other than pijul 1.0.0-beta.20."
 
 data pijul_timestamp_non_authority_note: NonEmptyStr = "Pijul change timestamps are retained as authored metadata and provenance only. They never order delivery, choose a channel state, satisfy a dependency, or break a tie."
 
@@ -68,7 +86,7 @@ type PijulVertexId {
 }
 
 type PijulChangeIdentityProducer
-  = PijulChangeFileObserved { pijul_version: NonEmptyStr }
+  = PijulChangeFileObserved { pijul_version: PijulUpstreamVersion }
 
 type PijulChangeIdentity {
   hash: PijulChangeHash
@@ -241,7 +259,7 @@ type PijulWorkingCopy {
 }
 
 type PijulStateIdentityProducer
-  = PijulLogStateObserved { pijul_version: NonEmptyStr }
+  = PijulLogStateObserved { pijul_version: PijulUpstreamVersion }
 
 type PijulChannelStateIdentity {
   state: PijulStateHash
@@ -1260,7 +1278,7 @@ fn pijul_decode_hash_only_log(text: String) -> PijulLogHashSetDecodeOutcome {
 }
 
 type PijulChannelLogObservation {
-  pijul_version: NonEmptyStr
+  pijul_version: PijulUpstreamVersion
   channel: PijulChannelName
   head: PijulLogHeadWire
   changes: List<PijulChangeHash>
@@ -1271,7 +1289,7 @@ type PijulChannelLogDecodeOutcome
   | PijulChannelLogInvalid { cause: PijulLogWireRefusal }
 
 fn pijul_decode_channel_log_observation(
-  pijul_version: NonEmptyStr,
+  pijul_version: PijulUpstreamVersion,
   channel: PijulChannelName,
   head_plaintext: String,
   hash_only: String,
@@ -1419,7 +1437,7 @@ fn pijul_assess_dependency_text(
 }
 
 type PijulReadBackObservation {
-  pijul_version: NonEmptyStr
+  pijul_version: PijulUpstreamVersion
   projection: PijulRepositoryProjection
 }
 
