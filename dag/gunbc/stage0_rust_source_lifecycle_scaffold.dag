@@ -53,6 +53,7 @@ type RustSourceManifestStateRefusal
   | DerivedDuplicateExactPaths { count: Int }
   | DerivedHandMaintainedGrew { prior: Int, current: Int }
   | DerivedUnclassifiedTracked { count: Int }
+  | ObservedCargoPathUntracked { path: String }
 
 data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -67,6 +68,43 @@ data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolv
 
 fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
+}
+
+fn observed_classified_repo_paths(
+  file_grain_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> List<String> {
+  list_concat_unique(acc: file_grain_paths, items: cargo_bin_repo_paths)
+}
+
+fn observed_cargo_paths_subset_of_tracked(
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> Bool {
+  fold_list(
+    xs: cargo_bin_repo_paths,
+    init: true,
+    cons: fn(ok, cargo_path) { ok && path_in_list(path: cargo_path, paths: tracked_paths) }
+  )
+}
+
+fn first_untracked_cargo_path(
+  cargo_bin_repo_paths: List<String>,
+  tracked_paths: List<String>
+) -> String {
+  fold_list(
+    xs: cargo_bin_repo_paths,
+    init: "",
+    cons: fn(first, cargo_path) {
+      if first != "" {
+        first
+      } else if path_in_list(path: cargo_path, paths: tracked_paths) {
+        ""
+      } else {
+        cargo_path
+      }
+    }
+  )
 }
 
 fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
@@ -194,8 +232,12 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
       if repository_revision == "" || manifest_digest == "" {
         ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision or manifest_digest" } }
       } else {
-        let classified_paths = file_grain_lifecycle_repo_paths()
-        let lifecycle_paths = file_grain_lifecycle_repo_paths()
+        let file_grain_paths = file_grain_lifecycle_repo_paths()
+        let classified_paths = observed_classified_repo_paths(
+          file_grain_paths: file_grain_paths,
+          cargo_bin_repo_paths: cargo_bin_repo_paths
+        )
+        let lifecycle_paths = classified_paths
         let newly_unclassified = count_newly_unclassified_tracked(
           tracked_paths: tracked_paths,
           prior_tracked_paths: prior_tracked_paths,
@@ -206,7 +248,15 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         let duplicate_excess = count_duplicate_path_excess(paths: lifecycle_paths)
         let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
         let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
-        if newly_unclassified != 0 {
+        let untracked_cargo = first_untracked_cargo_path(
+          cargo_bin_repo_paths: cargo_bin_repo_paths,
+          tracked_paths: tracked_paths
+        )
+        if length(xs: cargo_bin_repo_paths) == 0 {
+          ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
+        } else if untracked_cargo != "" {
+          ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
+        } else if newly_unclassified != 0 {
           ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
         } else if stale != 0 {
           ManifestStateScaffoldRefused { cause: DerivedStaleLifecycleRows { count: stale } }
@@ -216,8 +266,6 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
           ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: hand_prior, current: hand_current } }
         } else if unclassified != 0 {
           ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: unclassified } }
-        } else if length(xs: cargo_bin_repo_paths) == 0 {
-          ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
         } else {
           ManifestStateScaffoldOk
         }
@@ -419,51 +467,55 @@ fn file_grain_lifecycle_repo_paths() -> List<String> {
 
 fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
+  let classified = observed_classified_repo_paths(
+    file_grain_paths: lifecycle_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_digest: "witness-abc123",
-    tracked_rust_repo_paths: list_concat_unique(acc: lifecycle_paths, items: [extra_path]),
-    prior_tracked_rust_repo_paths: lifecycle_paths,
+    tracked_rust_repo_paths: list_concat_unique(acc: classified, items: [extra_path]),
+    prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
 
-fn list_without_path(paths: List<String>, drop: String) -> List<String> {
-  fold_list(
-    xs: paths,
-    init: [] as List<String>,
-    cons: fn(kept, path) {
-      if path == drop {
-        kept
-      } else {
-        list_snoc_item(xs: kept, item: path)
-      }
-    }
-  )
-}
-
-fn first_hand_maintained_repo_path() -> String {
-  fold_list(
-    xs: derived_hand_maintained_stage0_repo_paths(),
-    init: "",
-    cons: fn(first, path) {
-      if first == "" {
-        path
-      } else {
-        first
-      }
-    }
-  )
-}
-
 fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
-  let lifecycle_paths = file_grain_lifecycle_repo_paths()
-  let dropped_hand = list_without_path(paths: lifecycle_paths, drop: first_hand_maintained_repo_path())
+  let from_generated = derived_generated_stage0_repo_paths()
+  let with_partition = list_concat_unique(
+    acc: from_generated,
+    items: derived_partition_crate_lib_repo_paths()
+  )
+  let prior_file_grain = list_concat_unique(acc: with_partition, items: residue_lifecycle_repo_paths())
+  let current_file_grain = file_grain_lifecycle_repo_paths()
+  let classified = observed_classified_repo_paths(
+    file_grain_paths: current_file_grain,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
+  let prior_classified = observed_classified_repo_paths(
+    file_grain_paths: prior_file_grain,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_digest: "witness-abc123",
-    tracked_rust_repo_paths: lifecycle_paths,
-    prior_tracked_rust_repo_paths: dropped_hand,
+    tracked_rust_repo_paths: classified,
+    prior_tracked_rust_repo_paths: prior_classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}
+
+fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
+  let lifecycle_paths = file_grain_lifecycle_repo_paths()
+  let classified = observed_classified_repo_paths(
+    file_grain_paths: lifecycle_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_digest: "witness-abc123",
+    tracked_rust_repo_paths: classified,
+    prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }

@@ -8,7 +8,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   ManifestStateScaffoldOk,
   ManifestStateScaffoldRefused,
   RustManifestObserved,
-  RustManifestUnobserved,
+  ObservedCargoPathUntracked,
   UnobservedTrackedManifest,
   behavioral_oracle_carrier_ref,
   classified_residue_disjoint_holds,
@@ -33,6 +33,8 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note,
+  RustManifestUnobserved,
+  witness_honest_minimal_observation_ok,
   witness_hand_maintained_growth_observation,
   witness_observation_covering_lifecycle_plus_extra
 }
@@ -41,7 +43,7 @@ import std.disposition { Scaffold, SingleAuthority }
 import v2.std.algebra { length }
 import v2.std.text { String }
 
-data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle SCAFFOLD witnesses (PR A): pure .dag joins + evidence-shaped host observation model; no cli_run/interpreter growth. Host observation boundary is PR B."
+data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle SCAFFOLD witnesses (PR A): pure .dag joins + evidence-shaped host observation model; zero Rust delta vs merge-base (git diff origin/main...HEAD -- '*.rs' empty). Host observation boundary is PR B."
 
 test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
   string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
@@ -160,7 +162,7 @@ test fn scaffold_observed_derives_unclassified_from_path_evidence_red_control() 
       extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
     )
   ) {
-    ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: _ } } => true
+    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
@@ -177,6 +179,28 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
   ) {
     ManifestStateScaffoldRefused { cause: _ } => true
     ManifestStateScaffoldOk => false
+  }
+}
+
+test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
+  match rust_source_manifest_state_verdict(observation: witness_honest_minimal_observation_ok()) {
+    ManifestStateScaffoldOk => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestObserved {
+      repository_revision: "deadbeef",
+      manifest_digest: "abc123",
+      tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
+      prior_tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    }
+  ) {
+    ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: _ } } => true
+    _ => false
   }
 }
 
