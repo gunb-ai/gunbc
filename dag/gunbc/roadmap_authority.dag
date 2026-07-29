@@ -1336,10 +1336,86 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
 
+data scm_prerequisite_acceptance_note: String = "The operator explicitly advanced the source-intent lane to R1 after merging the Git, Mercurial, Pijul, and claim-indexed-evidence slices. These receipts preserve those four declared prerequisite facts and their executed handbacks; R1 depends on all four in declared_roadmap_edges. Replacing the rows with R1 would erase accepted history and violate roadmap_acceptance_receipt_note."
+
 fn chash(s: String) -> ContentHash { s }
 
 fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
   [
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-git-upstream-model"),
+      criteria_digest: chash(s: "b3747b95baf099cc"),
+      red_control: RedControlExecuted {
+        witness_module: "test.manual.git_upstream_model_execution",
+        witness_fn: "witness_git_cli_fixture_hashes_projects_and_independently_reads_back",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/extdeps/git/object_store.dag",
+        further_artifacts: [
+          "dag/test/claim/git_upstream_model_witness_test.dag",
+          "dag/test/manual/git_upstream_model_execution_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-mercurial-upstream-model"),
+      criteria_digest: chash(s: "c43b17d5134b111d"),
+      red_control: RedControlExecuted {
+        witness_module: "test.manual.mercurial_upstream_model_execution",
+        witness_fn: "witness_mercurial_cli_fixture_projects_and_independently_reads_back",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/extdeps/mercurial.dag",
+        further_artifacts: [
+          "dag/test/claim/mercurial_upstream_model_witness_test.dag",
+          "dag/test/manual/mercurial_upstream_model_execution_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-pijul-upstream-model"),
+      criteria_digest: chash(s: "098c989bdc87dac7"),
+      red_control: RedControlExecuted {
+        witness_module: "test.manual.pijul_upstream_model_execution",
+        witness_fn: "witness_pijul_cli_fixture_reads_channel_sets_and_retained_conflict",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/extdeps/pijul.dag",
+        further_artifacts: [
+          "dag/test/claim/pijul_upstream_model_witness_test.dag",
+          "dag/test/manual/pijul_upstream_model_execution_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-claim-indexed-evidence"),
+      criteria_digest: chash(s: "2b81ac6aacf6a190"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.claim_indexed_evidence_witness",
+        witness_fn: "witness_claim_evidence_roles_are_externally_grounded",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/claim_evidence.dag",
+        further_artifacts: [
+          "dag/gunbc/provider_readiness_claim_evidence.dag",
+          "dag/gunbc/os_install_claim_evidence.dag",
+          "dag/gunbc/source_integration_claim_evidence.dag",
+          "dag/test/claim/claim_indexed_evidence_witness_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
     RoadmapAcceptanceReceipt {
       node: nid(s: "namespace-occurrence-transport"),
       criteria_digest: chash(s: "d76cf14b12dbf4bf"),
