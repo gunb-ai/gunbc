@@ -9,8 +9,8 @@ import std.cache_identity {
   resolved_graph_artifact_kind
 }
 import std.computation_identity {
-  ComputationIdentity, StructurallyIdentical, NormalizedIdentical, ExtensionallyIdentical,
-  IdentityUnknown, MissingEnforcement
+  ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
+  identity_grade_is_known
 }
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
@@ -26,13 +26,11 @@ import std.materialization_provider {
   lookup_is_hit, lookup_is_miss,
   lookup_is_refused_kind_mismatch,
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
-  lookup_refused_incomplete_missing, lookup_is_refused_identity_unshareable,
-  lookup_is_refused_identity_grade_unsupported,
+  lookup_refused_incomplete_missing, lookup_served_identity,
   admission_is_admitted, admission_evicted_keys,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
   admission_is_refused_wrong_artifact_write, admission_is_refused_wrong_content_write,
-  admission_is_refused_identity_unshareable_write, admission_is_refused_identity_grade_unsupported_write,
   completeness_is_complete
 }
 import extdeps.realization.resolved_graph { resolved_graph_cache_id }
@@ -45,7 +43,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), refused identity grades (blocker 3 — NormalizedIdentical/ExtensionallyIdentical are typed refusals in this slice, not silent structural serves), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the witnesses construct request VARIANTS and read kind/outputs through the derivations — an under-specified obligation roster is unrepresentable, which is why no witness can even express the weakened-roster attack any more; the chained-eviction witness folds the first admission instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
+data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), identity DERIVED not asserted (blocker 3 plus review 44265 — the doors take no ComputationIdentity parameter at all, so a caller cannot assert a grade; the served grade comes from the binding, and every non-Ok binding derives IdentityUnknown with a located cause), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the witnesses construct request VARIANTS and read kind/outputs through the derivations — an under-specified obligation roster is unrepresentable, which is why no witness can even express the weakened-roster attack any more; the chained-eviction witness folds the first admission instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
 
 fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
@@ -170,16 +168,14 @@ test fn request_kind_is_in_the_key() -> Bool {
 test fn complete_verified_artifact_serves_as_hit() -> Bool {
   lookup_is_hit(l: provider_serve(
     req: witness_closure_request(),
-    probe: witness_good_probe(),
-    identity: StructurallyIdentical
+    probe: witness_good_probe()
   ))
 }
 
 test fn absent_probe_is_a_miss() -> Bool {
   lookup_is_miss(l: provider_serve(
     req: witness_closure_request(),
-    probe: ProbeAbsent,
-    identity: StructurallyIdentical
+    probe: ProbeAbsent
   ))
 }
 
@@ -189,8 +185,7 @@ test fn red_kind_mismatch_refuses_even_on_matching_key_and_content() -> Bool {
     probe: ProbeFound {
       artifact: witness_kind_forged_closure_artifact(),
       observed_digest: witness_closure_digest()
-    },
-    identity: StructurallyIdentical
+    }
   )
   lookup_is_refused_kind_mismatch(l: forged) && (lookup_is_hit(l: forged) == false)
 }
@@ -201,8 +196,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
     probe: ProbeFound {
       artifact: witness_stale_typed_artifact(),
       observed_digest: content_hash_atom(value: "typed-payload-1")
-    },
-    identity: StructurallyIdentical
+    }
   )
   lookup_is_refused_wrong_artifact(l: stale) && (lookup_is_hit(l: stale) == false)
 }
@@ -213,8 +207,7 @@ test fn red_wrong_content_refuses_never_hits() -> Bool {
     probe: ProbeFound {
       artifact: witness_complete_closure_artifact(),
       observed_digest: content_hash_atom(value: "closure-payload-corrupt")
-    },
-    identity: StructurallyIdentical
+    }
   )
   lookup_is_refused_wrong_content(l: poisoned) && (lookup_is_hit(l: poisoned) == false)
 }
@@ -225,8 +218,7 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     probe: ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
       observed_digest: witness_closure_digest()
-    },
-    identity: StructurallyIdentical
+    }
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
   (missing.count() == 1)
@@ -234,40 +226,15 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     && (lookup_is_hit(l: refused) == false)
 }
 
-test fn identity_unknown_refuses_even_on_perfect_probe() -> Bool {
-  let refused = provider_serve(
-    req: witness_closure_request(),
-    probe: witness_good_probe(),
-    identity: IdentityUnknown { cause: MissingEnforcement { detail: "no qualifier ran for this pair" } }
-  )
-  lookup_is_refused_identity_unshareable(l: refused) && (lookup_is_hit(l: refused) == false)
-}
 
-test fn red_normalized_identity_grade_is_refused_not_served_structurally() -> Bool {
-  let refused = provider_serve(
-    req: witness_closure_request(),
-    probe: witness_good_probe(),
-    identity: NormalizedIdentical { normalizer: "alpha-rename" }
-  )
-  lookup_is_refused_identity_grade_unsupported(l: refused) && (lookup_is_hit(l: refused) == false)
-}
 
-test fn red_extensional_identity_grade_is_refused_not_served_structurally() -> Bool {
-  let refused = provider_serve(
-    req: witness_closure_request(),
-    probe: witness_good_probe(),
-    identity: ExtensionallyIdentical { bound: "declared-domain" }
-  )
-  lookup_is_refused_identity_grade_unsupported(l: refused) && (lookup_is_hit(l: refused) == false)
-}
 
 test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
   let a = provider_admit(
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: StructurallyIdentical
+    observed_digest: witness_closure_digest()
   )
   admission_is_admitted(a: a) && (admission_evicted_keys(a: a).count() == 0)
 }
@@ -290,8 +257,7 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
     store: store0,
     req: witness_closure_request(),
     artifact: first_artifact,
-    observed_digest: witness_closure_digest(),
-    identity: StructurallyIdentical
+    observed_digest: witness_closure_digest()
   )
   admission_fold(
     a: first_admit,
@@ -300,8 +266,7 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
         store: warmed,
         req: second_request,
         artifact: second_artifact,
-        observed_digest: content_hash_atom(value: "closure-payload-2"),
-        identity: StructurallyIdentical
+        observed_digest: content_hash_atom(value: "closure-payload-2")
       )
       let evicted = admission_evicted_keys(a: second_admit)
       admission_is_admitted(a: second_admit)
@@ -313,8 +278,6 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
@@ -324,8 +287,7 @@ test fn admission_of_oversized_artifact_is_budget_exhausted() -> Bool {
     store: witness_empty_store(budget_count: 50),
     req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: StructurallyIdentical
+    observed_digest: witness_closure_digest()
   )
   admission_is_budget_exhausted(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -335,8 +297,7 @@ test fn red_admission_derives_completeness_from_request_v1_shape_refused() -> Bo
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_v1_shape_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: StructurallyIdentical
+    observed_digest: witness_closure_digest()
   )
   let missing = admission_refused_incomplete_missing(a: a)
   admission_is_refused_incomplete_write(a: a)
@@ -350,8 +311,7 @@ test fn red_admission_kind_mismatch_is_refused() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_kind_forged_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: StructurallyIdentical
+    observed_digest: witness_closure_digest()
   )
   admission_is_refused_kind_mismatch_write(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -361,8 +321,7 @@ test fn red_admission_stale_key_is_refused_as_wrong_artifact() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_typecheck_request_changed_input(),
     artifact: witness_stale_typed_artifact(),
-    observed_digest: content_hash_atom(value: "typed-payload-1"),
-    identity: StructurallyIdentical
+    observed_digest: content_hash_atom(value: "typed-payload-1")
   )
   admission_is_refused_wrong_artifact_write(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -372,33 +331,12 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_complete_closure_artifact(),
-    observed_digest: content_hash_atom(value: "closure-payload-corrupt"),
-    identity: StructurallyIdentical
+    observed_digest: content_hash_atom(value: "closure-payload-corrupt")
   )
   admission_is_refused_wrong_content_write(a: a) && (admission_is_admitted(a: a) == false)
 }
 
-test fn red_admission_identity_unknown_is_refused() -> Bool {
-  let a = provider_admit(
-    store: witness_empty_store(budget_count: 1000),
-    req: witness_closure_request(),
-    artifact: witness_complete_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: IdentityUnknown { cause: MissingEnforcement { detail: "no qualifier ran for this pair" } }
-  )
-  admission_is_refused_identity_unshareable_write(a: a) && (admission_is_admitted(a: a) == false)
-}
 
-test fn red_admission_unsupported_identity_grade_is_refused() -> Bool {
-  let a = provider_admit(
-    store: witness_empty_store(budget_count: 1000),
-    req: witness_closure_request(),
-    artifact: witness_complete_closure_artifact(),
-    observed_digest: witness_closure_digest(),
-    identity: NormalizedIdentical { normalizer: "alpha-rename" }
-  )
-  admission_is_refused_identity_grade_unsupported_write(a: a) && (admission_is_admitted(a: a) == false)
-}
 
 test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   completeness_is_complete(c: artifact_completeness(
@@ -411,4 +349,33 @@ test fn consumer_target_frontier_names_seven_caches_with_typed_binds() -> Bool {
   (materialization_provider_target_count() == 7)
     && materialization_provider_targets_contain(id: resolved_graph_cache_id)
     && materialization_provider_targets_all_bound()
+}
+
+
+test fn served_hit_carries_a_derived_structural_grade() -> Bool {
+  let served = provider_serve(req: witness_closure_request(), probe: witness_good_probe())
+  lookup_is_hit(l: served) && identity_grade_is_known(ci: lookup_served_identity(l: served))
+}
+
+test fn red_identity_cannot_be_asserted_only_derived() -> Bool {
+  let mismatched = provider_serve(
+    req: witness_closure_request(),
+    probe: ProbeFound {
+      artifact: witness_kind_forged_closure_artifact(),
+      observed_digest: witness_closure_digest()
+    }
+  )
+  (identity_grade_is_known(ci: lookup_served_identity(l: mismatched)) == false)
+    && (lookup_is_hit(l: mismatched) == false)
+}
+
+test fn incomplete_artifact_derives_unknown_identity() -> Bool {
+  let refused = provider_serve(
+    req: witness_closure_request(),
+    probe: ProbeFound {
+      artifact: witness_v1_shape_closure_artifact(),
+      observed_digest: witness_closure_digest()
+    }
+  )
+  identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false
 }

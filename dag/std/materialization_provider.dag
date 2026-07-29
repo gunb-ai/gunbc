@@ -10,15 +10,15 @@ import std.cache_identity {
   resolved_graph_artifact_kind
 }
 import std.computation_identity {
-  ComputationIdentity, StructurallyIdentical, NormalizedIdentical, ExtensionallyIdentical, IdentityUnknown,
-  IdentityUnknownCause
+  ComputationIdentity, StructurallyIdentical, IdentityUnknown,
+  IdentityUnknownCause, MissingConcept, MissingEnforcement
 }
 import std.artifact_store { ArtifactStore, store_put }
 import std.disposition { Disposition, Terminal }
 
 data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
 
-data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). THIS SLICE ACCEPTS ONLY StructurallyIdentical (operator rework ruling, PR 7385 blocker 3): the contract's key is the exact structural content key, and that is the only sharing this key JUSTIFIES. NormalizedIdentical and ExtensionallyIdentical are refused TYPED (ProviderRefusedIdentityGradeUnsupported) rather than silently run through the structural check — advertising extensional sharing while executing structural equality would be a fabricated capability. Dissolve-on: the spine's qualifier supplies the canonical/alias key those grades justify (a normalizer-canonicalized key for NormalizedIdentical, a declared-bound equivalence table for ExtensionallyIdentical), at which point identity_gate widens one grade at a time with its own witness. IdentityUnknown is refused fail-closed with its located cause carried through: the bottom of the lattice is never served as a hit."
+data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). This slice grounds exactly the StructurallyIdentical corner, because the exact structural content key is the only sharing that key JUSTIFIES — and it DERIVES that grade from the binding it computes rather than accepting one (see the derivation note below, review 44265). Advertising normalized or extensional sharing while executing structural equality would be a fabricated capability, so those grades are not reachable here at all; they arrive by the spine widening the KEY, not by anyone passing a grade."
 
 data materialization_provider_backend_seam_note: String = "Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3): CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide serve or typed refusal under the request's correctness demands (declared-input key, artifact kind, content verification, artifact completeness, identity grade). Backend faults stay in CacheRejectReason at the transport and are deliberately not restated here; a transport that cannot probe refuses at its own layer and no ProviderProbe is fabricated."
 
@@ -203,7 +203,7 @@ type ProviderProbe
   | ProbeFound { artifact: MaterializedArtifact, observed_digest: ContentHash }
 
 type ProviderLookup
-  = ProviderHit { artifact: MaterializedArtifact }
+  = ProviderHit { artifact: MaterializedArtifact, identity: ComputationIdentity }
   | ProviderMiss { key: ContentHash }
   | ProviderRefusedKindMismatch { key: ContentHash, requested: ArtifactKindId, found: ArtifactKindId }
   | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
@@ -283,138 +283,108 @@ data no_evicted_keys: List<ContentHash> = []
 
 fn lookup_fold<T>(
   l: ProviderLookup,
-  hit: fn(MaterializedArtifact) -> T,
+  hit: fn(MaterializedArtifact, ComputationIdentity) -> T,
   miss: fn(ContentHash) -> T,
   kind_mismatch: fn(ContentHash, ArtifactKindId, ArtifactKindId) -> T,
   wrong_artifact: fn(ContentHash, ContentHash) -> T,
   wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
-  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
-  identity_unshareable: fn(ContentHash, IdentityUnknownCause) -> T,
-  identity_grade_unsupported: fn(ContentHash, ComputationIdentity) -> T
+  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T
 ) -> T {
   match l {
-    ProviderHit { artifact: a } => hit(a)
+    ProviderHit { artifact: a, identity: i } => hit(a, i)
     ProviderMiss { key: k } => miss(k)
     ProviderRefusedKindMismatch { key: k, requested: r, found: f } => kind_mismatch(k, r, f)
     ProviderRefusedWrongArtifact { key: k, found_key: fk } => wrong_artifact(k, fk)
     ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
-    ProviderRefusedIdentityUnshareable { key: k, cause: c } => identity_unshareable(k, c)
-    ProviderRefusedIdentityGradeUnsupported { key: k, grade: g } => identity_grade_unsupported(k, g)
   }
 }
 
 fn lookup_is_hit(l: ProviderLookup) -> Bool {
   lookup_fold(
     l: l,
-    hit: a => true,
+    hit: (a, i) => true,
     miss: k => false,
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => false
+    incomplete: (k, m) => false
   )
 }
 
 fn lookup_is_miss(l: ProviderLookup) -> Bool {
   lookup_fold(
     l: l,
-    hit: a => false,
+    hit: (a, i) => false,
     miss: k => true,
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => false
+    incomplete: (k, m) => false
   )
 }
 
 fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
   lookup_fold(
     l: l,
-    hit: a => false,
+    hit: (a, i) => false,
     miss: k => false,
     kind_mismatch: (k, r, f) => true,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => false
+    incomplete: (k, m) => false
   )
 }
 
 fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
   lookup_fold(
     l: l,
-    hit: a => false,
+    hit: (a, i) => false,
     miss: k => false,
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => true,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => false
+    incomplete: (k, m) => false
   )
 }
 
 fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
   lookup_fold(
     l: l,
-    hit: a => false,
+    hit: (a, i) => false,
     miss: k => false,
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => true,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => false
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => i,
+    miss: k => IdentityUnknown { cause: MissingEnforcement { detail: "no artifact was probed at this key" } },
+    kind_mismatch: (k, r, f) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
+    wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
+    wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
+    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   )
 }
 
 fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId> {
   lookup_fold(
     l: l,
-    hit: a => no_output_ids,
+    hit: (a, i) => no_output_ids,
     miss: k => no_output_ids,
     kind_mismatch: (k, r, f) => no_output_ids,
     wrong_artifact: (k, fk) => no_output_ids,
     wrong_content: (k, r, o) => no_output_ids,
-    incomplete: (k, m) => m,
-    identity_unshareable: (k, c) => no_output_ids,
-    identity_grade_unsupported: (k, g) => no_output_ids
+    incomplete: (k, m) => m
   )
 }
 
-fn lookup_is_refused_identity_unshareable(l: ProviderLookup) -> Bool {
-  lookup_fold(
-    l: l,
-    hit: a => false,
-    miss: k => false,
-    kind_mismatch: (k, r, f) => false,
-    wrong_artifact: (k, fk) => false,
-    wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => true,
-    identity_grade_unsupported: (k, g) => false
-  )
-}
 
-fn lookup_is_refused_identity_grade_unsupported(l: ProviderLookup) -> Bool {
-  lookup_fold(
-    l: l,
-    hit: a => false,
-    miss: k => false,
-    kind_mismatch: (k, r, f) => false,
-    wrong_artifact: (k, fk) => false,
-    wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false,
-    identity_unshareable: (k, c) => false,
-    identity_grade_unsupported: (k, g) => true
-  )
-}
 
 fn admission_fold<T>(
   a: ProviderAdmission,
@@ -423,8 +393,6 @@ fn admission_fold<T>(
   wrong_artifact_write: fn(ContentHash, ContentHash) -> T,
   wrong_content_write: fn(ContentHash, ContentHash) -> T,
   incomplete_write: fn(List<ArtifactOutputId>) -> T,
-  identity_unshareable_write: fn(IdentityUnknownCause) -> T,
-  identity_grade_unsupported_write: fn(ComputationIdentity) -> T,
   budget_exhausted: fn(ByteSize, ByteSize) -> T
 ) -> T {
   match a {
@@ -433,8 +401,6 @@ fn admission_fold<T>(
     ProviderRefusedWrongArtifactWrite { key: k, found_key: fk } => wrong_artifact_write(k, fk)
     ProviderRefusedWrongContentWrite { recorded: r, observed: o } => wrong_content_write(r, o)
     ProviderRefusedIncompleteWrite { missing: m } => incomplete_write(m)
-    ProviderRefusedIdentityUnshareableWrite { cause: c } => identity_unshareable_write(c)
-    ProviderRefusedIdentityGradeUnsupportedWrite { grade: g } => identity_grade_unsupported_write(g)
     ProviderBudgetExhausted { needed: n, budget: b } => budget_exhausted(n, b)
   }
 }
@@ -447,8 +413,6 @@ fn admission_is_admitted(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
@@ -461,8 +425,6 @@ fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
     wrong_artifact_write: (k, fk) => no_evicted_keys,
     wrong_content_write: (r, o) => no_evicted_keys,
     incomplete_write: m => no_evicted_keys,
-    identity_unshareable_write: c => no_evicted_keys,
-    identity_grade_unsupported_write: g => no_evicted_keys,
     budget_exhausted: (n, b) => no_evicted_keys
   )
 }
@@ -475,8 +437,6 @@ fn admission_is_budget_exhausted(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => true
   )
 }
@@ -489,8 +449,6 @@ fn admission_refused_incomplete_missing(a: ProviderAdmission) -> List<ArtifactOu
     wrong_artifact_write: (k, fk) => no_output_ids,
     wrong_content_write: (r, o) => no_output_ids,
     incomplete_write: m => m,
-    identity_unshareable_write: c => no_output_ids,
-    identity_grade_unsupported_write: g => no_output_ids,
     budget_exhausted: (n, b) => no_output_ids
   )
 }
@@ -503,8 +461,6 @@ fn admission_is_refused_kind_mismatch_write(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
@@ -517,8 +473,6 @@ fn admission_is_refused_wrong_artifact_write(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => true,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
@@ -531,8 +485,6 @@ fn admission_is_refused_wrong_content_write(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => true,
     incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
@@ -545,39 +497,11 @@ fn admission_is_refused_incomplete_write(a: ProviderAdmission) -> Bool {
     wrong_artifact_write: (k, fk) => false,
     wrong_content_write: (r, o) => false,
     incomplete_write: m => true,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => false,
     budget_exhausted: (n, b) => false
   )
 }
 
-fn admission_is_refused_identity_unshareable_write(a: ProviderAdmission) -> Bool {
-  admission_fold(
-    a: a,
-    admitted: (s, e) => false,
-    kind_mismatch_write: (r, f) => false,
-    wrong_artifact_write: (k, fk) => false,
-    wrong_content_write: (r, o) => false,
-    incomplete_write: m => false,
-    identity_unshareable_write: c => true,
-    identity_grade_unsupported_write: g => false,
-    budget_exhausted: (n, b) => false
-  )
-}
 
-fn admission_is_refused_identity_grade_unsupported_write(a: ProviderAdmission) -> Bool {
-  admission_fold(
-    a: a,
-    admitted: (s, e) => false,
-    kind_mismatch_write: (r, f) => false,
-    wrong_artifact_write: (k, fk) => false,
-    wrong_content_write: (r, o) => false,
-    incomplete_write: m => false,
-    identity_unshareable_write: c => false,
-    identity_grade_unsupported_write: g => true,
-    budget_exhausted: (n, b) => false
-  )
-}
 
 fn completeness_missing(c: ArtifactCompleteness) -> List<ArtifactOutputId> {
   match c {
