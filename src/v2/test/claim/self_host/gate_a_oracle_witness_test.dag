@@ -1,0 +1,90 @@
+module v2.test.claim.self_host.gate_a_oracle_witness_test
+
+import v2.compiler.self_host.frontier {
+  compiler_frontier_census_holds,
+  compiler_frontier_self_emitted_oracle_backed_holds,
+  compiler_frontier_self_emitted_oracle_count_matches_baseline_holds,
+  compiler_frontier_self_emitted_baseline,
+  compiler_frontier_self_emitted_count
+}
+import v2.compiler.self_host.gate_a_oracle {
+  gate_a_executed_probe_entries,
+  gate_a_fabricated_self_emit_ready_receipt,
+  gate_a_flip_wave_reverted_module_paths,
+  gate_a_oracle_authorizes_self_emit,
+  gate_a_oracle_row_00_compile_flip_wave_red,
+  gate_a_oracle_row_body_producer,
+  gate_a_self_emit_oracle_row_count,
+  gate_a_self_emit_oracle_rows_all_enrolled_holds,
+  gate_a_flip_wave_reverted_modules_lack_oracle_holds
+}
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_known_red_entries
+}
+import v2.std.algebra { fold_list, length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data gate_a_oracle_witness_note: String = "Gate-A oracle construction wall witnesses (session valiant-crab-382): SelfEmitted is reachable only from gate_a_self_emit_oracle_rows via GateAExecutedProbeReceipt. GREEN: live roster oracle-backed, oracle count matches baseline ratchet. RED: reconstruct the 2026-07-20 flip-wave dishonest SelfEmitted claim for 00_compile — fabricated SelfEmitReady receipt with no oracle row must refuse authorization."
+
+test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
+  gate_a_self_emit_oracle_rows_all_enrolled_holds()
+}
+
+test fn witness_live_roster_self_emitted_oracle_backed_holds() -> Bool {
+  compiler_frontier_self_emitted_oracle_backed_holds()
+}
+
+test fn witness_oracle_count_matches_baseline_ratchet_holds() -> Bool {
+  compiler_frontier_self_emitted_oracle_count_matches_baseline_holds()
+    && (gate_a_self_emit_oracle_row_count() == compiler_frontier_self_emitted_baseline)
+    && (compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline)
+}
+
+test fn witness_census_includes_oracle_backing_holds() -> Bool {
+  compiler_frontier_census_holds()
+}
+
+test fn witness_flip_wave_reverted_modules_lack_oracle_holds() -> Bool {
+  gate_a_flip_wave_reverted_modules_lack_oracle_holds()
+}
+
+data gate_a_flip_wave_red_probe_note: String = "Discriminating RED (2026-07-20 flip-wave): six modules (00_compile, 02_parse, 03_ingest, materialization_carriers, program_assembly, source_authority) were authored SelfEmitted without green curated_cargo_probe_one.sh receipts and reverted after 0/6 cargo-green. witness_flip_wave_dishonest_self_emit_reds reconstructs the dishonest pattern: a fabricated SelfEmitReady receipt for a flip-wave module must NOT pass gate_a_oracle_authorizes_self_emit. The synthetic oracle row gate_a_oracle_row_00_compile_flip_wave_red is NEVER added to gate_a_self_emit_oracle_rows."
+
+test fn witness_flip_wave_dishonest_self_emit_reds() -> Bool {
+  let path = "src/v2/compiler/00_compile.dag"
+  let fabricated = gate_a_fabricated_self_emit_ready_receipt(module_path: path)
+  !gate_a_oracle_authorizes_self_emit(module_path: path, receipt: fabricated)
+}
+
+test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
+  fold_list(
+    xs: gate_a_flip_wave_reverted_module_paths,
+    empty: true,
+    cons: fn(ok, path) {
+      ok && !gate_a_oracle_authorizes_self_emit(
+        module_path: path,
+        receipt: gate_a_fabricated_self_emit_ready_receipt(module_path: path)
+      )
+    }
+  )
+}
+
+test fn witness_synthetic_oracle_row_not_in_live_registry_reds() -> Bool {
+  let red_row = gate_a_oracle_row_00_compile_flip_wave_red
+  !gate_a_oracle_authorizes_self_emit(
+    module_path: red_row.module_path,
+    receipt: red_row.measured_probe
+  )
+}
+
+test fn witness_baseline_oracle_row_authorizes_self_emit() -> Bool {
+  gate_a_oracle_authorizes_self_emit(
+    module_path: gate_a_oracle_row_body_producer.module_path,
+    receipt: gate_a_oracle_row_body_producer.measured_probe
+  )
+}
+
+test fn witness_gate_a_probe_entries_match_known_red_enrollment() -> Bool {
+  length(xs: gate_a_executed_probe_entries) == length(xs: falsifier_self_host_wet_known_red_entries)
+}

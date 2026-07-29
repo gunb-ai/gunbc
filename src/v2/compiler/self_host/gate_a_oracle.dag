@@ -1,0 +1,256 @@
+module v2.compiler.self_host.gate_a_oracle
+
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeReceipt,
+  FrontierProbeStage,
+  ProbeStageEmit,
+  SelfEmitReady
+}
+import v2.std.algebra { any, length, fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+fn gate_a_probe_entry(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+}
+
+data gate_a_executed_probe_entries: List<ScheduleWitnessEntry> = [
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+    f: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+  ),
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+    f: "self_host_use_site_verdict_behavioral_receipt_holds"
+  ),
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+    f: "self_host_discovery_enumeration_behavioral_receipt_holds"
+  ),
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+    f: "self_host_target_carriers_behavioral_receipt_holds"
+  ),
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+    f: "self_host_body_producer_behavioral_receipt_holds"
+  ),
+  gate_a_probe_entry(
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    f: "self_host_03_normalize_behavioral_receipt_holds"
+  )
+]
+
+data gate_a_executed_probe_entries_note: String = "Single authority for executed probe citations on Gate-A oracle rows. Each entry is enrolled on the Wet falsifier cadence via falsifier_self_host_wet_known_red_entries (expect_red quarantine, review #7199). witness_gate_a_probe_entries_enrolled_in_known_red cross-checks parity — this list is the oracle-side projection, not a fork."
+
+data gate_a_oracle_note: String = "Gate-A construction wall (session valiant-crab-382, 2026-07-29): SelfEmitted disposition is reachable ONLY from a GateAExecutedProbeReceipt minted by gate_a_executed_probe_from_oracle_row against this registry — never from a hand-authored FrontierProbeReceipt with SelfEmitReady and ^measured_probe_self_emit_ready. The 2026-07-20 flip-wave proved authored dispositions lie: six modules were moved to SelfEmitted and reverted after curated_cargo_probe_one.sh showed 0/6 cargo-green. Each oracle row binds module_path to (a) the measured FrontierProbeReceipt and (b) an enrolled executed-probe witness citation. Dissolve-on: per-module receipts bind via frontier_probe_survey and rows graduate to ByDerivation membership in gunbc.roster_registry."
+
+type GateAExecutedProbeReceipt {
+  module_path: String
+  measured_probe: FrontierProbeReceipt
+  probe_entry: String
+  probe_function: String
+}
+
+type GateASelfEmitOracleRow {
+  module_path: String
+  measured_probe: FrontierProbeReceipt
+  probe_entry: String
+  probe_function: String
+}
+
+fn gate_a_oracle_self_emit_ready_receipt(module_path: String) -> FrontierProbeReceipt {
+  FrontierProbeReceipt {
+    module_path: module_path,
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  }
+}
+
+fn gate_a_executed_probe_from_oracle_row(row: GateASelfEmitOracleRow) -> GateAExecutedProbeReceipt {
+  GateAExecutedProbeReceipt {
+    module_path: row.module_path,
+    measured_probe: row.measured_probe,
+    probe_entry: row.probe_entry,
+    probe_function: row.probe_function
+  }
+}
+
+data gate_a_oracle_row_body_producer: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/03_body_producer.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/03_body_producer.dag"),
+  probe_entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
+  probe_function: "self_host_body_producer_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_03_normalize: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/03_normalize.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/03_normalize.dag"),
+  probe_entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+  probe_function: "self_host_03_normalize_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_07_target_carriers: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/07_target_carriers.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/07_target_carriers.dag"),
+  probe_entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
+  probe_function: "self_host_target_carriers_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_discovery_enumeration: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/discovery_enumeration.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/discovery_enumeration.dag"),
+  probe_entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
+  probe_function: "self_host_discovery_enumeration_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_parse_engine_hooks: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/parse_engine_hooks.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/parse_engine_hooks.dag"),
+  probe_entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
+  probe_function: "self_host_parse_engine_hooks_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_use_site_verdict: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/use_site_verdict.dag"),
+  probe_entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
+  probe_function: "self_host_use_site_verdict_behavioral_receipt_holds"
+}
+
+data gate_a_oracle_row_00_compile_flip_wave_red: GateASelfEmitOracleRow = GateASelfEmitOracleRow {
+  module_path: "src/v2/compiler/00_compile.dag",
+  measured_probe: gate_a_oracle_self_emit_ready_receipt(module_path: "src/v2/compiler/00_compile.dag"),
+  probe_entry: "src/v2/test/claim/execution/does_not_exist_flip_wave_test.dag",
+  probe_function: "fabricated_flip_wave_all_holds"
+}
+
+data gate_a_self_emit_oracle_rows: List<GateASelfEmitOracleRow> = [
+  gate_a_oracle_row_body_producer,
+  gate_a_oracle_row_03_normalize,
+  gate_a_oracle_row_07_target_carriers,
+  gate_a_oracle_row_discovery_enumeration,
+  gate_a_oracle_row_parse_engine_hooks,
+  gate_a_oracle_row_use_site_verdict
+]
+
+data gate_a_flip_wave_reverted_modules_note: String = "The six modules prematurely flipped to SelfEmitted on 2026-07-19 and reverted 2026-07-20 (honest_frontier_refresh_probe_note): 00_compile, 02_parse, 03_ingest, materialization_carriers, program_assembly, source_authority. curated_cargo_probe_one.sh measured 0/6 cargo-green and 0/6 emit-clean. These paths are the discriminating RED set — any SelfEmitted claim for them without an oracle row must refuse."
+
+data gate_a_flip_wave_reverted_module_paths: List<String> = [
+  "src/v2/compiler/00_compile.dag",
+  "src/v2/compiler/02_parse.dag",
+  "src/v2/compiler/03_ingest.dag",
+  "src/v2/compiler/materialization_carriers.dag",
+  "src/v2/compiler/program_assembly.dag",
+  "src/v2/compiler/source_authority.dag"
+]
+
+fn gate_a_schedule_entry_matches(
+  entry: ScheduleWitnessEntry,
+  probe_entry: String,
+  probe_function: String
+) -> Bool {
+  (entry.entry == probe_entry) && (
+    (entry.function == probe_function) || (entry.function == "")
+  )
+}
+
+fn gate_a_probe_cited_in_entries(
+  probe_entry: String,
+  probe_function: String,
+  entries: List<ScheduleWitnessEntry>
+) -> Bool {
+  any(
+    xs: entries,
+    predicate: fn(entry) {
+      gate_a_schedule_entry_matches(
+        entry: entry,
+        probe_entry: probe_entry,
+        probe_function: probe_function
+      )
+    }
+  )
+}
+
+data gate_a_oracle_probe_enrollment_note: String = "Construction, not a vibe check (DESIGN section 5): an oracle row's probe citation must name an entry in gate_a_executed_probe_entries — the enrolled executed-probe roster for baseline SelfEmitted modules. A SelfEmitted claim whose citation is not enrolled is unbacked; gate_a_oracle_probe_is_enrolled is the discriminating check behind witness_flip_wave_dishonest_self_emit_reds."
+
+fn gate_a_oracle_probe_is_enrolled(row: GateASelfEmitOracleRow) -> Bool {
+  gate_a_probe_cited_in_entries(
+    probe_entry: row.probe_entry,
+    probe_function: row.probe_function,
+    entries: gate_a_executed_probe_entries
+  )
+}
+
+fn gate_a_oracle_probe_receipt_matches(
+  row: GateASelfEmitOracleRow,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  (row.module_path == receipt.module_path)
+    && (row.measured_probe.blocker_class == receipt.blocker_class)
+    && (row.measured_probe.located_stage == receipt.located_stage)
+    && (row.measured_probe.located_reason == receipt.located_reason)
+}
+
+fn gate_a_oracle_row_for_module(module_path: String) -> List<GateASelfEmitOracleRow> {
+  fold_list(
+    xs: gate_a_self_emit_oracle_rows,
+    empty: [],
+    cons: fn(acc, row) {
+      if row.module_path == module_path {
+        concat(acc, [row])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn gate_a_oracle_authorizes_self_emit(
+  module_path: String,
+  receipt: FrontierProbeReceipt
+) -> Bool {
+  any(
+    xs: gate_a_oracle_row_for_module(module_path: module_path),
+    predicate: fn(row) {
+      gate_a_oracle_probe_receipt_matches(row: row, receipt: receipt)
+        && gate_a_oracle_probe_is_enrolled(row: row)
+    }
+  )
+}
+
+fn gate_a_oracle_row_is_enrolled_backed(row: GateASelfEmitOracleRow) -> Bool {
+  gate_a_oracle_probe_is_enrolled(row: row)
+}
+
+fn gate_a_self_emit_oracle_rows_all_enrolled_holds() -> Bool {
+  fold_list(
+    xs: gate_a_self_emit_oracle_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && gate_a_oracle_row_is_enrolled_backed(row: row) }
+  )
+}
+
+fn gate_a_self_emit_oracle_row_count() -> Int {
+  length(xs: gate_a_self_emit_oracle_rows)
+}
+
+fn gate_a_flip_wave_module_has_oracle_row(module_path: String) -> Bool {
+  length(xs: gate_a_oracle_row_for_module(module_path: module_path)) > 0
+}
+
+fn gate_a_flip_wave_reverted_modules_lack_oracle_holds() -> Bool {
+  fold_list(
+    xs: gate_a_flip_wave_reverted_module_paths,
+    empty: true,
+    cons: fn(ok, path) { ok && !gate_a_flip_wave_module_has_oracle_row(module_path: path) }
+  )
+}
+
+fn gate_a_fabricated_self_emit_ready_receipt(module_path: String) -> FrontierProbeReceipt {
+  gate_a_oracle_self_emit_ready_receipt(module_path: module_path)
+}
