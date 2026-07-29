@@ -130,6 +130,14 @@ type ReachState {
   frontier: List<String>
 }
 
+fn plain_already_queued_or_reached(name: String, state: ReachState) -> Bool {
+  name_in(xs: state.reachable_plains, needle: name) || name_in(xs: state.frontier, needle: name)
+}
+
+fn data_already_queued_or_seen(name: String, state: ReachState) -> Bool {
+  name_in(xs: state.seen_data, needle: name) || name_in(xs: state.frontier, needle: name)
+}
+
 fn expand_refs_into(
   refs: List<String>,
   plains: List<String>,
@@ -141,12 +149,16 @@ fn expand_refs_into(
     init: state,
     f: fn(st, r) {
       if name_in(xs: plains, needle: r) {
-        ReachState {
-          reachable_plains: st.reachable_plains,
-          seen_data: st.seen_data,
-          frontier: unique_snoc(xs: st.frontier, item: r)
+        if plain_already_queued_or_reached(name: r, state: st) {
+          st
+        } else {
+          ReachState {
+            reachable_plains: st.reachable_plains,
+            seen_data: st.seen_data,
+            frontier: unique_snoc(xs: st.frontier, item: r)
+          }
         }
-      } else if name_in(xs: data_keys, needle: r) && (name_in(xs: st.seen_data, needle: r) == false) {
+      } else if name_in(xs: data_keys, needle: r) && (data_already_queued_or_seen(name: r, state: st) == false) {
         ReachState {
           reachable_plains: st.reachable_plains,
           seen_data: unique_snoc(xs: st.seen_data, item: r),
@@ -285,14 +297,37 @@ fn seed_reach_state(module: ModuleSurface, plains: List<String>, exports: List<S
   )
 }
 
-fn orphan_plain_names(module: ModuleSurface) -> List<String> {
+type OrphanPlainNamesOutcome = Orphans { names: List<String> } | ReachBudgetRefused { reason: String }
+
+fn format_reach_budget_refusal(entry: String, frontier: List<String>) -> String {
+  concat(
+    "test-module orphan reachability (DESIGN §5): convergence budget exhausted for ",
+    concat(entry, concat(" with ", concat(to_string(value: length(xs: frontier)), " frontier item(s) remaining — refuse rather than fabricate orphan results")))
+  )
+}
+
+fn orphan_names_from_reachable(plains: List<String>, reachable_plains: List<String>) -> List<String> {
+  fold(
+    plains,
+    init: [],
+    f: fn(acc, name) {
+      if name_in(xs: reachable_plains, needle: name) {
+        acc
+      } else {
+        concat(acc, [name])
+      }
+    }
+  )
+}
+
+fn orphan_plain_names_or_refuse(module: ModuleSurface) -> OrphanPlainNamesOutcome {
   let plains = plain_names(module: module)
   if length(xs: plains) == 0 {
-    []
+    Orphans { names: [] }
   } else {
     let exports = cross_module_exports_for(entry: module.entry)
     if (has_enrollment_surface(module: module) == false) && (length(xs: exports) == 0) {
-      plains
+      Orphans { names: plains }
     } else {
       let data_keys = fold(
         concat(module.test_data, module.plain_data),
@@ -320,18 +355,23 @@ fn orphan_plain_names(module: ModuleSurface) -> List<String> {
           }
         }
       )
-      fold(
-        plains,
-        init: [],
-        f: fn(acc, name) {
-          if name_in(xs: closed.reachable_plains, needle: name) {
-            acc
-          } else {
-            concat(acc, [name])
-          }
+      if length(xs: closed.frontier) > 0 {
+        ReachBudgetRefused {
+          reason: format_reach_budget_refusal(entry: module.entry, frontier: closed.frontier)
         }
-      )
+      } else {
+        Orphans {
+          names: orphan_names_from_reachable(plains: plains, reachable_plains: closed.reachable_plains)
+        }
+      }
     }
+  }
+}
+
+fn orphan_plain_names(module: ModuleSurface) -> List<String> {
+  match orphan_plain_names_or_refuse(module: module) {
+    Orphans { names: names } => names
+    ReachBudgetRefused { reason: _ } => []
   }
 }
 
@@ -434,20 +474,38 @@ type ExplicitEntryPair {
   function: String
 }
 
-fn collect_orphan_records(modules: List<ModuleSurface>) -> List<OrphanRecord> {
+type CollectOrphanOutcome = CollectRefused { reason: String } | CollectOrphans { records: List<OrphanRecord> }
+
+fn collect_orphan_outcome(modules: List<ModuleSurface>) -> CollectOrphanOutcome {
   fold(
     modules,
-    init: [],
+    init: CollectOrphans { records: [] },
     f: fn(acc, surf) {
-      fold(
-        orphan_plain_names(module: surf),
-        init: acc,
-        f: fn(inner, name) {
-          concat(inner, [OrphanRecord { entry: surf.entry, name: name }])
-        }
-      )
+      match acc {
+        CollectRefused { reason: reason } => CollectRefused { reason: reason }
+        CollectOrphans { records: recs } =>
+          match orphan_plain_names_or_refuse(module: surf) {
+            ReachBudgetRefused { reason: reason } => CollectRefused { reason: reason }
+            Orphans { names: names } => CollectOrphans {
+              records: fold(
+                names,
+                init: recs,
+                f: fn(inner, name) {
+                  concat(inner, [OrphanRecord { entry: surf.entry, name: name }])
+                }
+              )
+            }
+          }
+      }
     }
   )
+}
+
+fn collect_orphan_records(modules: List<ModuleSurface>) -> List<OrphanRecord> {
+  match collect_orphan_outcome(modules: modules) {
+    CollectRefused { reason: _ } => []
+    CollectOrphans { records: records } => records
+  }
 }
 
 fn format_orphan_refusal(orphans: List<OrphanRecord>) -> String {
@@ -466,11 +524,14 @@ fn format_orphan_refusal(orphans: List<OrphanRecord>) -> String {
 }
 
 fn check_orphan_surfaces_or_refuse(modules: List<ModuleSurface>) -> Optional<String> {
-  let orphans = collect_orphan_records(modules: modules)
-  if length(xs: orphans) == 0 {
-    optional_absent()
-  } else {
-    optional_present(value: format_orphan_refusal(orphans: orphans))
+  match collect_orphan_outcome(modules: modules) {
+    CollectRefused { reason: reason } => optional_present(value: reason)
+    CollectOrphans { records: orphans } =>
+      if length(xs: orphans) == 0 {
+        optional_absent()
+      } else {
+        optional_present(value: format_orphan_refusal(orphans: orphans))
+      }
   }
 }
 

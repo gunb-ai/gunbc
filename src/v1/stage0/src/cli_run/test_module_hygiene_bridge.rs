@@ -473,24 +473,53 @@ pub(crate) fn invoke_orphan_plain_names(
         Some("module".to_string()),
         module_surface_to_value(surface, ctx),
     )];
-    let result = v1_interpreter::run_in_context_with_args(ctx, "orphan_plain_names", &args, false)
-        .map_err(|e| format!("orphan_plain_names: {e}"))?;
-    let Value::List(items) = result else {
-        return Err(format!(
-            "orphan_plain_names returned `{}`, expected List",
-            ctx.format_value(&result)
-        ));
-    };
-    items
-        .iter()
-        .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
-            other => Err(format!(
-                "orphan_plain_names element `{}` is not String",
-                ctx.format_value(other)
-            )),
-        })
-        .collect()
+    let result =
+        v1_interpreter::run_in_context_with_args(ctx, "orphan_plain_names_or_refuse", &args, false)
+            .map_err(|e| format!("orphan_plain_names_or_refuse: {e}"))?;
+    match &result {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "OrphanPlainNamesOutcome")
+            && ctx.sym_eq(*variant_name, "ReachBudgetRefused") =>
+        {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(reason)) => Err(reason.clone()),
+                _ => Err("OrphanPlainNamesOutcome.ReachBudgetRefused missing reason".to_string()),
+            }
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "OrphanPlainNamesOutcome")
+            && ctx.sym_eq(*variant_name, "Orphans") =>
+        {
+            let Value::List(items) = ctx
+                .field(fields, "names")
+                .ok_or_else(|| "OrphanPlainNamesOutcome.Orphans missing names".to_string())?
+            else {
+                return Err("OrphanPlainNamesOutcome.Orphans names is not List".to_string());
+            };
+            items
+                .iter()
+                .map(|item| match item {
+                    Value::Str(s) => Ok(s.clone()),
+                    other => Err(format!(
+                        "orphan_plain_names_or_refuse element `{}` is not String",
+                        ctx.format_value(other)
+                    )),
+                })
+                .collect()
+        }
+        other => Err(format!(
+            "orphan_plain_names_or_refuse returned `{}`, expected OrphanPlainNamesOutcome",
+            ctx.format_value(other)
+        )),
+    }
 }
 
 #[cfg(test)]
