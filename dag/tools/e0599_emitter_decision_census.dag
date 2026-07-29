@@ -3,6 +3,7 @@ module tools.e0599_emitter_decision_census
 import std.types { Bool, Int, String, list_length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
+import v2.std.optional { Optional, Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on: B1 lands the sharing model on the materialization axis; this module's rows migrate to it and the census becomes a projection of that authority."
@@ -184,8 +185,7 @@ fn e0599_requirement_cause_label(cause: E0599RequirementCause) -> String {
 }
 
 fn e0599_row_matches_operation(row: E0599LoweringRow, operation: E0599LoweringOperation) -> Bool {
-  e0599_lowering_operation_label(operation: row.operation)
-    == e0599_lowering_operation_label(operation: operation)
+  e0599_lowering_operation_label(operation: row.operation) == e0599_lowering_operation_label(operation: operation)
 }
 
 fn e0599_row_for_operation(operation: E0599LoweringOperation) -> Optional<E0599LoweringRow> {
