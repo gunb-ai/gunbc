@@ -25,23 +25,12 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityFidelityFact,
   CompatibilityEndpointStateCaptured,
-  CompatibilityEndpointState,
-  CompatibilityUpstreamChangeEvidence,
-  CompatibilityNativeProposalContract,
-  CompatibilityHistory,
-  CompatibilityPublication,
-  CompatibilityConflictFacts,
-  CompatibilityPathAndMode,
-  CompatibilityAvailability,
-  CompatibilityNativeIdentity,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceModeled,
   CompatibilityExactCompareAndAdvance,
-  compatibility_fidelity_profile,
 }
 
 data git_compatibility_binding_note: NonEmptyStr = "The Git R1 handler consumes Git's own decoded projection, independent read-back, and exact-old-OID transition model. GitObjectId, GitRefName, tree/index/worktree facts, and unsupported-boundary rows remain in GitCompatibilityReceipt; the common projection contains no Git object, ref, commit, or branch type. CompatibilityAdvanceModeled is deliberately weaker than P3's executed-and-read-back transition receipt."
@@ -141,52 +130,23 @@ fn git_compatibility_bind(
 }
 
 fn git_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  compatibility_fidelity_profile(
-    first: CompatibilityFidelityFact {
-      axis: CompatibilityEndpointState,
-      disposition: CompatibilityFidelityPreserved,
+  CompatibilityFidelityProfile {
+    endpoint_state: CompatibilityFidelityPreserved,
+    upstream_change_evidence: CompatibilityFidelityDowngraded {
+      cause: "an exact Git endpoint and history do not recover an authored source operation",
     },
-    remaining: [
-      CompatibilityFidelityFact {
-        axis: CompatibilityUpstreamChangeEvidence,
-        disposition: CompatibilityFidelityDowngraded {
-          cause: "an exact Git endpoint and history do not recover an authored source operation",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeProposalContract,
-        disposition: CompatibilityFidelityUnavailable {
-          cause: "ordinary Git import carries no native reads/frame/ensures proposal contract",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityHistory,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPublication,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityConflictFacts,
-        disposition: CompatibilityFidelityUnavailable {
-          cause: "R0 does not promote Git conflict presentation into semantic evidence",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPathAndMode,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityAvailability,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeIdentity,
-        disposition: CompatibilityFidelityPreserved,
-      },
-    ],
-  )
+    native_proposal_contract: CompatibilityFidelityUnavailable {
+      cause: "ordinary Git import carries no native reads/frame/ensures proposal contract",
+    },
+    history: CompatibilityFidelityPreserved,
+    publication: CompatibilityFidelityPreserved,
+    conflict_facts: CompatibilityFidelityUnavailable {
+      cause: "R0 does not promote Git conflict presentation into semantic evidence",
+    },
+    path_and_mode: CompatibilityFidelityPreserved,
+    availability: CompatibilityFidelityPreserved,
+    native_identity: CompatibilityFidelityPreserved,
+  }
 }
 
 fn git_compatibility_projection_receipt(

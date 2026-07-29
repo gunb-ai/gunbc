@@ -369,67 +369,19 @@ fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFie
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   [
     active_sized(
-      id: "2-scm-git-upstream-model",
+      id: "2-scm-compatibility-shape",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(
-        headline: "Write down how Git really stores things",
-        boundary: "Describe Git on its own terms: files, folders, commits, tags, file permissions, symlinks, links to other repositories, and how it names and finds them. Prove it by reading a small repository and writing it back unchanged.",
-        displaced_cost: "If we invent a one-size-fits-all model first, it quietly drops things like executable permissions and symlinks — and every tool built on top inherits the loss.",
-        first_slice: "Finish the storage description, then read one small repository and write it back unchanged.",
-        red_control: "A plain file, an executable file, a symlink, a link to another repository, and a tag all stay distinguishable; writing against an out-of-date starting point refuses instead of overwriting; a missing object never reads as empty.",
-        out_of_scope: "No shared source-control interface, no hosting or server work, and no guessing that a renamed file is the same file.",
-        handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
-      )
-    ),
-    active_sized(
-      id: "2-scm-mercurial-upstream-model",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Write down how Mercurial really works, in its own words",
-        boundary: "Describe Mercurial from its own documentation: its permanent change IDs versus the numbers local to one copy, its branches, bookmarks, tags, and its draft/published states. Use no Git vocabulary.",
-        displaced_cost: "Mercurial's ideas are not Git's. Renaming them into Git words loses the differences, and a later shared design would be built on a mistranslation.",
-        first_slice: "Write the description and read one small repository back out, leaving anything we cannot safely write marked unavailable.",
-        red_control: "A copy-local revision number can change while the permanent change ID does not; draft, published, and hidden stay three different things; a bookmark, a named branch, and a branch tip cannot collapse into one idea.",
-        out_of_scope: "No Mercurial support in the product, no shared source-control interface, and no faking missing facts from timestamps.",
-        handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
-      )
-    ),
-    active_sized(
-      id: "2-scm-pijul-upstream-model",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Write down how Pijul really works, in its own words",
-        boundary: "Describe Pijul from its own documentation: individual changes that carry their own identity, what each change depends on, and how a channel is a set of changes rather than a pointer to the newest one.",
-        displaced_cost: "Pijul does not have a 'latest commit'. Modelling it as if it does erases the thing that makes it different, and a third viewpoint is what stops us from mistaking Git's habits for universal truth.",
-        first_slice: "Write the description, then apply a small set of changes, read them back, and try them in a different order.",
-        red_control: "A channel cannot be reduced to one newest commit; one change keeps the same identity in two channels; applying a change whose prerequisites are missing refuses instead of applying an empty change.",
-        out_of_scope: "No Pijul support in the product, no adopting its conflict rules as ours, and no shared source-control interface.",
-        handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
-      )
-    ),
-    active_sized(
-      id: "2-claim-indexed-evidence",
-      owner: "deduction",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Say once what counts as evidence for a claim",
-        boundary: "One shared way to record a fact, state a claim, and link evidence that supports or contradicts it — including how much a piece of evidence can prove on its own. Three existing features adopt it.",
-        displaced_cost: "Right now each feature invents its own yes/no test, so a weak signal gets promoted into a confident claim. 'We stored a login' starts meaning 'the login works'.",
-        first_slice: "Reuse what already exists for this, then run it through the three features that need it and check they agree.",
-        red_control: "A stored login plus a failed live request supports 'we have a credential' but not 'the service is ready'; contradictory evidence stays contradictory and missing evidence stays missing, rather than the newest answer winning.",
-        out_of_scope: "No source-control solver, no per-feature copy of the idea, and no treating 'we recorded this' as proof that it is true.",
-        handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
+        headline: "Extract the compatibility realization shape from three upstream receipts",
+        boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, capture class, fidelity profile, projection/read-back/repair identity, and explicit conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
+        displaced_cost: "Lets the native edit → submit → outcome contract project through plural SCMs without forcing users into Git mechanics or erasing Mercurial/Pijul distinctions into a first-adapter abstraction.",
+        first_slice: "Bind each R0 fixture through its native decoder and read-back assessment, replace C0's optional Git projection slot with realization-indexed receipts, and execute one fixed C0 proposal through Git, Mercurial, Pijul, and a synthetic fourth handler.",
+        red_control: "C0 proposal identity, transition, and primary outcome stay unchanged across all realizations; missing required conditional advance refuses; modeled Git advance cannot satisfy executed advance; a read-back mismatch refuses; the fourth handler requires no primary-contract or kernel edit.",
+        out_of_scope: "No semantic candidate space, admission policy, Applied receipt, universal commit/ref/channel type, hosted service, writable Mercurial/Pijul target, or central realization enum.",
+        handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection, idempotent repair receipt, and the exact distinctions deliberately left native."
       )
     ),
 
@@ -1413,7 +1365,11 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
       [
+<<<<<<< HEAD
         section_prose(content: "The graph has ten lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three SCM R0 models, the P−1 evidence carrier, and the toolchain pin model are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+=======
+        section_prose(content: "The graph has nine lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The three independent SCM R0 models and P−1 evidence carrier are landed prerequisites; R1 compatibility-shape extraction is the active SCM slice, while semantic-kernel and later product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+>>>>>>> fa45abd9601 (WIP: business)
       ],
       concat(
         if focus_is_active(focus: focus) {

@@ -5,12 +5,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
-  CompatibilityFidelityFact,
+  CompatibilityFidelityProfile,
   CompatibilityEndpointStateCaptured,
-  CompatibilityEndpointState,
   CompatibilityFidelityPreserved,
+  CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
-  compatibility_fidelity_profile,
   compatibility_projection_from_handler,
 }
 import gunbc.native_scm_interaction_contract {
@@ -42,13 +41,33 @@ fn synthetic_fourth_handler(
         advance: CompatibilityAdvanceUnavailable {
           cause: "synthetic R0 intentionally has no conditional advance",
         },
-        fidelity: compatibility_fidelity_profile(
-          first: CompatibilityFidelityFact {
-            axis: CompatibilityEndpointState,
-            disposition: CompatibilityFidelityPreserved,
+        fidelity: CompatibilityFidelityProfile {
+          endpoint_state: CompatibilityFidelityPreserved,
+          upstream_change_evidence: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
           },
-          remaining: [],
-        ),
+          native_proposal_contract: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          history: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          publication: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          conflict_facts: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          path_and_mode: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          availability: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          native_identity: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+        },
       }
     },
   }

@@ -83,8 +83,8 @@ type NativeScmScenario
   | IncompatibleGoalsNeedAuthorizedDecider
   | EvidenceGatheredInternally
   | ToolModelProofDeficitRoutesInternally
-  | GitExportFailureRepairsWithoutReinterpretation
-  | ConventionalGitImportWithoutRebase
+  | ProjectionFailureRepairsWithoutReinterpretation
+  | ConventionalScmImportWithoutManualRewrite
   | VisibilityAuthorizedDetails
 
 fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIdentity {
@@ -121,13 +121,13 @@ fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIden
       name: "tool-model-proof-deficit-routes-internally",
       attempt_key: "attempt-tool-model-proof-deficit",
     }
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
-      name: "git-export-failure-repairs-without-reinterpretation",
-      attempt_key: "attempt-git-export-failure",
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
+      name: "projection-failure-repairs-without-reinterpretation",
+      attempt_key: "attempt-projection-failure",
     }
-    ConventionalGitImportWithoutRebase => NativeScmProposalIdentity {
-      name: "conventional-git-import-without-rebase",
-      attempt_key: "attempt-conventional-git-import",
+    ConventionalScmImportWithoutManualRewrite => NativeScmProposalIdentity {
+      name: "conventional-scm-import-without-manual-rewrite",
+      attempt_key: "attempt-conventional-scm-import",
     }
     VisibilityAuthorizedDetails => NativeScmProposalIdentity {
       name: "visibility-authorized-details",
@@ -150,8 +150,8 @@ fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTran
     DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
     RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
     EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
-    ConventionalGitImportWithoutRebase => NativeScmCommitTransitionCommitted
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
+    ConventionalScmImportWithoutManualRewrite => NativeScmCommitTransitionCommitted
     VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
   }
 }
@@ -208,11 +208,11 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
     ToolModelProofDeficitRoutesInternally => InProgress {
       progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
     }
-    GitExportFailureRepairsWithoutReinterpretation => Landed {
-      result_preview: "accepted result remains landed while the Git export projection is repaired separately",
+    ProjectionFailureRepairsWithoutReinterpretation => Landed {
+      result_preview: "accepted result remains landed while its compatibility projection is repaired separately",
     }
-    ConventionalGitImportWithoutRebase => Landed {
-      result_preview: "a conventional Git branch import lands as an ordinary import with no manual rewrite",
+    ConventionalScmImportWithoutManualRewrite => Landed {
+      result_preview: "a conventional SCM import lands as an ordinary import with no manual synchronization rewrite",
     }
     VisibilityAuthorizedDetails => Landed {
       result_preview: "details stay optional and can be projected only when visibility authorizes them",
@@ -246,11 +246,11 @@ fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<Strin
     ToolModelProofDeficitRoutesInternally => Present {
       value: "details: internal progress stays internal until the machine finishes its own continuation",
     }
-    GitExportFailureRepairsWithoutReinterpretation => Present {
-      value: "details: Git export repair updates only the projection, not the semantic result",
+    ProjectionFailureRepairsWithoutReinterpretation => Present {
+      value: "details: compatibility repair updates only the projection, not the semantic result",
     }
-    ConventionalGitImportWithoutRebase => Present {
-      value: "details: import is accepted as a normal branch import with the ordinary projection",
+    ConventionalScmImportWithoutManualRewrite => Present {
+      value: "details: import is accepted through its native realization without a manual synchronization rewrite",
     }
     VisibilityAuthorizedDetails => Present {
       value: "details: this text is only available when visibility authorizes it",
@@ -268,8 +268,8 @@ fn native_scm_review_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
@@ -284,8 +284,8 @@ fn native_scm_access_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
@@ -300,15 +300,15 @@ fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
 fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
   match scenario {
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
     ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
     TwoIndependentChangesLand => NativeScmLifecycleReady
     StaleTargetAutoResync => NativeScmLifecycleReady
@@ -317,7 +317,7 @@ fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
@@ -332,13 +332,13 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
     check: native_scm_check_for(scenario: scenario),
     operational: native_scm_operational_for(scenario: scenario),
     projections: match scenario {
-      GitExportFailureRepairsWithoutReinterpretation => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-export-repair"),
+      ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-projection-repair"),
         target: optional_present(value: "main"),
         realizations: [],
       }
-      ConventionalGitImportWithoutRebase => native_scm_projection(
-        workspace: "/workspaces/native-scm-import",
+      ConventionalScmImportWithoutManualRewrite => native_scm_projection(
+        workspace: "/workspaces/native-scm-conventional-import",
         target: "main",
       )
       TwoIndependentChangesLand => native_scm_projection(

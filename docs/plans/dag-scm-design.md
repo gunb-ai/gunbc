@@ -887,12 +887,13 @@ local locks, or “most recent” state. The semantic kernel consumes native pro
 states, claims, and receipts; it never consumes a Git commit, Mercurial changeset, or Pijul change
 as though that upstream object were the semantic contract.
 
-The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) is deliberately only a
-presentation fixture. Its optional `git` projection and two Git-named scenarios are now a counted
-frontier, not the shared adapter interface. They must not be consumed by the proof kernel. Their
-dissolution trigger is the three-upstream compatibility-shape slice: replace the fixture slot with
-adapter-indexed projection receipts derived from the extracted roles, while keeping the dead-simple
-primary outcome byte/behavior stable.
+The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) remains deliberately
+only a presentation fixture. R1 dissolves its former optional `git` slot and Git-named scenario
+surface into realization-indexed receipts plus realization-neutral projection/import journeys.
+`gunbc.scm_compatibility_shape` owns the extracted presentation/capability roles; the Git,
+Mercurial, and Pijul handlers retain their native receipts beside it. Neither carrier may be
+consumed as a semantic/admission or Applied receipt, and C0's dead-simple primary outcome behavior
+remains unchanged.
 
 ## 9. Admission and CI — linear history without serial work
 
@@ -1252,8 +1253,10 @@ does not wait for a native store:
    zero/one/many/unclosed space, admission, transition, projection, closure certificates,
    timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
    The landed C0 carrier from PR #7334 supplies twelve presentation-journey witnesses, not the
-   semantic kernel, evidence relation, or compatibility interface; its optional Git projection is
-   the explicit R1 frontier.
+   semantic kernel or evidence relation. R1 replaces its optional Git projection with
+   realization-indexed projection receipts while preserving the C0-owned identity, transition,
+   and primary outcome; that projection list remains presentation/compatibility state, not an
+   admission or Applied receipt.
    **Accept T1:** every scenario produces its internal receipt and three-arm primary outcome, with
    only `Landed | ChoiceRequired` as semantic handoffs; nearby REDs prevent always-apply/refuse;
    removing a closure certificate changes `ClosedOne` to `Unclosed`; self-amendment,

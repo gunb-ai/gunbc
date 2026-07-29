@@ -14,8 +14,8 @@ import gunbc.native_scm_interaction_contract {
   IncompatibleGoalsNeedAuthorizedDecider,
   EvidenceGatheredInternally,
   ToolModelProofDeficitRoutesInternally,
-  GitExportFailureRepairsWithoutReinterpretation,
-  ConventionalGitImportWithoutRebase,
+  ProjectionFailureRepairsWithoutReinterpretation,
+  ConventionalScmImportWithoutManualRewrite,
   VisibilityAuthorizedDetails,
   native_scm_receipt_for,
   native_scm_primary_label,
@@ -29,12 +29,11 @@ import gunbc.native_scm_interaction_contract {
 }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
-  CompatibilityFidelityFact,
+  CompatibilityFidelityProfile,
   CompatibilityEndpointStateCaptured,
-  CompatibilityEndpointState,
   CompatibilityFidelityPreserved,
+  CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
-  compatibility_fidelity_profile,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,13 +58,33 @@ fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
     advance: CompatibilityAdvanceUnavailable {
       cause: "C0 witness does not establish an executing transition",
     },
-    fidelity: compatibility_fidelity_profile(
-      first: CompatibilityFidelityFact {
-        axis: CompatibilityEndpointState,
-        disposition: CompatibilityFidelityPreserved,
+    fidelity: CompatibilityFidelityProfile {
+      endpoint_state: CompatibilityFidelityPreserved,
+      upstream_change_evidence: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry authored-change evidence",
       },
-      remaining: [],
-    ),
+      native_proposal_contract: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry a proposal contract",
+      },
+      history: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry history",
+      },
+      publication: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry publication facts",
+      },
+      conflict_facts: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry conflict facts",
+      },
+      path_and_mode: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry path or mode facts",
+      },
+      availability: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry availability facts",
+      },
+      native_identity: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry native identity",
+      },
+    },
   }
 }
 
@@ -185,8 +204,8 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
     }
 }
 
-test fn witness_git_export_failure_repairs_without_reinterpretation() -> Bool {
-  let r = receipt_for(scenario: GitExportFailureRepairsWithoutReinterpretation)
+test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
+  let r = receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
   let repaired = native_scm_repair_projection(
     receipt: r,
     projection: fixture_compatibility_projection(),
@@ -202,12 +221,13 @@ test fn witness_git_export_failure_repairs_without_reinterpretation() -> Bool {
       )
 }
 
-test fn witness_conventional_git_import_without_rebase() -> Bool {
-  let r = receipt_for(scenario: ConventionalGitImportWithoutRebase)
+test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
+  let r = receipt_for(scenario: ConventionalScmImportWithoutManualRewrite)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
       Landed { result_preview } =>
-        !string_contains(s: result_preview, pattern: "rebase")
+        !string_contains(s: result_preview, pattern: "Git")
+          && !string_contains(s: result_preview, pattern: "rebase")
       _ => false
     }
 }

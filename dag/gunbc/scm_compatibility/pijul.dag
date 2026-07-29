@@ -25,22 +25,11 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityFidelityFact,
   CompatibilityUpstreamChangeEvidenceCaptured,
-  CompatibilityEndpointState,
-  CompatibilityUpstreamChangeEvidence,
-  CompatibilityNativeProposalContract,
-  CompatibilityHistory,
-  CompatibilityPublication,
-  CompatibilityConflictFacts,
-  CompatibilityPathAndMode,
-  CompatibilityAvailability,
-  CompatibilityNativeIdentity,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
-  compatibility_fidelity_profile,
 }
 
 data pijul_compatibility_binding_note: NonEmptyStr = "The Pijul R1 handler consumes Pijul's own projection decoder, channel state identity, recorded changes, dependency/context graph, graph-conflict facts, partial availability, and independent read-back assessment. Those facts remain in PijulCompatibilityReceipt. The shared target and generation handles are opaque projections only; they are not commits, refs, branches, or semantic conflict verdicts, and R0 honestly reports conditional advance as unavailable."
@@ -128,50 +117,21 @@ fn pijul_compatibility_bind(
 }
 
 fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  compatibility_fidelity_profile(
-    first: CompatibilityFidelityFact {
-      axis: CompatibilityEndpointState,
-      disposition: CompatibilityFidelityPreserved,
+  CompatibilityFidelityProfile {
+    endpoint_state: CompatibilityFidelityPreserved,
+    upstream_change_evidence: CompatibilityFidelityPreserved,
+    native_proposal_contract: CompatibilityFidelityUnavailable {
+      cause: "Pijul recorded changes retain upstream operations and dependencies, not the native proposal's full reads/frame/ensures contract",
     },
-    remaining: [
-      CompatibilityFidelityFact {
-        axis: CompatibilityUpstreamChangeEvidence,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeProposalContract,
-        disposition: CompatibilityFidelityUnavailable {
-          cause: "Pijul recorded changes retain upstream operations and dependencies, not the native proposal's full reads/frame/ensures contract",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityHistory,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPublication,
-        disposition: CompatibilityFidelityDowngraded {
-          cause: "a Pijul channel is retained as native state, not promoted into the product publication policy",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityConflictFacts,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPathAndMode,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityAvailability,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeIdentity,
-        disposition: CompatibilityFidelityPreserved,
-      },
-    ],
-  )
+    history: CompatibilityFidelityPreserved,
+    publication: CompatibilityFidelityDowngraded {
+      cause: "a Pijul channel is retained as native state, not promoted into the product publication policy",
+    },
+    conflict_facts: CompatibilityFidelityPreserved,
+    path_and_mode: CompatibilityFidelityPreserved,
+    availability: CompatibilityFidelityPreserved,
+    native_identity: CompatibilityFidelityPreserved,
+  }
 }
 
 fn pijul_compatibility_projection_receipt(

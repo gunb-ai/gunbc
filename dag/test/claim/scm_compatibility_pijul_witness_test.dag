@@ -19,7 +19,6 @@ import gunbc.scm_compatibility.pijul {
   pijul_compatibility_projection_receipt,
 }
 import gunbc.scm_compatibility_shape {
-  CompatibilityUpstreamChangeEvidence,
   CompatibilityFidelityPreserved,
   CompatibilityAdvanceUnavailable,
   CompatibilityObservationOnly,
@@ -133,14 +132,10 @@ test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
       let profile = pijul_compatibility_projection_receipt(
         receipt: receipt,
       ).fidelity
-      profile.remaining
-        |> any(fact =>
-          fact.axis == CompatibilityUpstreamChangeEvidence
-            && match fact.disposition {
-              CompatibilityFidelityPreserved => true
-              _ => false
-            }
-        )
+      match profile.upstream_change_evidence {
+        CompatibilityFidelityPreserved => true
+        _ => false
+      }
     }
   }
 }

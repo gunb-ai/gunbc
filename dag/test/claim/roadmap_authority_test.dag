@@ -509,7 +509,7 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
 
 data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
 
-test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
+test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
       doc: roadmap_authority_for(focus: NoFocus),
@@ -520,14 +520,14 @@ test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
     && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
     && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
     && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
-    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 4
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 1
     && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
-    && id_exists(id: "2-scm-git-upstream-model")
-    && id_exists(id: "2-scm-mercurial-upstream-model")
-    && id_exists(id: "2-scm-pijul-upstream-model")
-    && id_exists(id: "2-claim-indexed-evidence")
-    && !id_exists(id: "2-scm-compatibility-shape")
+    && !id_exists(id: "2-scm-git-upstream-model")
+    && !id_exists(id: "2-scm-mercurial-upstream-model")
+    && !id_exists(id: "2-scm-pijul-upstream-model")
+    && !id_exists(id: "2-claim-indexed-evidence")
+    && id_exists(id: "2-scm-compatibility-shape")
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }

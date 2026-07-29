@@ -28,22 +28,11 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityFidelityFact,
   CompatibilityEndpointStateCaptured,
-  CompatibilityEndpointState,
-  CompatibilityUpstreamChangeEvidence,
-  CompatibilityNativeProposalContract,
-  CompatibilityHistory,
-  CompatibilityPublication,
-  CompatibilityConflictFacts,
-  CompatibilityPathAndMode,
-  CompatibilityAvailability,
-  CompatibilityNativeIdentity,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
-  compatibility_fidelity_profile,
 }
 
 data mercurial_compatibility_binding_note: NonEmptyStr = "The Mercurial R1 handler consumes Mercurial's own projection decoder, portable changeset identities, named-branch relation, and independent read-back assessment. Clone-local revisions, phases, bookmarks, tags, evolution, repository completeness, and node identities remain in MercurialCompatibilityReceipt. The shared carrier does not rename any of them commit, ref, or branch authority, and R0 honestly reports conditional advance as unavailable."
@@ -183,52 +172,23 @@ fn mercurial_compatibility_history_handle(
 }
 
 fn mercurial_compatibility_fidelity() -> CompatibilityFidelityProfile {
-  compatibility_fidelity_profile(
-    first: CompatibilityFidelityFact {
-      axis: CompatibilityEndpointState,
-      disposition: CompatibilityFidelityPreserved,
+  CompatibilityFidelityProfile {
+    endpoint_state: CompatibilityFidelityPreserved,
+    upstream_change_evidence: CompatibilityFidelityDowngraded {
+      cause: "portable changeset history preserves upstream history but not the authored source operation",
     },
-    remaining: [
-      CompatibilityFidelityFact {
-        axis: CompatibilityUpstreamChangeEvidence,
-        disposition: CompatibilityFidelityDowngraded {
-          cause: "portable changeset history preserves upstream history but not the authored source operation",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeProposalContract,
-        disposition: CompatibilityFidelityUnavailable {
-          cause: "Mercurial R0 carries no native reads/frame/ensures proposal contract",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityHistory,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPublication,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityConflictFacts,
-        disposition: CompatibilityFidelityUnavailable {
-          cause: "Mercurial R0 does not promote merge presentation into semantic conflict evidence",
-        },
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityPathAndMode,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityAvailability,
-        disposition: CompatibilityFidelityPreserved,
-      },
-      CompatibilityFidelityFact {
-        axis: CompatibilityNativeIdentity,
-        disposition: CompatibilityFidelityPreserved,
-      },
-    ],
-  )
+    native_proposal_contract: CompatibilityFidelityUnavailable {
+      cause: "Mercurial R0 carries no native reads/frame/ensures proposal contract",
+    },
+    history: CompatibilityFidelityPreserved,
+    publication: CompatibilityFidelityPreserved,
+    conflict_facts: CompatibilityFidelityUnavailable {
+      cause: "Mercurial R0 does not promote merge presentation into semantic conflict evidence",
+    },
+    path_and_mode: CompatibilityFidelityPreserved,
+    availability: CompatibilityFidelityPreserved,
+    native_identity: CompatibilityFidelityPreserved,
+  }
 }
 
 fn mercurial_compatibility_projection_receipt(

@@ -18,7 +18,6 @@ import gunbc.scm_compatibility.mercurial {
   mercurial_compatibility_projection_receipt,
 }
 import gunbc.scm_compatibility_shape {
-  CompatibilityUpstreamChangeEvidence,
   CompatibilityFidelityDowngraded,
   CompatibilityAdvanceUnavailable,
   CompatibilityObservationOnly,
@@ -133,14 +132,10 @@ test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
       let profile = mercurial_compatibility_projection_receipt(
         receipt: receipt,
       ).fidelity
-      profile.remaining
-        |> any(fact =>
-          fact.axis == CompatibilityUpstreamChangeEvidence
-            && match fact.disposition {
-              CompatibilityFidelityDowngraded { cause: _ } => true
-              _ => false
-            }
-        )
+      match profile.upstream_change_evidence {
+        CompatibilityFidelityDowngraded { cause: _ } => true
+        _ => false
+      }
     }
   }
 }

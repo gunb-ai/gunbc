@@ -33,17 +33,6 @@ fn compatibility_capture_class_fold<R>(
   }
 }
 
-type CompatibilityFidelityAxis
-  = CompatibilityEndpointState
-  | CompatibilityUpstreamChangeEvidence
-  | CompatibilityNativeProposalContract
-  | CompatibilityHistory
-  | CompatibilityPublication
-  | CompatibilityConflictFacts
-  | CompatibilityPathAndMode
-  | CompatibilityAvailability
-  | CompatibilityNativeIdentity
-
 type CompatibilityFidelityDisposition
   = CompatibilityFidelityPreserved
   | CompatibilityFidelityDowngraded { cause: NonEmptyStr }
@@ -66,24 +55,16 @@ fn compatibility_fidelity_disposition_fold<R>(
   }
 }
 
-type CompatibilityFidelityFact {
-  axis: CompatibilityFidelityAxis
-  disposition: CompatibilityFidelityDisposition
-}
-
 type CompatibilityFidelityProfile {
-  first: CompatibilityFidelityFact
-  remaining: List<CompatibilityFidelityFact>
-}
-
-fn compatibility_fidelity_profile(
-  first: CompatibilityFidelityFact,
-  remaining: List<CompatibilityFidelityFact>,
-) -> CompatibilityFidelityProfile {
-  CompatibilityFidelityProfile {
-    first: first,
-    remaining: remaining,
-  }
+  endpoint_state: CompatibilityFidelityDisposition
+  upstream_change_evidence: CompatibilityFidelityDisposition
+  native_proposal_contract: CompatibilityFidelityDisposition
+  history: CompatibilityFidelityDisposition
+  publication: CompatibilityFidelityDisposition
+  conflict_facts: CompatibilityFidelityDisposition
+  path_and_mode: CompatibilityFidelityDisposition
+  availability: CompatibilityFidelityDisposition
+  native_identity: CompatibilityFidelityDisposition
 }
 
 type CompatibilityAdvanceGuarantee
