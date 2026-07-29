@@ -39,6 +39,7 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 fn ready_node(id: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_P2E65A1P1148Z5Y175QT" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],

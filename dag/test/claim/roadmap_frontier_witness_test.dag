@@ -26,6 +26,7 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_JAGJGPTHTYSG1GEDN9BA" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -38,6 +39,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
 
 fn accepted_node(base: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_QBNJEXMAX2KQWS838BE3" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -50,6 +52,7 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
 
 fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_CMY81J4ZCKAVZFQEAEFV" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -177,6 +180,7 @@ test fn witness_page_renders_four_buckets() -> Bool {
 
 fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_7WGSEGZK2FRN2VY0DWFC" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: SupersededLine { by: by, content: "Old Row" },
     carriers: [],
@@ -189,6 +193,7 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
 
 fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_2M0H9GXC2H0A5CZ9V7HW" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: SupersededLine { by: by, content: "Accepted Old Row" },
     carriers: [],

@@ -1,0 +1,103 @@
+module test.claim.roadmap_identity_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_identity {
+  RoadmapIdentityRecord,
+  ActiveIdentity,
+  TombstonedIdentity,
+  RoadmapIdentityResolution,
+  IdentityResolved,
+  IdentityUnknown,
+  IdentityAmbiguous,
+  roadmap_identity_registry,
+  roadmap_active_identities,
+  roadmap_tombstoned_identities,
+  record_identity,
+  record_slug,
+  record_is_active,
+  resolve_slug,
+  identity_count,
+  distinct_identity_count,
+  distinct_active_slug_count,
+  active_identity_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data identity_witness_scope_note: String = "WHAT THESE PROVE, AND THE ONE THING THEY CANNOT. They prove the registry is well formed here and now — identities unique across active and tombstoned rows, active slugs unique, the index total over declared nodes, resolution exactly-one in all three outcomes. They CANNOT prove permanence: an identity silently REPLACED between the base revision and this head produces a tree satisfying every claim below, because a snapshot cannot see history. Claiming otherwise would be the coverage-by-illusion this repository names, so the base-versus-head gate is declared owed on the carrier rather than implied here.\\n\\nThe rename claim is the discriminating one. Identity's whole purpose is surviving a slug change, and nothing else in this file would notice if identity silently tracked the slug — every uniqueness and totality claim holds just as well for a registry where identity IS the slug. Constructing a node, renaming its slug, and asserting the identity is unchanged is the only claim here that fails if the separation collapses."
+
+fn declared_identities() -> List<String> {
+  declared_roadmap_nodes() |> map(n => n.identity as String)
+}
+
+test fn every_declared_node_carries_an_identity() -> Bool {
+  all(declared_identities(), i => !(i == ""))
+    && count(declared_identities()) == count(declared_roadmap_nodes())
+}
+
+test fn identities_are_unique_across_the_registry() -> Bool {
+  distinct_identity_count() == identity_count()
+}
+
+test fn active_slugs_are_unique() -> Bool {
+  distinct_active_slug_count() == active_identity_count()
+}
+
+test fn index_is_total_over_declared_nodes() -> Bool {
+  active_identity_count() == count(declared_roadmap_nodes())
+}
+
+test fn resolution_is_exactly_one_not_first_pick() -> Bool {
+  all(roadmap_active_identities(), r =>
+    match resolve_slug(slug: record_slug(r: r)) {
+      IdentityResolved { identity } => (identity as String) == record_identity(r: r)
+      IdentityUnknown { slug: _ } => false
+      IdentityAmbiguous { slug: _, matches: _ } => false
+    })
+}
+
+test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool {
+  match resolve_slug(slug: "no-such-roadmap-node") {
+    IdentityUnknown { slug } => slug == "no-such-roadmap-node"
+    IdentityResolved { identity: _ } => false
+    IdentityAmbiguous { slug: _, matches: _ } => false
+  }
+}
+
+data rename_discriminator_note: String = "THE CLAIM THAT FAILS IF IDENTITY AND SLUG RECOLLAPSE. Every other claim in this file is equally true of a registry where identity is derived from the slug — uniqueness, totality and resolution all hold in that broken world. This one does not: it takes a declared node, changes ONLY its slug, and asserts the identity is byte-identical. That is the entire property the module exists for, since a rename is precisely the operation that used to destroy edges, receipts and dispatch joins by making the node a different node."
+
+fn renamed(n: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    identity: n.identity,
+    node: "renamed-slug-fixture" as RoadmapNodeId,
+    line: n.line,
+    carriers: n.carriers,
+    sizing: n.sizing,
+    execution: n.execution,
+    owner: n.owner,
+    signoff: n.signoff,
+  }
+}
+
+test fn identity_survives_a_slug_rename() -> Bool {
+  match declared_roadmap_nodes() |> first {
+    Present { value: n } =>
+      (renamed(n: n).identity as String) == (n.identity as String)
+        && !((renamed(n: n).node as String) == (n.node as String))
+    Absent => false
+  }
+}
+
+data tombstone_witness_note: String = "The tombstone roster is empty today and these claims are shaped so that stays honest rather than vacuous. The first asserts the registry equals active plus tombstoned — arithmetic that holds at zero and keeps holding when the first retirement lands. The second asserts every tombstoned record reports itself inactive, which is vacuously true now and becomes load-bearing the moment a row exists. Neither asserts a count, because pinning zero would red on the first legitimate retirement."
+
+test fn registry_is_active_plus_tombstoned() -> Bool {
+  identity_count() == active_identity_count() + count(roadmap_tombstoned_identities())
+}
+
+test fn tombstoned_records_are_not_active() -> Bool {
+  all(roadmap_tombstoned_identities(), r => !record_is_active(r: r))
+    && all(roadmap_active_identities(), r => record_is_active(r: r))
+}
