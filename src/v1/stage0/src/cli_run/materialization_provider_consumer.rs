@@ -184,11 +184,7 @@ pub fn serve_resolved_graph_v1_disk_probe(
         ));
     }
     let ctx = materialization_provider_ctx()?;
-    serve_resolved_graph_v1_disk_probe_in_ctx(
-        &ctx,
-        closure_digest,
-        compiler_digest,
-    )
+    serve_resolved_graph_v1_disk_probe_in_ctx(&ctx, closure_digest, compiler_digest)
 }
 
 pub fn serve_resolved_graph_v1_disk_probe_for_test(

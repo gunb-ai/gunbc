@@ -3,19 +3,9 @@ use v1_compiler::cli_run::{
     reset_materialization_provider_ctx_for_test, resolve_entry_graph, resolve_entry_with_index,
     run_claim, serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
 };
-use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_interpreter::ExecutionMode;
 
-use std::rc::Rc;
-
 const WITNESS_ENTRY: &str = "dag/test/claim/materialization_provider_witness_test.dag";
-
-fn fixture_sources() -> Vec<Rc<SourceFile>> {
-    vec![Rc::new(SourceFile {
-        path: "module_a.dag".to_string(),
-        content: "module test.a\nfn answer() -> Int { 42 }\n".to_string(),
-    })]
-}
 
 fn witness_roots() -> Vec<String> {
     let ws = crate::helpers::workspace_root();
@@ -38,7 +28,6 @@ fn witness_ctx() -> v1_compiler::v1_interpreter::InterpContext {
 #[test]
 fn v1_disk_probe_refuses_until_faithful_parts_exist() {
     reset_materialization_provider_ctx_for_test();
-    let sources = fixture_sources();
     let closure_digest = "closure-digest-placeholder".to_string();
     let compiler_digest = "compiler-digest-placeholder".to_string();
 
@@ -61,7 +50,6 @@ fn v1_disk_probe_refuses_until_faithful_parts_exist() {
 #[test]
 fn faithful_probe_refusal_does_not_build_provider_ctx() {
     reset_materialization_provider_ctx_for_test();
-    let sources = fixture_sources();
     let closure_digest = "closure-digest-placeholder-reuse".to_string();
     let compiler_digest = "compiler-digest-placeholder-reuse".to_string();
 
