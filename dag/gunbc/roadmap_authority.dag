@@ -74,7 +74,7 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
-data roadmap_execution_contract_frontier_note: String = "EXACTLY ONE node carries an execution contract (shell-typed-invocation, via with_execution below); every other node is ExecutionContractUnspecified — the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh, which left the frontier at ZERO bound nodes — dispatch refused on the entire roadmap and nothing below Env had ever executed end to end. This row records that the count is now one, and it is a COUNT, not a completion: binding remains per-node roadmap authoring, never a merge-time default, and the frontier closes one deliberate node at a time."
+data roadmap_execution_contract_frontier_note: String = "EXACTLY TWO nodes carry an execution contract, and they are a deliberate PAIR rather than two independent bindings: shell-typed-invocation names an already-green validation and proves the Verify path executes; observation-raw-print-retirement names one that fails today and proves it discriminates. Either alone is a half-claim — a green-only frontier cannot tell a working verifier from an unconditional one, and a red-only frontier never demonstrates the success path — so the count reaching two is the point at which Verify is actually evidenced in both directions. Every other node is ExecutionContractUnspecified — the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh, which left the frontier at ZERO bound nodes — dispatch refused on the entire roadmap and nothing below Env had ever executed end to end. This row records that the count is now one, and it is a COUNT, not a completion: binding remains per-node roadmap authoring, never a merge-time default, and the frontier closes one deliberate node at a time."
 
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
   RoadmapNode {
@@ -203,6 +203,15 @@ fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
     function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+  )
+}
+
+data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is 8; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
+
+fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as FilePath,
+    function: "observation_emit_frontier_is_zero" as NonEmptyStr,
   )
 }
 
@@ -651,7 +660,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "All three behaviours demonstrated."
       )
     ),
-    active_small(
+    with_execution(
+      e: observation_raw_print_retirement_execution_contract(),
+      rn: active_small(
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
@@ -664,7 +675,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "A program's actual output — the thing you asked for — is not progress and stays as it is.",
         handback: "The inventory at zero unclassified."
       )
-    ),
+    )),
 
     active_small(
       id: "placement-live-roster-preflight",
