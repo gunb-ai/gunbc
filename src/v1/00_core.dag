@@ -1494,6 +1494,16 @@ fn with_required_cardinality(n: Node) -> Node {
   Node { name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: Required, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
 }
 
+fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
+  let needs_restore = outer.return_cardinality == CardOptional && inner.return_cardinality != CardOptional
+  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
+}
+
+fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
+  let merge_optional = left == CardOptional || right == CardOptional
+  if merge_optional { CardOptional } else { right }
+}
+
 fn module_path_segments(path: String) -> List<String> {
   if path == "" { [] } else { path |> split(delimiter: ".") }
 }

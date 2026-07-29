@@ -29,7 +29,7 @@ import v1.std.core {
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality,
+  with_optional_cardinality, with_required_cardinality, join_optional_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
@@ -113,16 +113,11 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-fn merged_authored_identity_cardinality(identity: Node, structural: Node) -> Cardinality {
-  let merge_optional = identity.return_cardinality == CardOptional || structural.return_cardinality == CardOptional
-  if merge_optional { CardOptional } else { structural.return_cardinality }
-}
-
 fn with_authored_identity(identity: Node, structural: Node) -> Node {
   Node {
     name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: merged_authored_identity_cardinality(identity: identity, structural: structural),
+    inferred: structural.inferred, return_cardinality: join_optional_cardinality(left: identity.return_cardinality, right: structural.return_cardinality),
     uses: structural.uses, body: structural.body, transport: structural.transport,
     properties: structural.properties, type_annotation: structural.type_annotation,
     is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,

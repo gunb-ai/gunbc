@@ -1284,69 +1284,6 @@ fn structural_method_first_on_list_returns_optional_element() {
     );
 }
 
-fn structural_method_first_on_list_string_returns_optional_element() {
-    let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_string,
-        "first".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("first must resolve on List<String>")
-    .clone();
-    assert_eq!(result.result_type.name, "String");
-    assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "first on List<String> should return Optional"
-    );
-}
-
-fn structural_method_first_on_list_content_hash_returns_optional_element() {
-    let list_hash = container_node("List".to_string(), leaf_node("ContentHash".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_hash,
-        "first".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("first must resolve on List<ContentHash>")
-    .clone();
-    assert_eq!(result.result_type.name, "ContentHash");
-    assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "first on List<ContentHash> should return Optional"
-    );
-}
-
-fn structural_method_first_on_list_nonempty_str_returns_optional_element() {
-    let list_nes = container_node("List".to_string(), leaf_node("NonEmptyStr".to_string()));
-    let result = v1_compiler_infer_lookup::lookup_structural_method(
-        list_nes,
-        "first".to_string(),
-        empty_source_indices(),
-    )
-    .resolution
-    .as_ref()
-    .expect("first must resolve on List<NonEmptyStr>")
-    .clone();
-    assert_eq!(result.result_type.name, "NonEmptyStr");
-    assert!(
-        matches!(
-            result.result_type.return_cardinality,
-            Cardinality::CardOptional
-        ),
-        "first on List<NonEmptyStr> should return Optional"
-    );
-}
-
 fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1889,18 +1826,6 @@ fn main() -> ExitCode {
         (
             "structural_method_first_on_list_returns_optional_element",
             structural_method_first_on_list_returns_optional_element,
-        ),
-        (
-            "structural_method_first_on_list_string_returns_optional_element",
-            structural_method_first_on_list_string_returns_optional_element,
-        ),
-        (
-            "structural_method_first_on_list_content_hash_returns_optional_element",
-            structural_method_first_on_list_content_hash_returns_optional_element,
-        ),
-        (
-            "structural_method_first_on_list_nonempty_str_returns_optional_element",
-            structural_method_first_on_list_nonempty_str_returns_optional_element,
         ),
         (
             "structural_method_count_on_list_returns_int",

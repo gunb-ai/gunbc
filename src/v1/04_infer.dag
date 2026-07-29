@@ -50,7 +50,7 @@ import v1.std.core {
   binop_left, binop_right,
   make_transport_node, local_transport_node,
   Text, Interpolation,
-  with_optional_cardinality, with_required_cardinality,
+  with_optional_cardinality, with_required_cardinality, preserve_outer_optional_cardinality,
   no_span, make_span, NewlineIndex,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
@@ -1194,15 +1194,10 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
   }
 }
 
-fn restore_scrutinee_optional_cardinality(outer: Node, resolved: Node) -> Node {
-  let needs_restore = outer.return_cardinality == CardOptional && resolved.return_cardinality != CardOptional
-  if needs_restore { with_optional_cardinality(n: resolved) } else { resolved }
-}
-
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: restore_scrutinee_optional_cardinality(outer: scrutinee_type, resolved: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
+      pattern_subject_from_node(n: preserve_outer_optional_cardinality(outer: scrutinee_type, inner: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)))
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>

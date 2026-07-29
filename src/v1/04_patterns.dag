@@ -16,7 +16,7 @@ import v1.std.core {
   VariantNotFound, FieldNotFound, NonExhaustiveMatch,
   MatchPattern, LitPattern, arm_pattern,
   LitBool,
-  with_optional_cardinality,
+  with_optional_cardinality, preserve_outer_optional_cardinality,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
@@ -200,8 +200,7 @@ fn synthesize_witness_violates_variant(scrut: Node) -> Node {
 fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject) -> PatternSubject {
   match inner {
     PatternResolved { node: resolved } =>
-      let needs_restore = outer.return_cardinality == CardOptional && resolved.return_cardinality != CardOptional
-      if needs_restore { PatternResolved { node: with_optional_cardinality(n: resolved) } } else { inner }
+      PatternResolved { node: preserve_outer_optional_cardinality(outer: outer, inner: resolved) }
     _ => inner
   }
 }
