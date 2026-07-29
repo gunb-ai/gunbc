@@ -45,9 +45,9 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub(crate) mod materialization_provider_consumer;
-pub(crate) mod test_module_hygiene_bridge;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,

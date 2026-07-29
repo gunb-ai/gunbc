@@ -1,9 +1,7 @@
 use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{self, sorted_fields, ExecutionMode, InterpContext, Value};
-use crate::v1_std_core::{
-    authored_name_at, expr_call_func_at, expr_var_name_at, ExprData, Node,
-};
+use crate::v1_std_core::{authored_name_at, expr_call_func_at, expr_var_name_at, ExprData, Node};
 use im::HashMap;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
@@ -219,14 +217,18 @@ fn module_surface_to_value(surface: &ModuleSurface, ctx: &InterpContext) -> Valu
             (ctx.sym("test_fns"), v1_interpreter::list_value(test_fns)),
             (ctx.sym("plain_fns"), v1_interpreter::list_value(plain_fns)),
             (ctx.sym("test_data"), v1_interpreter::list_value(test_data)),
-            (ctx.sym("plain_data"), v1_interpreter::list_value(plain_data)),
+            (
+                ctx.sym("plain_data"),
+                v1_interpreter::list_value(plain_data),
+            ),
         ])),
     }
 }
 
 fn resolve_hygiene_ctx(source_roots: &[String]) -> Result<InterpContext, String> {
-    let (graph, indices) = super::resolve_entry_graph_shared(source_roots, TEST_MODULE_HYGIENE_ENTRY)
-        .map_err(|e| format!("test_module_hygiene resolve: {e}"))?;
+    let (graph, indices) =
+        super::resolve_entry_graph_shared(source_roots, TEST_MODULE_HYGIENE_ENTRY)
+            .map_err(|e| format!("test_module_hygiene resolve: {e}"))?;
     Ok(super::make_eval_context(
         &graph,
         indices,
@@ -303,11 +305,11 @@ pub(crate) fn check_orphan_helpers_or_err(source_roots: &[String]) -> Result<(),
             fields,
             ..
         } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
+            match ctx.field(&fields, "value") {
                 Some(Value::Str(reason)) => Err(reason.clone()),
-                _ => Err(
-                    "check_orphan_surfaces_or_refuse Present missing reason string".to_string(),
-                ),
+                _ => {
+                    Err("check_orphan_surfaces_or_refuse Present missing reason string".to_string())
+                }
             }
         }
         Value::Variant {
@@ -328,13 +330,9 @@ pub(crate) fn enumerate_entry_test_fns(entry_path: &str) -> Result<Vec<String>, 
     let roots = super::default_source_roots();
     let ctx = resolve_hygiene_ctx(&roots)?;
     let args = [(Some("content".to_string()), Value::Str(content))];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "enumerate_entry_test_names",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "enumerate_entry_test_names", &args, false)
+            .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
     let Value::List(items) = result else {
         return Err(format!(
             "enumerate_entry_test_names returned `{}`, expected List",
@@ -385,13 +383,9 @@ pub(crate) fn expand_explicit_entries(
         Some("inputs".to_string()),
         v1_interpreter::list_value(inputs),
     )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "expand_explicit_pairs",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("expand_explicit_pairs: {e}"))?;
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "expand_explicit_pairs", &args, false)
+            .map_err(|e| format!("expand_explicit_pairs: {e}"))?;
     let Value::List(items) = result else {
         return Err(format!(
             "expand_explicit_pairs returned `{}`, expected List",
@@ -399,15 +393,15 @@ pub(crate) fn expand_explicit_entries(
         ));
     };
     let mut out = Vec::new();
-    for item in items {
+    for item in items.iter() {
         let Value::Record { fields, .. } = item else {
             return Err("expand_explicit_pairs element is not ExplicitEntryPair".to_string());
         };
-        let entry = match ctx.field(fields, "entry") {
+        let entry = match ctx.field(&fields, "entry") {
             Some(Value::Str(s)) => s.clone(),
             _ => return Err("ExplicitEntryPair missing entry".to_string()),
         };
-        let function = match ctx.field(fields, "function") {
+        let function = match ctx.field(&fields, "function") {
             Some(Value::Str(s)) => s.clone(),
             _ => return Err("ExplicitEntryPair missing function".to_string()),
         };
@@ -416,7 +410,11 @@ pub(crate) fn expand_explicit_entries(
     Ok(out)
 }
 
-pub(crate) fn module_surface_for_test(path: &Path, content: &str, entry: &str) -> Option<ModuleSurface> {
+pub(crate) fn module_surface_for_test(
+    path: &Path,
+    content: &str,
+    entry: &str,
+) -> Option<ModuleSurface> {
     analyze_to_surface(path, content, entry)
 }
 
@@ -428,13 +426,8 @@ pub(crate) fn invoke_orphan_plain_names(
         Some("module".to_string()),
         module_surface_to_value(surface, ctx),
     )];
-    let result = v1_interpreter::run_in_context_with_args(
-        ctx,
-        "orphan_plain_names",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("orphan_plain_names: {e}"))?;
+    let result = v1_interpreter::run_in_context_with_args(ctx, "orphan_plain_names", &args, false)
+        .map_err(|e| format!("orphan_plain_names: {e}"))?;
     let Value::List(items) = result else {
         return Err(format!(
             "orphan_plain_names returned `{}`, expected List",
@@ -477,8 +470,8 @@ mod test_module_hygiene_bridge_equivalence_tests {
                 continue;
             }
             let path = Path::new(entry);
-            let content =
-                std::fs::read_to_string(path).map_err(|e| format!("orphan check read {entry}: {e}"))?;
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("orphan check read {entry}: {e}"))?;
             let Some(surface) = analyze_to_surface(path, &content, entry) else {
                 return Err(format!("orphan check: parse failed for {entry}"));
             };
@@ -508,7 +501,7 @@ mod test_module_hygiene_bridge_equivalence_tests {
                 fields,
                 ..
             } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-                match ctx.field(fields, "value") {
+                match ctx.field(&fields, "value") {
                     Some(Value::Str(reason)) => Err(reason.clone()),
                     _ => Err("Present missing reason".to_string()),
                 }
@@ -580,7 +573,10 @@ fn formerly_test_holds() -> Bool {
         .unwrap();
         let entry = file.to_string_lossy().into_owned();
         let err = check_entries_or_err(&[entry]).expect_err("zero enrolled must refuse");
-        assert!(err.contains("formerly_test_holds"), "must name plain: {err}");
+        assert!(
+            err.contains("formerly_test_holds"),
+            "must name plain: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
