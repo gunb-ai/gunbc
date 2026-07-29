@@ -40,7 +40,6 @@ import std.state_durability {
   state_durability_boundary_requirement_list,
   state_durability_perturbation_completed_at,
   state_durability_perturbation_started_at,
-  state_durability_satisfied,
   state_durability_verdict,
   state_realization_content_hash,
 }
@@ -271,7 +270,10 @@ test fn timeline_order_is_derived_from_positive_deltas() -> Bool {
 }
 
 test fn exact_matching_receipts_qualify() -> Bool {
-  state_durability_satisfied(verdict: durable_verdict(evidence: [matching_evidence()]))
+  match durable_verdict(evidence: [matching_evidence()]) {
+    StateDurabilityQualified { qualification: _ } => true
+    StateDurabilityRefused { cause: _ } => false
+  }
 }
 
 test fn realization_definition_change_invalidates_old_receipt() -> Bool {

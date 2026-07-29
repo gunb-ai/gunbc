@@ -338,15 +338,6 @@ type StateDurabilityEvidenceCardinality<Target, ReadbackSubject>
     }
   | MultipleMatchingDurabilityEvidence { count: Int }
 
-fn durability_commit_barrier_is_synchronized(
-  barrier: DurabilityCommitBarrier,
-) -> Bool {
-  match barrier {
-    NoDurabilityCommitBarrier => false
-    SynchronizedCommit => true
-  }
-}
-
 fn state_durability_boundary_eq(
   a: StateDurabilityBoundary,
   b: StateDurabilityBoundary,
@@ -766,31 +757,23 @@ fn state_durability_verdict<Target, ReadbackSubject>(
                   observed_capability_version: realizer.capability_version,
                 },
               }
-            } else if !durability_commit_barrier_is_synchronized(
-              barrier: realizer.commit_barrier,
-            ) {
-              StateDurabilityRefused {
-                cause: DurabilityCommitBarrierMissing {
-                  realization: realizer.realization,
-                },
-              }
             } else {
-              state_durability_boundaries_verdict(
-                required: boundaries,
-                admission: admission,
-                capability: realizer,
-                evidence: evidence,
-              )
+              match realizer.commit_barrier {
+                NoDurabilityCommitBarrier =>
+                  StateDurabilityRefused {
+                    cause: DurabilityCommitBarrierMissing {
+                      realization: realizer.realization,
+                    },
+                  }
+                SynchronizedCommit =>
+                  state_durability_boundaries_verdict(
+                    required: boundaries,
+                    admission: admission,
+                    capability: realizer,
+                    evidence: evidence,
+                  )
+              }
             }
       }
-  }
-}
-
-fn state_durability_satisfied<Target, ReadbackSubject>(
-  verdict: StateDurabilityVerdict<Target, ReadbackSubject>,
-) -> Bool {
-  match verdict {
-    StateDurabilityQualified { qualification: _ } => true
-    StateDurabilityRefused { cause: _ } => false
   }
 }
