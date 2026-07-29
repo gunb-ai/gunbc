@@ -1,0 +1,109 @@
+module test.claim.e0599_emitter_decision_census_witness_test
+
+import std.types { list_length }
+import tools.e0599_emitter_decision_census {
+  TargetApiRequirement,
+  OwnedDeconstructionRequirement,
+  CloneSharedRequirement,
+  FreeMonoidEmptyTest,
+  FreeMonoidTailIterate,
+  FreeMonoidHeadExtract,
+  FreeMonoidCatchallBind,
+  DerefCloneWholeValue,
+  IdentReferenceClone,
+  FieldAccessClone,
+  LoweringUnidentified,
+  e0599_cause_for,
+  e0599_classification_line,
+  e0599_lowering_operation_for,
+  e0599_lowering_operation_label,
+  e0599_requirement_cause_label,
+  e0599_lowering_row_count,
+  e0599_row_for_operation,
+}
+
+data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
+
+test fn e0599_b0_lowering_rows_cover_every_measured_operation() -> Bool {
+  e0599_lowering_row_count() == 7
+}
+
+test fn e0599_b0_freemonoid_empty_test_is_target_api() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "is_empty", receiver_expr: "__fm")) == "FreeMonoidEmptyTest"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) == "TargetApiRequirement"
+}
+
+test fn e0599_b0_freemonoid_tail_iterate_is_target_api() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "iter", receiver_expr: "(*__fm)")) == "FreeMonoidTailIterate"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) == "TargetApiRequirement"
+}
+
+test fn e0599_b0_freemonoid_head_extract_is_owned_deconstruction() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "FreeMonoidHeadExtract"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) == "OwnedDeconstructionRequirement"
+}
+
+test fn e0599_b0_freemonoid_catchall_bind_is_clone_shared() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "__fm")) == "FreeMonoidCatchallBind"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "__fm")) == "CloneSharedRequirement"
+}
+
+test fn e0599_b0_deref_clone_whole_value_is_clone_shared() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "(*acc.clone())")) == "DerefCloneWholeValue"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*acc.clone())")) == "CloneSharedRequirement"
+}
+
+test fn e0599_b0_ident_reference_clone_is_clone_shared() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "item")) == "IdentReferenceClone"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "item")) == "CloneSharedRequirement"
+}
+
+test fn e0599_b0_field_access_clone_is_clone_shared() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "left.carried")) == "CloneSharedRequirement"
+}
+
+test fn e0599_b0_head_extract_and_empty_test_are_different_causes() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm"))
+}
+
+test fn e0599_b0_target_api_is_not_ownership_removable() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")) != "CloneSharedRequirement"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "iter", receiver_expr: "(*__fm)")) != "CloneSharedRequirement"
+}
+
+test fn e0599_b0_owned_deconstruction_is_not_ownership_removable() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "(*__fm)[0]")) != "CloneSharedRequirement"
+}
+
+test fn e0599_b0_red_out_of_scope_method_refuses() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "as_deref", receiver_expr: "opt.clone()")) == "LoweringUnidentified"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "as_deref", receiver_expr: "opt.clone()")) == "Unresolved"
+}
+
+test fn e0599_b0_red_unnamed_receiver_shape_refuses() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "shape_no_lowering_row_names[0](x)")) == "Unresolved"
+}
+
+test fn e0599_b0_red_empty_receiver_refuses() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "")) == "Unresolved"
+}
+
+test fn e0599_b0_red_unresolved_row_lookup_is_absent() -> Bool {
+  match e0599_row_for_operation(operation: LoweringUnidentified { method: "clone", receiver_expr: "" }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn e0599_b0_classification_line_carries_six_fields() -> Bool {
+  list_length(items: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 6
+}
+
+test fn e0599_b0_classification_line_cites_the_linked_crate() -> Bool {
+  string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im 15.1.0 src/vector/mod.rs:180")
+}
+
+test fn e0599_b0_red_classification_does_not_cite_im_rc() -> Bool {
+  !string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im-rc")
+}

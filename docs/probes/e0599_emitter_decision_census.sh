@@ -333,6 +333,38 @@ print("legacy_helper_covers_required_param\tunique_sites")
 for k in ("covered", "not_covered", "unknown"):
     print(f"{k}\t{lg.get(k, 0)}")
 print()
+print("# section=legacy_helper_bounds_produced")
+print("note\tv1_rt.rs is the hand-written seed runtime, not emitter output, and is excluded")
+print("module_closure\thelper_bounded_fns")
+helper = {}
+per_mod = {}
+for m in MODULES:
+    seen = set()
+    for rs in sorted((WORK / m).glob("src/*.rs")):
+        if rs.name == "v1_rt.rs":
+            continue
+        for line in rs.read_text(encoding="utf-8", errors="replace").splitlines():
+            mm = FN_RE.match(line)
+            if mm and mm.group(2) and ": Clone" in mm.group(2):
+                helper[(rs.name, mm.group(1))] = mm.group(2).strip()
+                seen.add((rs.name, mm.group(1)))
+    per_mod[m] = len(seen)
+    print(f"{m}\t{len(seen)}")
+print(f"UNION\t{len(helper)}")
+print()
+print("# section=legacy_helper_overlap_with_defect_sites")
+site_fns = {(r["emitted_file"].split("/")[-1], r["emitted_fn"]): r for r in out_rows}
+overlap = sorted(k for k in helper if k in site_fns)
+print(f"helper_bounded_fns_hosting_a_defect_site\t{len(overlap)}\tof\t{len(helper)}")
+print("emitted_file\temitted_fn\thelper_bound_param\tsite_required_param\tdisjoint")
+for k in overlap:
+    req = sorted({r["required_trait"] for r in out_rows
+                  if (r["emitted_file"].split("/")[-1], r["emitted_fn"]) == k})
+    bound_params = [seg.split(":")[0].strip() for seg in helper[k].strip("<>").split(",") if ":" in seg]
+    req_params = [x.split(":")[0].strip() for x in req]
+    disjoint = "yes" if not (set(bound_params) & set(req_params)) else "no"
+    print(f"{k[0]}\t{k[1]}\t{helper[k]}\t{','.join(req)}\t{disjoint}")
+print()
 print("# section=per_site")
 cols = ["emitted_file", "emitted_line", "emitted_fn", "emitted_type_params", "dag_source",
         "dag_source_line", "source_type_params", "source_construct", "target_representation",
