@@ -1,0 +1,111 @@
+module extdeps.tools.pin
+
+import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity, VersionConstraint }
+import extdeps.tools { CliTool }
+import v2.std.datetime { CalendarDate }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools"
+  }
+}
+
+data tool_pin_authority_note: String = "P1 of the hermetic tool-provisioning lane (docs/plans/hermetic-tool-provisioning-design.md). A mechanical tool dependency is a PIN — an exact version identity plus the expected content identity of the binary — never a location and never a range. Both fields are REQUIRED, so a digest-less or range-only pin is unwritable rather than validated (DESIGN section 5 construction, not a post-check). This module deliberately mints NO new digest concept: expected_identity is the same std.types.ContentHash that extdeps.realization.emit_on_demand_host's ResolvedBuildContext.toolchain_identity already carries for the OBSERVED side (#7388, which digests logical name + executable bytes + version-probe output). Pin declares expected, #7388 observes actual, and P2's membership_reconcile value_eq is the comparison between them — one identity concept with two ends, not a second authority. No consumer reads this module yet; P1 is model-before-implement."
+
+data tool_pin_selection_note: String = "The refresh axis, which keeps a pin from being a freeze. Execution ALWAYS resolves an exact identity — there is no moving reference at run time, because resolving 'latest' at execution is nondeterminism at the substrate boundary (v2.std.determinism) and would make two runs of one spec disagree. How the exact identity was CHOSEN is the separable fact: ExactPin is authored directly; TrackedChannel records that the identity was resolved FROM a moving reference (a release channel, 'latest', a semver range) on a stated date, with a declared refresh window. Re-resolution is an explicit action producing a reviewable diff — the Cargo.lock / flake.lock shape. Staleness therefore refuses loudly and countably instead of either floating forward silently (nondeterminism) or sitting unnoticed at a years-old version (the freeze this axis exists to prevent). refresh_window_days is a bare Int day count; dissolve-on: ground it as a calendar Duration beside std.measure's Time magnitudes when a second consumer needs day arithmetic — do not mint a second day wrapper (same discipline as std.measure amortization_months_dissolve_on)."
+
+type PinSelection
+  = ExactPin
+  | TrackedChannel {
+      channel: NonEmptyStr
+      resolved_on: CalendarDate
+      refresh_window_days: Int
+    }
+
+type ToolPin {
+  tool_name: NonEmptyStr
+  version: VersionIdentity
+  expected_identity: ContentHash
+  selection: PinSelection
+}
+
+type PinFreshness
+  = PinFresh
+  | PinStale { channel: NonEmptyStr, age_days: Int, window_days: Int }
+
+data pin_freshness_purity_note: String = "age_days is SUPPLIED by the caller rather than read here: the clock read is an effect and stays outside the decision, so every arm of this fold is witnessable from literals and the fold itself is deterministic (the belt_observe_from_result shape — decide in a pure fn, thread observed values in). An ExactPin is never stale: it was authored, not resolved from a moving reference, so there is no upstream drift for a window to bound."
+
+fn pin_freshness(pin: ToolPin, age_days: Int) -> PinFreshness {
+  match pin.selection {
+    ExactPin => PinFresh
+    TrackedChannel { channel: c, resolved_on: _, refresh_window_days: w } =>
+      if age_days > w {
+        PinStale { channel: c, age_days: age_days, window_days: w }
+      } else {
+        PinFresh
+      }
+  }
+}
+
+type PinRefusalCause
+  = ConstraintIsNotIdentity { constraint: VersionConstraint }
+  | PinAbsent
+  | PinStaleBeyondWindow { channel: NonEmptyStr, age_days: Int, window_days: Int }
+  | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
+
+type PinAdmission
+  = PinAdmitted { pin: ToolPin }
+  | PinRefused { tool_name: NonEmptyStr, cause: PinRefusalCause }
+
+data legacy_cli_tool_ingest_note: String = "The discriminating RED for P1, and the migration frontier made countable. EVERY CliTool row in the corpus today refuses conversion to a ToolPin, and that is the correct answer rather than a gap: min_version is extdeps.version.VersionConstraint — a RANGE brand ('>= 7.68') — and a range is not an identity. Two hosts satisfying one range run two different binaries, which is precisely the variance a pin exists to remove, so widening the range into a fabricated identity here would be the absorbing fallback DESIGN section 5 forbids. Absent refuses for the same reason with a distinct cause: no version stated at all is a different deficit from a stated range, and collapsing the two would be a state-space conflation. Each refusal is typed, names its tool, and is countable, so the migration burns down visibly under P4 instead of being silently assumed complete."
+
+fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission {
+  match tool.min_version {
+    Present { value: c } =>
+      PinRefused {
+        tool_name: tool.name,
+        cause: ConstraintIsNotIdentity { constraint: c }
+      }
+    Absent =>
+      PinRefused { tool_name: tool.name, cause: PinAbsent }
+  }
+}
+
+data pin_admission_note: String = "The admission a P2 consumer calls: a pin is admitted only when it is BOTH fresh and identity-matched against the observed digest. Freshness is checked before identity deliberately — a stale tracked pin whose binary happens to match is still refused, because the pin no longer represents a current decision and greening it would zero the very signal the refresh window exists to raise. Both arms refuse rather than widen; neither ever substitutes a superset, re-resolves, or proceeds on mismatch."
+
+fn admit_pin(pin: ToolPin, observed_identity: ContentHash, age_days: Int) -> PinAdmission {
+  match pin_freshness(pin: pin, age_days: age_days) {
+    PinStale { channel: c, age_days: a, window_days: w } =>
+      PinRefused {
+        tool_name: pin.tool_name,
+        cause: PinStaleBeyondWindow { channel: c, age_days: a, window_days: w }
+      }
+    PinFresh =>
+      if (pin.expected_identity as String) == (observed_identity as String) {
+        PinAdmitted { pin: pin }
+      } else {
+        PinRefused {
+          tool_name: pin.tool_name,
+          cause: ObservedIdentityMismatch {
+            expected: pin.expected_identity,
+            observed: observed_identity
+          }
+        }
+      }
+  }
+}
+
+data pin_value_eq_note: String = "The bundle member P2 hands to gunbc.membership_reconcile as value_eq. Identity-vs-content split per that spine's authority note: key_of is the TOOL NAME (stable identity), so a version or digest change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the tool down and reinstall it. value_eq is therefore presence-plus-content over the pinned version AND the expected identity together: a same-name drift in either field must re-upsert."
+
+fn pin_value_eq(a: ToolPin, b: ToolPin) -> Bool {
+  ((a.version as String) == (b.version as String))
+    && ((a.expected_identity as String) == (b.expected_identity as String))
+}
+
+fn pin_key_of(pin: ToolPin) -> NonEmptyStr {
+  pin.tool_name
+}

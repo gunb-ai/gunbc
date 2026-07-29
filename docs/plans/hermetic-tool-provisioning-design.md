@@ -83,6 +83,49 @@ This lane extends existing carriers; it does not rebuild them.
 - **GHA actions are tag-pinned** (`@v5`, `@v1.16.0`). Tags are mutable, so
   SHA-pinning is the hermetic form, but the discipline exists.
 
+### `ResolvedBuildContext` (#7388) is the observed half — this lane is the other half
+
+Merged 2026-07-28, `dag/extdeps/realization/emit_on_demand_host.dag`:
+
+```
+type ResolvedBuildContext {
+  toolchain_identity: ContentHash
+  environment_identity: ContentHash
+  cargo_configuration_identity: ContentHash
+}
+```
+
+Its seed realization (`v1_interpreter.rs`, `observe_tool`) digests the tool's
+**logical name + executable bytes + version-probe stdout/stderr**, probes with
+the materialized workspace as `current_dir` so `rust-toolchain.toml` selection
+is observed, and admits only `env_clear`-constructed hashed environment rows.
+That is genuine content-addressed tool identity, already landed.
+
+The relationship is complementary, and it fixes this lane's seam:
+
+- #7388 **observes** — *which* toolchain did we actually get? Hash it so a
+  changed toolchain cannot reuse a warm artifact. It never refuses and never
+  provisions; a wrong-but-consistent toolchain is faithfully recorded and
+  silently used.
+- This lane **ensures** — get the *declared* one, or refuse.
+
+So the pin does **not** mint a second toolchain-identity concept (which would be
+exactly the §3 fork this lane exists to remove). `ToolPin` declares the
+*expected* `ContentHash`; `resolved_build_context_identity` already computes the
+*observed* one; ensure is the reconcile between them, which is precisely
+`membership_reconcile`'s `value_eq`. P1 therefore reuses `ContentHash` and
+`observe_tool`'s digest discipline rather than defining its own.
+
+Two census entries #7388 adds rather than removes:
+
+- `v1_interpreter.rs:8672` — `std::env::var("RUSTC").unwrap_or_else(|_| "rustc")`,
+  a fresh ambient bare-name resolution.
+- `ci_native_cache_root_toolchain_segment_command`
+  (`ci_workflow_run_emit.dag:31`) is **unchanged** and still fabricates
+  `toolchain-unresolved` when `rustc -V` fails, so every host that cannot
+  resolve its toolchain shares one stable cache root. ⊤-as-ignorance treated as
+  ⊤-as-answer; it refuses under P1's refresh/identity arms.
+
 ## 3. Existence is the wrong question — tools are reconciled members
 
 The five resolvers all ask *"is this tool present?"*. That is the host-shaped
@@ -178,16 +221,23 @@ Each phase names its own RED control. Model-before-implement: P1 lands with no
 consumers.
 
 - **P1 — the pin model.** Extend `CliTool` into a pinned identity: exact version
-  + content digest, `SourceGitHubRelease` gains the digest, selection policy
+  (`extdeps.version.VersionIdentity`, the exact brand — never
+  `VersionConstraint`, which is a range) + expected `ContentHash` reusing
+  #7388's identity, `SourceGitHubRelease` gains the digest, selection policy
   (`ExactPin | TrackedChannel`) with recorded resolution and a refresh window.
-  RED: a row with a range-only or digest-less pin refuses; a tracked pin past
-  its window reds.
-- **P2 — one resolver.** Instantiate `membership_reconcile` for tools and
-  collapse all five sites onto it. Delete `resolve_host_tool_program` and the
-  bash ladder — the ladder's own dissolve-on trigger already asks for exactly
-  this ("DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on
-  `host_effect_apply` rather than emitted bash"). RED: an unpinned tool refuses
-  before spawn, not after; a digest mismatch refuses.
+  Both fields are required and non-optional, so a range-only or digest-less pin
+  is **unwritable** rather than validated — the RED lives at the ingest
+  boundary instead: converting a legacy `CliTool` whose `min_version` is a
+  `VersionConstraint` refuses, because a constraint is not an identity. A
+  tracked pin past its window reds.
+- **P2 — one resolver.** Instantiate `membership_reconcile` for tools with the
+  pin as desired and #7388's observed identity as observed, and collapse the
+  sites onto it. Delete `resolve_host_tool_program` and the bash ladder — the
+  ladder's own dissolve-on trigger already asks for exactly this ("DISSOLVES
+  WHEN rustfmt resolution is a typed toolchain probe on `host_effect_apply`
+  rather than emitted bash"). RED: an unpinned tool refuses before spawn, not
+  after; a digest mismatch refuses rather than recording a new identity and
+  proceeding.
 - **P3 — Rust hermetic.** Provision the pinned toolchain into the declared
   repo-local root. Shortest path to a working proof and it covers 30+ census
   hits. Gated on confirming the srv3-07/08 `exit 127` rustup extract flake
