@@ -177,6 +177,72 @@ fn ci_prelude_steps() -> List<Step> {
   ]
 }
 
+fn ci_step_is_setup_rust(s: Step) -> Bool {
+  match s {
+    UsesStep {
+      name: Present { value: "Setup Rust" },
+      id: _,
+      uses: _,
+      with: _,
+      env: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _
+    } => true
+    _ => false
+  }
+}
+
+fn ci_step_is_native_cache_derive(s: Step) -> Bool {
+  match s {
+    RunStep {
+      name: Present {
+        value: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
+      },
+      id: _,
+      run: _,
+      shell: _,
+      env: _,
+      working_directory: _,
+      if_condition: _,
+      continue_on_error: _,
+      timeout_minutes: _
+    } => true
+    _ => false
+  }
+}
+
+type CiPreludeOrderAcc = CiPreludeOrderAcc { seen_setup: Bool, ok: Bool, failed: Bool }
+
+fn ci_prelude_order_acc_advance(acc: CiPreludeOrderAcc, s: Step) -> CiPreludeOrderAcc {
+  match acc {
+    CiPreludeOrderAcc { seen_setup: _, ok: true, failed: _ } => acc
+    CiPreludeOrderAcc { seen_setup: _, ok: _, failed: true } => acc
+    CiPreludeOrderAcc { seen_setup: seen, ok: false, failed: false } =>
+      if ci_step_is_native_cache_derive(s: s) {
+        if seen {
+          CiPreludeOrderAcc { seen_setup: true, ok: true, failed: false }
+        } else {
+          CiPreludeOrderAcc { seen_setup: seen, ok: false, failed: true }
+        }
+      } else if ci_step_is_setup_rust(s: s) {
+        CiPreludeOrderAcc { seen_setup: true, ok: false, failed: false }
+      } else {
+        acc
+      }
+  }
+}
+
+fn ci_prelude_native_cache_root_follows_setup_rust() -> Bool {
+  match fold(
+    ci_prelude_steps(),
+    init: CiPreludeOrderAcc { seen_setup: false, ok: false, failed: false },
+    f: (acc, s) => ci_prelude_order_acc_advance(acc: acc, s: s)
+  ) {
+    CiPreludeOrderAcc { seen_setup: _, ok: ok, failed: _ } => ok
+  }
+}
+
 data ci_artifact_consumer_prelude_note: String = "Checkout-only prelude for deploy jobs that consume the build job's release-bins artifact. Rust release-bin build + isolated rustup stay on build only — deploy verifies and runs prebuilt binaries."
 
 data ci_floor_gate_toolchain_note: String = "Batch-4 floor gates (emit_host rust smoke, self_host realized-comparison rustfmt/regen_stage0) need cargo+rustfmt on PATH. Uses setup-rust-toolchain without isolated RUSTUP_HOME — the full ci_prelude_steps isolate+pin+cache stack stays build-only (exit 127 rustup extract flake on srv3-07/08, 2026-07-21). Hosts that expose a cargo shim (e.g. /usr/local/ctrl-build-shims/cargo) without $CARGO_HOME/bin on PATH still fail bare `rustfmt` spawn inside regen_stage0 while `cargo fmt` works — ci_regen_ensure_rustfmt_path_script (v2.workflow.ci_regen_rustfmt_path_emit; If/Predicate/Exit/Let orch emit, leaf test -x / command -v / export PATH) prepends the locatable rustfmt dir onto PATH for the regen shell (receipt: CI #7290 srv3-03)."

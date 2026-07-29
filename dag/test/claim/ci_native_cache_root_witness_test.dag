@@ -1,6 +1,9 @@
 module test.claim.ci_native_cache_root_witness
 
-import gunbc.ci_workflow { ci_prelude_steps, ci_cargo_build_jobs_count }
+import gunbc.ci_workflow {
+  ci_prelude_native_cache_root_follows_setup_rust,
+  ci_cargo_build_jobs_count
+}
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.falsifier_workflow { expected_falsifier_yml }
 import v2.workflow.ci_workflow_run_emit {
@@ -12,10 +15,7 @@ import v2.workflow.ci_workflow_run_emit {
   ci_native_cache_root_shell_emit_scaffold,
   ci_native_cache_root_shell_emit_dissolution_trigger
 }
-import std.disposition { Scaffold }
-import extdeps.github.actions { RunStep, UsesStep }
-import v2.std.collection { list_at_optional }
-import v2.std.optional { Present, Absent }
+import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -42,43 +42,7 @@ test fn witness_native_cache_root_fabrication_literal_red_control() -> Bool {
 }
 
 test fn witness_prelude_native_cache_root_step_follows_setup_rust() -> Bool {
-  match list_at_optional(xs: ci_prelude_steps(), index: 2) {
-    Present { value: setup_step } =>
-      match setup_step {
-        UsesStep {
-          name: Present { value: "Setup Rust" },
-          id: _,
-          uses: _,
-          with: _,
-          env: _,
-          if_condition: _,
-          continue_on_error: _,
-          timeout_minutes: _
-        } =>
-          match list_at_optional(xs: ci_prelude_steps(), index: 3) {
-            Present { value: cache_step } =>
-              match cache_step {
-                RunStep {
-                  name: Present {
-                    value: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
-                  },
-                  id: _,
-                  run: _,
-                  shell: _,
-                  env: _,
-                  working_directory: _,
-                  if_condition: _,
-                  continue_on_error: _,
-                  timeout_minutes: _
-                } => true
-                _ => false
-              }
-            Absent => false
-          }
-        _ => false
-      }
-    Absent => false
-  }
+  ci_prelude_native_cache_root_follows_setup_rust()
 }
 
 test fn witness_emitted_workflows_exclude_fabricated_segment_literal() -> Bool {
@@ -101,6 +65,7 @@ test fn witness_native_cache_root_emission_carries_dissolve_marker() -> Bool {
 test fn witness_native_cache_root_shell_emit_is_scaffold_holds() -> Bool {
   match ci_native_cache_root_shell_emit_scaffold {
     Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
   }
 }
 
