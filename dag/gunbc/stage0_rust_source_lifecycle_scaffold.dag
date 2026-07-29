@@ -16,7 +16,7 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
-data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths join only after the host observation boundary (gunbc.stage0_rust_host_observation, PR B) — never hand-listed. Full-repo tracked .rs census is RustManifestUnobserved until host observation supplies path evidence with repository_revision and manifest_digest — Unobserved cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children."
+data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths join only after the host observation boundary (gunbc.stage0_rust_host_observation, PR B) — never hand-listed. Full-repo tracked .rs census is RustManifestUnobserved until host observation supplies path evidence with repository_revision and manifest_digest — Unobserved cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children."
 
 data zero_hand_maintained_rust_finish_line_attachment_note: String = "Attach to V1FinishLine ZeroHandMaintainedRust (merged #7393): acceptance requires RustManifestObserved path evidence with derived newly_unclassified=0, stale_lifecycle_rows=0, duplicate_exact_paths=0, and hand-maintained ratchet — not this scaffold's partial joins alone."
 
@@ -63,7 +63,7 @@ data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   }
 }
 
-data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:30 / v1-zero-hand-maintained-rust)"
+data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)"
 
 fn path_in_list(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(p) { p == path })
@@ -415,6 +415,57 @@ fn residue_lifecycle_repo_paths() -> List<String> {
 
 fn file_grain_lifecycle_repo_paths() -> List<String> {
   list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
+}
+
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> RustManifestObserved {
+  let lifecycle_paths = file_grain_lifecycle_repo_paths()
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_digest: "witness-abc123",
+    tracked_rust_repo_paths: list_concat_unique(acc: lifecycle_paths, items: [extra_path]),
+    prior_tracked_rust_repo_paths: lifecycle_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}
+
+fn list_without_path(paths: List<String>, drop: String) -> List<String> {
+  fold_list(
+    xs: paths,
+    init: [] as List<String>,
+    cons: fn(kept, path) {
+      if path == drop {
+        kept
+      } else {
+        list_snoc_item(xs: kept, item: path)
+      }
+    }
+  )
+}
+
+fn first_hand_maintained_repo_path() -> String {
+  fold_list(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    init: "",
+    cons: fn(first, path) {
+      if first == "" {
+        path
+      } else {
+        first
+      }
+    }
+  )
+}
+
+fn witness_hand_maintained_growth_observation() -> RustManifestObserved {
+  let lifecycle_paths = file_grain_lifecycle_repo_paths()
+  let dropped_hand = list_without_path(paths: lifecycle_paths, drop: first_hand_maintained_repo_path())
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_digest: "witness-abc123",
+    tracked_rust_repo_paths: lifecycle_paths,
+    prior_tracked_rust_repo_paths: dropped_hand,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
 }
 
 fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
