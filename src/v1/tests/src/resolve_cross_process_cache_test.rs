@@ -134,11 +134,7 @@ fn cached_verdict(
     })
 }
 
-fn cached_resolve_err(
-    roots: &[String],
-    entry: &str,
-    cache_dir: &std::path::Path,
-) -> String {
+fn cached_resolve_err(roots: &[String], entry: &str, cache_dir: &std::path::Path) -> String {
     with_cache_env(cache_dir, || {
         let index = build_multi_entry_index(roots);
         resolve_entry_with_index(&index, entry).expect_err("expected provider refusal")
@@ -489,21 +485,17 @@ fn key_is_deterministic_in_its_axes() {
 
 // The ladder's tier ordering at the resolve seam (store fills share — never
 // replaces it): the per-process share serves repeats by reference; the store
-// serves only the process's FIRST touch of a subject, and that hit is installed
-// into the share. Without the install-back, N same-subject resolves each
-// decoded and retained an independent graph — the eval-phase memory runaway
-// this test pins extinct (receipt: eager-ram-612 A/B, 2026-07-10).
+// would serve a process's first touch of a subject and install into the share
+// once the provider can serve a complete artifact (part a). Until then, a v1
+// disk hit is typed provider refusal and stops the line — no cold-resolve widen.
 #[test]
-fn same_subject_resolves_share_one_graph_store_fills_share() {
+fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
     let dir = temp_dir("share");
     let (roots, a, _b, _c) = write_fixture(&dir);
     let cache_dir = dir.join("cache");
     fs::create_dir_all(&cache_dir).expect("cache dir");
 
     with_cache_env(&cache_dir, || {
-        // First process: the first touch BUILDS (store miss), filling store and
-        // share through one seam; the repeat takes the reference. No decode
-        // happens anywhere on the build path.
         let decodes_before = decode_count();
         let index = build_multi_entry_index(&roots);
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("build resolve");
@@ -518,24 +510,16 @@ fn same_subject_resolves_share_one_graph_store_fills_share() {
             "the build path must not decode"
         );
 
-        // Second process (fresh index, same thread): the store serves the first
-        // touch — exactly one decode — and the repeat takes the installed
-        // reference.
         let index2 = build_multi_entry_index(&roots);
-        let (h1, _) = resolve_entry_with_index(&index2, &a).expect("store-hit resolve");
-        let (h2, _) = resolve_entry_with_index(&index2, &a).expect("repeat resolve");
+        let err = resolve_entry_with_index(&index2, &a).expect_err("v1 store hit must refuse");
         assert!(
-            std::rc::Rc::ptr_eq(&h1, &h2),
-            "repeat after a store hit must serve the installed reference, not a second decode"
+            err.contains("provider refused incomplete disk hit"),
+            "fresh index must not cold-resolve through v1 disk hit: {err}"
         );
         assert_eq!(
             decode_count(),
-            decodes_before + 1,
-            "store serves the first touch: exactly one decode per subject per process"
-        );
-        assert!(
-            !std::rc::Rc::ptr_eq(&g1, &h1),
-            "the share is per-process: a fresh index decodes its own reference"
+            decodes_before,
+            "provider refusal must not decode or rebuild"
         );
     });
 }

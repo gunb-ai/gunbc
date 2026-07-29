@@ -1,6 +1,7 @@
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, serve_resolved_graph_v1_disk_probe_for_test,
-    ClaimOutcome, ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+    build_multi_entry_index, make_eval_context, resolve_entry_graph, resolve_entry_with_index,
+    run_claim, serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
+    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 use v1_compiler::resolved_graph_cache::{closure_content_digest, transform_content_digest};
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -58,6 +59,43 @@ fn v1_disk_probe_refuses_incomplete_naming_compile_clean_diagnostic_union() {
         }
         other => panic!("expected ProviderRefusedIncomplete, got {other:?}"),
     }
+}
+
+#[test]
+fn v1_disk_hit_provider_refusal_stops_resolve_line() {
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!("gunbc-provider-refuse-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let entry_src = "module test.provider_refuse\nfn witness() -> Bool { true }\n";
+    let entry = dir.join("entry.dag");
+    std::fs::write(&entry, entry_src).expect("write entry");
+    let roots = vec![dir.to_string_lossy().into_owned()];
+    let entry_path = entry.to_string_lossy().into_owned();
+    let cache_dir = dir.join("cache");
+    std::fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let prev = std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR");
+    std::env::set_var(
+        "GUNBC_RESOLVED_GRAPH_CACHE_DIR",
+        cache_dir.to_string_lossy().as_ref(),
+    );
+    let index = build_multi_entry_index(&roots);
+    let _ = resolve_entry_with_index(&index, &entry_path).expect("cold resolve warms cache");
+    let index2 = build_multi_entry_index(&roots);
+    let err = resolve_entry_with_index(&index2, &entry_path)
+        .expect_err("disk hit must not widen to cold resolve");
+    if let Some(v) = prev {
+        std::env::set_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR", v);
+    } else {
+        std::env::remove_var("GUNBC_RESOLVED_GRAPH_CACHE_DIR");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        err.contains("provider refused incomplete disk hit"),
+        "typed provider refusal must stop the line: {err}"
+    );
 }
 
 #[test]
