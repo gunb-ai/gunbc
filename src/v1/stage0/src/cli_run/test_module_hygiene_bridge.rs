@@ -395,31 +395,66 @@ pub(crate) fn expand_explicit_entries(
         Some("inputs".to_string()),
         v1_interpreter::list_value(inputs),
     )];
-    let result =
-        v1_interpreter::run_in_context_with_args(&ctx, "expand_explicit_pairs", &args, false)
-            .map_err(|e| format!("expand_explicit_pairs: {e}"))?;
-    let Value::List(items) = result else {
-        return Err(format!(
-            "expand_explicit_pairs returned `{}`, expected List",
-            ctx.format_value(&result)
-        ));
-    };
-    let mut out = Vec::new();
-    for item in items.iter() {
-        let Value::Record { fields, .. } = item else {
-            return Err("expand_explicit_pairs element is not ExplicitEntryPair".to_string());
-        };
-        let entry = match ctx.field(&fields, "entry") {
-            Some(Value::Str(s)) => s.clone(),
-            _ => return Err("ExplicitEntryPair missing entry".to_string()),
-        };
-        let function = match ctx.field(&fields, "function") {
-            Some(Value::Str(s)) => s.clone(),
-            _ => return Err("ExplicitEntryPair missing function".to_string()),
-        };
-        out.push((entry, function));
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "expand_explicit_pairs_or_refuse",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("expand_explicit_pairs_or_refuse: {e}"))?;
+    match &result {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "ExpandExplicitPairsOutcome")
+            && ctx.sym_eq(*variant_name, "Refused") =>
+        {
+            match ctx.field(fields, "reason") {
+                Some(Value::Str(reason)) => Err(reason.clone()),
+                _ => Err("ExpandExplicitPairsOutcome.Refused missing reason".to_string()),
+            }
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "ExpandExplicitPairsOutcome")
+            && ctx.sym_eq(*variant_name, "Expanded") =>
+        {
+            let Value::List(items) = ctx
+                .field(fields, "pairs")
+                .ok_or_else(|| "ExpandExplicitPairsOutcome.Expanded missing pairs".to_string())?
+            else {
+                return Err("ExpandExplicitPairsOutcome.Expanded pairs is not List".to_string());
+            };
+            let mut out = Vec::new();
+            for item in items.iter() {
+                let Value::Record { fields, .. } = item else {
+                    return Err(
+                        "expand_explicit_pairs_or_refuse element is not ExplicitEntryPair"
+                            .to_string(),
+                    );
+                };
+                let entry = match ctx.field(fields, "entry") {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err("ExplicitEntryPair missing entry".to_string()),
+                };
+                let function = match ctx.field(fields, "function") {
+                    Some(Value::Str(s)) => s.clone(),
+                    _ => return Err("ExplicitEntryPair missing function".to_string()),
+                };
+                out.push((entry, function));
+            }
+            Ok(out)
+        }
+        other => Err(format!(
+            "expand_explicit_pairs_or_refuse returned `{}`, expected ExpandExplicitPairsOutcome",
+            ctx.format_value(other)
+        )),
     }
-    Ok(out)
 }
 
 pub(crate) fn module_surface_for_test(
@@ -613,6 +648,32 @@ test data beta_fixture: Bool = true
             names,
             BTreeSet::from(["alpha_holds".to_string(), "beta_fixture".to_string()])
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn file_grain_expand_refuses_empty_test_decls() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("empty_grain_test.dag");
+        std::fs::write(
+            &file,
+            r#"module empty_grain
+
+fn plain_only() -> Bool {
+  true
+}
+"#,
+        )
+        .unwrap();
+        let entry = file.to_string_lossy().into_owned();
+        let err = expand_explicit_entries(&[(entry.clone(), String::new())])
+            .expect_err("file-grain with no test decls must refuse");
+        assert!(
+            err.contains("has no test fn / test data declarations"),
+            "must refuse empty enumerate: {err}"
+        );
+        assert!(err.contains(&entry), "must name entry: {err}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

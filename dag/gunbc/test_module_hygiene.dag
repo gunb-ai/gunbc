@@ -478,35 +478,49 @@ fn pair_key(entry: String, function: String) -> String {
   concat(entry, "\0", function)
 }
 
-fn expand_explicit_pairs(inputs: List<ExplicitExpandInput>) -> List<ExplicitEntryPair> {
+type ExpandExplicitPairsOutcome = Expanded { pairs: List<ExplicitEntryPair> } | Refused { reason: String }
+
+fn file_grain_empty_refusal(entry: String) -> String {
+  concat("file-grain enumerate: entry ", concat(entry, " has no test fn / test data declarations"))
+}
+
+fn expand_pair_into(acc_pairs: List<ExplicitEntryPair>, entry: String, name: String) -> List<ExplicitEntryPair> {
+  let key = pair_key(entry: entry, function: name)
+  if any(xs: acc_pairs, predicate: fn(p) { pair_key(entry: p.entry, function: p.function) == key }) {
+    acc_pairs
+  } else {
+    concat(acc_pairs, [ExplicitEntryPair { entry: entry, function: name }])
+  }
+}
+
+fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandExplicitPairsOutcome {
   fold(
     inputs,
-    init: [],
+    init: Expanded { pairs: [] },
     f: fn(acc, inp) {
-      if is_file_grain_function(function: inp.function) {
-        let names = floor_discovery_scan_test_decl_names(content: inp.content)
-        if length(xs: names) == 0 {
-          acc
-        } else {
-          fold(
-            names,
-            init: acc,
-            f: fn(inner, name) {
-              let key = pair_key(entry: inp.entry, function: name)
-              if any(xs: inner, predicate: fn(p) { pair_key(entry: p.entry, function: p.function) == key }) {
-                inner
-              } else {
-                concat(inner, [ExplicitEntryPair { entry: inp.entry, function: name }])
+      match acc {
+        Refused { reason: reason } => Refused { reason: reason }
+        Expanded { pairs: acc_pairs } => {
+          if is_file_grain_function(function: inp.function) {
+            let names = floor_discovery_scan_test_decl_names(content: inp.content)
+            if length(xs: names) == 0 {
+              Refused { reason: file_grain_empty_refusal(entry: inp.entry) }
+            } else {
+              Expanded {
+                pairs: fold(
+                  names,
+                  init: acc_pairs,
+                  f: fn(inner, name) {
+                    expand_pair_into(acc_pairs: inner, entry: inp.entry, name: name)
+                  }
+                )
               }
             }
-          )
-        }
-      } else {
-        let key = pair_key(entry: inp.entry, function: inp.function)
-        if any(xs: acc, predicate: fn(p) { pair_key(entry: p.entry, function: p.function) == key }) {
-          acc
-        } else {
-          concat(acc, [ExplicitEntryPair { entry: inp.entry, function: inp.function }])
+          } else {
+            Expanded {
+              pairs: expand_pair_into(acc_pairs: acc_pairs, entry: inp.entry, name: inp.function)
+            }
+          }
         }
       }
     }
