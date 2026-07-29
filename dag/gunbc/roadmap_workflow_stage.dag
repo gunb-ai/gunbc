@@ -1,0 +1,95 @@
+module gunbc.roadmap_workflow_stage
+
+import std.types { String, List }
+
+type WorkflowSegmentKind
+  = EnvironmentWorkflowSegment
+  | WorkspaceWorkflowSegment
+  | AgentWorkflowSegment
+  | VerificationWorkflowSegment
+  | PublicationWorkflowSegment
+  | ReviewWorkflowSegment
+  | GoalAuditWorkflowSegment
+
+type WorkflowSegmentState
+  = WorkflowSegmentPending
+  | WorkflowSegmentActive
+  | WorkflowSegmentComplete
+  | WorkflowSegmentFailed
+  | WorkflowSegmentRefused
+
+type WorkflowSegment {
+  kind: WorkflowSegmentKind
+  state: WorkflowSegmentState
+  detail: String
+}
+
+data roadmap_attempt_workflow_segment_kinds: List<WorkflowSegmentKind> = [
+  EnvironmentWorkflowSegment,
+  WorkspaceWorkflowSegment,
+  AgentWorkflowSegment,
+  VerificationWorkflowSegment,
+  PublicationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+]
+
+data roadmap_attempt_workflow_stage_note: String = "The ordered attempt-workflow obligation roster is declared once and consumed by both server evidence projection and row presentation. It is business intent, not stored progress: Environment/Workspace/Agent are the currently grounded execution facts; Verification, Publication, Review, and Goal Audit remain desired obligations until independent producers ground them. Adding a stage here changes both the desired reconciliation set and the rendered row by derivation, so a server-only or UI-only stage is not constructible through the supported projection. Each coproduct arm also has its own intent revision: refining one obligation produces one Modified reconcile hunk without spuriously invalidating unchanged siblings, and adding an arm makes every exhaustive projection—including its revision—compiler-required."
+
+fn workflow_segment_kind_key(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "environment"
+    WorkspaceWorkflowSegment => "workspace"
+    AgentWorkflowSegment => "agent"
+    VerificationWorkflowSegment => "verify"
+    PublicationWorkflowSegment => "publish"
+    ReviewWorkflowSegment => "review"
+    GoalAuditWorkflowSegment => "audit"
+  }
+}
+
+fn workflow_segment_kind_label(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "Environment"
+    WorkspaceWorkflowSegment => "Workspace"
+    AgentWorkflowSegment => "Agent"
+    VerificationWorkflowSegment => "Verification"
+    PublicationWorkflowSegment => "Publication"
+    ReviewWorkflowSegment => "Review"
+    GoalAuditWorkflowSegment => "Goal Audit"
+  }
+}
+
+fn workflow_segment_kind_short_label(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "Env"
+    WorkspaceWorkflowSegment => "Worktree"
+    AgentWorkflowSegment => "Agent"
+    VerificationWorkflowSegment => "Verify"
+    PublicationWorkflowSegment => "Publish"
+    ReviewWorkflowSegment => "Review"
+    GoalAuditWorkflowSegment => "Audit"
+  }
+}
+
+fn workflow_segment_intent_revision(kind: WorkflowSegmentKind) -> String {
+  match kind {
+    EnvironmentWorkflowSegment => "roadmap-attempt/environment/v1"
+    WorkspaceWorkflowSegment => "roadmap-attempt/workspace/v1"
+    AgentWorkflowSegment => "roadmap-attempt/agent/v1"
+    VerificationWorkflowSegment => "roadmap-attempt/verification/v1"
+    PublicationWorkflowSegment => "roadmap-attempt/publication/v1"
+    ReviewWorkflowSegment => "roadmap-attempt/review/v1"
+    GoalAuditWorkflowSegment => "roadmap-attempt/goal-audit/v1"
+  }
+}
+
+fn workflow_segment_state_key(state: WorkflowSegmentState) -> String {
+  match state {
+    WorkflowSegmentPending => "pending"
+    WorkflowSegmentActive => "active"
+    WorkflowSegmentComplete => "complete"
+    WorkflowSegmentFailed => "failed"
+    WorkflowSegmentRefused => "refused"
+  }
+}

@@ -28,6 +28,7 @@ import gunbc.roadmap_model {
   section_group,
   section_prose,
 }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_status {
   AuthoredLine,
   DerivableLine,
@@ -59,12 +60,15 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
+data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
+
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
   RoadmapNode {
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -76,6 +80,7 @@ fn derivable(id: String, prs: List<Int>, title: String, description: String) -> 
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -100,6 +105,7 @@ fn derivable_wi(
       repo: repo,
       acceptance: PrsMerged,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -123,6 +129,7 @@ fn authored_wi(
       repo: repo,
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -134,6 +141,7 @@ fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
     line: TicketLine { done: done, ticket: t },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -157,6 +165,7 @@ fn ticket_wi(
       repo: repo,
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -168,6 +177,7 @@ fn superseded(id: String, by: String, content: String) -> RoadmapNode {
     line: SupersededLine { by: by, content: content },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -179,6 +189,7 @@ fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
     line: rn.line,
     carriers: rn.carriers,
     sizing: rn.sizing,
+    execution: rn.execution,
     owner: rn.owner,
     signoff: s,
   }
@@ -230,6 +241,7 @@ fn active_sized(
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
   }
@@ -347,6 +359,71 @@ fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFie
 
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   [
+    active_sized(
+      id: "2-scm-git-upstream-model",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Complete the Git upstream fidelity model before adapter extraction",
+        boundary: "Model Git as Git in extdeps: blob/tree/commit/tag objects, tree-entry modes, raw paths, worktree/index state, refs and symbolic refs, object/hash format, unavailable objects, and exact-old-object update-ref. The bounded fixture decodes, projects, and independently reads back without declaring a common SCM interface.",
+        displaced_cost: "Prevents an incomplete first realization from erasing executable bits, symlinks, gitlinks, tags, paths, availability, or hash-format facts and then cementing those omissions into every later adapter.",
+        first_slice: "Complete the existing Git object-store authority and execute one bounded repository round-trip plus stale expected-OID refusal.",
+        red_control: "Ordinary and executable blobs, symlinks, gitlinks, and annotated tags remain distinct; stale expected OID refuses without mutation; unavailable objects never decode as empty; no shared SCM carrier or vendor switch lands.",
+        out_of_scope: "No semantic integration kernel, forge transport, product hosting, inferred rename identity, universal branch/ref abstraction, or common compatibility carrier.",
+        handback: "Return cited upstream types, bounded decode/project/read-back receipts, conditional-advance receipt, unsupported fidelity inventory, and the tempting common fields deliberately not extracted."
+      )
+    ),
+    active_sized(
+      id: "2-scm-mercurial-upstream-model",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Preserve Mercurial identity, history, and publication distinctions",
+        boundary: "Model Mercurial from its own authorities in extdeps: portable changeset identity versus clone-local revision, file revisions and manifests, parents/heads, bookmarks, named and topological branches, tags, phases, repository availability, subrepositories, and optional evolution metadata. No Git vocabulary or common adapter appears.",
+        displaced_cost: "Prevents bookmark from becoming ref, named branch from becoming pointer, local revision from becoming portable identity, or phase from becoming one visibility bit.",
+        first_slice: "Land cited Mercurial types and one bounded state/change fixture that captures, projects, and independently reads back while leaving ungrounded write capability unavailable.",
+        red_control: "Clone-local revision may change while changeset identity does not; public/draft/secret remain distinct; bookmark, named branch, and head cannot collapse; absent transaction evidence stays unavailable.",
+        out_of_scope: "No Mercurial runner, hosted-product promise, generic SCM carrier, semantic merge authority, inferred exact-parent CAS, or emulation through timestamps or local locks.",
+        handback: "Return cited upstream roles, bounded read-back receipt, explicit unavailable capabilities, preservation/loss inventory, and distinctions that constrain later extraction."
+      )
+    ),
+    active_sized(
+      id: "2-scm-pijul-upstream-model",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Preserve Pijul changes, dependencies, graph state, and channels",
+        boundary: "Model Pijul from its own authorities in extdeps: recorded change identity, dependencies and context, pristine/tree/working-copy state, graph conflict facts, channel state as a set of channel-independent changes, version/state identity, partial availability, and apply/project distinctions. No commit/ref analogy or common adapter appears.",
+        displaced_cost: "Prevents a snapshot/ref abstraction from erasing change identity independent of channels, dependency-sensitive application, set-valued channel state, or conflicts retained in the graph.",
+        first_slice: "Land cited Pijul types and one bounded change/dependency/channel fixture that captures, projects, and independently reads back; permute delivery and refuse missing dependencies.",
+        red_control: "A channel cannot become one commit head; one change keeps identity across channels; a missing dependency never applies as empty; graph conflicts remain facts, not semantic proof; no Git alias or shared carrier lands.",
+        out_of_scope: "No Pijul runner, hosted-product promise, adoption of its conflict semantics as Daglang safety, inferred exact-parent CAS, generic SCM carrier, or proof-kernel edit.",
+        handback: "Return cited upstream roles, round-trip and dependency/order receipts, explicit unavailable capabilities, and distinctions that constrain later extraction."
+      )
+    ),
+    active_sized(
+      id: "2-claim-indexed-evidence",
+      owner: "deduction",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Model claim-indexed evidence once for readiness, deduction, and integration",
+        boundary: "Model recorded facts, scoped claims, support/challenge evidence links with maximum conclusions, four information states, assessments, and readiness/admission policy once. The first discriminating consumers are Codex provider readiness, os_install_deduction, and source-intent integration.",
+        displaced_cost: "Removes false readiness, repeated local evidence taxonomies, and unsafe Boolean folds that promote one weak observation into a broad capability claim.",
+        first_slice: "DFS Grounding, ObservationVerdict, readback independence, provider readiness, and OS-install deduction; then execute login/live-request and self-establishing-probe cases through one shared carrier and three consumers.",
+        red_control: "Login status plus failed live refresh supports CredentialRecorded but not ProviderReady; a positive self-establishing probe is insufficient while its negative may inform; conflicting and absent evidence remain both and neither, never last-writer truth.",
+        out_of_scope: "No SCM solver, process-progress Observation overload, provider-local replacement enum, truthy fact bag, or claim that provenance alone proves a proposition.",
+        handback: "Return the shared carrier, three consumer receipts, discriminating support/challenge/both/neither cases, and any named substrate gap."
+      )
+    ),
+
     active(
       id: "namespace-occurrence-transport",
       owner: "namespace",
@@ -1109,7 +1186,7 @@ fn preamble() -> List<MarkdownBlock> {
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
     ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
-    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM/source-intent design](docs/plans/dag-scm-design.md) · [SCM product strategy](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
+    ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM product strategy and post-prerequisite lanes](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
 }
 
@@ -1117,7 +1194,7 @@ fn active_section() -> RoadmapSection {
   RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: [
-      section_prose(content: "The graph has eight chains: namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      section_prose(content: "The graph has nine lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The three SCM R0 models and P−1 evidence carrier are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
         nodes: active_roadmap_nodes(),

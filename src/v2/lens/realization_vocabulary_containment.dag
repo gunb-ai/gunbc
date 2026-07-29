@@ -47,6 +47,7 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/workflow/ci_merge_admission_emit",
   "src/v2/workflow/orchestration_",
   "dag/gunbc/live_deploy/emit",
+  "dag/gunbc/dispatch_pipe_pane_emit",
   "dag/gunbc/assimilate/bmc_token_federation"
 ]
 
