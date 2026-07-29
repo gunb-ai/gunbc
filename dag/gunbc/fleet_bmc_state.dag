@@ -6,8 +6,7 @@ import extdeps.bmc.types {
 }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
-  RenameReplaceWithinTargetDirectory,
-  SyncAllFilesystemsAfterReplacement,
+  linux_synchronized_rename_replace_publication,
 }
 import gunbc.bmc_intent {
   fleet_bmc_fan_graceful_restart_boundary,
@@ -57,12 +56,7 @@ import std.state_durability {
 }
 import std.types { Bool, List, String }
 
-data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = LinuxFilePublicationProtocol {
-  stage_in_target_directory: true,
-  staged_content_validated: true,
-  replacement: RenameReplaceWithinTargetDirectory,
-  synchronization: SyncAllFilesystemsAfterReplacement,
-}
+data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
 
 data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
   board: srv4_baseboard.catalog.model,

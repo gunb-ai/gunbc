@@ -69,7 +69,15 @@ import gunbc.bmc_fan_projection {
 }
 import std.state_durability { StateDurabilityCapabilityVersion }
 import std.types { ContentHash }
-import extdeps.filesystem.linux { linux_overlay_observation_is_flash_backed }
+import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocolUnsynchronized,
+  LinuxSynchronizedRenameReplacePublication,
+  NoExplicitFilesystemSynchronization,
+  ReplacementAtomicityUnspecified,
+  linux_file_publication_capability_definition_hash,
+  linux_file_publication_has_synchronized_commit,
+  linux_synchronized_rename_replace_publication,
+}
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
   bmc_fan_policy_classification,
@@ -862,4 +870,24 @@ test fn non_fleet_curve_admitted_config_digest_is_unavailable() -> Bool {
     AdmittedConfigDigestKnown { digest: _ } => false
     AdmittedConfigDigestUnavailable => true
   }
+}
+
+test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
+  linux_file_publication_has_synchronized_commit(
+    protocol: linux_synchronized_rename_replace_publication,
+  )
+    && linux_file_publication_capability_definition_hash(
+      protocol: linux_synchronized_rename_replace_publication,
+    ) == srv4_bmc_fan_durability_capability_version.definition_hash
+}
+
+test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
+  !linux_file_publication_has_synchronized_commit(
+    protocol: LinuxFilePublicationProtocolUnsynchronized {
+      stage_in_target_directory: true,
+      staged_content_validated: true,
+      replacement: ReplacementAtomicityUnspecified,
+      synchronization: NoExplicitFilesystemSynchronization,
+    },
+  )
 }

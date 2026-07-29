@@ -32,6 +32,8 @@ import extdeps.filesystem.linux {
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
+  linux_file_publication_capability_definition_hash,
+  linux_synchronized_rename_replace_publication,
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -202,6 +204,8 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
 
 data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
+data srv4_bmc_fan_realization_definition_hashes_scaffold_note: String = "🟡 dissolve-on: swift-boar-810 actuator lane derives StateRealizationDefinitionHashes from the actual projection, verifier, observer, transport, and actuator definition bodies. Until then these rows are label-backed interim witnesses only; they must not be read as mechanical content hashes of implementation code."
+
 data srv4_bmc_fan_realization_definition_hashes: StateRealizationDefinitionHashes = StateRealizationDefinitionHashes {
   projection: content_hash_atom(
     value: "openbmc-fan-config-projection-asrr-temp-soc-jffs2-v2",
@@ -227,8 +231,8 @@ data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdenti
 
 data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
   version: "openbmc-overlay-config-graceful-restart-v2",
-  definition_hash: content_hash_atom(
-    value: "rename-in-target-directory-sync-all-filesystems-graceful-bmc-restart-readback-v2",
+  definition_hash: linux_file_publication_capability_definition_hash(
+    protocol: linux_synchronized_rename_replace_publication,
   ),
 }
 
