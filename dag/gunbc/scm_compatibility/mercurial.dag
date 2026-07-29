@@ -1,0 +1,266 @@
+module gunbc.scm_compatibility.mercurial
+
+import std.types { List, NonEmptyStr }
+import extdeps.mercurial {
+  MercurialNamedBranchName,
+  MercurialNodeId,
+  MercurialRepositoryProjection,
+  MercurialRepositoryState,
+  MercurialProjectionRefusal,
+  MercurialReadBackObservation,
+  MercurialConditionalAdvanceCapability,
+  MercurialDecoded,
+  MercurialDecodeRefused,
+  MercurialRepositoryUnavailable,
+  MercurialReadBackMatches,
+  MercurialReadBackMismatch,
+  MercurialReadBackInvalid,
+  MercurialReadBackUnavailable,
+  MercurialConditionalAdvanceUnavailable,
+  mercurial_decode_projection,
+  mercurial_assess_read_back,
+  mercurial_portable_history,
+  mercurial_named_branch_changesets,
+  mercurial_node_id_text,
+  mercurial_r0_conditional_advance,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityProjectionHandler,
+  CompatibilityFidelityProfile,
+  CompatibilityFidelityFact,
+  CompatibilityEndpointStateCaptured,
+  CompatibilityEndpointState,
+  CompatibilityUpstreamChangeEvidence,
+  CompatibilityNativeProposalContract,
+  CompatibilityHistory,
+  CompatibilityPublication,
+  CompatibilityConflictFacts,
+  CompatibilityPathAndMode,
+  CompatibilityAvailability,
+  CompatibilityNativeIdentity,
+  CompatibilityFidelityPreserved,
+  CompatibilityFidelityDowngraded,
+  CompatibilityFidelityUnavailable,
+  CompatibilityAdvanceUnavailable,
+  compatibility_fidelity_profile,
+}
+
+data mercurial_compatibility_binding_note: NonEmptyStr = "The Mercurial R1 handler consumes Mercurial's own projection decoder, portable changeset identities, named-branch relation, and independent read-back assessment. Clone-local revisions, phases, bookmarks, tags, evolution, repository completeness, and node identities remain in MercurialCompatibilityReceipt. The shared carrier does not rename any of them commit, ref, or branch authority, and R0 honestly reports conditional advance as unavailable."
+
+type MercurialCompatibilityReceipt {
+  target: MercurialNamedBranchName
+  portable_history: List<MercurialNodeId>
+  target_history: List<MercurialNodeId>
+  repository: MercurialRepositoryState
+  projection: MercurialRepositoryProjection
+  read_back: MercurialReadBackObservation
+  advance: MercurialConditionalAdvanceCapability
+}
+
+type MercurialCompatibilityRefusal
+  = MercurialCompatibilityDecodeRejected {
+      cause: MercurialProjectionRefusal,
+    }
+  | MercurialCompatibilityRepositoryUnavailable { reason: NonEmptyStr }
+  | MercurialCompatibilityTargetMissing {
+      target: MercurialNamedBranchName,
+    }
+  | MercurialCompatibilityReadBackMismatch { observed_by: NonEmptyStr }
+  | MercurialCompatibilityReadBackInvalid {
+      observed_by: NonEmptyStr,
+      cause: MercurialProjectionRefusal,
+    }
+  | MercurialCompatibilityReadBackUnavailable {
+      observed_by: NonEmptyStr,
+      reason: NonEmptyStr,
+    }
+
+type MercurialCompatibilityBindingOutcome
+  = MercurialCompatibilityBound { receipt: MercurialCompatibilityReceipt }
+  | MercurialCompatibilityBindingRefused {
+      cause: MercurialCompatibilityRefusal,
+    }
+
+type MercurialCompatibilityBindingOutcomeFold<R> {
+  bound: fn(MercurialCompatibilityReceipt) -> R
+  refused: fn(MercurialCompatibilityRefusal) -> R
+}
+
+fn mercurial_compatibility_binding_outcome_fold<R>(
+  outcome: MercurialCompatibilityBindingOutcome,
+  fold: MercurialCompatibilityBindingOutcomeFold<R>,
+) -> R {
+  match outcome {
+    MercurialCompatibilityBound { receipt } => fold.bound(receipt)
+    MercurialCompatibilityBindingRefused { cause } => fold.refused(cause)
+  }
+}
+
+fn mercurial_compatibility_bind(
+  projection: MercurialRepositoryProjection,
+  target: MercurialNamedBranchName,
+  read_back: MercurialReadBackObservation,
+) -> MercurialCompatibilityBindingOutcome {
+  match mercurial_decode_projection(projection: projection) {
+    MercurialDecodeRefused { cause } =>
+      MercurialCompatibilityBindingRefused {
+        cause: MercurialCompatibilityDecodeRejected { cause: cause },
+      }
+    MercurialRepositoryUnavailable { reason } =>
+      MercurialCompatibilityBindingRefused {
+        cause: MercurialCompatibilityRepositoryUnavailable {
+          reason: reason,
+        },
+      }
+    MercurialDecoded { repository } => {
+      let target_history = mercurial_named_branch_changesets(
+        repository: repository,
+        branch: target,
+      )
+      if count(target_history) == 0 {
+        MercurialCompatibilityBindingRefused {
+          cause: MercurialCompatibilityTargetMissing { target: target },
+        }
+      } else {
+        match mercurial_assess_read_back(
+          expected: repository,
+          observation: read_back,
+        ) {
+          MercurialReadBackMatches { observed_by: _ } =>
+            MercurialCompatibilityBound {
+              receipt: MercurialCompatibilityReceipt {
+                target: target,
+                portable_history: mercurial_portable_history(
+                  repository: repository,
+                ),
+                target_history: target_history,
+                repository: repository,
+                projection: projection,
+                read_back: read_back,
+                advance: mercurial_r0_conditional_advance,
+              },
+            }
+          MercurialReadBackMismatch {
+            observed_by,
+            expected: _,
+            observed: _,
+          } =>
+            MercurialCompatibilityBindingRefused {
+              cause: MercurialCompatibilityReadBackMismatch {
+                observed_by: observed_by,
+              },
+            }
+          MercurialReadBackInvalid { observed_by, cause } =>
+            MercurialCompatibilityBindingRefused {
+              cause: MercurialCompatibilityReadBackInvalid {
+                observed_by: observed_by,
+                cause: cause,
+              },
+            }
+          MercurialReadBackUnavailable { observed_by, reason } =>
+            MercurialCompatibilityBindingRefused {
+              cause: MercurialCompatibilityReadBackUnavailable {
+                observed_by: observed_by,
+                reason: reason,
+              },
+            }
+        }
+      }
+    }
+  }
+}
+
+fn mercurial_compatibility_history_handle(
+  history: List<MercurialNodeId>,
+) -> NonEmptyStr {
+  concat(
+    "mercurial-portable-history:",
+    history
+      |> map(node => mercurial_node_id_text(node: node) as String)
+      |> join(separator: ","),
+  )
+}
+
+fn mercurial_compatibility_fidelity() -> CompatibilityFidelityProfile {
+  compatibility_fidelity_profile(
+    first: CompatibilityFidelityFact {
+      axis: CompatibilityEndpointState,
+      disposition: CompatibilityFidelityPreserved,
+    },
+    remaining: [
+      CompatibilityFidelityFact {
+        axis: CompatibilityUpstreamChangeEvidence,
+        disposition: CompatibilityFidelityDowngraded {
+          cause: "portable changeset history preserves upstream history but not the authored source operation",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeProposalContract,
+        disposition: CompatibilityFidelityUnavailable {
+          cause: "Mercurial R0 carries no native reads/frame/ensures proposal contract",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityHistory,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPublication,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityConflictFacts,
+        disposition: CompatibilityFidelityUnavailable {
+          cause: "Mercurial R0 does not promote merge presentation into semantic conflict evidence",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPathAndMode,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityAvailability,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeIdentity,
+        disposition: CompatibilityFidelityPreserved,
+      },
+    ],
+  )
+}
+
+fn mercurial_compatibility_projection_receipt(
+  receipt: MercurialCompatibilityReceipt,
+) -> CompatibilityProjectionReceipt {
+  let generation = mercurial_compatibility_history_handle(
+    history: receipt.target_history,
+  )
+  match receipt.advance {
+    MercurialConditionalAdvanceUnavailable { reason } =>
+      CompatibilityProjectionReceipt {
+        realization: "mercurial-r0",
+        target: receipt.target as NonEmptyStr,
+        generation_evidence: generation,
+        capture: CompatibilityEndpointStateCaptured,
+        projection: concat("mercurial-projection:", generation),
+        read_back: concat(
+          "mercurial-readback:",
+          receipt.read_back.observed_by,
+        ),
+        repair: concat("mercurial-projection-repair:", generation),
+        advance: CompatibilityAdvanceUnavailable { cause: reason },
+        fidelity: mercurial_compatibility_fidelity(),
+      }
+  }
+}
+
+fn mercurial_compatibility_projection_handler(
+) -> CompatibilityProjectionHandler<MercurialCompatibilityReceipt> {
+  CompatibilityProjectionHandler {
+    project: fn(receipt) {
+      mercurial_compatibility_projection_receipt(receipt: receipt)
+    },
+  }
+}

@@ -1,0 +1,204 @@
+module gunbc.scm_compatibility.pijul
+
+import std.types { NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import extdeps.pijul {
+  PijulChannelName,
+  PijulChannelStateIdentity,
+  PijulRepositoryProjection,
+  PijulDecodedRepository,
+  PijulProjectionRefusal,
+  PijulReadBackObservation,
+  PijulConditionalAdvanceCapability,
+  PijulDecoded,
+  PijulDecodeRefused,
+  PijulReadBackMatches,
+  PijulReadBackMismatch,
+  PijulReadBackInvalid,
+  PijulConditionalAdvanceUnavailable,
+  pijul_decode_projection,
+  pijul_assess_read_back,
+  pijul_find_channel,
+  pijul_r0_conditional_advance,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityProjectionHandler,
+  CompatibilityFidelityProfile,
+  CompatibilityFidelityFact,
+  CompatibilityUpstreamChangeEvidenceCaptured,
+  CompatibilityEndpointState,
+  CompatibilityUpstreamChangeEvidence,
+  CompatibilityNativeProposalContract,
+  CompatibilityHistory,
+  CompatibilityPublication,
+  CompatibilityConflictFacts,
+  CompatibilityPathAndMode,
+  CompatibilityAvailability,
+  CompatibilityNativeIdentity,
+  CompatibilityFidelityPreserved,
+  CompatibilityFidelityDowngraded,
+  CompatibilityFidelityUnavailable,
+  CompatibilityAdvanceUnavailable,
+  compatibility_fidelity_profile,
+}
+
+data pijul_compatibility_binding_note: NonEmptyStr = "The Pijul R1 handler consumes Pijul's own projection decoder, channel state identity, recorded changes, dependency/context graph, graph-conflict facts, partial availability, and independent read-back assessment. Those facts remain in PijulCompatibilityReceipt. The shared target and generation handles are opaque projections only; they are not commits, refs, branches, or semantic conflict verdicts, and R0 honestly reports conditional advance as unavailable."
+
+type PijulCompatibilityReceipt {
+  target: PijulChannelName
+  generation: PijulChannelStateIdentity
+  repository: PijulDecodedRepository
+  projection: PijulRepositoryProjection
+  read_back: PijulReadBackObservation
+  advance: PijulConditionalAdvanceCapability
+}
+
+type PijulCompatibilityRefusal
+  = PijulCompatibilityDecodeRejected { cause: PijulProjectionRefusal }
+  | PijulCompatibilityTargetMissing { target: PijulChannelName }
+  | PijulCompatibilityReadBackMismatch
+  | PijulCompatibilityReadBackInvalid { cause: PijulProjectionRefusal }
+
+type PijulCompatibilityBindingOutcome
+  = PijulCompatibilityBound { receipt: PijulCompatibilityReceipt }
+  | PijulCompatibilityBindingRefused { cause: PijulCompatibilityRefusal }
+
+type PijulCompatibilityBindingOutcomeFold<R> {
+  bound: fn(PijulCompatibilityReceipt) -> R
+  refused: fn(PijulCompatibilityRefusal) -> R
+}
+
+fn pijul_compatibility_binding_outcome_fold<R>(
+  outcome: PijulCompatibilityBindingOutcome,
+  fold: PijulCompatibilityBindingOutcomeFold<R>,
+) -> R {
+  match outcome {
+    PijulCompatibilityBound { receipt } => fold.bound(receipt)
+    PijulCompatibilityBindingRefused { cause } => fold.refused(cause)
+  }
+}
+
+fn pijul_compatibility_bind(
+  projection: PijulRepositoryProjection,
+  target: PijulChannelName,
+  read_back: PijulReadBackObservation,
+) -> PijulCompatibilityBindingOutcome {
+  match pijul_decode_projection(projection: projection) {
+    PijulDecodeRefused { cause } =>
+      PijulCompatibilityBindingRefused {
+        cause: PijulCompatibilityDecodeRejected { cause: cause },
+      }
+    PijulDecoded { repository } =>
+      match pijul_find_channel(
+        channels: repository.state.channels,
+        name: target,
+      ) {
+        Absent =>
+          PijulCompatibilityBindingRefused {
+            cause: PijulCompatibilityTargetMissing { target: target },
+          }
+        Present { value: channel } =>
+          match pijul_assess_read_back(
+            expected: projection,
+            observation: read_back,
+          ) {
+            PijulReadBackMatches { observation: _ } =>
+              PijulCompatibilityBound {
+                receipt: PijulCompatibilityReceipt {
+                  target: target,
+                  generation: channel.state_identity,
+                  repository: repository,
+                  projection: projection,
+                  read_back: read_back,
+                  advance: pijul_r0_conditional_advance(),
+                },
+              }
+            PijulReadBackMismatch { axis: _ } =>
+              PijulCompatibilityBindingRefused {
+                cause: PijulCompatibilityReadBackMismatch,
+              }
+            PijulReadBackInvalid { cause } =>
+              PijulCompatibilityBindingRefused {
+                cause: PijulCompatibilityReadBackInvalid { cause: cause },
+              }
+          }
+      }
+  }
+}
+
+fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
+  compatibility_fidelity_profile(
+    first: CompatibilityFidelityFact {
+      axis: CompatibilityEndpointState,
+      disposition: CompatibilityFidelityPreserved,
+    },
+    remaining: [
+      CompatibilityFidelityFact {
+        axis: CompatibilityUpstreamChangeEvidence,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeProposalContract,
+        disposition: CompatibilityFidelityUnavailable {
+          cause: "Pijul recorded changes retain upstream operations and dependencies, not the native proposal's full reads/frame/ensures contract",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityHistory,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPublication,
+        disposition: CompatibilityFidelityDowngraded {
+          cause: "a Pijul channel is retained as native state, not promoted into the product publication policy",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityConflictFacts,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPathAndMode,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityAvailability,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeIdentity,
+        disposition: CompatibilityFidelityPreserved,
+      },
+    ],
+  )
+}
+
+fn pijul_compatibility_projection_receipt(
+  receipt: PijulCompatibilityReceipt,
+) -> CompatibilityProjectionReceipt {
+  let generation = receipt.generation.state as NonEmptyStr
+  match receipt.advance {
+    PijulConditionalAdvanceUnavailable { reason } =>
+      CompatibilityProjectionReceipt {
+        realization: "pijul-r0",
+        target: receipt.target as NonEmptyStr,
+        generation_evidence: generation,
+        capture: CompatibilityUpstreamChangeEvidenceCaptured,
+        projection: concat("pijul-channel-state:", generation),
+        read_back: concat("pijul-readback:", generation),
+        repair: concat("pijul-projection-repair:", generation),
+        advance: CompatibilityAdvanceUnavailable { cause: reason },
+        fidelity: pijul_compatibility_fidelity(),
+      }
+  }
+}
+
+fn pijul_compatibility_projection_handler(
+) -> CompatibilityProjectionHandler<PijulCompatibilityReceipt> {
+  CompatibilityProjectionHandler {
+    project: fn(receipt) {
+      pijul_compatibility_projection_receipt(receipt: receipt)
+    },
+  }
+}
