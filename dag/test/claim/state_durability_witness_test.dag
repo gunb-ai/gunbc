@@ -1,47 +1,61 @@
 module test.claim.state_durability_witness
 
 import extdeps.crypto.hash { Digest, sha256_digest }
+import std.realization_reconcile {
+  DeclaredLifetimeDoesNotGround,
+  DurabilityDoesNotGround,
+  DurabilityGrounds,
+  DurabilityQualifiedGrounding,
+  Grounding,
+  Grounds,
+  grounding_qualified_by_durability,
+}
 import std.state_durability {
+  ActivationUnverified,
   ActivationVerified,
   ControlPlaneFirmwareReplacement,
   ControlPlaneRestartBoundary,
   DurableAcross,
-  DurabilityActivationScopeMismatch,
+  DurableLifetimeQualification,
+  DurabilityActivationUnverified,
+  DurabilityBoundaryUnsupported,
   DurabilityCapabilityAdmissionMismatch,
+  DurabilityCapabilityMissing,
+  DurabilityCommitBarrier,
+  DurabilityCommitBarrierMissing,
   DurabilityDesiredStateMismatch,
   DurabilityEvidenceAmbiguous,
-  DurabilityPerturbationBoundaryMismatch,
-  DurabilityReadbackReceiptLinkMismatch,
+  DurabilityEvidenceMissing,
+  DurabilityIntentUnspecified,
+  DurabilityReadbackSubjectMismatch,
+  DurabilityRequirementDuplicate,
+  DurabilityRequirementEmpty,
+  DurabilityUnspecified,
   LifecycleGracefulRestart,
+  NoDurabilityCommitBarrier,
+  RuntimeLifetimeOnly,
   SoftwareReplacementBoundary,
   StateActivationEvidence,
-  StateActivationReceipt,
   StateDurabilityAdmission,
   StateDurabilityBoundary,
   StateDurabilityCapability,
   StateDurabilityCapabilityVersion,
   StateDurabilityEvidence,
-  StateDurabilityInstant,
+  StateDurabilityIntent,
   StateDurabilityQualified,
   StateDurabilityRefused,
-  StateDurabilityTimeline,
   StateDurabilityVerdict,
+  StateLost,
   StatePerturbationGeneration,
   StatePerturbationReceipt,
   StatePreserved,
   StateReadbackReceipt,
-  StateRealizationDefinitionHashes,
   StateRealizationIdentity,
   SynchronizedCommit,
-  state_durability_after_readback_at,
-  state_durability_boundary_requirements,
-  state_durability_perturbation_completed_at,
-  state_durability_perturbation_started_at,
   state_durability_satisfied,
   state_durability_verdict,
-  state_realization_content_hash,
 }
-import std.types { Bool, ContentHash, List, NonEmptyStr }
+import std.types { Bool, ContentHash, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -53,15 +67,21 @@ type FixtureReadbackSubject {
 }
 
 data fixture_target: FixtureTarget = "fixture-host" as FixtureTarget
+data fixture_other_target: FixtureTarget = "other-host" as FixtureTarget
+
 data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
   path: "/etc/fixture-policy",
 }
 
-data fixture_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+data fixture_other_subject: FixtureReadbackSubject = FixtureReadbackSubject {
+  path: "/etc/unrelated-policy",
+}
+
+data fixture_graceful_control_plane_restart: StateDurabilityBoundary = ControlPlaneRestartBoundary {
   mode: LifecycleGracefulRestart,
 }
 
-data fixture_wrong_boundary: StateDurabilityBoundary = SoftwareReplacementBoundary {
+data fixture_control_plane_firmware_replacement: StateDurabilityBoundary = SoftwareReplacementBoundary {
   scope: ControlPlaneFirmwareReplacement,
 }
 
@@ -73,24 +93,14 @@ data fixture_digest_b: Digest = sha256_digest(
   hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 )
 
-fn fixture_definition_hashes(suffix: NonEmptyStr) -> StateRealizationDefinitionHashes {
-  StateRealizationDefinitionHashes {
-    projection: suffix as ContentHash,
-    verifier: "fixture-verifier" as ContentHash,
-    observer: "fixture-observer" as ContentHash,
-    transport: "fixture-transport" as ContentHash,
-    actuator: "fixture-actuator" as ContentHash,
-  }
-}
-
 data fixture_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: "fixture-realizer",
-  definition_hashes: fixture_definition_hashes(suffix: "projection-v1"),
+  content_hash: "fixture-realizer-content-v1" as ContentHash,
 }
 
 data fixture_stale_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: "fixture-realizer",
-  definition_hashes: fixture_definition_hashes(suffix: "projection-v0"),
+  content_hash: "fixture-realizer-content-v0" as ContentHash,
 }
 
 data fixture_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
@@ -104,213 +114,253 @@ data fixture_stale_capability_version: StateDurabilityCapabilityVersion = StateD
 }
 
 fn fixture_admission(
+  target: FixtureTarget,
+  desired: Digest,
   realization: StateRealizationIdentity,
   capability_version: StateDurabilityCapabilityVersion,
-  desired: Digest,
+  generation: StatePerturbationGeneration,
+  subject: FixtureReadbackSubject,
 ) -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   StateDurabilityAdmission {
-    target: fixture_target,
+    target: target,
     desired_state_digest: desired,
     realization: realization,
     capability_version: capability_version,
-    perturbation_generation: 7,
-    readback_subject: fixture_subject,
+    perturbation_generation: generation,
+    readback_subject: subject,
   }
 }
 
 fn current_admission() -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
   fixture_admission(
+    target: fixture_target,
+    desired: fixture_digest_a,
     realization: fixture_realization,
     capability_version: fixture_capability_version,
-    desired: fixture_digest_a,
+    generation: 7,
+    subject: fixture_subject,
   )
 }
 
 fn fixture_capability(
   realization: StateRealizationIdentity,
   capability_version: StateDurabilityCapabilityVersion,
+  boundaries: List<StateDurabilityBoundary>,
+  barrier: DurabilityCommitBarrier,
 ) -> StateDurabilityCapability {
   StateDurabilityCapability {
     realization: realization,
     capability_version: capability_version,
-    supported_boundaries: [fixture_boundary],
-    commit_barrier: SynchronizedCommit,
+    supported_boundaries: boundaries,
+    commit_barrier: barrier,
   }
 }
 
-fn current_capability() -> StateDurabilityCapability {
+fn synchronized_restart_capability() -> StateDurabilityCapability {
   fixture_capability(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
+    boundaries: [fixture_graceful_control_plane_restart],
+    barrier: SynchronizedCommit,
   )
 }
 
-fn fixture_timeline() -> StateDurabilityTimeline {
-  StateDurabilityTimeline {
-    before_readback_at: 1000 as StateDurabilityInstant,
-    before_to_perturbation_start_ms: 10,
-    perturbation_duration_ms: 20,
-    completion_to_after_readback_ms: 30,
-  }
-}
-
-fn fixture_activation(
-  admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
-  receipt_id: NonEmptyStr,
-) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
-  ActivationVerified {
-    receipt: StateActivationReceipt {
-      perturbation_receipt_id: receipt_id,
-      target: admission.target,
-      subject: admission.readback_subject,
-      desired_state_digest: admission.desired_state_digest,
-      realization: admission.realization,
-      capability_version: admission.capability_version,
-      perturbation_generation: admission.perturbation_generation,
-    },
-  }
-}
-
 fn fixture_readback(
-  receipt_id: NonEmptyStr,
+  target: FixtureTarget,
+  subject: FixtureReadbackSubject,
   digest: Digest,
+  observed_at: NonEmptyStr,
 ) -> StateReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
   StateReadbackReceipt {
-    perturbation_receipt_id: receipt_id,
-    target: fixture_target,
-    subject: fixture_subject,
+    target: target,
+    subject: subject,
     state_digest: digest,
+    observed_at: observed_at,
   }
 }
 
-fn fixture_evidence(
+fn fixture_preserved_evidence(
   admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
-  boundary: StateDurabilityBoundary,
-  readback_receipt_id: NonEmptyStr,
+  perturbation_target: FixtureTarget,
+  perturbation_generation: StatePerturbationGeneration,
+  before_target: FixtureTarget,
+  before_subject: FixtureReadbackSubject,
   before: Digest,
+  after_target: FixtureTarget,
+  after_subject: FixtureReadbackSubject,
   after: Digest,
-  activation: StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
+  activation: StateActivationEvidence,
 ) -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
   StateDurabilityEvidence {
     admission: admission,
     perturbation: StatePerturbationReceipt {
-      receipt_id: "fixture-perturbation",
-      target: fixture_target,
-      boundary: boundary,
-      generation: 7,
+      receipt_id: "fixture-restart-receipt",
+      target: perturbation_target,
+      boundary: fixture_graceful_control_plane_restart,
+      generation: perturbation_generation,
+      started_at: "2026-07-27T23:09:42Z",
+      completed_at: "2026-07-27T23:14:45Z",
     },
     outcome: StatePreserved {
-      timeline: fixture_timeline(),
       before: fixture_readback(
-        receipt_id: readback_receipt_id,
+        target: before_target,
+        subject: before_subject,
         digest: before,
+        observed_at: "2026-07-27T23:09:42Z",
       ),
       after: fixture_readback(
-        receipt_id: readback_receipt_id,
+        target: after_target,
+        subject: after_subject,
         digest: after,
+        observed_at: "2026-07-27T23:14:45Z",
       ),
       activation: activation,
     },
   }
 }
 
-fn matching_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
-  fixture_evidence(
+fn matching_preserved_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  fixture_preserved_evidence(
     admission: current_admission(),
-    boundary: fixture_boundary,
-    readback_receipt_id: "fixture-perturbation",
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
     before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
     after: fixture_digest_a,
-    activation: fixture_activation(
-      admission: current_admission(),
-      receipt_id: "fixture-perturbation",
-    ),
+    activation: ActivationVerified,
   )
 }
 
-fn durable_verdict(
+fn matching_lost_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  StateDurabilityEvidence {
+    admission: current_admission(),
+    perturbation: StatePerturbationReceipt {
+      receipt_id: "fixture-restart-lost-receipt",
+      target: fixture_target,
+      boundary: fixture_graceful_control_plane_restart,
+      generation: 7,
+      started_at: "2026-07-27T23:09:42Z",
+      completed_at: "2026-07-27T23:14:45Z",
+    },
+    outcome: StateLost {
+      before: fixture_readback(
+        target: fixture_target,
+        subject: fixture_subject,
+        digest: fixture_digest_a,
+        observed_at: "2026-07-27T23:09:42Z",
+      ),
+      after: fixture_readback(
+        target: fixture_target,
+        subject: fixture_subject,
+        digest: fixture_digest_b,
+        observed_at: "2026-07-27T23:14:45Z",
+      ),
+      reason: "fixture state was lost",
+    },
+  }
+}
+
+fn durable_restart_intent() -> StateDurabilityIntent {
+  DurableAcross { boundaries: [fixture_graceful_control_plane_restart] }
+}
+
+fn durable_restart_verdict(
   evidence: List<StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
 ) -> StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
   state_durability_verdict(
-    intent: DurableAcross {
-      boundaries: state_durability_boundary_requirements(
-        first: fixture_boundary,
-        additional: [],
-      ),
-    },
+    intent: durable_restart_intent(),
     admission: current_admission(),
-    capability: Present { value: current_capability() },
+    capability: Present { value: synchronized_restart_capability() },
     evidence: evidence,
   )
 }
 
-test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> Bool {
-  let requirements = state_durability_boundary_requirements(
-    first: fixture_boundary,
-    additional: [fixture_boundary, fixture_wrong_boundary, fixture_wrong_boundary],
+fn qualify_string_grounding(
+  verdict: StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject>,
+) -> DurabilityQualifiedGrounding<String, FixtureTarget, FixtureReadbackSubject> {
+  grounding_qualified_by_durability(
+    grounding: Grounds { evidence: "currently effective" },
+    durability: verdict,
   )
-  let boundaries = requirements as List<StateDurabilityBoundary>
-  fold(boundaries, init: 0, f: (count, _) => count + 1) == 2
-    && any(boundaries, boundary => boundary == fixture_boundary)
-    && any(boundaries, boundary => boundary == fixture_wrong_boundary)
 }
 
-test fn timeline_order_is_derived_from_positive_deltas() -> Bool {
-  let timeline = fixture_timeline()
-  let started = state_durability_perturbation_started_at(timeline: timeline)
-  let completed = state_durability_perturbation_completed_at(timeline: timeline)
-  let after = state_durability_after_readback_at(timeline: timeline)
-  timeline.before_readback_at < started
-    && started < completed
-    && completed < after
-}
-
-test fn exact_matching_receipts_qualify() -> Bool {
-  state_durability_satisfied(verdict: durable_verdict(evidence: [matching_evidence()]))
-}
-
-test fn realization_definition_change_invalidates_old_receipt() -> Bool {
+test fn unspecified_lifetime_refuses_before_reconciliation() -> Bool {
   match state_durability_verdict(
-    intent: DurableAcross {
-      boundaries: state_durability_boundary_requirements(
-        first: fixture_boundary,
-        additional: [],
-      ),
-    },
+    intent: DurabilityUnspecified,
     admission: current_admission(),
-    capability: Present {
-      value: fixture_capability(
-        realization: fixture_stale_realization,
-        capability_version: fixture_capability_version,
-      ),
-    },
+    capability: none,
     evidence: [],
   ) {
-    StateDurabilityRefused {
-      cause: DurabilityCapabilityAdmissionMismatch {
-        expected_realization: _,
-        observed_realization: _,
-        expected_capability_version: _,
-        observed_capability_version: _,
-      },
-    } => state_realization_content_hash(realization: fixture_realization) != state_realization_content_hash(realization: fixture_stale_realization)
+    StateDurabilityRefused { cause: DurabilityIntentUnspecified } => true
     _ => false
   }
 }
 
-test fn capability_definition_change_invalidates_old_receipt() -> Bool {
+test fn runtime_only_lifetime_is_explicitly_satisfiable_without_durable_storage() -> Bool {
+  state_durability_satisfied(verdict: state_durability_verdict(
+    intent: RuntimeLifetimeOnly,
+    admission: current_admission(),
+    capability: none,
+    evidence: [],
+  ))
+}
+
+test fn durable_lifetime_requires_at_least_one_named_boundary() -> Bool {
+  match state_durability_verdict(
+    intent: DurableAcross { boundaries: [] },
+    admission: current_admission(),
+    capability: Present { value: synchronized_restart_capability() },
+    evidence: [],
+  ) {
+    StateDurabilityRefused { cause: DurabilityRequirementEmpty } => true
+    _ => false
+  }
+}
+
+test fn duplicate_required_boundaries_refuse_instead_of_reusing_one_receipt() -> Bool {
   match state_durability_verdict(
     intent: DurableAcross {
-      boundaries: state_durability_boundary_requirements(
-        first: fixture_boundary,
-        additional: [],
-      ),
+      boundaries: [
+        fixture_graceful_control_plane_restart,
+        fixture_graceful_control_plane_restart,
+      ],
     },
+    admission: current_admission(),
+    capability: Present { value: synchronized_restart_capability() },
+    evidence: [matching_preserved_evidence()],
+  ) {
+    StateDurabilityRefused {
+      cause: DurabilityRequirementDuplicate { boundary: _, count: 2 },
+    } => true
+    _ => false
+  }
+}
+
+test fn durable_lifetime_requires_a_selected_capability() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
+    admission: current_admission(),
+    capability: none,
+    evidence: [],
+  ) {
+    StateDurabilityRefused { cause: DurabilityCapabilityMissing } => true
+    _ => false
+  }
+}
+
+test fn capability_identity_must_match_the_admission() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
     admission: current_admission(),
     capability: Present {
       value: fixture_capability(
-        realization: fixture_realization,
+        realization: fixture_stale_realization,
         capability_version: fixture_stale_capability_version,
+        boundaries: [fixture_graceful_control_plane_restart],
+        barrier: SynchronizedCommit,
       ),
     },
     evidence: [],
@@ -327,94 +377,207 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
   }
 }
 
-test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
-  let wrong = fixture_evidence(
+test fn writable_without_a_commit_barrier_is_not_durable_capability() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
     admission: current_admission(),
-    boundary: fixture_wrong_boundary,
-    readback_receipt_id: "fixture-perturbation",
-    before: fixture_digest_a,
-    after: fixture_digest_a,
-    activation: fixture_activation(
-      admission: current_admission(),
-      receipt_id: "fixture-perturbation",
-    ),
-  )
-  match durable_verdict(evidence: [wrong]) {
+    capability: Present {
+      value: fixture_capability(
+        realization: fixture_realization,
+        capability_version: fixture_capability_version,
+        boundaries: [fixture_graceful_control_plane_restart],
+        barrier: NoDurabilityCommitBarrier,
+      ),
+    },
+    evidence: [],
+  ) {
     StateDurabilityRefused {
-      cause: DurabilityPerturbationBoundaryMismatch {
-        expected: expected,
-        observed: observed,
-      },
-    } => expected == fixture_boundary && observed == fixture_wrong_boundary
+      cause: DurabilityCommitBarrierMissing { realization: realization },
+    } => realization == fixture_realization
     _ => false
   }
 }
 
-test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
-  let wrong = fixture_evidence(
+test fn capability_for_a_different_boundary_cannot_satisfy_the_intent() -> Bool {
+  match state_durability_verdict(
+    intent: durable_restart_intent(),
     admission: current_admission(),
-    boundary: fixture_boundary,
-    readback_receipt_id: "unrelated-perturbation",
-    before: fixture_digest_a,
-    after: fixture_digest_a,
-    activation: fixture_activation(
-      admission: current_admission(),
-      receipt_id: "fixture-perturbation",
-    ),
-  )
-  match durable_verdict(evidence: [wrong]) {
+    capability: Present {
+      value: fixture_capability(
+        realization: fixture_realization,
+        capability_version: fixture_capability_version,
+        boundaries: [fixture_control_plane_firmware_replacement],
+        barrier: SynchronizedCommit,
+      ),
+    },
+    evidence: [],
+  ) {
     StateDurabilityRefused {
-      cause: DurabilityReadbackReceiptLinkMismatch {
-        position: _,
-        expected_receipt_id: expected,
-        observed_receipt_id: observed,
-      },
-    } => expected == "fixture-perturbation" && observed == "unrelated-perturbation"
+      cause: DurabilityBoundaryUnsupported { realization: realization, boundary: _ },
+    } => realization == fixture_realization
     _ => false
   }
 }
 
-test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
-  let stale = fixture_admission(
+test fn declared_capability_without_exact_evidence_refuses() -> Bool {
+  match durable_restart_verdict(evidence: []) {
+    StateDurabilityRefused {
+      cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn matching_perturbation_and_readback_qualify_the_exact_admission() -> Bool {
+  match durable_restart_verdict(evidence: [matching_preserved_evidence()]) {
+    StateDurabilityQualified { qualification: qualification } =>
+      match qualification {
+        DurableLifetimeQualification {
+          admission: admission,
+          capability: capability,
+          boundaries: boundaries,
+          evidence: evidence,
+        } =>
+          admission == current_admission()
+            && capability == synchronized_restart_capability()
+            && boundaries == [fixture_graceful_control_plane_restart]
+            && evidence == [matching_preserved_evidence()]
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn an_old_receipt_for_the_same_string_id_cannot_qualify_new_realization_content() -> Bool {
+  let stale_admission = fixture_admission(
+    target: fixture_target,
+    desired: fixture_digest_a,
+    realization: fixture_stale_realization,
+    capability_version: fixture_capability_version,
+    generation: 7,
+    subject: fixture_subject,
+  )
+  let stale = fixture_preserved_evidence(
+    admission: stale_admission,
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_a,
+    activation: ActivationVerified,
+  )
+  match durable_restart_verdict(evidence: [stale]) {
+    StateDurabilityRefused {
+      cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn evidence_for_an_old_desired_digest_cannot_qualify_changed_intent() -> Bool {
+  let stale_admission = fixture_admission(
+    target: fixture_target,
+    desired: fixture_digest_b,
     realization: fixture_realization,
     capability_version: fixture_capability_version,
-    desired: fixture_digest_b,
+    generation: 7,
+    subject: fixture_subject,
   )
-  let wrong = fixture_evidence(
-    admission: current_admission(),
-    boundary: fixture_boundary,
-    readback_receipt_id: "fixture-perturbation",
-    before: fixture_digest_a,
-    after: fixture_digest_a,
-    activation: fixture_activation(
-      admission: stale,
-      receipt_id: "fixture-perturbation",
-    ),
+  let stale = fixture_preserved_evidence(
+    admission: stale_admission,
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_b,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_b,
+    activation: ActivationVerified,
   )
-  match durable_verdict(evidence: [wrong]) {
+  match durable_restart_verdict(evidence: [stale]) {
     StateDurabilityRefused {
-      cause: DurabilityActivationScopeMismatch {
-        expected: _,
-        observed: observed,
-      },
-    } => observed.desired_state_digest == fixture_digest_b
+      cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
+    } => true
     _ => false
   }
 }
 
-test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
-  let wrong = fixture_evidence(
-    admission: current_admission(),
-    boundary: fixture_boundary,
-    readback_receipt_id: "fixture-perturbation",
-    before: fixture_digest_b,
-    after: fixture_digest_b,
-    activation: fixture_activation(
-      admission: current_admission(),
-      receipt_id: "fixture-perturbation",
-    ),
+test fn evidence_for_an_old_capability_version_cannot_qualify() -> Bool {
+  let stale_admission = fixture_admission(
+    target: fixture_target,
+    desired: fixture_digest_a,
+    realization: fixture_realization,
+    capability_version: fixture_stale_capability_version,
+    generation: 7,
+    subject: fixture_subject,
   )
-  match durable_verdict(evidence: [wrong]) {
+  let stale = fixture_preserved_evidence(
+    admission: stale_admission,
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_a,
+    activation: ActivationVerified,
+  )
+  match durable_restart_verdict(evidence: [stale]) {
+    StateDurabilityRefused {
+      cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn evidence_for_an_old_perturbation_generation_cannot_qualify() -> Bool {
+  let stale_admission = fixture_admission(
+    target: fixture_target,
+    desired: fixture_digest_a,
+    realization: fixture_realization,
+    capability_version: fixture_capability_version,
+    generation: 6,
+    subject: fixture_subject,
+  )
+  let stale = fixture_preserved_evidence(
+    admission: stale_admission,
+    perturbation_target: fixture_target,
+    perturbation_generation: 6,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_a,
+    activation: ActivationVerified,
+  )
+  match durable_restart_verdict(evidence: [stale]) {
+    StateDurabilityRefused {
+      cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn equal_before_and_after_bytes_do_not_qualify_when_not_desired() -> Bool {
+  let wrong = fixture_preserved_evidence(
+    admission: current_admission(),
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_b,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_b,
+    activation: ActivationVerified,
+  )
+  match durable_restart_verdict(evidence: [wrong]) {
     StateDurabilityRefused {
       cause: DurabilityDesiredStateMismatch {
         desired: desired,
@@ -429,15 +592,107 @@ test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
   }
 }
 
-test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
-  match durable_verdict(evidence: [matching_evidence(), matching_evidence()]) {
+test fn a_different_readback_subject_refuses_with_typed_cause() -> Bool {
+  let wrong = fixture_preserved_evidence(
+    admission: current_admission(),
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_other_subject,
+    before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_a,
+    activation: ActivationVerified,
+  )
+  match durable_restart_verdict(evidence: [wrong]) {
     StateDurabilityRefused {
-      cause: DurabilityEvidenceAmbiguous {
-        admission: _,
-        boundary: _,
-        count: 2,
+      cause: DurabilityReadbackSubjectMismatch {
+        position: _,
+        expected: expected,
+        observed: observed,
+      },
+    } =>
+      expected == fixture_subject && observed == fixture_other_subject
+    _ => false
+  }
+}
+
+test fn unverified_post_boundary_activation_refuses_with_typed_cause() -> Bool {
+  let unverified = fixture_preserved_evidence(
+    admission: current_admission(),
+    perturbation_target: fixture_target,
+    perturbation_generation: 7,
+    before_target: fixture_target,
+    before_subject: fixture_subject,
+    before: fixture_digest_a,
+    after_target: fixture_target,
+    after_subject: fixture_subject,
+    after: fixture_digest_a,
+    activation: ActivationUnverified {
+      reason: "service activation was not read back",
+    },
+  )
+  match durable_restart_verdict(evidence: [unverified]) {
+    StateDurabilityRefused {
+      cause: DurabilityActivationUnverified { reason: reason },
+    } => reason == "service activation was not read back"
+    _ => false
+  }
+}
+
+test fn duplicate_preserved_and_lost_receipts_refuse_independent_of_list_order() -> Bool {
+  let preserved_first = durable_restart_verdict(
+    evidence: [matching_preserved_evidence(), matching_lost_evidence()],
+  )
+  let lost_first = durable_restart_verdict(
+    evidence: [matching_lost_evidence(), matching_preserved_evidence()],
+  )
+  match preserved_first {
+    StateDurabilityRefused {
+      cause: DurabilityEvidenceAmbiguous { admission: _, boundary: _, count: 2 },
+    } =>
+      match lost_first {
+        StateDurabilityRefused {
+          cause: DurabilityEvidenceAmbiguous { admission: _, boundary: _, count: 2 },
+        } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn current_effectiveness_preserves_typed_durability_refusal() -> Bool {
+  match qualify_string_grounding(verdict: durable_restart_verdict(evidence: [])) {
+    DurabilityDoesNotGround {
+      cause: DeclaredLifetimeDoesNotGround {
+        cause: DurabilityEvidenceMissing { admission: _, boundary: _ },
       },
     } => true
+    _ => false
+  }
+}
+
+test fn qualified_grounding_carries_effective_and_durability_evidence() -> Bool {
+  match qualify_string_grounding(
+    verdict: durable_restart_verdict(evidence: [matching_preserved_evidence()]),
+  ) {
+    DurabilityGrounds {
+      effective_state_evidence: effective,
+      durability_evidence: durability,
+    } =>
+      effective == "currently effective"
+        && match durability {
+          DurableLifetimeQualification {
+            admission: admission,
+            capability: _,
+            boundaries: _,
+            evidence: evidence,
+          } =>
+            admission == current_admission()
+              && evidence == [matching_preserved_evidence()]
+          _ => false
+        }
     _ => false
   }
 }
