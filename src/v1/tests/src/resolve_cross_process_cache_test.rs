@@ -36,12 +36,14 @@ impl Drop for CacheEnvGuard {
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, ClaimOutcome,
+    resolve_entry_with_index, run_claim, serve_resolved_graph_v1_disk_probe_for_test,
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
+    ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup,
-    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheRejectReason,
-    KeyInputMaterials,
+    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,
+    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
+    CacheRejectReason, KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -229,6 +231,50 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
 }
 
 #[test]
+fn malformed_header_probe_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("malformed-header");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    bytes[0] ^= 0xff;
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("truncated-header");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    bytes.truncate(7);
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let dir = temp_dir("poison-subject");
     let (roots, a, _, _) = write_fixture(&dir);
@@ -262,6 +308,24 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     });
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn faithful_probe_refusal_does_not_build_provider_ctx() {
+    reset_materialization_provider_ctx_for_test();
+    let builds_before = materialization_provider_ctx_build_count_for_test();
+
+    let err = serve_resolved_graph_v1_disk_probe_for_test("closure-digest", "compiler-digest")
+        .expect_err("unavailable faithful probe must refuse");
+    assert!(
+        err.contains("provider refused faithful probe"),
+        "refusal should name the faithful-probe gap: {err}"
+    );
+    assert_eq!(
+        materialization_provider_ctx_build_count_for_test(),
+        builds_before,
+        "faithful-probe refusal must not build provider ctx"
+    );
 }
 
 #[test]

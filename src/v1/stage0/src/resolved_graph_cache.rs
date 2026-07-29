@@ -302,27 +302,30 @@ pub fn supports_faithful_probe() -> bool {
 fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(_) => return CacheProbeResult::Miss,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheProbeResult::Miss,
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
     };
     let mut header = [0u8; CACHE_HEADER_LEN];
     if file.read_exact(&mut header).is_err() {
-        return CacheProbeResult::Miss;
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     if &header[..MAGIC.len()] != MAGIC {
-        return CacheProbeResult::Miss;
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     let version = u32::from_le_bytes(header[MAGIC.len()..MAGIC.len() + 4].try_into().unwrap());
     let mut off = MAGIC.len() + 4;
-    let subject = std::str::from_utf8(&header[off..off + 16])
-        .unwrap_or("")
-        .to_string();
+    let subject = match std::str::from_utf8(&header[off..off + 16]) {
+        Ok(s) => s.to_string(),
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
     off += 16;
     if subject != expected_subject {
         return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
-    let stored_content_digest = std::str::from_utf8(&header[off..off + 16])
-        .unwrap_or("")
-        .to_string();
+    let stored_content_digest = match std::str::from_utf8(&header[off..off + 16]) {
+        Ok(s) => s.to_string(),
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
     off += 16;
     let payload_len = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
     CacheProbeResult::Hit(CacheProbeHit {

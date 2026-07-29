@@ -26,7 +26,9 @@ test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> B
     && !(materialization_provider_consumer_roadmap_lane_anchor == "")
 }
 
-test fn witness_request_perturbation_flips_provider_outcome_arm() -> Bool {
+// Model-layer control only: this reuses pre-existing witness assertions on main and does
+// not exercise the Rust bridge. Keep the name honest until a bridge-level witness exists.
+test fn witness_model_refusal_controls_remain_distinct() -> Bool {
   incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union()
     && red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact()
 }
