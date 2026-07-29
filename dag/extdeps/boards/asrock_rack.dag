@@ -11,10 +11,6 @@ import extdeps.bmc.types {
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
 }
-import extdeps.bmc.capability {
-  BmcFirmwareSemanticVersion,
-  bmc_firmware_semantic_version,
-}
 import std.measure { celsius, percent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -77,7 +73,7 @@ data altrad8ud_openbmc_2_07_00_serial_console_probe: NonEmptyStr = "Historical p
 data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: "2.07.00",
   },
   capabilities: altrad8ud_openbmc_2_07_00_capabilities_list,
 }
@@ -85,7 +81,7 @@ data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = B
 data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 3, minor: 6, patch: 0),
+    version: "3.06.00",
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -95,7 +91,7 @@ data asrock_altrad8ud_openbmc_3_06_00_catalog_authority: ExternalAuthority = asr
 data asrock_altrad8ud_openbmc_3_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    version: "3.22.00",
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -218,8 +214,7 @@ data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
   },
 ]
 
-data asrock_srv3_live_probe_firmware_version: BmcFirmwareSemanticVersion =
-  bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0)
+data asrock_srv3_live_probe_firmware_version: NonEmptyStr = "2.07.00"
 
 fn live_probe_confirms_shipped_firmware_version() -> Bool {
   asrock_srv3_live_probe_firmware_version == asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version
