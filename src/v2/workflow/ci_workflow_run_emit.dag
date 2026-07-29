@@ -5,11 +5,17 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.std.orchestration {
+  Comment,
   Do,
+  Exit,
+  ExprCmdSubst,
   FailFast,
+  If,
+  Let,
   Pipeline,
   PipelineStep,
-  Run
+  Run,
+  StrEq
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
@@ -126,10 +132,67 @@ fn ci_selection_control_tail_command() -> String {
   ci_selection_control_witness_invoke_command
 }
 
+data ci_selection_control_skip_witness_invoke_command: String = "\"$ROOT/target/release/selection_control_skip_witness\""
+
+data ci_selection_control_skip_label: String = "selection_control_not_affected_skip"
+
+data ci_selection_control_skip_binder: String = "_ci_selection_skip"
+
+data ci_selection_control_skip_policy_note: String = "Affected-set-scoped selection-control admission (pull_request only) — the selection mechanism applied to itself. selection_control_skip_witness intersects the merge-base diff with the control suite's input closure (cli_run::selection_control_input_sources: the suite's declared .dag entries plus their import closure through [src/v2, dag], the src/v1/** prefix covering the selection implementation and the witness bin, and the Cargo/toolchain build config). A PR diff touching none of those provably cannot change the suite's verdict, so the step exits 0 immediately. NOT circular: the skip decision is a coarse path/import-closure intersection, never the node-frontier selector the suite verifies, so a broken selector cannot suppress its own control. Empty diff, departed non-docs path, diff failure, and closure failure all run the suite (fail-closed); a bin that fails to execute yields an empty binder, which does not match the skip label, so that arm runs the suite too. COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run the suite UNCONDITIONALLY. A wrong closure that lets a PR wrongly skip therefore surfaces on the very next merge to main (the one-merge acceptance window, the regen-skip shape). Measured basis for the change: 9m02s per PR on run 30482171871 job 90679506428 against the 80s local basis this file's step note declares, with ~85 percent of the last 100 main commits touching none of the closure."
+
+data ci_selection_control_skip_echo_command: String = "echo \"gunbc ci selection control: pull_request diff does not intersect the control suite's input closure — its verdict is provably unchanged; skipping (push-to-main runs it unconditionally as the cold control)\""
+
+fn ci_selection_control_skip_bind_step() -> PipelineStep {
+  Let {
+    name: ci_selection_control_skip_binder,
+    value: ExprCmdSubst {
+      callee: ci_selection_control_skip_witness_invoke_command,
+      args: []
+    }
+  }
+}
+
+fn ci_selection_control_skip_taken_then() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_selection_control_skip_echo_command),
+      Exit { status: "0" }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_selection_control_skip_decide_step() -> PipelineStep {
+  If {
+    cond: StrEq {
+      lhs: concat("\"$", concat(ci_selection_control_skip_binder, "\"")),
+      rhs: ci_selection_control_skip_label
+    },
+    then_: ci_selection_control_skip_taken_then(),
+    else_: Absent
+  }
+}
+
+fn ci_selection_control_skip_step() -> PipelineStep {
+  If {
+    cond: StrEq { lhs: "\"$GITHUB_EVENT_NAME\"", rhs: "pull_request" },
+    then_: Pipeline {
+      steps: [
+        ci_selection_control_skip_bind_step(),
+        ci_selection_control_skip_decide_step()
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
 fn ci_selection_control_intent() -> Pipeline {
   Pipeline {
     steps: [
+      Comment { text: ci_selection_control_skip_policy_note },
       ci_workflow_do(command: ci_selection_control_root_command()),
+      ci_selection_control_skip_step(),
       ci_workflow_do(command: ci_selection_control_tail_command())
     ],
     on_failure: FailFast
