@@ -173,10 +173,10 @@ pub use crate::v1_std_core::{
     make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, slice_base, slice_end, slice_start, string_type, type_name_compatible,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -2254,18 +2254,6 @@ pub fn inferred_or_error(
     }
 }
 
-pub fn restore_scrutinee_optional_cardinality(outer: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
-    {
-        let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
-            && (resolved.return_cardinality.clone() != Cardinality::CardOptional));
-        if needs_restore.clone() {
-            with_optional_cardinality(resolved.clone())
-        } else {
-            resolved.clone()
-        }
-    }
-}
-
 pub fn resolve_pattern_subject(
     scope: Rc<InferScope>,
     scrutinee_subject: Rc<PatternSubject>,
@@ -2274,7 +2262,7 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => pattern_subject_from_node(restore_scrutinee_optional_cardinality(
+        } => pattern_subject_from_node(preserve_outer_optional_cardinality(
             scrutinee_type.clone(),
             resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()),
         )),

@@ -3901,6 +3901,30 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn preserve_outer_optional_cardinality(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
+    {
+        let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
+            && (inner.return_cardinality.clone() != Cardinality::CardOptional));
+        if needs_restore.clone() {
+            with_optional_cardinality(inner.clone())
+        } else {
+            inner.clone()
+        }
+    }
+}
+
+pub fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
+    {
+        let merge_optional = ((left.clone() == Cardinality::CardOptional)
+            || (right.clone() == Cardinality::CardOptional));
+        if merge_optional.clone() {
+            Cardinality::CardOptional
+        } else {
+            right.clone()
+        }
+    }
+}
+
 pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
     if (path.clone() == "".to_string()) {
         Rc::new(vec![])

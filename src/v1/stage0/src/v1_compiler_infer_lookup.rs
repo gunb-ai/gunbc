@@ -49,7 +49,7 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality,
+    preserve_outer_optional_cardinality, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
@@ -438,18 +438,6 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
     }
 }
 
-pub fn restore_outer_optional_node(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
-    {
-        let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
-            && (inner.return_cardinality.clone() != Cardinality::CardOptional));
-        if needs_restore.clone() {
-            with_optional_cardinality(inner.clone())
-        } else {
-            inner.clone()
-        }
-    }
-}
-
 pub fn resolve_scrutinee_type_node_seen(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
@@ -470,10 +458,12 @@ pub fn resolve_scrutinee_type_node_seen(
             && (normed.inferred.clone() != None))
         {
             match normed.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => restore_outer_optional_node(
-                    normed.clone(),
-                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
-                ),
+                Some(InferredNode::Resolved { node: target, .. }) => {
+                    preserve_outer_optional_cardinality(
+                        normed.clone(),
+                        resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
+                    )
+                }
                 _ => normed.clone(),
             }
         } else {
@@ -499,7 +489,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                     {
                                         normed.clone()
                                     } else {
-                                        restore_outer_optional_node(
+                                        preserve_outer_optional_cardinality(
                                             normed.clone(),
                                             resolve_scrutinee_type_node_seen(
                                                 env.clone(),
@@ -535,7 +525,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                         {
                                             normed.clone()
                                         } else {
-                                            restore_outer_optional_node(
+                                            preserve_outer_optional_cardinality(
                                                 normed.clone(),
                                                 resolve_scrutinee_type_node_seen(
                                                     env.clone(),

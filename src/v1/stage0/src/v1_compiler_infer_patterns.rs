@@ -26,8 +26,8 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::LitPattern;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
-    is_compiler_error, kernel_span, make_error_node, no_span, none_type, qualified_last_segment,
-    with_optional_cardinality,
+    is_compiler_error, kernel_span, make_error_node, no_span, none_type,
+    preserve_outer_optional_cardinality, qualified_last_segment, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
@@ -452,15 +452,9 @@ pub fn pattern_subject_preserving_outer_optional(
 ) -> Rc<PatternSubject> {
     match (*inner.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => {
-            let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
-                && (resolved.return_cardinality.clone() != Cardinality::CardOptional));
-            if needs_restore.clone() {
-                Rc::new(PatternSubject::PatternResolved {
-                    node: with_optional_cardinality(resolved.clone()),
-                })
-            } else {
-                inner.clone()
-            }
+            Rc::new(PatternSubject::PatternResolved {
+                node: preserve_outer_optional_cardinality(outer.clone(), resolved.clone()),
+            })
         }
         _ => inner.clone(),
     }
