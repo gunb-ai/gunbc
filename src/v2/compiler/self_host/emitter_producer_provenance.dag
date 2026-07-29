@@ -10,6 +10,9 @@ import v2.compiler.self_host.frontier_probe_types {
 import tools.self_host_module_behavioral_transport_roster {
   module_behavioral_transport_config_for
 }
+import v2.compiler.self_host.seed_emitter_behavioral_wet_green_entries {
+  seed_emitter_behavioral_wet_green_entries
+}
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
@@ -58,6 +61,19 @@ type EmissionQualification
 type EmissionBuildResult
   = BuildGreen
   | BuildRefused { cause: Symbol }
+
+type EmissionBuildResultAxis
+  = EmissionBuildResultGreen
+  | EmissionBuildResultRefused { cause: Symbol }
+
+data emission_build_result_axis_note: String = "Canonical query surface for EmissionBuildResult (review 44435 predicate-dissolution): classify through emission_build_result_axis once and match the tag — not a hand-rolled producer_emission_receipt_is_build_green Bool over the coproduct."
+
+fn emission_build_result_axis(result: EmissionBuildResult) -> EmissionBuildResultAxis {
+  match result {
+    BuildGreen => EmissionBuildResultGreen
+    BuildRefused { cause: cause } => EmissionBuildResultRefused { cause: cause }
+  }
+}
 
 type RealizedEmitterClosure {
   emitter_module_paths: List<String>
@@ -208,11 +224,21 @@ fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionO
   producer_emission_oracle_probe_is_enrolled(row: row)
 }
 
+fn producer_emission_oracle_probe_is_executed_green(row: ProducerEmissionOracleRow) -> Bool {
+  schedule_witness_entry_cited(
+    probe_entry: row.behavioral_probe_entry,
+    probe_function: row.behavioral_probe_function,
+    entries: seed_emitter_behavioral_wet_green_entries
+  )
+}
+
 fn producer_emission_build_result_for_oracle_row(row: ProducerEmissionOracleRow) -> EmissionBuildResult {
-  if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
+  if producer_emission_oracle_probe_is_executed_green(row: row) {
+    BuildGreen
+  } else if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
     BuildRefused { cause: ^cssl_harness_assemble_red }
   } else {
-    BuildGreen
+    BuildRefused { cause: ^producer_emission_probe_not_executed_green }
   }
 }
 
@@ -230,22 +256,14 @@ fn producer_emission_receipt_from_oracle_row(
   )
 }
 
-fn producer_emission_receipt_is_build_green(receipt: ProducerEmissionReceipt) -> Bool {
-  match receipt.build_result {
-    BuildGreen => true
-    BuildRefused { cause: _ } => false
-  }
-}
-
 fn producer_emission_canonical_receipt_for_oracle_row(
   row: ProducerEmissionOracleRow
 ) -> Optional<ProducerEmissionReceipt> {
   match producer_emission_receipt_from_oracle_row(row: row) {
     Present { value: receipt } =>
-      if producer_emission_receipt_is_build_green(receipt: receipt) {
-        optional_present(value: receipt)
-      } else {
-        optional_absent()
+      match emission_build_result_axis(result: receipt.build_result) {
+        EmissionBuildResultGreen => optional_present(value: receipt)
+        EmissionBuildResultRefused { cause: _ } => optional_absent()
       }
     Absent => optional_absent()
   }
@@ -447,7 +465,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + known-red quarantine citation + transport roster — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER and ORTHOGONAL: requires BuildGreen canonical receipt equality + transport roster only — NOT known-red enrollment (review 44393: enrollment and BuildGreen are mutually exclusive; dissolve-on deletes known-red entry, build_result greens, canonical authorizes). Frontier disposition mirrors authorization."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + known-red quarantine citation + transport roster — honest BuildRefused while assemble-red. Authorization requires BuildGreen canonical receipt + transport roster. BuildGreen is POSITIVE evidence only: seed_emitter_behavioral_wet_green_entries citation (review 44435) — deleting a known-red row without landing here stays BuildRefused (fail-closed, not absence-implied green). Promotion: wet witness greens → add green row AND delete known-red row. Frontier disposition mirrors authorization."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
