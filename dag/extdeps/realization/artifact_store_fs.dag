@@ -118,28 +118,17 @@ type ArtifactEvictionStep
   | EvictionRefused { key: ContentHash, verb: Verb, target: NamespacePosition, frame: Frame }
   | EvictionFailed { key: ContentHash, path: String }
 
-data no_eviction_steps: List<ArtifactEvictionStep> = []
-
-func apply_evicted_keys(store_root: String, evicted: List<ContentHash>) -> List<ArtifactEvictionStep> {
-  match evicted.first() {
-    Absent => no_eviction_steps
-    Present { value: key } => {
-      let step = match artifact_fs_delete(store_root: store_root, key: key) {
-        ArtifactFsDeleteOk => EvictionDeleted { key: key }
-        ArtifactFsDeleteRefused { verb: v, target: t, frame: f } =>
-          EvictionRefused { key: key, verb: v, target: t, frame: f }
-        ArtifactFsDeleteFailed { path: p } => EvictionFailed { key: key, path: p }
-      }
-      return concat(
-        [step],
-        apply_evicted_keys(store_root: store_root, evicted: evicted.skip(n: 1))
-      )
-    }
+func evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
+  match artifact_fs_delete(store_root: store_root, key: key) {
+    ArtifactFsDeleteOk => EvictionDeleted { key: key }
+    ArtifactFsDeleteRefused { verb: v, target: t, frame: f } =>
+      EvictionRefused { key: key, verb: v, target: t, frame: f }
+    ArtifactFsDeleteFailed { path: p } => EvictionFailed { key: key, path: p }
   }
 }
 
 func apply_store_evictions(store_root: String, receipt: StorePutReceipt) -> List<ArtifactEvictionStep> {
-  apply_evicted_keys(store_root: store_root, evicted: receipt.evicted)
+  receipt.evicted |> map(key => evict_one(store_root: store_root, key: key))
 }
 
 fn eviction_step_is_deleted(s: ArtifactEvictionStep) -> Bool {

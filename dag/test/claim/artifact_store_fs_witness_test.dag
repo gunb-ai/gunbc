@@ -125,7 +125,7 @@ fn eviction_probe_store() -> ArtifactStore {
 }
 
 fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
-  entries |> fold(init: false, f: (acc, e) => acc || contains(e, concat(key, ".artifact")))
+  entries |> any(e => string_contains(e, key))
 }
 
 test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
