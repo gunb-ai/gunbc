@@ -4,6 +4,7 @@ import gunbc.test_module_hygiene_scaffold {
   test_module_hygiene_orphan_gate_scaffold,
   test_module_hygiene_orphan_gate_dissolve_trigger,
   test_module_hygiene_orphan_gate_receipt_plan_anchor,
+  test_module_hygiene_orphan_gate_receipt_lane_deferral,
   test_module_hygiene_orphan_gate_test_discriminator_demotion,
   test_module_hygiene_orphan_gate_test_discriminator_fixture_allowlist,
   test_module_hygiene_orphan_gate_test_discriminator_directory_bypass_refused,
@@ -12,8 +13,9 @@ import gunbc.test_module_hygiene_scaffold {
   test_module_hygiene_orphan_gate_test_discriminator_plain_data_not_enrollment,
   test_module_hygiene_orphan_gate_test_discriminator_dead_plain_data,
   test_module_hygiene_orphan_gate_test_discriminator_plain_data_chain,
-  test_module_hygiene_phase0_authority_entry,
+  test_module_hygiene_authority_entry,
   test_module_hygiene_equivalence_witness_entry,
+  test_module_hygiene_bridge_transport_entry,
 }
 import gunbc.test_module_hygiene {
   ModuleSurface,
@@ -36,29 +38,29 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data test_module_hygiene_hand_rust_equivalence_note: String = "Phase-0 peel: pins gunbc.test_module_hygiene.orphan_plain_names against the SAME fixture spellings as src/v1/stage0/src/test_module_hygiene.rs unit RED plants (HAND-RUST still executes parse+walk). Both must agree on orphan name sets. Unparsable-file refuse stays host-only until FS/parse peels (no ModuleSurface). Full dissolve: host consumes the .dag fold and test_module_hygiene.rs leaves HAND."
+data test_module_hygiene_hand_rust_equivalence_note: String = "Pins gunbc.test_module_hygiene.orphan_plain_names against synthetic ModuleSurface fixtures matching cli_run/test_module_hygiene_bridge.rs equivalence tests (parse→surface→producer). Seed producer deleted; bridge is transport-only. RED: plain_data_not_enrollment must stay refused."
 
 fn orphans_are(module: ModuleSurface, expected: List<String>) -> Bool {
   names_set_eq(left: orphan_plain_names(module: module), right: expected)
 }
 
-test fn test_module_hygiene_scaffold_is_seed_retained() -> Bool {
+test fn test_module_hygiene_scaffold_is_single_authority_target() -> Bool {
   match test_module_hygiene_orphan_gate_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
-test fn test_module_hygiene_dissolve_trigger_names_phase0_and_hand_drain() -> Bool {
-  string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "Phase 0")
-    && string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "hand_queue_drain")
-    && string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "5-dissolve-patches")
-    && string_contains(s: test_module_hygiene_orphan_gate_receipt_plan_anchor, pattern: "hand_queue_drain")
+test fn test_module_hygiene_dissolve_trigger_names_retirement_lane() -> Bool {
+  string_contains(s: test_module_hygiene_orphan_gate_dissolve_trigger, pattern: "v1-test-hygiene-producer-retirement")
+    && string_contains(s: test_module_hygiene_orphan_gate_receipt_plan_anchor, pattern: "v1-test-hygiene-producer-retirement")
+    && string_contains(s: test_module_hygiene_orphan_gate_receipt_lane_deferral, pattern: "v1-test-hygiene-producer-retirement")
 }
 
-test fn test_module_hygiene_phase0_authority_paths_named() -> Bool {
-  string_contains(s: test_module_hygiene_phase0_authority_entry, pattern: "test_module_hygiene.dag")
+test fn test_module_hygiene_authority_paths_named() -> Bool {
+  string_contains(s: test_module_hygiene_authority_entry, pattern: "test_module_hygiene.dag")
     && string_contains(s: test_module_hygiene_equivalence_witness_entry, pattern: "equivalence_witness")
+    && string_contains(s: test_module_hygiene_bridge_transport_entry, pattern: "test_module_hygiene_bridge.rs")
 }
 
 test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {

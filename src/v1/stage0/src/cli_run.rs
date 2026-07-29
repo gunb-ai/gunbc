@@ -45,6 +45,7 @@ use crate::v1_std_core::{
 use serde::Serialize;
 
 pub(crate) mod materialization_provider_consumer;
+pub(crate) mod test_module_hygiene_bridge;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 #[doc(hidden)]
@@ -13367,9 +13368,9 @@ fn witness_admission_entry_function_keys_from_source(
         // keys must expand the same way `expand_explicit_entries` does for execution —
         // otherwise deferred leaf rows (entry::leaf) never match the unexpanded
         // consumer key (entry::) and Phase 0(b) falsely refuses (roadmap_belt #7273).
-        if crate::test_module_hygiene::is_file_grain_function(function) {
+        if test_module_hygiene_bridge::is_file_grain_function(function) {
             let path = workspace_root().join(entry);
-            let names = crate::test_module_hygiene::enumerate_entry_test_fns(
+            let names = test_module_hygiene_bridge::enumerate_entry_test_fns(
                 path.to_str().unwrap_or(entry),
             )
             .unwrap_or_else(|e| {
@@ -13982,7 +13983,7 @@ pub fn discover_floor_witness_roster(
     floor_filename_hygiene_refusal_via_producer(source_roots)?;
     // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
     // not a new lens (umbrella-dissolution fence).
-    crate::test_module_hygiene::check_orphan_helpers_or_err(source_roots)?;
+    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     // ONE module-graph facts build serves effect-reach, the inert-lens reach, and the
@@ -16391,7 +16392,7 @@ fn run_discovery_corpus_with_options_inner(
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
     // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit = crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
+    let expanded_explicit = test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)?;
     for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {
