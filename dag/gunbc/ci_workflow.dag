@@ -12,6 +12,7 @@ import gunbc.ci_spec {
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
+  gunbc_ci_heal_binary_source_skew_guard_script,
 }
 import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script,
@@ -494,6 +495,20 @@ fn gunbc_ci_heal_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
+fn ci_heal_binary_source_skew_guard_step() -> Step {
+  RunStep {
+    name: Present { value: "Refuse a binary/source revision skew (the release binary is built from the PR merge ref; this job checked out the branch head)" },
+    id: none,
+    run: gunbc_ci_heal_binary_source_skew_guard_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_heal_regen_step() -> Step {
   RunStep {
     name: Present { value: "Regenerate drifted generated artifacts (main_wet — writes each authority projection to the worktree)" },
@@ -531,7 +546,7 @@ fn ci_heal_generated_artifacts_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     steps: concat(
       [ci_heal_branch_head_checkout_step()],
-      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
+      [ci_heal_binary_source_skew_guard_step(), ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_heal_regen_step(), ci_heal_commit_push_step()]
     ),
     needs: ["build"],
     env: none,
