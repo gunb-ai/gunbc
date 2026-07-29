@@ -3,10 +3,8 @@ use v1_compiler::cli_run::{
     reset_materialization_provider_ctx_for_test, resolve_entry_graph, resolve_entry_with_index,
     run_claim, serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
 };
-use v1_compiler::resolved_graph_cache::{closure_content_digest, transform_content_digest};
 use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_interpreter::ExecutionMode;
-use v1_compiler::v1_rt;
 
 use std::rc::Rc;
 
@@ -41,17 +39,11 @@ fn witness_ctx() -> v1_compiler::v1_interpreter::InterpContext {
 fn v1_disk_probe_refuses_until_faithful_parts_exist() {
     reset_materialization_provider_ctx_for_test();
     let sources = fixture_sources();
-    let closure_digest = closure_content_digest(&sources);
-    let compiler_digest = transform_content_digest();
-    let content_digest = v1_rt::atom_identity_hash("fixture-payload".to_string());
+    let closure_digest = "closure-digest-placeholder".to_string();
+    let compiler_digest = "compiler-digest-placeholder".to_string();
 
-    let err = serve_resolved_graph_v1_disk_probe_for_test(
-        &closure_digest,
-        &compiler_digest,
-        &content_digest,
-        128,
-    )
-    .expect_err("faithful probe must refuse");
+    let err = serve_resolved_graph_v1_disk_probe_for_test(&closure_digest, &compiler_digest)
+        .expect_err("faithful probe must refuse");
 
     assert!(
         err.contains("provider refused faithful probe")
@@ -70,25 +62,14 @@ fn v1_disk_probe_refuses_until_faithful_parts_exist() {
 fn faithful_probe_refusal_does_not_build_provider_ctx() {
     reset_materialization_provider_ctx_for_test();
     let sources = fixture_sources();
-    let closure_digest = closure_content_digest(&sources);
-    let compiler_digest = transform_content_digest();
-    let content_digest = v1_rt::atom_identity_hash("fixture-payload-reuse".to_string());
+    let closure_digest = "closure-digest-placeholder-reuse".to_string();
+    let compiler_digest = "compiler-digest-placeholder-reuse".to_string();
 
-    let _ = serve_resolved_graph_v1_disk_probe_for_test(
-        &closure_digest,
-        &compiler_digest,
-        &content_digest,
-        128,
-    )
-    .expect_err("first probe must refuse");
+    let _ = serve_resolved_graph_v1_disk_probe_for_test(&closure_digest, &compiler_digest)
+        .expect_err("first probe must refuse");
 
-    let _ = serve_resolved_graph_v1_disk_probe_for_test(
-        &closure_digest,
-        &compiler_digest,
-        &content_digest,
-        256,
-    )
-    .expect_err("second probe must refuse");
+    let _ = serve_resolved_graph_v1_disk_probe_for_test(&closure_digest, &compiler_digest)
+        .expect_err("second probe must refuse");
     assert_eq!(
         materialization_provider_ctx_build_count_for_test(),
         0,

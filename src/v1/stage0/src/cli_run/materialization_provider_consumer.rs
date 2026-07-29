@@ -152,18 +152,7 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     ctx: &InterpContext,
     closure_digest: &str,
     compiler_digest: &str,
-    content_digest: &str,
-    payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    if !supports_faithful_probe() {
-        return Err(format!(
-            "resolved-graph-cache provider refused faithful probe: {}",
-            faithful_probe_unavailable_gap()
-        ));
-    }
-    let payload_byte_count_i64 = i64::try_from(payload_byte_count).map_err(|_| {
-        "payload byte count exceeds i64 range for faithful probe request".to_string()
-    })?;
     let args = [
         (
             Some("closure_digest".to_string()),
@@ -172,14 +161,6 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
         (
             Some("compiler_digest".to_string()),
             Value::Str(compiler_digest.to_string()),
-        ),
-        (
-            Some("content_digest".to_string()),
-            Value::Str(content_digest.to_string()),
-        ),
-        (
-            Some("payload_bytes".to_string()),
-            Value::Int(payload_byte_count_i64),
         ),
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
@@ -195,8 +176,6 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
 pub fn serve_resolved_graph_v1_disk_probe(
     closure_digest: &str,
     compiler_digest: &str,
-    content_digest: &str,
-    payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
     if !supports_faithful_probe() {
         return Err(format!(
@@ -209,23 +188,14 @@ pub fn serve_resolved_graph_v1_disk_probe(
         &ctx,
         closure_digest,
         compiler_digest,
-        content_digest,
-        payload_byte_count,
     )
 }
 
 pub fn serve_resolved_graph_v1_disk_probe_for_test(
     closure_digest: &str,
     compiler_digest: &str,
-    content_digest: &str,
-    payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    serve_resolved_graph_v1_disk_probe(
-        closure_digest,
-        compiler_digest,
-        content_digest,
-        payload_byte_count,
-    )
+    serve_resolved_graph_v1_disk_probe(closure_digest, compiler_digest)
 }
 
 #[doc(hidden)]

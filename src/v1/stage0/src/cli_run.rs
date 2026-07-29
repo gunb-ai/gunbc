@@ -7992,7 +7992,6 @@ fn compile_clean_diags_from_resolved_stages(
 
 fn serve_resolved_graph_disk_hit_through_provider(
     sources: &[Rc<v1_compiler_compile::SourceFile>],
-    cached: &CachedResolvedGraph,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -8003,12 +8002,7 @@ fn serve_resolved_graph_disk_hit_through_provider(
 > {
     let closure_digest = closure_content_digest(sources);
     let compiler_digest = transform_content_digest();
-    match serve_resolved_graph_v1_disk_probe(
-        &closure_digest,
-        &compiler_digest,
-        &cached.content_digest,
-        cached.payload_byte_count,
-    )? {
+    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
         ResolvedGraphProviderOutcome::Hit => Err(
             "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
                 .to_string(),
@@ -8091,8 +8085,8 @@ fn resolved_graph_from_sources_with_index(
                     ));
                 }
                 match cross_process_lookup(&cache_root, &subject) {
-                    CacheLookupResult::Hit(cached) => {
-                        return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
+                    CacheLookupResult::Hit(_cached) => {
+                        return serve_resolved_graph_disk_hit_through_provider(&sources);
                     }
                     CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
                 }
