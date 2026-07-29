@@ -10,6 +10,7 @@ import std.effect_grant {
   Admitted, EffectOutsideGrant,
 }
 import std.materialization_ladder { Frame }
+import std.disposition { Disposition, Terminal }
 import std.artifact_store { StorePutReceipt }
 import std.artifact_store_scratch_grant {
   artifact_store_scratch_read_admissible,
@@ -131,20 +132,39 @@ func apply_store_evictions(store_root: String, receipt: StorePutReceipt) -> List
   receipt.evicted |> map(key => evict_one(store_root: store_root, key: key))
 }
 
-fn eviction_step_is_deleted(s: ArtifactEvictionStep) -> Bool {
-  match s {
-    EvictionDeleted { key: _ } => true
-    EvictionRefused { key: _, verb: _, target: _, frame: _ } => false
-    EvictionFailed { key: _, path: _ } => false
+data eviction_step_reader_contract: Disposition = Terminal {
+  reason: "eviction_step_fold is the only match over ArtifactEvictionStep; the predicates and counters below derive from it and contain no match of their own, so a fourth outcome is a type error at exactly one site. Same discipline this module's consumer applies to ProviderLookup / ProviderAdmission (std.materialization_provider reader contract) — a new coproduct does not get an exemption for being small (review 44258). Discriminating corpus: dag/test/claim/artifact_store_fs_witness_test.dag."
+}
+
+fn eviction_step_fold<T>(
+  step: ArtifactEvictionStep,
+  deleted: fn(ContentHash) -> T,
+  refused: fn(ContentHash, Verb, NamespacePosition, Frame) -> T,
+  failed: fn(ContentHash, String) -> T
+) -> T {
+  match step {
+    EvictionDeleted { key: k } => deleted(k)
+    EvictionRefused { key: k, verb: v, target: t, frame: f } => refused(k, v, t, f)
+    EvictionFailed { key: k, path: p } => failed(k, p)
   }
 }
 
+fn eviction_step_is_deleted(s: ArtifactEvictionStep) -> Bool {
+  eviction_step_fold(
+    step: s,
+    deleted: k => true,
+    refused: (k, v, t, f) => false,
+    failed: (k, p) => false
+  )
+}
+
 fn eviction_step_is_refused(s: ArtifactEvictionStep) -> Bool {
-  match s {
-    EvictionDeleted { key: _ } => false
-    EvictionRefused { key: _, verb: _, target: _, frame: _ } => true
-    EvictionFailed { key: _, path: _ } => false
-  }
+  eviction_step_fold(
+    step: s,
+    deleted: k => false,
+    refused: (k, v, t, f) => true,
+    failed: (k, p) => false
+  )
 }
 
 fn eviction_deleted_count(steps: List<ArtifactEvictionStep>) -> Int {
