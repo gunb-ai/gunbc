@@ -8657,6 +8657,16 @@ fn emit_host_resolved_build_context_identity(
         })
     }
 
+    fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
+        debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
+        rows.iter().fold(
+            v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
+            |acc, observed_tool_identity| {
+                v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
+            },
+        )
+    }
+
     let cargo_configuration_identity =
         emit_host_cargo_configuration_digest(environment, probe_workspace)?;
     let mut observed_tool_identities = Vec::new();
@@ -8690,16 +8700,7 @@ fn emit_host_resolved_build_context_identity(
             )?);
         }
     }
-    let toolchain_identity = observed_tool_identities.iter().fold(
-        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
-        |acc, observed_tool_identity| {
-            let observed_identity = v1_rt::hash_combine(
-                v1_rt::atom_identity_hash(observed_tool_identity.tool_name.clone()),
-                observed_tool_identity.observed_identity.clone(),
-            );
-            v1_rt::hash_combine(acc, observed_identity)
-        },
-    );
+    let toolchain_identity = fold_observed_toolchain_identity(&observed_tool_identities);
     Ok(emit_host_artifact_realization_digest(&[
         ("resolved-build-toolchain", toolchain_identity),
         ("constructed-build-environment", environment.digest.clone()),
