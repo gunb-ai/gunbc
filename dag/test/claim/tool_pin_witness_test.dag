@@ -8,20 +8,20 @@ import extdeps.tools.pin {
   PinSelection,
   ExactPin,
   TrackedChannel,
-  PinFreshness,
-  PinFresh,
-  PinFreshnessUnderivable,
+  CurrencyGap,
+  AuthoredPinHasNoReviewDate,
+  TrackedPinHasNoResolutionDate,
   PinAdmission,
-  PinAdmitted,
+  PinIntegrityAdmitted,
   PinRefused,
   PinRefusalCause,
   ConstraintIsNotIdentity,
   PinAbsent,
-  FreshnessEvidenceUnavailable,
+  TrackedResolutionUnrecorded,
   ObservedIdentityMismatch,
-  pin_freshness,
+  pin_currency_gap,
   admit_legacy_cli_tool,
-  admit_pin,
+  admit_pin_integrity,
   pin_value_eq,
   pin_key_of,
 }
@@ -49,55 +49,55 @@ data tracked_pin: ToolPin = ToolPin {
   },
 }
 
-data freshness_family_note: String = "Freshness family, REWRITTEN after review 44242 found a fail-open in the original shape. The first version took a caller-supplied age_days, so a caller passing 0 forever kept a stale pin permanently fresh — a verdict with no evidence behind it. P1 now refuses to answer what it cannot ground: an ExactPin is fresh by construction (authored, no upstream drift to bound), and a TrackedChannel is UNDERIVABLE because no resolution date is carried and v2.std.datetime has no day arithmetic to derive an age with. RED CONTROL is tracked_pin_freshness_is_underivable_not_fresh — it fails if a tracked pin ever reports PinFresh, which is precisely the fail-open that was shipped and is now unwritable: there is no parameter left through which a caller can assert currency."
+data currency_family_note: String = "Currency family, REWRITTEN after review 44274 found that ExactPin returned PinFresh unconditionally — a fabricated positive. Authorship proves reproducibility, not currency: an exact pin authored three years ago is exactly as reproducible and exactly as rotten. pin_currency_gap is now TOTAL and never returns a positive verdict for either variant. RED CONTROLS are the two below: each fails if its variant ever reports anything other than a named gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break."
 
-test fn exact_pin_is_fresh_by_construction() -> Bool {
-  match pin_freshness(pin: authored_pin) {
-    PinFresh => true
-    PinFreshnessUnderivable { channel: _ } => false
+test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: authored_pin) {
+    AuthoredPinHasNoReviewDate => true
+    TrackedPinHasNoResolutionDate { channel: _ } => false
   }
 }
 
-test fn tracked_pin_freshness_is_underivable_not_fresh() -> Bool {
-  match pin_freshness(pin: tracked_pin) {
-    PinFreshnessUnderivable { channel: c } => (c as String) == "latest"
-    PinFresh => false
+test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: tracked_pin) {
+    TrackedPinHasNoResolutionDate { channel: c } => (c as String) == "latest"
+    AuthoredPinHasNoReviewDate => false
   }
 }
 
-data admission_family_note: String = "Admission family: admitted only when freshness is derivable AND identity matches. RED CONTROL mismatched_identity_refuses covers what a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where identity comparison refuses. RED CONTROL tracked_pin_refuses_even_when_identity_matches pins the ORDER and is the direct regression control for the reviewed fail-open: a tracked pin whose observed digest matches EXACTLY is still refused, so a coincidental match can never stand in for evidence of currency."
+data integrity_family_note: String = "Integrity family: admission establishes ONLY that the observed binary is the one the pin declares, and is named admit_pin_integrity so it cannot be misread as a currency verdict (review 44274). RED CONTROL mismatched_identity_refuses covers what a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where digest comparison refuses. RED CONTROL tracked_pin_refuses_even_when_identity_matches is the standing regression control for review 44242: a tracked pin whose observed digest matches EXACTLY is still refused, because its expected_identity was resolved from a moving reference with no record of that resolution."
 
-test fn matching_identity_admits() -> Bool {
-  match admit_pin(pin: authored_pin, observed_identity: cargo_identity) {
-    PinAdmitted { pin: p } => (p.tool_name as String) == "cargo"
+test fn matching_identity_admits_integrity() -> Bool {
+  match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
+    PinIntegrityAdmitted { pin: p } => (p.tool_name as String) == "cargo"
     PinRefused { tool_name: _, cause: _ } => false
   }
 }
 
 test fn mismatched_identity_refuses() -> Bool {
-  match admit_pin(pin: authored_pin, observed_identity: other_identity) {
+  match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
     PinRefused { tool_name: n, cause: c } =>
       ((n as String) == "cargo") && match c {
         ObservedIdentityMismatch { expected: e, observed: o } =>
           (e == cargo_identity) && (o == other_identity)
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
-        FreshnessEvidenceUnavailable { channel: _ } => false
+        TrackedResolutionUnrecorded { channel: _ } => false
       }
-    PinAdmitted { pin: _ } => false
+    PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
 test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
-  match admit_pin(pin: tracked_pin, observed_identity: cargo_identity) {
+  match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
     PinRefused { tool_name: n, cause: c } =>
       ((n as String) == "jq") && match c {
-        FreshnessEvidenceUnavailable { channel: ch } => (ch as String) == "latest"
+        TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
         ObservedIdentityMismatch { expected: _, observed: _ } => false
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
       }
-    PinAdmitted { pin: _ } => false
+    PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
@@ -121,10 +121,10 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
       ((n as String) == "curl") && match c {
         ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
         PinAbsent => false
-        FreshnessEvidenceUnavailable { channel: _ } => false
+        TrackedResolutionUnrecorded { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
       }
-    PinAdmitted { pin: _ } => false
+    PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
@@ -134,10 +134,10 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
       ((n as String) == "jq") && match c {
         PinAbsent => true
         ConstraintIsNotIdentity { constraint: _ } => false
-        FreshnessEvidenceUnavailable { channel: _ } => false
+        TrackedResolutionUnrecorded { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
       }
-    PinAdmitted { pin: _ } => false
+    PinIntegrityAdmitted { pin: _ } => false
   }
 }
 
