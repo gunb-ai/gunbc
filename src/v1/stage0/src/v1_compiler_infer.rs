@@ -2263,12 +2263,9 @@ pub fn resolve_pattern_subject(
             node: scrutinee_type,
             ..
         } => {
-            let resolved = resolve_scrutinee_type_node(
-                scope.type_env.clone(),
-                scrutinee_type.clone(),
-            );
-            let restored = if scrutinee_type.return_cardinality.clone()
-                == Cardinality::CardOptional
+            let resolved =
+                resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
+            let restored = if scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional
                 && resolved.return_cardinality.clone() != Cardinality::CardOptional
             {
                 with_optional_cardinality(resolved.clone())
