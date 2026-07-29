@@ -45,7 +45,16 @@ test fn witness_prelude_native_cache_root_step_follows_setup_rust() -> Bool {
   match list_at_optional(xs: ci_prelude_steps(), index: 2) {
     Present { value: setup_step } =>
       match setup_step {
-        UsesStep { name: Present { value: "Setup Rust" }, .. } =>
+        UsesStep {
+          name: Present { value: "Setup Rust" },
+          id: _,
+          uses: _,
+          with: _,
+          env: _,
+          if_condition: _,
+          continue_on_error: _,
+          timeout_minutes: _
+        } =>
           match list_at_optional(xs: ci_prelude_steps(), index: 3) {
             Present { value: cache_step } =>
               match cache_step {
@@ -53,7 +62,14 @@ test fn witness_prelude_native_cache_root_step_follows_setup_rust() -> Bool {
                   name: Present {
                     value: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
                   },
-                  ..
+                  id: _,
+                  run: _,
+                  shell: _,
+                  env: _,
+                  working_directory: _,
+                  if_condition: _,
+                  continue_on_error: _,
+                  timeout_minutes: _
                 } => true
                 _ => false
               }
