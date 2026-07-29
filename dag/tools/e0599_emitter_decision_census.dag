@@ -224,7 +224,12 @@ fn e0599_cause_for(method: String, receiver_expr: String) -> E0599RequirementCau
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   match e0599_row_for_operation(operation: operation) {
     Present { value: row } => row.cause
-    Absent => CloneSharedRequirement
+    Absent =>
+      UnresolvedCause {
+        method: method,
+        receiver_expr: receiver_expr,
+        reason: "no lowering row names this (method, receiver) shape",
+      }
   }
 }
 
