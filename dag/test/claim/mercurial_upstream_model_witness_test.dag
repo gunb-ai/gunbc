@@ -34,6 +34,7 @@ import extdeps.mercurial {
   MercurialRepositoryRequirements,
   MercurialRepositoryProjectionContents,
   MercurialRepositoryProjection,
+  MercurialCompleteProjection,
   MercurialPartialProjection,
   MercurialInaccessibleProjection,
   MercurialRepositoryContents,
@@ -1222,7 +1223,9 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
 
 test fn witness_mercurial_observed_non_head_refuses() -> Bool {
   let invalid = projection_with_heads(
-    projection: fixture_projection(),
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
     heads: [MercurialHead { changeset: hg_c0 }],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -1231,6 +1234,31 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
     } =>
       observed == [hg_c0]
         && derived == [hg_c1, hg_c2]
+    _ => false
+  }
+}
+
+test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
+  let with_missing_head = projection_with_heads(
+    projection: fixture_projection(),
+    heads: [MercurialHead { changeset: hg_missing_c }],
+  )
+  let partial = match with_missing_head {
+    MercurialPartialProjection {
+      contents,
+      missing_changesets: _,
+      missing_manifests,
+      missing_file_revisions,
+    } => MercurialPartialProjection {
+      contents: contents,
+      missing_changesets: [hg_missing_c],
+      missing_manifests: missing_manifests,
+      missing_file_revisions: missing_file_revisions,
+    }
+    other => other
+  }
+  match mercurial_decode_projection(projection: partial) {
+    MercurialDecoded { repository: _ } => true
     _ => false
   }
 }

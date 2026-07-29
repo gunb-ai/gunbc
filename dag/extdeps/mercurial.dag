@@ -2,7 +2,9 @@ module extdeps.mercurial
 
 import std.types { NonEmptyStr, Bytes, Timestamp }
 import std.integer { NonNegativeInt, UInt8 }
+import std.graph { GraphEdge, CallGraph, graph_cycle_members }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.numeric.base16 { byte_hex_lower }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -177,6 +179,41 @@ fn mercurial_node_id_from_octets(
     octet18: octets.skip(n: 18).first(),
     octet19: octets.skip(n: 19).first(),
   }
+}
+
+fn mercurial_node_id_octets(
+  node: MercurialNodeId,
+) -> List<UInt8> {
+  [
+    node.octet00,
+    node.octet01,
+    node.octet02,
+    node.octet03,
+    node.octet04,
+    node.octet05,
+    node.octet06,
+    node.octet07,
+    node.octet08,
+    node.octet09,
+    node.octet10,
+    node.octet11,
+    node.octet12,
+    node.octet13,
+    node.octet14,
+    node.octet15,
+    node.octet16,
+    node.octet17,
+    node.octet18,
+    node.octet19,
+  ]
+}
+
+fn mercurial_node_id_text(
+  node: MercurialNodeId,
+) -> String {
+  mercurial_node_id_octets(node: node)
+    |> map(octet => byte_hex_lower(v: octet))
+    |> join(separator: "")
 }
 
 fn mercurial_decode_node_identity(
@@ -991,21 +1028,6 @@ type MercurialReferenceCheckOutcome
   = MercurialReferencesValid
   | MercurialReferenceInvalid { cause: MercurialProjectionRefusal }
 
-type MercurialParentEdge {
-  child: MercurialNodeId
-  parent: MercurialNodeId
-}
-
-type MercurialParentWalk {
-  frontier: List<MercurialNodeId>
-  visited: List<MercurialNodeId>
-  found_origin: Bool
-}
-
-type MercurialParentCycleIssue {
-  node: MercurialNodeId
-}
-
 fn mercurial_node_present(
   nodes: List<MercurialNodeId>,
   wanted: MercurialNodeId,
@@ -1013,114 +1035,70 @@ fn mercurial_node_present(
   nodes |> any(node => node == wanted)
 }
 
-fn mercurial_add_node_once(
+fn mercurial_first_cycle_node(
   nodes: List<MercurialNodeId>,
-  node: MercurialNodeId,
-) -> List<MercurialNodeId> {
-  if mercurial_node_present(nodes: nodes, wanted: node) {
-    nodes
-  } else {
-    append(nodes, items: [node])
+  graph: CallGraph,
+) -> MercurialNodeId? {
+  let names = nodes |> map(node => mercurial_node_id_text(node: node))
+  match graph_cycle_members(
+    names: names,
+    graph: graph,
+  ) |> first {
+    Absent => Absent
+    Present { value: member } =>
+      nodes
+        |> filter(node =>
+          mercurial_node_id_text(node: node) == member
+        )
+        |> first
   }
 }
 
-fn mercurial_parent_edge_targets(
-  edges: List<MercurialParentEdge>,
-  child: MercurialNodeId,
-) -> List<MercurialNodeId> {
-  edges
-    |> filter(edge => edge.child == child)
-    |> map(edge => edge.parent)
-}
-
-fn mercurial_node_reaches_itself(
-  origin: MercurialNodeId,
-  nodes: List<MercurialNodeId>,
-  edges: List<MercurialParentEdge>,
-) -> Bool {
-  let walked = fold(
-    nodes,
-    init: MercurialParentWalk {
-      frontier: mercurial_parent_edge_targets(
-        edges: edges,
-        child: origin,
-      ),
-      visited: [],
-      found_origin: false,
-    },
-    f: fn(state, _) {
-      if state.found_origin {
-        state
-      } else {
-        let found = mercurial_node_present(
-          nodes: state.frontier,
-          wanted: origin,
-        )
-        let visited = fold(
-          state.frontier,
-          init: state.visited,
-          f: mercurial_add_node_once,
-        )
-        let next = state.frontier
-          |> flat_map(node =>
-            mercurial_parent_edge_targets(
-              edges: edges,
-              child: node,
-            )
-          )
-          |> filter(node =>
-            node == origin
-              || !mercurial_node_present(nodes: visited, wanted: node)
-          )
-          |> fold(init: [], f: mercurial_add_node_once)
-        MercurialParentWalk {
-          frontier: next,
-          visited: visited,
-          found_origin: found,
-        }
-      }
-    },
-  )
-  walked.found_origin
-}
-
-fn mercurial_first_parent_cycle(
-  nodes: List<MercurialNodeId>,
-  edges: List<MercurialParentEdge>,
-) -> MercurialParentCycleIssue? {
-  nodes
-    |> filter(node =>
-      mercurial_node_reaches_itself(
-        origin: node,
-        nodes: nodes,
-        edges: edges,
-      )
-    )
-    |> map(node => MercurialParentCycleIssue { node: node })
-    |> first
-}
-
-fn mercurial_changeset_parent_edges(
+fn mercurial_changeset_parent_graph(
   changesets: List<MercurialChangeset>,
-) -> List<MercurialParentEdge> {
-  changesets |> flat_map(changeset =>
-    mercurial_revision_parent_nodes(parents: changeset.parents)
-      |> map(parent => MercurialParentEdge {
-        child: changeset.node,
-        parent: parent,
-      })
+) -> CallGraph {
+  CallGraph {
+    edges: changesets |> flat_map(changeset =>
+      mercurial_revision_parent_nodes(parents: changeset.parents)
+        |> map(parent => GraphEdge {
+          caller: mercurial_node_id_text(node: changeset.node),
+          callee: mercurial_node_id_text(node: parent),
+        })
+    ),
+  }
+}
+
+fn mercurial_file_revision_parent_graph(
+  file_revisions: List<MercurialFileRevision>,
+) -> CallGraph {
+  CallGraph {
+    edges: file_revisions |> flat_map(file_revision =>
+      mercurial_revision_parent_nodes(parents: file_revision.parents)
+        |> map(parent => GraphEdge {
+          caller: mercurial_node_id_text(node: file_revision.node),
+          callee: mercurial_node_id_text(node: parent),
+        })
+    ),
+  }
+}
+
+fn mercurial_first_changeset_cycle(
+  changesets: List<MercurialChangeset>,
+) -> MercurialNodeId? {
+  mercurial_first_cycle_node(
+    nodes: changesets |> map(changeset => changeset.node),
+    graph: mercurial_changeset_parent_graph(changesets: changesets),
   )
 }
 
-fn mercurial_file_revision_parent_edges(
+fn mercurial_first_file_revision_cycle(
   file_revisions: List<MercurialFileRevision>,
-) -> List<MercurialParentEdge> {
-  file_revisions |> flat_map(file_revision =>
-    mercurial_revision_parent_nodes(parents: file_revision.parents)
-      |> map(parent => MercurialParentEdge {
-        child: file_revision.node,
-        parent: parent,
-      })
+) -> MercurialNodeId? {
+  mercurial_first_cycle_node(
+    nodes: file_revisions |> map(file_revision => file_revision.node),
+    graph: mercurial_file_revision_parent_graph(
+      file_revisions: file_revisions,
+    ),
   )
 }
 
@@ -1215,8 +1193,43 @@ fn mercurial_derived_open_branch_heads(
     |> map(changeset => changeset.node)
 }
 
+fn mercurial_validate_observed_heads(
+  projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
+) -> MercurialReferenceCheckOutcome {
+  mercurial_repository_completeness_fold(
+    completeness: completeness,
+    fold: MercurialRepositoryCompletenessFold {
+      complete: fn() {
+        let observed = projection.heads
+          |> map(head => head.changeset)
+        let derived = mercurial_derived_open_branch_heads(
+          changesets: projection.changesets,
+        )
+        if mercurial_node_sets_equal(
+          left: observed,
+          right: derived,
+        ) {
+          MercurialReferencesValid
+        } else {
+          MercurialReferenceInvalid {
+            cause: MercurialHeadSetMismatch {
+              observed: observed,
+              derived: derived,
+            },
+          }
+        }
+      },
+      partial: fn(_, _, _) {
+        MercurialReferencesValid
+      },
+    },
+  )
+}
+
 fn mercurial_validate_history_shape(
   projection: MercurialRepositoryProjectionContents,
+  completeness: MercurialRepositoryCompleteness,
 ) -> MercurialReferenceCheckOutcome {
   match mercurial_first_duplicate_changeset_parent(
     changesets: projection.changesets,
@@ -1230,49 +1243,28 @@ fn mercurial_validate_history_shape(
         MercurialReferenceInvalid { cause } =>
           MercurialReferenceInvalid { cause: cause }
         MercurialReferencesValid =>
-          match mercurial_first_parent_cycle(
-            nodes: projection.changesets |> map(changeset => changeset.node),
-            edges: mercurial_changeset_parent_edges(
-              changesets: projection.changesets,
-            ),
+          match mercurial_first_changeset_cycle(
+            changesets: projection.changesets,
           ) {
-            Present { value: issue } => MercurialReferenceInvalid {
+            Present { value: node } => MercurialReferenceInvalid {
               cause: MercurialChangesetAncestryCycle {
-                changeset: issue.node,
+                changeset: node,
               },
             }
             Absent =>
-              match mercurial_first_parent_cycle(
-                nodes: projection.file_revisions
-                  |> map(file_revision => file_revision.node),
-                edges: mercurial_file_revision_parent_edges(
-                  file_revisions: projection.file_revisions,
-                ),
+              match mercurial_first_file_revision_cycle(
+                file_revisions: projection.file_revisions,
               ) {
-                Present { value: issue } => MercurialReferenceInvalid {
+                Present { value: node } => MercurialReferenceInvalid {
                   cause: MercurialFileRevisionAncestryCycle {
-                    file_revision: issue.node,
+                    file_revision: node,
                   },
                 }
                 Absent =>
-                  let observed = projection.heads
-                    |> map(head => head.changeset)
-                  let derived = mercurial_derived_open_branch_heads(
-                    changesets: projection.changesets,
+                  mercurial_validate_observed_heads(
+                    projection: projection,
+                    completeness: completeness,
                   )
-                  if mercurial_node_sets_equal(
-                    left: observed,
-                    right: derived,
-                  ) {
-                    MercurialReferencesValid
-                  } else {
-                    MercurialReferenceInvalid {
-                      cause: MercurialHeadSetMismatch {
-                        observed: observed,
-                        derived: derived,
-                      },
-                    }
-                  }
               }
           }
       }
@@ -1663,7 +1655,10 @@ fn mercurial_validate_references(
   manifests: List<MercurialManifest>,
   phases: List<MercurialPhaseEntry>,
 ) -> MercurialReferenceCheckOutcome {
-  match mercurial_validate_history_shape(projection: projection) {
+  match mercurial_validate_history_shape(
+    projection: projection,
+    completeness: completeness,
+  ) {
     MercurialReferenceInvalid { cause } =>
       MercurialReferenceInvalid { cause: cause }
     MercurialReferencesValid =>
@@ -2035,4 +2030,4 @@ data mercurial_r0_conditional_advance: MercurialConditionalAdvanceCapability = M
     reason: "R0 has no executing transaction transport that grounds the target policy's conditional-advance guarantee"
   }
 
-data mercurial_history_shape_boundary_note: NonEmptyStr = "MercurialRevisionParents makes the upstream zero/one/two-parent bound structural for both changelog and filelog revisions. Decode refuses duplicate parents, self- or multi-revision ancestry cycles, and an observed open-named-branch head set that differs from the head set derived from the captured changeset graph. A partial projection establishes only that captured fragment; declared missing changesets remain an explicit completeness bound. R0 exposes no caller-constructible grounded conditional-advance arm: that capability can enter only with the later executing transport and its typed read-back receipt."
+data mercurial_history_shape_boundary_note: NonEmptyStr = "MercurialRevisionParents makes the upstream zero/one/two-parent bound structural for both changelog and filelog revisions. Ancestry projects into std.graph's canonical cycle query; Mercurial does not own a parallel graph walker. Decode refuses duplicate parents and self- or multi-revision ancestry cycles. Exact equality between observed open named-branch heads and graph-derived heads is established only for complete captures; a partial projection retains declared-missing heads as an explicit insufficiency bound rather than inventing a mismatch. R0 exposes no caller-constructible grounded conditional-advance arm: that capability can enter only with the later executing transport and its typed read-back receipt."
