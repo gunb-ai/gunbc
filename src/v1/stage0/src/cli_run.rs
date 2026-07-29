@@ -28111,7 +28111,23 @@ fn test_migration_delete_guard_deleted_v1_test_paths(
 ) -> Result<Vec<String>, String> {
     let out = if test_migration_delete_guard_merge_base_mode() {
         let range = format!("{base}...{head}");
-        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?
+        match test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range]) {
+            Ok(out) => out,
+            Err(err) => {
+                // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
+                // always be computed even though the base ref itself exists. Fall back to the
+                // two-point diff in that case so the delete guard still evaluates the real branch
+                // delta instead of red-ing on missing history.
+                test_migration_delete_guard_run_git(&[
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=D",
+                    base,
+                    head,
+                ])
+                .map_err(|fallback_err| format!("{err}; fallback diff failed: {fallback_err}"))?
+            }
+        }
     } else {
         test_migration_delete_guard_run_git(&[
             "diff",
