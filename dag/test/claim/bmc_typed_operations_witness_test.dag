@@ -12,6 +12,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcTachBelowThreshold,
   OpenBmcTachHealthObserved,
   OpenBmcWarningLowThreshold,
+  openbmc_collection_from_values,
   openbmc_object_mapper_services_rec,
   openbmc_operation_argv,
   openbmc_tach_health_from_floor,
@@ -38,41 +39,30 @@ test fn closed_operation_interpreter_binds_query_arguments_as_argv() -> Bool {
 }
 
 test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
-  match openbmc_object_mapper_services_rec(
-    content: "{\"data\":[{}]}",
-    index: 0,
-    count: 0,
-    built: [],
-  ) {
-    OpenBmcSensorServicesObserved { services: OpenBmcCollectionZero } => true
+  match openbmc_collection_from_values(values: []) {
+    OpenBmcCollectionZero => true
     _ => false
   }
 }
 
 test fn object_mapper_one_cardinality_is_preserved() -> Bool {
-  match openbmc_object_mapper_services_rec(
-    content: "{\"data\":[{\"xyz.openbmc_project.Hwmon-1\":{}}]}",
-    index: 0,
-    count: 1,
-    built: [],
+  match openbmc_collection_from_values(
+    values: ["xyz.openbmc_project.Hwmon-1"],
   ) {
-    OpenBmcSensorServicesObserved {
-      services: OpenBmcCollectionOne { value: selected_service },
-    } => selected_service == "xyz.openbmc_project.Hwmon-1"
+    OpenBmcCollectionOne { value: selected_service } =>
+      selected_service == "xyz.openbmc_project.Hwmon-1"
     _ => false
   }
 }
 
 test fn duplicate_object_mapper_matches_remain_many() -> Bool {
-  match openbmc_object_mapper_services_rec(
-    content: "{\"data\":[{\"xyz.openbmc_project.Hwmon-1\":{},\"xyz.openbmc_project.Hwmon-2\":{}}]}",
-    index: 0,
-    count: 2,
-    built: [],
+  match openbmc_collection_from_values(
+    values: [
+      "xyz.openbmc_project.Hwmon-1",
+      "xyz.openbmc_project.Hwmon-2",
+    ],
   ) {
-    OpenBmcSensorServicesObserved {
-      services: OpenBmcCollectionMany { values },
-    } => values.length() == 2
+    OpenBmcCollectionMany { values } => values.length() == 2
     _ => false
   }
 }
