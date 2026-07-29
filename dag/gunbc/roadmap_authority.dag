@@ -1219,7 +1219,7 @@ fn preamble() -> List<MarkdownBlock> {
 data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It is set to the v1 exit lane because that is the sustained effort under way (the v1 → v2 emitter exit plan); the other lanes remain real work, they are simply not on the page while this one is being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 → v2 emitter exit lane",
+  label: "the v1 deletion lane",
   owners: ["self-host"],
 }
 
@@ -1249,6 +1249,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
           [section_prose(content: focus_notice(
             focus: focus,
             nodes: active_roadmap_nodes(),
+            edges: active_roadmap_edges(),
           ))]
         } else {
           []
@@ -1259,6 +1260,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
             nodes: focus_visible_nodes(
               focus: focus,
               nodes: active_roadmap_nodes(),
+              edges: active_roadmap_edges(),
             ),
             edges: focus_visible_edges(
               focus: focus,

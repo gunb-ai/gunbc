@@ -1,0 +1,70 @@
+module test.claim.roadmap_identity_witness_test
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_identity {
+  RoadmapNodeIdentity,
+  RoadmapNodeSlug,
+  RoadmapIdentityBinding,
+  roadmap_identity_bindings,
+  identity_for_slug,
+  slug_for_identity,
+  identity_count,
+  distinct_identity_count,
+  distinct_slug_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data identity_witness_note: String = "What a single-snapshot witness CAN and CANNOT prove, stated plainly so the gap is not mistaken for coverage. It can prove the registry is well formed here and now: identities unique, slugs unique, the binding total over every declared node, and resolution invertible in both directions. It CANNOT prove permanence — nothing in this tree distinguishes an identity that has always been that value from one silently replaced between the base revision and this head, because both look identical in a snapshot. Permanence is a statement about HISTORY, so it needs a base-versus-head comparison the current-tree corpus cannot supply, and claiming it here would be exactly the coverage-by-illusion this repository names. That gate is declared and owed, not quietly assumed.\\n\\nThe positional claim below is the discriminating one and the reason this stage exists at all. std.occurrence_identity's allocator is an ordinal from zero, so an identity derived by evaluation would shift the moment a node is inserted or reordered; asserting that a specific slug still resolves to a specific literal value is what separates a persisted identity from a positional one. It fails loudly if anyone reintroduces mint-during-evaluation."
+
+fn declared_slugs() -> List<String> {
+  declared_roadmap_nodes() |> map(n => n.node as String)
+}
+
+test fn every_declared_node_has_a_bound_identity() -> Bool {
+  all(declared_slugs(), s => match identity_for_slug(slug: s) {
+    Present { value: _ } => true
+    Absent => false
+  })
+}
+
+test fn identities_are_unique() -> Bool {
+  distinct_identity_count() == identity_count()
+}
+
+test fn slugs_are_unique() -> Bool {
+  distinct_slug_count() == identity_count()
+}
+
+test fn binding_is_total_over_declared_nodes() -> Bool {
+  identity_count() == count(declared_slugs())
+}
+
+test fn resolution_is_invertible() -> Bool {
+  all(roadmap_identity_bindings(), b =>
+    match identity_for_slug(slug: b.slug.value as String) {
+      Present { value: i } => (i.value as String) == (b.identity.value as String)
+      Absent => false
+    }
+    && match slug_for_identity(identity: b.identity.value as String) {
+      Present { value: s } => (s.value as String) == (b.slug.value as String)
+      Absent => false
+    })
+}
+
+test fn an_unknown_slug_resolves_to_nothing() -> Bool {
+  match identity_for_slug(slug: "no-such-roadmap-node") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn identity_is_persisted_not_positional() -> Bool {
+  match identity_for_slug(slug: "v1-emitter-fixed-point") {
+    Present { value: i } =>
+      (i.value as String) == "rn_GCTJXB2DWA9CYV4RYPDTM76X60"
+    Absent => false
+  }
+}

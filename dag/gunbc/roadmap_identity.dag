@@ -1,0 +1,265 @@
+module gunbc.roadmap_identity
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+
+data roadmap_identity_law: String = "A roadmap node's identity is MINTED, never derived. Slug, title, criteria digest, containment position, dependency neighbourhood, declaration order, and file position are FORBIDDEN identity inputs — the same law std.occurrence_identity states for occurrences, generalized to an entity that must outlive the graph it is read from.\n\nThe law is reused; the TYPE deliberately is not. std.occurrence_identity.OccurrenceId is an ordinal from a per-graph allocator that starts at zero (OccurrenceIdAllocator { next_id: 0 }, alloc returns next_id then increments), so it is unique only INSIDE one constructed graph. Reconstructing the roadmap with a node inserted at the front renumbers every node after it, and two concurrent branches both mint the same next integer. That is positional identity wearing an allocator's clothes: correct for occurrences within one parse, wrong for a work item that must survive edits, reordering, regeneration, and independent branches. What occurrence identity deliberately does not claim is PERSISTENCE SCOPE, and that is exactly what a roadmap node needs.\n\nThe minted value is therefore collision-resistant rather than sequential, and it is persisted in the authority at authoring time. Nothing mints during rendering, compilation, or regeneration — a value that could be re-derived by evaluation would reintroduce the property this module exists to remove."
+
+data roadmap_identity_five_axes_note: String = "Five things the roadmap must keep separate, because collapsing any pair is what makes replanning destructive: IDENTITY (which work item this is — never changes); SLUG (what it is currently called — may change); CRITERIA DIGEST (which acceptance bar applies — changes, and correctly invalidates a stale receipt); CONTAINMENT (what decomposes it); DEPENDENCY (what must precede it). Today identity and slug are the same value, so a rename is a delete plus a create: edges stop resolving, acceptance receipts name a node that no longer exists, and any dispatch attempt or session joined to it is orphaned. That is not hypothetical — the 2026-07-27 authority refresh deleted the node carrying the only execution contract and no claim noticed. Separating the two makes a rename a label edit and nothing more.\n\nCriteria digest stays a content hash and that is correct: it is not identifying the node, it is fingerprinting the bar so an old acceptance cannot silently survive a changed one. Content-addressing is the right tool for revision and the forbidden tool for identity; the roadmap needs both, keyed differently."
+
+type RoadmapNodeIdentity {
+  value: NonEmptyStr
+}
+
+type RoadmapNodeSlug {
+  value: NonEmptyStr
+}
+
+type RoadmapIdentityBinding {
+  identity: RoadmapNodeIdentity
+  slug: RoadmapNodeSlug
+}
+
+data roadmap_identity_additive_stage_note: String = "STAGE I0, deliberately additive. This module introduces the identity space and binds one persisted value to every declared node; it changes no rendering, no dependency edge, no acceptance receipt and no dispatch path. The v1-deletion recut can therefore be authored against durable identities immediately, without the recut waiting on a full consumer migration — and without every new node and edge being rewritten a second time once the migration lands. Consumers move in later stages: edges and receipts, then explicit containment, then runtime/dispatch, then the slug-as-identity constructors delete."
+
+fn roadmap_identity_bindings() -> List<RoadmapIdentityBinding> {
+  [
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_G9B7NZQFBN04NWCEC7VYDP8SDD" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "2-scm-git-upstream-model" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_WFHJ3P2RB33BDPBEV8EAZ8FRK0" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "2-scm-mercurial-upstream-model" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_F9285EGNWE01HBE0RRJNKGJQHN" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "2-scm-pijul-upstream-model" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_YFCNE6Y2CM3SMF3X34Y7QZ6C4T" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "2-claim-indexed-evidence" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_NCRFN1DR7WVGFKPHAW2ECHJY7F" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "namespace-occurrence-transport" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_K7PKNE9BSC7WNMZDE04BBZ50J9" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "namespace-canonical-binding" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_KMQ1T4H8MYS0S5ZXJDF64BPG4A" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "namespace-bound-only-consumers" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_CRFH5GPMK20QTABFBCPQG1HJXA" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "namespace-v2-import-completion" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_N69YATD37CE2PGGD9TDKJTFEDR" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "namespace-legacy-choice-retirement" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_04A8MQDYC58QF2K858FD14X6MT" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "pderive-typesafe-nullary-reflection" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_GP4QV1630JT574FMR6BGA5HN73" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "pderive-static-supplemental-contract" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_DP7AEAB5Y0XEDWR8W3JX0D871P" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "pderive-source-slot-binding" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_D05JH2NHVC67FJBE7M27P34BV2" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "pderive-single-emitter" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_KACQCKH4S1EW8E4HG488R4YNEG" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "pderive-error-movement-receipt" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_5XPYVCC6SXKE0597XC7KG57CSW" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "observation-scoped-run-seed-growth-justification" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_VP16AJH7CZNRKR82G3PK2TN2XP" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "observation-scoped-run-consumer" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_7W523G7WMCVWQYJ0X9XTDT9XJ5" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "observation-ci-event-grouping" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_PTX9F8JYFQVZHPKXX4651WZ694" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "observation-collapse-watchdog-restatement" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_8YTWD194C1E8C2S2P0TSGSMDZ3" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "observation-raw-print-retirement" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_E81RKJKRAED4VJGFYQDR0Y4EFC" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "placement-live-roster-preflight" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_BYKWQJ1ZBTSFF3PDXPKBB61SNG" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "placement-two-host-warm-qualification" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_RY7HZH0CVR7AMFWTHDGZZVTP7H" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "placement-shadow-equality" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_7255F6D2Z6EV70HX53F9PH35WY" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "placement-atomic-authority-flip" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_0WVWDY6ET9GW1R8KSKTC7G0CQF" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-test-hygiene-producer-retirement" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_GCTJXB2DWA9CYV4RYPDTM76X60" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-emitter-fixed-point" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_QVDHKA5W6HCH9EDFQAZTFHDX84" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-honest-frontier" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_JMGB6EBAG399MJ3FTGH5AJYVKB" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-materialization-kernel" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_CN3156CD7F5XDYA7W9HFK0J2AE" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-verification-ledger" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_WFVQ6W096KRCS1YQS6STXZGGX2" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-ci-floor-cutover" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_RKJRESX9R04B8Q9R278ED1361H" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-hand-queue-drain" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_CHKAM7B6RKAM3EP0M8WTADHSEZ" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-test-migration" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_B9C9KXNPKC55HJR7ZA4J1MFNP7" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-seed-honesty-decision" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_GMWNBP7JP5741MVM7YH32P5T47" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-interpreter-quarantine" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_T0AQV2QH2D3MZ4VFZKJ270A5CA" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-interpreter-delete" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_SHNCBR5QEP2WV7MPEZXB4WNX6H" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-products-v1-free" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_5J7SPTY2T4QHP1CXH12JSNPCHS" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "caret-parse-smoke-seed-growth-justification" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_K3XYM8GVDVQWBW25M3CB9STATB" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "v1-zero-hand-maintained-rust" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_9ES87AKY6FB21JF2HC2MCVYTDS" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "shell-typed-invocation" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_XHHXTJAKJ7XD46AH1MK7BZHW2D" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "shell-effectplan-to-bash" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_J1GWN2EWJ0YBHN4D5A4GD52R4M" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "shell-gate-migration" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_G08YK92MMFGSEH7GC8M51FV75A" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "shell-residue-zero" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_QGZX2Z2QB4P2H28DMRJBHDTC58" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "roadmap-runtime-identity-join" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_E5H7PYHXS4QCTDQGJAEQKR31RB" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "roadmap-runtime-ready-override" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_E3QBEXX1GWDRD1M00AP2VD2G7T" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "roadmap-runtime-dispatch-consumer" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_DXG5ZWBG8E2ZMY6WN6G35DJ26Q" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "roadmap-runtime-readback" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_C85XCYNFVZJM6T45NSEP0RWYVJ" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-state-frontier" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_NNTPHE3XT0HHEN5BJPVNH7EZVA" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-bmc-policy-convergence" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_62E7JDB5J1VAQ7H0EB4P0DB669" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-closed-loop-converge" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_DPAGSD6NGS51D2CY04GRJ9X1B9" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-dashboard-instance-membership" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_VBQCVP1ZZKBPCET9SZSAHYK1ZB" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-anti-entropy-hygiene" as NonEmptyStr },
+    },
+    RoadmapIdentityBinding {
+      identity: RoadmapNodeIdentity { value: "rn_X2AKFARNE3QFHRT8PPKZX38C4H" as NonEmptyStr },
+      slug: RoadmapNodeSlug { value: "fleet-receipt-qualified-control" as NonEmptyStr },
+    },
+  ]
+}
+
+fn identity_for_slug(slug: String) -> RoadmapNodeIdentity? {
+  roadmap_identity_bindings()
+    |> filter(b => (b.slug.value as String) == slug)
+    |> map(b => b.identity)
+    |> first
+}
+
+fn slug_for_identity(identity: String) -> RoadmapNodeSlug? {
+  roadmap_identity_bindings()
+    |> filter(b => (b.identity.value as String) == identity)
+    |> map(b => b.slug)
+    |> first
+}
+
+fn identity_count() -> Int { count(roadmap_identity_bindings()) }
+
+fn distinct_identity_count() -> Int {
+  count(fold(roadmap_identity_bindings(), init: [], f: fn(acc, b) {
+    let v = b.identity.value as String
+    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+  }))
+}
+
+fn distinct_slug_count() -> Int {
+  count(fold(roadmap_identity_bindings(), init: [], f: fn(acc, b) {
+    let v = b.slug.value as String
+    if any(acc, e => e == v) { acc } else { append(acc, [v]) }
+  }))
+}
+
+data roadmap_identity_permanence_gate_owed: String = "OWED, NOT DONE — the mechanical check this stage cannot supply. Every claim in roadmap_identity_witness_test is a statement about the CURRENT tree: identities unique, slugs unique, binding total, resolution invertible. None of them can see history, and permanence is a historical property — an identity silently replaced between the base revision and a PR head produces a tree that satisfies every one of those claims. The snapshot corpus is structurally incapable of catching the exact edit this module exists to forbid, and saying so here is the difference between a declared gap and coverage by illusion.\n\nThe missing mechanism is a base-versus-head comparison of the identity registry, which the CI floor already has the shape for (the merge-base diff observation the affected-set selection reads). ADMITTED transitions: an identity retained; a new identity added; an identity explicitly tombstoned; a slug changed while its identity is unchanged; containment or dependency changed while identity is unchanged. REFUSED: an existing identity replaced; a retired identity reused; two nodes sharing one identity; one active slug resolving to two identities; a parent identity dropped rather than retained when it is decomposed.\n\nUntil that gate exists, permanence rests on review rather than construction, and this row is what keeps that fact countable instead of forgotten."
+
+data roadmap_identity_decomposition_policy_owed: String = "OWED — decomposition needs an explicit completion policy, and containment alone does not supply one. Keeping a parent's identity when it is split is what stops receipts and dependency edges dangling, but it leaves a question containment cannot answer: is the parent complete when it is directly accepted, when all its contained children are accepted, or both. Inferring that from the containment relation would be a guess dressed as a derivation, and the wrong guess silently closes a parent whose children are unfinished — the exact goal-shrink failure the workflow model already refuses elsewhere.\n\nSo the safe decomposition sequence is: retain the parent identity; leave external dependencies and receipts pointed at it; mint identities for the children; add containment edges; state the parent's aggregate completion policy EXPLICITLY; and add child dependencies only where execution order genuinely requires them. The policy is a declared field, never an inference. This lands with explicit containment, which is a later stage than I0."
