@@ -19,6 +19,8 @@ import std.state_durability {
   SoftwareReplacementBoundary,
   StateActivationEvidence,
   StateActivationReceipt,
+  StateAfterReadbackReceipt,
+  StateBeforeReadbackReceipt,
   StateDurabilityAdmission,
   StateDurabilityBoundary,
   StateDurabilityCapability,
@@ -27,12 +29,10 @@ import std.state_durability {
   StateDurabilityInstant,
   StateDurabilityQualified,
   StateDurabilityRefused,
-  StateDurabilityTimeline,
   StateDurabilityVerdict,
   StatePerturbationGeneration,
   StatePerturbationReceipt,
   StatePreserved,
-  StateReadbackReceipt,
   StateRealizationDefinitionHashes,
   StateRealizationIdentity,
   SynchronizedCommit,
@@ -148,15 +148,6 @@ fn current_capability() -> StateDurabilityCapability {
   )
 }
 
-fn fixture_timeline() -> StateDurabilityTimeline {
-  StateDurabilityTimeline {
-    before_readback_at: 1000,
-    before_to_perturbation_start: positive_millisecond(count: 10),
-    perturbation_duration: positive_millisecond(count: 20),
-    completion_to_after_readback: positive_millisecond(count: 30),
-  }
-}
-
 fn fixture_activation(
   admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   receipt_id: NonEmptyStr,
@@ -174,15 +165,29 @@ fn fixture_activation(
   }
 }
 
-fn fixture_readback(
+fn fixture_before_readback(
   receipt_id: NonEmptyStr,
   digest: Digest,
-) -> StateReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
-  StateReadbackReceipt {
+) -> StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+  StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
     subject: fixture_subject,
     state_digest: digest,
+    observed_at: 1000,
+  }
+}
+
+fn fixture_after_readback(
+  receipt_id: NonEmptyStr,
+  digest: Digest,
+) -> StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+  StateAfterReadbackReceipt {
+    perturbation_receipt_id: receipt_id,
+    target: fixture_target,
+    subject: fixture_subject,
+    state_digest: digest,
+    observed_after_perturbation_completion: positive_millisecond(count: 30),
   }
 }
 
@@ -201,14 +206,15 @@ fn fixture_evidence(
       target: fixture_target,
       boundary: boundary,
       generation: 7,
+      started_after_before_readback: positive_millisecond(count: 10),
+      duration: positive_millisecond(count: 20),
     },
     outcome: StatePreserved {
-      timeline: fixture_timeline(),
-      before: fixture_readback(
+      before: fixture_before_readback(
         receipt_id: readback_receipt_id,
         digest: before,
       ),
-      after: fixture_readback(
+      after: fixture_after_readback(
         receipt_id: readback_receipt_id,
         digest: after,
       ),
@@ -281,14 +287,33 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
   }
 }
 
-test fn timeline_order_is_derived_from_positive_deltas() -> Bool {
-  let timeline = fixture_timeline()
-  let started = state_durability_perturbation_started_at(timeline: timeline)
-  let completed = state_durability_perturbation_completed_at(timeline: timeline)
-  let after = state_durability_after_readback_at(timeline: timeline)
-  timeline.before_readback_at < started
+test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
+  let evidence = matching_evidence()
+  match evidence.outcome {
+    StatePreserved {
+      before: before,
+      after: after_readback,
+      activation: _,
+    } => {
+      let started = state_durability_perturbation_started_at(
+        before: before,
+        perturbation: evidence.perturbation,
+      )
+      let completed = state_durability_perturbation_completed_at(
+        before: before,
+        perturbation: evidence.perturbation,
+      )
+      let after = state_durability_after_readback_at(
+        before: before,
+        perturbation: evidence.perturbation,
+        after: after_readback,
+      )
+      before.observed_at < started
     && started < completed
     && completed < after
+    }
+    _ => false
+  }
 }
 
 test fn exact_matching_receipts_qualify() -> Bool {
