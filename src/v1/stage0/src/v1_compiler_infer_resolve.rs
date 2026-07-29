@@ -48,6 +48,7 @@ pub use crate::v1_std_core::{
     node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
     qualified_last_segment, resource_use_name_at, resource_use_resource, string_type,
     transport_request_body, unit_type, with_optional_cardinality, with_required_cardinality,
+    preserve_outer_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -216,7 +217,7 @@ pub fn preserve_nominal_brand_on_resolve(
     {
         with_authored_identity(identity.clone(), structural.clone())
     } else {
-        structural.clone()
+        preserve_outer_optional_cardinality(identity.clone(), structural.clone())
     }
 }
 

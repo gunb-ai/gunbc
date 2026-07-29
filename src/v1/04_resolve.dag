@@ -29,7 +29,7 @@ import v1.std.core {
   make_transport_node, local_transport_node,
   is_local_transport, transport_request_body,
   is_kernel_type, is_container_type,
-  with_optional_cardinality, with_required_cardinality, join_optional_cardinality,
+  with_optional_cardinality, with_required_cardinality, join_optional_cardinality, preserve_outer_optional_cardinality,
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
@@ -141,7 +141,7 @@ fn preserve_nominal_brand_on_resolve(
     && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
       || is_kernel_type(name: qualified_last_segment(name: brand_name))) {
     with_authored_identity(identity: identity, structural: structural)
-  } else { structural }
+  } else { preserve_outer_optional_cardinality(outer: identity, inner: structural) }
 }
 
 fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> Node {
