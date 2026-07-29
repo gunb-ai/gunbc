@@ -10,11 +10,17 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
 }
-import v2.std.algebra { any, fold, length }
+import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.node { Hash, Symbol, atom_identity_hash, combine_hash, symbol_identity_digest }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.text { String }
 
 data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored producer claim. Structural wall: V2Emitter* receipts are UNWRITABLE when v1.compiler.emit_rust is present in the realized closure (the seed compile door). The cssl seed-linked behavioral harness always reaches that door; poison/disable emit_rust is the RED control proving the wall fires, not the mechanism. Dissolve-on: per-module receipts bind execution-measured digests via frontier_probe_survey."
@@ -112,7 +118,7 @@ fn v2_emitter_producer_admissible(
 fn scaffold_digest_for_module_path(module_path: String) -> Hash {
   combine_hash(
     a: symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest),
-    b: atom_identity_hash(s: module_path)
+    b: symbol_identity_digest(sym: ^frontier_producer_receipt_module_path_scaffold)
   )
 }
 
@@ -126,7 +132,7 @@ fn mint_producer_emission_receipt(
   realized_closure: RealizedEmitterClosure
 ) -> Optional<ProducerEmissionReceipt> {
   if v2_emitter_producer_admissible(producer: producer, closure: realized_closure) {
-    Present {
+    optional_present(
       value: ProducerEmissionReceipt {
         module_path: module_path,
         module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
@@ -146,9 +152,9 @@ fn mint_producer_emission_receipt(
         behavioral_probe_function: behavioral_probe_function,
         realized_closure: realized_closure
       }
-    }
+    )
   } else {
-    Absent
+    optional_absent()
   }
 }
 
@@ -268,10 +274,10 @@ fn producer_emission_oracle_probe_is_enrolled(row: ProducerEmissionOracleRow) ->
 }
 
 fn producer_emission_oracle_row_for_module(module_path: String) -> List<ProducerEmissionOracleRow> {
-  fold(
-    producer_emission_oracle_rows,
-    init: [],
-    f: fn(acc, row) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: [],
+    cons: fn(acc, row) {
       if row.module_path == module_path {
         concat(acc, [row])
       } else {
@@ -309,14 +315,14 @@ fn producer_emission_enrollment_entry_has_oracle_row(
 }
 
 fn producer_emission_oracle_rows_match_enrollment_holds() -> Bool {
-  fold(
-    producer_emission_oracle_rows,
-    init: true,
-    f: fn(ok, row) { ok && producer_emission_oracle_probe_is_enrolled(row: row) }
-  ) && fold(
-    seed_emitter_behavioral_wet_known_red_entries,
-    init: true,
-    f: fn(ok, entry) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && producer_emission_oracle_probe_is_enrolled(row: row) }
+  ) && fold_list(
+    xs: seed_emitter_behavioral_wet_known_red_entries,
+    empty: true,
+    cons: fn(ok, entry) {
       ok && producer_emission_enrollment_entry_has_oracle_row(
         probe_entry: entry.entry,
         probe_function: entry.function
@@ -326,10 +332,10 @@ fn producer_emission_oracle_rows_match_enrollment_holds() -> Bool {
 }
 
 fn producer_emission_oracle_rows_all_enrolled_holds() -> Bool {
-  fold(
-    producer_emission_oracle_rows,
-    init: true,
-    f: fn(ok, row) { ok && producer_emission_oracle_probe_is_enrolled(row: row) }
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && producer_emission_oracle_probe_is_enrolled(row: row) }
   )
 }
 
@@ -342,10 +348,10 @@ fn producer_emission_flip_wave_module_has_oracle_row(module_path: String) -> Boo
 }
 
 fn producer_emission_flip_wave_reverted_modules_lack_oracle_holds() -> Bool {
-  fold(
-    producer_emission_flip_wave_reverted_module_paths,
-    init: true,
-    f: fn(ok, path) { ok && !producer_emission_flip_wave_module_has_oracle_row(module_path: path) }
+  fold_list(
+    xs: producer_emission_flip_wave_reverted_module_paths,
+    empty: true,
+    cons: fn(ok, path) { ok && !producer_emission_flip_wave_module_has_oracle_row(module_path: path) }
   )
 }
 
@@ -483,10 +489,10 @@ data v2_native_emitter_behavioral_green_baseline: Int = 0
 data v2_emitter_production_routed_baseline: Int = 0
 
 fn seed_emitter_behavioral_green_count() -> Int {
-  fold(
-    producer_emission_oracle_rows,
-    init: 0,
-    f: fn(count, row) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: 0,
+    cons: fn(count, row) {
       if producer_emission_row_is_seed_behavioral_green(row: row) {
         count + 1
       } else {
@@ -497,10 +503,10 @@ fn seed_emitter_behavioral_green_count() -> Int {
 }
 
 fn v2_interpreted_emitter_behavioral_green_count() -> Int {
-  fold(
-    producer_emission_oracle_rows,
-    init: 0,
-    f: fn(count, row) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: 0,
+    cons: fn(count, row) {
       if producer_emission_row_is_v2_interpreted_behavioral_green(row: row) {
         count + 1
       } else {
@@ -511,10 +517,10 @@ fn v2_interpreted_emitter_behavioral_green_count() -> Int {
 }
 
 fn v2_native_emitter_behavioral_green_count() -> Int {
-  fold(
-    producer_emission_oracle_rows,
-    init: 0,
-    f: fn(count, row) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: 0,
+    cons: fn(count, row) {
       if producer_emission_row_is_v2_native_behavioral_green(row: row) {
         count + 1
       } else {
@@ -525,10 +531,10 @@ fn v2_native_emitter_behavioral_green_count() -> Int {
 }
 
 fn v2_emitter_production_routed_count() -> Int {
-  fold(
-    producer_emission_oracle_rows,
-    init: 0,
-    f: fn(count, row) {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: 0,
+    cons: fn(count, row) {
       if producer_emission_row_is_v2_production_routed(row: row) {
         count + 1
       } else {

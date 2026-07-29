@@ -1,7 +1,7 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
 import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
-import v2.std.algebra { any, fold, length }
+import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -63,10 +63,10 @@ fn schedule_witness_entries_structurally_equal(
   if length(xs: left) != length(xs: right) {
     false
   } else {
-    fold(
+    fold_list(
       left,
-      init: true,
-      f: fn(ok, left_entry) {
+      empty: true,
+      cons: fn(ok, left_entry) {
         ok && any(
           xs: right,
           predicate: fn(right_entry) {

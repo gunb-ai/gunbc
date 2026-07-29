@@ -34,7 +34,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries
 }
-import v2.std.algebra { fold }
+import v2.std.algebra { fold_list }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -97,10 +97,10 @@ test fn witness_flip_wave_dishonest_v1_claim_reds() -> Bool {
 }
 
 test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
-  fold(
-    producer_emission_flip_wave_reverted_module_paths,
-    init: true,
-    f: fn(ok, path) {
+  fold_list(
+    xs: producer_emission_flip_wave_reverted_module_paths,
+    empty: true,
+    cons: fn(ok, path) {
       ok && !producer_emission_oracle_authorizes_row(
         module_path: path,
         receipt: fabricated_v1_seed_producer_receipt(module_path: path)
