@@ -1362,7 +1362,6 @@ type SeedRetainedSupportDirRegistration {
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "test_module_hygiene", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
@@ -1386,10 +1385,7 @@ data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistr
   SeedRetainedSupportDirRegistration { basename: "cli_run" }
 ]
 
-data test_module_hygiene_intrinsic_registration_note: String = "U1-U3 umbrella-dissolution hygiene is a seed-retained intrinsic beside cli_run (naming-walk consumer); not a SelfEmitted .dag module."
-
 data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472: six quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
-
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
