@@ -7951,11 +7951,11 @@ fn serve_resolved_graph_disk_hit_through_provider(
     sources: &[Rc<v1_compiler_compile::SourceFile>],
     cached: &CachedResolvedGraph,
 ) -> Result<
-    Option<(
+    (
         Rc<v1_compiler_compile::ResolvedGraph>,
         Rc<HashMap<String, Rc<NewlineIndex>>>,
         Rc<im::Vector<Rc<ErrorNode>>>,
-    )>,
+    ),
     String,
 > {
     let closure_digest = closure_content_digest(sources);
@@ -7967,20 +7967,21 @@ fn serve_resolved_graph_disk_hit_through_provider(
         cached.payload_byte_count,
     )? {
         ResolvedGraphProviderOutcome::Hit => Err(
-            "provider served disk hit but compile-clean diagnostic union is not installed from artifact"
+            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
                 .to_string(),
         ),
-        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => {
-            eprintln!(
-                "[resolved-graph-cache] provider refused incomplete disk hit: missing {missing:?}; cold resolve"
-            );
-            Ok(None)
-        }
-        ResolvedGraphProviderOutcome::RefusedWrongArtifact
-        | ResolvedGraphProviderOutcome::Miss => Ok(None),
-        ResolvedGraphProviderOutcome::OtherRefusal { label } => {
-            Err(format!("unexpected provider lookup outcome: {label}"))
-        }
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
+            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
+        )),
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
+            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::Miss => Err(
+            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::OtherRefusal { label } => Err(format!(
+            "resolved-graph-cache provider refused disk hit: {label}"
+        )),
     }
 }
 
@@ -8032,17 +8033,7 @@ fn resolved_graph_from_sources_with_index(
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
             CacheLookupResult::Hit(cached) => {
-                match serve_resolved_graph_disk_hit_through_provider(&sources, &cached) {
-                    Ok(Some((graph, source_indices, compile_clean_diags))) => {
-                        return Ok((graph, source_indices, compile_clean_diags));
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        eprintln!(
-                            "[resolved-graph-cache] provider lookup refused subject={subject}: {e}; cold resolve"
-                        );
-                    }
-                }
+                return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
         }

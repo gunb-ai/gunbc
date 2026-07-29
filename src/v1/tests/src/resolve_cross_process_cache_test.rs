@@ -134,6 +134,17 @@ fn cached_verdict(
     })
 }
 
+fn cached_resolve_err(
+    roots: &[String],
+    entry: &str,
+    cache_dir: &std::path::Path,
+) -> String {
+    with_cache_env(cache_dir, || {
+        let index = build_multi_entry_index(roots);
+        resolve_entry_with_index(&index, entry).expect_err("expected provider refusal")
+    })
+}
+
 #[test]
 fn cross_process_cache_matches_cold_oracle_corpus() {
     let dir = temp_dir("eq");
@@ -163,11 +174,11 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         for entry in *order {
             let _ = cached_verdict(&roots, entry, "witness_a_true", &order_cache);
         }
-        for (entry, f, expected) in witnesses {
-            let got = cached_verdict(&roots, entry, f, &order_cache);
-            assert_eq!(
-                got, expected,
-                "cached verdict for {f} diverged from cold oracle in order {order:?}"
+        for (entry, _f, _expected) in witnesses {
+            let err = cached_resolve_err(&roots, entry, &order_cache);
+            assert!(
+                err.contains("provider refused incomplete disk hit"),
+                "v1 disk artifact reuse must stop the line until union lands (part a): {err}"
             );
         }
     }
@@ -264,24 +275,41 @@ fn concurrent_resolve_write_once_no_torn_read() {
     let t1 = thread::spawn(move || {
         b1.wait();
         let index = build_multi_entry_index(&roots_a);
-        let (graph, si) = resolve_entry_with_index(&index, &entry).expect("resolve t1");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &entry) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => format!("RESOLVEERR({e})"),
+        }
     });
     let roots_b = roots.clone();
     let a_b = a.clone();
     let t2 = thread::spawn(move || {
         b2.wait();
         let index = build_multi_entry_index(&roots_b);
-        let (graph, si) = resolve_entry_with_index(&index, &a_b).expect("resolve t2");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &a_b) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => format!("RESOLVEERR({e})"),
+        }
     });
 
     let v1 = t1.join().expect("t1 join");
     let v2 = t2.join().expect("t2 join");
-    assert_eq!(v1, "PASS", "t1 verdict");
-    assert_eq!(v2, "PASS", "t2 verdict");
+    for (label, verdict) in [("t1", &v1), ("t2", &v2)] {
+        match verdict.as_str() {
+            "PASS" => {}
+            other if other.contains("provider refused incomplete disk hit") => {}
+            other => panic!("{label} unexpected verdict: {other}"),
+        }
+    }
+    assert!(
+        v1 == "PASS" || v2 == "PASS",
+        "at least one concurrent resolve must cold-build: v1={v1} v2={v2}"
+    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
