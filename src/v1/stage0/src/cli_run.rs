@@ -25076,6 +25076,21 @@ mod reference_edge_producer_tests {
     fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
         use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
 
+        /// Groundedness is decided by the parsed import surface (`extract_import_paths`)
+        /// ONLY — never by textual containment of the module name. A `contains` fallback
+        /// is launderable in this corpus and would admit false greens: `.dag` has no
+        /// comments, but it does carry long prose `data ..._note: String = "…"` rows that
+        /// legitimately name module paths (two such notes are added by this very PR), so
+        /// a fabricated edge whose module happens to be mentioned in prose would read as
+        /// grounded. Parsed-imports-only closes that (review 44626).
+        ///
+        /// Consequence, stated rather than hidden: a *reference-derived* cross-layer std
+        /// edge — which the sibling `..._reference_only_violation_control` proves the
+        /// producer does emit — would be reported here. There are none in the corpus
+        /// today (all 9 are real `import` lines), so this is fail-closed and loud by
+        /// choice: if one appears, this reds and the oracle gets extended deliberately,
+        /// rather than being pre-weakened into something that cannot catch a fabrication.
+        ///
         /// Returns (ungrounded, unreadable) as SEPARATE buckets. Folding an unreadable
         /// file into the ungrounded one would let every assertion below pass or fail for
         /// the wrong reason — "I could not read the file" is not "the edge is fabricated"
@@ -25099,7 +25114,7 @@ mod reference_edge_producer_tests {
                 let imported = extract_import_paths(&content)
                     .iter()
                     .any(|m| m == &f.import_module);
-                if !imported && !content.contains(&f.import_module) {
+                if !imported {
                     ungrounded.push(format!("{} -> {}", f.path, f.import_module));
                 }
             }
@@ -25122,27 +25137,53 @@ mod reference_edge_producer_tests {
         );
         assert!(
             fabricated.is_empty(),
-            "cross-layer std edges must be grounded in the file's own text; fabricated: {fabricated:?}"
+            "every cross-layer std edge must be backed by a real parsed import; \
+             ungrounded: {fabricated:?}"
         );
 
-        // RED control: the predicate must FIRE on a fact naming a module the (real,
-        // readable) file provably never mentions. Asserting `unreadable` is empty here
-        // too is what keeps the control honest — otherwise a path-anchoring bug would
-        // satisfy it for the wrong reason.
-        let planted = vec![LayerImportFactRaw {
-            layer: "LayerPrefixStd",
-            path: "dag/std/measure.dag".to_string(),
-            import_module: "extdeps.units.no_such_module_mentioned_anywhere".to_string(),
-        }];
-        let (planted_ungrounded, planted_unreadable) = ungrounded(&planted);
+        // RED controls. Both plant a fact against a REAL, READABLE std file, and each
+        // asserts `unreadable` is empty first — otherwise a path-anchoring bug would
+        // satisfy them for the wrong reason.
+        let red = |import_module: &str| {
+            let planted = vec![LayerImportFactRaw {
+                layer: "LayerPrefixStd",
+                path: "dag/std/measure.dag".to_string(),
+                import_module: import_module.to_string(),
+            }];
+            let (ung, unread) = ungrounded(&planted);
+            assert!(
+                unread.is_empty(),
+                "RED control fixture must be readable, else it fires for the wrong reason"
+            );
+            ung.len()
+        };
+
+        // (1) a module the file never mentions at all.
+        assert_eq!(
+            red("extdeps.units.no_such_module_mentioned_anywhere"),
+            1,
+            "predicate must flag an edge with no import backing it"
+        );
+
+        // (2) the laundering case review 44626 named, and the reason `contains` was
+        // rejected: a module named only in prose must still be flagged. `std.measure`
+        // imports extdeps.units.iso8601 but NOT extdeps.units.iec_80000_14 — while its
+        // own text does mention the IEC 80000 authority in prose, so a containment
+        // oracle could be talked into calling this grounded. Parsed imports cannot.
+        let measure = std::fs::read_to_string(super::workspace_root().join("dag/std/measure.dag"))
+            .expect("read measure.dag");
+        let laundered = "extdeps.units.iec_80000_14";
         assert!(
-            planted_unreadable.is_empty(),
-            "RED control's own fixture path must be readable, else it fires for the wrong reason"
+            !extract_import_paths(&measure)
+                .iter()
+                .any(|m| m == laundered),
+            "control precondition: {laundered} must NOT be imported by std.measure"
         );
         assert_eq!(
-            planted_ungrounded.len(),
+            red(laundered),
             1,
-            "predicate must flag an edge whose module never appears in the file text"
+            "a module absent from the parsed imports must be flagged even when the \
+             file's prose discusses the same authority — the laundering vector"
         );
     }
 }
