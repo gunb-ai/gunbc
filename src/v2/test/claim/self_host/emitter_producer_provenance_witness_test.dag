@@ -11,8 +11,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_canonical_receipt_for_oracle_row,
   producer_emission_flip_wave_reverted_module_paths,
   producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
+  producer_emission_binding_only_does_not_authorize_holds,
   producer_emission_oracle_authorization_promotion_path_holds,
-  producer_emission_promotion_path_structurally_reachable_holds,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
   producer_emission_receipt_from_oracle_row,
@@ -61,7 +61,7 @@ import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until authorization (BuildGreen from restored wet binding). EmitterProduced count baseline is zero (review 44362). Promotion path acyclic (review 44453): execute wet → restore binding → BuildGreen → EmitterProduced. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
+data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until authorization (BuildGreen from producer_emission_executed_green_receipts only — witness-realization lane). EmitterProduced count baseline is zero (review 44362). Binding roster edits do not authorize (review 44455). PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
 
 test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
   producer_emission_oracle_rows_all_enrolled_holds()
@@ -77,7 +77,13 @@ test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
 
 test fn witness_oracle_authorization_promotion_path_holds() -> Bool {
   producer_emission_oracle_authorization_promotion_path_holds()
-    && producer_emission_promotion_path_structurally_reachable_holds()
+    && producer_emission_binding_only_does_not_authorize_holds()
+}
+
+data witness_restored_binding_without_executed_receipt_red_note: String = "Review 44455 RED: SelfHostWetReceiptBinding roster edits cannot mint BuildGreen — authorization requires producer_emission_executed_green_receipts (witness-realization binds content-addressed wet verdict digest)."
+
+test fn witness_restored_binding_without_executed_receipt_does_not_authorize_reds() -> Bool {
+  producer_emission_binding_only_does_not_authorize_holds()
 }
 
 data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen canonical — enrollment and authorization are split (review 44393)."
