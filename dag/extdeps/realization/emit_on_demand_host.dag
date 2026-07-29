@@ -3,6 +3,7 @@ module extdeps.realization.emit_on_demand_host
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { ContentHash, String, NonEmptyStr, List, Present, Absent }
+import std.integer { NonNegativeInt }
 import std.content_hash { content_hash_atom, content_hash_combine }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 
@@ -24,6 +25,11 @@ type ObservedToolIdentity {
   observed_identity: ContentHash
 }
 
+type ObservedToolIdentityLookup
+  = ObservedToolIdentityFound { row: ObservedToolIdentity }
+  | ObservedToolIdentityMissing { tool_name: NonEmptyStr }
+  | ObservedToolIdentityDuplicate { tool_name: NonEmptyStr, count: NonNegativeInt }
+
 type ResolvedBuildContext {
   observed_tool_identities: List<ObservedToolIdentity>
   environment_identity: ContentHash
@@ -44,10 +50,17 @@ fn toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
 fn observed_tool_identity(
   context: ResolvedBuildContext,
   tool_name: NonEmptyStr,
-) -> ObservedToolIdentity? {
-  match context.observed_tool_identities |> filter(row => row.tool_name == tool_name) |> first {
-    Present { value: row } => Present { value: row }
-    Absent => Absent
+) -> ObservedToolIdentityLookup {
+  let matching = context.observed_tool_identities |> filter(row => row.tool_name == tool_name)
+  if count(matching) == 0 {
+    ObservedToolIdentityMissing { tool_name: tool_name }
+  } else if count(matching) == 1 {
+    match matching |> first {
+      Present { value: row } => ObservedToolIdentityFound { row: row }
+      Absent => ObservedToolIdentityMissing { tool_name: tool_name }
+    }
+  } else {
+    ObservedToolIdentityDuplicate { tool_name: tool_name, count: count(matching) }
   }
 }
 
