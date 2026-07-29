@@ -6,11 +6,12 @@ import gunbc.materialization_provider_consumer_scaffold {
   materialization_provider_consumer_receipt_plan_anchor,
   materialization_provider_consumer_roadmap_lane_anchor
 }
-import std.disposition { Scaffold }
+import std.disposition { Scaffold, SingleAuthority }
+import std.types { Bool }
 
 test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() -> Bool {
   match materialization_provider_consumer_hand_rust_scaffold {
-    Scaffold { .. } => true
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     _ => false
   }
 }

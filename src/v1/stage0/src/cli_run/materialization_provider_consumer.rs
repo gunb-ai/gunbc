@@ -29,22 +29,18 @@ thread_local! {
         RefCell::new(None);
 }
 
-#[cfg(test)]
 static MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 fn build_materialization_provider_ctx_cold() -> Result<InterpContext, String> {
-    #[cfg(test)]
-    MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let roots = super::default_source_roots();
     let entry = super::resolve_entry_file_under_roots(&roots, MATERIALIZATION_PROVIDER_ENTRY)?;
     // Bootstrap must not re-enter cross-process provider routing while loading
     // the provider authority itself (review 44268: unbounded recursion on cache hit).
-    let (graph, indices) =
-        super::with_cross_process_provider_routing_suppressed(|| {
-            super::resolve_entry_graph_shared(&roots, &entry)
-        })?;
+    let (graph, indices) = super::with_cross_process_provider_routing_suppressed(|| {
+        super::resolve_entry_graph_shared(&roots, &entry)
+    })?;
     Ok(super::make_eval_context(
         &graph,
         indices,
@@ -232,13 +228,13 @@ pub fn serve_resolved_graph_v1_disk_probe_for_test(
     )
 }
 
-#[cfg(test)]
-pub(crate) fn materialization_provider_ctx_build_count_for_test() -> usize {
+#[doc(hidden)]
+pub fn materialization_provider_ctx_build_count_for_test() -> usize {
     MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-#[cfg(test)]
-pub(crate) fn reset_materialization_provider_ctx_for_test() {
+#[doc(hidden)]
+pub fn reset_materialization_provider_ctx_for_test() {
     MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = None);
     MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 }

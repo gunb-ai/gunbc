@@ -47,6 +47,10 @@ use serde::Serialize;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[doc(hidden)]
+pub use materialization_provider_consumer::{
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
+};
 pub use materialization_provider_consumer::{
     serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
@@ -8065,12 +8069,12 @@ fn resolved_graph_from_sources_with_index(
     // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(cached)
-                if !cross_process_provider_routing_suppressed() =>
-            {
+            CacheLookupResult::Hit(cached) if !cross_process_provider_routing_suppressed() => {
                 return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
             }
-            CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+            CacheLookupResult::Hit(_)
+            | CacheLookupResult::RejectedHit(_)
+            | CacheLookupResult::Miss => {}
         }
     }
 
