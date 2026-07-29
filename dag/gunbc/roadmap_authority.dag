@@ -1032,6 +1032,20 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      id: "fleet-dashboard-instance-membership",
+      owner: "fleet",
+      path: "docs/plans/gunbc-served-dashboard-design.md",
+      t: fields(
+        headline: "Deploy every copy of the dashboard through the one deployment mechanism",
+        boundary: "Deploying a dashboard uses the same mechanism as everything else we deploy: work out what should be there, compare it to what is, and change only the difference. Which machine it goes to becomes a parameter, not a second copy of the logic.",
+        displaced_cost: "There are currently two deployment engines for the same three files. The second one does not know what it owns, and reaches the machine outside the checked path — so it can tear down something that was never ours.",
+        first_slice: "Make the existing deployment description take the machine as a parameter, and deploy the test copy through it.",
+        red_control: "Removing something we do not own refuses instead of deleting it, and a second path reaching the machine is detectable rather than merely believed absent.",
+        out_of_scope: "Nothing changes about how a dashboard is identified, what it can do, or who may start work on it — this only merges the two deployment paths into one.",
+        handback: "One deployment description serving both the real and test copies, a live deployment through it, and the second engine deleted."
+      )
+    ),
+    active(
       id: "fleet-anti-entropy-hygiene",
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
@@ -1113,6 +1127,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
   ]
