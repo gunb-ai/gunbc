@@ -1,0 +1,274 @@
+module gunbc.scm_compatibility_shape
+
+import std.types { Bool, ContentHash, List, NonEmptyStr, String }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_combine,
+  content_hash_tagged,
+}
+
+data scm_compatibility_shape_note: NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by the landed R0s: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, and an explicit modeled-or-unavailable conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, repair, execution, commit, or Applied receipt. A failed projection may later be replaced idempotently by realization and target only after some external operation supplies a new independently read-back receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
+
+type CompatibilityRealizationHandle = NonEmptyStr where brand("CompatibilityRealizationHandle")
+type CompatibilityTargetHandle = NonEmptyStr where brand("CompatibilityTargetHandle")
+type CompatibilityGenerationEvidenceHandle = NonEmptyStr where brand("CompatibilityGenerationEvidenceHandle")
+type CompatibilityProjectionHandle = NonEmptyStr where brand("CompatibilityProjectionHandle")
+type CompatibilityReadBackHandle = NonEmptyStr where brand("CompatibilityReadBackHandle")
+
+fn compatibility_identity_text(
+  tag: NonEmptyStr,
+  value: String,
+) -> ContentHash {
+  content_hash_atom(
+    value: concat(
+      tag,
+      concat(":", value),
+    ) as NonEmptyStr,
+  )
+}
+
+fn compatibility_identity_sequence(
+  tag: NonEmptyStr,
+  members: List<ContentHash>,
+) -> ContentHash {
+  fold(
+    members,
+    init: content_hash_atom(value: tag),
+    f: fn(acc, member) {
+      content_hash_combine(left: acc, right: member)
+    },
+  )
+}
+
+fn compatibility_projection_handle(
+  realization: CompatibilityRealizationHandle,
+  state: ContentHash,
+) -> CompatibilityProjectionHandle {
+  content_hash_tagged(
+    tag: concat(
+      "compatibility-projection:",
+      realization as String,
+    ) as NonEmptyStr,
+    payload: state,
+  ) as CompatibilityProjectionHandle
+}
+
+fn compatibility_read_back_handle(
+  realization: CompatibilityRealizationHandle,
+  producer: NonEmptyStr,
+  state: ContentHash,
+) -> CompatibilityReadBackHandle {
+  content_hash_tagged(
+    tag: concat(
+      "compatibility-readback:",
+      realization as String,
+    ) as NonEmptyStr,
+    payload: content_hash_combine(
+      left: compatibility_identity_text(
+        tag: "producer",
+        value: producer as String,
+      ),
+      right: state,
+    ),
+  ) as CompatibilityReadBackHandle
+}
+
+type CompatibilityFidelityDisposition
+  = CompatibilityFidelityPreserved
+  | CompatibilityFidelityDowngraded { cause: NonEmptyStr }
+  | CompatibilityFidelityUnavailable { cause: NonEmptyStr }
+
+type CompatibilityFidelityDispositionFold<R> {
+  preserved: fn() -> R
+  downgraded: fn(NonEmptyStr) -> R
+  unavailable: fn(NonEmptyStr) -> R
+}
+
+fn compatibility_fidelity_disposition_fold<R>(
+  disposition: CompatibilityFidelityDisposition,
+  fold: CompatibilityFidelityDispositionFold<R>,
+) -> R {
+  match disposition {
+    CompatibilityFidelityPreserved => fold.preserved()
+    CompatibilityFidelityDowngraded { cause } => fold.downgraded(cause)
+    CompatibilityFidelityUnavailable { cause } => fold.unavailable(cause)
+  }
+}
+
+type CompatibilityFidelityProfile {
+  endpoint_state: CompatibilityFidelityDisposition
+  upstream_change_evidence: CompatibilityFidelityDisposition
+  native_proposal_contract: CompatibilityFidelityDisposition
+  history: CompatibilityFidelityDisposition
+  publication: CompatibilityFidelityDisposition
+  conflict_facts: CompatibilityFidelityDisposition
+  path_and_mode: CompatibilityFidelityDisposition
+  availability: CompatibilityFidelityDisposition
+  native_identity: CompatibilityFidelityDisposition
+}
+
+type CompatibilityAdvanceGuarantee
+  = CompatibilityExactCompareAndAdvance
+  | CompatibilityNamedConditionalAdvance {
+      authority: NonEmptyStr,
+      contract: NonEmptyStr,
+    }
+
+type CompatibilityAdvanceCapability
+  = CompatibilityAdvanceModeled {
+      guarantee: CompatibilityAdvanceGuarantee,
+    }
+  | CompatibilityAdvanceUnavailable { cause: NonEmptyStr }
+
+type CompatibilityAdvanceCapabilityFold<R> {
+  modeled: fn(CompatibilityAdvanceGuarantee) -> R
+  unavailable: fn(NonEmptyStr) -> R
+}
+
+fn compatibility_advance_capability_fold<R>(
+  capability: CompatibilityAdvanceCapability,
+  fold: CompatibilityAdvanceCapabilityFold<R>,
+) -> R {
+  match capability {
+    CompatibilityAdvanceModeled { guarantee } => fold.modeled(guarantee)
+    CompatibilityAdvanceUnavailable { cause } => fold.unavailable(cause)
+  }
+}
+
+type CompatibilityAdvanceRequirement
+  = CompatibilityObservationOnly
+  | CompatibilityModeledAdvanceRequired {
+      guarantee: CompatibilityAdvanceGuarantee,
+    }
+
+type CompatibilityAdvanceRequirementFold<R> {
+  observation_only: fn() -> R
+  modeled_required: fn(CompatibilityAdvanceGuarantee) -> R
+}
+
+fn compatibility_advance_requirement_fold<R>(
+  requirement: CompatibilityAdvanceRequirement,
+  fold: CompatibilityAdvanceRequirementFold<R>,
+) -> R {
+  match requirement {
+    CompatibilityObservationOnly => fold.observation_only()
+    CompatibilityModeledAdvanceRequired { guarantee } =>
+      fold.modeled_required(guarantee)
+  }
+}
+
+type CompatibilityCapabilityCheck
+  = CompatibilityCapabilitySatisfied
+  | CompatibilityCapabilityRefused {
+      requirement: CompatibilityAdvanceRequirement,
+      observed: CompatibilityAdvanceCapability,
+    }
+
+type CompatibilityCapabilityCheckFold<R> {
+  satisfied: fn() -> R
+  refused: fn(CompatibilityAdvanceRequirement, CompatibilityAdvanceCapability) -> R
+}
+
+fn compatibility_capability_check_fold<R>(
+  check: CompatibilityCapabilityCheck,
+  fold: CompatibilityCapabilityCheckFold<R>,
+) -> R {
+  match check {
+    CompatibilityCapabilitySatisfied => fold.satisfied()
+    CompatibilityCapabilityRefused { requirement, observed } =>
+      fold.refused(requirement, observed)
+  }
+}
+
+fn compatibility_modeled_requirement_check(
+  required: CompatibilityAdvanceGuarantee,
+  observed: CompatibilityAdvanceCapability,
+  original: CompatibilityAdvanceRequirement,
+) -> CompatibilityCapabilityCheck {
+  compatibility_advance_capability_fold(
+    capability: observed,
+    fold: CompatibilityAdvanceCapabilityFold {
+      modeled: fn(actual) {
+        if actual == required {
+          CompatibilityCapabilitySatisfied
+        } else {
+          CompatibilityCapabilityRefused {
+            requirement: original,
+            observed: observed,
+          }
+        }
+      },
+      unavailable: fn(_) {
+        CompatibilityCapabilityRefused {
+          requirement: original,
+          observed: observed,
+        }
+      },
+    },
+  )
+}
+
+fn compatibility_check_advance_requirement(
+  requirement: CompatibilityAdvanceRequirement,
+  observed: CompatibilityAdvanceCapability,
+) -> CompatibilityCapabilityCheck {
+  compatibility_advance_requirement_fold(
+    requirement: requirement,
+    fold: CompatibilityAdvanceRequirementFold {
+      observation_only: fn() {
+        CompatibilityCapabilitySatisfied
+      },
+      modeled_required: fn(required) {
+        compatibility_modeled_requirement_check(
+          required: required,
+          observed: observed,
+          original: requirement,
+        )
+      },
+    },
+  )
+}
+
+type CompatibilityProjectionReceipt {
+  realization: CompatibilityRealizationHandle
+  target: CompatibilityTargetHandle
+  generation_evidence: CompatibilityGenerationEvidenceHandle
+  projection: CompatibilityProjectionHandle
+  read_back: CompatibilityReadBackHandle
+  advance: CompatibilityAdvanceCapability
+  fidelity: CompatibilityFidelityProfile
+}
+
+type CompatibilityProjectionHandler<NativeReceipt> {
+  project: fn(NativeReceipt) -> CompatibilityProjectionReceipt
+}
+
+fn compatibility_projection_from_handler<NativeReceipt>(
+  handler: CompatibilityProjectionHandler<NativeReceipt>,
+  receipt: NativeReceipt,
+) -> CompatibilityProjectionReceipt {
+  handler.project(receipt)
+}
+
+fn compatibility_projection_same_binding(
+  left: CompatibilityProjectionReceipt,
+  right: CompatibilityProjectionReceipt,
+) -> Bool {
+  left.realization == right.realization
+    && left.target == right.target
+}
+
+fn compatibility_projection_upsert(
+  existing: List<CompatibilityProjectionReceipt>,
+  projection: CompatibilityProjectionReceipt,
+) -> List<CompatibilityProjectionReceipt> {
+  append(
+    existing |> filter(row =>
+      !compatibility_projection_same_binding(
+        left: row,
+        right: projection,
+      )
+    ),
+    items: [projection],
+  )
+}
