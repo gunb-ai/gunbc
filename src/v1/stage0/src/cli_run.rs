@@ -13320,11 +13320,14 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
-// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and
-// src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag until the host
-// consumes the `.dag`-authoritative
+// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
+// cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
+// The third target is NOT new HAND-RUST surface (review 44441): wet_receipt aliases the leaf as
+// `falsifier_self_host_wet_known_red_entries = seed_emitter_behavioral_wet_known_red_entries`
+// without parseable `seed_emitter_behavioral_wet_known_red_entry(` heads, so the leaf must be
+// scanned until the host consumes the `.dag`-authoritative
 // `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
-// supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
+// supply-carrier pattern; that manifest already folds falsifier_self_host_wet_known_red_entries). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
 // seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands
 // to leaf keys the way `expand_explicit_entries` already does for execution.
 // Not a census shrink: HAND_MAINTAINED `cli_run.rs` LOC grows by the file-grain arm until
