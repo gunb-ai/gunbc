@@ -3,7 +3,9 @@ module test.claim.artifact_store_fs_witness
 import std.logic { Bool }
 import std.types { ContentHash, String }
 import std.content_hash { content_hash_atom }
-import std.artifact_store { ArtifactKey, artifact_key_hash }
+import std.types { Int }
+import std.measure { byte_size }
+import std.artifact_store { ArtifactKey, artifact_key_hash, ArtifactStore, store_put }
 import std.effect_grant { Read, verb_eq }
 import std.artifact_store_scratch_grant { artifact_store_scratch_frame }
 import extdeps.realization.artifact_store_fs {
@@ -12,6 +14,7 @@ import extdeps.realization.artifact_store_fs {
   ArtifactFsPutOk, ArtifactFsPutRefused, ArtifactFsPutFailed,
   ArtifactFsDeleteOk, ArtifactFsDeleteRefused, ArtifactFsDeleteFailed,
   ArtifactFsListOk, ArtifactFsListRefused, ArtifactFsListFailed,
+  apply_store_evictions, eviction_deleted_count, eviction_all_applied,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -101,4 +104,62 @@ test fn artifact_fs_mutated_input_misses_holds() -> Bool {
     ArtifactFsRefused { verb: v, target: t, frame: f } => false
   }
   put_ok && miss && (key == mutated) == false
+}
+
+
+data artifact_store_fs_eviction_witness_note: String = "The budget-enforcement receipt: before this, std.artifact_store computed which keys to evict and NOTHING applied them to disk, so the persistent tier grew unbounded while the pure fold reported correct packing. This witness closes the loop by execution rather than by inspection - it puts two artifacts past a budget that fits only one, applies the resulting receipt through the fs transport, and proves the evicted key is ABSENT from a real artifact_fs_list while the surviving key is still PRESENT. A one-sided check (evicted gone) would pass against a transport that deleted everything, which is why presence of the survivor is asserted in the same witness."
+
+data eviction_store_root: String = "/tmp/gunbc_artifact_store_eviction_witness"
+
+fn eviction_key(tag: String) -> ContentHash {
+  artifact_key_hash(key: ArtifactKey {
+    closure_digest: content_hash_atom(value: tag),
+    emitter_identity: "v1-seed",
+    target_language: "rust",
+    toolchain: "1.93.0"
+  })
+}
+
+fn eviction_probe_store() -> ArtifactStore {
+  ArtifactStore { budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
+}
+
+fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
+  entries |> any(e => string_contains(e, key))
+}
+
+test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
+  let victim = eviction_key(tag: "eviction-victim")
+  let survivor = eviction_key(tag: "eviction-survivor")
+  let put_victim = artifact_fs_put(store_root: eviction_store_root, key: victim, payload: "victim-bytes")
+  let put_survivor = artifact_fs_put(store_root: eviction_store_root, key: survivor, payload: "survivor-bytes")
+  let both_written = match put_victim {
+    ArtifactFsPutOk => match put_survivor {
+      ArtifactFsPutOk => true
+      ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+      ArtifactFsPutFailed { path: p } => false
+    }
+    ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsPutFailed { path: p } => false
+  }
+  let warmed = store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)).store
+  let receipt = store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40))
+  let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
+  let applied = eviction_all_applied(steps: steps) && (eviction_deleted_count(steps: steps) == 1)
+  match artifact_fs_list(store_root: eviction_store_root) {
+    ArtifactFsListOk { entries: entries } =>
+      both_written
+        && applied
+        && (fs_list_contains(entries: entries, key: victim) == false)
+        && fs_list_contains(entries: entries, key: survivor)
+    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+    ArtifactFsListFailed { path: p } => false
+  }
+}
+
+test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
+  let solo = eviction_key(tag: "eviction-solo")
+  let receipt = store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40))
+  let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
+  (steps.count() == 0) && eviction_all_applied(steps: steps)
 }
