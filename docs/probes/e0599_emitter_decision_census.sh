@@ -46,8 +46,10 @@ ROOT = pathlib.Path(os.environ["E0599_B0_ROOT"])
 GUNBC = os.environ["E0599_B0_GUNBC"]
 WORK = pathlib.Path(os.environ["E0599_B0_WORK"])
 
-MODULES = ["04_infer", "05_emit", "05_eval", "06_translate", "emit_host", "emit_module",
-           "materialization_carriers"]
+# The module roster is NOT restated here. It loads from its single authority
+# (tools.e0599_probe_census e0599_canonical_seven_modules) through gunbc, the same way
+# docs/probes/e0599_census_extract.sh loads it.
+MODULES = None
 
 FN_RE = re.compile(r"^\s*pub fn ([A-Za-z0-9_]+)\s*(<[^(]*>)?\s*\(")
 MSG_MISSING = re.compile(r"no method named `([^`]+)` found for (.+?) in the current scope")
@@ -65,6 +67,30 @@ def gunbc_blob(entry, function, blob):
         cmd = [GUNBC, "run", "--source-root", str(ROOT / "dag"), "--source-root", str(ROOT / "src/v2"),
                "--entry", entry, "--function", function,
                "--arg", f"blob={blob}", "--arg", f"out_path={out_path}"]
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=ROOT)
+        if proc.returncode != 0:
+            raise RuntimeError(f"{function} refused (exit {proc.returncode}): {proc.stderr[-2000:]}")
+        return pathlib.Path(out_path).read_text(encoding="utf-8")
+    finally:
+        pathlib.Path(out_path).unlink(missing_ok=True)
+
+
+def load_module_roster():
+    """The canonical-seven roster, from its single authority — never restated here."""
+    blob = gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
+                            "e0599_write_canonical_seven_module_log_labels_blob")
+    roster = [line.strip() for line in blob.splitlines() if line.strip()]
+    if len(roster) != 7:
+        raise SystemExit(f"REFUSED: roster authority returned {len(roster)} modules, expected 7")
+    return roster
+
+
+def gunbc_blob_noarg(entry, function):
+    with tempfile.NamedTemporaryFile(prefix="e0599_b0_", delete=False) as tmp:
+        out_path = tmp.name
+    try:
+        cmd = [GUNBC, "run", "--source-root", str(ROOT / "dag"), "--source-root", str(ROOT / "src/v2"),
+               "--entry", entry, "--function", function, "--arg", f"out_path={out_path}"]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False, cwd=ROOT)
         if proc.returncode != 0:
             raise RuntimeError(f"{function} refused (exit {proc.returncode}): {proc.stderr[-2000:]}")
@@ -220,6 +246,7 @@ def collect():
     return rows, missing
 
 
+MODULES = load_module_roster()
 rows, missing = collect()
 if missing:
     raise SystemExit(f"REFUSED: no build for module(s) {missing} — the census is not "
@@ -241,6 +268,7 @@ R123 = {"R1CloneBoundOnTypeParam", "R2VectorMethodBounds", "R3ContainerCloneBoun
 scoped = [r for r in rows if r["root_family"] in R123]
 
 # --- classification: via the B0 authority (no second cause table) ----------------------
+E0599_CLASSIFICATION_FIELDS = 7
 cls_keys = sorted({(r["method"], r["receiver_expr"]) for r in scoped})
 cls_blob = "\n".join(f"{m}\t{e}" for m, e in cls_keys)
 cls_out = gunbc_blob("dag/tools/e0599_emitter_decision_census.dag",
@@ -250,10 +278,14 @@ if len(cls_out) != len(cls_keys):
 CLASS = {}
 for key, line in zip(cls_keys, cls_out):
     f = line.split("\t")
-    while len(f) < 6:
-        f.append("")
-    CLASS[key] = dict(operation=f[0], source_construct=f[1], cause=f[2],
-                      required_trait=f[3], emitter_authority=f[4], external_authority=f[5])
+    if len(f) != E0599_CLASSIFICATION_FIELDS:
+        raise SystemExit(
+            f"REFUSED: cause authority returned {len(f)} fields (expected "
+            f"{E0599_CLASSIFICATION_FIELDS}) for key {key!r}: {line!r} — a malformed "
+            f"authority row is a located refusal, never a padded census row (DESIGN §5)")
+    CLASS[key] = dict(operation=f[0], source_construct=f[1], ownership_alternative=f[2],
+                      cause=f[3], required_trait=f[4], emitter_authority=f[5],
+                      external_authority=f[6])
 
 # --- join ------------------------------------------------------------------------------
 SITES = collections.defaultdict(list)
@@ -286,8 +318,7 @@ for key, occs in sorted(SITES.items()):
         "source_construct": c["source_construct"],
         "target_representation": f0["receiver_type"],
         "lowering_operation": c["operation"],
-        "ownership_verdict": ("emitter-ownership-defork candidate"
-                              if c["cause"] == "CloneSharedRequirement" else "n/a"),
+        "ownership_verdict": c["ownership_alternative"],
         "required_trait": (f"{needed}: {c['required_trait']}" if needed and c["required_trait"] else c["required_trait"]),
         "requirement_cause": c["cause"],
         "external_authority": c["external_authority"],
