@@ -182,19 +182,19 @@ fn request_artifact_binding(
   }
 }
 
-type IdentityGate
-  = IdentityAccepted
-  | IdentityRefusedUnknown { cause: IdentityUnknownCause }
-  | IdentityRefusedGradeUnsupported { grade: ComputationIdentity }
+data materialization_provider_identity_derivation_note: String = "Identity is DERIVED from the comparison the contract already performs, never accepted from the caller (codex review 44265). The earlier shape took a ComputationIdentity parameter on both doors, which meant any consumer could pass StructurallyIdentical and be served without qualification — the enum arm carried no binding to the request, the artifact, or the computations being compared, so the module's claim that identity comes from the materialize spine was prose the API did not enforce. Note also what CANNOT fix this in .dag: a 'qualified identity token' type would not help, because records and variants are both freely constructible here, so a token is exactly as forgeable as the enum arm (the same lesson request_artifact_binding learned in review 44175). The enforceable move is therefore derivation, not custody: binding_identity_grade reads the RequestArtifactBinding — which is computed inside the door from the request and the probed artifact — and returns StructurallyIdentical only when kind, request key, content digest, and completeness all agree. Every other binding outcome derives IdentityUnknown with a LOCATED cause naming the specific disagreement, so the bottom of the lattice is reached by evidence rather than by assertion. Widening to NormalizedIdentical or ExtensionallyIdentical does not arrive as a caller-passed grade either: those grades justify a DIFFERENT KEY (a normalizer-canonicalized key, or a declared-bound equivalence class), so the spine's qualifier widens sharing by changing what request_key computes, and this derivation follows it for free. That is why there is no identity parameter and no identity-refusal arm to bypass."
 
-fn identity_gate(identity: ComputationIdentity) -> IdentityGate {
-  match identity {
-    StructurallyIdentical => IdentityAccepted
-    NormalizedIdentical { normalizer: n } =>
-      IdentityRefusedGradeUnsupported { grade: NormalizedIdentical { normalizer: n } }
-    ExtensionallyIdentical { bound: b } =>
-      IdentityRefusedGradeUnsupported { grade: ExtensionallyIdentical { bound: b } }
-    IdentityUnknown { cause: c } => IdentityRefusedUnknown { cause: c }
+fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
+  match b {
+    BindingOk => StructurallyIdentical
+    BindingKindMismatch { requested: _, found: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
+    BindingWrongArtifact { key: _, found_key: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } }
+    BindingWrongContent { recorded: _, observed: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
+    BindingIncomplete { missing: _ } =>
+      IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   }
 }
 
@@ -209,15 +209,18 @@ type ProviderLookup
   | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
   | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
-  | ProviderRefusedIdentityUnshareable { key: ContentHash, cause: IdentityUnknownCause }
-  | ProviderRefusedIdentityGradeUnsupported { key: ContentHash, grade: ComputationIdentity }
 
-fn provider_serve_bound(req: ArtifactRequest, probe: ProviderProbe, key: ContentHash) -> ProviderLookup {
+fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
+  let key = request_key(req: req)
   match probe {
     ProbeAbsent => ProviderMiss { key: key }
     ProbeFound { artifact: a, observed_digest: obs } =>
       match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
-        BindingOk => ProviderHit { artifact: a }
+        BindingOk =>
+          ProviderHit {
+            artifact: a,
+            identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: a, observed_digest: obs))
+          }
         BindingKindMismatch { requested: rk, found: fk } =>
           ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
         BindingWrongArtifact { key: k, found_key: fk } =>
@@ -230,24 +233,12 @@ fn provider_serve_bound(req: ArtifactRequest, probe: ProviderProbe, key: Content
   }
 }
 
-fn provider_serve(req: ArtifactRequest, probe: ProviderProbe, identity: ComputationIdentity) -> ProviderLookup {
-  let key = request_key(req: req)
-  match identity_gate(identity: identity) {
-    IdentityAccepted => provider_serve_bound(req: req, probe: probe, key: key)
-    IdentityRefusedUnknown { cause: c } => ProviderRefusedIdentityUnshareable { key: key, cause: c }
-    IdentityRefusedGradeUnsupported { grade: g } =>
-      ProviderRefusedIdentityGradeUnsupported { key: key, grade: g }
-  }
-}
-
 type ProviderAdmission
   = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
   | ProviderRefusedKindMismatchWrite { requested: ArtifactKindId, found: ArtifactKindId }
   | ProviderRefusedWrongArtifactWrite { key: ContentHash, found_key: ContentHash }
   | ProviderRefusedWrongContentWrite { recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
-  | ProviderRefusedIdentityUnshareableWrite { cause: IdentityUnknownCause }
-  | ProviderRefusedIdentityGradeUnsupportedWrite { grade: ComputationIdentity }
   | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
 
 fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
@@ -263,14 +254,9 @@ fn provider_admit(
   store: ArtifactStore,
   req: ArtifactRequest,
   artifact: MaterializedArtifact,
-  observed_digest: ContentHash,
-  identity: ComputationIdentity
+  observed_digest: ContentHash
 ) -> ProviderAdmission {
-  match identity_gate(identity: identity) {
-    IdentityRefusedUnknown { cause: c } => ProviderRefusedIdentityUnshareableWrite { cause: c }
-    IdentityRefusedGradeUnsupported { grade: g } => ProviderRefusedIdentityGradeUnsupportedWrite { grade: g }
-    IdentityAccepted =>
-      match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
+  match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
         BindingKindMismatch { requested: rk, found: fk } =>
           ProviderRefusedKindMismatchWrite { requested: rk, found: fk }
         BindingWrongArtifact { key: k, found_key: fk } =>
@@ -279,7 +265,6 @@ fn provider_admit(
           ProviderRefusedWrongContentWrite { recorded: r, observed: o }
         BindingIncomplete { missing: m } => ProviderRefusedIncompleteWrite { missing: m }
         BindingOk => provider_admit_bound(store: store, artifact: artifact)
-      }
   }
 }
 
