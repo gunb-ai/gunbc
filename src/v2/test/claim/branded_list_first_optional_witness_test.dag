@@ -1,0 +1,76 @@
+module v2.test.claim.branded_list_first_optional
+
+import std.types { ContentHash, List, String }
+import v2.std.collection { Present, Absent }
+
+fn hash_list() -> List<ContentHash> {
+  ["a" as ContentHash]
+}
+
+fn empty_hash_list() -> List<ContentHash> {
+  []
+}
+
+fn string_list() -> List<String> {
+  ["hello"]
+}
+
+fn empty_string_list() -> List<String> {
+  []
+}
+
+test fn branded_list_first_content_hash_method_nonempty() -> Bool {
+  match hash_list().first() {
+    Present { value: h } => h == ("a" as ContentHash)
+    Absent => false
+  }
+}
+
+test fn branded_list_first_content_hash_method_empty() -> Bool {
+  match empty_hash_list().first() {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn branded_list_first_string_method_nonempty() -> Bool {
+  match string_list().first() {
+    Present { value: s } => s == "hello"
+    Absent => false
+  }
+}
+
+test fn branded_list_first_string_method_empty() -> Bool {
+  match empty_string_list().first() {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
+  match hash_list() |> first {
+    Present { value: h } => h == ("a" as ContentHash)
+    Absent => false
+  }
+}
+
+test fn branded_list_first_content_hash_pipe_empty() -> Bool {
+  match empty_hash_list() |> first {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn branded_list_first_string_pipe_nonempty() -> Bool {
+  match string_list() |> first {
+    Present { value: s } => s == "hello"
+    Absent => false
+  }
+}
+
+test fn branded_list_first_string_pipe_empty() -> Bool {
+  match empty_string_list() |> first {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
