@@ -5,7 +5,7 @@ import std.types { ContentHash, String }
 import std.content_hash { content_hash_atom }
 import std.types { Int }
 import std.measure { byte_size }
-import std.artifact_store { ArtifactKey, artifact_key_hash, ArtifactStore, store_put }
+import std.artifact_store { ArtifactKey, artifact_key_hash, ArtifactStore, store_put, store_put_fold }
 import std.effect_grant { Read, verb_eq }
 import std.artifact_store_scratch_grant { artifact_store_scratch_frame }
 import extdeps.realization.artifact_store_fs {
@@ -142,24 +142,40 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
     ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
     ArtifactFsPutFailed { path: p } => false
   }
-  let warmed = store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)).store
-  let receipt = store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40))
-  let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
-  let applied = eviction_all_applied(steps: steps) && (eviction_deleted_count(steps: steps) == 1)
-  match artifact_fs_list(store_root: eviction_store_root) {
-    ArtifactFsListOk { entries: entries } =>
-      both_written
-        && applied
-        && (fs_list_contains(entries: entries, key: victim) == false)
-        && fs_list_contains(entries: entries, key: survivor)
-    ArtifactFsListRefused { verb: v, target: t, frame: f } => false
-    ArtifactFsListFailed { path: p } => false
-  }
+  store_put_fold(
+    outcome: store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)),
+    admitted: fn(warmed, warmed_evicted) {
+      store_put_fold(
+        outcome: store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40)),
+        admitted: fn(packed, evicted) {
+          let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+          let applied = eviction_all_applied(steps: steps) && (eviction_deleted_count(steps: steps) == 1)
+          match artifact_fs_list(store_root: eviction_store_root) {
+            ArtifactFsListOk { entries: entries } =>
+              both_written
+                && (warmed_evicted.count() == 0)
+                && applied
+                && (fs_list_contains(entries: entries, key: victim) == false)
+                && fs_list_contains(entries: entries, key: survivor)
+            ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+            ArtifactFsListFailed { path: p } => false
+          }
+        },
+        did_not_fit: (a, b) => false
+      )
+    },
+    did_not_fit: (a, b) => false
+  )
 }
 
 test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
   let solo = eviction_key(tag: "eviction-solo")
-  let receipt = store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40))
-  let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
-  (steps.count() == 0) && eviction_all_applied(steps: steps)
+  store_put_fold(
+    outcome: store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40)),
+    admitted: fn(packed, evicted) {
+      let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+      (steps.count() == 0) && eviction_all_applied(steps: steps)
+    },
+    did_not_fit: (a, b) => false
+  )
 }
