@@ -2457,9 +2457,14 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
-        return CompileCleanScopePlan::SkipNoAffected {
-            reason: "no touched paths in diff observation".to_string(),
-        };
+        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
+        // observation that saw nothing is indistinguishable from one that could not
+        // observe, so the whole tree is the only sound baseline. A main-push squash
+        // merge lands here, which is what makes main-push a real cold control.
+        eprintln!(
+            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
+        );
+        return CompileCleanScopePlan::WholeTree;
     }
 
     match compile_clean_all_touched_paths_docs_universe(touched_paths) {
