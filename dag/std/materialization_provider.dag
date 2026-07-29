@@ -366,6 +366,7 @@ type ProviderLookup
   | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
   | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
   | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
+  | ProviderRefusedFaithfulProbeUnavailable { key: ContentHash, gap: String }
 
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
   let key = request_key(req: req)
@@ -436,6 +437,24 @@ fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
+fn serve_resolved_graph_v1_disk_probe(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash,
+  content_digest: ContentHash,
+  payload_bytes: ByteSize
+) -> ProviderLookup {
+  let req = ResolveClosureRequest {
+    closure_digest: closure_digest,
+    compiler: compiler_identity_input(digest: compiler_digest)
+  }
+  let key = request_key(req: req)
+  let _ = (content_digest, payload_bytes);
+  ProviderRefusedFaithfulProbeUnavailable {
+    key: key,
+    gap: "faithful resolved-graph disk probe unavailable: resolved_graph_cache only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant"
+  }
+}
+
 data materialization_provider_reader_predicate_contract: Disposition = Terminal {
   reason: "One canonical fold per outcome coproduct is the total-match authority (codex rework, review 44158): lookup_fold and admission_fold are the ONLY matches over ProviderLookup / ProviderAdmission, and completeness_missing is the single projection over ArtifactCompleteness. Every predicate and projection below is a DERIVATION of its fold and contains no match of its own, so a new outcome variant is a type error at exactly one site per coproduct, never a sweep over a hand-rolled selector family. Handler returns are a bare type variable by design — the seed types fn-typed parameters returning bare vars or concrete types, not generic-applied enums (realization_reconcile substrate-limit receipt). There is deliberately NO admission_store(admission, fallback) projection: it answered every refusal arm with a caller-supplied store, which is the absorbing fallback section 5 forbids — it erases the stopped line and lets processing continue against a plausible substitute. A consumer that needs the post-admission store folds the ProviderAdmission and handles refusal explicitly; the store exists on exactly one arm, so the fold makes that unavoidable. Discriminating corpus: dag/test/claim/materialization_provider_witness_test.dag."
 }
@@ -450,7 +469,8 @@ fn lookup_fold<T>(
   kind_mismatch: fn(ContentHash, ArtifactKindId, ArtifactKindId) -> T,
   wrong_artifact: fn(ContentHash, ContentHash) -> T,
   wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
-  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T
+  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T,
+  faithful_probe_unavailable: fn(ContentHash, String) -> T
 ) -> T {
   match l {
     ProviderHit { artifact: a, identity: i } => hit(a, i)
@@ -459,6 +479,7 @@ fn lookup_fold<T>(
     ProviderRefusedWrongArtifact { key: k, found_key: fk } => wrong_artifact(k, fk)
     ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
     ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
+    ProviderRefusedFaithfulProbeUnavailable { key: k, gap: g } => faithful_probe_unavailable(k, g)
   }
 }
 
@@ -470,7 +491,8 @@ fn lookup_is_hit(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => false
   )
 }
 
@@ -482,7 +504,8 @@ fn lookup_is_miss(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => false
   )
 }
 
@@ -494,7 +517,8 @@ fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => true,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => false
   )
 }
 
@@ -506,7 +530,8 @@ fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => true,
     wrong_content: (k, r, o) => false,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => false
   )
 }
 
@@ -518,7 +543,8 @@ fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
     kind_mismatch: (k, r, f) => false,
     wrong_artifact: (k, fk) => false,
     wrong_content: (k, r, o) => true,
-    incomplete: (k, m) => false
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => false
   )
 }
 
@@ -530,7 +556,8 @@ fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
     kind_mismatch: (k, r, f) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
     wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
     wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
-    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } },
+    faithful_probe_unavailable: (k, g) => IdentityUnknown { cause: MissingConcept { detail: "resolved-graph disk probe cannot be constructed faithfully from the current artifact format" } }
   )
 }
 
@@ -542,7 +569,34 @@ fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId
     kind_mismatch: (k, r, f) => no_output_ids,
     wrong_artifact: (k, fk) => no_output_ids,
     wrong_content: (k, r, o) => no_output_ids,
-    incomplete: (k, m) => m
+    incomplete: (k, m) => m,
+    faithful_probe_unavailable: (k, g) => no_output_ids
+  )
+}
+
+fn lookup_is_refused_faithful_probe_unavailable(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false,
+    faithful_probe_unavailable: (k, g) => true
+  )
+}
+
+fn lookup_refused_faithful_probe_unavailable_gap(l: ProviderLookup) -> String {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => "",
+    miss: k => "",
+    kind_mismatch: (k, r, f) => "",
+    wrong_artifact: (k, fk) => "",
+    wrong_content: (k, r, o) => "",
+    incomplete: (k, m) => "",
+    faithful_probe_unavailable: (k, g) => g
   )
 }
 

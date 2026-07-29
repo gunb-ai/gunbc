@@ -97,6 +97,27 @@ fn lookup_missing_outputs(ctx: &InterpContext, lookup: &Value) -> Result<Vec<Str
         .collect::<Result<Vec<_>, _>>()?)
 }
 
+fn lookup_refused_faithful_probe_unavailable_gap(
+    ctx: &InterpContext,
+    lookup: &Value,
+) -> Result<String, String> {
+    let args = [(Some("l".to_string()), lookup.clone())];
+    let gap = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "lookup_refused_faithful_probe_unavailable_gap",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("lookup_refused_faithful_probe_unavailable_gap: {e}"))?;
+    match gap {
+        Value::Str(s) => Ok(s),
+        other => Err(format!(
+            "lookup_refused_faithful_probe_unavailable_gap returned `{}`, expected String",
+            ctx.format_value(&other)
+        )),
+    }
+}
+
 fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, String> {
     if call_lookup_bool(ctx, "lookup_is_hit", lookup)? {
         return Ok("ProviderHit".to_string());
@@ -112,6 +133,10 @@ fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, S
     }
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup)? {
         return Ok("ProviderRefusedWrongContent".to_string());
+    }
+    if call_lookup_bool(ctx, "lookup_is_refused_faithful_probe_unavailable", lookup)? {
+        let gap = lookup_refused_faithful_probe_unavailable_gap(ctx, lookup)?;
+        return Ok(format!("ProviderRefusedFaithfulProbeUnavailable({gap})"));
     }
     let missing = lookup_missing_outputs(ctx, lookup)?;
     if !missing.is_empty() {
@@ -139,6 +164,11 @@ pub fn interpret_provider_lookup(
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", &lookup)? {
         return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
     }
+    if call_lookup_bool(ctx, "lookup_is_refused_faithful_probe_unavailable", &lookup)? {
+        return Ok(ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
+            gap: lookup_refused_faithful_probe_unavailable_gap(ctx, &lookup)?,
+        });
+    }
     let missing = lookup_missing_outputs(ctx, &lookup)?;
     if !missing.is_empty() {
         return Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { missing });
@@ -155,16 +185,35 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    let _ = (
+    let payload_byte_count_i64 = i64::try_from(payload_byte_count).map_err(|_| {
+        "payload byte count exceeds i64 range for faithful probe request".to_string()
+    })?;
+    let args = [
+        (
+            Some("closure_digest".to_string()),
+            Value::Str(closure_digest.to_string()),
+        ),
+        (
+            Some("compiler_digest".to_string()),
+            Value::Str(compiler_digest.to_string()),
+        ),
+        (
+            Some("content_digest".to_string()),
+            Value::Str(content_digest.to_string()),
+        ),
+        (
+            Some("payload_bytes".to_string()),
+            Value::Int(payload_byte_count_i64),
+        ),
+    ];
+    let lookup = v1_interpreter::run_in_context_with_args(
         ctx,
-        closure_digest,
-        compiler_digest,
-        content_digest,
-        payload_byte_count,
-    );
-    Ok(ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
-        gap: "faithful resolved-graph disk probe unavailable: resolved_graph_cache only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant".to_string(),
-    })
+        "serve_resolved_graph_v1_disk_probe",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("serve_resolved_graph_v1_disk_probe: {e}"))?;
+    interpret_provider_lookup(ctx, lookup)
 }
 
 pub fn serve_resolved_graph_v1_disk_probe(
