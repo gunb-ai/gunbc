@@ -232,7 +232,10 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
                 write!(f, "Cargo.toml [[bin]] extraction requires valid TOML")
             }
             Self::BinTablePathEscapesPackageRoot => {
-                write!(f, "[[bin]] path escapes stage0 package root after normalization")
+                write!(
+                    f,
+                    "[[bin]] path escapes stage0 package root after normalization"
+                )
             }
         }
     }
@@ -284,15 +287,15 @@ fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
         let path_str = path_val
             .as_str()
             .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
-        paths.push(join_repo_path_under_package_root(
-            package_root,
-            path_str,
-        )?);
+        paths.push(join_repo_path_under_package_root(package_root, path_str)?);
     }
     Ok(paths)
 }
 
-fn normalize_path_under_root(root: &Path, rel: &Path) -> Result<PathBuf, Stage0CargoBinManifestParseRefusal> {
+fn normalize_path_under_root(
+    root: &Path,
+    rel: &Path,
+) -> Result<PathBuf, Stage0CargoBinManifestParseRefusal> {
     if rel.is_absolute() {
         return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
     }
@@ -336,10 +339,7 @@ fn join_repo_path_under_package_root(
 fn repo_path_is_normalized_under_package_root(repo_path: &str, package_root: &str) -> bool {
     let path = Path::new(repo_path);
     let root = Path::new(package_root);
-    path.starts_with(root)
-        && path
-            .components()
-            .all(|c| matches!(c, Component::Normal(_)))
+    path.starts_with(root) && path.components().all(|c| matches!(c, Component::Normal(_)))
 }
 
 fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
