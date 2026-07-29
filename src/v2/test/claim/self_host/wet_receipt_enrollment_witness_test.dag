@@ -5,8 +5,10 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady,
 }
 import v2.compiler.self_host.emitter_producer_provenance {
+  ProducerEmissionExecutedGreenReceipt,
   fabricated_v1_seed_producer_receipt
 }
+import std.content_hash { content_hash_atom }
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_03_body_producer,
   compiler_frontier_row_06_translate,
@@ -40,7 +42,13 @@ fn sample_emitter_produced_row() -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
     module_path: "src/v2/compiler/06_translate.dag",
     disposition: EmitterProduced {
-      provenance: fabricated_v1_seed_producer_receipt(module_path: "src/v2/compiler/06_translate.dag")
+      provenance: fabricated_v1_seed_producer_receipt(module_path: "src/v2/compiler/06_translate.dag"),
+      executed_verdict: ProducerEmissionExecutedGreenReceipt {
+        module_path: "src/v2/compiler/06_translate.dag",
+        behavioral_probe_entry: "fabricated",
+        behavioral_probe_function: "fabricated",
+        wet_execution_digest: content_hash_atom(value: "fabricated")
+      }
     },
     measured_probe: FrontierProbeReceipt {
       module_path: "src/v2/compiler/06_translate.dag",

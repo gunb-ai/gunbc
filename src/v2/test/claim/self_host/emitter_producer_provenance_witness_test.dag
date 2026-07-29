@@ -201,7 +201,12 @@ test fn witness_v2_producer_claim_with_seed_closure_unauthorized_reds() -> Bool 
   )
   !producer_emission_oracle_authorizes_row(
     module_path: fabricated.module_path,
-    receipt: fabricated
+    receipt: fabricated,
+    executed: witness_fabricated_executed_verdict(
+      module_path: fabricated.module_path,
+      behavioral_probe_entry: "fabricated",
+      behavioral_probe_function: "fabricated"
+    )
   )
 }
 
@@ -210,7 +215,15 @@ data witness_flip_wave_secondary_red_note: String = "SECONDARY regression (2026-
 test fn witness_flip_wave_dishonest_v1_claim_reds() -> Bool {
   let path = "src/v2/compiler/00_compile.dag"
   let fabricated = fabricated_v1_seed_producer_receipt(module_path: path)
-  !producer_emission_oracle_authorizes_row(module_path: path, receipt: fabricated)
+  !producer_emission_oracle_authorizes_row(
+    module_path: path,
+    receipt: fabricated,
+    executed: witness_fabricated_executed_verdict(
+      module_path: path,
+      behavioral_probe_entry: "fabricated",
+      behavioral_probe_function: "fabricated"
+    )
+  )
 }
 
 test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
@@ -220,7 +233,12 @@ test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
     cons: fn(ok, path) {
       ok && !producer_emission_oracle_authorizes_row(
         module_path: path,
-        receipt: fabricated_v1_seed_producer_receipt(module_path: path)
+        receipt: fabricated_v1_seed_producer_receipt(module_path: path),
+        executed: witness_fabricated_executed_verdict(
+          module_path: path,
+          behavioral_probe_entry: "fabricated",
+          behavioral_probe_function: "fabricated"
+        )
       )
     }
   )
@@ -234,7 +252,15 @@ test fn witness_synthetic_oracle_row_not_in_live_registry_reds() -> Bool {
   let red_row = producer_emission_oracle_row_00_compile_flip_wave_red
   match producer_emission_canonical_receipt_for_oracle_row(row: red_row) {
     Present { value: receipt } =>
-      !producer_emission_oracle_authorizes_row(module_path: red_row.module_path, receipt: receipt)
+      !producer_emission_oracle_authorizes_row(
+        module_path: red_row.module_path,
+        receipt: receipt,
+        executed: witness_fabricated_executed_verdict(
+          module_path: red_row.module_path,
+          behavioral_probe_entry: red_row.behavioral_probe_entry,
+          behavioral_probe_function: red_row.behavioral_probe_function
+        )
+      )
     Absent => true
   }
 }
@@ -245,7 +271,15 @@ test fn witness_baseline_oracle_row_quarantine_does_not_authorize_reds() -> Bool
   let oracle = producer_emission_oracle_row_body_producer
   match producer_emission_canonical_receipt_for_oracle_row(row: oracle) {
     Present { value: receipt } =>
-      !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: receipt)
+      !producer_emission_oracle_authorizes_row(
+        module_path: oracle.module_path,
+        receipt: receipt,
+        executed: witness_fabricated_executed_verdict(
+          module_path: oracle.module_path,
+          behavioral_probe_entry: oracle.behavioral_probe_entry,
+          behavioral_probe_function: oracle.behavioral_probe_function
+        )
+      )
     Absent => true
   }
 }
@@ -261,7 +295,12 @@ test fn witness_absent_from_known_red_without_green_does_not_authorize_reds() ->
         EmissionBuildResultRefused { cause: _ } =>
           !producer_emission_oracle_authorizes_row(
             module_path: synthetic.module_path,
-            receipt: receipt
+            receipt: receipt,
+            executed: witness_fabricated_executed_verdict(
+              module_path: synthetic.module_path,
+              behavioral_probe_entry: synthetic.behavioral_probe_entry,
+              behavioral_probe_function: synthetic.behavioral_probe_function
+            )
           )
       }
     Absent => false
@@ -273,7 +312,15 @@ data witness_fabricated_build_green_same_module_producer_red_note: String = "Rev
 test fn witness_fabricated_build_green_same_module_producer_reds() -> Bool {
   let oracle = producer_emission_oracle_row_body_producer
   let fabricated = fabricated_v1_seed_producer_receipt(module_path: oracle.module_path)
-  !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: fabricated)
+  !producer_emission_oracle_authorizes_row(
+    module_path: oracle.module_path,
+    receipt: fabricated,
+    executed: witness_fabricated_executed_verdict(
+      module_path: oracle.module_path,
+      behavioral_probe_entry: oracle.behavioral_probe_entry,
+      behavioral_probe_function: oracle.behavioral_probe_function
+    )
+  )
 }
 
 test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
