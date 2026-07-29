@@ -14,7 +14,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
 }
-import v2.std.algebra { any, fold_list, freemonoid_empty, length }
+import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
