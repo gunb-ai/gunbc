@@ -13387,7 +13387,10 @@ fn witness_admission_entry_function_keys_from_source(
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
-        ("seed_emitter_behavioral_wet_known_red_entry(", "entry: String"),
+        (
+            "seed_emitter_behavioral_wet_known_red_entry(",
+            "entry: String",
+        ),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -29514,7 +29517,8 @@ mod module_path_index_tests {
 
     #[test]
     fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
-        let synthetic = "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
+        let synthetic =
+            "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
              data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
                seed_emitter_behavioral_wet_known_red_entry(\n\
                  entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
