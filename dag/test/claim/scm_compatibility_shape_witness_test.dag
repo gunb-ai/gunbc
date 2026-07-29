@@ -1,0 +1,219 @@
+module test.claim.scm_compatibility_shape_witness
+
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityProjectionHandler,
+  CompatibilityFidelityProfile,
+  CompatibilityFidelityPreserved,
+  CompatibilityFidelityUnavailable,
+  CompatibilityAdvanceUnavailable,
+  compatibility_projection_from_handler,
+}
+import gunbc.native_scm_interaction_contract {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
+  native_scm_primary_label,
+  native_scm_attach_projection,
+}
+import gunbc.scm_compatibility.git {
+  GitCompatibilityBound,
+  GitCompatibilityBindingRefused,
+  git_compatibility_projection_handler,
+}
+import gunbc.scm_compatibility.mercurial {
+  MercurialCompatibilityBound,
+  MercurialCompatibilityBindingRefused,
+  mercurial_compatibility_projection_handler,
+}
+import gunbc.scm_compatibility.pijul {
+  PijulCompatibilityBound,
+  PijulCompatibilityBindingRefused,
+  pijul_compatibility_projection_handler,
+}
+import test.claim.scm_compatibility_git_witness {
+  git_fixture_binding,
+}
+import test.claim.scm_compatibility_mercurial_witness {
+  mercurial_fixture_binding,
+}
+import test.claim.scm_compatibility_pijul_witness {
+  pijul_fixture_binding,
+}
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type SyntheticFourthReceipt {
+  target: NonEmptyStr
+  generation: NonEmptyStr
+}
+
+fn synthetic_fourth_handler(
+) -> CompatibilityProjectionHandler<SyntheticFourthReceipt> {
+  CompatibilityProjectionHandler {
+    project: fn(receipt) {
+      CompatibilityProjectionReceipt {
+        realization: "synthetic-fourth-r0",
+        target: receipt.target,
+        generation_evidence: receipt.generation,
+        projection: concat("synthetic-projection:", receipt.generation),
+        read_back: concat("synthetic-readback:", receipt.generation),
+        advance: CompatibilityAdvanceUnavailable {
+          cause: "synthetic R0 intentionally has no conditional advance",
+        },
+        fidelity: CompatibilityFidelityProfile {
+          endpoint_state: CompatibilityFidelityPreserved,
+          upstream_change_evidence: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          native_proposal_contract: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          history: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          publication: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          conflict_facts: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          path_and_mode: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          availability: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+          native_identity: CompatibilityFidelityUnavailable {
+            cause: "synthetic fixture carries endpoint state only",
+          },
+        },
+      }
+    },
+  }
+}
+
+fn synthetic_projection(
+  target: NonEmptyStr,
+  generation: NonEmptyStr,
+) -> CompatibilityProjectionReceipt {
+  compatibility_projection_from_handler(
+    handler: synthetic_fourth_handler(),
+    receipt: SyntheticFourthReceipt {
+      target: target,
+      generation: generation,
+    },
+  )
+}
+
+test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  let projected = synthetic_projection(
+    target: "main",
+    generation: "synthetic-generation-1",
+  )
+  let attached = native_scm_attach_projection(
+    receipt: original,
+    projection: projected,
+  )
+  attached.identity == original.identity
+    && attached.transition == original.transition
+    && attached.primary == original.primary
+    && native_scm_primary_label(primary: attached.primary) == "Landed"
+    && count(attached.projections.realizations) == 1
+    && attached.projections.realizations
+      |> any(row => row.realization == "synthetic-fourth-r0")
+}
+
+test fn witness_projection_attachment_is_idempotent_per_realization_target() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  let first = native_scm_attach_projection(
+    receipt: original,
+    projection: synthetic_projection(
+      target: "main",
+      generation: "synthetic-generation-1",
+    ),
+  )
+  let replaced = native_scm_attach_projection(
+    receipt: first,
+    projection: synthetic_projection(
+      target: "main",
+      generation: "synthetic-generation-2",
+    ),
+  )
+  let second_target = native_scm_attach_projection(
+    receipt: replaced,
+    projection: synthetic_projection(
+      target: "review",
+      generation: "synthetic-generation-3",
+    ),
+  )
+  count(first.projections.realizations) == 1
+    && count(replaced.projections.realizations) == 1
+    && replaced.projections.realizations
+      |> any(row =>
+        row.target == "main"
+          && row.generation_evidence == "synthetic-generation-2"
+      )
+    && count(second_target.projections.realizations) == 2
+}
+
+test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt: git_receipt } => {
+      let git_projection = compatibility_projection_from_handler(
+        handler: git_compatibility_projection_handler(),
+        receipt: git_receipt,
+      )
+      let with_git = native_scm_attach_projection(
+        receipt: original,
+        projection: git_projection,
+      )
+      match mercurial_fixture_binding() {
+        MercurialCompatibilityBindingRefused { cause: _ } => false
+        MercurialCompatibilityBound { receipt: mercurial_receipt } => {
+          let mercurial_projection = compatibility_projection_from_handler(
+            handler: mercurial_compatibility_projection_handler(),
+            receipt: mercurial_receipt,
+          )
+          let with_mercurial = native_scm_attach_projection(
+            receipt: with_git,
+            projection: mercurial_projection,
+          )
+          match pijul_fixture_binding() {
+            PijulCompatibilityBindingRefused { cause: _ } => false
+            PijulCompatibilityBound { receipt: pijul_receipt } => {
+              let pijul_projection = compatibility_projection_from_handler(
+                handler: pijul_compatibility_projection_handler(),
+                receipt: pijul_receipt,
+              )
+              let with_all = native_scm_attach_projection(
+                receipt: with_mercurial,
+                projection: pijul_projection,
+              )
+              with_all.identity == original.identity
+                && with_all.transition == original.transition
+                && with_all.primary == original.primary
+                && native_scm_primary_label(primary: with_all.primary) == "Landed"
+                && count(with_all.projections.realizations) == 3
+                && git_projection.realization == "git-r0"
+                && git_projection.target == "refs/heads/main"
+                && mercurial_projection.realization == "mercurial-r0"
+                && mercurial_projection.target == "default"
+                && pijul_projection.realization == "pijul-r0"
+                && pijul_projection.target == "main"
+            }
+          }
+        }
+      }
+    }
+  }
+}
