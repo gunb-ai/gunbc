@@ -1048,7 +1048,7 @@ fn git_tree_entry_local_pointer(
 ) -> GitRepositoryPointer? {
   let parts = git_tree_entry_canonical_parts(entry: entry)
   if parts.mode == "160000" {
-    Absent
+    none
   } else {
     let expected = if parts.mode == "040000" {
       TreeObj
@@ -1121,22 +1121,23 @@ fn git_ref_local_pointers(
   refs |> flat_map(record =>
     match record.target {
       SymbolicTarget { ref_name: _ } => []
-      DirectTarget { oid } =>
+      DirectTarget { oid } => {
+        let expected = if starts_with(
+          s: record.name as String,
+          prefix: "refs/heads/",
+        ) {
+          GitExpectedObjectKind { kind: CommitObj }
+        } else {
+          GitAnyObjectKind
+        }
         [
           GitRepositoryPointer {
             origin: GitDirectRefPointer { name: record.name },
             target: oid,
-            expected:
-              if starts_with(
-                s: record.name as String,
-                prefix: "refs/heads/",
-              ) {
-                GitExpectedObjectKind { kind: CommitObj }
-              } else {
-                GitAnyObjectKind
-              },
+            expected: expected,
           },
         ]
+      }
     }
   )
 }
@@ -1267,6 +1268,7 @@ fn git_repository_pointer_check_step(
             }
       }
   }
+}
 }
 
 fn git_decode_repository(

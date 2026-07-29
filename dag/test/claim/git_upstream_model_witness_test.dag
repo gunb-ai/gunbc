@@ -53,9 +53,11 @@ import extdeps.git.object_store {
   GitRepositoryDuplicateUnavailableObject,
   GitRepositoryPresentAndUnavailableObject,
   GitRepositoryStoredObjectUnadmitted,
+  GitRepositoryObjectFormatMismatch,
   GitRepositoryDuplicateRef,
   GitRepositoryPointerUnexpectedlyMissing,
   GitRepositoryPointerCorrupt,
+  GitRepositoryPointerKindMismatch,
   GitRefRecord,
   DirectTarget,
   SymbolicTarget,
@@ -171,6 +173,73 @@ data sha1_absent_commit: GitObjectId = GitSha1ObjectId {
 
 data sha1_promisor_missing: GitObjectId = GitSha1ObjectId {
   digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+}
+
+test fn debug_git_fixture_repository_decodes() -> Bool {
+  match git_decode_repository(repo: fixture_repository()) {
+    GitRepositoryDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+test fn debug_git_fixture_stored_object_unadmitted() -> Bool {
+  match git_decode_repository(repo: fixture_repository()) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryStoredObjectUnadmitted { oid: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn debug_git_fixture_pointer_missing_or_corrupt() -> Bool {
+  match git_decode_repository(repo: fixture_repository()) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPointerUnexpectedlyMissing {
+        origin: _,
+        target: _,
+      },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPointerCorrupt {
+        origin: _,
+        target: _,
+        reason: _,
+      },
+    } => true
+    _ => false
+  }
+}
+
+test fn debug_git_fixture_format_kind_or_duplicate() -> Bool {
+  match git_decode_repository(repo: fixture_repository()) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryObjectFormatMismatch {
+        oid: _,
+        repository_format: _,
+      },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPointerKindMismatch {
+        origin: _,
+        target: _,
+        expected: _,
+        observed: _,
+      },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryDuplicateStoredObject { oid: _ },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryDuplicateUnavailableObject { oid: _ },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPresentAndUnavailableObject { oid: _ },
+    } => true
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryDuplicateRef { name: _, count: _ },
+    } => true
+    _ => false
+  }
 }
 
 data sha256_object: GitObjectId = GitSha256ObjectId {
