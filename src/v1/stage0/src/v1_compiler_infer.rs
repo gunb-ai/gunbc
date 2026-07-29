@@ -2254,6 +2254,18 @@ pub fn inferred_or_error(
     }
 }
 
+pub fn restore_scrutinee_optional_cardinality(outer: Rc<Node>, resolved: Rc<Node>) -> Rc<Node> {
+    {
+        let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
+            && (resolved.return_cardinality.clone() != Cardinality::CardOptional));
+        if needs_restore.clone() {
+            with_optional_cardinality(resolved.clone())
+        } else {
+            resolved.clone()
+        }
+    }
+}
+
 pub fn resolve_pattern_subject(
     scope: Rc<InferScope>,
     scrutinee_subject: Rc<PatternSubject>,
@@ -2262,18 +2274,10 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => {
-            let resolved =
-                resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone());
-            let restored = if scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional
-                && resolved.return_cardinality.clone() != Cardinality::CardOptional
-            {
-                with_optional_cardinality(resolved.clone())
-            } else {
-                resolved.clone()
-            };
-            pattern_subject_from_node(restored)
-        }
+        } => pattern_subject_from_node(restore_scrutinee_optional_cardinality(
+            scrutinee_type.clone(),
+            resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()),
+        )),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
         } => Rc::new(PatternSubject::PatternDynamic {

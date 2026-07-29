@@ -438,6 +438,18 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
     }
 }
 
+pub fn restore_outer_optional_node(outer: Rc<Node>, inner: Rc<Node>) -> Rc<Node> {
+    {
+        let needs_restore = ((outer.return_cardinality.clone() == Cardinality::CardOptional)
+            && (inner.return_cardinality.clone() != Cardinality::CardOptional));
+        if needs_restore.clone() {
+            with_optional_cardinality(inner.clone())
+        } else {
+            inner.clone()
+        }
+    }
+}
+
 pub fn resolve_scrutinee_type_node_seen(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
@@ -458,19 +470,10 @@ pub fn resolve_scrutinee_type_node_seen(
             && (normed.inferred.clone() != None))
         {
             match normed.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let outer_optional =
-                        normed.return_cardinality.clone() == Cardinality::CardOptional;
-                    let result =
-                        resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone());
-                    if outer_optional
-                        && result.return_cardinality.clone() != Cardinality::CardOptional
-                    {
-                        with_optional_cardinality(result.clone())
-                    } else {
-                        result.clone()
-                    }
-                }
+                Some(InferredNode::Resolved { node: target, .. }) => restore_outer_optional_node(
+                    normed.clone(),
+                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
+                ),
                 _ => normed.clone(),
             }
         } else {
@@ -496,21 +499,14 @@ pub fn resolve_scrutinee_type_node_seen(
                                     {
                                         normed.clone()
                                     } else {
-                                        let outer_optional = normed.return_cardinality.clone()
-                                            == Cardinality::CardOptional;
-                                        let result = resolve_scrutinee_type_node_seen(
-                                            env.clone(),
-                                            target.clone(),
-                                            next_seen.clone(),
-                                        );
-                                        if outer_optional
-                                            && result.return_cardinality.clone()
-                                                != Cardinality::CardOptional
-                                        {
-                                            with_optional_cardinality(result.clone())
-                                        } else {
-                                            result.clone()
-                                        }
+                                        restore_outer_optional_node(
+                                            normed.clone(),
+                                            resolve_scrutinee_type_node_seen(
+                                                env.clone(),
+                                                target.clone(),
+                                                next_seen.clone(),
+                                            ),
+                                        )
                                     }
                                 }
                                 _ => normed.clone(),
@@ -539,21 +535,14 @@ pub fn resolve_scrutinee_type_node_seen(
                                         {
                                             normed.clone()
                                         } else {
-                                            {
-                                                let result = resolve_scrutinee_type_node_seen(
+                                            restore_outer_optional_node(
+                                                normed.clone(),
+                                                resolve_scrutinee_type_node_seen(
                                                     env.clone(),
                                                     resolved.clone(),
                                                     next_seen.clone(),
-                                                );
-                                                let is_optional =
-                                                    (normed.return_cardinality.clone()
-                                                        == Cardinality::CardOptional);
-                                                if is_optional.clone() {
-                                                    with_optional_cardinality(result.clone())
-                                                } else {
-                                                    result.clone()
-                                                }
-                                            }
+                                                ),
+                                            )
                                         }
                                     }
                                     None => normed.clone(),

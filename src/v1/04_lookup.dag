@@ -271,13 +271,18 @@ fn resolve_method_receiver_type(receiver_type: Node, env: TypeEnv) -> Node {
   }
 }
 
+fn restore_outer_optional_node(outer: Node, inner: Node) -> Node {
+  let needs_restore = outer.return_cardinality == CardOptional && inner.return_cardinality != CardOptional
+  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
+}
+
 fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Bool>) -> Node {
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: Resolved { node: target } } => resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen)
+      Present { value: Resolved { node: target } } => restore_outer_optional_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
@@ -289,7 +294,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
+            restore_outer_optional_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
           }
         _ => normed
       }
@@ -302,9 +307,7 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
-            let result = resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen)
-            let is_optional = normed.return_cardinality == CardOptional
-            if is_optional { with_optional_cardinality(n: result) } else { result }
+            restore_outer_optional_node(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
           }
         Absent => normed
       }

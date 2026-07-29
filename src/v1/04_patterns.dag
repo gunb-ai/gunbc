@@ -197,6 +197,15 @@ fn synthesize_witness_violates_variant(scrut: Node) -> Node {
   Node { name: "Violates", span: scrut.span, ident_span: Present { value: kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
+fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject) -> PatternSubject {
+  match inner {
+    PatternResolved { node: resolved } =>
+      let needs_restore = outer.return_cardinality == CardOptional && resolved.return_cardinality != CardOptional
+      if needs_restore { PatternResolved { node: with_optional_cardinality(n: resolved) } } else { inner }
+    _ => inner
+  }
+}
+
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
 
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
@@ -204,7 +213,7 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
     PatternLookupBlocked
   } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
     match n.inferred {
-      Present { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
+      Present { value: Resolved { node: target } } => pattern_subject_preserving_outer_optional(outer: n, inner: pattern_subject_from_node(n: target))
       _ => PatternResolved { node: n }
     }
   } else {

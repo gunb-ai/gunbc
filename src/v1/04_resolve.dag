@@ -113,11 +113,16 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
+fn merged_authored_identity_cardinality(identity: Node, structural: Node) -> Cardinality {
+  let merge_optional = identity.return_cardinality == CardOptional || structural.return_cardinality == CardOptional
+  if merge_optional { CardOptional } else { structural.return_cardinality }
+}
+
 fn with_authored_identity(identity: Node, structural: Node) -> Node {
   Node {
     name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
+    inferred: structural.inferred, return_cardinality: merged_authored_identity_cardinality(identity: identity, structural: structural),
     uses: structural.uses, body: structural.body, transport: structural.transport,
     properties: structural.properties, type_annotation: structural.type_annotation,
     is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
