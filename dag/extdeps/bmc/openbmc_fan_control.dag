@@ -6,7 +6,6 @@ import extdeps.ssh.password_session {
   PasswordSshSession,
   password_ssh_session_copy_file,
 }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.languages.json.emit {
   json_array,
@@ -66,8 +65,7 @@ import extdeps.bmc.openbmc_operation {
   openbmc_busctl_authority,
 }
 import extdeps.bmc.openbmc_password_ssh_transport {
-  OpenBmcCommandWire,
-  openbmc_password_ssh_execute_wire,
+  openbmc_password_ssh_transport_note,
 }
 import std.measure {
   Celsius,
@@ -317,20 +315,356 @@ fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
   }
 }
 
-fn openbmc_operation_wire(operation: OpenBmcOperation) -> OpenBmcCommandWire {
-  shell_command_render(
-    command: ArgvCommand { argv: openbmc_operation_argv(operation: operation) },
-  ) as OpenBmcCommandWire
-}
-
 fn openbmc_execute(
   session: PasswordSshSession,
   operation: OpenBmcOperation,
 ) -> PasswordSshExecResult {
-  openbmc_password_ssh_execute_wire(
-    session: session,
-    command_wire: openbmc_operation_wire(operation: operation),
-  )
+  let result = match operation {
+    OpenBmcReadFile { path } =>
+      openbmc.PasswordSshTransport.ReadFile(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcResolvePath { path } =>
+      openbmc.PasswordSshTransport.ResolvePath(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcParentDirectory { path } =>
+      openbmc.PasswordSshTransport.ParentDirectory(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcSystemdIsActive { service } =>
+      openbmc.PasswordSshTransport.SystemdIsActive(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        service: service,
+      )
+    OpenBmcSystemdRestart { service } =>
+      openbmc.PasswordSshTransport.SystemdRestart(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        service: service,
+      )
+    OpenBmcZoneFailsafe { zone_path } =>
+      openbmc.PasswordSshTransport.ZoneFailsafe(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        zone_path: zone_path,
+      )
+    OpenBmcSensorServices { sensor_path } =>
+      openbmc.PasswordSshTransport.SensorServices(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        sensor_path: sensor_path,
+      )
+    OpenBmcSensorValue { service, sensor_path } =>
+      openbmc.PasswordSshTransport.SensorValue(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        service: service,
+        sensor_path: sensor_path,
+      )
+    OpenBmcSensorThreshold { service, sensor_path, threshold } =>
+      match threshold {
+        OpenBmcWarningLow =>
+          openbmc.PasswordSshTransport.SensorWarningLow(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        service: service,
+        sensor_path: sensor_path,
+      )
+        OpenBmcCriticalLow =>
+          openbmc.PasswordSshTransport.SensorCriticalLow(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        service: service,
+        sensor_path: sensor_path,
+      )
+      }
+    OpenBmcFanConfigScalar { config_path, query } =>
+      match query {
+        OpenBmcStepwiseCount =>
+          openbmc.PasswordSshTransport.FanStepwiseCount(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcMinimumDuty =>
+          openbmc.PasswordSshTransport.FanMinimumDuty(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcZoneFailsafeDuty =>
+          openbmc.PasswordSshTransport.FanZoneFailsafeDuty(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcSensorFailsafeDuty =>
+          openbmc.PasswordSshTransport.FanSensorFailsafeDuty(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcPositiveHysteresis =>
+          openbmc.PasswordSshTransport.FanPositiveHysteresis(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcNegativeHysteresis =>
+          openbmc.PasswordSshTransport.FanNegativeHysteresis(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcReadingCount =>
+          openbmc.PasswordSshTransport.FanReadingCount(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcOutputCount =>
+          openbmc.PasswordSshTransport.FanOutputCount(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcReadingAt { index } =>
+          openbmc.PasswordSshTransport.FanReadingAt(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        index: index,
+      )
+        OpenBmcOutputAt { index } =>
+          openbmc.PasswordSshTransport.FanOutputAt(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        index: index,
+      )
+        OpenBmcFanControllerCount =>
+          openbmc.PasswordSshTransport.FanControllerCount(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+        OpenBmcFanControllerNameAt { index } =>
+          openbmc.PasswordSshTransport.FanControllerNameAt(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        index: index,
+      )
+        OpenBmcFanInputCountAt { fan_index } =>
+          openbmc.PasswordSshTransport.FanInputCountAt(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        fan_index: fan_index,
+      )
+        OpenBmcFanInputAt { fan_index, input_index } =>
+          openbmc.PasswordSshTransport.FanInputAt(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        fan_index: fan_index,
+        input_index: input_index,
+      )
+      }
+    OpenBmcFanConfigValidate { config_path } =>
+      openbmc.PasswordSshTransport.FanConfigValidate(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+      )
+    OpenBmcFanConfigVerify { config_path, desired } =>
+      openbmc.PasswordSshTransport.FanConfigVerify(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        config_path: config_path,
+        desired_json: openbmc_fan_config_desired_json(desired: desired),
+      )
+    OpenBmcPathIsWritable { path } =>
+      openbmc.PasswordSshTransport.PathIsWritable(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcPathExists { path } =>
+      openbmc.PasswordSshTransport.PathExists(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcPathIsNonemptyFile { path } =>
+      openbmc.PasswordSshTransport.PathIsNonemptyFile(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcDiskUsageKib { path } =>
+      openbmc.PasswordSshTransport.DiskUsageKib(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcFileSha256 { path } =>
+      openbmc.PasswordSshTransport.FileSha256(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcUtcTimestamp =>
+      openbmc.PasswordSshTransport.UtcTimestamp(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+      )
+    OpenBmcMakeDirectory { path, parents } =>
+      if parents {
+        openbmc.PasswordSshTransport.MakeDirectoryParents(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+      } else {
+        openbmc.PasswordSshTransport.MakeDirectory(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+      }
+    OpenBmcRemoveDirectory { path } =>
+      openbmc.PasswordSshTransport.RemoveDirectory(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcRemoveFile { path } =>
+      openbmc.PasswordSshTransport.RemoveFile(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        path: path,
+      )
+    OpenBmcCopyFilePreservingMetadata { source_path, destination_path } =>
+      openbmc.PasswordSshTransport.CopyFilePreservingMetadata(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        source_path: source_path,
+        destination_path: destination_path,
+      )
+    OpenBmcRenameReplace { source_path, destination_path } =>
+      openbmc.PasswordSshTransport.RenameReplace(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        source_path: source_path,
+        destination_path: destination_path,
+      )
+    OpenBmcSynchronizeFilesystems =>
+      openbmc.PasswordSshTransport.SynchronizeFilesystems(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+      )
+    OpenBmcWaitSeconds { duration } =>
+      openbmc.PasswordSshTransport.WaitSeconds(
+        host: session.host,
+        username: session.username,
+        password: session.password,
+        known_hosts_path: session.known_hosts_path,
+        seconds: second_count(duration),
+      )
+  }
+  PasswordSshExecResult {
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
 }
 
 service openbmc.JsonProjection {
@@ -1298,17 +1632,10 @@ fn openbmc_make_directory(
   path: NonEmptyStr,
   parents: Bool,
 ) -> PasswordSshExecResult {
-  if parents {
-    openbmc_execute(
-      session: session,
-      operation: OpenBmcMakeDirectory { path: path, parents: true },
-    )
-  } else {
-    openbmc_execute(
-      session: session,
-      operation: OpenBmcMakeDirectory { path: path, parents: false },
-    )
-  }
+  openbmc_execute(
+    session: session,
+    operation: OpenBmcMakeDirectory { path: path, parents: parents },
+  )
 }
 
 fn openbmc_remove_directory(
