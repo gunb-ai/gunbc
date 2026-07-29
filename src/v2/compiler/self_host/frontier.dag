@@ -123,7 +123,7 @@ data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = E
 data compiler_frontier_probe_kernel_receipt_note: String = "probe_kernel_receipt binds the fail-closed classifier RED control (frontier_classify_unlisted_reason_refuses_holds), not per-module frontier_probe_emit_from_ingest execution. Structural census invariants are compiler_frontier_structural_census_invariants_holds; per-module receipts deferred via CompilerFrontierAttributedDebt dissolution triggers."
 
 type SelfHostFrontierDisposition
-  = EmitterProduced
+  = EmitterProduced { authorization_binding: EmitterProducedAuthorizationBinding }
   | SeedRetained { reason: Symbol, migration_trigger: Symbol }
 
 type CompilerModuleFrontierRow {
@@ -135,10 +135,9 @@ type CompilerModuleFrontierRow {
 
 type EmitterProducedFrontierPromotion {
   frontier_row: CompilerModuleFrontierRow
-  authorization_binding: EmitterProducedAuthorizationBinding
 }
 
-data emitter_produced_frontier_promotions_note: String = "Review 44509 single authority: EmitterProduced roster rows and authorization bindings are minted together via mint_emitter_produced_frontier_promotion and stored here — never as parallel hand-edited authorities. The authorization registry is a derived projection (emitter_produced_authorization_registry_from_promotions). Baseline empty until witness-realization appends promotions atomically with roster flips."
+data emitter_produced_frontier_promotions_note: String = "Review 44509/44570 single authority: EmitterProduced roster rows carry authorization_binding in the disposition variant (unauthorized tag-only rows unrepresentable). Rows are minted via mint_emitter_produced_frontier_promotion and stored here — never as parallel hand-edited authorities. The authorization registry is a derived projection (emitter_produced_authorization_registry_from_promotions). Baseline empty until witness-realization appends promotions atomically with roster flips."
 
 fn emitter_produced_frontier_promotions() -> List<EmitterProducedFrontierPromotion> {
   []
@@ -259,7 +258,7 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487/44504/44509): EmitterProduced is tag-only; authorization is registry-backed via mint_emitter_produced_frontier_promotion (row+binding atomic). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0; promotions empty."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487/44504/44509/44570): EmitterProduced carries authorization_binding in the disposition variant — unauthorized tag-only rows are unrepresentable. Mint path: mint_emitter_produced_frontier_promotion. Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0; promotions empty."
 
 fn emitter_produced_authorization_bindings_from_promotions(
   promotions: List<EmitterProducedFrontierPromotion>
