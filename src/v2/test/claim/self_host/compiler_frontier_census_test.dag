@@ -17,7 +17,9 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_roster_all_classified_holds,
   compiler_frontier_roster_paths_unique_holds,
   compiler_frontier_roster_probe_paths_match_holds,
-  compiler_frontier_self_emitted_located_reason_holds,
+  compiler_frontier_emitter_produced_located_reason_holds,
+  compiler_frontier_emitter_produced_oracle_enrolled_holds,
+  compiler_frontier_emitter_produced_oracle_backed_holds,
   compiler_frontier_sweep_order_complete_holds
 }
 import v2.std.logic { Bool }
@@ -41,7 +43,9 @@ test fn compiler_frontier_execution_measured_attribution_test() -> Bool {
     && compiler_frontier_sweep_order_complete_holds()
     && compiler_frontier_roster_all_classified_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
-    && compiler_frontier_self_emitted_located_reason_holds()
+    && compiler_frontier_emitter_produced_located_reason_holds()
+    && compiler_frontier_emitter_produced_oracle_enrolled_holds()
+    && compiler_frontier_emitter_produced_oracle_backed_holds()
 }
 
 test fn compiler_frontier_census_composite_test() -> Bool {

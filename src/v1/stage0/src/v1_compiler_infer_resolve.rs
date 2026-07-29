@@ -40,13 +40,14 @@ pub use crate::v1_std_core::{
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
     field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error,
-    is_container_type, is_kernel_type, is_local_transport, kernel_span, let_binding_name_at,
-    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
-    make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
-    make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
-    make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
-    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
+    is_container_type, is_kernel_type, is_local_transport, join_optional_cardinality, kernel_span,
+    let_binding_name_at, local_transport_node, make_arg_node, make_arm_node, make_error_node,
+    make_expr_error_node, make_expr_node, make_field_init_node, make_field_node,
+    make_interp_part_node, make_named_expr_node, make_param_node, make_resolved_param_node,
+    make_resource_use_node, make_text_part_node, make_transport_node, map_children, no_span,
+    node_name_span, param_node_default_value, param_node_name_at, param_node_type_expr,
+    preserve_outer_optional_cardinality, qualified_last_segment, resource_use_name_at,
+    resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
@@ -177,7 +178,10 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         connective: structural.connective.clone(),
         params: structural.params.clone(),
         inferred: structural.inferred.clone(),
-        return_cardinality: structural.return_cardinality.clone(),
+        return_cardinality: join_optional_cardinality(
+            identity.return_cardinality.clone(),
+            structural.return_cardinality.clone(),
+        ),
         uses: structural.uses.clone(),
         body: structural.body.clone(),
         transport: structural.transport.clone(),
@@ -213,7 +217,7 @@ pub fn preserve_nominal_brand_on_resolve(
     {
         with_authored_identity(identity.clone(), structural.clone())
     } else {
-        structural.clone()
+        preserve_outer_optional_cardinality(identity.clone(), structural.clone())
     }
 }
 
