@@ -6,13 +6,11 @@ import v2.compiler.self_host.frontier_band_a_emit_readiness {
   compiler_frontier_band_a_emit_readiness_roster
 }
 import v2.compiler.self_host.emitter_producer_provenance {
-  AuthorizedEmitterProducedDisposition,
   EmitterProducer,
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
   ProducerEmissionExecutedGreenReceipt,
   authorized_emitter_produced_disposition_mint_consistent,
-  authorized_emitter_produced_executed_verdict,
   authorized_emitter_produced_provenance,
   emitter_produced_authorization_for_module,
   emitter_produced_authorization_registry_length,
@@ -249,6 +247,31 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
 }
 
 data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487/44504): EmitterProduced is tag-only; authorization is registry-backed via mint_emitter_produced_authorization_registry_binding (derivation-checked token + oracle authorize). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0; registry empty."
+
+fn mint_compiler_frontier_emitter_produced_row(
+  module_path: String,
+  measured_probe: FrontierProbeReceipt,
+  tractability_rank: Int,
+  provenance: ProducerEmissionReceipt,
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+) -> Optional<CompilerModuleFrontierRow> {
+  match mint_emitter_produced_authorization_registry_binding(
+    module_path: module_path,
+    provenance: provenance,
+    executed_verdict: executed_verdict
+  ) {
+    Present { value: _binding } =>
+      optional_present(
+        value: CompilerModuleFrontierRow {
+          module_path: module_path,
+          disposition: EmitterProduced,
+          measured_probe: measured_probe,
+          tractability_rank: tractability_rank
+        }
+      )
+    Absent => optional_absent()
+  }
+}
 
 fn quarantine_seed_retained_row_from_oracle(
   oracle_row: ProducerEmissionOracleRow,
@@ -708,11 +731,15 @@ fn compiler_frontier_emitter_produced_oracle_enrolled_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { authorization: authorization } =>
-          producer_emission_oracle_enrolls_row(
-            module_path: row.module_path,
-            receipt: authorized_emitter_produced_provenance(authorization: authorization)
-          )
+        EmitterProduced =>
+          match emitter_produced_authorization_for_module(module_path: row.module_path) {
+            Present { value: authorization } =>
+              producer_emission_oracle_enrolls_row(
+                module_path: row.module_path,
+                receipt: authorized_emitter_produced_provenance(authorization: authorization)
+              )
+            Absent => false
+          }
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
@@ -725,19 +752,29 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { authorization: authorization } =>
-          authorized_emitter_produced_disposition_mint_consistent(
-            module_path: row.module_path,
-            authorization: authorization
-          )
+        EmitterProduced =>
+          match emitter_produced_authorization_for_module(module_path: row.module_path) {
+            Present { value: authorization } =>
+              authorized_emitter_produced_disposition_mint_consistent(
+                module_path: row.module_path,
+                authorization: authorization
+              )
+            Absent => false
+          }
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
   )
 }
 
+fn compiler_frontier_emitter_produced_registry_count_matches_roster_holds() -> Bool {
+  emitter_produced_authorization_registry_length() == compiler_frontier_emitter_produced_count()
+}
+
 fn compiler_frontier_emitter_produced_authorization_mint_consistent_holds() -> Bool {
-  compiler_frontier_emitter_produced_oracle_backed_holds()
+  emitter_produced_authorization_registry_mint_consistent_holds()
+    && compiler_frontier_emitter_produced_oracle_backed_holds()
+    && compiler_frontier_emitter_produced_registry_count_matches_roster_holds()
 }
 
 fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
@@ -863,7 +900,7 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   if module_path == row.module_path {
     match row.disposition {
       SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
-      EmitterProduced { authorization: _ } => false
+      EmitterProduced => false
     }
   } else {
     false
@@ -1019,7 +1056,7 @@ fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) ->
 
 fn frontier_hand_rows_emitter_produced_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
   match row.disposition {
-    EmitterProduced { authorization: _ } => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    EmitterProduced => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
     SeedRetained { reason: _, migration_trigger: _ } => []
   }
 }
@@ -1094,7 +1131,7 @@ fn emitter_produced_frontier_row_stage0_mod_basename(
   row: CompilerModuleFrontierRow
 ) -> List<String> {
   match row.disposition {
-    EmitterProduced { authorization: _ } => {
+    EmitterProduced => {
       match frontier_row_stage0_mod_basename(index: index, row: row) {
         Accepted { value: b, diagnostics: _ } => [b]
         Rejected { diagnostics: _ } => []
@@ -1304,7 +1341,6 @@ fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_producer_qualified_baselines_holds()
     && compiler_frontier_emitter_produced_oracle_enrolled_holds()
-    && compiler_frontier_emitter_produced_oracle_backed_holds()
     && compiler_frontier_emitter_produced_authorization_mint_consistent_holds()
     && compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()

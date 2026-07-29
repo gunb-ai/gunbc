@@ -9,6 +9,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   fabricated_v2_interpreted_producer_receipt,
   hand_forged_emitter_produced_authorization_fails_mint_consistency_holds,
   hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds,
+  emitter_produced_tag_without_registry_binding_fails_holds,
   mint_authorized_emitter_produced_disposition_refused_at_baseline_holds,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
   producer_emission_canonical_receipt_for_executed_verdict,
@@ -49,6 +50,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_use_site_verdict,
   compiler_frontier_census_holds,
   compiler_frontier_emitter_produced_oracle_backed_holds,
+  compiler_frontier_emitter_produced_authorization_mint_consistent_holds,
   compiler_frontier_emitter_produced_oracle_enrolled_holds,
   compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds,
   compiler_frontier_emitter_produced_count,
@@ -111,6 +113,13 @@ test fn witness_hand_forged_emitter_produced_authorization_fails_mint_consistenc
     && hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds()
 }
 
+data witness_emitter_produced_tag_without_registry_red_note: String = "Review 44504 RED: tag-only EmitterProduced requires a minted registry binding — quarantine module path has no registry row at baseline."
+
+test fn witness_emitter_produced_tag_without_registry_binding_fails_reds() -> Bool {
+  emitter_produced_tag_without_registry_binding_fails_holds()
+    && compiler_frontier_emitter_produced_authorization_mint_consistent_holds()
+}
+
 data witness_restored_binding_without_executed_receipt_red_note: String = "Review 44455/44460 RED: roster edits and static oracle derivation cannot mint BuildGreen — authorization requires witness-realization mint with admissible wet_execution_digest."
 
 test fn witness_restored_binding_without_executed_receipt_does_not_authorize_reds() -> Bool {
@@ -161,7 +170,7 @@ test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> B
 
 fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
   match row.disposition {
-    EmitterProduced { authorization: _ } => false
+    EmitterProduced => false
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }
