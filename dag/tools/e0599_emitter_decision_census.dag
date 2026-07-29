@@ -22,6 +22,7 @@ type E0599LoweringOperation
   | FreeMonoidCatchallBind
   | DerefCloneWholeValue
   | IdentReferenceClone
+  | FieldAccessClone
   | LoweringUnidentified { method: String, receiver_expr: String }
 
 type E0599ExternalAuthority {
@@ -136,6 +137,16 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
     authority: e0599_rust_clone_trait,
     rationale: "sharing.clone_value (src/v1/languages.dag:392) on a bare identifier that is already owned at its use site. This is exactly the class build_movable_set / make_decision -> SoleOwner licenses as a move; it clones because the emitter's ownership fork bypasses that verdict. Belongs to emitter-ownership-defork.",
   },
+  E0599LoweringRow {
+    operation: FieldAccessClone,
+    source_construct: "field projection on a record-typed binding",
+    emitter_authority: "src/v1/05_emit_rust.dag:6438 (emit_typed_field_access, the non-owned arm) via sharing.clone_value",
+    emitted_literal: "{0}.{1}.clone()",
+    cause: CloneSharedRequirement,
+    required_trait: "Clone",
+    authority: e0599_rust_clone_trait,
+    rationale: "The emitter chooses between a MOVE at :6435 (concat(base_str, field) when base_is_owned) and this clone at :6438, so the copy fires exactly when the ownership verdict says the base is not owned. That verdict comes from owned_bindings — the third, ad-hoc ownership set docs/plans/emitter-ownership-defork.md names, which is populated only with fold-accumulator names inside emit_rust_fold_method_call and therefore can never contain a parameter. acc.seen.clone() is the shape that doc calls the dominant dag_collect cost. Belongs to emitter-ownership-defork.",
+  },
 ]
 
 fn e0599_receiver_is_bare_ident(receiver_expr: String) -> Bool {
@@ -151,6 +162,13 @@ fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
     && !string_contains(s: receiver_expr, pattern: "[")
 }
 
+fn e0599_receiver_is_field_access(receiver_expr: String) -> Bool {
+  string_contains(s: receiver_expr, pattern: ".")
+    && !string_contains(s: receiver_expr, pattern: "(")
+    && !string_contains(s: receiver_expr, pattern: "[")
+    && !string_contains(s: receiver_expr, pattern: "*")
+}
+
 fn e0599_lowering_operation_for(method: String, receiver_expr: String) -> E0599LoweringOperation {
   if method == "is_empty" && receiver_expr == "__fm" {
     FreeMonoidEmptyTest
@@ -164,6 +182,8 @@ fn e0599_lowering_operation_for(method: String, receiver_expr: String) -> E0599L
     DerefCloneWholeValue
   } else if method == "clone" && e0599_receiver_is_bare_ident(receiver_expr: receiver_expr) {
     IdentReferenceClone
+  } else if method == "clone" && e0599_receiver_is_field_access(receiver_expr: receiver_expr) {
+    FieldAccessClone
   } else {
     LoweringUnidentified { method: method, receiver_expr: receiver_expr }
   }
@@ -177,6 +197,7 @@ fn e0599_lowering_operation_label(operation: E0599LoweringOperation) -> String {
     FreeMonoidCatchallBind => "FreeMonoidCatchallBind"
     DerefCloneWholeValue => "DerefCloneWholeValue"
     IdentReferenceClone => "IdentReferenceClone"
+    FieldAccessClone => "FieldAccessClone"
     LoweringUnidentified { method: _, receiver_expr: _ } => "LoweringUnidentified"
   }
 }

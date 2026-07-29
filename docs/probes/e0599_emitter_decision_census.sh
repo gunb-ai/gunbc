@@ -112,23 +112,38 @@ def resolve_fn(fns, line):
     return best
 
 
-def dag_source_for(emitted_file):
-    """v2_std_algebra.rs -> src/v2/std/algebra.dag ; std_types.rs -> dag/std/types.dag."""
-    stem = pathlib.Path(emitted_file).stem
-    parts = stem.split("_")
-    for split in range(len(parts), 0, -1):
-        rel = "/".join(parts[:split - 1] + ["_".join(parts[split - 1:])]) + ".dag"
-        for base in ("src", "dag"):
-            cand = ROOT / base / rel
-            if cand.is_file():
-                return str(cand.relative_to(ROOT))
-    # exhaustive fallback: search the two source roots for a module whose emitted name matches
+MODULE_INDEX = {}
+
+
+def build_module_index():
+    """emitted-file stem -> .dag path, keyed on each module's OWN `module` declaration.
+
+    A .dag file's path is a storage fact; its module identity is the declaration. The v1
+    emitter names the emitted file after the module path, so joining on the declaration is
+    the faithful inverse — a filename heuristic mis-resolves every module whose file stem
+    differs from its module name (v2.compiler.translate lives in 06_translate.dag).
+    """
+    if MODULE_INDEX:
+        return
     for base in ("src/v2", "dag", "src/v1"):
-        for cand in (ROOT / base).rglob("*.dag"):
-            flat = str(cand.relative_to(ROOT)).replace("src/", "").replace("/", "_")[:-4]
-            if flat == stem:
-                return str(cand.relative_to(ROOT))
-    return ""
+        root = ROOT / base
+        if not root.is_dir():
+            continue
+        for cand in root.rglob("*.dag"):
+            try:
+                head = cand.open(encoding="utf-8", errors="replace").readline()
+            except OSError:
+                continue
+            m = re.match(r"\s*module\s+([A-Za-z0-9_.]+)", head)
+            if not m:
+                continue
+            stem = m.group(1).replace(".", "_")
+            MODULE_INDEX.setdefault(stem, str(cand.relative_to(ROOT)))
+
+
+def dag_source_for(emitted_file):
+    build_module_index()
+    return MODULE_INDEX.get(pathlib.Path(emitted_file).stem, "")
 
 
 SRC_FN_CACHE = {}
