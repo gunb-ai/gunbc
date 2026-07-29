@@ -1,5 +1,6 @@
 module v2.compiler.self_host.emitter_producer_provenance
 
+import std.content_hash { content_hash_atom }
 import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
   FrontierProbeStage,
@@ -139,7 +140,7 @@ data behavioral_equivalent_qualifications: List<EmissionQualification> = [Behavi
 fn scaffold_digest_for_module_path(module_path: String) -> Hash {
   combine_hash(
     a: symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest),
-    b: symbol_identity_digest(sym: ^frontier_producer_receipt_module_path_scaffold)
+    b: content_hash_atom(value: module_path)
   )
 }
 
