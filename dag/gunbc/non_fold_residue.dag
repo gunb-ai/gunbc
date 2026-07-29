@@ -690,6 +690,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_observation_hold_cause,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_binding_resolve.dag::occurrence_category_admissible" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {
