@@ -7,6 +7,7 @@ import extdeps.ssh.password_session {
   password_ssh_session_copy_file,
 }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.languages.json.emit {
   json_array,
   json_int,
@@ -48,6 +49,11 @@ type OpenBmcOperation
   | OpenBmcZoneFailsafe { zone_path: NonEmptyStr }
   | OpenBmcSensorServices { sensor_path: NonEmptyStr }
   | OpenBmcSensorValue { service: NonEmptyStr, sensor_path: NonEmptyStr }
+  | OpenBmcSensorThreshold {
+      service: NonEmptyStr,
+      sensor_path: NonEmptyStr,
+      threshold: OpenBmcThresholdProperty,
+    }
   | OpenBmcFanConfigScalar {
       config_path: NonEmptyStr,
       query: OpenBmcFanConfigQuery,
@@ -61,6 +67,7 @@ type OpenBmcOperation
   | OpenBmcPathExists { path: NonEmptyStr }
   | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
   | OpenBmcDiskUsageKib { path: NonEmptyStr }
+  | OpenBmcFileSha256 { path: NonEmptyStr }
   | OpenBmcUtcTimestamp
   | OpenBmcMakeDirectory { path: NonEmptyStr, parents: Bool }
   | OpenBmcRemoveDirectory { path: NonEmptyStr }
@@ -90,6 +97,24 @@ type OpenBmcFanConfigQuery
   | OpenBmcFanControllerNameAt { index: Int }
   | OpenBmcFanInputCountAt { fan_index: Int }
   | OpenBmcFanInputAt { fan_index: Int, input_index: Int }
+
+type OpenBmcThresholdProperty
+  = OpenBmcWarningLow
+  | OpenBmcCriticalLow
+
+fn openbmc_threshold_interface(threshold: OpenBmcThresholdProperty) -> NonEmptyStr {
+  match threshold {
+    OpenBmcWarningLow => "xyz.openbmc_project.Sensor.Threshold.Warning"
+    OpenBmcCriticalLow => "xyz.openbmc_project.Sensor.Threshold.Critical"
+  }
+}
+
+fn openbmc_threshold_property(threshold: OpenBmcThresholdProperty) -> NonEmptyStr {
+  match threshold {
+    OpenBmcWarningLow => "WarningLow"
+    OpenBmcCriticalLow => "CriticalLow"
+  }
+}
 
 type OpenBmcSelection<T>
   = OpenBmcSelectionZero
@@ -253,6 +278,15 @@ fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
       "xyz.openbmc_project.Sensor.Value",
       "Value",
     ]
+    OpenBmcSensorThreshold { service, sensor_path, threshold } => [
+      "busctl",
+      "--json=short",
+      "get-property",
+      service as String,
+      sensor_path as String,
+      openbmc_threshold_interface(threshold: threshold) as String,
+      openbmc_threshold_property(threshold: threshold) as String,
+    ]
     OpenBmcFanConfigScalar { config_path, query } =>
       append(
         append(["jq", "-er"], items: openbmc_fan_config_query_args(query: query)),
@@ -265,13 +299,14 @@ fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
       "--argjson",
       "desired",
       openbmc_fan_config_desired_json(desired: desired),
-      "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))]) as $zones | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $pids | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")]) as $fans | (($zones | length) == 1) and (($pids | length) == 1) and (($fans | length) == 1) and ($zones[0].minThermalOutput == $desired.minimum) and ($zones[0].failsafePercent == $desired.zone_failsafe_duty) and ($pids[0].failsafePercent == $desired.sensor_failsafe) and ($pids[0].pid.positiveHysteresis == $desired.positive_hysteresis) and ($pids[0].pid.negativeHysteresis == $desired.negative_hysteresis) and ($pids[0].pid.reading == ($desired.readings | to_entries | map({key: (.key | tostring), value: .value}) | from_entries)) and ($pids[0].pid.output == ($desired.outputs | to_entries | map({key: (.key | tostring), value: .value}) | from_entries)) and ($fans[0].inputs == $desired.fan_inputs)",
+      "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))]) as $zones | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $pids | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")]) as $fans | (($zones | length) == 1) and (($pids | length) == 1) and (($fans | length) == 1) and ($zones[0].minThermalOutput == $desired.minimum) and ($zones[0].failsafePercent == $desired.zone_failsafe_duty) and ($pids[0].failsafePercent == $desired.sensor_failsafe) and ($pids[0].pid.positiveHysteresis == $desired.positive_hysteresis) and ($pids[0].pid.negativeHysteresis == $desired.negative_hysteresis) and ($pids[0].pid.reading == ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($pids[0].pid.output == ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($fans[0].inputs == $desired.fan_inputs)",
       config_path as String,
     ]
     OpenBmcPathIsWritable { path } => ["test", "-w", path as String]
     OpenBmcPathExists { path } => ["test", "-e", path as String]
     OpenBmcPathIsNonemptyFile { path } => ["test", "-s", path as String]
     OpenBmcDiskUsageKib { path } => ["df", "-Pk", path as String]
+    OpenBmcFileSha256 { path } => ["sha256sum", "--", path as String]
     OpenBmcUtcTimestamp => ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]
     OpenBmcMakeDirectory { path, parents } =>
       if parents { ["mkdir", "-p", path as String] } else { ["mkdir", path as String] }
@@ -380,7 +415,7 @@ service openbmc.JsonProjection {
         "--argjson",
         "desired",
         "{desired_json}",
-        "if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then error(\"expected exactly one TEMP_SOC stepwise controller\") elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then error(\"expected exactly one projected aggregate fan PID entry\") else .zones |= map(if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then .minThermalOutput = $desired.minimum | .failsafePercent = $desired.zone_failsafe_duty | .pids |= map(if .name == $desired.fan_pid_entry and .type == \"fan\" then .inputs = $desired.fan_inputs elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then .failsafePercent = $desired.sensor_failsafe | .pid.positiveHysteresis = $desired.positive_hysteresis | .pid.negativeHysteresis = $desired.negative_hysteresis | .pid.reading = ($desired.readings | to_entries | map({key: (.key | tostring), value: .value}) | from_entries) | .pid.output = ($desired.outputs | to_entries | map({key: (.key | tostring), value: .value}) | from_entries) else . end) else . end) end",
+        "if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then error(\"expected exactly one TEMP_SOC stepwise controller\") elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then error(\"expected exactly one projected aggregate fan PID entry\") else .zones |= map(if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then .minThermalOutput = $desired.minimum | .failsafePercent = $desired.zone_failsafe_duty | .pids |= map(if .name == $desired.fan_pid_entry and .type == \"fan\" then .inputs = $desired.fan_inputs elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then .failsafePercent = $desired.sensor_failsafe | .pid.positiveHysteresis = $desired.positive_hysteresis | .pid.negativeHysteresis = $desired.negative_hysteresis | .pid.reading = ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) | .pid.output = ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) else . end) else . end) end",
         "{path}",
       ]
     }
@@ -498,6 +533,33 @@ type OpenBmcSensorValueResult
   | OpenBmcSensorValueAbsent
   | OpenBmcSensorValueRefused { reason: String }
 
+type OpenBmcTachThresholdSource
+  = OpenBmcWarningLowThreshold
+  | OpenBmcCriticalLowThreshold
+
+type OpenBmcTachHealth
+  = OpenBmcTachThresholdUnstated { sensor: NonEmptyStr, reason: String }
+  | OpenBmcTachBelowThreshold {
+      sensor: NonEmptyStr,
+      reading_rpm: Int,
+      minimum_rpm: Int,
+      source: OpenBmcTachThresholdSource,
+    }
+  | OpenBmcTachAtOrAboveThreshold {
+      sensor: NonEmptyStr,
+      reading_rpm: Int,
+      minimum_rpm: Int,
+      source: OpenBmcTachThresholdSource,
+    }
+
+type OpenBmcTachHealthResult
+  = OpenBmcTachHealthObserved { health: OpenBmcTachHealth }
+  | OpenBmcTachHealthRefused { reason: String }
+
+type OpenBmcDigestResult
+  = OpenBmcDigestObserved { digest: Digest }
+  | OpenBmcDigestRefused { reason: String }
+
 fn openbmc_object_mapper_services_rec(
   content: String,
   index: Int,
@@ -606,6 +668,180 @@ fn openbmc_sensor_value(
           }
         Present { value: value } => OpenBmcSensorValueObserved { value: value }
       }
+    }
+  }
+}
+
+fn openbmc_sensor_threshold_value(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+  sensor_path: NonEmptyStr,
+  threshold: OpenBmcThresholdProperty,
+) -> OpenBmcSensorValueResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcSensorThreshold {
+      service: service,
+      sensor_path: sensor_path,
+      threshold: threshold,
+    },
+  )
+  if !remote.success {
+    OpenBmcSensorValueAbsent
+  } else {
+    let extracted = openbmc.JsonProjection.SensorIntegerValue(content: remote.stdout)
+    if !extracted.success || trim(extracted.value) == "" {
+      OpenBmcSensorValueAbsent
+    } else {
+      match parse_int(s: trim(extracted.value)) {
+        Absent => OpenBmcSensorValueRefused { reason: "tach threshold is not an integer" }
+        Present { value } => OpenBmcSensorValueObserved { value: value }
+      }
+    }
+  }
+}
+
+fn openbmc_tach_health_from_floor(
+  sensor: NonEmptyStr,
+  reading: Int,
+  minimum: Int,
+  source: OpenBmcTachThresholdSource,
+) -> OpenBmcTachHealthResult {
+  OpenBmcTachHealthObserved {
+    health: if reading < minimum {
+      OpenBmcTachBelowThreshold {
+        sensor: sensor,
+        reading_rpm: reading,
+        minimum_rpm: minimum,
+        source: source,
+      }
+    } else {
+      OpenBmcTachAtOrAboveThreshold {
+        sensor: sensor,
+        reading_rpm: reading,
+        minimum_rpm: minimum,
+        source: source,
+      }
+    },
+  }
+}
+
+fn openbmc_tach_health_for_binding(
+  session: PasswordSshSession,
+  sensor: NonEmptyStr,
+  sensor_path: NonEmptyStr,
+  service: NonEmptyStr,
+) -> OpenBmcTachHealthResult {
+  match openbmc_sensor_value(
+    session: session,
+    service: service,
+    sensor_path: sensor_path,
+  ) {
+    OpenBmcSensorValueAbsent =>
+      OpenBmcTachHealthObserved {
+        health: OpenBmcTachThresholdUnstated {
+          sensor: sensor,
+          reason: "tach reading is absent",
+        },
+      }
+    OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
+    OpenBmcSensorValueObserved { value: reading } =>
+      match openbmc_sensor_threshold_value(
+        session: session,
+        service: service,
+        sensor_path: sensor_path,
+        threshold: OpenBmcWarningLow,
+      ) {
+        OpenBmcSensorValueObserved { value: minimum } =>
+          openbmc_tach_health_from_floor(
+            sensor: sensor,
+            reading: reading,
+            minimum: minimum,
+            source: OpenBmcWarningLowThreshold,
+          )
+        OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
+        OpenBmcSensorValueAbsent =>
+          match openbmc_sensor_threshold_value(
+            session: session,
+            service: service,
+            sensor_path: sensor_path,
+            threshold: OpenBmcCriticalLow,
+          ) {
+            OpenBmcSensorValueObserved { value: minimum } =>
+              openbmc_tach_health_from_floor(
+                sensor: sensor,
+                reading: reading,
+                minimum: minimum,
+                source: OpenBmcCriticalLowThreshold,
+              )
+            OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
+            OpenBmcSensorValueAbsent =>
+              OpenBmcTachHealthObserved {
+                health: OpenBmcTachThresholdUnstated {
+                  sensor: sensor,
+                  reason: "OpenBMC publishes neither WarningLow nor CriticalLow",
+                },
+              }
+          }
+      }
+  }
+}
+
+fn openbmc_tach_health(
+  session: PasswordSshSession,
+  sensor: NonEmptyStr,
+) -> OpenBmcTachHealthResult {
+  let sensor_path = join(
+    ["/xyz/openbmc_project/sensors/fan_tach/", sensor as String],
+    "",
+  ) as NonEmptyStr
+  match openbmc_sensor_service(session: session, sensor_path: sensor_path) {
+    OpenBmcSensorServicesRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
+    OpenBmcSensorServicesObserved { services } =>
+      match services {
+        OpenBmcCollectionZero =>
+          OpenBmcTachHealthObserved {
+            health: OpenBmcTachThresholdUnstated {
+              sensor: sensor,
+              reason: "ObjectMapper has no service for the tach",
+            },
+          }
+        OpenBmcCollectionMany { values: _ } =>
+          OpenBmcTachHealthObserved {
+            health: OpenBmcTachThresholdUnstated {
+              sensor: sensor,
+              reason: "ObjectMapper service binding is ambiguous",
+            },
+          }
+        OpenBmcCollectionOne { value: service } =>
+          openbmc_tach_health_for_binding(
+            session: session,
+            sensor: sensor,
+            sensor_path: sensor_path,
+            service: service,
+          )
+      }
+  }
+}
+
+fn openbmc_file_sha256(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> OpenBmcDigestResult {
+  let result = openbmc_execute(
+    session: session,
+    operation: OpenBmcFileSha256 { path: path },
+  )
+  if !result.success {
+    OpenBmcDigestRefused { reason: result.stderr }
+  } else {
+    let words = split(s: trim(result.stdout), delimiter: " ")
+      |> filter(word => word != "")
+    let hex = words.first()
+    if hex.length() != 64 {
+      OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is not 64 hexadecimal digits" }
+    } else {
+      OpenBmcDigestObserved { digest: sha256_digest(hex: hex as NonEmptyStr) }
     }
   }
 }

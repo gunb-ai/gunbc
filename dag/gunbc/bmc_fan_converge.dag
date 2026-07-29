@@ -25,6 +25,8 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcFanConfigObservation,
   OpenBmcFanConfigObservationRefused,
   OpenBmcFanConfigObserved,
+  OpenBmcDigestObserved,
+  OpenBmcDigestRefused,
   OpenBmcSelectionMany,
   OpenBmcSelectionOne,
   OpenBmcSelectionZero,
@@ -33,8 +35,15 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcSensorValueAbsent,
   OpenBmcSensorValueObserved,
   OpenBmcSensorValueRefused,
+  OpenBmcTachAtOrAboveThreshold,
+  OpenBmcTachBelowThreshold,
+  OpenBmcTachHealth,
+  OpenBmcTachHealthObserved,
+  OpenBmcTachHealthRefused,
+  OpenBmcTachThresholdUnstated,
   openbmc_copy_file_preserving_metadata,
   openbmc_disk_usage_kib,
+  openbmc_file_sha256,
   openbmc_fan_config_observe,
   openbmc_fan_config_project_local,
   openbmc_fan_config_validate,
@@ -58,8 +67,10 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_utc_timestamp,
   openbmc_wait_seconds,
   openbmc_zone_failsafe,
+  openbmc_tach_health,
 }
 import extdeps.boards.types { BaseboardModel }
+import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   LinuxOverlayObservation,
@@ -156,6 +167,7 @@ type BmcFanConvergeTarget {
   projection: BmcFanPolicyProjectionCapability?
   durability_generation: StatePerturbationGeneration
   durability_evidence: List<BmcFanDurabilityEvidence>
+  ssh_known_hosts_path: NonEmptyStr
 }
 
 type BmcFanTypedObservationPlan {
@@ -189,6 +201,7 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   projection: none,
   durability_generation: 1,
   durability_evidence: [],
+  ssh_known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
 }
 
 data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
@@ -198,6 +211,7 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   projection: Present { value: srv4_bmc_fan_projection_capability },
   durability_generation: srv4_bmc_fan_perturbation_generation,
   durability_evidence: srv4_bmc_fan_durability_evidence,
+  ssh_known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
 }
 
 type BmcFanLiveObservation {
@@ -205,6 +219,8 @@ type BmcFanLiveObservation {
   persistence: BmcConfigPersistenceObservation
   zone_control_path: NonEmptyStr
   zone_failsafe_active: Bool
+  active_config_digest: Digest
+  tach_health: List<OpenBmcTachHealth>
   raw_lines: List<String>
 }
 
@@ -250,12 +266,11 @@ type BmcFanObservedLinesResult
   = BmcFanObservedLines {
       lines: List<String>,
       overlay: LinuxOverlayObservation,
+      config: OpenBmcFanConfigObservation,
+      config_digest: Digest,
+      tach_health: List<OpenBmcTachHealth>,
     }
   | BmcFanObservedLinesRefused { reason: String }
-
-type BmcFanConfigLinesResult
-  = BmcFanConfigLines { lines: List<String> }
-  | BmcFanConfigLinesRefused { reason: String }
 
 type BmcFanRollbackReceipt
   = BmcFanRollbackNotAttempted
@@ -481,14 +496,15 @@ fn bmc_fan_build_curve_steps_rec(
   readings: List<Int>,
   outputs: List<Int>,
   previous_reading: Int?,
+  previous_output: Int?,
   built: List<BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
   if readings.length() == 0 {
-    if outputs.length() == 0 && built.length() > 0 {
+    if outputs.length() == 0 && built.length() > 0 && previous_output == Present { value: 100 } {
       CurveStepsParsed { steps: built }
     } else {
       CurveStepsParseRefused {
-        reason: "fan curve readings and outputs have different cardinality or are empty",
+        reason: "fan curve readings/outputs differ, are empty, or lack terminal full duty",
       }
     }
   } else if outputs.length() == 0 {
@@ -502,6 +518,10 @@ fn bmc_fan_build_curve_steps_rec(
       Present { value: previous } => reading > previous
       Absent => true
     }
+    let nondecreasing = match previous_output {
+      Present { value: previous } => output >= previous
+      Absent => true
+    }
     if !ordered {
       CurveStepsParseRefused {
         reason: "fan curve temperature breakpoints are not strictly increasing",
@@ -510,11 +530,16 @@ fn bmc_fan_build_curve_steps_rec(
       CurveStepsParseRefused {
         reason: "fan curve output is outside 0..100 percent",
       }
+    } else if !nondecreasing {
+      CurveStepsParseRefused {
+        reason: "fan curve duty decreases at a later temperature",
+      }
     } else {
       bmc_fan_build_curve_steps_rec(
         readings: readings.skip(n: 1),
         outputs: outputs.skip(n: 1),
         previous_reading: Present { value: reading },
+        previous_output: Present { value: output },
         built: append(
           built,
           items: [
@@ -537,6 +562,7 @@ fn bmc_fan_build_curve_steps(
     readings: readings,
     outputs: outputs,
     previous_reading: none,
+    previous_output: none,
     built: [],
   )
 }
@@ -590,21 +616,23 @@ fn bmc_fan_observe_sensor_line(
     session: session,
     sensor_path: sensor_path,
   )
-  let value = if !service_result.success {
-    "absent"
-  } else if trim(service_result.stdout) == "" {
-    "absent"
-  } else {
-    let value_result = openbmc_sensor_value(
-      session: session,
-      service: trim(service_result.stdout) as NonEmptyStr,
-      sensor_path: sensor_path,
-    )
-    if value_result.success {
-      bmc_fan_sensor_integer_value(raw: value_result.stdout)
-    } else {
-      "absent"
-    }
+  let value = match service_result {
+    OpenBmcSensorServicesRefused { reason: _ } => "absent"
+    OpenBmcSensorServicesObserved { services } =>
+      match services {
+        OpenBmcCollectionZero => "absent"
+        OpenBmcCollectionMany { values: _ } => "absent"
+        OpenBmcCollectionOne { value: service } =>
+          match openbmc_sensor_value(
+            session: session,
+            service: service,
+            sensor_path: sensor_path,
+          ) {
+            OpenBmcSensorValueObserved { value: observed } => to_string(observed)
+            OpenBmcSensorValueAbsent => "absent"
+            OpenBmcSensorValueRefused { reason: _ } => "absent"
+          }
+      }
   }
   concat(
     concat(key_prefix as String, sensor_name as String),
@@ -628,29 +656,40 @@ fn bmc_fan_observe_sensor_lines(
   )
 }
 
-fn bmc_fan_config_snapshot_lines(raw: String) -> BmcFanConfigLinesResult {
-  let fields = split(s: trim(raw), delimiter: "\t")
-  if fields.length() != 11 {
-    BmcFanConfigLinesRefused {
-      reason: "typed jq fan-config observation did not return eleven semantic fields",
-    }
+type BmcFanTachHealthListResult
+  = BmcFanTachHealthListObserved { values: List<OpenBmcTachHealth> }
+  | BmcFanTachHealthListRefused { reason: String }
+
+fn bmc_fan_observe_tach_health_rec(
+  session: PasswordSshSession,
+  sensors: List<NonEmptyStr>,
+  built: List<OpenBmcTachHealth>,
+) -> BmcFanTachHealthListResult {
+  if sensors.length() == 0 {
+    BmcFanTachHealthListObserved { values: built }
   } else {
-    BmcFanConfigLines {
-      lines: [
-        concat("target_count=", fields.first()),
-        concat("minimum=", fields.skip(n: 1).first()),
-        concat("zone_failsafe_duty=", fields.skip(n: 2).first()),
-        concat("sensor_failsafe=", fields.skip(n: 3).first()),
-        concat("positive_hysteresis=", fields.skip(n: 4).first()),
-        concat("negative_hysteresis=", fields.skip(n: 5).first()),
-        concat("readings=", fields.skip(n: 6).first()),
-        concat("outputs=", fields.skip(n: 7).first()),
-        concat("fan_entries=", fields.skip(n: 8).first()),
-        concat("fan_entry_count=", fields.skip(n: 9).first()),
-        concat("fan_inputs=", fields.skip(n: 10).first()),
-      ],
+    match openbmc_tach_health(session: session, sensor: sensors.first()) {
+      OpenBmcTachHealthRefused { reason } =>
+        BmcFanTachHealthListRefused { reason: reason }
+      OpenBmcTachHealthObserved { health } =>
+        bmc_fan_observe_tach_health_rec(
+          session: session,
+          sensors: sensors.skip(n: 1),
+          built: append(built, items: [health]),
+        )
     }
   }
+}
+
+fn bmc_fan_observe_tach_health(
+  session: PasswordSshSession,
+  sensors: List<NonEmptyStr>,
+) -> BmcFanTachHealthListResult {
+  bmc_fan_observe_tach_health_rec(
+    session: session,
+    sensors: sensors,
+    built: [],
+  )
 }
 
 fn bmc_fan_df_available_bytes(raw: String) -> String {
@@ -693,6 +732,7 @@ fn bmc_fan_observe_typed_lines(
     session: session,
     config_path: plan.config_path,
   )
+  let config_digest = openbmc_file_sha256(session: session, path: plan.config_path)
   let mounts = openbmc_read_file(session: session, path: "/proc/mounts")
   let parent = openbmc_parent_directory(
     session: session,
@@ -712,10 +752,6 @@ fn bmc_fan_observe_typed_lines(
     BmcFanObservedLinesRefused {
       reason: concat("fan zone failsafe observation failed: ", zone.stderr),
     }
-  } else if !config.success {
-    BmcFanObservedLinesRefused {
-      reason: concat("fan config semantic observation failed: ", config.stderr),
-    }
   } else if !mounts.success {
     BmcFanObservedLinesRefused {
       reason: concat("BMC mount-table observation failed: ", mounts.stderr),
@@ -733,14 +769,26 @@ fn bmc_fan_observe_typed_lines(
       reason: concat("BMC timestamp observation failed: ", timestamp.stderr),
     }
   } else {
-    match linux_overlay_observation_from_proc_mounts(
-      proc_mounts: mounts.stdout,
-    ) {
-      Absent =>
+    match config {
+      OpenBmcFanConfigObservationRefused { reason } =>
         BmcFanObservedLinesRefused {
-          reason: "BMC root OverlayFS lower/upper backing-mount relationship is absent",
+          reason: join(["fan config semantic observation failed: ", reason], ""),
         }
-      Present { value: overlay } => {
+      OpenBmcFanConfigObserved { observation: config_observation } =>
+        match config_digest {
+          OpenBmcDigestRefused { reason } =>
+            BmcFanObservedLinesRefused {
+              reason: join(["active fan config digest failed: ", reason], ""),
+            }
+          OpenBmcDigestObserved { digest: observed_digest } =>
+        match linux_overlay_observation_from_proc_mounts(
+          proc_mounts: mounts.stdout,
+        ) {
+          Absent =>
+            BmcFanObservedLinesRefused {
+              reason: "BMC root OverlayFS lower/upper backing-mount relationship is absent",
+            }
+          Present { value: overlay } => {
         let writable = openbmc_path_is_writable(
           session: session,
           path: trim(parent.stdout) as NonEmptyStr,
@@ -752,10 +800,6 @@ fn bmc_fan_observe_typed_lines(
             plan.config_path as String,
           ) as NonEmptyStr,
         )
-        match bmc_fan_config_snapshot_lines(raw: config.stdout) {
-          BmcFanConfigLinesRefused { reason: reason } =>
-            BmcFanObservedLinesRefused { reason: reason }
-          BmcFanConfigLines { lines: config_lines } => {
             let identity_lines = [
               concat("firmware=", identity.firmware.version as String),
               concat("machine=", identity.machine as String),
@@ -785,137 +829,93 @@ fn bmc_fan_observe_typed_lines(
               sensor_names: plan.tach_sensors,
               key_prefix: "tach_",
             )
-            BmcFanObservedLines {
-              lines: append(
-                append(
-                  append(
-                    append(identity_lines, items: config_lines),
-                    items: substrate_lines,
+            match bmc_fan_observe_tach_health(
+              session: session,
+              sensors: plan.tach_sensors,
+            ) {
+              BmcFanTachHealthListRefused { reason } =>
+                BmcFanObservedLinesRefused { reason: reason }
+              BmcFanTachHealthListObserved { values: tach_health } =>
+                BmcFanObservedLines {
+                  lines: append(
+                    append(
+                      append(identity_lines, items: substrate_lines),
+                      items: temperature_lines,
+                    ),
+                    items: tach_lines,
                   ),
-                  items: temperature_lines,
-                ),
-                items: tach_lines,
-              ),
-              overlay: overlay,
+                  overlay: overlay,
+                  config: config_observation,
+                  config_digest: observed_digest,
+                  tach_health: tach_health,
+                }
             }
           }
         }
-      }
+        }
     }
   }
 }
 
-fn bmc_fan_parse_curve(lines: List<String>) -> ParsedFanCurve {
-  let minimum_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "minimum")
-  let sensor_failsafe_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "sensor_failsafe")
-  let zone_failsafe_duty_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "zone_failsafe_duty")
-  let positive_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "positive_hysteresis")
-  let negative_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "negative_hysteresis")
-  match parse_int(s: minimum_raw) {
-    Absent => FanCurveParseRefused { reason: "minimum fan duty is absent or not an integer" }
-    Present { value: minimum } =>
-      match parse_int(s: sensor_failsafe_raw) {
-        Absent => FanCurveParseRefused { reason: "sensor failsafe duty is absent or not an integer" }
-        Present { value: sensor_failsafe } =>
-          match parse_int(s: zone_failsafe_duty_raw) {
-            Absent => FanCurveParseRefused { reason: "zone failsafe duty is absent or not an integer" }
-            Present { value: zone_failsafe_duty } =>
-              match parse_int(s: positive_raw) {
-                Absent => FanCurveParseRefused { reason: "positive hysteresis is absent or not an integer" }
-                Present { value: positive } =>
-                  match parse_int(s: negative_raw) {
-                    Absent => FanCurveParseRefused { reason: "negative hysteresis is absent or not an integer" }
-                    Present { value: negative } =>
-                      if minimum < 0 || minimum > 100
-                        || sensor_failsafe < 0 || sensor_failsafe > 100
-                        || zone_failsafe_duty < 0 || zone_failsafe_duty > 100
-                        || positive < 0 || negative < 0 {
-                        FanCurveParseRefused {
-                          reason: "fan curve duty or hysteresis is outside its admissible range",
-                        }
-                      } else {
-                        match bmc_fan_parse_int_csv(
-                          raw: bmc_fan_observation_value_or_empty(lines: lines, key: "readings"),
-                          label: "fan curve readings",
-                        ) {
-                          IntListParseRefused { reason: reason } =>
-                            FanCurveParseRefused { reason: reason }
-                          IntListParsed { values: readings } =>
-                            match bmc_fan_parse_int_csv(
-                              raw: bmc_fan_observation_value_or_empty(lines: lines, key: "outputs"),
-                              label: "fan curve outputs",
-                            ) {
-                              IntListParseRefused { reason: reason } =>
-                                FanCurveParseRefused { reason: reason }
-                              IntListParsed { values: outputs } =>
-                                match bmc_fan_build_curve_steps(
-                                  readings: readings,
-                                  outputs: outputs,
-                                ) {
-                                  CurveStepsParseRefused { reason: reason } =>
-                                    FanCurveParseRefused { reason: reason }
-                                  CurveStepsParsed { steps: steps } =>
-                                    FanCurveParsed {
-                                      curve: BmcFanCurve {
-                                        control_sensor: "TEMP_SOC",
-                                        steps: steps,
-                                        minimum_duty: percent(minimum),
-                                        sensor_unavailable_duty: percent(sensor_failsafe),
-                                        zone_failsafe_duty: percent(zone_failsafe_duty),
-                                        positive_hysteresis_degrees_celsius: positive,
-                                        negative_hysteresis_degrees_celsius: negative,
-                                      },
-                                    }
-                                }
-                            }
-                        }
-                      }
-                  }
-              }
-          }
+fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
+  match config.stepwise {
+    OpenBmcSelectionZero =>
+      FanCurveParseRefused { reason: "TEMP_SOC stepwise controller is absent" }
+    OpenBmcSelectionMany { count: _ } =>
+      FanCurveParseRefused { reason: "TEMP_SOC stepwise controller is ambiguous" }
+    OpenBmcSelectionOne { value: controller } =>
+      if controller.minimum_duty < 0 || controller.minimum_duty > 100
+        || controller.sensor_failsafe_duty < 0 || controller.sensor_failsafe_duty > 100
+        || controller.zone_failsafe_duty < 0 || controller.zone_failsafe_duty > 100
+        || controller.positive_hysteresis < 0 || controller.negative_hysteresis < 0 {
+        FanCurveParseRefused {
+          reason: "fan curve duty or hysteresis is outside its admissible range",
+        }
+      } else {
+        match bmc_fan_build_curve_steps(
+          readings: controller.readings,
+          outputs: controller.outputs,
+        ) {
+          CurveStepsParseRefused { reason } => FanCurveParseRefused { reason: reason }
+          CurveStepsParsed { steps } =>
+            FanCurveParsed {
+              curve: BmcFanCurve {
+                control_sensor: "TEMP_SOC",
+                steps: steps,
+                minimum_duty: percent(controller.minimum_duty),
+                sensor_unavailable_duty: percent(controller.sensor_failsafe_duty),
+                zone_failsafe_duty: percent(controller.zone_failsafe_duty),
+                positive_hysteresis_degrees_celsius: controller.positive_hysteresis,
+                negative_hysteresis_degrees_celsius: controller.negative_hysteresis,
+              },
+            }
+        }
       }
   }
 }
 
-fn bmc_fan_parse_controller_shape(lines: List<String>) -> ParsedFanControllerShape {
-  let count_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "fan_entry_count")
-  match parse_int(s: count_raw) {
-    Absent =>
-      FanControllerShapeParseRefused {
-        reason: "fan PID entry count is absent or not an integer",
+fn bmc_fan_parse_controller_shape(
+  config: OpenBmcFanConfigObservation,
+) -> ParsedFanControllerShape {
+  match config.fan_controllers {
+    OpenBmcCollectionZero =>
+      FanControllerShapeParseRefused { reason: "fan PID controller is absent" }
+    OpenBmcCollectionOne { value: controller } =>
+      if controller.inputs.length() == 0 {
+        FanControllerShapeParseRefused { reason: "aggregate fan tach inputs are absent" }
+      } else {
+        FanControllerShapeParsed {
+          shape: FanPidAggregatedEntry {
+            entry_name: controller.name,
+            tach_inputs: controller.inputs,
+          },
+        }
       }
-    Present { value: count } =>
-      match bmc_fan_parse_nonempty_csv(
-        raw: bmc_fan_observation_value_or_empty(lines: lines, key: "fan_entries"),
-        label: "fan PID entries",
-      ) {
-        NonEmptyStringListParseRefused { reason: reason } =>
-          FanControllerShapeParseRefused { reason: reason }
-        NonEmptyStringListParsed { values: entries } =>
-          if count != entries.length() || count <= 0 {
-            FanControllerShapeParseRefused {
-              reason: "fan PID entry count does not match the observed entry list",
-            }
-          } else if count == 1 {
-            match bmc_fan_parse_nonempty_csv(
-              raw: bmc_fan_observation_value_or_empty(lines: lines, key: "fan_inputs"),
-              label: "aggregate fan tach inputs",
-            ) {
-              NonEmptyStringListParseRefused { reason: reason } =>
-                FanControllerShapeParseRefused { reason: reason }
-              NonEmptyStringListParsed { values: inputs } =>
-                FanControllerShapeParsed {
-                  shape: FanPidAggregatedEntry {
-                    entry_name: entries.first(),
-                    tach_inputs: inputs,
-                  },
-                }
-            }
-          } else {
-            FanControllerShapeParsed {
-              shape: FanPidIndependentEntries { entry_names: entries },
-            }
-          }
+    OpenBmcCollectionMany { values } =>
+      FanControllerShapeParsed {
+        shape: FanPidIndependentEntries {
+          entry_names: values |> map(controller => controller.name),
+        },
       }
   }
 }
@@ -935,6 +935,9 @@ fn bmc_fan_parse_bool(raw: String) -> Bool? {
 fn bmc_fan_parse_live_observation(
   lines: List<String>,
   overlay: LinuxOverlayObservation,
+  config: OpenBmcFanConfigObservation,
+  config_digest: Digest,
+  tach_health: List<OpenBmcTachHealth>,
 ) -> BmcFanLiveObservationResult {
   let firmware = bmc_fan_observation_value_or_empty(lines: lines, key: "firmware")
   let machine = bmc_fan_observation_value_or_empty(lines: lines, key: "machine")
@@ -946,7 +949,6 @@ fn bmc_fan_parse_live_observation(
   let zone_path = bmc_fan_observation_value_or_empty(lines: lines, key: "zone_control_path")
   let zone_failsafe = bmc_fan_observation_value_or_empty(lines: lines, key: "zone_failsafe")
   let observed_at = bmc_fan_observation_value_or_empty(lines: lines, key: "observed_at")
-  let target_count_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "target_count")
   let available_raw = bmc_fan_observation_value_or_empty(lines: lines, key: "available_bytes")
   if firmware == "" {
     BmcFanLiveObservationRefused {
@@ -989,22 +991,11 @@ fn bmc_fan_parse_live_observation(
       reason: concat("fan controller service is not active: ", service_active),
     }
   } else {
-    match parse_int(s: target_count_raw) {
-      Absent =>
-        BmcFanLiveObservationRefused {
-          reason: "TEMP_SOC stepwise target count is absent or invalid",
-        }
-      Present { value: target_count } =>
-        if target_count != 1 {
-          BmcFanLiveObservationRefused {
-            reason: "expected exactly one TEMP_SOC stepwise controller",
-          }
-        } else {
-          match bmc_fan_parse_curve(lines: lines) {
+          match bmc_fan_parse_curve(config: config) {
             FanCurveParseRefused { reason: reason } =>
               BmcFanLiveObservationRefused { reason: reason }
             FanCurveParsed { curve: curve } =>
-              match bmc_fan_parse_controller_shape(lines: lines) {
+              match bmc_fan_parse_controller_shape(config: config) {
                 FanControllerShapeParseRefused { reason: reason } =>
                   BmcFanLiveObservationRefused { reason: reason }
                 FanControllerShapeParsed { shape: shape } =>
@@ -1062,6 +1053,8 @@ fn bmc_fan_parse_live_observation(
                                     },
                                     zone_control_path: zone_path as NonEmptyStr,
                                     zone_failsafe_active: zone_failsafe == "true",
+                                    active_config_digest: config_digest,
+                                    tach_health: tach_health,
                                     raw_lines: lines,
                                   },
                                 }
@@ -1071,8 +1064,6 @@ fn bmc_fan_parse_live_observation(
                   }
               }
           }
-        }
-    }
   }
 }
 
@@ -1086,35 +1077,71 @@ fn bmc_fan_observed_int(
   }
 }
 
+fn bmc_fan_tach_health_for_sensor(
+  health: List<OpenBmcTachHealth>,
+  sensor: NonEmptyStr,
+) -> OpenBmcTachHealth? {
+  if health.length() == 0 {
+    none
+  } else {
+    let candidate = health.first()
+    let candidate_sensor = match candidate {
+      OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
+      OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+      OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+    }
+    if candidate_sensor == sensor {
+      Present { value: candidate }
+    } else {
+      bmc_fan_tach_health_for_sensor(
+        health: health.skip(n: 1),
+        sensor: sensor,
+      )
+    }
+  }
+}
+
 fn bmc_fan_first_unhealthy_tach(
-  lines: List<String>,
+  health: List<OpenBmcTachHealth>,
   required: List<NonEmptyStr>,
 ) -> String? {
   if required.length() == 0 {
     none
   } else {
     let tach = required.first()
-    match bmc_fan_observed_int(
-      lines: lines,
-      key: concat("tach_", tach as String),
-    ) {
+    match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
       Absent =>
         Present {
-          value: concat("required tach is absent: ", tach as String),
+          value: join(["required tach health is absent: ", tach as String], ""),
         }
-      Present { value: rpm } =>
-        if rpm <= 0 {
+      Present { value: observed } =>
+        match observed {
+          OpenBmcTachThresholdUnstated { sensor: _, reason } =>
+            Present {
+              value: join(
+                ["required tach threshold is unstated: ", tach as String, ": ", reason],
+                "",
+              ),
+            }
+          OpenBmcTachBelowThreshold { sensor: _, reading_rpm, minimum_rpm, source: _ } =>
           Present {
-            value: concat(
-              concat("required tach is not rotating: ", tach as String),
-              concat("=", to_string(rpm)),
+            value: join(
+              [
+                "required tach is below its OpenBMC threshold: ",
+                tach as String,
+                "=",
+                to_string(reading_rpm),
+                " < ",
+                to_string(minimum_rpm),
+              ],
+              "",
             ),
           }
-        } else {
-          bmc_fan_first_unhealthy_tach(
-            lines: lines,
-            required: required.skip(n: 1),
-          )
+          OpenBmcTachAtOrAboveThreshold { sensor: _, reading_rpm: _, minimum_rpm: _, source: _ } =>
+            bmc_fan_first_unhealthy_tach(
+              health: health,
+              required: required.skip(n: 1),
+            )
         }
     }
   }
@@ -1188,7 +1215,7 @@ fn bmc_fan_live_thermal_tach_safety_refusal(
         }
       } else {
         match bmc_fan_first_unhealthy_tach(
-          lines: observation.raw_lines,
+          health: observation.tach_health,
           required: projection.required_tach_inputs,
         ) {
           Present { value: reason } => Present { value: reason }
@@ -1223,7 +1250,9 @@ fn bmc_fan_live_safety_refusal(
   intent: BmcControlPlaneIntent,
   projection: BmcFanPolicyProjectionCapability,
 ) -> String? {
-  if observation.zone_failsafe_active {
+  if observation.active_config_digest != projection.projected_config_digest {
+    Present { value: "live active fan-config digest differs from the admitted digest" }
+  } else if observation.zone_failsafe_active {
     Present { value: "fan controller zone is in failsafe" }
   } else if observation.zone_control_path != projection.controller_zone_path {
     Present { value: "observed fan-controller zone path differs from the exact projection" }
@@ -1928,6 +1957,7 @@ fn bmc_fan_observe_with_credential(
     host: target.onboarding.bmc.host,
     username: target.onboarding.factory_login.username,
     password: credential,
+    known_hosts_path: target.ssh_known_hosts_path,
   }
   match bmc_fan_observe_live_identity(session: session) {
     BmcFanLiveIdentityRefused { reason: reason } =>
@@ -1995,10 +2025,16 @@ fn bmc_fan_observe_with_credential(
                 BmcFanObservedLines {
                   lines: lines,
                   overlay: overlay,
+                  config: config,
+                  config_digest: config_digest,
+                  tach_health: tach_health,
                 } =>
                   bmc_fan_parse_live_observation(
                     lines: lines,
                     overlay: overlay,
+                    config: config,
+                    config_digest: config_digest,
+                    tach_health: tach_health,
                   )
               }
             }
@@ -2018,6 +2054,7 @@ fn bmc_fan_rollback_after_failed_readback(
       host: target.onboarding.bmc.host,
       username: target.onboarding.factory_login.username,
       password: credential,
+      known_hosts_path: target.ssh_known_hosts_path,
     },
     plan: plan,
   )
@@ -2144,6 +2181,7 @@ fn bmc_fan_rollback_previous_with_credential(
               host: target.onboarding.bmc.host,
               username: target.onboarding.factory_login.username,
               password: credential,
+              known_hosts_path: target.ssh_known_hosts_path,
             },
             plan: plan,
           )
@@ -2253,6 +2291,7 @@ fn bmc_fan_converge_with_credential(
                 host: target.onboarding.bmc.host,
                 username: target.onboarding.factory_login.username,
                 password: credential,
+                known_hosts_path: target.ssh_known_hosts_path,
               },
               plan: plan,
             )
