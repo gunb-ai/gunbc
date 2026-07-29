@@ -1,7 +1,8 @@
 use v1_compiler::cli_run::{
-    build_multi_entry_index, make_eval_context, resolve_entry_graph, resolve_entry_with_index,
-    run_claim, serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
-    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+    build_multi_entry_index, make_eval_context, materialization_provider_consumer,
+    resolve_entry_graph, resolve_entry_with_index, run_claim,
+    serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome, ResolvedGraphProviderOutcome,
+    OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
 };
 use v1_compiler::resolved_graph_cache::{closure_content_digest, transform_content_digest};
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -59,6 +60,42 @@ fn v1_disk_probe_refuses_incomplete_naming_compile_clean_diagnostic_union() {
         }
         other => panic!("expected ProviderRefusedIncomplete, got {other:?}"),
     }
+}
+
+#[test]
+fn provider_ctx_reused_across_disk_probes() {
+    materialization_provider_consumer::reset_materialization_provider_ctx_for_test();
+    let sources = fixture_sources();
+    let closure_digest = closure_content_digest(&sources);
+    let compiler_digest = transform_content_digest();
+    let content_digest = v1_rt::atom_identity_hash("fixture-payload-reuse".to_string());
+
+    let _ = serve_resolved_graph_v1_disk_probe_for_test(
+        &closure_digest,
+        &compiler_digest,
+        &content_digest,
+        128,
+    )
+    .expect("first probe");
+    let builds_after_first =
+        materialization_provider_consumer::materialization_provider_ctx_build_count_for_test();
+    assert_eq!(
+        builds_after_first, 1,
+        "first probe must cold-build the provider interpreter context once"
+    );
+
+    let _ = serve_resolved_graph_v1_disk_probe_for_test(
+        &closure_digest,
+        &compiler_digest,
+        &content_digest,
+        256,
+    )
+    .expect("second probe");
+    assert_eq!(
+        materialization_provider_consumer::materialization_provider_ctx_build_count_for_test(),
+        1,
+        "repeat probes must reuse the process-local provider context"
+    );
 }
 
 #[test]

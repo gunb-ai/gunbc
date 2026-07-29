@@ -44,7 +44,7 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
-mod materialization_provider_consumer;
+pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub use materialization_provider_consumer::{
@@ -5648,6 +5648,26 @@ thread_local! {
     #[allow(clippy::type_complexity)]
     static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
         const { RefCell::new(None) };
+
+    // While loading the materialization-provider authority, cross-process disk hits
+    // must not re-enter provider routing (review 44268: bootstrap recursion).
+    static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
+}
+
+pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+        c.set(c.get().saturating_add(1));
+        let out = f();
+        c.set(c.get().saturating_sub(1));
+        out
+    })
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -7979,7 +7999,20 @@ fn serve_resolved_graph_disk_hit_through_provider(
         ResolvedGraphProviderOutcome::Miss => Err(
             "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
         ),
-        ResolvedGraphProviderOutcome::OtherRefusal { label } => Err(format!(
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
+            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
+            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedIdentityUnshareable => Err(
+            "resolved-graph-cache provider refused disk hit: identity unshareable".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedIdentityGradeUnsupported => Err(
+            "resolved-graph-cache provider refused disk hit: identity grade unsupported"
+                .to_string(),
+        ),
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
             "resolved-graph-cache provider refused disk hit: {label}"
         )),
     }
@@ -8032,7 +8065,9 @@ fn resolved_graph_from_sources_with_index(
     // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(cached) => {
+            CacheLookupResult::Hit(cached)
+                if !cross_process_provider_routing_suppressed() =>
+            {
                 return serve_resolved_graph_disk_hit_through_provider(&sources, &cached);
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}

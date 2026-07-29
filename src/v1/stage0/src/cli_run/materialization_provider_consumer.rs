@@ -1,26 +1,66 @@
 use crate::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
+use std::cell::RefCell;
+use std::rc::Rc;
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.materialization_provider_consumer_scaffold;
+// witness: dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag).
 const MATERIALIZATION_PROVIDER_ENTRY: &str = "dag/std/materialization_provider.dag";
 pub const OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION: &str = "compile_clean_diagnostic_union";
 
+/// Typed mirror of `std.materialization_provider` consumer outcomes for the
+/// resolved-graph disk-hit seam. Each contract refusal variant is represented
+/// distinctly so downstream callers never collapse typed refusals into a string
+/// bucket.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedGraphProviderOutcome {
     Hit,
     Miss,
     RefusedIncomplete { missing: Vec<String> },
     RefusedWrongArtifact,
-    OtherRefusal { label: String },
+    RefusedKindMismatch,
+    RefusedWrongContent,
+    RefusedIdentityUnshareable,
+    RefusedIdentityGradeUnsupported,
+    LookupUnclassified { label: String },
 }
 
-fn build_materialization_provider_ctx() -> Result<InterpContext, String> {
+thread_local! {
+    static MATERIALIZATION_PROVIDER_CTX: RefCell<Option<Rc<InterpContext>>> =
+        RefCell::new(None);
+}
+
+#[cfg(test)]
+static MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+fn build_materialization_provider_ctx_cold() -> Result<InterpContext, String> {
+    #[cfg(test)]
+    MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let roots = super::default_source_roots();
     let entry = super::resolve_entry_file_under_roots(&roots, MATERIALIZATION_PROVIDER_ENTRY)?;
-    let (graph, indices) = super::resolve_entry_graph_shared(&roots, &entry)?;
+    // Bootstrap must not re-enter cross-process provider routing while loading
+    // the provider authority itself (review 44268: unbounded recursion on cache hit).
+    let (graph, indices) =
+        super::with_cross_process_provider_routing_suppressed(|| {
+            super::resolve_entry_graph_shared(&roots, &entry)
+        })?;
     Ok(super::make_eval_context(
         &graph,
         indices,
         ExecutionMode::Hermetic,
     ))
+}
+
+fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
+    MATERIALIZATION_PROVIDER_CTX.with(|slot| {
+        if let Some(ctx) = slot.borrow().clone() {
+            return Ok(ctx);
+        }
+        let ctx = Rc::new(build_materialization_provider_ctx_cold()?);
+        *slot.borrow_mut() = Some(ctx.clone());
+        Ok(ctx)
+    })
 }
 
 fn call_lookup_bool(ctx: &InterpContext, fn_name: &str, lookup: &Value) -> Result<bool, String> {
@@ -62,36 +102,33 @@ fn lookup_missing_outputs(ctx: &InterpContext, lookup: &Value) -> Result<Vec<Str
         .collect::<Result<Vec<_>, _>>()?)
 }
 
-fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> String {
-    if call_lookup_bool(ctx, "lookup_is_hit", lookup).unwrap_or(false) {
-        return "ProviderHit".to_string();
+fn lookup_outcome_label(ctx: &InterpContext, lookup: &Value) -> Result<String, String> {
+    if call_lookup_bool(ctx, "lookup_is_hit", lookup)? {
+        return Ok("ProviderHit".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_miss", lookup).unwrap_or(false) {
-        return "ProviderMiss".to_string();
+    if call_lookup_bool(ctx, "lookup_is_miss", lookup)? {
+        return Ok("ProviderMiss".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_kind_mismatch", lookup).unwrap_or(false) {
-        return "ProviderRefusedKindMismatch".to_string();
+    if call_lookup_bool(ctx, "lookup_is_refused_kind_mismatch", lookup)? {
+        return Ok("ProviderRefusedKindMismatch".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_artifact", lookup).unwrap_or(false) {
-        return "ProviderRefusedWrongArtifact".to_string();
+    if call_lookup_bool(ctx, "lookup_is_refused_wrong_artifact", lookup)? {
+        return Ok("ProviderRefusedWrongArtifact".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup).unwrap_or(false) {
-        return "ProviderRefusedWrongContent".to_string();
+    if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", lookup)? {
+        return Ok("ProviderRefusedWrongContent".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_unshareable", lookup).unwrap_or(false) {
-        return "ProviderRefusedIdentityUnshareable".to_string();
+    if call_lookup_bool(ctx, "lookup_is_refused_identity_unshareable", lookup)? {
+        return Ok("ProviderRefusedIdentityUnshareable".to_string());
     }
-    if call_lookup_bool(ctx, "lookup_is_refused_identity_grade_unsupported", lookup)
-        .unwrap_or(false)
-    {
-        return "ProviderRefusedIdentityGradeUnsupported".to_string();
+    if call_lookup_bool(ctx, "lookup_is_refused_identity_grade_unsupported", lookup)? {
+        return Ok("ProviderRefusedIdentityGradeUnsupported".to_string());
     }
-    if let Ok(missing) = lookup_missing_outputs(ctx, lookup) {
-        if !missing.is_empty() {
-            return format!("ProviderRefusedIncomplete({missing:?})");
-        }
+    let missing = lookup_missing_outputs(ctx, lookup)?;
+    if !missing.is_empty() {
+        return Ok(format!("ProviderRefusedIncomplete({missing:?})"));
     }
-    format!("ProviderLookup({})", ctx.format_value(lookup))
+    Ok(format!("ProviderLookup({})", ctx.format_value(lookup)))
 }
 
 pub fn interpret_provider_lookup(
@@ -104,15 +141,27 @@ pub fn interpret_provider_lookup(
     if call_lookup_bool(ctx, "lookup_is_miss", &lookup)? {
         return Ok(ResolvedGraphProviderOutcome::Miss);
     }
+    if call_lookup_bool(ctx, "lookup_is_refused_kind_mismatch", &lookup)? {
+        return Ok(ResolvedGraphProviderOutcome::RefusedKindMismatch);
+    }
     if call_lookup_bool(ctx, "lookup_is_refused_wrong_artifact", &lookup)? {
         return Ok(ResolvedGraphProviderOutcome::RefusedWrongArtifact);
+    }
+    if call_lookup_bool(ctx, "lookup_is_refused_wrong_content", &lookup)? {
+        return Ok(ResolvedGraphProviderOutcome::RefusedWrongContent);
+    }
+    if call_lookup_bool(ctx, "lookup_is_refused_identity_unshareable", &lookup)? {
+        return Ok(ResolvedGraphProviderOutcome::RefusedIdentityUnshareable);
+    }
+    if call_lookup_bool(ctx, "lookup_is_refused_identity_grade_unsupported", &lookup)? {
+        return Ok(ResolvedGraphProviderOutcome::RefusedIdentityGradeUnsupported);
     }
     let missing = lookup_missing_outputs(ctx, &lookup)?;
     if !missing.is_empty() {
         return Ok(ResolvedGraphProviderOutcome::RefusedIncomplete { missing });
     }
-    Ok(ResolvedGraphProviderOutcome::OtherRefusal {
-        label: lookup_outcome_label(ctx, &lookup),
+    Ok(ResolvedGraphProviderOutcome::LookupUnclassified {
+        label: lookup_outcome_label(ctx, &lookup)?,
     })
 }
 
@@ -159,7 +208,7 @@ pub fn serve_resolved_graph_v1_disk_probe(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    let ctx = build_materialization_provider_ctx()?;
+    let ctx = materialization_provider_ctx()?;
     serve_resolved_graph_v1_disk_probe_in_ctx(
         &ctx,
         closure_digest,
@@ -181,4 +230,15 @@ pub fn serve_resolved_graph_v1_disk_probe_for_test(
         content_digest,
         payload_byte_count,
     )
+}
+
+#[cfg(test)]
+pub(crate) fn materialization_provider_ctx_build_count_for_test() -> usize {
+    MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_materialization_provider_ctx_for_test() {
+    MATERIALIZATION_PROVIDER_CTX.with(|slot| *slot.borrow_mut() = None);
+    MATERIALIZATION_PROVIDER_CTX_BUILD_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
 }
