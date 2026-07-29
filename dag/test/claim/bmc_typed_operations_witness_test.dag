@@ -13,53 +13,15 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcWarningLowThreshold,
   openbmc_collection_from_values,
   openbmc_object_mapper_services_rec,
-  openbmc_operation_argv,
   openbmc_sensor_integer_projection_result,
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
-}
-import extdeps.bmc.openbmc_operation {
-  OpenBmcCriticalLow,
-  OpenBmcFanConfigScalar,
-  OpenBmcOutputCount,
-  OpenBmcReadingAt,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn closed_operation_interpreter_binds_query_arguments_as_argv() -> Bool {
-  openbmc_operation_argv(
-    operation: OpenBmcFanConfigScalar {
-      config_path: "/usr/share/swampd/config.json",
-      query: OpenBmcReadingAt { index: 3 },
-    },
-  ) == [
-    "jq",
-    "-er",
-    "--argjson",
-    "index",
-    "3",
-    "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor",
-    "/usr/share/swampd/config.json",
-  ]
-}
-
-test fn output_cardinality_uses_the_output_series() -> Bool {
-  openbmc_operation_argv(
-    operation: OpenBmcFanConfigScalar {
-      config_path: "/usr/share/swampd/config.json",
-      query: OpenBmcOutputCount,
-    },
-  ) == [
-    "jq",
-    "-er",
-    "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | length",
-    "/usr/share/swampd/config.json",
-  ]
-}
 
 test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
   match openbmc_collection_from_values(values: []) {
