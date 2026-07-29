@@ -25,8 +25,8 @@ import v2.std.orchestration {
   StrNonempty
 }
 import v2.std.collection { Absent, Present }
+import extdeps.exec.xargs { shape_xargs_null_delimited_argv }
 import extdeps.git {
-  git_shell_join_argv,
   shape_git_add_argv,
   shape_git_checkout_ours_argv,
   shape_git_commit_no_verify_no_edit_argv,
@@ -50,7 +50,7 @@ data ci_heal_skew_guard_classification_note: String = "THE AUTHORED-CONFLICT CLA
 
 data ci_heal_skew_guard_for_step_residue_note: String = "WHY THERE IS NO `For` STEP HERE. v2.std.orchestration declares a For variant, but v2.compiler.emit_orchestration.orch_emit_step REFUSES it (^orch_emit_step_for_unsupported) — For has no emitter today. Rather than add one to a load-bearing pipeline stage to serve this one caller, both loops the prior shell carried were DISSOLVED: the classification loop by the `:(exclude)` pathspec complement above, and the resolution loop by a single NUL-delimited `xargs -0` application (see ci_heal_skew_resolve_note). Neither dissolution is a workaround for the missing emitter — each is the better model independently, because a per-path shell loop was re-deriving a set git can hand over whole. If a genuine ordered-iteration intent appears later, the emitter gap is the thing to fix then."
 
-data ci_heal_skew_resolve_note: String = "RESOLUTION IS ONE NUL-DELIMITED APPLICATION, AND IT REFUSES RATHER THAN TOLERATING A FAILED CHECKOUT. `git diff --name-only --diff-filter=U -z | xargs -0 git checkout --ours --` replaces the per-path loop: NUL delimiting makes it correct for paths containing spaces or newlines, which the prior unquoted `for c in $CONFLICTS` was not. The pipe composition is deliberately a WORKFLOW fact and not an extdeps row (DESIGN §3 (b)/(c)): both argv shapes are cited extdeps declarations, while 'feed this operation's output into that one' is this job's policy. The prior cut ran `git checkout --ours -- \"$c\" 2>/dev/null || true` and then staged the path REGARDLESS — a failed resolution would stage an unresolved file, which is the fabricated-plausible-output arm §5 forbids. Here a checkout failure propagates and the step refuses, because at that point every conflict is known to be a registered generated artifact and a checkout that cannot take our side means the resolution did not happen."
+data ci_heal_skew_resolve_note: String = "RESOLUTION IS ONE NUL-DELIMITED APPLICATION, AND IT REFUSES RATHER THAN TOLERATING A FAILED CHECKOUT. `git diff --name-only --diff-filter=U -z | xargs -0 git checkout --ours --` replaces the per-path loop: NUL delimiting makes it correct for paths containing spaces or newlines, which the prior unquoted `for c in $CONFLICTS` was not. Both sides of the pipe are cited extdeps argv shapes — the producer from extdeps.git, the consumer from extdeps.exec.xargs, which carries xargs's own two authorities and the fidelity fact that `-0` is a GNU extension the POSIX spec does not define. WHICH operation feeds which is deliberately a WORKFLOW fact and not an extdeps row (DESIGN §3 (b)/(c)): 'feed this operation's output into that one' is this job's policy, not a fact about either dependency. The prior cut ran `git checkout --ours -- \"$c\" 2>/dev/null || true` and then staged the path REGARDLESS — a failed resolution would stage an unresolved file, which is the fabricated-plausible-output arm §5 forbids. Here a checkout failure propagates and the step refuses, because at that point every conflict is known to be a registered generated artifact and a checkout that cannot take our side means the resolution did not happen."
 
 data ci_heal_skew_diag_note: String = "DIAGNOSTIC RENDERING HAS ONE AUTHORITY, NOT TWELVE HAND-SPELLED LINES. v2.std.orchestration models a bash Comment (a `#` line) but has no stderr-diagnostic step, and RedirectSpec.StdoutAndStderr is the `>&2` carrier the emitter already spells (extdeps.languages.bash bash_redir_stdout_to_stderr_phrase, literally \">&2\" — the variant name reads backwards but the emitted token is correct). So each operator-facing message is DATA passed to ci_heal_skew_diag, which owns the single `echo` + quoting + redirect spelling. That is the honest scope of the former 'multi-line stderr diagnostics have no modeled shape' gap: it needed one workflow-layer authority, not a new orchestration variant. Message text carries no double quote, so the surrounding quoting is total; `$BUILT_FROM` / `$BASE_REF` expansions inside a message are intended and survive double quoting."
 
@@ -82,9 +82,13 @@ data ci_heal_skew_commit_author_email: String = "gunbc-ci-auto-heal@users.norepl
 
 data ci_heal_skew_indent_commit_list: String = "| head -20 | sed 's/^/    /'"
 
+data ci_heal_skew_pipe_operator: String = " | "
+
+data ci_heal_skew_pipe_residue_note: String = "🟡 dissolve-on: ci_heal_skew_pipe_operator — THE PIPE OPERATOR IS THE LAST TARGET-LANGUAGE TOKEN THIS MODULE SPELLS, AND CLOSING IT IS A SUBSTRATE DECISION, NOT A LOCAL ONE. Both operands are now cited argv shapes and both are joined by one local ci_heal_skew_shell_line, so what remains hand-spelled is the two-character bash operator between them. It cannot be sourced from the grammar that already models it: extdeps.languages.bash bash_pipe_phrase spells the ` | ` token, but that vocabulary is confined to the emit layer by v2.lens.realization_vocabulary_containment (LANDED #6854) and importing it HERE — a v2.workflow intent module — is precisely the leak that lens exists to red. So the honest options are exactly two, and both edit files DESIGN.md names load-bearing: a Pipe variant on v2.std.orchestration's PipelineStep, or a producer/consumer composition on Run, either way with an arm in v2.compiler.emit_orchestration. This module's brief explicitly directed 'do NOT build a new carrier', and the project spirit requires escalating before touching a load-bearing stage under a brief that predates the relevant model decision, so the token stays here, named and counted, rather than being smuggled in as a substrate change nobody asked for. DISSOLVES WHEN that carrier lands and this fn renders the composition structurally; the shape is already factored (ci_heal_skew_piped_command takes producer_argv and consumer_argv, so the call sites do not change when the body does)."
+
 fn ci_heal_skew_git_run(argv: List<String>) -> Run {
   Run {
-    command: git_shell_join_argv(argv: argv),
+    command: ci_heal_skew_shell_line(argv: argv),
     env: [],
     redirect: Absent,
     capture: Absent
@@ -93,7 +97,7 @@ fn ci_heal_skew_git_run(argv: List<String>) -> Run {
 
 fn ci_heal_skew_git_run_redirected(argv: List<String>, r: RedirectSpec) -> Run {
   Run {
-    command: git_shell_join_argv(argv: argv),
+    command: ci_heal_skew_shell_line(argv: argv),
     env: [],
     redirect: Present { value: r },
     capture: Absent
@@ -251,12 +255,26 @@ fn ci_heal_skew_authored_conflicts_bind() -> PipelineStep {
   )
 }
 
+fn ci_heal_skew_shell_line(argv: List<String>) -> String {
+  join(argv, " ")
+}
+
+fn ci_heal_skew_piped_command(producer_argv: List<String>, consumer_argv: List<String>) -> String {
+  join(
+    [
+      ci_heal_skew_shell_line(argv: producer_argv),
+      ci_heal_skew_shell_line(argv: consumer_argv)
+    ],
+    ci_heal_skew_pipe_operator
+  )
+}
+
 fn ci_heal_skew_resolve_step(sink_argv: List<String>) -> PipelineStep {
   Do {
     run: Run {
-      command: concat(
-        git_shell_join_argv(argv: shape_git_diff_unmerged_nul_argv()),
-        concat(" | xargs -0 ", git_shell_join_argv(argv: sink_argv))
+      command: ci_heal_skew_piped_command(
+        producer_argv: shape_git_diff_unmerged_nul_argv(),
+        consumer_argv: shape_xargs_null_delimited_argv(sink_argv: sink_argv)
       ),
       env: [],
       redirect: Absent,
