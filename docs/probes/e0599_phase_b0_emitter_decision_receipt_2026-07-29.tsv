@@ -1,4 +1,6 @@
 label	E0599_phase_b0_emitter_decision_census
+measured_producer	V1SeedEmitter
+measured_producer_caveat	DIAGNOSTIC COMPARISON ONLY - characterizes what the V1 SEED emitter synthesizes. NOT CompilerFixedPoint progress and NOT a v2 sizing authority; CompilerFixedPoint recenters on the V2 emitter, a different producer built from target-model rows (operator ruling 2026-07-29). Load-bearing for making the finite bootstrap adapter queue enumerable.
 question	at the emitter-decision grain, what does each R1/R2/R3 site require, why, and is it removable by ownership analysis?
 verdict	every site classifies; the requirement is a lowering decision, and the causes split 3 ways with the MAJORITY ownership-removable
 plan_of_record	P-fn Phase B0 brief (2026-07-29), superseding docs/plans/e0599-implementation-proposal.md phases B and C
@@ -7,37 +9,39 @@ census_baseline	docs/probes/e0599_canonical_seven_census_2026-07-26.tsv
 cause_authority	dag/tools/e0599_emitter_decision_census.dag (rows + operation->cause via gunbc, no second table)
 family_authority	dag/tools/e0599_probe_census.dag (R1/R2/R3 scope filter AND the canonical-seven roster, both via gunbc, no second table)
 joiner	docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD)
-witness	dag/test/claim/e0599_emitter_decision_census_witness_test.dag (19 green, 3 discriminating RED controls)
+witness	dag/test/claim/e0599_emitter_decision_census_witness_test.dag (22 green; RED controls in two classes - destination and routing)
 classification_field_contract	7 fields; the joiner REFUSES on any count mismatch (proven by perturbation: authority emitting 8 -> located refusal naming the key, exit 1)
-base_sha	fd63b06a79499ee9867eb4fa66ccf56ebfdcc4d8
-gunbc_sha256	f034eef0231f27266158381fc215b0e8c749c1b42d5a018a09731905e5a7eb5f
+routing_control	tuple projection must reach LoweringUnidentified; reverting e0599_receiver_is_field_access to its permissive form reds exactly the two tuple-projection controls and nothing else
+base_sha	0126077aa502627d6590171322fce279e76575e2
+gunbc_sha256	55a06adfe09c628f4b575316774727ece316449489353a2652013ce730847206
 cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
 rustc	rustc 1.93.0 (254b59607 2026-01-19)
 linked_collection_crate	im 15.1.0 (NOT im-rc — see the brief correction in the audit)
-external_authority_dissolve_on	the local E0599ExternalAuthority rows dissolve into extdeps.languages.rust.derive_contracts when #7399 merges (vivid-swift-837 confirmed the std::Vec keying was a real mismatch; P-fn sequences after it and mints no parallel Vec authority)
-no_perturbation_control	04_infer re-emitted+rebuilt at the FINAL tree state (census module, witness and docs present): E0599=88, identical to the measurement run -> this PR's additions do not perturb emitted output
+external_authority_state	PARTIAL dissolve-on fired at #7399: the Clone-impl row cites extdeps.languages.rust.derive_contracts im_15_1_0_vector_clone_impl_authority via cited_upstream. The inherent-impl (mod.rs:180) and Index-impl (mod.rs:1838) rows stay local with cited_upstream Absent - derive_contracts is scoped to DERIVE traits and has no row for either. Narrowed trigger: an extdeps home for non-derive im impl citations (queued on calm-badger-682, ruled NOT this PR's to create).
 protocol	CSSL_STD_SEED_LINK=1; gunbc compile --target rust -> cssl_assemble -> cargo build --release --lib --message-format=json; empty shim; authority Cargo.toml
 
 # section=b0_scope
+measured_producer	V1SeedEmitter
+measured_producer_caveat	DIAGNOSTIC COMPARISON ONLY - not CompilerFixedPoint progress and not a v2 sizing authority; CompilerFixedPoint recenters on the V2 emitter, a different producer (operator ruling 2026-07-29)
 modules_measured	06_translate,04_infer,05_eval,05_emit,emit_host,emit_module,materialization_carriers
-E0599_all_families_diagnostics	635
-R1R2R3_diagnostics	590
-R1R2R3_unique_sites	79
+E0599_all_families_diagnostics	663
+R1R2R3_diagnostics	600
+R1R2R3_unique_sites	78
 unresolved_sites	0
 
 # section=cause_rollup
 requirement_cause	unique_sites	occurrences
 TargetApiRequirement	19	168
 OwnedDeconstructionRequirement	7	63
-CloneSharedRequirement	53	359
+CloneSharedRequirement	52	369
 NoRequirement	0	0
 Unresolved	0	0
-TOTAL	79	590
+TOTAL	78	600
 
 # section=lowering_operation_rollup
 lowering_operation	unique_sites	occurrences
-IdentReferenceClone	31	214
-DerefCloneWholeValue	21	137
+IdentReferenceClone	31	222
+DerefCloneWholeValue	20	139
 FreeMonoidEmptyTest	11	98
 FreeMonoidTailIterate	8	70
 FreeMonoidHeadExtract	7	63
@@ -46,23 +50,23 @@ FieldAccessClone	1	8
 # section=legacy_helper_cross_reference
 legacy_helper_covers_required_param	unique_sites
 covered	0
-not_covered	79
+not_covered	78
 unknown	0
 
 # section=legacy_helper_bounds_produced
 note	v1_rt.rs is the hand-written seed runtime, not emitter output, and is excluded
 module_closure	helper_bounded_fns
-06_translate	17
-04_infer	17
-05_eval	18
-05_emit	17
-emit_host	20
-emit_module	17
+06_translate	18
+04_infer	18
+05_eval	19
+05_emit	18
+emit_host	22
+emit_module	18
 materialization_carriers	9
-UNION	20
+UNION	22
 
 # section=legacy_helper_overlap_with_defect_sites
-helper_bounded_fns_hosting_a_defect_site	3	of	20
+helper_bounded_fns_hosting_a_defect_site	3	of	22
 emitted_file	emitted_fn	helper_bound_param	site_required_param	disjoint
 v2_std_algebra.rs	fold_list	<T, A: Clone>	T: Clone	yes
 v2_std_algebra.rs	fold_list_right	<T, A: Clone>	T: Clone	yes
@@ -72,10 +76,6 @@ v2_std_node.rs	fold_node_topdown	<A, R: Clone>	A: Clone	yes
 emitted_file	emitted_line	emitted_fn	emitted_type_params	dag_source	dag_source_line	source_type_params	source_construct	target_representation	lowering_operation	ownership_verdict	required_trait	requirement_cause	external_authority	emitter_authority	legacy_helper	root_family	occurrences	modules
 src/extdeps_communication_fidelity_carriers.rs	46	source_medium_carried	<R>	dag/extdeps/communication/fidelity_carriers.dag	26	<R>	bare identifier reference in a value position	type parameter `R`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	R: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	4	05_emit,06_translate,emit_host,emit_module
 src/extdeps_communication_fidelity_carriers.rs	53	medium_section_equal	<R>	dag/extdeps/communication/fidelity_carriers.dag	30	<R>	field projection on a record-typed binding	type parameter `R`	FieldAccessClone	EmitterArmPresent - :6435 base_is_owned selects a bare field move; the clone is the else-arm at :6438, so the ownership verdict alone decides it (owned_bindings)	R: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6438 (emit_typed_field_access, the non-owned arm) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	8	05_emit,06_translate,emit_host,emit_module
-src/v2_compiler_translate.rs	820	target_collection_fold_list_from_node	<T>	src/v2/compiler/06_translate.dag	1290	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	struct `im::Vector<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	3	05_emit,06_translate,emit_module
-src/v2_compiler_translate.rs	820	target_collection_fold_list_from_node	<T>	src/v2/compiler/06_translate.dag	1290	<T>	bare identifier reference in a value position	type parameter `T`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	3	05_emit,06_translate,emit_module
-src/v2_compiler_translate.rs	822	target_collection_fold_list_from_node	<T>	src/v2/compiler/06_translate.dag	1290	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	struct `im::Vector<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	1	emit_host
-src/v2_compiler_translate.rs	822	target_collection_fold_list_from_node	<T>	src/v2/compiler/06_translate.dag	1290	<T>	bare identifier reference in a value position	type parameter `T`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	1	emit_host
 src/v2_std_algebra.rs	55	fold_list	<T, A: Clone>	src/v2/std/algebra.dag	50	<T, A>	match over the FreeMonoid coproduct — the Cons { head } binding	type parameter `T`	FreeMonoidHeadExtract	NotApplicable - no move or borrow exists out of shared storage; the owned element must be materialized	T: Clone	OwnedDeconstructionRequirement	im 15.1.0 src/vector/mod.rs:1838	src/v1/05_emit_rust.dag:7838 (freemonoid_nonempty_branch_body) | :8694 (tco fork)	not_covered	R1CloneBoundOnTypeParam	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
 src/v2_std_algebra.rs	55	fold_list	<T, A: Clone>	src/v2/std/algebra.dag	50	<T, A>	match over the FreeMonoid coproduct — the Empty/Cons discrimination itself	struct `Rc<im::Vector<T>>`	FreeMonoidEmptyTest	NotApplicable - a read; no copy is requested and no ownership predicate gates it	T: Clone	TargetApiRequirement	im 15.1.0 src/vector/mod.rs:180	src/v1/05_emit_rust.dag:7859 (emit_native_freemonoid_match) | :8715 (tco fork)	not_covered	R2VectorMethodBounds	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
 src/v2_std_algebra.rs	55	fold_list	<T, A: Clone>	src/v2/std/algebra.dag	50	<T, A>	match over the FreeMonoid coproduct — the Cons { tail } binding	struct `im::Vector<T>`	FreeMonoidTailIterate	NotApplicable - a read; no copy is requested and no ownership predicate gates it	T: Clone	TargetApiRequirement	im 15.1.0 src/vector/mod.rs:180	src/v1/05_emit_rust.dag:7817 (freemonoid_tail_let_from_fm)	not_covered	R2VectorMethodBounds	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
@@ -143,7 +143,10 @@ src/v2_std_diagnostic.rs	407	append_outcome_value	<T>	src/v2/std/diagnostic.dag	
 src/v2_std_diagnostic.rs	424	outcome_eq	<T>	src/v2/std/diagnostic.dag	332	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	enum `Outcome<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
 src/v2_std_diagnostic.rs	425	outcome_eq	<T>	src/v2/std/diagnostic.dag	332	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	enum `Outcome<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
 src/v2_std_diagnostic.rs	429	outcome_eq	<T>	src/v2/std/diagnostic.dag	332	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	enum `Outcome<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	7	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
+src/v2_std_fold_assembly.rs	191	decode_node_list_item_step	<T>	src/v2/std/fold_assembly.dag	140	<T>	whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee	enum `Outcome<T>`	DerefCloneWholeValue	NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate	T: Clone	CloneSharedRequirement	im 15.1.0 src/vector/mod.rs:1686	src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone	not_covered	R3ContainerCloneBounds	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module
 src/v2_std_node.rs	363	fold_node_topdown	<A, R: Clone>	src/v2/std/node.dag	238	<A,R>	bare identifier reference in a value position	type parameter `A`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	A: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	14	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
+src/v2_std_node_query.rs	162	coproduct_nullary_inhabitant_lookup_step	<T>	src/v2/std/node_query.dag	161	<T>	bare identifier reference in a value position	type parameter `T`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module
+src/v2_std_node_query.rs	165	coproduct_nullary_inhabitant_lookup_step	<T>	src/v2/std/node_query.dag	161	<T>	bare identifier reference in a value position	type parameter `T`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module
 src/v2_std_optional.rs	18	optional_present	<T>	src/v2/std/optional.dag	11	<T>	bare identifier reference in a value position	type parameter `T`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R1CloneBoundOnTypeParam	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module
 src/v2_std_optional.rs	22	optional_prefer_first_present	<T>	src/v2/std/optional.dag	15	<T>	bare identifier reference in a value position	enum `std::option::Option<T>`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R3ContainerCloneBounds	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module
 src/v2_std_optional.rs	23	optional_prefer_first_present	<T>	src/v2/std/optional.dag	15	<T>	bare identifier reference in a value position	enum `std::option::Option<T>`	IdentReferenceClone	EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)	T: Clone	CloneSharedRequirement	std rust-1.93.0 core::clone::Clone	src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value	not_covered	R3ContainerCloneBounds	6	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module

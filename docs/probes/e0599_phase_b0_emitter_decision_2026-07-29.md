@@ -24,7 +24,7 @@ interpreter execution later.
 
 So, stated plainly so this census cannot be misread later:
 
-* these 79 sites and 590 occurrences are **diagnostic comparison only**;
+* these 78 sites and 600 occurrences are **diagnostic comparison only**;
 * they are **not `CompilerFixedPoint` progress**;
 * they are **not a v2 sizing authority**. The v2 emitter is a *different producer*, built
   from target-model rows consumed by the shared translate/serialize path, so no row here
@@ -46,17 +46,19 @@ and every site classifies:
 
 | requirement cause | unique sites | occurrences | share |
 |---|---:|---:|---:|
-| `TargetApiRequirement` | 19 | 168 | 28.5% |
-| `OwnedDeconstructionRequirement` | 7 | 63 | 10.7% |
-| `CloneSharedRequirement` | **53** | **359** | **60.8%** |
+| `TargetApiRequirement` | 19 | 168 | 28.0% |
+| `OwnedDeconstructionRequirement` | 7 | 63 | 10.5% |
+| `CloneSharedRequirement` | **52** | **369** | **61.5%** |
 | `NoRequirement` | 0 | 0 | — |
 | `Unresolved` | **0** | **0** | — |
-| **TOTAL** | **79** | **590** | 100% |
+| **TOTAL** | **78** | **600** | 100% |
 
-Acceptance, met to the unit: **79 unique sites**, **590 replicated occurrences**, **zero
-unresolved**, **no default or "other" bucket absorbing anything** (the `Unresolved`
-variant is real and fires — §6 proves it by perturbation), and Phase A's 35 former
-unknowns all classified through the real compilation path.
+Measured at the merged head (`914da873`), after four PRs landed mid-review. **The brief's
+acceptance figures — 79 sites / 590 occurrences — were met exactly at the sha the brief
+was written against**, and the corpus has since moved; §3.1 reports both and attributes
+every unit of the difference. Zero unresolved, no default or "other" bucket absorbing
+anything (the `Unresolved` variant is real and fires — §6 proves it in two directions),
+and Phase A's 35 former unknowns all classified through the real compilation path.
 
 ## 2. The load-bearing correction: most of the population *is* ownership-removable
 
@@ -66,9 +68,11 @@ The brief rules that routing R1/R3 into ownership work is the wrong axis, and ad
 > verified facts below.
 
 **Measured, that is the other way round.** `CloneSharedRequirement` — the one cause the
-brief assigns to `emitter-ownership-defork` — is **359 of 590 occurrences (60.8%)** and
-**53 of 79 sites (67.1%)**. The two representation-imposed causes together are 231
-occurrences (39.2%).
+brief assigns to `emitter-ownership-defork` — is **369 of 600 occurrences (61.5%)** and
+**52 of 78 sites (66.7%)**. The two representation-imposed causes together are 231
+occurrences (38.5%). The finding survived the corpus moving under it: at the pre-merge sha
+it was 359/590 (60.8%), so four landings shifted the share by 0.7 points and did not
+touch the conclusion.
 
 This does not disturb the brief's *ruling* — B0 was authorized regardless, and the split
 is exactly what B0 was told to measure rather than infer. It does change the sizing that
@@ -82,8 +86,8 @@ The split by census family is unusually clean, which is why it is worth trusting
 | root family | occurrences | cause composition |
 |---|---:|---|
 | R2 vector method bounds | 168 | **100% `TargetApiRequirement`** |
-| R3 container clone bounds | 161 | **100% `CloneSharedRequirement`** |
-| R1 clone bound on type param | 261 | 198 `CloneShared` (75.9%) / 63 `OwnedDeconstruction` (24.1%) |
+| R3 container clone bounds | 163 | **100% `CloneSharedRequirement`** |
+| R1 clone bound on type param | 269 | 206 `CloneShared` (76.6%) / 63 `OwnedDeconstruction` (23.4%) |
 
 R2 and R3 are each a single cause end to end. Only R1 is mixed — and its mix is exactly
 the head-extract lowering (63) against everything else.
@@ -97,50 +101,89 @@ diagnostic carries an exact span rather than a scraped line. Causes load from
 `dag/tools/e0599_probe_census.dag`, both through `gunbc` — **no second table in the
 joiner**.
 
-### 3.1 The instrument reproduces the census exactly
+### 3.1 Instrument soundness, and what four merges did to the population
 
-| module | measured | census baseline | Δ |
+Two measurements are reported, because they say different things and neither substitutes
+for the other.
+
+**(a) Soundness, at the sha the brief was written against.** The instrument reproduced the
+frozen Phase A census **Δ=0 on every module** — 04_infer 88, 05_emit 93, 05_eval 91,
+06_translate 93, emit_host 96, emit_module 93, materialization_carriers 81, **total 635**,
+with R1+R2+R3 = **590** across **79** unique sites. That is a fact about that sha and it
+is what establishes the instrument is sound before being used to conclude anything. It is
+also the brief's acceptance figure, met to the unit.
+
+**(b) The merged head (`914da873`), after four PRs landed mid-review.** The population
+moved:
+
+| module | merged head | pre-merge | Δ |
 |---|---:|---:|---:|
-| 04_infer | 88 | 88 | 0 |
-| 05_emit | 93 | 93 | 0 |
-| 05_eval | 91 | 91 | 0 |
-| 06_translate | 93 | 93 | 0 |
-| emit_host | 96 | 96 | 0 |
-| emit_module | 93 | 93 | 0 |
+| 04_infer | 94 | 88 | +6 |
+| 05_emit | 97 | 93 | +4 |
+| 05_eval | 97 | 91 | +6 |
+| 06_translate | 97 | 93 | +4 |
+| emit_host | 100 | 96 | +4 |
+| emit_module | 97 | 93 | +4 |
 | materialization_carriers | 81 | 81 | 0 |
-| **TOTAL** | **635** | **635** | **0** |
+| **TOTAL** | **663** | **635** | **+28** |
 
-**No-perturbation control.** This PR adds a `dag/tools/` module, a witness and docs, all
-of which enter the whole-tree index that `gunbc compile` builds. Re-emitting and
-rebuilding `04_infer` at the final tree state yields **E0599 = 88**, identical to the
-measurement run — so the additions do not perturb emitted output and the census is valid
-at the sha it is stamped with.
+R1+R2+R3 goes 590 → **600**, and unique sites go 79 → **78**. Sites falling while
+occurrences rise needs explaining, so it is explained rather than reported:
 
-R1+R2+R3 = 590, and the per-emitted-file distribution reproduces Phase A's to the unit
-(`algebra` 413, `diagnostic` 112, `optional` 18, `node` 14, `fidelity_carriers` 12,
-`translate` 8, `collection` 6, `witness` 6, `staging` 1).
+| change | sites | cause |
+|---|---:|---|
+| `target_collection_fold_list_from_node` (`06_translate`) — `DerefCloneWholeValue` ×2, `IdentReferenceClone` ×2 | **−4** | #7324 rewrote this function; its defect sites are gone |
+| `coproduct_nullary_inhabitant_lookup_step` (`node_query`) — `IdentReferenceClone` | **+2** | new generic code from #7324 |
+| `decode_node_list_item_step` (`fold_assembly`) — `DerefCloneWholeValue` | **+1** | new generic code from #7324 |
+| **net** | **−1** | 79 − 4 + 3 = **78** |
+
+Every unit is attributed to #7324, and **no site disappeared for any reason other than the
+function being rewritten**. This is corpus growth and corpus churn, not instrument drift:
+the mechanism is unchanged, the population tracks the code.
+
+**This was an unplanned generalization test, and the classifier passed it.** The new sites
+are code the taxonomy was never designed against. Their receivers —
+`(*decode_item(item_node.clone()))`, `inhabitant`, `(*acc.clone())`,
+`(*coproduct_nullary_inhabitant_lookup_all(…))` — all classify with **existing** rows, and
+**`Unresolved` stayed at zero**. A fifth new diagnostic, `lookup` on
+`Rc<im::HashMap<…>>`, is correctly dropped by the family filter before the classifier sees
+it (it is not `clone`/`is_empty`/`iter`, so it is R6, outside R1/R2/R3 scope).
+
+**What did not move at all:** `TargetApiRequirement` (19 sites / 168 occurrences) and
+`OwnedDeconstructionRequirement` (7 / 63) are **identical across both measurements**. The
+entire delta is inside `CloneSharedRequirement`. The representation-imposed causes are
+exactly as stable as the mechanism analysis says they should be.
+
+The per-emitted-file distribution is otherwise unchanged (`algebra` 413, `diagnostic` 112,
+`optional` 18, `node` 14, `fidelity_carriers` 12, `collection` 6, `witness` 6, `staging`
+1), with `node_query` 12 and `fold_assembly` 6 joining it.
+
+**No-perturbation control.** This PR adds a `dag/tools/` module, a witness and docs, all of
+which enter the whole-tree index that `gunbc compile` builds. Re-emitting and rebuilding
+`04_infer` at the final tree state reproduced its count exactly, so the additions do not
+perturb emitted output.
 
 ### 3.2 Phase A's 35 unknowns are all resolved
 
 Phase A carried 35 diagnostics as `unknown` — 14 behind a standalone `parse_module`
 refusal on `std/node.dag`, 21 in three off-roster files. B0 reads the **emitted artifact
 at the exact reported span** instead of re-parsing the source standalone, so the refusal
-class does not arise: all 79 sites resolve to an enclosing emitted fn, and **all 79
+class does not arise: all 78 sites resolve to an enclosing emitted fn, and **all 78
 resolve to a `.dag` source module** (joined on each module's own `module` declaration, not
 a filename heuristic — `v2.compiler.translate` lives in `06_translate.dag`).
 
 ### 3.3 The receiver expression is the discriminator
 
 rustc's primary span highlights the failing method segment exactly, so the receiver is the
-balanced postfix expression ending at the preceding `.`. Across all 590 occurrences the
+balanced postfix expression ending at the preceding `.`. Across all 600 occurrences the
 whole population reduces to **six inhabited** receiver shapes (of seven declared rows —
 `FreeMonoidCatchallBind` is declared and explicitly uninhabited), each one a literal the
 emitter concatenates:
 
 | lowering operation | emitter authority | sites | occurrences | cause |
 |---|---|---:|---:|---|
-| `IdentReferenceClone` | `05_emit_rust.dag:6320`/`:6330` via `sharing.clone_value` | 31 | 214 | CloneShared |
-| `DerefCloneWholeValue` | `:6434`/`:6959`/`:7587`/`:7893`/`:8748` via `sharing.deref_clone` | 21 | 137 | CloneShared |
+| `IdentReferenceClone` | `05_emit_rust.dag:6320`/`:6330` via `sharing.clone_value` | 31 | 222 | CloneShared |
+| `DerefCloneWholeValue` | `:6434`/`:6959`/`:7587`/`:7893`/`:8748` via `sharing.deref_clone` | 20 | 139 | CloneShared |
 | `FreeMonoidEmptyTest` | `:7859` (`emit_native_freemonoid_match`), `:8715` tco fork | 11 | 98 | TargetApi |
 | `FreeMonoidTailIterate` | `:7817` (`freemonoid_tail_let_from_fm`) | 8 | 70 | TargetApi |
 | `FreeMonoidHeadExtract` | `:7838`, `:8694` tco fork | 7 | 63 | OwnedDeconstruction |
@@ -149,7 +192,7 @@ emitter concatenates:
 ### 3.4 Phase A's emitter-site table was incomplete — the dominant producer was missing
 
 Phase A receipted 17 `sharing.*` template applications. **None of them is the FreeMonoid
-match lowering**, which produces 231 of the 590 occurrences (39.2%) from
+match lowering**, which produces 231 of the 600 occurrences (38.5%) from
 `emit_native_freemonoid_match` and its byte-identical TCO fork. Those three literals
 (`:7817`, `:7838`, `:7859`) are added here.
 
@@ -183,7 +226,7 @@ bound `A`, while every one of them needs `T`.
 (reproducing Phase A exactly) and **20** across the union of all seven, once `v1_rt.rs` —
 the hand-written seed runtime, not emitter output — is excluded.
 
-Of those 20, only **3** host any of the 79 defect sites, and in every one the helper bound
+Of those 20, only **3** host any of the 78 defect sites, and in every one the helper bound
 a **different type parameter** than the site requires:
 
 | emitted fn | helper bound | site requires | disjoint |
@@ -192,7 +235,7 @@ a **different type parameter** than the site requires:
 | `fold_list_right` | `<T, A: Clone>` | `T: Clone` | yes |
 | `fold_node_topdown` | `<A, R: Clone>` | `A: Clone` | yes |
 
-So the census column reads **covered 0 / not_covered 79** — and that zero is structural,
+So the census column reads **covered 0 / not_covered 78** — and that zero is structural,
 not a counting artifact. The helper's rule (a) is driven by *value-clone of the return*
 and lands on the return's type param; the sites are driven by *element and collection
 access* and land on the element's type param.
@@ -227,11 +270,11 @@ site, whether the emitter already *has* a move arm gated on an ownership predica
 
 | ownership alternative | sites | occurrences | what B2 must do |
 |---|---:|---:|---|
-| `EmitterArmPresent` | 32 | 222 | flip an existing predicate — `moves_by_value` (`:6318`) or `base_is_owned` (`:6435`) already select a bare move; the clone is the else-arm |
-| `NoEmitterArm` | 21 | 137 | **add** an arm — `:6959`/`:7587` clone on both branches, `:7893`/`:8748` is unconditional, and `05_emit_rust.dag` contains **zero** `Rc::try_unwrap`/`make_mut` (the seed runtime `v1_rt.rs` uses that shape, the emitter never emits it) |
+| `EmitterArmPresent` | 32 | 230 | flip an existing predicate — `moves_by_value` (`:6318`) or `base_is_owned` (`:6435`) already select a bare move; the clone is the else-arm |
+| `NoEmitterArm` | 20 | 139 | **add** an arm — `:6959`/`:7587` clone on both branches, `:7893`/`:8748` is unconditional, and `05_emit_rust.dag` contains **zero** `Rc::try_unwrap`/`make_mut` (the seed runtime `v1_rt.rs` uses that shape, the emitter never emits it) |
 
-So of the 359 ownership-removable occurrences, 222 are gated by a verdict that already
-exists and 137 need new emitter capability. That is a sizing fact B2 should inherit rather
+So of the 369 ownership-removable occurrences, 230 are gated by a verdict that already
+exists and 139 need new emitter capability. That is a sizing fact B2 should inherit rather
 than rediscover.
 
 **What this column is not.** It records *which ownership predicate governs the site* and
