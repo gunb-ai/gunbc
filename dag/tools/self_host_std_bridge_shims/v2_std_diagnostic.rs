@@ -121,6 +121,55 @@ pub fn textual_whole_file_locus(file: Symbol) -> Rc<Locus> {
     })
 }
 
+pub fn diag_none() -> Rc<Diagnostics> {
+    Rc::new(Diagnostics::None)
+}
+
+pub fn diagnostics_merge(outer: Rc<Diagnostics>, inner: Rc<Diagnostics>) -> Rc<Diagnostics> {
+    match (outer.as_ref(), inner.as_ref()) {
+        (Diagnostics::None, Diagnostics::None) => Rc::new(Diagnostics::None),
+        (Diagnostics::None, Diagnostics::Some { diagnostics }) => Rc::new(Diagnostics::Some {
+            diagnostics: diagnostics.clone(),
+        }),
+        (Diagnostics::Some { diagnostics: a }, Diagnostics::None) => Rc::new(Diagnostics::Some {
+            diagnostics: a.clone(),
+        }),
+        (Diagnostics::Some { diagnostics: a }, Diagnostics::Some { diagnostics: b }) => {
+            let mut merged = a.tail.as_ref().clone();
+            merged.push_back(a.head.clone());
+            merged.extend(b.tail.iter().cloned());
+            merged.push_back(b.head.clone());
+            let head = merged.pop_front().unwrap();
+            Rc::new(Diagnostics::Some {
+                diagnostics: Rc::new(NonEmptyDiagnostics {
+                    head,
+                    tail: Rc::new(merged),
+                }),
+            })
+        }
+    }
+}
+
+pub fn rejected_with_pending(
+    pending: Rc<Diagnostics>,
+    rejected: Rc<NonEmptyDiagnostics>,
+) -> Rc<NonEmptyDiagnostics> {
+    match pending.as_ref() {
+        Diagnostics::None => rejected,
+        Diagnostics::Some { diagnostics: p } => {
+            let mut merged = p.tail.as_ref().clone();
+            merged.push_back(p.head.clone());
+            merged.extend(rejected.tail.iter().cloned());
+            merged.push_back(rejected.head.clone());
+            let head = merged.pop_front().unwrap();
+            Rc::new(NonEmptyDiagnostics {
+                head,
+                tail: Rc::new(merged),
+            })
+        }
+    }
+}
+
 pub fn outcome_accepted<T>(value: T) -> Rc<Outcome<T>> {
     Rc::new(Outcome::Accepted {
         value,
