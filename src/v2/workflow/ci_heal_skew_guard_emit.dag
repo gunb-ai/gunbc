@@ -4,7 +4,6 @@ import v2.workflow.orchestration_bash_emit_support {
   orch_bash_emit_pipeline
 }
 import v2.std.orchestration {
-  Absent,
   DiscardErr,
   DiscardOut,
   Do,
@@ -25,7 +24,7 @@ import v2.std.orchestration {
   StdoutAndStderr,
   StrNonempty
 }
-import v2.std.collection { Present }
+import v2.std.collection { Absent, Present }
 import extdeps.git {
   git_shell_join_argv,
   shape_git_add_argv,
