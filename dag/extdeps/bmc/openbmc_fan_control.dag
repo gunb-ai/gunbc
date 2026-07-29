@@ -5,11 +5,18 @@ import extdeps.ssh.password_session {
   PasswordSshExecResult,
   PasswordSshSession,
   password_ssh_session_copy_file,
-  password_ssh_session_exec_argv,
 }
-import extdeps.tools.jq
+import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.languages.json.emit {
+  json_array,
+  json_int,
+  json_kv,
+  json_object,
+  json_string,
+  serialize_json,
+}
 import extdeps.uri { Https, Uri }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -32,87 +39,199 @@ type OpenBmcLocalTransformResult {
   stderr: String
 }
 
-data openbmc_fan_config_projection_filter: NonEmptyStr = "if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then error(\"expected exactly one TEMP_SOC stepwise controller\") elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then error(\"expected exactly one projected aggregate fan PID entry\") else .zones |= map(if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then .minThermalOutput = $desired.minimum | .failsafePercent = $desired.zone_failsafe_duty | .pids |= map(if .name == $desired.fan_pid_entry and .type == \"fan\" then .inputs = $desired.fan_inputs elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then .failsafePercent = $desired.sensor_failsafe | .pid.positiveHysteresis = $desired.positive_hysteresis | .pid.negativeHysteresis = $desired.negative_hysteresis | .pid.reading = ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) | .pid.output = ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries) else . end) else . end) end"
+type OpenBmcOperation
+  = OpenBmcReadFile { path: NonEmptyStr }
+  | OpenBmcResolvePath { path: NonEmptyStr }
+  | OpenBmcParentDirectory { path: NonEmptyStr }
+  | OpenBmcSystemdIsActive { service: NonEmptyStr }
+  | OpenBmcSystemdRestart { service: NonEmptyStr }
+  | OpenBmcZoneFailsafe { zone_path: NonEmptyStr }
+  | OpenBmcSensorServices { sensor_path: NonEmptyStr }
+  | OpenBmcSensorValue { service: NonEmptyStr, sensor_path: NonEmptyStr }
+  | OpenBmcFanConfigScalar {
+      config_path: NonEmptyStr,
+      query: OpenBmcFanConfigQuery,
+    }
+  | OpenBmcFanConfigValidate { config_path: NonEmptyStr }
+  | OpenBmcFanConfigVerify {
+      config_path: NonEmptyStr,
+      desired: OpenBmcFanConfigDesired,
+    }
+  | OpenBmcPathIsWritable { path: NonEmptyStr }
+  | OpenBmcPathExists { path: NonEmptyStr }
+  | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
+  | OpenBmcDiskUsageKib { path: NonEmptyStr }
+  | OpenBmcUtcTimestamp
+  | OpenBmcMakeDirectory { path: NonEmptyStr, parents: Bool }
+  | OpenBmcRemoveDirectory { path: NonEmptyStr }
+  | OpenBmcRemoveFile { path: NonEmptyStr }
+  | OpenBmcCopyFilePreservingMetadata {
+      source_path: NonEmptyStr,
+      destination_path: NonEmptyStr,
+    }
+  | OpenBmcRenameReplace {
+      source_path: NonEmptyStr,
+      destination_path: NonEmptyStr,
+    }
+  | OpenBmcSynchronizeFilesystems
+  | OpenBmcWaitSeconds { seconds: Int }
 
-data openbmc_fan_config_verify_filter: NonEmptyStr = "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0]) as $zone | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0]) as $pid | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")][0]) as $fan | ($zone.minThermalOutput == $desired.minimum) and ($zone.failsafePercent == $desired.zone_failsafe_duty) and ($pid.failsafePercent == $desired.sensor_failsafe) and ($pid.pid.positiveHysteresis == $desired.positive_hysteresis) and ($pid.pid.negativeHysteresis == $desired.negative_hysteresis) and ($pid.pid.reading == ($desired.readings | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($pid.pid.output == ($desired.outputs | to_entries | map(\{key: (.key | tostring), value: .value}) | from_entries)) and ($fan.inputs == $desired.fan_inputs)"
+type OpenBmcFanConfigQuery
+  = OpenBmcStepwiseCount
+  | OpenBmcMinimumDuty
+  | OpenBmcZoneFailsafeDuty
+  | OpenBmcSensorFailsafeDuty
+  | OpenBmcPositiveHysteresis
+  | OpenBmcNegativeHysteresis
+  | OpenBmcReadingCount
+  | OpenBmcReadingAt { index: Int }
+  | OpenBmcOutputAt { index: Int }
+  | OpenBmcFanControllerCount
+  | OpenBmcFanControllerNameAt { index: Int }
+  | OpenBmcFanInputCountAt { fan_index: Int }
+  | OpenBmcFanInputAt { fan_index: Int, input_index: Int }
 
-data openbmc_fan_config_observation_filter: NonEmptyStr = "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0]) as $zone | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $targets | ($targets[0]) as $pid | ([.zones[].pids[] | select(.type == \"fan\")]) as $fans | [($targets | length), ($zone.minThermalOutput | floor), ($zone.failsafePercent | floor), ($pid.failsafePercent | floor), ($pid.pid.positiveHysteresis | floor), ($pid.pid.negativeHysteresis | floor), ($pid.pid.reading | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")), ($pid.pid.output | to_entries | sort_by(.key | tonumber) | map(.value) | join(\",\")), ($fans | map(.name) | join(\",\")), ($fans | length), ($fans[0].inputs | join(\",\"))] | @tsv"
+type OpenBmcSelection<T>
+  = OpenBmcSelectionZero
+  | OpenBmcSelectionOne { value: T }
+  | OpenBmcSelectionMany { count: Int }
 
-data openbmc_object_mapper_service_filter: NonEmptyStr = ".data[0] | keys[0]"
+type OpenBmcCollection<T>
+  = OpenBmcCollectionZero
+  | OpenBmcCollectionOne { value: T }
+  | OpenBmcCollectionMany { values: List<T> }
 
-data openbmc_sensor_numeric_value_filter: NonEmptyStr = ".data | if type == \"number\" then round else null end"
-
-fn openbmc_read_file(
-  session: PasswordSshSession,
-  path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(session: session, argv: ["cat", path as String])
+type OpenBmcStepwiseController {
+  minimum_duty: Int
+  zone_failsafe_duty: Int
+  sensor_failsafe_duty: Int
+  positive_hysteresis: Int
+  negative_hysteresis: Int
+  readings: List<Int>
+  outputs: List<Int>
 }
 
-fn openbmc_resolve_path(
-  session: PasswordSshSession,
-  path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["readlink", "-f", path as String],
-  )
+type OpenBmcFanConfigDesired {
+  minimum_duty: Int
+  zone_failsafe_duty: Int
+  sensor_failsafe_duty: Int
+  positive_hysteresis: Int
+  negative_hysteresis: Int
+  readings: List<Int>
+  outputs: List<Int>
+  fan_controller_name: NonEmptyStr
+  fan_inputs: List<NonEmptyStr>
 }
 
-fn openbmc_parent_directory(
-  session: PasswordSshSession,
-  path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["dirname", path as String],
-  )
+fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "minimum", value: json_int(n: desired.minimum_duty)),
+    json_kv(key: "zone_failsafe_duty", value: json_int(n: desired.zone_failsafe_duty)),
+    json_kv(key: "sensor_failsafe", value: json_int(n: desired.sensor_failsafe_duty)),
+    json_kv(key: "positive_hysteresis", value: json_int(n: desired.positive_hysteresis)),
+    json_kv(key: "negative_hysteresis", value: json_int(n: desired.negative_hysteresis)),
+    json_kv(
+      key: "readings",
+      value: json_array(elements: desired.readings |> map(value => json_int(n: value))),
+    ),
+    json_kv(
+      key: "outputs",
+      value: json_array(elements: desired.outputs |> map(value => json_int(n: value))),
+    ),
+    json_kv(
+      key: "fan_pid_entry",
+      value: json_string(s: desired.fan_controller_name as String),
+    ),
+    json_kv(
+      key: "fan_inputs",
+      value: json_array(elements: desired.fan_inputs |> map(value =>
+        json_string(s: value as String)
+      )),
+    ),
+  ]))
 }
 
-fn openbmc_systemd_is_active(
-  session: PasswordSshSession,
-  service: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["systemctl", "is-active", service as String],
-  )
+type OpenBmcFanController {
+  name: NonEmptyStr
+  inputs: List<NonEmptyStr>
 }
 
-fn openbmc_systemd_restart(
-  session: PasswordSshSession,
-  service: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["systemctl", "restart", service as String],
-  )
+type OpenBmcFanConfigObservation {
+  stepwise: OpenBmcSelection<OpenBmcStepwiseController>
+  fan_controllers: OpenBmcCollection<OpenBmcFanController>
 }
 
-fn openbmc_zone_failsafe(
-  session: PasswordSshSession,
-  zone_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: [
+type OpenBmcFanConfigObservationResult
+  = OpenBmcFanConfigObserved { observation: OpenBmcFanConfigObservation }
+  | OpenBmcFanConfigObservationRefused { reason: String }
+
+fn openbmc_fan_config_selector(query: OpenBmcFanConfigQuery) -> NonEmptyStr {
+  match query {
+    OpenBmcStepwiseCount =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length"
+    OpenBmcMinimumDuty =>
+      "[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].minThermalOutput | floor"
+    OpenBmcZoneFailsafeDuty =>
+      "[.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))][0].failsafePercent | floor"
+    OpenBmcSensorFailsafeDuty =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].failsafePercent | floor"
+    OpenBmcPositiveHysteresis =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.positiveHysteresis | floor"
+    OpenBmcNegativeHysteresis =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.negativeHysteresis | floor"
+    OpenBmcReadingCount =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | length"
+    OpenBmcReadingAt { index: _ } =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor"
+    OpenBmcOutputAt { index: _ } =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | to_entries | sort_by(.key | tonumber) | .[$index].value | floor"
+    OpenBmcFanControllerCount =>
+      "[.zones[].pids[] | select(.type == \"fan\")] | length"
+    OpenBmcFanControllerNameAt { index: _ } =>
+      "[.zones[].pids[] | select(.type == \"fan\")][$index].name"
+    OpenBmcFanInputCountAt { fan_index: _ } =>
+      "[.zones[].pids[] | select(.type == \"fan\")][$fan_index].inputs | length"
+    OpenBmcFanInputAt { fan_index: _, input_index: _ } =>
+      "[.zones[].pids[] | select(.type == \"fan\")][$fan_index].inputs[$input_index]"
+  }
+}
+
+fn openbmc_fan_config_query_args(query: OpenBmcFanConfigQuery) -> List<String> {
+  match query {
+    OpenBmcReadingAt { index } => ["--argjson", "index", to_string(index)]
+    OpenBmcOutputAt { index } => ["--argjson", "index", to_string(index)]
+    OpenBmcFanControllerNameAt { index } => ["--argjson", "index", to_string(index)]
+    OpenBmcFanInputCountAt { fan_index } => ["--argjson", "fan_index", to_string(fan_index)]
+    OpenBmcFanInputAt { fan_index, input_index } => [
+      "--argjson",
+      "fan_index",
+      to_string(fan_index),
+      "--argjson",
+      "input_index",
+      to_string(input_index),
+    ]
+    _ => []
+  }
+}
+
+type OpenBmcCommandWire = NonEmptyStr where brand("OpenBmcCommandWire")
+
+fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
+  match operation {
+    OpenBmcReadFile { path } => ["cat", path as String]
+    OpenBmcResolvePath { path } => ["readlink", "-f", path as String]
+    OpenBmcParentDirectory { path } => ["dirname", path as String]
+    OpenBmcSystemdIsActive { service } => ["systemctl", "is-active", service as String]
+    OpenBmcSystemdRestart { service } => ["systemctl", "restart", service as String]
+    OpenBmcZoneFailsafe { zone_path } => [
       "busctl",
       "get-property",
       "xyz.openbmc_project.State.FanCtrl",
       zone_path as String,
       "xyz.openbmc_project.Control.Mode",
       "FailSafe",
-    ],
-  )
-}
-
-fn openbmc_sensor_service(
-  session: PasswordSshSession,
-  sensor_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  let remote = password_ssh_session_exec_argv(
-    session: session,
-    argv: [
+    ]
+    OpenBmcSensorServices { sensor_path } => [
       "busctl",
       "--json=short",
       "call",
@@ -124,20 +243,337 @@ fn openbmc_sensor_service(
       sensor_path as String,
       "1",
       "xyz.openbmc_project.Sensor.Value",
-    ],
+    ]
+    OpenBmcSensorValue { service, sensor_path } => [
+      "busctl",
+      "--json=short",
+      "get-property",
+      service as String,
+      sensor_path as String,
+      "xyz.openbmc_project.Sensor.Value",
+      "Value",
+    ]
+    OpenBmcFanConfigScalar { config_path, query } =>
+      append(
+        append(["jq", "-er"], items: openbmc_fan_config_query_args(query: query)),
+        items: [openbmc_fan_config_selector(query: query) as String, config_path as String],
+      )
+    OpenBmcFanConfigValidate { config_path } => ["jq", "empty", config_path as String]
+    OpenBmcFanConfigVerify { config_path, desired } => [
+      "jq",
+      "-e",
+      "--argjson",
+      "desired",
+      openbmc_fan_config_desired_json(desired: desired),
+      "([.zones[] | select(any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\"))]) as $zones | ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")]) as $pids | ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")]) as $fans | (($zones | length) == 1) and (($pids | length) == 1) and (($fans | length) == 1) and ($zones[0].minThermalOutput == $desired.minimum) and ($zones[0].failsafePercent == $desired.zone_failsafe_duty) and ($pids[0].failsafePercent == $desired.sensor_failsafe) and ($pids[0].pid.positiveHysteresis == $desired.positive_hysteresis) and ($pids[0].pid.negativeHysteresis == $desired.negative_hysteresis) and ($pids[0].pid.reading == ($desired.readings | to_entries | map({key: (.key | tostring), value: .value}) | from_entries)) and ($pids[0].pid.output == ($desired.outputs | to_entries | map({key: (.key | tostring), value: .value}) | from_entries)) and ($fans[0].inputs == $desired.fan_inputs)",
+      config_path as String,
+    ]
+    OpenBmcPathIsWritable { path } => ["test", "-w", path as String]
+    OpenBmcPathExists { path } => ["test", "-e", path as String]
+    OpenBmcPathIsNonemptyFile { path } => ["test", "-s", path as String]
+    OpenBmcDiskUsageKib { path } => ["df", "-Pk", path as String]
+    OpenBmcUtcTimestamp => ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"]
+    OpenBmcMakeDirectory { path, parents } =>
+      if parents { ["mkdir", "-p", path as String] } else { ["mkdir", path as String] }
+    OpenBmcRemoveDirectory { path } => ["rmdir", path as String]
+    OpenBmcRemoveFile { path } => ["rm", "-f", path as String]
+    OpenBmcCopyFilePreservingMetadata { source_path, destination_path } =>
+      ["cp", "-p", source_path as String, destination_path as String]
+    OpenBmcRenameReplace { source_path, destination_path } =>
+      ["mv", "-f", source_path as String, destination_path as String]
+    OpenBmcSynchronizeFilesystems => ["sync"]
+    OpenBmcWaitSeconds { seconds } => ["sleep", to_string(seconds)]
+  }
+}
+
+fn openbmc_operation_wire(operation: OpenBmcOperation) -> OpenBmcCommandWire {
+  shell_command_render(
+    command: ArgvCommand { argv: openbmc_operation_argv(operation: operation) },
+  ) as OpenBmcCommandWire
+}
+
+service openbmc.PasswordSsh {
+  operation Execute {
+    input {
+      host: NonEmptyStr
+      username: NonEmptyStr
+      password: Secret
+      known_hosts_path: NonEmptyStr
+      command_wire: OpenBmcCommandWire
+    }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "sshpass",
+        "-d",
+        "0",
+        "ssh",
+        "-T",
+        "-o",
+        "PreferredAuthentications=password,keyboard-interactive",
+        "-o",
+        "PubkeyAuthentication=no",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "UserKnownHostsFile={known_hosts_path}",
+        "-o",
+        "LogLevel=ERROR",
+        "-o",
+        "ConnectTimeout=10",
+        "{username}@{host}",
+        "--",
+        "{command_wire}",
+      ]
+      stdin: password
+    }
+    exit {
+      0 => Unit
+      nonzero => String "OpenBMC operation failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-openbmc-operation", stderr: "" } "hermetic closed OpenBMC operation"
+    }
+  }
+}
+
+fn openbmc_execute(
+  session: PasswordSshSession,
+  operation: OpenBmcOperation,
+) -> PasswordSshExecResult {
+  let result = openbmc.PasswordSsh.Execute(
+    host: session.host,
+    username: session.username,
+    password: session.password,
+    known_hosts_path: session.known_hosts_path,
+    command_wire: openbmc_operation_wire(operation: operation),
+  )
+  PasswordSshExecResult {
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  }
+}
+
+service openbmc.JsonProjection {
+  operation ProjectFanConfig {
+    input {
+      desired_json: String
+      path: NonEmptyStr
+    }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: [
+        "jq",
+        "--argjson",
+        "desired",
+        "{desired_json}",
+        "if ([.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")] | length) != 1 then error(\"expected exactly one TEMP_SOC stepwise controller\") elif ([.zones[].pids[] | select(.name == $desired.fan_pid_entry and .type == \"fan\")] | length) != 1 then error(\"expected exactly one projected aggregate fan PID entry\") else .zones |= map(if any(.pids[]; .name == \"TEMP_SOC\" and .type == \"stepwise\") then .minThermalOutput = $desired.minimum | .failsafePercent = $desired.zone_failsafe_duty | .pids |= map(if .name == $desired.fan_pid_entry and .type == \"fan\" then .inputs = $desired.fan_inputs elif .name == \"TEMP_SOC\" and .type == \"stepwise\" then .failsafePercent = $desired.sensor_failsafe | .pid.positiveHysteresis = $desired.positive_hysteresis | .pid.negativeHysteresis = $desired.negative_hysteresis | .pid.reading = ($desired.readings | to_entries | map({key: (.key | tostring), value: .value}) | from_entries) | .pid.output = ($desired.outputs | to_entries | map({key: (.key | tostring), value: .value}) | from_entries) else . end) else . end) end",
+        "{path}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "OpenBMC fan config projection failed"
+    }
+  }
+
+  operation ObjectMapperServiceCount {
+    input { content: String }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["jq", "-er", ".data[0] | keys | length"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ObjectMapper service count projection failed"
+    }
+  }
+
+  operation ObjectMapperServiceAt {
+    input { content: String, index: Int }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["jq", "-er", "--argjson", "index", "{index}", ".data[0] | keys | .[$index]"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ObjectMapper service projection failed"
+    }
+  }
+
+  operation SensorIntegerValue {
+    input { content: String }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell {
+      argv: ["jq", "-er", "if (.data | type) == \"number\" then (.data | round) else empty end"]
+      stdin: content
+    }
+    exit {
+      0 => Unit
+      nonzero => String "sensor integer projection failed"
+    }
+  }
+}
+
+fn openbmc_read_file(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcReadFile { path: path })
+}
+
+fn openbmc_resolve_path(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcResolvePath { path: path })
+}
+
+fn openbmc_parent_directory(
+  session: PasswordSshSession,
+  path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcParentDirectory { path: path })
+}
+
+fn openbmc_systemd_is_active(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcSystemdIsActive { service: service })
+}
+
+fn openbmc_systemd_restart(
+  session: PasswordSshSession,
+  service: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcSystemdRestart { service: service })
+}
+
+fn openbmc_zone_failsafe(
+  session: PasswordSshSession,
+  zone_path: NonEmptyStr,
+) -> PasswordSshExecResult {
+  openbmc_execute(session: session, operation: OpenBmcZoneFailsafe { zone_path: zone_path })
+}
+
+type OpenBmcSensorServicesResult
+  = OpenBmcSensorServicesObserved {
+      services: OpenBmcCollection<NonEmptyStr>,
+    }
+  | OpenBmcSensorServicesRefused { reason: String }
+
+type OpenBmcSensorValueResult
+  = OpenBmcSensorValueObserved { value: Int }
+  | OpenBmcSensorValueAbsent
+  | OpenBmcSensorValueRefused { reason: String }
+
+fn openbmc_object_mapper_services_rec(
+  content: String,
+  index: Int,
+  count: Int,
+  built: List<NonEmptyStr>,
+) -> OpenBmcSensorServicesResult {
+  if index >= count {
+    if built.length() == 0 {
+      OpenBmcSensorServicesObserved { services: OpenBmcCollectionZero }
+    } else if built.length() == 1 {
+      OpenBmcSensorServicesObserved {
+        services: OpenBmcCollectionOne { value: built.first() },
+      }
+    } else {
+      OpenBmcSensorServicesObserved {
+        services: OpenBmcCollectionMany { values: built },
+      }
+    }
+  } else {
+    let projected = openbmc.JsonProjection.ObjectMapperServiceAt(
+      content: content,
+      index: index,
+    )
+    if !projected.success || trim(projected.value) == "" {
+      OpenBmcSensorServicesRefused {
+        reason: concat("ObjectMapper service projection failed: ", projected.stderr),
+      }
+    } else {
+      openbmc_object_mapper_services_rec(
+        content: content,
+        index: index + 1,
+        count: count,
+        built: append(built, items: [trim(projected.value) as NonEmptyStr]),
+      )
+    }
+  }
+}
+
+fn openbmc_sensor_service(
+  session: PasswordSshSession,
+  sensor_path: NonEmptyStr,
+) -> OpenBmcSensorServicesResult {
+  let remote = openbmc_execute(
+    session: session,
+    operation: OpenBmcSensorServices { sensor_path: sensor_path },
   )
   if !remote.success {
-    remote
+    OpenBmcSensorServicesRefused { reason: remote.stderr }
   } else {
-    let extracted = jq.Json.ExtractRequiredRawFromContent(
-      filter: openbmc_object_mapper_service_filter,
+    let count_result = openbmc.JsonProjection.ObjectMapperServiceCount(
       content: remote.stdout,
     )
-    PasswordSshExecResult {
-      exit_code: extracted.exit_code,
-      success: extracted.success,
-      stdout: extracted.value,
-      stderr: extracted.stderr,
+    if !count_result.success {
+      OpenBmcSensorServicesRefused {
+        reason: concat("ObjectMapper service count failed: ", count_result.stderr),
+      }
+    } else {
+      match parse_int(s: trim(count_result.value)) {
+        Absent =>
+          OpenBmcSensorServicesRefused {
+            reason: "ObjectMapper service count is not an integer",
+          }
+        Present { value: count } =>
+          if count < 0 {
+            OpenBmcSensorServicesRefused {
+              reason: "ObjectMapper service count is negative",
+            }
+          } else {
+            openbmc_object_mapper_services_rec(
+              content: remote.stdout,
+              index: 0,
+              count: count,
+              built: [],
+            )
+          }
+      }
     }
   }
 }
@@ -146,87 +582,477 @@ fn openbmc_sensor_value(
   session: PasswordSshSession,
   service: NonEmptyStr,
   sensor_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  let remote = password_ssh_session_exec_argv(
+) -> OpenBmcSensorValueResult {
+  let remote = openbmc_execute(
     session: session,
-    argv: [
-      "busctl",
-      "--json=short",
-      "get-property",
-      service as String,
-      sensor_path as String,
-      "xyz.openbmc_project.Sensor.Value",
-      "Value",
-    ],
+    operation: OpenBmcSensorValue {
+      service: service,
+      sensor_path: sensor_path,
+    },
   )
   if !remote.success {
-    remote
+    OpenBmcSensorValueRefused { reason: remote.stderr }
   } else {
-    let extracted = jq.Json.ExtractRequiredRawFromContent(
-      filter: openbmc_sensor_numeric_value_filter,
+    let extracted = openbmc.JsonProjection.SensorIntegerValue(
       content: remote.stdout,
     )
-    PasswordSshExecResult {
-      exit_code: extracted.exit_code,
-      success: extracted.success,
-      stdout: extracted.value,
-      stderr: extracted.stderr,
+    if !extracted.success || trim(extracted.value) == "" {
+      OpenBmcSensorValueAbsent
+    } else {
+      match parse_int(s: trim(extracted.value)) {
+        Absent =>
+          OpenBmcSensorValueRefused {
+            reason: "sensor value projection is not an integer",
+          }
+        Present { value: value } => OpenBmcSensorValueObserved { value: value }
+      }
     }
+  }
+}
+
+type OpenBmcIntegerResult
+  = OpenBmcIntegerObserved { value: Int }
+  | OpenBmcIntegerRefused { reason: String }
+
+type OpenBmcStringResult
+  = OpenBmcStringObserved { value: NonEmptyStr }
+  | OpenBmcStringRefused { reason: String }
+
+type OpenBmcIntegerListResult
+  = OpenBmcIntegerListObserved { values: List<Int> }
+  | OpenBmcIntegerListRefused { reason: String }
+
+type OpenBmcFanControllerListResult
+  = OpenBmcFanControllerListObserved { values: List<OpenBmcFanController> }
+  | OpenBmcFanControllerListRefused { reason: String }
+
+type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
+
+fn openbmc_fan_config_raw(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  query: OpenBmcFanConfigQuery,
+) -> PasswordSshExecResult {
+  openbmc_execute(
+    session: session,
+    operation: OpenBmcFanConfigScalar {
+      config_path: config_path,
+      query: query,
+    },
+  )
+}
+
+fn openbmc_fan_config_integer(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  query: OpenBmcFanConfigQuery,
+) -> OpenBmcIntegerResult {
+  let result = openbmc_fan_config_raw(
+    session: session,
+    config_path: config_path,
+    query: query,
+  )
+  if !result.success {
+    OpenBmcIntegerRefused { reason: result.stderr }
+  } else {
+    match parse_int(s: trim(result.stdout)) {
+      Absent => OpenBmcIntegerRefused { reason: "OpenBMC integer response is invalid" }
+      Present { value } => OpenBmcIntegerObserved { value: value }
+    }
+  }
+}
+
+fn openbmc_fan_config_string(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  query: OpenBmcFanConfigQuery,
+) -> OpenBmcStringResult {
+  let result = openbmc_fan_config_raw(
+    session: session,
+    config_path: config_path,
+    query: query,
+  )
+  if !result.success || trim(result.stdout) == "" {
+    OpenBmcStringRefused { reason: result.stderr }
+  } else {
+    OpenBmcStringObserved { value: trim(result.stdout) as NonEmptyStr }
+  }
+}
+
+fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: Int) -> OpenBmcFanConfigQuery {
+  match series {
+    OpenBmcReadings => OpenBmcReadingAt { index: index }
+    OpenBmcOutputs => OpenBmcOutputAt { index: index }
+  }
+}
+
+fn openbmc_fan_config_integer_list_rec(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  series: OpenBmcFanSeries,
+  index: Int,
+  count: Int,
+  built: List<Int>,
+) -> OpenBmcIntegerListResult {
+  if index >= count {
+    OpenBmcIntegerListObserved { values: built }
+  } else {
+    match openbmc_fan_config_integer(
+      session: session,
+      config_path: config_path,
+      query: openbmc_fan_series_query(series: series, index: index),
+    ) {
+      OpenBmcIntegerRefused { reason } => OpenBmcIntegerListRefused { reason: reason }
+      OpenBmcIntegerObserved { value } =>
+        openbmc_fan_config_integer_list_rec(
+          session: session,
+          config_path: config_path,
+          series: series,
+          index: index + 1,
+          count: count,
+          built: append(built, items: [value]),
+        )
+    }
+  }
+}
+
+fn openbmc_fan_config_integer_list(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  series: OpenBmcFanSeries,
+) -> OpenBmcIntegerListResult {
+  let count_query = match series {
+    OpenBmcReadings => OpenBmcReadingCount
+    OpenBmcOutputs => OpenBmcReadingCount
+  }
+  match openbmc_fan_config_integer(
+    session: session,
+    config_path: config_path,
+    query: count_query,
+  ) {
+    OpenBmcIntegerRefused { reason } => OpenBmcIntegerListRefused { reason: reason }
+    OpenBmcIntegerObserved { value: count } =>
+      if count < 0 {
+        OpenBmcIntegerListRefused { reason: "OpenBMC series count is negative" }
+      } else {
+        openbmc_fan_config_integer_list_rec(
+          session: session,
+          config_path: config_path,
+          series: series,
+          index: 0,
+          count: count,
+          built: [],
+        )
+      }
+  }
+}
+
+fn openbmc_fan_input_list_rec(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  fan_index: Int,
+  input_index: Int,
+  count: Int,
+  built: List<NonEmptyStr>,
+) -> OpenBmcFanControllerListResult {
+  if input_index >= count {
+    match openbmc_fan_config_string(
+      session: session,
+      config_path: config_path,
+      query: OpenBmcFanControllerNameAt { index: fan_index },
+    ) {
+      OpenBmcStringRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
+      OpenBmcStringObserved { value: name } =>
+        OpenBmcFanControllerListObserved {
+          values: [OpenBmcFanController { name: name, inputs: built }],
+        }
+    }
+  } else {
+    match openbmc_fan_config_string(
+      session: session,
+      config_path: config_path,
+      query: OpenBmcFanInputAt {
+        fan_index: fan_index,
+        input_index: input_index,
+      },
+    ) {
+      OpenBmcStringRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
+      OpenBmcStringObserved { value } =>
+        openbmc_fan_input_list_rec(
+          session: session,
+          config_path: config_path,
+          fan_index: fan_index,
+          input_index: input_index + 1,
+          count: count,
+          built: append(built, items: [value]),
+        )
+    }
+  }
+}
+
+fn openbmc_fan_controller_at(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  fan_index: Int,
+) -> OpenBmcFanControllerListResult {
+  match openbmc_fan_config_integer(
+    session: session,
+    config_path: config_path,
+    query: OpenBmcFanInputCountAt { fan_index: fan_index },
+  ) {
+    OpenBmcIntegerRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
+    OpenBmcIntegerObserved { value: count } =>
+      if count < 0 {
+        OpenBmcFanControllerListRefused { reason: "OpenBMC fan input count is negative" }
+      } else {
+        openbmc_fan_input_list_rec(
+          session: session,
+          config_path: config_path,
+          fan_index: fan_index,
+          input_index: 0,
+          count: count,
+          built: [],
+        )
+      }
+  }
+}
+
+fn openbmc_fan_controllers_rec(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  index: Int,
+  count: Int,
+  built: List<OpenBmcFanController>,
+) -> OpenBmcFanControllerListResult {
+  if index >= count {
+    OpenBmcFanControllerListObserved { values: built }
+  } else {
+    match openbmc_fan_controller_at(
+      session: session,
+      config_path: config_path,
+      fan_index: index,
+    ) {
+      OpenBmcFanControllerListRefused { reason } =>
+        OpenBmcFanControllerListRefused { reason: reason }
+      OpenBmcFanControllerListObserved { values } =>
+        openbmc_fan_controllers_rec(
+          session: session,
+          config_path: config_path,
+          index: index + 1,
+          count: count,
+          built: append(built, items: values),
+        )
+    }
+  }
+}
+
+fn openbmc_fan_controllers(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+) -> OpenBmcFanControllerListResult {
+  match openbmc_fan_config_integer(
+    session: session,
+    config_path: config_path,
+    query: OpenBmcFanControllerCount,
+  ) {
+    OpenBmcIntegerRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
+    OpenBmcIntegerObserved { value: count } =>
+      if count < 0 {
+        OpenBmcFanControllerListRefused { reason: "OpenBMC fan controller count is negative" }
+      } else {
+        openbmc_fan_controllers_rec(
+          session: session,
+          config_path: config_path,
+          index: 0,
+          count: count,
+          built: [],
+        )
+      }
+  }
+}
+
+fn openbmc_fan_controller_collection(
+  values: List<OpenBmcFanController>,
+) -> OpenBmcCollection<OpenBmcFanController> {
+  if values.length() == 0 {
+    OpenBmcCollectionZero
+  } else if values.length() == 1 {
+    OpenBmcCollectionOne { value: values.first() }
+  } else {
+    OpenBmcCollectionMany { values: values }
+  }
+}
+
+fn openbmc_fan_config_queries_rec(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  queries: List<OpenBmcFanConfigQuery>,
+  built: List<Int>,
+) -> OpenBmcIntegerListResult {
+  if queries.length() == 0 {
+    OpenBmcIntegerListObserved { values: built }
+  } else {
+    match openbmc_fan_config_integer(
+      session: session,
+      config_path: config_path,
+      query: queries.first(),
+    ) {
+      OpenBmcIntegerRefused { reason } => OpenBmcIntegerListRefused { reason: reason }
+      OpenBmcIntegerObserved { value } =>
+        openbmc_fan_config_queries_rec(
+          session: session,
+          config_path: config_path,
+          queries: queries.skip(n: 1),
+          built: append(built, items: [value]),
+        )
+    }
+  }
+}
+
+fn openbmc_fan_config_finish_observation(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+  stepwise: OpenBmcSelection<OpenBmcStepwiseController>,
+) -> OpenBmcFanConfigObservationResult {
+  match openbmc_fan_controllers(session: session, config_path: config_path) {
+    OpenBmcFanControllerListRefused { reason } =>
+      OpenBmcFanConfigObservationRefused { reason: reason }
+    OpenBmcFanControllerListObserved { values } =>
+      OpenBmcFanConfigObserved {
+        observation: OpenBmcFanConfigObservation {
+          stepwise: stepwise,
+          fan_controllers: openbmc_fan_controller_collection(values: values),
+        },
+      }
+  }
+}
+
+fn openbmc_fan_config_observe_one(
+  session: PasswordSshSession,
+  config_path: NonEmptyStr,
+) -> OpenBmcFanConfigObservationResult {
+  let scalar_queries = [
+    OpenBmcMinimumDuty,
+    OpenBmcZoneFailsafeDuty,
+    OpenBmcSensorFailsafeDuty,
+    OpenBmcPositiveHysteresis,
+    OpenBmcNegativeHysteresis,
+  ]
+  match openbmc_fan_config_queries_rec(
+    session: session,
+    config_path: config_path,
+    queries: scalar_queries,
+    built: [],
+  ) {
+    OpenBmcIntegerListRefused { reason } =>
+      OpenBmcFanConfigObservationRefused { reason: reason }
+    OpenBmcIntegerListObserved { values: scalars } =>
+      match openbmc_fan_config_integer_list(
+        session: session,
+        config_path: config_path,
+        series: OpenBmcReadings,
+      ) {
+        OpenBmcIntegerListRefused { reason } =>
+          OpenBmcFanConfigObservationRefused { reason: reason }
+        OpenBmcIntegerListObserved { values: readings } =>
+          match openbmc_fan_config_integer_list(
+            session: session,
+            config_path: config_path,
+            series: OpenBmcOutputs,
+          ) {
+            OpenBmcIntegerListRefused { reason } =>
+              OpenBmcFanConfigObservationRefused { reason: reason }
+            OpenBmcIntegerListObserved { values: outputs } =>
+              if scalars.length() != 5 || readings.length() != outputs.length() {
+                OpenBmcFanConfigObservationRefused {
+                  reason: "OpenBMC fan config response has inconsistent structured cardinality",
+                }
+              } else {
+                openbmc_fan_config_finish_observation(
+                  session: session,
+                  config_path: config_path,
+                  stepwise: OpenBmcSelectionOne {
+                    value: OpenBmcStepwiseController {
+                      minimum_duty: scalars.first(),
+                      zone_failsafe_duty: scalars.skip(n: 1).first(),
+                      sensor_failsafe_duty: scalars.skip(n: 2).first(),
+                      positive_hysteresis: scalars.skip(n: 3).first(),
+                      negative_hysteresis: scalars.skip(n: 4).first(),
+                      readings: readings,
+                      outputs: outputs,
+                    },
+                  },
+                )
+              }
+          }
+      }
   }
 }
 
 fn openbmc_fan_config_observe(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
+) -> OpenBmcFanConfigObservationResult {
+  match openbmc_fan_config_integer(
     session: session,
-    argv: [
-      "jq",
-      "-r",
-      openbmc_fan_config_observation_filter as String,
-      config_path as String,
-    ],
-  )
+    config_path: config_path,
+    query: OpenBmcStepwiseCount,
+  ) {
+    OpenBmcIntegerRefused { reason } =>
+      OpenBmcFanConfigObservationRefused { reason: reason }
+    OpenBmcIntegerObserved { value: count } =>
+      if count < 0 {
+        OpenBmcFanConfigObservationRefused {
+          reason: "OpenBMC stepwise controller count is negative",
+        }
+      } else if count == 0 {
+        openbmc_fan_config_finish_observation(
+          session: session,
+          config_path: config_path,
+          stepwise: OpenBmcSelectionZero,
+        )
+      } else if count == 1 {
+        openbmc_fan_config_observe_one(session: session, config_path: config_path)
+      } else {
+        openbmc_fan_config_finish_observation(
+          session: session,
+          config_path: config_path,
+          stepwise: OpenBmcSelectionMany { count: count },
+        )
+      }
+  }
 }
 
 fn openbmc_fan_config_validate(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
+  openbmc_execute(
     session: session,
-    argv: ["jq", "empty", config_path as String],
+    operation: OpenBmcFanConfigValidate { config_path: config_path },
   )
 }
 
 fn openbmc_fan_config_verify(
   session: PasswordSshSession,
   config_path: NonEmptyStr,
-  desired_json: String,
+  desired: OpenBmcFanConfigDesired,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
+  openbmc_execute(
     session: session,
-    argv: [
-      "jq",
-      "-e",
-      "--argjson",
-      "desired",
-      desired_json,
-      openbmc_fan_config_verify_filter as String,
-      config_path as String,
-    ],
+    operation: OpenBmcFanConfigVerify {
+      config_path: config_path,
+      desired: desired,
+    },
   )
 }
 
 fn openbmc_fan_config_project_local(
   input_path: NonEmptyStr,
-  desired_json: String,
+  desired: OpenBmcFanConfigDesired,
 ) -> OpenBmcLocalTransformResult {
-  let result = jq.Json.TransformWithArgJson(
-    arg_name: "desired",
-    arg_json: desired_json,
-    filter: openbmc_fan_config_projection_filter,
+  let result = openbmc.JsonProjection.ProjectFanConfig(
+    desired_json: openbmc_fan_config_desired_json(desired: desired),
     path: input_path,
   )
   OpenBmcLocalTransformResult {
@@ -241,49 +1067,34 @@ fn openbmc_path_is_writable(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["test", "-w", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcPathIsWritable { path: path })
 }
 
 fn openbmc_path_exists(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["test", "-e", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcPathExists { path: path })
 }
 
 fn openbmc_path_is_nonempty_file(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["test", "-s", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcPathIsNonemptyFile { path: path })
 }
 
 fn openbmc_disk_usage_kib(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["df", "-Pk", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcDiskUsageKib { path: path })
 }
 
 fn openbmc_utc_timestamp(
   session: PasswordSshSession,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["date", "-u", "+%Y-%m-%dT%H:%M:%SZ"],
-  )
+  openbmc_execute(session: session, operation: OpenBmcUtcTimestamp)
 }
 
 fn openbmc_make_directory(
@@ -292,14 +1103,14 @@ fn openbmc_make_directory(
   parents: Bool,
 ) -> PasswordSshExecResult {
   if parents {
-    password_ssh_session_exec_argv(
+    openbmc_execute(
       session: session,
-      argv: ["mkdir", "-p", path as String],
+      operation: OpenBmcMakeDirectory { path: path, parents: true },
     )
   } else {
-    password_ssh_session_exec_argv(
+    openbmc_execute(
       session: session,
-      argv: ["mkdir", path as String],
+      operation: OpenBmcMakeDirectory { path: path, parents: false },
     )
   }
 }
@@ -308,20 +1119,14 @@ fn openbmc_remove_directory(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["rmdir", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcRemoveDirectory { path: path })
 }
 
 fn openbmc_remove_file(
   session: PasswordSshSession,
   path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["rm", "-f", path as String],
-  )
+  openbmc_execute(session: session, operation: OpenBmcRemoveFile { path: path })
 }
 
 fn openbmc_copy_file_preserving_metadata(
@@ -329,9 +1134,12 @@ fn openbmc_copy_file_preserving_metadata(
   source_path: NonEmptyStr,
   destination_path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
+  openbmc_execute(
     session: session,
-    argv: ["cp", "-p", source_path as String, destination_path as String],
+    operation: OpenBmcCopyFilePreservingMetadata {
+      source_path: source_path,
+      destination_path: destination_path,
+    },
   )
 }
 
@@ -340,26 +1148,26 @@ fn openbmc_rename_replace(
   source_path: NonEmptyStr,
   destination_path: NonEmptyStr,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
+  openbmc_execute(
     session: session,
-    argv: ["mv", "-f", source_path as String, destination_path as String],
+    operation: OpenBmcRenameReplace {
+      source_path: source_path,
+      destination_path: destination_path,
+    },
   )
 }
 
 fn openbmc_synchronize_filesystems(
   session: PasswordSshSession,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(session: session, argv: ["sync"])
+  openbmc_execute(session: session, operation: OpenBmcSynchronizeFilesystems)
 }
 
 fn openbmc_wait_seconds(
   session: PasswordSshSession,
   seconds: Int,
 ) -> PasswordSshExecResult {
-  password_ssh_session_exec_argv(
-    session: session,
-    argv: ["sleep", to_string(seconds)],
-  )
+  openbmc_execute(session: session, operation: OpenBmcWaitSeconds { seconds: seconds })
 }
 
 fn openbmc_upload_file(
