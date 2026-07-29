@@ -268,7 +268,7 @@ data host_standup_spine: List<HostStandupStep> = [
     ],
     effect_evidence: host_effect_read_evidence
   ),
-  host_standup_prefix_step(
+  host_standup_prefix_partial_step(
     phase: BmcFanPolicyConverge,
     label: "prefix:bmc-fan-policy-converge",
     authorities: [
@@ -279,7 +279,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.bmc_fan_projection", decl_name: "bmc_fan_policy_projection_topology_matches"),
       decl_ref(module_path: "gunbc.fleet_bmc_state", decl_name: "srv4_bmc_fan_projection_capability"),
       decl_ref(module_path: "gunbc.fleet_bmc_observation", decl_name: "srv4_bmc_config_persistence_observation"),
-      decl_ref(module_path: "extdeps.ssh.password_session", decl_name: "password_ssh_session_exec_argv"),
+      decl_ref(module_path: "extdeps.bmc.openbmc_fan_control", decl_name: "openbmc_execute"),
       decl_ref(module_path: "extdeps.ssh.password_session", decl_name: "password_ssh_session_copy_file"),
       decl_ref(module_path: "extdeps.bmc.openbmc_fan_control", decl_name: "openbmc_fan_config_project_local"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_parse_live_observation"),
@@ -287,6 +287,13 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_rollback_typed"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "srv4_bmc_fan_converge"),
+    ],
+    gaps: [
+      PhaseGap {
+        gap_id: "bmc-fan-transaction-proof",
+        missing: "content-addressed atomic backup, live active-byte digest readback, bounded monitoring receipt, and verified rollback outcome",
+        refusal: "host_standup:prefix:bmc-fan-policy-converge:transaction-proof-absent — no host may claim this phase modeled-complete",
+      },
     ],
     effect_evidence: host_effect_converge_loop_evidence
   ),
