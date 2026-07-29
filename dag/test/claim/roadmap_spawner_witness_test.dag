@@ -9,6 +9,7 @@ import gunbc.roadmap_model {
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status { DerivableLine, AuthoredLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered, HandbackNotDelivered }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -23,6 +24,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -34,6 +36,7 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
@@ -45,6 +48,7 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
     signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackNotDelivered, as_expected: true },
   }
@@ -56,6 +60,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -216,6 +221,7 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
     line: SupersededLine { by: by, content: content },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -241,6 +247,7 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     line: AuthoredLine { done: false, content: "Old Lane Row" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }

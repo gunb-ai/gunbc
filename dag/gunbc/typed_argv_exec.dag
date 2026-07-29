@@ -2,7 +2,13 @@ module gunbc.typed_argv_exec
 
 import std.types { String, List, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import extdeps.ssh.session { ssh_session_exec_argv, SshSessionExecResult }
+import extdeps.ssh.session {
+  ssh_session_exec_argv,
+  ssh_session_exec_result_from_service,
+  SshSessionExecResult,
+}
+import extdeps.ssh.session
+import gunbc.output_policy { OutcomeIsData }
 
 data typed_argv_exec_note: String = "Realization-edge typed argv dispatch over SSH: one argv shape per op (from extdeps authorities), ssh.Session.ExecArgv transport, portable-argv allowlist before spawn (fail-closed — ssh remote argv is shell-reinterpreted). Wave C5 / bash-emit #5828 slice."
 
@@ -19,6 +25,8 @@ fn typed_argv_portable_argv_char_allowed(cp: Int) -> Bool {
     || cp == 45
     || cp == 47
     || cp == 64
+    || cp == 58
+    || cp == 61
 }
 
 fn typed_argv_portable_argv_token_at(token: String, i: Int, len: Int) -> Bool {
@@ -75,5 +83,26 @@ fn typed_argv_exec_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvE
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => TypedArgvExecRefused { reason: why }
     Absent => TypedArgvExecConverged { result: ssh_session_exec_argv(host: host, argv: argv) }
+  }
+}
+
+fn typed_argv_probe_over_ssh(host: NonEmptyStr, argv: List<String>) -> TypedArgvExecOutcome {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => TypedArgvExecRefused { reason: why }
+    Absent => {
+      let result = ssh.Session.ExecArgv(
+        host: host,
+        argv: argv,
+        expect: OutcomeIsData,
+      )
+      TypedArgvExecConverged {
+        result: ssh_session_exec_result_from_service(
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        ),
+      }
+    }
   }
 }

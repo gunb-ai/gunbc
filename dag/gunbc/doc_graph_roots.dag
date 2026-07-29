@@ -187,6 +187,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "recursive-workflow-advancement-design",
+    work: DeclarationRef { module_path: "gunbc.workflow_reconcile", decl_name: "workflow_recursive_reconcile_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the advancement plan, exact-candidate receipt producers through goal audit, and recursive child-workflow realization land as typed carriers and register as a gunbc.plan.Plan row; then this bind deletes while the md remains the design record" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-two-tier-placement-redesign",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },

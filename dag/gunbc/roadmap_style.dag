@@ -35,6 +35,9 @@ import gunbc.roadmap_component {
   workflow_controls_class, workflow_strip_class, workflow_lamp_class,
   workflow_lamp_indicator_class, workflow_lamp_label_class,
   workflow_observation_data_attribute,
+  workflow_progress_class, workflow_stage_class, workflow_activity_class,
+  workflow_segment_state_data_attribute,
+  dashboard_instance_class,
 }
 import gunbc.client_observation_state {
   ClientObservationState,
@@ -288,6 +291,18 @@ fn workflow_lamp_state_child(
   ], "")
 }
 
+fn workflow_stage_state_subject(state: String) -> String {
+  join([
+    ".",
+    workflow_stage_class,
+    "[",
+    workflow_segment_state_data_attribute,
+    "=\"",
+    state,
+    "\"]",
+  ], "")
+}
+
 fn workflow_controls_compact_css() -> String {
   join([
     "@media (max-width: ",
@@ -510,6 +525,16 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Gap, value: scale_var(t: space_12)),
       decl(prop: MarginBottom, value: scale_var(t: space_24)),
     ] },
+    StaticRule { selector: ClassSelector { name: dashboard_instance_class }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: BorderLeft, value: scale_border(w: border_2, color_var: "var(--focus)")),
+      decl(prop: PaddingLeft, value: scale_var(t: space_6)),
+      decl(prop: MarginBottom, value: scale_var(t: space_12)),
+    ] },
     StaticRule { selector: RawSelector { text: ".three-gate-progress h2" }, decls: [
       decl(prop: Margin, value: scale_triple(a: space_0, b: space_0, c: space_4)),
     ] },
@@ -623,6 +648,65 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Flex, value: "0 1 auto"),
       decl(prop: MinWidth, value: scale_var(t: space_0)),
     ] },
+    StaticRule { selector: ClassSelector { name: workflow_progress_class }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+      decl(prop: Flex, value: "0 1 auto"),
+      decl(prop: MinWidth, value: scale_var(t: space_0)),
+    ] },
+    StaticRule { selector: RawSelector { text: join([
+      ".", workflow_progress_class, "[hidden]",
+    ], "") }, decls: [
+      decl(prop: Display, value: "none"),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_stage_class }, decls: [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Padding, value: scale_pair(a: space_0, b: space_2)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_stage_state_subject(
+      state: "pending") }, decls: [
+      decl(prop: BorderStyle, value: "dashed"),
+      decl(prop: Opacity, value: "0.72"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_stage_state_subject(
+      state: "active") }, decls: [
+      decl(prop: BorderColor, value: "var(--band-in-progress)"),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_stage_state_subject(
+      state: "complete") }, decls: [
+      role_decl(prop: BorderColor, r: FigureRole),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_stage_state_subject(
+      state: "failed") }, decls: [
+      decl(prop: BorderColor, value: "var(--band-fail)"),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: RawSelector { text: workflow_stage_state_subject(
+      state: "refused") }, decls: [
+      decl(prop: BorderColor, value: "var(--band-loud)"),
+      decl(prop: BorderStyle, value: "dashed"),
+      role_decl(prop: Color, r: TextRole),
+      decl(prop: FontWeight, value: "600"),
+    ] },
+    StaticRule { selector: ClassSelector { name: workflow_activity_class }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: WhiteSpace, value: "nowrap"),
+    ] },
     StaticRule { selector: ClassSelector { name: workflow_lamp_class }, decls: [
       decl(prop: Display, value: "inline-flex"),
       decl(prop: AlignItems, value: "center"),
@@ -703,7 +787,19 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Color, r: TextDimRole),
       decl(prop: MarginRight, value: scale_var(t: space_2)),
     ] },
-    StaticRule { selector: ClassSelector { name: "stop-chip" }, decls: [
+    StaticRule { selector: ClassSelector { name: "process-chip" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_10)),
+      decl(prop: FontFamily, value: scale_var(t: font_mono)),
+      role_decl(prop: Color, r: TextDimRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_3)),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_6)),
+      decl(prop: MarginLeft, value: scale_var(t: space_2)),
+      decl(prop: TextTransform, value: "lowercase"),
+      decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: ClassSelector { name: "cleanup-chip" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_10)),
       decl(prop: FontFamily, value: scale_var(t: font_mono)),
       role_decl(prop: Color, r: TextDimRole),
@@ -715,6 +811,10 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
       decl(prop: TextTransform, value: "lowercase"),
       decl(prop: LetterSpacing, value: "0.03em"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".cleanup-chip:disabled" }, decls: [
+      decl(prop: Cursor, value: "default"),
+      decl(prop: Opacity, value: "0.64"),
     ] },
     StaticRule { selector: ClassSelector { name: "dispatch-attempts" }, decls: [
       decl(prop: FontSize, value: scale_var(t: text_11)),
