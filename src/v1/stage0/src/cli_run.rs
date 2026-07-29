@@ -2952,13 +2952,33 @@ fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<Str
     {
         return true;
     }
+    // Markdown: the doc-reachability declared entry (`SELECTION_CONTROL_DOC_REACHABILITY_REL`)
+    // declares `LiveTreeDisposition = ReadsLiveTree` and folds the whole markdown doc graph
+    // (`gunbc.doc_graph_roots.doc_graph_roots_all` — registered plan docs ∪ hand-authored
+    // binds) to decide `doc_graph_has_no_orphan_docs` / `doc_graph_has_no_dangling_links`.
+    // A `.md` add/edit/delete can therefore flip this suite's verdict, and that reach is NOT
+    // discoverable through the `.dag` import walk above — a live-tree read is not an import
+    // edge. So every markdown path runs the suite.
+    //
+    // This is a structural over-approximation computed AS the answer (DESIGN §5: "a
+    // dependency-closure superset is the model's precision frontier, not an absorption"),
+    // not a failure arm that widens — the entry really does read every markdown root, so no
+    // `.md` diff can be proven irrelevant by path.
+    //
+    // FOUND BY REVIEW (review 44682, this PR): the first draft bounded inputs by
+    // `src/v1/**` ∪ dag-import-closure ∪ Cargo config and skipped docs-only diffs, while its
+    // own green control asserted that skip on `docs/plans/example.md` — enshrining the
+    // suppression of exactly the docs-only orphan regression this suite carries per-PR.
+    if p.ends_with(".md") {
+        return true;
+    }
     dag_closure.contains(&p)
 }
 
 /// CI label for the affected-set selection-control step's skip arm.
 /// `selection_control_not_affected_skip` iff the merge-base diff touches no input of the
-/// control suite; `run_selection_control` on any intersection, empty diff, departed
-/// non-docs path, or observation/closure failure (fail-closed). This computes the label
+/// control suite; `run_selection_control` on any intersection, empty diff, ANY departed
+/// path, or observation/closure failure (fail-closed). This computes the label
 /// only; the CI shell gates the skip to pull_request events, so push-to-main runs the suite
 /// unconditionally as the cold control.
 pub fn selection_control_skip_label_for_ci() -> String {
@@ -2977,15 +2997,19 @@ pub fn selection_control_skip_label_for_ci() -> String {
         );
         return RUN_SELECTION_CONTROL_LABEL.to_string();
     }
-    // Departed (deleted / renamed-from) non-docs paths: the closure is computed from the
-    // CURRENT tree, so a deleted `.dag` file that WAS in the suite's closure is invisible to
-    // it. Same guard shape as regen's and compile-clean's departed arms: run, never skip.
-    if let Some(gone) = departed_paths
-        .iter()
-        .find(|p| !normalize_repo_path(p).starts_with("docs/"))
-    {
+    // Departed (deleted / renamed-from) paths: NO carve-out. Two independent causes, which
+    // together leave no departed path provably irrelevant:
+    //   - non-docs: the closure is computed from the CURRENT tree, so a deleted `.dag` file
+    //     that WAS in the suite's closure is invisible to the intersection below;
+    //   - markdown: a deleted doc changes the live doc graph the `ReadsLiveTree`
+    //     doc-reachability entry folds — removing a link target creates a dangling link,
+    //     removing a linker orphans its target. Either flips the suite red.
+    // The regen/compile-clean departed arms exempt `docs/` because markdown is genuinely
+    // outside THEIR closures; it is inside this one (see the `.md` arm in
+    // `selection_control_path_affects_suite`), so copying their carve-out here was the bug.
+    if let Some(gone) = departed_paths.first() {
         eprintln!(
-            "selection-control skip: departed non-docs path in diff ({}) — run the control suite (current-tree closure cannot see deletions)",
+            "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
             normalize_repo_path(gone)
         );
         return RUN_SELECTION_CONTROL_LABEL.to_string();
@@ -28814,15 +28838,33 @@ mod witness_layer_roots_compile_clean_tests {
     }
 
     /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
-    /// suite's closure skips. Paired with the four RUN arms below — that pair is what makes
+    /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
     /// this a decision rather than a constant.
+    ///
+    /// The subject is ASSERTED outside the closure rather than assumed: if a new import edge
+    /// or declared entry ever pulls it in, this test panics instead of quietly passing for
+    /// the wrong reason. It is deliberately NOT a `.md` path — markdown is an input through
+    /// the `ReadsLiveTree` doc-reachability entry. The first draft of this test used
+    /// `docs/plans/example.md`, i.e. it asserted the very suppression review 44682 caught.
     #[test]
     fn selection_control_skip_skips_on_unrelated_path() {
+        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
+        let closure = selection_control_input_sources(&workspace_root())
+            .expect("selection-control closure must compute");
+        assert!(
+            !closure.iter().any(|p| p == UNRELATED),
+            "{UNRELATED} entered the suite's input closure — choose a new skip subject; \
+             do not weaken this arm to keep it green"
+        );
+        assert!(
+            !UNRELATED.ends_with(".md"),
+            "the skip subject must not be markdown (markdown always runs the suite)"
+        );
         with_env_test_lock(|| {
             with_workspace_cwd(|| {
                 let _ns = EnvGuard::set(
                     "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000docs/plans/example.md\\000",
+                    &format!("M\\000{UNRELATED}\\000"),
                 );
                 assert_eq!(
                     selection_control_skip_label_for_ci(),
@@ -28895,11 +28937,12 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// RUN arm 4 — departed non-docs path. The closure is computed from the CURRENT tree, so
-    /// a deletion is invisible to the intersection; the guard discriminates on D, not on
-    /// path (the same path as a modification is the skip control above's shape).
+    /// RUN arm 4 — departed path. The closure is computed from the CURRENT tree, so a
+    /// deletion is invisible to the intersection; the guard discriminates on D, not on
+    /// path. The subject is the SAME path the skip control above modifies, so the pair
+    /// isolates the D/M axis: modified → skip, departed → run.
     #[test]
-    fn selection_control_skip_runs_on_departed_non_docs_path() {
+    fn selection_control_skip_runs_on_departed_path() {
         with_env_test_lock(|| {
             with_workspace_cwd(|| {
                 let _ns = EnvGuard::set(
@@ -28909,6 +28952,51 @@ mod witness_layer_roots_compile_clean_tests {
                 assert_eq!(
                     selection_control_skip_label_for_ci(),
                     RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 5 — a docs-only diff. THE REGRESSION CONTROL for review 44682: the suite's
+    /// `dag/test/claim/doc_reachability_witness_test.dag` entry declares
+    /// `LiveTreeDisposition = ReadsLiveTree` and folds the live markdown doc graph, and the
+    /// suite's own `doc_reachability_runs_on_docs_only_diff` scenario asserts the orphan wall
+    /// is green against the real tree. So a docs-only PR that orphans a doc flips this suite
+    /// red — and the first draft skipped it. Markdown is an input; it runs.
+    #[test]
+    fn selection_control_skip_runs_on_docs_only_diff() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000docs/plans/example.md\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a docs-only diff must RUN the control suite: its doc-reachability entry \
+                     reads the live doc graph, so markdown changes its verdict"
+                );
+            });
+        });
+    }
+
+    /// RUN arm 6 — a DEPARTED doc. Deletion is the direction the orphan/dangling wall is
+    /// most sensitive to (removing a link target creates a dangling link; removing a linker
+    /// orphans its target), and it is the arm the copied `!starts_with("docs/")` carve-out
+    /// from regen/compile-clean would have skipped.
+    #[test]
+    fn selection_control_skip_runs_on_departed_doc() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000docs/plans/example.md\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci(),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a departed doc must RUN the control suite (it changes the live doc graph)"
                 );
             });
         });
