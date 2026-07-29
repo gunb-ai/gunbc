@@ -8,20 +8,24 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_self_emitted_count
 }
 import v2.compiler.self_host.gate_a_oracle {
-  gate_a_executed_probe_entries,
   gate_a_fabricated_self_emit_ready_receipt,
   gate_a_flip_wave_reverted_module_paths,
   gate_a_oracle_authorizes_self_emit,
   gate_a_oracle_row_00_compile_flip_wave_red,
   gate_a_oracle_row_body_producer,
+  gate_a_oracle_rows_match_enrollment_holds,
   gate_a_self_emit_oracle_row_count,
   gate_a_self_emit_oracle_rows_all_enrolled_holds,
   gate_a_flip_wave_reverted_modules_lack_oracle_holds
 }
+import v2.compiler.self_host.self_emitted_wet_known_red_entries {
+  schedule_witness_entry_cited,
+  schedule_witness_entries_structurally_equal,
+  self_emitted_wet_known_red_entries
+}
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries
 }
-import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -85,6 +89,25 @@ test fn witness_baseline_oracle_row_authorizes_self_emit() -> Bool {
   )
 }
 
-test fn witness_gate_a_probe_entries_match_known_red_enrollment() -> Bool {
-  length(xs: gate_a_executed_probe_entries) == length(xs: falsifier_self_host_wet_known_red_entries)
+test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
+  schedule_witness_entries_structurally_equal(
+    left: self_emitted_wet_known_red_entries,
+    right: falsifier_self_host_wet_known_red_entries
+  )
+}
+
+test fn witness_oracle_rows_bidirectional_enrollment_holds() -> Bool {
+  gate_a_oracle_rows_match_enrollment_holds()
+}
+
+data gate_a_probe_entries_structural_parity_red_note: String = "RED control (review 44299): length-only parity would stay green if one list changed a path/function while counts still match. witness_wet_known_red_entries_is_shared_authority and witness_oracle_rows_bidirectional_enrollment_holds pin structural equality and bidirectional oracle↔enrollment coverage instead."
+
+test fn witness_probe_entries_length_only_parity_would_fail_on_mismatch_red() -> Bool {
+  let mismatched_function = "fabricated_flip_wave_all_holds"
+  let cited = schedule_witness_entry_cited(
+    probe_entry: gate_a_oracle_row_body_producer.probe_entry,
+    probe_function: mismatched_function,
+    entries: self_emitted_wet_known_red_entries
+  )
+  !cited
 }

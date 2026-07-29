@@ -1,6 +1,9 @@
 module v2.compiler.self_host.wet_receipt_enrollment
 
 import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import v2.compiler.self_host.self_emitted_wet_known_red_entries {
+  self_emitted_wet_known_red_entries
+}
 import v2.compiler.self_host.frontier {
   CompilerModuleFrontierRow,
   SelfEmitted,
@@ -157,32 +160,7 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
 
 data falsifier_self_host_wet_known_red_note: String = "Wet expect_red quarantine for SelfEmitted module behavioral receipts that red on assemble (Phase-0 admission invariant, review #7199 2026-07-25): same mechanism as known_red_probe_entries but Wet-profiled — hermetic would refuse the host effect and lie about the red class. claim_executor expect_red-inverts the batch. Owner: #7199 falsifier lane / self-host assemble. Dissolve-on per row: local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget, the known-red entry deletes, and the SelfHostWetReceiptBinding restores to the green wet roster."
 
-data falsifier_self_host_wet_known_red_entries: List<ScheduleWitnessEntry> = [
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag",
-    f: "self_host_parse_engine_hooks_behavioral_receipt_holds"
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
-    f: "self_host_use_site_verdict_behavioral_receipt_holds"
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag",
-    f: "self_host_discovery_enumeration_behavioral_receipt_holds"
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag",
-    f: "self_host_target_carriers_behavioral_receipt_holds"
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
-    f: "self_host_body_producer_behavioral_receipt_holds"
-  ),
-  self_host_wet_entry(
-    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
-    f: "self_host_03_normalize_behavioral_receipt_holds"
-  )
-]
+data falsifier_self_host_wet_known_red_entries: List<ScheduleWitnessEntry> = self_emitted_wet_known_red_entries
 
 fn falsifier_self_host_wet_known_red_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_known_red_entries) > 0
