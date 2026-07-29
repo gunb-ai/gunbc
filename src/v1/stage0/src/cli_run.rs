@@ -25359,7 +25359,9 @@ mod reference_edge_producer_tests {
             .expect("read measure.dag");
         let near_miss = "extdeps.units.iec_80000_14";
         assert!(
-            !extract_import_paths(&measure).iter().any(|m| m == near_miss)
+            !extract_import_paths(&measure)
+                .iter()
+                .any(|m| m == near_miss)
                 && measure.contains("extdeps.units.iec_80000_13"),
             "control precondition: {near_miss} is not imported, while its sibling _13 is"
         );
@@ -25374,10 +25376,9 @@ mod reference_edge_producer_tests {
         // live corpus has no import-less std file to exercise them. The pair is what makes
         // the reference arm discriminating rather than a rubber stamp: same shape, same
         // module name, differing only in whether the occurrence is code or prose.
-        let fixture = super::process_workspace_root().join("target").join(format!(
-            "gunbc-layer-grounding-{}",
-            std::process::id()
-        ));
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-layer-grounding-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&fixture);
         std::fs::create_dir_all(&fixture).expect("mkdir fixture");
         let referenced = "v2.compiler.tokenize";
