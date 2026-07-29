@@ -44,6 +44,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_active_config_digest,
   srv4_bmc_fan_converged_policy_observation,
   srv4_bmc_fan_convergence_receipt,
+  srv4_bmc_fan_durability_capability_version,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_fan_reboot_persistence_receipt,
   srv4_bmc_firmware_observation,
@@ -776,7 +777,7 @@ test fn reboot_durability_evidence_capability_relabeling_differs_from_authoritat
     capability: relabeled,
   ) {
     BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
-      evidence.admission.capability_version != srv4_bmc_fan_durability_admission.capability_version
+      evidence.admission.capability_version != srv4_bmc_fan_durability_capability_version
     BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
   }
 }

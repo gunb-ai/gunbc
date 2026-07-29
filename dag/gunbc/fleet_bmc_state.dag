@@ -45,14 +45,14 @@ import std.state_durability {
   ActivationVerified,
   StateActivationEvidence,
   StateActivationReceipt,
-  StateDurabilityBoundary,
+  StateAfterReadbackReceipt,
+  StateBeforeReadbackReceipt,
+  StateDurabilityAdmission,
   StateDurabilityEvidence,
-  StateDurabilityTimeline,
   StatePerturbationReceipt,
   StatePreservationObservationRefused,
   StatePreservationOutcome,
   StatePreserved,
-  StateReadbackReceipt,
 }
 import std.types { Bool, List, String }
 
@@ -113,26 +113,9 @@ fn bmc_fan_reboot_observed_outage_positive(
   receipt.bmc_returned_at > receipt.bmc_down_observed_at
 }
 
-fn bmc_fan_reboot_durability_timeline(
-  receipt: BmcFanRebootPersistenceReceipt,
-) -> StateDurabilityTimeline {
-  StateDurabilityTimeline {
-    before_readback_at: receipt.before.observed_at,
-    before_to_perturbation_start: positive_millisecond(
-      count: receipt.reset.observed_at - receipt.before.observed_at,
-    ),
-    perturbation_duration: positive_millisecond(
-      count: receipt.bmc_returned_at - receipt.bmc_down_observed_at,
-    ),
-    completion_to_after_readback: positive_millisecond(
-      count: receipt.observed_at - receipt.bmc_returned_at,
-    ),
-  }
-}
-
 fn bmc_fan_reboot_activation_evidence(
   receipt: BmcFanRebootPersistenceReceipt,
-  admission: BmcFanDurabilityAdmission,
+  admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
 ) -> StateActivationEvidence<HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.reset.reset_type == ResetGracefulRestart
     && receipt.reset.http_status == 200
@@ -165,26 +148,29 @@ fn bmc_fan_reboot_activation_evidence(
 
 fn bmc_fan_reboot_preservation_outcome(
   receipt: BmcFanRebootPersistenceReceipt,
-  admission: BmcFanDurabilityAdmission,
+  admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
 ) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
     StatePreserved {
-      timeline: bmc_fan_reboot_durability_timeline(receipt: receipt),
-      before: StateReadbackReceipt {
+      before: StateBeforeReadbackReceipt {
         perturbation_receipt_id: receipt.perturbation_receipt_id,
         target: receipt.before.host,
         subject: BmcFanConfigReadbackSubject {
           config_path: receipt.before.policy.board_config_path,
         },
         state_digest: receipt.before.active_config_digest,
+        observed_at: receipt.before.observed_at,
       },
-      after: StateReadbackReceipt {
+      after: StateAfterReadbackReceipt {
         perturbation_receipt_id: receipt.perturbation_receipt_id,
         target: receipt.host,
         subject: BmcFanConfigReadbackSubject {
           config_path: receipt.post_reboot_policy.board_config_path,
         },
         state_digest: receipt.post_reboot_active_config_digest,
+        observed_after_perturbation_completion: positive_millisecond(
+          count: receipt.observed_at - receipt.bmc_returned_at,
+        ),
       },
       activation: bmc_fan_reboot_activation_evidence(
         receipt: receipt,
@@ -222,6 +208,12 @@ fn bmc_fan_reboot_durability_evidence_built(
         target: receipt.host,
         boundary: fleet_bmc_fan_graceful_restart_boundary,
         generation: receipt.perturbation_generation,
+        started_after_before_readback: positive_millisecond(
+          count: receipt.reset.observed_at - receipt.before.observed_at,
+        ),
+        duration: positive_millisecond(
+          count: receipt.bmc_returned_at - receipt.reset.observed_at,
+        ),
       },
       outcome: bmc_fan_reboot_preservation_outcome(
         receipt: receipt,
