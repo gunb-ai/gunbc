@@ -31,9 +31,10 @@ import extdeps.git {
   shape_git_checkout_ours_argv,
   shape_git_commit_no_verify_no_edit_argv,
   shape_git_config_argv,
+  git_pathspec_exclude,
   shape_git_diff_unmerged_args,
-  shape_git_diff_unmerged_excluding_args,
   shape_git_diff_unmerged_nul_argv,
+  shape_git_diff_unmerged_pathspec_args,
   shape_git_rev_list_ahead_path_limited_args,
   shape_git_merge_abort_argv,
   shape_git_merge_no_edit_argv,
@@ -228,11 +229,24 @@ fn ci_heal_skew_conflicts_bind() -> PipelineStep {
   )
 }
 
+data ci_heal_skew_shell_quote_note: String = "QUOTING IS THE EMITTER'S JOB, AND THE PATHSPEC IS WHY. A `:(exclude)<path>` word carries `(` and `)`, which bash treats as metacharacters, so joining one into a command line unquoted is a SYNTAX ERROR — caught here by executing `bash -n` over the actually-emitted string rather than by reading it (the first cut emitted an invalid line 20 and `gunbc ci` failed downstream). extdeps.git owns the pathspec VALUE and deliberately does not quote it, because only the emitting layer knows the target shell; this function is that layer for the bash realization. Single quotes are used because bash performs NO expansion inside them, which is correct for a pathspec that must reach git verbatim — a double-quoted `:(exclude)docs/*` would risk glob/expansion semantics the pathspec is supposed to own. Single-quoting is TOTAL only while no registered artifact path contains a single quote, which is asserted by execution in ci_heal_skew_guard_emit_test (registry paths are repo paths; a path with an apostrophe reds that witness rather than silently emitting a broken line). 🟡 dissolve-on: a typed shell-word carrier makes an unquoted metacharacter-bearing word unwritable by construction, at which point this function and the bash.dag orch_shell_*_alphabet emit-time checks collapse into it (the trigger those rows already name)."
+
+fn ci_heal_skew_shell_single_quoted(word: String) -> String {
+  concat("'", concat(word, "'"))
+}
+
+fn ci_heal_skew_excluded_pathspec_words() -> List<String> {
+  map(
+    committed_generated_artifact_paths(),
+    p => ci_heal_skew_shell_single_quoted(word: git_pathspec_exclude(path: p))
+  )
+}
+
 fn ci_heal_skew_authored_conflicts_bind() -> PipelineStep {
   ci_heal_skew_git_cmdsubst_bind(
     var_name: ci_heal_skew_authored_conflicts_var,
-    args: shape_git_diff_unmerged_excluding_args(
-      excluded: committed_generated_artifact_paths()
+    args: shape_git_diff_unmerged_pathspec_args(
+      pathspec_words: ci_heal_skew_excluded_pathspec_words()
     )
   )
 }
