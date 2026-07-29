@@ -519,6 +519,20 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
     ),
+    active_large(
+      id: "namespace-import-deletion",
+      owner: "self-host",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Delete the import lines, and the grammar that allows them",
+        boundary: "Every import line goes, and import stops being something the language can express at all: writing one becomes a parse error. What a file depends on is worked out from the names it actually mentions.",
+        displaced_cost: "While import still parses, a file can declare one set of dependencies while its references need another, and the two can disagree. That is the second source of truth this whole chain exists to remove, and it survives every earlier step.",
+        first_slice: "Delete the import lines from one subtree whose references already reach everything it needs, and show that subtree still compiles from its references alone.",
+        red_control: "A file that still needs an import to reach something is named and refused, never quietly left holding it. Once the grammar goes, a file containing an import line fails to parse rather than being ignored.",
+        out_of_scope: "No new way of writing dependencies is introduced; this step only removes the old one. Deleting imports ahead of a proven reference-only closure is the failure this step exists to prevent, not a shortcut through it.",
+        handback: "A corpus with no import lines, a grammar with no import production, and a run showing that an authored import is now a parse error."
+      )
+    ),
 
     active_small(
       id: "pderive-typesafe-nullary-reflection",
@@ -1310,6 +1324,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
