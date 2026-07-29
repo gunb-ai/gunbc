@@ -1,8 +1,0 @@
-module test.retirement.materialization_provider_resolved_graph_consumer_retired
-
-data materialization_provider_resolved_graph_consumer_retirement: TestModuleRetirement = TestModuleRetirement {
-  module: "materialization_provider_resolved_graph_consumer_test.rs",
-  disposition: DeleteLowValue {
-    reason: "The perturbation control moved into dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag, and the refusal/non-build coverage now lives in resolve_cross_process_cache_test.rs. The standalone hand-Rust consumer module is therefore low-value at the v1 sunset and can be deleted without losing the discriminating controls."
-  }
-}
