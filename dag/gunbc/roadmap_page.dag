@@ -33,7 +33,13 @@ import gunbc.roadmap_component {
   workflow_lamp_indicator_class, workflow_lamp_label_class,
   workflow_lamp_data_attribute, workflow_observation_data_attribute,
   workflow_lamp_label_data_attribute,
+  workflow_progress_stages,
+  workflow_progress_stage_key, workflow_progress_stage_label,
+  workflow_progress_class, workflow_stage_class, workflow_activity_class,
+  workflow_stage_data_attribute, workflow_segment_state_data_attribute,
+  dashboard_instance_class, dashboard_instance_label_class,
 }
+import gunbc.roadmap_workflow_stage { WorkflowSegmentKind }
 import gunbc.client_observation_state { client_observation_state_key }
 import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
@@ -163,6 +169,14 @@ fn three_gate_progress_markup() -> Fragment {
       [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
       map(filter(v1_deletion_gates, spec => tg_is_bar_gate(g: spec.gate)),
           spec => tg_gate_progress_row(spec: spec))))
+}
+
+fn dashboard_instance_banner() -> Fragment {
+  el_class("section", dashboard_instance_class, [
+    el_class("span", dashboard_instance_label_class, [
+      txt("instance · observing"),
+    ]),
+  ])
 }
 
 data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
@@ -479,9 +493,36 @@ fn workflow_strip_node() -> Fragment {
   ], map(workflow_lamps_v0, lamp => workflow_lamp_node(lamp: lamp)))
 }
 
+fn workflow_progress_stage_node(stage: WorkflowSegmentKind) -> Fragment {
+  let key = workflow_progress_stage_key(stage: stage)
+  let label = workflow_progress_stage_label(stage: stage)
+  el_attrs("span", [
+    attr(name: "class", value: workflow_stage_class),
+    attr(name: workflow_stage_data_attribute, value: key),
+    attr(name: workflow_segment_state_data_attribute, value: "pending"),
+    attr(name: "role", value: "status"),
+    attr(name: "aria-label", value: join([label, ": pending"], "")),
+  ], [txt(label)])
+}
+
+fn workflow_progress_node() -> Fragment {
+  el_attrs("span", [
+    attr(name: "class", value: workflow_progress_class),
+    attr(name: "hidden", value: ""),
+    attr(name: "role", value: "group"),
+    attr(name: "aria-label", value: "attempt workflow"),
+  ], concat(
+    map(
+      workflow_progress_stages,
+      stage => workflow_progress_stage_node(stage: stage),
+    ),
+    [el_class("span", workflow_activity_class, [txt("waiting")])],
+  ))
+}
+
 fn workflow_controls_nodes(rn: RoadmapNode, dispatchable: Bool) -> List<Fragment> {
   [ el_class("div", workflow_controls_class, concat(
-      [ workflow_strip_node() ],
+      [ workflow_progress_node(), workflow_strip_node() ],
       dispatch_button_nodes(rn: rn, dispatchable: dispatchable))) ]
 }
 
@@ -537,7 +578,7 @@ fn page_script_census(page: Fragment) -> List<PageScriptViolation> {
   collect_script_violations(node: page, known_src: roadmap_dispatch_asset_path)
 }
 
-data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic Stop stays inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
+data node_head_row_note: String = "The row composition, on the declared archetype. The head line retains three derived tracks: status chip; node-mid title/meta flow; and one workflow-controls realization of ActuatorRegion. That final wrapper is always present, carrying the workflow observation strip plus the optional dispatch button, so done/superseded rows remain observable and dynamic process evidence plus stop/clear/unavailable cleanup stay inside the existing grid cell. The li owns stable data-node identity independently of actuator presence; client observations locate the row first and only then its lamp or optional control."
 
 fn dependency_badge(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Fragment> {
   let parents = roadmap_parent_ids(edges: edges, node: rn.node)
@@ -756,7 +797,14 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
 }
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_page_impl(
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    main_prefix: [
+      dashboard_instance_banner(),
+      three_gate_progress_markup(),
+    ],
+  )
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
@@ -764,5 +812,12 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Frag
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_daily_workspace_page_impl(
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    main_prefix: [
+      dashboard_instance_banner(),
+      three_gate_progress_markup(),
+    ],
+  )
 }

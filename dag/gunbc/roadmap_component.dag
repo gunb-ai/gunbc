@@ -1,6 +1,6 @@
 module gunbc.roadmap_component
 
-import std.types { Int, String, Bool }
+import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.languages.css.values { CssLength, css_ch, css_length_wire }
 import gunbc.design.scale { ScaleToken, space_4, space_8, height_row }
@@ -9,6 +9,10 @@ import gunbc.client_observation_state {
   ClientObservationState,
   ClientObservationPending, ClientObservationOff, ClientObservationOn, ClientObservationRefused,
   client_observation_state_key,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind,
+  roadmap_attempt_workflow_segment_kinds,
 }
 import gunbc.design.component {
   Component, ComponentState, ComponentStateKind,
@@ -25,6 +29,8 @@ import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels, belt_dispatch_label_is_ok,
   belt_dispatch_ok_status_labels, belt_dispatch_path_prefix,
   belt_dispatch_label_band_rows, belt_dispatch_label_band_key,
+  belt_dispatch_provider_label,
+  belt_dispatch_disabled_status_label,
 }
 import extdeps.languages.typescript.program {
   TsProgram, TsExpr, TsStmt, serialize_typescript_program,
@@ -100,7 +106,7 @@ fn dispatch_button_terminal_count() -> Int {
   count(component_terminal_states(c: dispatch_button_component()))
 }
 
-data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the caption authority, not a hand pixel (P3, re-pointed by remodel W1d): min-width is the longest CAPTION the button can wear (band phrases + the session-chip morphs derived from the ok labels) plus a fixed gutter. Wire labels no longer render as captions, so they no longer drive geometry — the A.4 complaint's root (the control shaped by its worst-case diagnostic string) dissolves here. A caption or ok-label change moves the reservation by derivation; there is no pixel to re-tune."
+data dispatch_reserved_width_note: String = "The dispatch button's reserved width is a PROJECTION of the caption authority, not a hand pixel (P3, re-pointed by remodel W1d): min-width is the longest CAPTION the button can wear (band phrases + dispatch-receipt and observed-session morphs) plus a fixed gutter. A caption or ok-label change moves the reservation by derivation; there is no pixel to re-tune."
 
 data dispatch_button_ch_gutter: Int = 2
 
@@ -114,9 +120,16 @@ fn dispatch_reserved_ch_for(labels: List<String>) -> Int {
 }
 
 fn dispatch_caption_set() -> List<String> {
-  concat(
-    [dispatch_caption_idle, dispatch_caption_requested, dispatch_caption_fail, dispatch_caption_loud],
-    [concat(dispatch_ack_prefix, dispatch_ack_word), concat(dispatch_session_chip_prefix, dispatch_caption_present_word)])
+  concat([
+    dispatch_caption_idle,
+    dispatch_caption_requested,
+    dispatch_caption_fail,
+    dispatch_caption_loud,
+  ], [
+    concat(dispatch_ack_prefix, dispatch_ack_word),
+    concat(dispatch_ack_prefix, belt_dispatch_disabled_status_label()),
+    concat(dispatch_session_chip_prefix, dispatch_caption_present_word),
+  ])
 }
 
 fn dispatch_reserved_ch() -> Int {
@@ -133,55 +146,196 @@ fn dispatch_reserved_width() -> String {
 
 data dispatch_session_chip_note: String = "The POST acknowledgement and the session observation are two different captions because they are two different facts. An ok POST renders `dispatch · accepted`: worktree/process creation returned success, or the idempotent request found the desired dispatch already accepted. Only the independent /sessions.json observation may render `session · present`, and that wording claims tmux/process presence only — never provider readiness, execution, or completion. The response's exact spawned/already_live wire label remains in the title channel.
 
-Both captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row. The session chip remains type-distinct from the node's status chip at the head of the row."
+The observe-only posture independently renders `dispatch · disabled`; it is neither an accepted dispatch nor session evidence. All three captions stay inside the reserved width derived from the caption set, so re-observation cannot reflow the row. The session chip remains type-distinct from the node's status chip at the head of the row."
 
 data dispatch_ack_prefix: String = "dispatch · "
 data dispatch_ack_word: String = "accepted"
 data dispatch_session_chip_prefix: String = "session · "
 
 data sessions_route_path: String = "/sessions.json"
+data dashboard_instance_route_path: String = "/instance.json"
+data dashboard_instance_class: String = "dashboard-instance"
+data dashboard_instance_label_class: String = "dashboard-instance-label"
+
+data dashboard_instance_client_note: String = "The page body remains pure and digestable; the running serve entrypoint names its actual HostDashboardInstance through /instance.json. The client projects that observation into the instance banner. Observe-only is also projected onto every real dispatch control before interaction: the control reads `dispatch · disabled`, carries the located posture reason, and is physically disabled, while the server independently returns typed HTTP 403 if a stale or scripted client still POSTs. The /sandbox program deliberately omits this projection so its harmless wire-state gallery remains pressable."
+
+fn dashboard_instance_fetch_statements() -> List<TsStmt> {
+  [
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_ident(name: "fetch"),
+                  args: [ts_lit_str(value: dashboard_instance_route_path)]),
+                property: "then"),
+              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                ts_return(expr: ts_call(
+                  callee: ts_member(object: ts_ident(name: "r"), property: "json"),
+                  args: [])),
+              ]))]),
+            property: "then"),
+          args: [ts_arrow(params: ["ij"], body: ts_block(stmts: [
+            ts_const(name: "il", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+              args: [ts_lit_str(value: join([".", dashboard_instance_label_class], ""))])),
+            ts_const(
+              name: "instanceId",
+              value: ts_binop(
+                left: ts_member(object: ts_ident(name: "ij"), property: "instance_id"),
+                op: "||",
+                right: ts_lit_str(value: "unknown"))),
+            ts_const(
+              name: "posture",
+              value: ts_binop(
+                left: ts_member(object: ts_ident(name: "ij"), property: "actuation"),
+                op: "||",
+                right: ts_lit_str(value: "unknown"))),
+            ts_if(
+              cond: ts_ident(name: "il"),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "il"), property: "textContent"),
+                  op: "=",
+                  right: ts_binop(
+                    left: ts_binop(
+                      left: ts_binop(
+                        left: ts_lit_str(value: "instance · "),
+                        op: "+",
+                        right: ts_ident(name: "instanceId")),
+                      op: "+",
+                      right: ts_lit_str(value: " · ")),
+                    op: "+",
+                    right: ts_ident(name: "posture")))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "il"), property: "title"),
+                  op: "=",
+                  right: ts_binop(
+                    left: ts_binop(
+                      left: ts_binop(
+                        left: ts_lit_str(value: "host "),
+                        op: "+",
+                        right: ts_binop(
+                          left: ts_member(object: ts_ident(name: "ij"), property: "host_identity"),
+                          op: "||",
+                          right: ts_lit_str(value: "unknown"))),
+                      op: "+",
+                      right: ts_lit_str(value: " · repo ")),
+                    op: "+",
+                    right: ts_binop(
+                      left: ts_member(object: ts_ident(name: "ij"), property: "repo_root"),
+                      op: "||",
+                      right: ts_lit_str(value: "unknown"))))),
+              ]),
+              else_stmt: none),
+            ts_if(
+              cond: ts_binop(
+                left: ts_ident(name: "posture"),
+                op: "===",
+                right: ts_lit_str(value: "observe-only")),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_call(
+                      callee: ts_member(
+                        object: ts_ident(name: "document"),
+                        property: "querySelectorAll"),
+                      args: [ts_lit_str(value: ".dispatch-btn")]),
+                    property: "forEach"),
+                  args: [ts_arrow(params: ["db"], body: ts_block(stmts: [
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "db"), property: "disabled"),
+                      op: "=",
+                      right: ts_ident(name: "true"))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "db"), property: "textContent"),
+                      op: "=",
+                      right: ts_lit_str(value: join([
+                        dispatch_ack_prefix,
+                        belt_dispatch_disabled_status_label(),
+                      ], "")))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "db"), property: "title"),
+                      op: "=",
+                      right: ts_lit_str(value: "dispatch disabled by instance posture: observe-only"))),
+                    ts_expr_stmt(expr: ts_call(
+                      callee: ts_member(
+                        object: ts_member(object: ts_ident(name: "db"), property: "classList"),
+                        property: "add"),
+                      args: [ts_lit_str(value: dispatch_class_refused)])),
+                  ]))])),
+              ]),
+              else_stmt: none),
+          ]))]),
+        property: "catch"),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
+        ts_const(name: "il", value: ts_call(
+          callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
+          args: [ts_lit_str(value: join([".", dashboard_instance_label_class], ""))])),
+        ts_if(
+          cond: ts_ident(name: "il"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "il"), property: "textContent"),
+              op: "=",
+              right: ts_lit_str(value: "instance · observation refused"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "il"), property: "title"),
+              op: "=",
+              right: ts_binop(
+                left: ts_ident(name: "e"),
+                op: "+",
+                right: ts_lit_str(value: "")))),
+          ]),
+          else_stmt: none),
+      ]))])),
+  ]
+}
 
 data attempts_route_path: String = "/attempts.json"
+data workflow_route_path: String = "/workflow.json"
 
 type WorkflowLamp
-  = LiveWorkflowLamp
-  | AttemptedWorkflowLamp
+  = SessionWorkflowLamp
+  | AttemptWorkflowLamp
 
 data workflow_lamps_v0: List<WorkflowLamp> = [
-  LiveWorkflowLamp,
-  AttemptedWorkflowLamp,
+  SessionWorkflowLamp,
+  AttemptWorkflowLamp,
 ]
 
 fn workflow_lamp_key(lamp: WorkflowLamp) -> String {
   match lamp {
-    LiveWorkflowLamp => "live"
-    AttemptedWorkflowLamp => "attempted"
+    SessionWorkflowLamp => "session"
+    AttemptWorkflowLamp => "attempt"
   }
 }
 
 fn workflow_lamp_label(lamp: WorkflowLamp) -> String {
   match lamp {
-    LiveWorkflowLamp => "Live"
-    AttemptedWorkflowLamp => "Attempted"
+    SessionWorkflowLamp => "Session"
+    AttemptWorkflowLamp => "Attempt"
   }
 }
 
 fn workflow_lamp_state(
   lamp: WorkflowLamp,
-  live: ClientObservationState,
-  attempted: ClientObservationState,
+  session: ClientObservationState,
+  attempt: ClientObservationState,
 ) -> ClientObservationState {
   match lamp {
-    LiveWorkflowLamp => live
-    AttemptedWorkflowLamp => attempted
+    SessionWorkflowLamp => session
+    AttemptWorkflowLamp => attempt
   }
 }
 
 fn workflow_lamp_initial_state(lamp: WorkflowLamp) -> ClientObservationState {
   workflow_lamp_state(
     lamp: lamp,
-    live: ClientObservationPending,
-    attempted: ClientObservationPending)
+    session: ClientObservationPending,
+    attempt: ClientObservationPending)
 }
 
 data workflow_controls_class: String = "workflow-controls"
@@ -193,9 +347,27 @@ data workflow_lamp_data_attribute: String = "data-workflow-lamp"
 data workflow_observation_data_attribute: String = "data-observation"
 data workflow_lamp_label_data_attribute: String = "data-label"
 
-data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26): Live and Attempted are two independent projections over the existing /sessions.json and /attempts.json observations. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
+data workflow_progress_stages: List<WorkflowSegmentKind> = roadmap_attempt_workflow_segment_kinds
 
-data dispatch_caption_live_word_note: String = "The session route observes tmux/process presence, not agent execution. Its caption is therefore `present`, never `live` or `executing`. The existing Live workflow lamp keeps its compatibility label while its evidence source remains this same documented presence observation."
+fn workflow_progress_stage_key(stage: WorkflowSegmentKind) -> String {
+  gunbc.roadmap_workflow_stage.workflow_segment_kind_key(kind: stage)
+}
+
+fn workflow_progress_stage_label(stage: WorkflowSegmentKind) -> String {
+  gunbc.roadmap_workflow_stage.workflow_segment_kind_short_label(kind: stage)
+}
+
+data workflow_progress_class: String = "workflow-progress"
+data workflow_stage_class: String = "workflow-stage"
+data workflow_activity_class: String = "workflow-activity"
+data workflow_stage_data_attribute: String = "data-workflow-stage"
+data workflow_segment_state_data_attribute: String = "data-state"
+
+data workflow_progress_note: String = "The seven-obligation attempt pipeline is presentation over /workflow.json evidence, not a stored stage machine and not a replacement for independent Session/Attempt facts. Environment and Worktree are constructive receipts; Agent comes from provider events reconciled with the shared worker-process evidence; Verify, Publish, Review, and Audit remain visibly pending until their own producers exist. Both markup and server desired facts consume roadmap_attempt_workflow_segment_kinds, while the client writes each segment's observed state/detail and makes failed/refused state visible in the stage label rather than relying on border style alone. A provider turn completing cannot move downstream obligations. Workflow observation is single-flight: the next timer is armed only in the settled promise's finally arm, so a slow/refused route cannot accumulate overlapping requests against the interpreted single-threaded server."
+
+data workflow_lamps_note: String = "Workflow lamps v0 (operator adjudication 2026-07-26, vocabulary corrected 2026-07-28): Session and Attempt are two independent projections over /sessions.json and /attempts.json. workflow_lamps_v0 declares their presentation order for the row strip; workflow_lamp_state selects each axis without collapsing them into one workflow status. Every lamp starts ClientObservationPending and can become Off, On, or Refused only through the shared gunbc.client_observation_state authority. Session means the tmux container is present—not that its process is running—and process lifecycle is rendered separately. The strip is evidence presentation only: its rightmost lit member never gates an action and is never persisted. gunbc.client_observation_state.work_item_workflow_fact_note records the seven-fact join ruling without re-declaring those facts as a parallel roster. Proposed and Landed do not earn lamps until the typed attempt/branch/PR/node join exists; that binding, not more visual states, is the next slice."
+
+data dispatch_caption_live_word_note: String = "The session route observes tmux container presence independently from pane/process lifecycle. Its caption is therefore `present`, never `live` or `executing`; the Session lamp names that same narrow fact. A neighboring process chip renders running, exited, absent, or unobserved from the pane source."
 
 data dispatch_caption_present_word: String = "present"
 
@@ -204,7 +376,7 @@ data dispatch_class_ok: String = "dispatch-ok"
 data dispatch_class_refused: String = "dispatch-refused"
 data dispatch_class_loud: String = "dispatch-loud"
 
-data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic Stop also lands inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing Stop or a lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
+data roadmap_row_archetype_note: String = "The RoadmapRow archetype (composition slice 2; refined by workflow lamps v0 without adding a head track): the row's five regions remain status chip, title, meta, disclosure, actuator. The ActuatorRegion is realized by one always-present workflow-controls wrapper containing the workflow strip and the optional dispatch control; dynamic process evidence and its stop/clear/unavailable cleanup action also land inside that wrapper. This preserves the derived auto 1fr auto grid while giving done/superseded rows an observation surface and preventing a cleanup action or lamp strip from becoming an implicit fourth grid item. The title owns the flex track; meta FLOWS inside it; disclosure sits under the head. Density rides roadmap_row_height and roadmap_row_gutter. The full-size instrument specimen remains outside .node-head in the sandbox."
 
 type RowTrack
   = AutoTrack
@@ -272,7 +444,7 @@ data node_mid_class_note: String = "The title track's cell: the wrapper that car
 
 data node_mid_class: String = "node-mid"
 
-data dispatch_caption_note: String = "The operator-facing captions (remodel W1d, operator ruling 2026-07-24): the wire taxonomy never renders as button text. The caption is the BAND's verb — ok keeps the session-chip morph (prefix + the belt's own status word, an honest projection, checkpoint 2); fail and loud collapse to one operator phrase each, with the wire label and its located fields demoted to the title/detail channel. BandInProgress renders the requested caption. These rows are the caption authority for the client program, the gallery, and the reserved width — one vocabulary, three consumers."
+data dispatch_caption_note: String = "The operator-facing captions (remodel W1d, operator ruling 2026-07-24; lifecycle correction 2026-07-27): ok keeps the exact belt status under the dispatch-receipt prefix, while fail and loud collapse to one operator phrase each with the wire label and located fields in the title/detail channel. A separate sessions observation may replace the receipt with `session · present`; neither caption claims provider execution. BandInProgress renders the requested caption. These rows are the caption authority for the client program, gallery, and reserved width."
 
 data dispatch_caption_idle: String = "dispatch"
 data dispatch_caption_requested: String = "dispatching..."
@@ -577,9 +749,11 @@ data dispatch_choreography_note: String = "The presented-state choreography (rem
 
 data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell scalar. This row survives until that session replaces it."
 
-data dispatch_requested_read_dwell_ms: Int = 300
+data dispatch_requested_read_dwell_ms: Milliseconds = 300
 
 data js_dwell_const: String = "gunbcDwellMs"
+data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
+data js_poll_workflow_fn: String = "gunbcPollWorkflow"
 
 fn dispatch_preamble_statements() -> List<TsStmt> {
   [ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms)))]
@@ -643,9 +817,21 @@ fn dispatch_terminal_apply_body() -> TsStmt {
         test: ts_ident(name: "ok"),
         consequent: ts_lit_str(value: concat(dispatch_ack_prefix, dispatch_ack_word)),
         alternate: ts_cond(
-          test: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: "fail")),
-          consequent: ts_lit_str(value: dispatch_caption_fail),
-          alternate: ts_lit_str(value: dispatch_caption_loud),
+          test: ts_binop(
+            left: ts_ident(name: "s"),
+            op: "===",
+            right: ts_lit_str(value: belt_dispatch_disabled_status_label())),
+          consequent: ts_binop(
+            left: ts_lit_str(value: dispatch_ack_prefix),
+            op: "+",
+            right: ts_ident(name: "s")),
+          alternate: ts_cond(
+            test: ts_binop(
+              left: ts_ident(name: "band"),
+              op: "===",
+              right: ts_lit_str(value: "fail")),
+            consequent: ts_lit_str(value: dispatch_caption_fail),
+            alternate: ts_lit_str(value: dispatch_caption_loud)),
         ),
       ),
     )),
@@ -675,7 +861,13 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       ),
       alternate: ts_binop(left: js_j_member(name: "reason"), op: "||", right: ts_lit_str(value: "")),
     )),
-    ts_const(name: "base", value: ts_binop(left: ts_ident(name: "s"), op: "||", right: ts_lit_str(value: "no status"))),
+    ts_const(name: "base", value: ts_cond(
+      test: ts_ident(name: "p"),
+      consequent: ts_binop(
+        left: ts_binop(left: ts_ident(name: "s"), op: "+", right: ts_lit_str(value: " · ")),
+        op: "+",
+        right: ts_ident(name: "p")),
+      alternate: ts_binop(left: ts_ident(name: "s"), op: "||", right: ts_lit_str(value: "no status")))),
     ts_expr_stmt(expr: ts_binop(
       left: js_b_member(name: "title"),
       op: "=",
@@ -767,6 +959,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       then: ts_block(stmts: [
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_sessions_observe_fn), args: [])),
         ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_attempts_observe_fn), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_refresh_workflow_fn), args: [])),
       ]),
       else_stmt: none,
     ),
@@ -1275,7 +1468,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "sess"), property: "node_id"))])),
     workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: LiveWorkflowLamp),
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "sr", lamp: SessionWorkflowLamp),
       state: ClientObservationOn,
       reason_expr: ts_lit_str(value: "")),
     ts_const(name: "sb", value: ts_binop(
@@ -1336,21 +1529,79 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                     right: ts_member(object: ts_ident(name: "sess"), property: "session_name")))))),
           ]),
           else_stmt: none),
-        ts_let(name: "sc", value: ts_call(
-          callee: ts_member(object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"), property: "querySelector"),
-          args: [ts_lit_str(value: ".stop-chip")])),
+        ts_let(name: "pc", value: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
+            property: "querySelector"),
+          args: [ts_lit_str(value: ".process-chip")])),
         ts_if(
-          cond: ts_prefix(op: "!", expr: ts_ident(name: "sc")),
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "pc")),
           then: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "sc"), op: "=", right: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "createElement"), args: [ts_lit_str(value: "button")]))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "className"), op: "=", right: ts_lit_str(value: "stop-chip"))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "type"), op: "=", right: ts_lit_str(value: "button"))),
-            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "pc"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "span")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "pc"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "process-chip"))),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sc"), property: "addEventListener"),
+              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
+              args: [ts_lit_str(value: "afterend"), ts_ident(name: "pc")])),
+          ]),
+          else_stmt: none),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "pc"), property: "textContent"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "process_state"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "pc"), property: "title"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "process_detail"))),
+        ts_let(name: "cc", value: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "sb"), property: "parentElement"),
+            property: "querySelector"),
+          args: [ts_lit_str(value: ".cleanup-chip")])),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "cc")),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_ident(name: "cc"),
+              op: "=",
+              right: ts_call(
+                callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
+                args: [ts_lit_str(value: "button")]))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "className"),
+              op: "=",
+              right: ts_lit_str(value: "cleanup-chip"))),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "cc"), property: "type"),
+              op: "=",
+              right: ts_lit_str(value: "button"))),
+            ts_expr_stmt(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "cc"), property: "addEventListener"),
               args: [ts_lit_str(value: "click"), ts_arrow(params: ["ev"], body: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stopping…"))),
-                ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
+                ts_const(name: "action", value: ts_binop(
+                  left: ts_member(
+                    object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
+                    property: "cleanupAction"),
+                  op: "||",
+                  right: ts_lit_str(value: "cleanup"))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+                  op: "=",
+                  right: ts_binop(
+                    left: ts_ident(name: "action"),
+                    op: "+",
+                    right: ts_lit_str(value: "…")))),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                  op: "=",
+                  right: ts_ident(name: "true"))),
                 ts_expr_stmt(expr: ts_call(
                   callee: ts_member(
                     object: ts_call(
@@ -1358,44 +1609,106 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
                         object: ts_call(
                           callee: ts_member(
                             object: ts_call(callee: ts_ident(name: "fetch"), args: [
-                              ts_binop(left: ts_lit_str(value: "/stop/"), op: "+", right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
-                              ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST"))]),
+                              ts_binop(
+                                left: ts_lit_str(value: "/cleanup/"),
+                                op: "+",
+                                right: ts_member(object: ts_ident(name: "sess"), property: "node_id")),
+                              ts_object(fields: [
+                                ts_field(key: "method", value: ts_lit_str(value: "POST")),
+                              ]),
                             ]),
                             property: "then"),
-                          args: [ts_arrow(params: ["r"], body: ts_block(stmts: [ts_return(expr: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "json"), args: []))]))]),
+                          args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                            ts_return(expr: ts_call(
+                              callee: ts_member(object: ts_ident(name: "r"), property: "json"),
+                              args: [])),
+                          ]))]),
                         property: "then"),
                       args: [ts_arrow(params: ["j"], body: ts_block(stmts: [
                         ts_if(
-                          cond: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "status"), op: "===", right: ts_lit_str(value: "stopped")),
+                          cond: ts_binop(
+                            left: ts_member(object: ts_ident(name: "j"), property: "ok"),
+                            op: "===",
+                            right: ts_ident(name: "true")),
                           then: ts_block(stmts: [
-                            ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "window"), property: "location"), property: "reload"), args: [])),
+                            ts_expr_stmt(expr: ts_call(
+                              callee: ts_member(
+                                object: ts_member(object: ts_ident(name: "window"), property: "location"),
+                                property: "reload"),
+                              args: [])),
                           ]),
                           else_stmt: Present { value: ts_block(stmts: [
-                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop refused"))),
                             ts_expr_stmt(expr: ts_binop(
-                              left: ts_member(object: ts_ident(name: "sc"), property: "title"),
+                              left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
                               op: "=",
                               right: ts_binop(
-                                left: ts_binop(left: ts_member(object: ts_ident(name: "j"), property: "reason"), op: "||", right: ts_member(object: ts_ident(name: "j"), property: "detail")),
+                                left: ts_ident(name: "action"),
+                                op: "+",
+                                right: ts_lit_str(value: " refused")))),
+                            ts_expr_stmt(expr: ts_binop(
+                              left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+                              op: "=",
+                              right: ts_binop(
+                                left: ts_binop(
+                                  left: ts_member(object: ts_ident(name: "j"), property: "reason"),
+                                  op: "||",
+                                  right: ts_member(object: ts_ident(name: "j"), property: "detail")),
                                 op: "||",
                                 right: ts_lit_str(value: "no reason on the wire")))),
-                            ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                            ts_expr_stmt(expr: ts_binop(
+                              left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                              op: "=",
+                              right: ts_ident(name: "false"))),
                           ]) },
                         ),
                       ]))]),
                     property: "catch"),
                   args: [ts_arrow(params: ["e"], body: ts_block(stmts: [
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "textContent"), op: "=", right: ts_lit_str(value: "stop failed"))),
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "title"), op: "=", right: ts_binop(left: ts_ident(name: "e"), op: "+", right: ts_lit_str(value: "")))),
-                    ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "sc"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+                      op: "=",
+                      right: ts_binop(
+                        left: ts_ident(name: "action"),
+                        op: "+",
+                        right: ts_lit_str(value: " failed")))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+                      op: "=",
+                      right: ts_binop(
+                        left: ts_ident(name: "e"),
+                        op: "+",
+                        right: ts_lit_str(value: "")))),
+                    ts_expr_stmt(expr: ts_binop(
+                      left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+                      op: "=",
+                      right: ts_ident(name: "false"))),
                   ]))])),
               ]))])),
             ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "sb"), property: "insertAdjacentElement"),
-              args: [ts_lit_str(value: "afterend"), ts_ident(name: "sc")])),
+              callee: ts_member(object: ts_ident(name: "pc"), property: "insertAdjacentElement"),
+              args: [ts_lit_str(value: "afterend"), ts_ident(name: "cc")])),
           ]),
-          else_stmt: none,
-        ),
+          else_stmt: none),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(
+            object: ts_member(object: ts_ident(name: "cc"), property: "dataset"),
+            property: "cleanupAction"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "textContent"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_action"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "title"),
+          op: "=",
+          right: ts_member(object: ts_ident(name: "sess"), property: "cleanup_detail"))),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "cc"), property: "disabled"),
+          op: "=",
+          right: ts_prefix(
+            op: "!",
+            expr: ts_member(object: ts_ident(name: "sess"), property: "cleanup_allowed")))),
       ]),
       else_stmt: none,
     ),
@@ -1451,13 +1764,20 @@ fn sessions_reset_presence_stmt() -> TsStmt {
             right: ts_lit_str(value: ""))),
         ]),
         else_stmt: none),
-      ts_const(name: "oldStop", value: ts_call(
+      ts_const(name: "oldProcess", value: ts_call(
         callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
-        args: [ts_lit_str(value: ".stop-chip")])),
+        args: [ts_lit_str(value: ".process-chip")])),
       ts_expr_stmt(expr: ts_binop(
-        left: ts_ident(name: "oldStop"),
+        left: ts_ident(name: "oldProcess"),
         op: "&&",
-        right: ts_call(callee: ts_member(object: ts_ident(name: "oldStop"), property: "remove"), args: []))),
+        right: ts_call(callee: ts_member(object: ts_ident(name: "oldProcess"), property: "remove"), args: []))),
+      ts_const(name: "oldCleanup", value: ts_call(
+        callee: ts_member(object: ts_member(object: ts_ident(name: "pb"), property: "parentElement"), property: "querySelector"),
+        args: [ts_lit_str(value: ".cleanup-chip")])),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_ident(name: "oldCleanup"),
+        op: "&&",
+        right: ts_call(callee: ts_member(object: ts_ident(name: "oldCleanup"), property: "remove"), args: []))),
     ]))]))
 }
 
@@ -1527,7 +1847,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                   [
                     sessions_reset_presence_stmt(),
                     workflow_set_all_observations_stmt(
-                      lamp: LiveWorkflowLamp,
+                      lamp: SessionWorkflowLamp,
                       state: ClientObservationRefused { reason: "" },
                       reason_expr: ts_ident(name: "why")),
                   ],
@@ -1536,7 +1856,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
                 remove_all_selector_stmt(selector: ".sessions-observe-refused", item_name: "oldBanner"),
                 sessions_reset_presence_stmt(),
                 workflow_set_all_observations_stmt(
-                  lamp: LiveWorkflowLamp,
+                  lamp: SessionWorkflowLamp,
                   state: ClientObservationOff,
                   reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
@@ -1555,7 +1875,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
           [
             sessions_reset_presence_stmt(),
             workflow_set_all_observations_stmt(
-              lamp: LiveWorkflowLamp,
+              lamp: SessionWorkflowLamp,
               state: ClientObservationRefused { reason: "" },
               reason_expr: ts_ident(name: "why")),
           ],
@@ -1568,7 +1888,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
   ]
 }
 
-data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). Upsert by class so a reload never stacks duplicates; the refusal arm reuses the loud banner with its own message."
+data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). Each observation clears the prior rendered projection before rebuilding it, so the immediate post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud banner; recovery clears it."
 
 fn attempts_mark_stmts() -> List<TsStmt> {
   [
@@ -1577,7 +1897,7 @@ fn attempts_mark_stmts() -> List<TsStmt> {
       args: [workflow_row_selector_expr(
         node_id: ts_member(object: ts_ident(name: "att"), property: "node_id"))])),
     workflow_set_observation_call(
-      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptedWorkflowLamp),
+      lamp_expr: workflow_lamp_in_row_expr(row_name: "ar", lamp: AttemptWorkflowLamp),
       state: ClientObservationOn,
       reason_expr: ts_lit_str(value: "")),
     ts_const(name: "adt", value: ts_binop(
@@ -1641,7 +1961,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                   [
                     remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
                     workflow_set_all_observations_stmt(
-                      lamp: AttemptedWorkflowLamp,
+                      lamp: AttemptWorkflowLamp,
                       state: ClientObservationRefused { reason: "" },
                       reason_expr: ts_ident(name: "why")),
                   ],
@@ -1650,7 +1970,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
                 remove_all_selector_stmt(selector: ".attempts-observe-refused", item_name: "oldBanner"),
                 remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "oldAttempts"),
                 workflow_set_all_observations_stmt(
-                  lamp: AttemptedWorkflowLamp,
+                  lamp: AttemptWorkflowLamp,
                   state: ClientObservationOff,
                   reason_expr: ts_lit_str(value: "")),
                 ts_expr_stmt(expr: ts_call(
@@ -1669,7 +1989,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
           [
             remove_all_selector_stmt(selector: ".dispatch-attempts", item_name: "staleAttempts"),
             workflow_set_all_observations_stmt(
-              lamp: AttemptedWorkflowLamp,
+              lamp: AttemptWorkflowLamp,
               state: ClientObservationRefused { reason: "" },
               reason_expr: ts_ident(name: "why")),
           ],
@@ -1725,7 +2045,539 @@ fn observation_fetch_statements() -> List<TsStmt> {
   ]
 }
 
-fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<String>) -> TsProgram {
+fn workflow_progress_in_row_expr(row_name: String) -> TsExpr {
+  ts_binop(
+    left: ts_ident(name: row_name),
+    op: "&&",
+    right: ts_call(
+      callee: ts_member(
+        object: ts_ident(name: row_name),
+        property: "querySelector",
+      ),
+      args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
+    ),
+  )
+}
+
+fn workflow_dynamic_stage_selector_expr() -> TsExpr {
+  ts_binop(
+    left: ts_binop(
+      left: ts_lit_str(value: join([
+        "[",
+        workflow_stage_data_attribute,
+        "=\"",
+      ], "")),
+      op: "+",
+      right: ts_member(object: ts_ident(name: "seg"), property: "kind"),
+    ),
+    op: "+",
+    right: ts_lit_str(value: "\"]"),
+  )
+}
+
+fn workflow_clear_rendered_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(
+          object: ts_ident(name: "document"),
+          property: "querySelectorAll",
+        ),
+        args: [ts_lit_str(value: join([".", workflow_progress_class], ""))],
+      ),
+      property: "forEach",
+    ),
+    args: [ts_arrow(
+      params: ["wp"],
+      body: ts_expr_stmt(expr: ts_binop(
+        left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
+        op: "=",
+        right: ts_ident(name: "true"),
+      )),
+    )],
+  ))
+}
+
+fn workflow_refuse_visible_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_member(
+      object: ts_call(
+        callee: ts_member(
+          object: ts_ident(name: "document"),
+          property: "querySelectorAll",
+        ),
+        args: [ts_lit_str(value: join([
+          ".",
+          workflow_progress_class,
+          ":not([hidden]) .",
+          workflow_stage_class,
+        ], ""))],
+      ),
+      property: "forEach",
+    ),
+    args: [ts_arrow(params: ["stage"], body: ts_block(stmts: [
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(
+          object: ts_member(
+            object: ts_ident(name: "stage"),
+            property: "dataset",
+          ),
+          property: "state",
+        ),
+        op: "=",
+        right: ts_lit_str(value: "refused"),
+      )),
+      ts_expr_stmt(expr: ts_binop(
+        left: ts_member(object: ts_ident(name: "stage"), property: "title"),
+        op: "=",
+        right: ts_ident(name: "why"),
+      )),
+    ]))],
+  ))
+}
+
+fn workflow_mark_attempt_stmts() -> List<TsStmt> {
+  [
+    ts_const(name: "wr", value: ts_call(
+      callee: ts_member(
+        object: ts_ident(name: "document"),
+        property: "querySelector",
+      ),
+      args: [workflow_row_selector_expr(
+        node_id: ts_member(
+          object: ts_ident(name: "attempt"),
+          property: "node_id",
+        ),
+      )],
+    )),
+    ts_const(
+      name: "wp",
+      value: workflow_progress_in_row_expr(row_name: "wr"),
+    ),
+    ts_if(
+      cond: ts_ident(name: "wp"),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "wp"), property: "hidden"),
+          op: "=",
+          right: ts_ident(name: "false"),
+        )),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_member(object: ts_ident(name: "wp"), property: "title"),
+          op: "=",
+          right: ts_binop(
+            left: ts_binop(
+              left: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "workflow_status",
+                ),
+                op: "+",
+                right: ts_lit_str(value: " · "),
+              ),
+              op: "+",
+              right: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "remaining_obligations",
+              ),
+            ),
+            op: "+",
+            right: ts_binop(
+              left: ts_lit_str(value: " remaining — "),
+              op: "+",
+              right: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_status",
+                ),
+                op: "+",
+                right: ts_cond(
+                  test: ts_member(
+                    object: ts_ident(name: "attempt"),
+                    property: "provider_detail",
+                  ),
+                  consequent: ts_binop(
+                    left: ts_lit_str(value: " — "),
+                    op: "+",
+                    right: ts_member(
+                      object: ts_ident(name: "attempt"),
+                      property: "provider_detail",
+                    ),
+                  ),
+                  alternate: ts_lit_str(value: ""),
+                ),
+              ),
+            ),
+          ),
+        )),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_ident(name: "wp"),
+            property: "setAttribute",
+          ),
+          args: [
+            ts_lit_str(value: "aria-label"),
+            ts_binop(
+              left: ts_lit_str(value: "Workflow: "),
+              op: "+",
+              right: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "workflow_status",
+                ),
+                op: "+",
+                right: ts_binop(
+                  left: ts_lit_str(value: " · "),
+                  op: "+",
+                  right: ts_member(
+                    object: ts_ident(name: "attempt"),
+                    property: "remaining_obligations",
+                  ),
+                ),
+              ),
+            ),
+          ],
+        )),
+        ts_const(name: "wa", value: ts_call(
+          callee: ts_member(
+            object: ts_ident(name: "wp"),
+            property: "querySelector",
+          ),
+          args: [ts_lit_str(value: join([
+            ".",
+            workflow_activity_class,
+          ], ""))],
+        )),
+        ts_if(
+          cond: ts_ident(name: "wa"),
+          then: ts_block(stmts: [
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(
+                object: ts_ident(name: "wa"),
+                property: "textContent",
+              ),
+              op: "=",
+              right: ts_binop(
+                left: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_activity",
+                ),
+                op: "||",
+                right: ts_member(
+                  object: ts_ident(name: "attempt"),
+                  property: "provider_status",
+                ),
+              ),
+            )),
+            ts_expr_stmt(expr: ts_binop(
+              left: ts_member(object: ts_ident(name: "wa"), property: "title"),
+              op: "=",
+              right: ts_member(
+                object: ts_ident(name: "attempt"),
+                property: "provider_detail",
+              ),
+            )),
+          ]),
+          else_stmt: none,
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_member(
+              object: ts_ident(name: "attempt"),
+              property: "segments",
+            ),
+            property: "forEach",
+          ),
+          args: [ts_arrow(params: ["seg"], body: ts_block(stmts: [
+            ts_const(name: "stage", value: ts_call(
+              callee: ts_member(
+                object: ts_ident(name: "wp"),
+                property: "querySelector",
+              ),
+              args: [workflow_dynamic_stage_selector_expr()],
+            )),
+            ts_if(
+              cond: ts_ident(name: "stage"),
+              then: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_member(
+                      object: ts_ident(name: "stage"),
+                      property: "dataset",
+                    ),
+                    property: "state",
+                  ),
+                  op: "=",
+                  right: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "state",
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_ident(name: "stage"),
+                    property: "textContent",
+                  ),
+                  op: "=",
+                  right: ts_cond(
+                    test: ts_binop(
+                      left: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                        op: "===",
+                        right: ts_lit_str(value: "failed"),
+                      ),
+                      op: "||",
+                      right: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                        op: "===",
+                        right: ts_lit_str(value: "refused"),
+                      ),
+                    ),
+                    consequent: ts_binop(
+                      left: ts_binop(
+                        left: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "short_label",
+                        ),
+                        op: "+",
+                        right: ts_lit_str(value: " · "),
+                      ),
+                      op: "+",
+                      right: ts_member(
+                        object: ts_ident(name: "seg"),
+                        property: "state",
+                      ),
+                    ),
+                    alternate: ts_member(
+                      object: ts_ident(name: "seg"),
+                      property: "short_label",
+                    ),
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_member(
+                    object: ts_ident(name: "stage"),
+                    property: "title",
+                  ),
+                  op: "=",
+                  right: ts_member(
+                    object: ts_ident(name: "seg"),
+                    property: "detail",
+                  ),
+                )),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_ident(name: "stage"),
+                    property: "setAttribute",
+                  ),
+                  args: [
+                    ts_lit_str(value: "aria-label"),
+                    ts_binop(
+                      left: ts_binop(
+                        left: ts_binop(
+                          left: ts_member(
+                            object: ts_ident(name: "seg"),
+                            property: "label",
+                          ),
+                          op: "+",
+                          right: ts_lit_str(value: ": "),
+                        ),
+                        op: "+",
+                        right: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "state",
+                        ),
+                      ),
+                      op: "+",
+                      right: ts_cond(
+                        test: ts_member(
+                          object: ts_ident(name: "seg"),
+                          property: "detail",
+                        ),
+                        consequent: ts_binop(
+                          left: ts_lit_str(value: " — "),
+                          op: "+",
+                          right: ts_member(
+                            object: ts_ident(name: "seg"),
+                            property: "detail",
+                          ),
+                        ),
+                        alternate: ts_lit_str(value: ""),
+                      ),
+                    ),
+                  ],
+                )),
+              ]),
+              else_stmt: none,
+            ),
+          ]))],
+        )),
+      ]),
+      else_stmt: none,
+    ),
+  ]
+}
+
+fn workflow_fetch_request_statements() -> List<TsStmt> {
+  [
+    ts_return(expr: ts_call(
+      callee: ts_member(
+        object: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_member(
+                object: ts_call(
+                  callee: ts_ident(name: "fetch"),
+                  args: [ts_lit_str(value: workflow_route_path)],
+                ),
+                property: "then",
+              ),
+              args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                ts_return(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_ident(name: "r"),
+                    property: "json",
+                  ),
+                  args: [],
+                )),
+              ]))],
+            ),
+            property: "then",
+          ),
+          args: [ts_arrow(params: ["wj"], body: ts_block(stmts: [
+            ts_if(
+              cond: ts_member(
+                object: ts_ident(name: "wj"),
+                property: "observe_refused",
+              ),
+              then: ts_block(stmts: concat(
+                [
+                  ts_const(name: "why", value: ts_binop(
+                    left: ts_lit_str(
+                      value: "workflow observation refused: ",
+                    ),
+                    op: "+",
+                    right: ts_binop(
+                      left: ts_member(
+                        object: ts_ident(name: "wj"),
+                        property: "reason",
+                      ),
+                      op: "||",
+                      right: ts_lit_str(value: "no reason on the wire"),
+                    ),
+                  )),
+                  workflow_refuse_visible_stmt(),
+                ],
+                observation_refused_banner_stmts(
+                  source_class: "workflow-observe-refused"),
+              )),
+              else_stmt: Present { value: ts_block(stmts: [
+                remove_all_selector_stmt(
+                  selector: ".workflow-observe-refused",
+                  item_name: "oldWorkflowBanner"),
+                workflow_clear_rendered_stmt(),
+                ts_expr_stmt(expr: ts_call(
+                  callee: ts_member(
+                    object: ts_member(
+                      object: ts_ident(name: "wj"),
+                      property: "attempts",
+                    ),
+                    property: "forEach",
+                  ),
+                  args: [ts_arrow(
+                    params: ["attempt"],
+                    body: ts_block(stmts: workflow_mark_attempt_stmts()),
+                  )],
+                )),
+              ]) },
+            ),
+          ]))],
+        ),
+        property: "catch",
+      ),
+      args: [ts_arrow(params: ["e"], body: ts_block(stmts: concat(
+        [
+          ts_const(name: "why", value: ts_binop(
+            left: ts_lit_str(value: "workflow observation refused: "),
+            op: "+",
+            right: ts_binop(
+              left: ts_ident(name: "e"),
+              op: "+",
+              right: ts_lit_str(value: ""),
+            ),
+          )),
+          workflow_refuse_visible_stmt(),
+        ],
+        observation_refused_banner_stmts(
+          source_class: "workflow-observe-refused"),
+      )))],
+    )),
+  ]
+}
+
+data workflow_observation_poll_interval: Millisecond = millisecond(count: 2000)
+
+fn workflow_schedule_refresh_stmt() -> TsStmt {
+  ts_expr_stmt(expr: ts_call(
+    callee: ts_ident(name: "setTimeout"),
+    args: [
+      ts_ident(name: js_poll_workflow_fn),
+      ts_lit_num(text: to_string(
+        millisecond_count(m: workflow_observation_poll_interval))),
+    ],
+  ))
+}
+
+data workflow_poll_single_flight_note: String = "gunbcPollWorkflow waits for gunbcRefreshWorkflow's returned fetch promise to settle and schedules the next read in finally. The former fire-then-setTimeout shape overlapped every two seconds whenever /workflow.json exceeded its cadence; one real oversized Codex event made the interpreted handler slow enough to fill the socket backlog. Settlement-driven polling preserves cadence after completion and admits at most one workflow observation per browser."
+
+fn workflow_fetch_statements() -> List<TsStmt> {
+  [
+    ts_const(
+      name: js_refresh_workflow_fn,
+      value: ts_arrow(
+        params: [],
+        body: ts_block(stmts: workflow_fetch_request_statements()),
+      ),
+    ),
+    ts_const(
+      name: js_poll_workflow_fn,
+      value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_call(
+              callee: ts_ident(name: js_refresh_workflow_fn),
+              args: [],
+            ),
+            property: "finally",
+          ),
+          args: [
+            ts_arrow(
+              params: [],
+              body: ts_block(stmts: [workflow_schedule_refresh_stmt()]),
+            ),
+          ],
+        )),
+      ])),
+    ),
+    ts_expr_stmt(expr: ts_call(
+      callee: ts_ident(name: js_poll_workflow_fn),
+      args: [],
+    )),
+  ]
+}
+
+fn dispatch_client_program_for(
+  selector: String,
+  url_expr: TsExpr,
+  header: List<String>,
+  instance_statements: List<TsStmt>,
+) -> TsProgram {
   TsProgram {
     ts_nocheck: false,
     header_lines: header,
@@ -1745,7 +2597,11 @@ fn dispatch_client_program_for(selector: String, url_expr: TsExpr, header: List<
                   disclosure_bind_statements(),
                   concat(
                     swatch_toggle_bind_statements(),
-                    observation_fetch_statements())))))))),
+                    concat(
+                      observation_fetch_statements(),
+                      concat(
+                        workflow_fetch_statements(),
+                        instance_statements)))))))))),
   }
 }
 
@@ -1760,6 +2616,7 @@ fn dispatch_client_program() -> TsProgram {
       "Operation sound: a 5ms detent tick on pointerdown, synthesized through WebAudio from",
       "gunbc.design.sound rows — no audio files, and a persisted mute the instrument obeys",
     ],
+    instance_statements: dashboard_instance_fetch_statements(),
   )
 }
 
@@ -1791,6 +2648,7 @@ fn sandbox_client_program() -> TsProgram {
       "same render as the real dispatch button, but POSTs to /sandbox/echo?status=<data-status>",
       "so every wire arm is pressable without dispatching a real session",
     ],
+    instance_statements: [],
   )
 }
 
@@ -1805,6 +2663,8 @@ fn dispatch_state_display_text(state: ComponentState) -> String {
     TerminalState { wire_label: wl, ok: ok } =>
       if ok {
         concat(dispatch_ack_prefix, dispatch_ack_word)
+      } else if wl == belt_dispatch_disabled_status_label() {
+        concat(dispatch_ack_prefix, wl)
       } else if belt_dispatch_label_band_key(wire_label: wl) == "loud" {
         dispatch_caption_loud
       } else {
