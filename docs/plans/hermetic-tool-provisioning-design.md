@@ -110,8 +110,8 @@ The relationship is complementary, and it fixes this lane's seam:
 - This lane **ensures** — get the *declared* one, or refuse.
 
 So the pin does **not** mint a second toolchain-identity concept (which would be
-exactly the §3 fork this lane exists to remove). `ToolPin` declares the
-*expected* `ContentHash` per tool, and P1 reuses `ContentHash` and
+exactly the §3 fork this lane exists to remove). `Pin<Subject>` declares the
+*expected* `ContentHash` per subject, and P1 reuses `ContentHash` and
 `observe_tool`'s digest discipline rather than defining its own.
 
 **The grains do not yet meet, and P2 is gated on closing that (`review 44388`).**
@@ -121,7 +121,7 @@ the two. That was wrong, and the code says so: `toolchain_identity`
 (`src/v1/stage0/src/v1_interpreter.rs:8649-8677`) is seeded from a constant and
 then `hash_combine`d over **every** argv in `build_argvs`, plus a second
 `observe_tool` call for `rustc` whenever the argv is `cargo`. It is an
-*aggregate over the whole build command set*, so comparing one `ToolPin`'s
+*aggregate over the whole build command set*, so comparing one `Pin`'s
 `expected_identity` against it is a category error — the aggregate changes when
 an unrelated tool in the same build changes, and it cannot say *which* tool
 drifted.
@@ -136,12 +136,57 @@ P2 therefore carries a prerequisite, before any reconcile is written:
 
 > Surface `observe_tool`'s per-argv result as a named per-tool observed identity,
 > and re-express `toolchain_identity` as the *derived* fold over those rows
-> rather than the authority. Only then is `ToolPin.expected_identity` comparable
+> rather than the authority. Only then is `Pin.expected_identity` comparable
 > to an observed value at the same grain, and only then does
 > `membership_reconcile`'s `value_eq` mean what this lane needs it to mean.
 
 Until that lands, treat #7388 as the *aggregate cache-key* consumer it is, not
 as the observed half of this lane's ensure.
+
+### Pinning is a dimension, not a property of tools (revision, 2026-07-29)
+
+P1 first landed this as a `ToolPin` record keyed by `tool_name: NonEmptyStr`. The
+operator read the shape and rejected it: pinning is a **separate dimension** that
+*composes* with a subject rather than a fact belonging to CLI tools. That is
+right, and the evidence was already in the tree:
+
+- `extdeps.tools` passes tools **by value** everywhere else — `resolve(tool: CliTool)`,
+  `ResolvedTool { tool: CliTool }`, `NotFound { tool: CliTool }`. `ToolPin` was the
+  single site in that namespace joining to a modelled type through a **string**,
+  putting tool identity in two places (§2 anemic leaf).
+- Other pinnable subjects already exist and are **not** `CliTool`:
+  `SccacheBinaryRelease`, `extdeps/docker` and `extdeps/container/docker_ce`
+  images, apt packages, GitHub releases. A type per pinnable thing is the
+  ten-integer-types mistake before `Compose<Int, MachineWidth<N>>`.
+
+So the carrier is now `Pin<Subject>` in `extdeps.pin` (the dimension), with
+`extdeps.tools.pin` holding only what is subject-specific for `CliTool`: the key
+projection and the roster ingest. A new pinnable subject is a **sibling
+instantiation**, never an edit to `extdeps.pin` — and if it ever requires one,
+that is the signal the dimension was modelled too narrowly.
+
+**Proven by a second consumer, not asserted.** A generic type earns nothing by
+existing. `SccacheBinaryRelease` is deliberately unlike `CliTool` — no name field,
+its own bare-string version, and *two* digests — and it instantiates `Pin`,
+`pin_value_eq` and `admit_pin_integrity` with zero edits to `extdeps.pin`
+(`pin_composes_over_a_structurally_different_subject`, green by execution).
+
+Two corrections recorded with it:
+
+- **A claimed fork that is not one.** When proposing this revision I told the
+  operator that `CliTool.min_version` and the pin's `version` were one concept
+  forked by rigor. That was wrong. `min_version` is a `VersionConstraint` stating a
+  *requirement*; `Pin.version` is a `VersionIdentity` stating a *selection*. A
+  requirement and a selection satisfying it are different facts, and dissolving
+  them would destroy information. What they have is a checkable **relation** — a
+  pin ought to satisfy its subject's constraint — deferred behind
+  `feature:version-constraint-satisfaction` because `extdeps.version` has no
+  satisfaction fn and writing one in `extdeps/tools` would fork version semantics.
+- **A grain question the second subject exposed.** One `SccacheBinaryRelease`
+  carries two digests because one release publishes two artifacts, while
+  `Pin.expected_identity` is one hash. For multi-artifact subjects the pin subject
+  is really the *artifact* (release × platform), not the release. Recorded as
+  `feature:pin-artifact-grain` rather than settled as a side effect of a witness.
 
 Two census entries #7388 adds rather than removes:
 
@@ -301,12 +346,12 @@ Each phase names its own RED control. Model-before-implement: P1 lands with no
 consumers.
 
 - **P1 — the pin carrier, alongside `CliTool` (model-only, no consumers).**
-  Land `ToolPin` in a new `extdeps.tools.pin` module: exact version
+  Land `Pin<Subject>` in a new `extdeps.pin` module, with `extdeps.tools.pin` as its `CliTool` instantiation: exact version
   (`extdeps.version.VersionIdentity`, the exact brand — never
   `VersionConstraint`, which is a range) + expected `ContentHash` reusing
   #7388's identity, selection policy (`ExactPin | TrackedChannel`) and a
   refresh window. Both fields are required and non-optional, so a range-only or
-  digest-less **`ToolPin`** is unwritable. The RED is at the ingest boundary:
+  digest-less **`Pin`** is unwritable. The RED is at the ingest boundary:
   converting a legacy `CliTool` whose `min_version` is a `VersionConstraint`
   refuses, because a constraint is not an identity. A `TrackedChannel` pin
   refuses admission outright, since its currency cannot be established without
@@ -316,8 +361,8 @@ consumers.
   **Scope limit, stated precisely.** P1 does *not* modify `CliTool` and does
   *not* add a digest to `SourceGitHubRelease`. Both remain exactly as they are:
   `min_version: VersionConstraint?` still admits a range or nothing, and
-  `SourceGitHubRelease` is still digestless. `ToolPin` therefore constrains
-  only values built as `ToolPin` — it makes **nothing in the existing corpus
+  `SourceGitHubRelease` is still digestless. `Pin` therefore constrains
+  only values built as `Pin` — it makes **nothing in the existing corpus
   unwritable yet**. This is the add-replacement half of add-replacement →
   migrate → delete, and calling it more than that would be the
   specification-without-execution trap §5 names.

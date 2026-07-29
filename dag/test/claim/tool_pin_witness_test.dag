@@ -24,6 +24,7 @@ import extdeps.pin {
   pin_value_eq,
 }
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
+import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -216,4 +217,40 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
   }
   pin_value_eq(a: tracked_pin, b: same)
     && (tracked_pin.selection == same.selection)
+}
+
+data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. SccacheBinaryRelease is that subject and it is deliberately unlike CliTool: no name field at all, its own version spelled as a bare NonEmptyStr rather than a VersionConstraint, and TWO digests where CliTool has none. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a release with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes."
+
+data sccache_pin_subject_grain_finding_note: String = "A REAL FINDING from the second consumer, recorded rather than smoothed over — this is what second-consumer discipline is for. One SccacheBinaryRelease carries TWO digests, aarch64 and x86_64, because one release publishes two artifacts. Pin.expected_identity is ONE ContentHash. So Pin<SccacheBinaryRelease> is genuinely ambiguous about WHICH artifact it pins, and the honest reading is that for multi-artifact subjects the pin subject is the ARTIFACT (release x platform), not the release. This witness therefore pins one arch explicitly and does NOT claim to pin the release. Not fixed in this pass because fixing it means deciding the artifact grain for every multi-artifact subject, which is a modeling decision that deserves its own pass rather than being settled as a side effect of a witness. dissolve-on: feature:pin-artifact-grain. Second observation, unfixed and NOT this lane: extdeps.crypto.hash.Digest and std.types.ContentHash are two digest concepts in one corpus, which is a section 3 candidate — this witness sidesteps it by constructing the ContentHash directly from the real upstream hex rather than converting a Digest, so no conversion is invented here."
+
+data sccache_aarch64_identity: ContentHash = "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8" as ContentHash
+
+data sccache_artifact_pin: Pin<SccacheBinaryRelease> = Pin {
+  subject: sccache_release_0_15_0,
+  version: "0.15.0" as VersionIdentity,
+  expected_identity: sccache_aarch64_identity,
+  selection: ExactPin,
+}
+
+test fn pin_composes_over_a_structurally_different_subject() -> Bool {
+  match admit_pin_integrity(pin: sccache_artifact_pin, observed_identity: sccache_aarch64_identity) {
+    PinIntegrityAdmitted { pin: p } => (p.subject.version as String) == "v0.15.0"
+    PinRefused { subject: _, cause: _ } => false
+  }
+}
+
+test fn second_subject_refuses_on_digest_mismatch_too() -> Bool {
+  match admit_pin_integrity(pin: sccache_artifact_pin, observed_identity: other_identity) {
+    PinIntegrityAdmitted { pin: _ } => false
+    PinRefused { subject: subj, cause: c } =>
+      ((subj.version as String) == "v0.15.0")
+        && match c {
+             ObservedIdentityMismatch { expected: e, observed: o } =>
+               ((e as String) == (sccache_aarch64_identity as String))
+                 && ((o as String) == (other_identity as String))
+             ConstraintIsNotIdentity { constraint: _ } => false
+             PinAbsent => false
+             TrackedResolutionUnrecorded { channel: _ } => false
+           }
+  }
 }
