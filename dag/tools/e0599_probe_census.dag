@@ -319,6 +319,31 @@ fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> P
   }
 }
 
+data e0599_mechanistic_root_families: List<E0599RootFamily> = [
+  R1CloneBoundOnTypeParam,
+  R2VectorMethodBounds,
+  R3ContainerCloneBounds,
+]
+
+fn e0599_mechanistic_root_family_labels_blob() -> String {
+  fold(e0599_mechanistic_root_families, init: "", f: fn(acc, family) {
+    let line = e0599_root_family_label(family: family)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn e0599_write_mechanistic_root_family_labels_blob(out_path: String) -> ProcessExit {
+  e0599_write_blob(
+    path: out_path,
+    content: e0599_mechanistic_root_family_labels_blob(),
+    label: "e0599_mechanistic_root_family_labels_blob"
+  )
+}
+
 fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> ProcessExit {
   e0599_write_blob(
     path: out_path,

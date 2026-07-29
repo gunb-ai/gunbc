@@ -354,6 +354,33 @@ fn e0599_classify_from_blob(blob: String) -> Result<String, E0599CensusParseErro
   })
 }
 
+data e0599_rollup_cause_order: List<E0599RequirementCause> = [
+  TargetApiRequirement,
+  OwnedDeconstructionRequirement,
+  CloneSharedRequirement,
+  NoRequirement,
+  UnresolvedCause { method: "", receiver_expr: "", reason: "" },
+]
+
+fn e0599_rollup_cause_labels_blob() -> String {
+  fold(e0599_rollup_cause_order, init: "", f: fn(acc, cause) {
+    let line = e0599_requirement_cause_label(cause: cause)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn e0599_write_rollup_cause_labels_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_rollup_cause_labels_blob(),
+    label: "e0599_rollup_cause_labels_blob"
+  )
+}
+
 fn e0599_write_census_blob(path: String, content: String, label: String) -> ProcessExit {
   if content == "" {
     exit_failure(reason: concat(label, ": refused empty export"))
