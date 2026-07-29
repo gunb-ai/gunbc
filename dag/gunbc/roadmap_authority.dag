@@ -1015,6 +1015,20 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      id: "fleet-dashboard-instance-membership",
+      owner: "fleet",
+      path: "docs/plans/gunbc-served-dashboard-design.md",
+      t: fields(
+        headline: "Re-ground dashboard instance apply on the live_deploy membership",
+        boundary: "One membership spine serves every dashboard instance: gunbc.membership_reconcile keyed by member identity with a per-instance (key_of, key_eq, value_eq, ownership_of) bundle, gunbc.ownership admitting teardown, and the typed host-effect route carrying mutation; HostDashboardInstance parameterizes the deployment spec instead of a second apply fold owning its own preflight, ownership, readback, and refusal vocabulary.",
+        displaced_cost: "Deletes a forked deploy engine for the same three artifacts the live_deploy membership already owns, which today carries no ownership concept and reaches the host outside the typed effect path.",
+        first_slice: "Parameterize the srv1 deployment spec by HostDashboardInstance and converge the lab instance through the existing membership plan.",
+        red_control: "A non-owned member removal refuses teardown through R5, and a second apply fold reaching the host outside the membership plan is detectable rather than merely absent.",
+        out_of_scope: "Instance identity, capability realizations, and dispatch admission are consumed unchanged; this is consolidation onto the existing spine, not a new deploy model.",
+        handback: "Return one membership plan serving production and lab, a live lab convergence receipt through it, and the deleted second apply fold."
+      )
+    ),
+    active(
       id: "fleet-anti-entropy-hygiene",
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
@@ -1168,6 +1182,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-bmc-policy-convergence", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "fleet-state-frontier"),
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
+    edge(child: "fleet-dashboard-instance-membership", parent: "fleet-state-frontier"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
 
