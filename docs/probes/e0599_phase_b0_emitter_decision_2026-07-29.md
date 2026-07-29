@@ -24,17 +24,26 @@ interpreter execution later.
 
 So, stated plainly so this census cannot be misread later:
 
-* these 78 sites and 600 occurrences are **diagnostic comparison only**;
-* they are **not `CompilerFixedPoint` progress**;
+* these 167 diagnostic locations and 600 occurrences are **diagnostic comparison only**;
+* they are **not `CompilerFixedPoint` progress**, and this census carries **no dependency
+  edge into `CompilerFixedPoint`** and **does not gate v2 bootstrap**;
 * they are **not a v2 sizing authority**. The v2 emitter is a *different producer*, built
   from target-model rows consumed by the shared translate/serialize path, so no row here
   transfers to it by assumption — some may, some are artifacts of seed lowering templates
   v2 does not have.
 
-What it *is* load-bearing for: seed-emitter changes are becoming a finite **bootstrap
-adapter queue** rather than open-ended improvement, and this census is what makes that
-queue enumerable — it names which seed lowering decisions exist and exactly where each one
-is made.
+What it *is* load-bearing for: a V1 seed-emitter **symptom inventory**, a **candidate**
+bootstrap-adapter inventory, and a historical comparison point.
+
+It is **not** the bootstrap adapter queue. That queue is the intersection
+
+```
+this census  ∩  exact native-v2-emitter bootstrap closure  ∩  defects that demonstrably
+                                                              block generation 1
+```
+
+and until the direct v2 Rust door exists, **that intersection is unknown** (operator
+verdict, 2026-07-29). Nothing here authorizes a seed adapter on its own.
 
 ---
 
@@ -44,14 +53,23 @@ Phase A proved the Clone requirement does not originate in a `.dag` body. B0 ask
 next question at the grain where it *does* originate — the emitter's lowering decision —
 and every site classifies:
 
-| requirement cause | unique sites | occurrences | share |
+| requirement cause | diagnostic locations | occurrences | share of occurrences |
 |---|---:|---:|---:|
-| `TargetApiRequirement` | 19 | 168 | 28.0% |
-| `OwnedDeconstructionRequirement` | 7 | 63 | 10.5% |
-| `CloneSharedRequirement` | **52** | **369** | **61.5%** |
+| `TargetApiRequirement` | 48 | 168 | 28.0% |
+| `OwnedDeconstructionRequirement` | 18 | 63 | 10.5% |
+| `CloneSharedRequirement` | **101** | **369** | **61.5%** |
 | `NoRequirement` | 0 | 0 | — |
 | `Unresolved` | **0** | **0** | — |
-| **TOTAL** | **78** | **600** | 100% |
+| **TOTAL** | **167** | **600** | 100% |
+
+**Read the left column carefully.** 167 counts *distinct diagnostic locations in emitted
+artifacts* — keyed on emitted-artifact digest + file + primary span + method + receiver
+expression. It is **not** a count of distinct seed-emitter *decisions*: this probe cannot
+observe an emitter decision without instrumenting `src/v1/05_emit_rust.dag`, which is
+deliberately unchanged. Treat this as an **emitted receiver-shape census**; it does not
+enumerate exact adapter tasks. §3.3 gives the full 78 → 167 attribution — occurrences and
+every per-cause occurrence count are unchanged, so the refinement regrouped rows and moved
+no diagnostic between causes.
 
 Measured after four PRs landed mid-review, `914da873` being the merge that brought them
 in. Two shas matter and they name different things, so the receipt carries both rather
@@ -71,28 +89,53 @@ every unit of the difference. Zero unresolved, no default or "other" bucket abso
 anything (the `Unresolved` variant is real and fires — §6 proves it in two directions),
 and Phase A's 35 former unknowns all classified through the real compilation path.
 
-## 2. The load-bearing correction: most of the population *is* ownership-removable
+## 2. The load-bearing correction: the clone seam is the majority — *candidate*, not removable
 
 The brief rules that routing R1/R3 into ownership work is the wrong axis, and adds:
 
 > More decisively: most of the population is not removable by ownership work at all — see
 > verified facts below.
 
-**Measured, that is the other way round.** `CloneSharedRequirement` — the one cause the
-brief assigns to `emitter-ownership-defork` — is **369 of 600 occurrences (61.5%)** and
-**52 of 78 sites (66.7%)**. The two representation-imposed causes together are 231
-occurrences (38.5%). The finding survived the corpus moving under it: at the pre-merge sha
-it was 359/590 (60.8%), so four landings shifted the share by 0.7 points and did not
-touch the conclusion.
+**Measured, the population split is the other way round.** `CloneSharedRequirement` — the
+one cause the brief assigns to `emitter-ownership-defork` — is **369 of 600 occurrences
+(61.5%)**. The two representation-imposed causes together are 231 occurrences (38.5%).
+That share survived the corpus moving twice, and it survived the site-identity
+refinement in §3.3 (every per-cause *occurrence* count is unchanged).
 
-This does not disturb the brief's *ruling* — B0 was authorized regardless, and the split
-is exactly what B0 was told to measure rather than infer. It does change the sizing that
-B1/B2 inherit: **B2 ("join the ownership verdict at genuinely clone-producing seams
-only") is not a tail-cleanup pass, it is the majority of the population**, while the
-representation contract B1 models covers 39.2%. Reporting rather than improvising, per
-the brief's own instruction.
+**What that does and does not establish** (operator verdict, 2026-07-29 — this section
+previously overclaimed and the overclaim was the single most important correction):
 
-The split by census family is unusually clean, which is why it is worth trusting:
+This census does **not** execute the per-site ownership verdict. It records which emitter
+predicate or alternative arm is *associated* with a site. It does **not** determine whether
+that site is `SoleOwner`, at last use, movable, or safely borrowable. So the supported
+conclusion is:
+
+> 369 occurrences are produced at seams owned by the ownership/lowering lane. Their actual
+> removability **remains to be proved.**
+
+Split more precisely, and this is the form B1/B2 should inherit:
+
+| | occurrences | what is established |
+|---|---:|---|
+| `EmitterArmPresent` | 230 | a move arm exists — **not** that the ownership verdict should select it |
+| `NoEmitterArm` | 139 | no alternative arm exists — and a new lowering **may still require `Clone`** under sharing |
+
+A rationale withdrawn in the same pass: two lowering rows previously cited `Rc::make_mut`
+as evidence a copy-free alternative exists. It is not. `make_mut` is clone-on-write, is
+declared `where T: Clone`, and clones the pointee whenever another strong `Rc` is live —
+so it **requires the very bound this census counts** and cannot evidence its removal.
+
+Consequently **369 is not a predicted burn-down** and must not be used as one, and
+`CloneSharedRequirement` means only *the seed emitter inserted a clone at this seam* —
+never *the clone can safely be deleted*. That meaning is now fixed in the authority itself
+(`e0599_cause_semantics_note`) rather than in prose that can drift from it.
+
+What the finding *does* change is where the population sits: the clone seam is the
+majority of V1 symptoms, so it is the larger **candidate** surface — while remaining
+unproved, and explicitly not a reason to make ownership work a prerequisite for anything.
+
+The split by census family is unusually clean, which is why the classification is worth
+trusting even though the removability question is open:
 
 | root family | occurrences | cause composition |
 |---|---:|---|
@@ -138,7 +181,9 @@ moved:
 | materialization_carriers | 81 | 81 | 0 |
 | **TOTAL** | **663** | **635** | **+28** |
 
-R1+R2+R3 goes 590 → **600**, and unique sites go 79 → **78**. Sites falling while
+R1+R2+R3 goes 590 → **600**, and unique sites go 79 → **78** (both under the *old* site
+identity — the identity refinement in §3.3 came later and is attributed separately there;
+quoting the old-identity numbers here keeps this delta comparable). Sites falling while
 occurrences rise needs explaining, so it is explained rather than reported:
 
 | change | sites | cause |
@@ -160,7 +205,7 @@ are code the taxonomy was never designed against. Their receivers —
 `Rc<im::HashMap<…>>`, is correctly dropped by the family filter before the classifier sees
 it (it is not `clone`/`is_empty`/`iter`, so it is R6, outside R1/R2/R3 scope).
 
-**What did not move — and why that is NOT evidence.** `TargetApiRequirement` (19 sites /
+**What did not move — and why that is NOT evidence.** `TargetApiRequirement` (old-identity 19 sites /
 168 occurrences) and `OwnedDeconstructionRequirement` (7 / 63) are identical across both
 measurements, and the entire delta sits inside `CloneSharedRequirement`. It is tempting to
 read that as the representation-imposed causes being intrinsically stable, which is what
@@ -191,7 +236,7 @@ perturb emitted output.
 Phase A carried 35 diagnostics as `unknown` — 14 behind a standalone `parse_module`
 refusal on `std/node.dag`, 21 in three off-roster files. B0 reads the **emitted artifact
 at the exact reported span** instead of re-parsing the source standalone, so the refusal
-class does not arise: all 78 sites resolve to an enclosing emitted fn, and **all 78
+class does not arise: all sites resolve to an enclosing emitted fn, and **all
 resolve to a `.dag` source module** (joined on each module's own `module` declaration, not
 a filename heuristic — `v2.compiler.translate` lives in `06_translate.dag`).
 
@@ -205,12 +250,59 @@ emitter concatenates:
 
 | lowering operation | emitter authority | sites | occurrences | cause |
 |---|---|---:|---:|---|
-| `IdentReferenceClone` | `05_emit_rust.dag:6320`/`:6330` via `sharing.clone_value` | 31 | 222 | CloneShared |
-| `DerefCloneWholeValue` | `:6434`/`:6959`/`:7587`/`:7893`/`:8748` via `sharing.deref_clone` | 20 | 139 | CloneShared |
-| `FreeMonoidEmptyTest` | `:7859` (`emit_native_freemonoid_match`), `:8715` tco fork | 11 | 98 | TargetApi |
-| `FreeMonoidTailIterate` | `:7817` (`freemonoid_tail_let_from_fm`) | 8 | 70 | TargetApi |
-| `FreeMonoidHeadExtract` | `:7838`, `:8694` tco fork | 7 | 63 | OwnedDeconstruction |
-| `FieldAccessClone` | `:6438` (`emit_typed_field_access`, non-owned arm) | 1 | 8 | CloneShared |
+| `IdentReferenceClone` | `05_emit_rust.dag:6320`/`:6330` via `sharing.clone_value` | 60 | 222 | CloneShared |
+| `DerefCloneWholeValue` | `:6434`/`:6959`/`:7587`/`:7893`/`:8748` via `sharing.deref_clone` | 39 | 139 | CloneShared |
+| `FreeMonoidEmptyTest` | `:7859` (`emit_native_freemonoid_match`), `:8715` tco fork | 28 | 98 | TargetApi |
+| `FreeMonoidTailIterate` | `:7817` (`freemonoid_tail_let_from_fm`) | 20 | 70 | TargetApi |
+| `FreeMonoidHeadExtract` | `:7838`, `:8694` tco fork | 18 | 63 | OwnedDeconstruction |
+| `FieldAccessClone` | `:6438` (`emit_typed_field_access`, non-owned arm) | 2 | 8 | CloneShared |
+
+**A receiver-shape class is not a producer decision.** `DerefCloneWholeValue` above bundles
+boxed field extraction, record spread, and match-scrutinee lowering under one row because
+they emit a *similar Rust receiver shape* — not because the emitter made one decision. That
+distinction is why this document is an emitted receiver-shape census and stops short of
+enumerating adapter tasks.
+
+#### Site identity, and the full 78 → 167 attribution
+
+Site identity was `(file, line, method, receiver_type)`, which excluded the primary span
+column, the receiver expression, and the emitted artifact's content. Two distinct clone
+expressions on one generated line with the same receiver type therefore collapsed into a
+single row and inherited the first expression's cause. The key is now
+
+```
+emitted artifact digest + file + primary span (line:col-line:col) + method + receiver expr
+```
+
+The receiver expression is *in the key*, so a heterogeneous group is **unwritable** rather
+than merely detected — construction over validation (§5). The residual assertion is a
+backstop against a future key change, not the mechanism.
+
+Every step measured, not asserted:
+
+| identity | locations | Δ | what the added discriminator separates |
+|---|---:|---:|---|
+| `(file, line, method, receiver_type)` — the old key | 78 | — | — |
+| `+ receiver_expr` | 81 | **+3** | three groups each held **two** distinct expressions and were classified by the first — the predicted defect, real |
+| `+ primary span` | 90 | **+9** | the same expression twice on one line, at different columns |
+| `+ emitted artifact digest` | 167 | **+77** | copies of one path across module closures whose **bytes differ** |
+
+The three genuinely-heterogeneous groups, named:
+
+```
+src/extdeps_communication_fidelity_carriers.rs:53  clone  ->  left.carried | right.carried
+src/v2_std_algebra.rs:826                          clone  ->  candidate    | item
+src/v2_std_algebra.rs:837                          clone  ->  candidate    | item
+```
+
+The +77 is concentrated in **4 of 10** emitted paths — those whose content differs between
+module closures, where collapsing them had been an unverified assumption. The other six
+paths are byte-identical across closures and collapse correctly (verified directly:
+`v2_std_algebra.rs` hashes identically in `04_infer`, `06_translate` and `emit_host`).
+
+**Occurrences are unchanged at 600, and every per-cause and per-operation occurrence count
+is identical to the pre-refinement measurement.** So this is a regrouping: no diagnostic
+changed cause, and the §2 shares are untouched.
 
 ### 3.4 Phase A's emitter-site table was incomplete — the dominant producer was missing
 
@@ -251,7 +343,7 @@ not emitter output — is excluded. (At the sha the brief was written against th
 **17** and **20**, matching the brief's acceptance figure and reproducing Phase A exactly;
 #7324 moved them along with everything else — see §3.1. The receipt is the authority.)
 
-Of those 22, only **3** host any of the 78 defect sites, and in every one the helper bound
+Of those 22, only **3** host any defect site, and in every one the helper bound
 a **different type parameter** than the site requires:
 
 | emitted fn | helper bound | site requires | disjoint |
@@ -298,7 +390,7 @@ site, whether the emitter already *has* a move arm gated on an ownership predica
 | `EmitterArmPresent` | 32 | 230 | flip an existing predicate — `moves_by_value` (`:6318`) or `base_is_owned` (`:6435`) already select a bare move; the clone is the else-arm |
 | `NoEmitterArm` | 20 | 139 | **add** an arm — `:6959`/`:7587` clone on both branches, `:7893`/`:8748` is unconditional, and `05_emit_rust.dag` contains **zero** `Rc::try_unwrap`/`make_mut` (the seed runtime `v1_rt.rs` uses that shape, the emitter never emits it) |
 
-So of the 369 ownership-removable occurrences, 230 are gated by a verdict that already
+So of the 369 clone-seam occurrences, 230 are gated by a verdict that already
 exists and 139 need new emitter capability. That is a sizing fact B2 should inherit rather
 than rediscover.
 
@@ -319,7 +411,7 @@ fires exactly when the ownership verdict says not-owned — and that verdict com
 
 ## 6. Green by execution, with a discriminating RED
 
-`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **26 green**, of which
+`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **27 green**, of which
 **8** are RED controls, in the two classes named below (destination and routing) plus the
 scope/rollup single-authority controls added on `review 44371`.
 
@@ -333,7 +425,7 @@ FAIL e0599_b0_red_unnamed_receiver_shape_refuses
 FAIL e0599_b0_red_empty_receiver_refuses
 ```
 
-Restored, 26/26 green.
+Restored, 27/27 green.
 
 **What `Unresolved = 0` does and does not claim.** It is measured *given these
 predicates*. A destination perturbation like the one above proves the fail-closed arm
@@ -415,7 +507,9 @@ src/extdeps_communication_fidelity_carriers.rs:46 source_medium_carried
 (method='clone' receiver='carried'); src/v2_std_algebra.rs:76 list_reverse …
 ```
 
-…with all 78 per-site rows still printed. Measured `unresolved` is **0** today, so the arm
+…with every per-site row still printed (78 under the site identity in force when that
+perturbation was run; the identity refinement came after). Measured `unresolved` is **0**
+today, so the arm
 is dead-in-corpus and kept as the fail-closed backstop — which is exactly why it needed a
 perturbation to prove it fires at all.
 
@@ -461,8 +555,8 @@ Since every emitted `Vec` *is* `im::Vector`, a contract keyed on std `Vec` yield
 keying was *not* intentional — there is no separate production std `Vec` representation —
 and corrected it in **#7399**: the inapplicable std/serde `Vec` authorities are deleted,
 exact `im` 15.1.0 line authorities added, and `Debug`/`PartialEq`/`Serialize`/`Deserialize`
-each modelled with a supplemental `T: Clone`. #7399 is model-only and pending operator
-merge.
+each modelled with a supplemental `T: Clone`. #7399 is model-only and **merged on 2026-07-29**; this census consumes it
+(see the partial dissolve-on in §9 and the authority's own note).
 
 **Consequence for this module, recorded as a dissolution trigger:** the local
 `E0599ExternalAuthority` rows here are an *interim* citation. P-fn sequences **after**
