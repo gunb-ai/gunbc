@@ -3,12 +3,13 @@ module test.claim.scm_compatibility_pijul_witness
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pijul {
+  PijulUpstreamVersion,
   PijulReadBackObservation,
   PijulInaccessibleProjection,
   pijul_upstream_version,
 }
 import test.claim.pijul_upstream_model_witness {
-  pijul_compatibility_fixture_projection,
+  pijul_r0_fixture_projection,
 }
 import gunbc.scm_compatibility.pijul {
   PijulCompatibilityBindingOutcome,
@@ -41,13 +42,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn pijul_fixture_observation() -> PijulReadBackObservation {
   PijulReadBackObservation {
     pijul_version: pijul_upstream_version,
-    projection: pijul_compatibility_fixture_projection(),
+    projection: pijul_r0_fixture_projection(),
   }
 }
 
 fn pijul_fixture_binding() -> PijulCompatibilityBindingOutcome {
   pijul_compatibility_bind(
-    projection: pijul_compatibility_fixture_projection(),
+    projection: pijul_r0_fixture_projection(),
     target: "main",
     read_back: pijul_fixture_observation(),
   )
@@ -140,9 +141,43 @@ test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
   }
 }
 
+test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt: expected } =>
+      match pijul_compatibility_bind(
+        projection: pijul_r0_fixture_projection(),
+        target: "main",
+        read_back: PijulReadBackObservation {
+          pijul_version: PijulUpstreamVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            beta: 21,
+          },
+          projection: pijul_r0_fixture_projection(),
+        },
+      ) {
+        PijulCompatibilityBindingRefused { cause: _ } => false
+        PijulCompatibilityBound { receipt: other_observer } => {
+          let expected_projection = compatibility_projection_from_handler(
+            handler: pijul_compatibility_projection_handler(),
+            receipt: expected,
+          )
+          let other_projection = compatibility_projection_from_handler(
+            handler: pijul_compatibility_projection_handler(),
+            receipt: other_observer,
+          )
+          expected_projection.generation_evidence == other_projection.generation_evidence
+            && expected_projection.read_back != other_projection.read_back
+        }
+      }
+  }
+}
+
 test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
   match pijul_compatibility_bind(
-    projection: pijul_compatibility_fixture_projection(),
+    projection: pijul_r0_fixture_projection(),
     target: "main",
     read_back: PijulReadBackObservation {
       pijul_version: pijul_upstream_version,

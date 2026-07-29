@@ -7,7 +7,7 @@ import extdeps.mercurial {
   MercurialInaccessibleProjection,
 }
 import test.claim.mercurial_upstream_model_witness {
-  mercurial_compatibility_fixture_projection,
+  mercurial_r0_fixture_projection,
 }
 import gunbc.scm_compatibility.mercurial {
   MercurialCompatibilityBindingOutcome,
@@ -39,14 +39,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn mercurial_fixture_observation() -> MercurialReadBackObservation {
   MercurialReadBackObservation {
-    projection: mercurial_compatibility_fixture_projection(),
+    projection: mercurial_r0_fixture_projection(),
     observed_by: "mercurial-r1-independent-fixture",
   }
 }
 
 fn mercurial_fixture_binding() -> MercurialCompatibilityBindingOutcome {
   mercurial_compatibility_bind(
-    projection: mercurial_compatibility_fixture_projection(),
+    projection: mercurial_r0_fixture_projection(),
     target: "default",
     read_back: mercurial_fixture_observation(),
   )
@@ -142,7 +142,7 @@ test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
 
 test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
   match mercurial_compatibility_bind(
-    projection: mercurial_compatibility_fixture_projection(),
+    projection: mercurial_r0_fixture_projection(),
     target: "default",
     read_back: MercurialReadBackObservation {
       projection: MercurialInaccessibleProjection {

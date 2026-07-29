@@ -256,7 +256,7 @@ fn fixture_pristine() -> PijulPristineState {
   }
 }
 
-fn pijul_compatibility_fixture_tree() -> PijulTree {
+fn pijul_r0_fixture_tree() -> PijulTree {
   PijulTree {
     entries: [
       PijulTreeEntry {
@@ -270,7 +270,7 @@ fn pijul_compatibility_fixture_tree() -> PijulTree {
 }
 
 fn fixture_tree() -> PijulTree {
-  pijul_compatibility_fixture_tree()
+  pijul_r0_fixture_tree()
 }
 
 fn fixture_working_copy() -> PijulWorkingCopy {
@@ -325,11 +325,11 @@ fn fixture_channels() -> List<PijulChannel> {
   ]
 }
 
-fn pijul_compatibility_fixture_repository() -> PijulRepositoryState {
+fn pijul_r0_fixture_repository() -> PijulRepositoryState {
   PijulRepositoryState {
     changes: fixture_changes(),
     pristine: fixture_pristine(),
-    tree: pijul_compatibility_fixture_tree(),
+    tree: pijul_r0_fixture_tree(),
     working_copy: fixture_working_copy(),
     channels: fixture_channels(),
     current_channel: "main",
@@ -337,12 +337,12 @@ fn pijul_compatibility_fixture_repository() -> PijulRepositoryState {
 }
 
 fn fixture_repository() -> PijulRepositoryState {
-  pijul_compatibility_fixture_repository()
+  pijul_r0_fixture_repository()
 }
 
-fn pijul_compatibility_fixture_projection() -> PijulRepositoryProjection {
+fn pijul_r0_fixture_projection() -> PijulRepositoryProjection {
   PijulPartialProjection {
-    candidate: pijul_compatibility_fixture_repository(),
+    candidate: pijul_r0_fixture_repository(),
     missing_changes: [pijul_change_missing],
     missing_vertices: [pijul_vertex_missing],
     missing_paths: [pijul_path_missing],
@@ -350,7 +350,7 @@ fn pijul_compatibility_fixture_projection() -> PijulRepositoryProjection {
 }
 
 fn fixture_projection() -> PijulRepositoryProjection {
-  pijul_compatibility_fixture_projection()
+  pijul_r0_fixture_projection()
 }
 
 fn projection_with_channels(

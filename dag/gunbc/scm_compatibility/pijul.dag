@@ -3,6 +3,7 @@ module gunbc.scm_compatibility.pijul
 import std.types { NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import extdeps.pijul {
+  PijulUpstreamVersion,
   PijulChannelName,
   PijulChannelStateIdentity,
   PijulRepositoryProjection,
@@ -135,6 +136,30 @@ fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
   }
 }
 
+fn pijul_compatibility_read_back_handle(
+  version: PijulUpstreamVersion,
+) -> NonEmptyStr {
+  concat(
+    "pijul-readback:",
+    concat(
+      to_string(version.major),
+      concat(
+        ".",
+        concat(
+          to_string(version.minor),
+          concat(
+            ".",
+            concat(
+              to_string(version.patch),
+              concat("-beta.", to_string(version.beta)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
 fn pijul_compatibility_projection_receipt(
   receipt: PijulCompatibilityReceipt,
 ) -> CompatibilityProjectionReceipt {
@@ -147,7 +172,9 @@ fn pijul_compatibility_projection_receipt(
         generation_evidence: generation,
         capture: CompatibilityUpstreamChangeEvidenceCaptured,
         projection: concat("pijul-channel-state:", generation),
-        read_back: concat("pijul-readback:", generation),
+        read_back: pijul_compatibility_read_back_handle(
+          version: receipt.read_back.pijul_version,
+        ),
         advance: CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: pijul_compatibility_fidelity(),
       }

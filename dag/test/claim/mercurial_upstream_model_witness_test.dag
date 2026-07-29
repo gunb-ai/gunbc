@@ -320,12 +320,12 @@ fn fixture_projection_contents() -> MercurialRepositoryProjectionContents {
   )
 }
 
-fn mercurial_compatibility_fixture_projection() -> MercurialRepositoryProjection {
+fn mercurial_r0_fixture_projection() -> MercurialRepositoryProjection {
   fixture_projection_with_local_revisions(local_revisions: local_revisions_a())
 }
 
 fn fixture_projection() -> MercurialRepositoryProjection {
-  mercurial_compatibility_fixture_projection()
+  mercurial_r0_fixture_projection()
 }
 
 fn projection_with_phases(
