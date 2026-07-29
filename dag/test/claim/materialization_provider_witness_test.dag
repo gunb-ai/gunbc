@@ -1,14 +1,9 @@
 module test.claim.materialization_provider_witness
 
 import std.types { Bool, Int, List, String, ContentHash }
-<<<<<<< HEAD
-import std.measure { byte_size }
-import std.content_hash { content_hash_atom }
-=======
 import std.measure { byte_size, measure_count }
 import std.content_hash { content_hash_atom }
 import std.interface_summary { InterfaceHash, module_key, typed_module_key }
->>>>>>> origin/main
 import std.cache_identity {
   parse_source_artifact_kind,
   typed_module_artifact_kind,
@@ -21,12 +16,9 @@ import std.computation_identity {
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
-<<<<<<< HEAD
-=======
   ArtifactOutputId, CarriedOutput, ArtifactPart,
   ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
   artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
->>>>>>> origin/main
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   request_key, request_kind, request_required_outputs,
@@ -61,21 +53,12 @@ fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
 }
 
-<<<<<<< HEAD
-fn witness_import_a() -> DeclaredInput {
-  DeclaredInput { ref: "import:std.types", digest: content_hash_atom(value: "interface-a") }
-}
-
-fn witness_import_a_changed() -> DeclaredInput {
-  DeclaredInput { ref: "import:std.types", digest: content_hash_atom(value: "interface-a-changed") }
-=======
 fn witness_import_a() -> InterfaceHash {
   content_hash_atom(value: "interface-a")
 }
 
 fn witness_import_a_changed() -> InterfaceHash {
   content_hash_atom(value: "interface-a-changed")
->>>>>>> origin/main
 }
 
 fn witness_typecheck_request() -> ArtifactRequest {
@@ -101,15 +84,6 @@ fn witness_closure_request() -> ArtifactRequest {
   }
 }
 
-<<<<<<< HEAD
-fn witness_complete_closure_artifact() -> MaterializedArtifact {
-  MaterializedArtifact {
-    kind: resolved_graph_artifact_kind,
-    request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
-    artifact_bytes: byte_size(count: 100)
-=======
 fn witness_part(payload: String, bytes: Int) -> ArtifactPart {
   ArtifactPart { digest: content_hash_atom(value: payload), bytes: byte_size(count: bytes) }
 }
@@ -136,19 +110,10 @@ fn witness_complete_closure_artifact() -> MaterializedArtifact {
     resolved_graph: witness_graph_part(),
     source_indices: witness_indices_part(),
     compile_clean_diagnostic_union: witness_union_part()
->>>>>>> origin/main
   }
 }
 
 fn witness_v1_shape_closure_artifact() -> MaterializedArtifact {
-<<<<<<< HEAD
-  MaterializedArtifact {
-    kind: resolved_graph_artifact_kind,
-    request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices],
-    artifact_bytes: byte_size(count: 100)
-=======
   LegacyIncompleteArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
@@ -156,37 +121,23 @@ fn witness_v1_shape_closure_artifact() -> MaterializedArtifact {
       witness_labelled_part(id: output_resolved_graph, payload: "closure-graph-1", bytes: 60),
       witness_labelled_part(id: output_source_indices, payload: "closure-indices-1", bytes: 25)
     ]
->>>>>>> origin/main
   }
 }
 
 fn witness_kind_forged_closure_artifact() -> MaterializedArtifact {
-<<<<<<< HEAD
-  MaterializedArtifact {
-    kind: parse_source_artifact_kind,
-    request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
-    artifact_bytes: byte_size(count: 100)
-=======
   ParsedArtifact {
     request_key: request_key(req: witness_closure_request()),
     parse_tree: witness_graph_part(),
     parse_diagnostics: witness_indices_part()
->>>>>>> origin/main
   }
 }
 
 fn witness_closure_digest() -> ContentHash {
-<<<<<<< HEAD
-  content_hash_atom(value: "closure-payload-1")
-=======
   artifact_content_digest(artifact: witness_complete_closure_artifact())
 }
 
 fn witness_v1_shape_digest() -> ContentHash {
   artifact_content_digest(artifact: witness_v1_shape_closure_artifact())
->>>>>>> origin/main
 }
 
 fn witness_good_probe() -> ProviderProbe {
@@ -197,17 +148,6 @@ fn witness_good_probe() -> ProviderProbe {
 }
 
 fn witness_stale_typed_artifact() -> MaterializedArtifact {
-<<<<<<< HEAD
-  MaterializedArtifact {
-    kind: typed_module_artifact_kind,
-    request_key: request_key(req: witness_typecheck_request()),
-    content_digest: content_hash_atom(value: "typed-payload-1"),
-    carried_outputs: [output_typed_module_interface],
-    artifact_bytes: byte_size(count: 10)
-  }
-}
-
-=======
   TypedModuleArtifact {
     request_key: request_key(req: witness_typecheck_request()),
     typed_module_interface: witness_part(payload: "typed-payload-1", bytes: 6),
@@ -219,7 +159,6 @@ fn witness_stale_typed_digest() -> ContentHash {
   artifact_content_digest(artifact: witness_stale_typed_artifact())
 }
 
->>>>>>> origin/main
 fn witness_empty_store(budget_count: Int) -> ArtifactStore {
   ArtifactStore { budget: byte_size(count: budget_count), next_ordinal: 1, rows: [] }
 }
@@ -284,11 +223,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
     req: witness_typecheck_request_changed_input(),
     probe: ProbeFound {
       artifact: witness_stale_typed_artifact(),
-<<<<<<< HEAD
-      observed_digest: content_hash_atom(value: "typed-payload-1")
-=======
       observed_digest: witness_stale_typed_digest()
->>>>>>> origin/main
     }
   )
   lookup_is_refused_wrong_artifact(l: stale) && (lookup_is_hit(l: stale) == false)
@@ -310,11 +245,7 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     req: witness_closure_request(),
     probe: ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
-<<<<<<< HEAD
-      observed_digest: witness_closure_digest()
-=======
       observed_digest: witness_v1_shape_digest()
->>>>>>> origin/main
     }
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
@@ -339,28 +270,16 @@ test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
 test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
   let store0 = witness_empty_store(budget_count: 150)
   let first_artifact = witness_complete_closure_artifact()
-<<<<<<< HEAD
-=======
   let first_key = request_key(req: witness_closure_request())
->>>>>>> origin/main
   let second_request = ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-2"),
     compiler: witness_compiler()
   }
-<<<<<<< HEAD
-  let second_artifact = MaterializedArtifact {
-    kind: resolved_graph_artifact_kind,
-    request_key: request_key(req: second_request),
-    content_digest: content_hash_atom(value: "closure-payload-2"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
-    artifact_bytes: byte_size(count: 100)
-=======
   let second_artifact = ResolvedGraphArtifact {
     request_key: request_key(req: second_request),
     resolved_graph: witness_part(payload: "closure-graph-2", bytes: 60),
     source_indices: witness_part(payload: "closure-indices-2", bytes: 25),
     compile_clean_diagnostic_union: witness_part(payload: "closure-diagnostics-2", bytes: 15)
->>>>>>> origin/main
   }
   let first_admit = provider_admit(
     store: store0,
@@ -375,21 +294,13 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
         store: warmed,
         req: second_request,
         artifact: second_artifact,
-<<<<<<< HEAD
-        observed_digest: content_hash_atom(value: "closure-payload-2")
-=======
         observed_digest: artifact_content_digest(artifact: second_artifact)
->>>>>>> origin/main
       )
       let evicted = admission_evicted_keys(a: second_admit)
       admission_is_admitted(a: second_admit)
         && (first_evicted.count() == 0)
         && (evicted.count() == 1)
-<<<<<<< HEAD
-        && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_artifact.request_key)))
-=======
         && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_key)))
->>>>>>> origin/main
     },
     kind_mismatch_write: (r, f) => false,
     wrong_artifact_write: (k, fk) => false,
@@ -414,11 +325,7 @@ test fn red_admission_derives_completeness_from_request_v1_shape_refused() -> Bo
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_v1_shape_closure_artifact(),
-<<<<<<< HEAD
-    observed_digest: witness_closure_digest()
-=======
     observed_digest: witness_v1_shape_digest()
->>>>>>> origin/main
   )
   let missing = admission_refused_incomplete_missing(a: a)
   admission_is_refused_incomplete_write(a: a)
@@ -442,11 +349,7 @@ test fn red_admission_stale_key_is_refused_as_wrong_artifact() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_typecheck_request_changed_input(),
     artifact: witness_stale_typed_artifact(),
-<<<<<<< HEAD
-    observed_digest: content_hash_atom(value: "typed-payload-1")
-=======
     observed_digest: witness_stale_typed_digest()
->>>>>>> origin/main
   )
   admission_is_refused_wrong_artifact_write(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -463,12 +366,6 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 
 
 
-<<<<<<< HEAD
-test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
-  completeness_is_complete(c: artifact_completeness(
-    required: request_required_outputs(req: witness_closure_request()),
-    carried: witness_complete_closure_artifact().carried_outputs
-=======
 data forged_roster_witness_note: String = "The attack codex review 44278 named, now closed by construction and exercised on BOTH doors: the bytes at the key are the v1 shape (graph + source_indices, NO compile-clean diagnostic union), so the realization's read-back is witness_v1_shape_digest. The caller submits an artifact whose carried roster claims all three outputs — under the old label-beside-digest shape that roster satisfied artifact_completeness and the door answered BindingOk, admitting bytes that could green a red. Because the content digest is now DERIVED from the carried parts, claiming a part the bytes do not hold changes the derivation, so the forgery is no longer self-consistent and lands on the wrong-content refusal instead. The paired positive control below (same artifact, its OWN derived digest) shows the refusal is discriminating rather than a blanket red: the honest complete artifact still serves and still admits."
 
 test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
@@ -622,7 +519,6 @@ test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   completeness_is_complete(c: artifact_completeness(
     required: request_required_outputs(req: witness_closure_request()),
     carried: artifact_carried_outputs(artifact: witness_complete_closure_artifact())
->>>>>>> origin/main
   ))
 }
 
@@ -655,11 +551,7 @@ test fn incomplete_artifact_derives_unknown_identity() -> Bool {
     req: witness_closure_request(),
     probe: ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
-<<<<<<< HEAD
-      observed_digest: witness_closure_digest()
-=======
       observed_digest: witness_v1_shape_digest()
->>>>>>> origin/main
     }
   )
   identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false
