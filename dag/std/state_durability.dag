@@ -136,40 +136,6 @@ type StatePerturbationGeneration =
 
 type StateDurabilityInstant = EpochMs
 
-type StateDurabilityTimeline {
-  before_readback_at: StateDurabilityInstant
-  before_to_perturbation_start: PositiveMillisecond
-  perturbation_duration: PositiveMillisecond
-  completion_to_after_readback: PositiveMillisecond
-}
-
-fn state_durability_perturbation_started_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = timeline.before_readback_at + positive_millisecond_count(
-    m: timeline.before_to_perturbation_start,
-  )
-  instant
-}
-
-fn state_durability_perturbation_completed_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_started_at(timeline: timeline) + positive_millisecond_count(
-    m: timeline.perturbation_duration,
-  )
-  instant
-}
-
-fn state_durability_after_readback_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_completed_at(timeline: timeline) + positive_millisecond_count(
-    m: timeline.completion_to_after_readback,
-  )
-  instant
-}
-
 type StateDurabilityAdmission<Target, ReadbackSubject> {
   target: Target
   desired_state_digest: Digest
@@ -191,13 +157,61 @@ type StatePerturbationReceipt<Target> {
   target: Target
   boundary: StateDurabilityBoundary
   generation: StatePerturbationGeneration
+  started_after_before_readback: PositiveMillisecond
+  duration: PositiveMillisecond
 }
 
-type StateReadbackReceipt<Target, ReadbackSubject> {
+type StateBeforeReadbackReceipt<Target, ReadbackSubject> {
   perturbation_receipt_id: NonEmptyStr
   target: Target
   subject: ReadbackSubject
   state_digest: Digest
+  observed_at: StateDurabilityInstant
+}
+
+type StateAfterReadbackReceipt<Target, ReadbackSubject> {
+  perturbation_receipt_id: NonEmptyStr
+  target: Target
+  subject: ReadbackSubject
+  state_digest: Digest
+  observed_after_perturbation_completion: PositiveMillisecond
+}
+
+fn state_durability_perturbation_started_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = before.observed_at + positive_millisecond_count(
+    m: perturbation.started_after_before_readback,
+  )
+  instant
+}
+
+fn state_durability_perturbation_completed_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_started_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: perturbation.duration,
+  )
+  instant
+}
+
+fn state_durability_after_readback_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+  after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_completed_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: after.observed_after_perturbation_completion,
+  )
+  instant
 }
 
 type StateActivationReceipt<Target, ReadbackSubject> {
@@ -218,15 +232,13 @@ type StateActivationEvidence<Target, ReadbackSubject>
 
 type StatePreservationOutcome<Target, ReadbackSubject>
   = StatePreserved {
-      timeline: StateDurabilityTimeline,
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       activation: StateActivationEvidence<Target, ReadbackSubject>,
     }
   | StateLost {
-      timeline: StateDurabilityTimeline,
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | StatePreservationObservationRefused { reason: String }
@@ -312,8 +324,8 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
     }
   | DurabilityActivationUnverified { reason: String }
   | DurabilityStateLost {
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | DurabilityObservationRefused { reason: String }
@@ -529,7 +541,6 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
           value: DurabilityObservationRefused { reason: reason },
         }
       StateLost {
-        timeline: _,
         before: before,
         after: after,
         reason: reason,
@@ -542,7 +553,6 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
           },
         }
       StatePreserved {
-        timeline: _,
         before: before,
         after: after,
         activation: activation,
