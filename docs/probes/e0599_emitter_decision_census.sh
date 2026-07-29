@@ -264,8 +264,23 @@ FAMILY = dict(zip(fam_keys, fam_out))
 for r in rows:
     r["root_family"] = FAMILY[(r["shape"], r["method"], r["receiver_type"])]
 
-R123 = {"R1CloneBoundOnTypeParam", "R2VectorMethodBounds", "R3ContainerCloneBounds"}
+# The R1/R2/R3 scope set is NOT restated here. It loads from the Phase A authority
+# (tools.e0599_probe_census e0599_mechanistic_root_families), whose labels derive from the
+# same e0599_root_family_label the family join above uses — so a rename in .dag cannot
+# silently narrow this filter.
+R123 = set(gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
+                            "e0599_write_mechanistic_root_family_labels_blob").split("\n"))
+R123 = {s for s in (x.strip() for x in R123) if s}
+if not R123:
+    raise SystemExit("REFUSED: mechanistic root-family scope set is empty — the authority "
+                     "returned no labels, and an empty filter would silently scope the "
+                     "census to zero sites (DESIGN §5: refuse, never widen or narrow)")
+unknown = {r["root_family"] for r in rows} - R123
 scoped = [r for r in rows if r["root_family"] in R123]
+if not scoped:
+    raise SystemExit(f"REFUSED: no diagnostic matched the scope set {sorted(R123)}; "
+                     f"observed families were {sorted(unknown)} — a scope set that matches "
+                     "nothing is a located refusal, never an empty census")
 
 # --- classification: via the B0 authority (no second cause table) ----------------------
 E0599_CLASSIFICATION_FIELDS = 7
@@ -346,8 +361,21 @@ cause_occ = collections.Counter()
 for r in out_rows:
     cause_occ[r["requirement_cause"]] += r["occurrences"]
 print("requirement_cause\tunique_sites\toccurrences")
-for cause in ("TargetApiRequirement", "OwnedDeconstructionRequirement", "CloneSharedRequirement",
-              "NoRequirement", "Unresolved"):
+# The cause roster is NOT restated here. It loads from the B0 authority
+# (tools.e0599_emitter_decision_census e0599_rollup_cause_order), whose labels derive from
+# the same e0599_requirement_cause_label the classification uses — so a new variant cannot
+# be silently omitted from the rollup.
+ROLLUP_CAUSES = [s for s in (x.strip() for x in gunbc_blob_noarg(
+    "dag/tools/e0599_emitter_decision_census.dag",
+    "e0599_write_rollup_cause_labels_blob").split("\n")) if s]
+if not ROLLUP_CAUSES:
+    raise SystemExit("REFUSED: cause authority returned no rollup labels")
+missing = set(cause_sites) - set(ROLLUP_CAUSES)
+if missing:
+    raise SystemExit(f"REFUSED: measured cause(s) {sorted(missing)} are absent from the "
+                     "authority's rollup roster — the rollup would silently drop them "
+                     "(DESIGN §5: a failure arm must refuse, never widen)")
+for cause in ROLLUP_CAUSES:
     print(f"{cause}\t{cause_sites.get(cause, 0)}\t{cause_occ.get(cause, 0)}")
 print(f"TOTAL\t{len(out_rows)}\t{sum(cause_occ.values())}")
 print()
