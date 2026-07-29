@@ -612,7 +612,7 @@ fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> B
   )
 }
 
-data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487 construction wall (materialization_provider_identity_derivation_note class): a brand or bare record is freely constructible in .dag — custody theater. The enforceable move is DERIVATION: authorization_token is computed from (module_path, provenance digests, executed wet_execution_digest) and census compiler_frontier_emitter_produced_authorization_mint_consistent_holds requires token==derivation AND producer_emission_oracle_authorizes_row. mint_authorized_emitter_produced_disposition is the sole writer of consistent tokens today; live roster emitter_produced_baseline=0. Dissolve-on: witness-realization populates roster exclusively via mint."
+data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487/44504 construction boundary (materialization_provider_identity_derivation_note class): records are freely constructible in .dag — custody theater. SelfHostFrontierDisposition.EmitterProduced is tag-only; authorization lives in emitter_produced_authorization_registry, populated only via mint_emitter_produced_authorization_registry_binding. Derivation: authorization_token from (module_path, provenance digests, executed wet_execution_digest); census requires registry row + mint_consistent per EmitterProduced roster row. Live roster emitter_produced_baseline=0 and registry empty at baseline."
 
 fn authorized_emitter_produced_authorization_token(
   module_path: String,
@@ -639,6 +639,15 @@ type AuthorizedEmitterProducedDisposition {
   provenance: ProducerEmissionReceipt
   executed_verdict: ProducerEmissionExecutedGreenReceipt
 }
+
+type EmitterProducedAuthorizationBinding {
+  module_path: String
+  authorization: AuthorizedEmitterProducedDisposition
+}
+
+data emitter_produced_authorization_registry: List<EmitterProducedAuthorizationBinding> = []
+
+data emitter_produced_authorization_registry_note: String = "Review 44504: authorization registry paired with tag-only EmitterProduced frontier rows. A row tagged EmitterProduced without a registry binding fails census — the disposition API cannot carry a forged authorization record. Dissolve-on: witness-realization adds registry bindings atomically with roster flips via mint_emitter_produced_authorization_registry_binding."
 
 fn authorized_emitter_produced_disposition_mint_consistent(
   module_path: String,
@@ -691,6 +700,69 @@ fn mint_authorized_emitter_produced_disposition(
     )
   } else {
     optional_absent()
+  }
+}
+
+fn emitter_produced_authorization_for_module(
+  module_path: String
+) -> Optional<AuthorizedEmitterProducedDisposition> {
+  fold_list(
+    xs: emitter_produced_authorization_registry,
+    empty: optional_absent(),
+    cons: fn(found, binding) {
+      if binding.module_path == module_path {
+        optional_present(value: binding.authorization)
+      } else {
+        found
+      }
+    }
+  )
+}
+
+fn mint_emitter_produced_authorization_registry_binding(
+  module_path: String,
+  provenance: ProducerEmissionReceipt,
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+) -> Optional<EmitterProducedAuthorizationBinding> {
+  match mint_authorized_emitter_produced_disposition(
+    module_path: module_path,
+    provenance: provenance,
+    executed_verdict: executed_verdict
+  ) {
+    Present { value: authorization } =>
+      optional_present(
+        value: EmitterProducedAuthorizationBinding {
+          module_path: module_path,
+          authorization: authorization
+        }
+      )
+    Absent => optional_absent()
+  }
+}
+
+fn emitter_produced_authorization_registry_length() -> Int {
+  length(xs: emitter_produced_authorization_registry)
+}
+
+fn emitter_produced_authorization_registry_mint_consistent_holds() -> Bool {
+  fold_list(
+    xs: emitter_produced_authorization_registry,
+    empty: true,
+    cons: fn(ok, binding) {
+      ok && authorized_emitter_produced_disposition_mint_consistent(
+        module_path: binding.module_path,
+        authorization: binding.authorization
+      )
+    }
+  )
+}
+
+fn emitter_produced_tag_without_registry_binding_fails_holds() -> Bool {
+  match emitter_produced_authorization_for_module(
+    module_path: producer_emission_oracle_row_body_producer.module_path
+  ) {
+    Present { value: _ } => false
+    Absent => true
   }
 }
 
