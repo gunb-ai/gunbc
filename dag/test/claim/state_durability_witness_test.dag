@@ -35,7 +35,6 @@ import std.state_durability {
   SynchronizedCommit,
   state_durability_after_readback_at,
   state_durability_boundary_requirements,
-  state_durability_boundary_requirement_list,
   state_durability_perturbation_completed_at,
   state_durability_perturbation_started_at,
   state_durability_satisfied,
@@ -148,7 +147,7 @@ fn current_capability() -> StateDurabilityCapability {
 
 fn fixture_timeline() -> StateDurabilityTimeline {
   StateDurabilityTimeline {
-    before_readback_at: 1000,
+    before_readback_at: 1000 as StateDurabilityInstant,
     before_to_perturbation_start_ms: 10,
     perturbation_duration_ms: 20,
     completion_to_after_readback_ms: 30,
@@ -250,9 +249,7 @@ test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> 
     first: fixture_boundary,
     additional: [fixture_boundary, fixture_wrong_boundary, fixture_wrong_boundary],
   )
-  let boundaries = state_durability_boundary_requirement_list(
-    requirements: requirements,
-  )
+  let boundaries = requirements as List<StateDurabilityBoundary>
   fold(boundaries, init: 0, f: (count, _) => count + 1) == 2
     && any(boundaries, boundary => boundary == fixture_boundary)
     && any(boundaries, boundary => boundary == fixture_wrong_boundary)

@@ -10,6 +10,7 @@ import std.types {
   Int,
   List,
   NonEmptyStr,
+  Set,
   String,
 }
 
@@ -46,13 +47,12 @@ type StateDurabilityIntent
   | RuntimeLifetimeOnly
   | DurableAcross { boundaries: StateDurabilityBoundaryRequirements }
 
-type StateDurabilityBoundaryRequirements {
-  first: StateDurabilityBoundary
-  additional_unique: List<StateDurabilityBoundary>
-}
+type StateDurabilityBoundaryRequirements =
+  List<StateDurabilityBoundary> where non_empty
 
 type StateDurabilityBoundaryRequirementBuild {
   ordered: List<StateDurabilityBoundary>
+  seen: Set<StateDurabilityBoundary>
 }
 
 fn state_durability_boundary_requirements(
@@ -63,26 +63,19 @@ fn state_durability_boundary_requirements(
     additional,
     init: StateDurabilityBoundaryRequirementBuild {
       ordered: [first],
+      seen: set_insert(empty_set(), first),
     },
     f: (acc, boundary) =>
-      if any(acc.ordered, existing => existing == boundary) {
+      if set_contains(acc.seen, boundary) {
         acc
       } else {
         StateDurabilityBoundaryRequirementBuild {
           ordered: append(acc.ordered, items: [boundary]),
+          seen: set_insert(acc.seen, boundary),
         }
       },
   )
-  StateDurabilityBoundaryRequirements {
-    first: first,
-    additional_unique: built.ordered.skip(n: 1),
-  }
-}
-
-fn state_durability_boundary_requirement_list(
-  requirements: StateDurabilityBoundaryRequirements,
-) -> List<StateDurabilityBoundary> {
-  append([requirements.first], items: requirements.additional_unique)
+  built.ordered as StateDurabilityBoundaryRequirements
 }
 
 type DurabilityCommitBarrier
@@ -131,7 +124,8 @@ type StateDurabilityCapabilityVersion {
 type StatePerturbationGeneration =
   Int where range(min: 1), brand("StatePerturbationGeneration")
 
-type StateDurabilityInstant = EpochMs
+type StateDurabilityInstant =
+  EpochMs where brand("StateDurabilityInstant")
 
 type PositiveElapsedMilliseconds =
   Int where range(min: 1), brand("PositiveElapsedMilliseconds")
@@ -147,21 +141,21 @@ fn state_durability_perturbation_started_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
   let instant = timeline.before_readback_at + timeline.before_to_perturbation_start_ms
-  instant
+  instant as StateDurabilityInstant
 }
 
 fn state_durability_perturbation_completed_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
   let instant = state_durability_perturbation_started_at(timeline: timeline) + timeline.perturbation_duration_ms
-  instant
+  instant as StateDurabilityInstant
 }
 
 fn state_durability_after_readback_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
   let instant = state_durability_perturbation_completed_at(timeline: timeline) + timeline.completion_to_after_readback_ms
-  instant
+  instant as StateDurabilityInstant
 }
 
 type StateDurabilityAdmission<Target, ReadbackSubject> {
@@ -674,9 +668,7 @@ fn state_durability_boundaries_verdict<Target, ReadbackSubject>(
   capability: StateDurabilityCapability,
   evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
 ) -> StateDurabilityVerdict<Target, ReadbackSubject> {
-  let required_list = state_durability_boundary_requirement_list(
-    requirements: required,
-  )
+  let required_list = required as List<StateDurabilityBoundary>
   let folded = fold(
     required_list,
     init: StateDurabilityBoundaryFold {

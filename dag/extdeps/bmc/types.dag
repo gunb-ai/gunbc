@@ -1,10 +1,6 @@
 module extdeps.bmc.types
 
-import extdeps.bmc.capability {
-  BmcEvidenceTemporalScope,
-  BmcFirmwareObservation,
-  BmcFirmwareVersion,
-}
+import extdeps.bmc.capability { BmcFirmwareObservation, BmcFirmwareVersion }
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -17,7 +13,7 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -111,7 +107,7 @@ type BmcUpdateServiceObservation {
   firmware_inventory_member_count: Nat
   bmc_image_member_count: Nat
   backup_bmc_image_observed: Bool
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
 
 type RedfishThermalQueryVerdict
@@ -286,14 +282,13 @@ type BmcFanControllerShape
 
 type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
-  evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr
   controller_binary: NonEmptyStr
   controller_shape: BmcFanControllerShape
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
 
 type BmcConfigPersistenceObservation
@@ -304,15 +299,13 @@ type BmcConfigPersistenceObservation
       writable: Bool
       upper_override_present: Bool
       available_bytes: ByteSize
-      evidence_scope: BmcEvidenceTemporalScope
-      observed_at: EpochMs
+      observed_at: NonEmptyStr
     }
   | BmcConfigPersistenceUnsupported {
       firmware: BmcFirmwareVersion
       config_path: NonEmptyStr
       reason: NonEmptyStr
-      evidence_scope: BmcEvidenceTemporalScope
-      observed_at: EpochMs
+      observed_at: NonEmptyStr
     }
 
 type BmcTelemetrySnapshot {
@@ -360,8 +353,7 @@ type RedfishManagerResetObservation {
   reset_type: RedfishResetType
   http_status: Nat
   accepted: Bool
-  evidence_scope: BmcEvidenceTemporalScope
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
 
 type RedfishAccountRole =

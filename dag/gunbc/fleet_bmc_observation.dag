@@ -3,8 +3,6 @@ module gunbc.fleet_bmc_observation
 import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
-  BmcEvidenceTemporalScope,
-  HistoricalEvidenceSnapshot,
   bmc_firmware_semantic_version,
 }
 import extdeps.bmc.types {
@@ -61,7 +59,7 @@ import std.state_durability {
   StateRealizationDefinitionHashes,
   StateRealizationIdentity,
 }
-import std.types { Bool, ContentHash, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, ContentHash, List, NonEmptyStr, String }
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -69,7 +67,6 @@ type BmcFanTachReceipt {
 }
 
 type BmcFanConvergenceReceipt {
-  evidence_scope: BmcEvidenceTemporalScope
   host: HostIdentity
   policy: BmcFanPolicyObservation
   persistence: BmcConfigPersistenceObservation
@@ -85,11 +82,10 @@ type BmcFanConvergenceReceipt {
   temp_soc_final: Celsius
   guarded_component_maximum: Celsius
   final_tachs: List<BmcFanTachReceipt>
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
 
 type BmcFanRebootPersistenceReceipt {
-  evidence_scope: BmcEvidenceTemporalScope
   host: HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
@@ -98,8 +94,8 @@ type BmcFanRebootPersistenceReceipt {
   reset: RedfishManagerResetObservation
   bmc_down_observed: Bool
   bmc_returned: Bool
-  bmc_down_observed_at: EpochMs
-  bmc_returned_at: EpochMs
+  bmc_down_observed_at: NonEmptyStr
+  bmc_returned_at: NonEmptyStr
   observed_outage_seconds: Nat
   host_power_before: RedfishPowerState
   host_power_after: RedfishPowerState
@@ -113,7 +109,7 @@ type BmcFanRebootPersistenceReceipt {
   post_reboot_zone_failsafe_active: Bool
   post_reboot_observer_exit_success: Bool
   post_reboot_converge_noop_exit_success: Bool
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
 
 data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
@@ -122,8 +118,7 @@ data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
     family: OpenBmc,
     version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
-  evidence_scope: HistoricalEvidenceSnapshot,
-  observed_at: 1785110400000,
+  observed_at: "2026-07-27",
 }
 
 data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
@@ -132,8 +127,7 @@ data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
     family: OpenBmc,
     version: bmc_firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
-  evidence_scope: HistoricalEvidenceSnapshot,
-  observed_at: 1785110400000,
+  observed_at: "2026-07-27",
 }
 
 data srv3_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
@@ -159,7 +153,7 @@ data srv3_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdat
   firmware_inventory_member_count: 2,
   bmc_image_member_count: 1,
   backup_bmc_image_observed: false,
-  observed_at: 1785110400000,
+  observed_at: "2026-07-27",
 }
 
 data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
@@ -171,7 +165,7 @@ data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdat
   firmware_inventory_member_count: 3,
   bmc_image_member_count: 1,
   backup_bmc_image_observed: false,
-  observed_at: 1785110400000,
+  observed_at: "2026-07-27",
 }
 
 data srv4_bmc_fan_observed_curve_steps: List<BmcFanCurveStep> = [
@@ -298,7 +292,6 @@ data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
@@ -308,7 +301,7 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
-  observed_at: 1785191485000,
+  observed_at: "2026-07-27T22:31:25Z",
 }
 
 data srv4_bmc_root_overlay_observation: LinuxOverlayObservation = LinuxOverlayObservation {
@@ -338,12 +331,10 @@ data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = 
   writable: true,
   upper_override_present: true,
   available_bytes: byte_size(20365312),
-  evidence_scope: HistoricalEvidenceSnapshot,
-  observed_at: 1785191485000,
+  observed_at: "2026-07-27T22:31:25Z",
 }
 
 data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConvergenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
   host: srv4_host.identity,
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
@@ -366,12 +357,11 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
     BmcFanTachReceipt { sensor: "FAN3", reading: rpm(933) },
     BmcFanTachReceipt { sensor: "FAN4", reading: rpm(889) },
   ],
-  observed_at: 1785191485000,
+  observed_at: "2026-07-27T22:31:25Z",
 }
 
 data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
-  evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
@@ -381,11 +371,10 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
-  observed_at: 1785194085000,
+  observed_at: "2026-07-27T23:14:45Z",
 }
 
 data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
   host: srv4_host.identity,
   perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
   perturbation_generation: srv4_bmc_fan_perturbation_generation,
@@ -396,13 +385,12 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
     reset_type: ResetGracefulRestart,
     http_status: 200,
     accepted: true,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    observed_at: 1785193782000,
+    observed_at: "2026-07-27T23:09:42Z",
   },
   bmc_down_observed: true,
   bmc_returned: true,
-  bmc_down_observed_at: 1785193789000,
-  bmc_returned_at: 1785193946000,
+  bmc_down_observed_at: "2026-07-27T23:09:49Z",
+  bmc_returned_at: "2026-07-27T23:12:26Z",
   observed_outage_seconds: 157,
   host_power_before: On,
   host_power_after: On,
@@ -426,7 +414,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   post_reboot_zone_failsafe_active: false,
   post_reboot_observer_exit_success: true,
   post_reboot_converge_noop_exit_success: true,
-  observed_at: 1785194085000,
+  observed_at: "2026-07-27T23:14:45Z",
 }
 
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."

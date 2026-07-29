@@ -2,7 +2,7 @@ module extdeps.bmc.capability
 
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -91,13 +91,8 @@ type BmcFirmwareIntent
 type BmcFirmwareObservation {
   endpoint: BmcEndpoint
   firmware: BmcFirmwareVersion
-  evidence_scope: BmcEvidenceTemporalScope
-  observed_at: EpochMs
+  observed_at: NonEmptyStr
 }
-
-type BmcEvidenceTemporalScope
-  = HistoricalEvidenceSnapshot
-  | CurrentEvidenceUnclaimed
 
 type BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion
