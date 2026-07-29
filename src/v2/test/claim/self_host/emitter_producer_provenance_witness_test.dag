@@ -124,6 +124,14 @@ test fn witness_baseline_oracle_row_authorizes_emitter_produced() -> Bool {
   )
 }
 
+data witness_fabricated_build_green_same_module_producer_red_note: String = "Review 44328 RED: same module_path + V1SeedEmitter with BuildGreen and fabricated probe identity must NOT authorize against a live oracle row whose receipt carries BuildRefused and enrolled wet quarantine probe."
+
+test fn witness_fabricated_build_green_same_module_producer_reds() -> Bool {
+  let oracle = producer_emission_oracle_row_body_producer
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: oracle.module_path)
+  !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: fabricated)
+}
+
 test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
   schedule_witness_entries_structurally_equal(
     left: seed_emitter_behavioral_wet_known_red_entries,

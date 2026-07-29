@@ -30,6 +30,21 @@ type EmitterProducer
   | V2EmitterInterpreted
   | V2EmitterNative { generation: Int }
 
+data emitter_producer_axis_note: String = "Canonical query surface for EmitterProducer (review 44328 predicate-dissolution rule): consumers classify through emitter_producer_axis once and match the tag — not a family of hand-rolled producer_is_* Bool predicates over the same coproduct."
+
+type EmitterProducerAxis
+  = EmitterProducerV1Seed
+  | EmitterProducerV2Interpreted
+  | EmitterProducerV2Native { generation: Int }
+
+fn emitter_producer_axis(producer: EmitterProducer) -> EmitterProducerAxis {
+  match producer {
+    V1SeedEmitter => EmitterProducerV1Seed
+    V2EmitterInterpreted => EmitterProducerV2Interpreted
+    V2EmitterNative { generation: generation } => EmitterProducerV2Native { generation: generation }
+  }
+}
+
 type EmissionQualification
   = SourceProduced
   | CargoGreen
@@ -115,6 +130,8 @@ fn v2_emitter_producer_admissible(
   }
 }
 
+data behavioral_equivalent_qualifications: List<EmissionQualification> = [BehavioralEquivalent]
+
 fn scaffold_digest_for_module_path(module_path: String) -> Hash {
   combine_hash(
     a: symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest),
@@ -180,7 +197,7 @@ fn seed_emitter_behavioral_oracle_row(
       module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
       emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
       producer: V1SeedEmitter,
-      qualifications: [BehavioralEquivalent],
+    qualifications: behavioral_equivalent_qualifications,
       rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
       emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
       build_result: BuildRefused { cause: ^cssl_harness_assemble_red },
@@ -237,7 +254,7 @@ data producer_emission_oracle_row_00_compile_flip_wave_red: ProducerEmissionOrac
     module_source_digest: scaffold_digest_for_module_path(module_path: "src/v2/compiler/00_compile.dag"),
     emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
     producer: V1SeedEmitter,
-    qualifications: [BehavioralEquivalent],
+    qualifications: behavioral_equivalent_qualifications,
     rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
     emitted_source_digest: scaffold_digest_for_module_path(module_path: "src/v2/compiler/00_compile.dag"),
     build_result: BuildRefused { cause: ^flip_wave_dishonest_claim },
@@ -265,6 +282,96 @@ data producer_emission_flip_wave_reverted_module_paths: List<String> = [
   "src/v2/compiler/source_authority.dag"
 ]
 
+fn emitter_producer_eq(left: EmitterProducer, right: EmitterProducer) -> Bool {
+  match emitter_producer_axis(producer: left) {
+    EmitterProducerV1Seed =>
+      match emitter_producer_axis(producer: right) {
+        EmitterProducerV1Seed => true
+        EmitterProducerV2Interpreted => false
+        EmitterProducerV2Native { generation: _ } => false
+      }
+    EmitterProducerV2Interpreted =>
+      match emitter_producer_axis(producer: right) {
+        EmitterProducerV1Seed => false
+        EmitterProducerV2Interpreted => true
+        EmitterProducerV2Native { generation: _ } => false
+      }
+    EmitterProducerV2Native { generation: left_generation } =>
+      match emitter_producer_axis(producer: right) {
+        EmitterProducerV1Seed => false
+        EmitterProducerV2Interpreted => false
+        EmitterProducerV2Native { generation: right_generation } =>
+          left_generation == right_generation
+      }
+  }
+}
+
+fn emission_build_result_eq(left: EmissionBuildResult, right: EmissionBuildResult) -> Bool {
+  match left {
+    BuildGreen =>
+      match right {
+        BuildGreen => true
+        BuildRefused { cause: _ } => false
+      }
+    BuildRefused { cause: left_cause } =>
+      match right {
+        BuildGreen => false
+        BuildRefused { cause: right_cause } => left_cause == right_cause
+      }
+  }
+}
+
+fn qualifications_list_eq(
+  left: List<EmissionQualification>,
+  right: List<EmissionQualification>
+) -> Bool {
+  if length(xs: left) != length(xs: right) {
+    false
+  } else {
+    fold_list(
+      xs: left,
+      empty: true,
+      cons: fn(ok, left_q) {
+        ok && any(
+          xs: right,
+          predicate: fn(right_q) { qualification_eq(left: left_q, right: right_q) }
+        )
+      }
+    )
+  }
+}
+
+fn realized_closure_eq(left: RealizedEmitterClosure, right: RealizedEmitterClosure) -> Bool {
+  if length(xs: left.emitter_module_paths) != length(xs: right.emitter_module_paths) {
+    false
+  } else {
+    fold_list(
+      xs: left.emitter_module_paths,
+      empty: true,
+      cons: fn(ok, path) {
+        ok && any(
+          xs: right.emitter_module_paths,
+          predicate: fn(right_path) { path == right_path }
+        )
+      }
+    )
+  }
+}
+
+fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEmissionReceipt) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.module_source_digest == right.module_source_digest)
+    && (left.emitter_source_digest == right.emitter_source_digest)
+    && emitter_producer_eq(left: left.producer, right: right.producer)
+    && qualifications_list_eq(left: left.qualifications, right: right.qualifications)
+    && (left.rust_target_model_digest == right.rust_target_model_digest)
+    && (left.emitted_source_digest == right.emitted_source_digest)
+    && emission_build_result_eq(left: left.build_result, right: right.build_result)
+    && (left.behavioral_probe_entry == right.behavioral_probe_entry)
+    && (left.behavioral_probe_function == right.behavioral_probe_function)
+    && realized_closure_eq(left: left.realized_closure, right: right.realized_closure)
+}
+
 fn producer_emission_oracle_probe_is_enrolled(row: ProducerEmissionOracleRow) -> Bool {
   schedule_witness_entry_cited(
     probe_entry: row.receipt.behavioral_probe_entry,
@@ -287,6 +394,8 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
+data producer_emission_oracle_authorization_note: String = "Construction, not enrollment-only (review 44328): authorization requires structural equality of the FULL ProducerEmissionReceipt — digests, qualifications, build_result, probe identity, and realized_closure — AND enrolled wet quarantine citation. Same module_path + producer with a fabricated BuildGreen or probe identity cannot authorize."
+
 fn producer_emission_oracle_authorizes_row(
   module_path: String,
   receipt: ProducerEmissionReceipt
@@ -294,8 +403,7 @@ fn producer_emission_oracle_authorizes_row(
   any(
     xs: producer_emission_oracle_row_for_module(module_path: module_path),
     predicate: fn(row) {
-      (row.receipt.module_path == receipt.module_path)
-        && (row.receipt.producer == receipt.producer)
+      producer_emission_receipt_eq(left: row.receipt, right: receipt)
         && producer_emission_oracle_probe_is_enrolled(row: row)
     }
   )
@@ -361,7 +469,7 @@ fn fabricated_v1_seed_producer_receipt(module_path: String) -> ProducerEmissionR
     module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
     producer: V1SeedEmitter,
-    qualifications: [BehavioralEquivalent],
+    qualifications: behavioral_equivalent_qualifications,
     rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
     emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     build_result: BuildGreen,
@@ -377,7 +485,7 @@ fn fabricated_v2_interpreted_producer_receipt(module_path: String) -> ProducerEm
     module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     emitter_source_digest: scaffold_digest_for_module_path(module_path: v2_emit_interpreted_qualified_module),
     producer: V2EmitterInterpreted,
-    qualifications: [BehavioralEquivalent],
+    qualifications: behavioral_equivalent_qualifications,
     rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
     emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
     build_result: BuildGreen,
@@ -393,7 +501,7 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
   match mint_producer_emission_receipt(
     module_path: module_path,
     producer: V2EmitterInterpreted,
-    qualifications: [BehavioralEquivalent],
+    qualifications: behavioral_equivalent_qualifications,
     build_result: BuildGreen,
     behavioral_probe_entry: "fabricated",
     behavioral_probe_function: "fabricated",
@@ -401,30 +509,6 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
   ) {
     Absent => true
     Present { value: _ } => false
-  }
-}
-
-fn producer_is_v1_seed_emitter(producer: EmitterProducer) -> Bool {
-  match producer {
-    V1SeedEmitter => true
-    V2EmitterInterpreted => false
-    V2EmitterNative { generation: _ } => false
-  }
-}
-
-fn producer_is_v2_interpreted(producer: EmitterProducer) -> Bool {
-  match producer {
-    V1SeedEmitter => false
-    V2EmitterInterpreted => true
-    V2EmitterNative { generation: _ } => false
-  }
-}
-
-fn producer_is_v2_native(producer: EmitterProducer) -> Bool {
-  match producer {
-    V1SeedEmitter => false
-    V2EmitterInterpreted => false
-    V2EmitterNative { generation: _ } => true
   }
 }
 
@@ -448,36 +532,55 @@ fn row_has_qualification(
 }
 
 fn producer_emission_row_is_seed_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  producer_is_v1_seed_emitter(producer: row.receipt.producer)
-    && row_has_qualification(
-      qualifications: row.receipt.qualifications,
-      target: BehavioralEquivalent
-    )
+  match emitter_producer_axis(producer: row.receipt.producer) {
+    EmitterProducerV1Seed =>
+      row_has_qualification(
+        qualifications: row.receipt.qualifications,
+        target: BehavioralEquivalent
+      )
+    EmitterProducerV2Interpreted => false
+    EmitterProducerV2Native { generation: _ } => false
+  }
 }
 
 fn producer_emission_row_is_v2_interpreted_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  producer_is_v2_interpreted(producer: row.receipt.producer)
-    && row_has_qualification(
-      qualifications: row.receipt.qualifications,
-      target: BehavioralEquivalent
-    )
+  match emitter_producer_axis(producer: row.receipt.producer) {
+    EmitterProducerV1Seed => false
+    EmitterProducerV2Interpreted =>
+      row_has_qualification(
+        qualifications: row.receipt.qualifications,
+        target: BehavioralEquivalent
+      )
+    EmitterProducerV2Native { generation: _ } => false
+  }
 }
 
 fn producer_emission_row_is_v2_native_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  producer_is_v2_native(producer: row.receipt.producer)
-    && row_has_qualification(
-      qualifications: row.receipt.qualifications,
-      target: BehavioralEquivalent
-    )
+  match emitter_producer_axis(producer: row.receipt.producer) {
+    EmitterProducerV1Seed => false
+    EmitterProducerV2Interpreted => false
+    EmitterProducerV2Native { generation: _ } =>
+      row_has_qualification(
+        qualifications: row.receipt.qualifications,
+        target: BehavioralEquivalent
+      )
+  }
 }
 
 fn producer_emission_row_is_v2_production_routed(row: ProducerEmissionOracleRow) -> Bool {
-  (producer_is_v2_interpreted(producer: row.receipt.producer)
-    || producer_is_v2_native(producer: row.receipt.producer))
-    && row_has_qualification(
-      qualifications: row.receipt.qualifications,
-      target: ProductionRouted
-    )
+  match emitter_producer_axis(producer: row.receipt.producer) {
+    EmitterProducerV1Seed => false
+    EmitterProducerV2Interpreted =>
+      row_has_qualification(
+        qualifications: row.receipt.qualifications,
+        target: ProductionRouted
+      )
+    EmitterProducerV2Native { generation: _ } =>
+      row_has_qualification(
+        qualifications: row.receipt.qualifications,
+        target: ProductionRouted
+      )
+  }
 }
 
 data seed_emitter_behavioral_green_baseline: Int = 6
