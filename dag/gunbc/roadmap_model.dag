@@ -12,6 +12,10 @@ import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 
+data roadmap_node_identity_law: String = "A roadmap node's identity is MINTED, never derived. Slug, title, criteria digest, containment position, dependency neighbourhood, declaration order and file position are FORBIDDEN identity inputs — the law std.occurrence_identity states for occurrences, generalized to an entity that must outlive the graph it is read from.\n\nThe law is reused; the TYPE deliberately is not. std.occurrence_identity.OccurrenceId is an ordinal from a per-graph allocator starting at zero, so it is unique only INSIDE one constructed graph: inserting a node at the front renumbers every node after it, and two concurrent branches mint the same next integer. That is positional identity wearing an allocator's clothes — right for occurrences within one parse, wrong for a work item that must survive edits, reordering, regeneration and independent branches. What occurrence identity deliberately does not claim is PERSISTENCE SCOPE, and that is precisely what a roadmap node needs.\n\nIdentity is a REQUIRED FIELD rather than a side registry keyed by slug. A registry beside the authority leaves a node authorable without identity, detectable only by a later witness — validation standing where construction was available (DESIGN 5), and two authorities that must be kept in step (DESIGN 3). As a field, a node without durable identity is unwritable, and the slug index is DERIVED from the nodes rather than independently authored, so the two can never disagree."
+
+type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
+
 type Pointer { label: String, path: String }
 
 type Intricacy
@@ -35,6 +39,7 @@ type NodeSizing
   | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
 
 type RoadmapNode {
+  identity: RoadmapNodeIdentity
   node: RoadmapNodeId
   line: RoadmapItem
   carriers: List<Pointer>
