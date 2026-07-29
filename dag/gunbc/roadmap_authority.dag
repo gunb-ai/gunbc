@@ -28,7 +28,12 @@ import gunbc.roadmap_model {
   section_group,
   section_prose,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import std.types { FilePath, NonEmptyStr }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  WorkItemExecutionContract,
+  gunbc_claim_execution_contract,
+}
 import gunbc.roadmap_focus {
   RoadmapFocus,
   NoFocus,
@@ -69,7 +74,7 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
-data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
+data roadmap_execution_contract_frontier_note: String = "EXACTLY ONE node carries an execution contract (shell-typed-invocation, via with_execution below); every other node is ExecutionContractUnspecified — the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh, which left the frontier at ZERO bound nodes — dispatch refused on the entire roadmap and nothing below Env had ever executed end to end. This row records that the count is now one, and it is a COUNT, not a completion: binding remains per-node roadmap authoring, never a merge-time default, and the frontier closes one deliberate node at a time."
 
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
   RoadmapNode {
@@ -189,6 +194,29 @@ fn superseded(id: String, by: String, content: String) -> RoadmapNode {
     execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
+  }
+}
+
+data shell_typed_invocation_contract_note: String = "THE FIRST BOUND NODE, and it is bound to an ALREADY-GREEN validation on purpose. Until this row existed every node was ExecutionContractUnspecified, so dispatch_environment_admit refused on all of them and no part of the workflow below Env had ever executed end to end. A first binding therefore has two jobs that pull in opposite directions: prove the Verify path runs at all, and prove it discriminates. Those want different nodes, and conflating them is how a green pipeline gets mistaken for a working one. This row takes the FIRST job only — the validation it names passes today, so an Agent turn that changes nothing still produces a real admitted environment, a real derived command, and a real validation receipt. What that proves is the PLUMBING: capability admission, argv derivation, and receipt production, independent of whether the provider accomplished anything. It deliberately proves NOTHING about discrimination, and must not be read as evidence that Verify can fail — the discriminating red belongs on a second node whose validation is currently red and goes green when the work lands, and that node is the next binding, not this one.\n\nThe operation is the transport-clean corpus witness because it is what this ticket's own red control describes: 'a new unclassified production construction site reds the census'. It reads the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a fixture — a raw shell literal reappearing in that transport module reds it for real."
+
+fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
+    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+  )
+}
+
+data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
+
+fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode {
+  RoadmapNode {
+    node: rn.node,
+    line: rn.line,
+    carriers: rn.carriers,
+    sizing: rn.sizing,
+    execution: e,
+    owner: rn.owner,
+    signoff: rn.signoff,
   }
 }
 
@@ -884,7 +912,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_small(
+    with_execution(
+      e: shell_typed_invocation_execution_contract(),
+      rn: active_small(
       id: "shell-typed-invocation",
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
@@ -897,7 +927,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer.",
         handback: "The described version, proof it does the same thing, and the deleted string-building."
       )
-    ),
+    )),
     active_large(
       id: "shell-effectplan-to-bash",
       owner: "shell",
