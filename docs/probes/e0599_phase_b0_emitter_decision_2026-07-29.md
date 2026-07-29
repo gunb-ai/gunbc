@@ -71,18 +71,20 @@ enumerate exact adapter tasks. §3.3 gives the full 78 → 167 attribution — o
 every per-cause occurrence count are unchanged, so the refinement regrouped rows and moved
 no diagnostic between causes.
 
-Measured after four PRs landed mid-review, `914da873` being the merge that brought them
-in. Two shas matter and they name different things, so the receipt carries both rather
-than blurring them into one:
+Measured, and then **re-measured from scratch** after `origin/main` was merged again. Two
+shas matter and they name different things, so the receipt carries both — and the receipt
+is the authority for them, not this prose:
 
-- `measured_corpus_sha` = **`210696d72e1`** (#7406) — the last commit touching `src/`, i.e.
+- `measured_corpus_sha` = **`749ca01e73b`** (#7415) — the last commit touching `src/`, i.e.
   the seed emitter and the AST it runs over. This is what the numbers are *about*.
-- `base_sha` = **`0126077aa50`** — the commit the measurement *ran at*.
+- `base_sha` = **`94ea41e4ee1`** — the commit the measurement *ran at*.
 
-Everything between them (the producer tag, the tuple-projection predicate, the routing
-controls, the doc-graph bind) is census tooling and docs, so
-`git diff --name-only 914da873..HEAD -- src/` is **empty** and re-running at any later
-doc-only head reproduces these numbers. **The brief's
+That merge changed the seed binary itself (`gunbc` sha256 `55a06adf…` → `d0f681a9…`,
+because #7415 compiles into it), so the census was **not** argued to be unaffected: the
+binaries were rebuilt and all seven modules re-emitted and rebuilt into a fresh work dir.
+The result is **byte-identical** to the previous stamping — every rollup and every per-site
+row — which is a purity check the argument alone would not have given. §3.1 reports the
+earlier corpus move and attributes every unit of it. **The brief's
 acceptance figures — 79 sites / 590 occurrences — were met exactly at the sha the brief
 was written against**, and the corpus has since moved; §3.1 reports both and attributes
 every unit of the difference. Zero unresolved, no default or "other" bucket absorbing
