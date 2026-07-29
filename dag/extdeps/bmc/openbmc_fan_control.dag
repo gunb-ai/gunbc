@@ -34,6 +34,7 @@ import extdeps.bmc.openbmc_operation {
   OpenBmcMinimumDuty,
   OpenBmcNegativeHysteresis,
   OpenBmcOperation,
+  OpenBmcOutputCount,
   OpenBmcOutputAt,
   OpenBmcParentDirectory,
   OpenBmcPathExists,
@@ -201,6 +202,8 @@ fn openbmc_fan_config_selector(query: OpenBmcFanConfigQuery) -> NonEmptyStr {
       "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.negativeHysteresis | floor"
     OpenBmcReadingCount =>
       "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | length"
+    OpenBmcOutputCount =>
+      "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | length"
     OpenBmcReadingAt { index: _ } =>
       "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor"
     OpenBmcOutputAt { index: _ } =>
@@ -903,7 +906,7 @@ fn openbmc_fan_config_integer_list(
 ) -> OpenBmcIntegerListResult {
   let count_query = match series {
     OpenBmcReadings => OpenBmcReadingCount
-    OpenBmcOutputs => OpenBmcReadingCount
+    OpenBmcOutputs => OpenBmcOutputCount
   }
   match openbmc_fan_config_integer(
     session: session,

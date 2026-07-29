@@ -19,6 +19,7 @@ import extdeps.bmc.openbmc_fan_control {
 import extdeps.bmc.openbmc_operation {
   OpenBmcCriticalLow,
   OpenBmcFanConfigScalar,
+  OpenBmcOutputCount,
   OpenBmcReadingAt,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
@@ -40,6 +41,20 @@ test fn closed_operation_interpreter_binds_query_arguments_as_argv() -> Bool {
     "index",
     "3",
     "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor",
+    "/usr/share/swampd/config.json",
+  ]
+}
+
+test fn output_cardinality_uses_the_output_series() -> Bool {
+  openbmc_operation_argv(
+    operation: OpenBmcFanConfigScalar {
+      config_path: "/usr/share/swampd/config.json",
+      query: OpenBmcOutputCount,
+    },
+  ) == [
+    "jq",
+    "-er",
+    "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.output | length",
     "/usr/share/swampd/config.json",
   ]
 }

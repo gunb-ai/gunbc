@@ -68,6 +68,7 @@ type OpenBmcFanConfigQuery
   | OpenBmcPositiveHysteresis
   | OpenBmcNegativeHysteresis
   | OpenBmcReadingCount
+  | OpenBmcOutputCount
   | OpenBmcReadingAt { index: Int }
   | OpenBmcOutputAt { index: Int }
   | OpenBmcFanControllerCount
