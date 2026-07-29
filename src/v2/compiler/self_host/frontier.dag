@@ -8,7 +8,6 @@ import v2.compiler.self_host.frontier_band_a_emit_readiness {
 import v2.compiler.self_host.emitter_producer_provenance {
   AuthorizedEmitterProducedDisposition,
   EmitterProducer,
-  ProducerEmissionExecutedGreenReceipt,
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
   authorized_emitter_produced_executed_verdict,

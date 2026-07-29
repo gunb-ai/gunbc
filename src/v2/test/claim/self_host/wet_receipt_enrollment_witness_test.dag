@@ -1,14 +1,5 @@
 module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeReceipt,
-  SelfEmitReady,
-}
-import v2.compiler.self_host.emitter_producer_provenance {
-  ProducerEmissionExecutedGreenReceipt,
-  fabricated_v1_seed_producer_receipt
-}
-import std.content_hash { content_hash_atom }
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_03_body_producer,
   compiler_frontier_row_06_translate,
@@ -16,9 +7,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
-  EmitterProduced,
-  ProbeStageEmit,
-  CompilerModuleFrontierRow
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -34,38 +22,12 @@ import v2.std.text { String }
 
 data wet_binding_revocation_witness_note: String = "2026-07-25: module wet bindings revoked (empty list) after cadence run 30126573464 showed the six SelfEmitted wet receipts RED. Witnesses below pin the revoked state — rows enroll nothing without a binding; nightly = template-only. Review 44453: enrollment keys on binding presence, not EmitterProduced disposition. Re-arm each binding witness when that module's wet receipt greens."
 
-fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
-  compiler_frontier_row_06_translate
-}
-
-fn sample_emitter_produced_row() -> CompilerModuleFrontierRow {
-  CompilerModuleFrontierRow {
-    module_path: "src/v2/compiler/06_translate.dag",
-    disposition: EmitterProduced {
-      provenance: fabricated_v1_seed_producer_receipt(module_path: "src/v2/compiler/06_translate.dag"),
-      executed_verdict: ProducerEmissionExecutedGreenReceipt {
-        module_path: "src/v2/compiler/06_translate.dag",
-        behavioral_probe_entry: "fabricated",
-        behavioral_probe_function: "fabricated",
-        wet_execution_digest: content_hash_atom(value: "fabricated")
-      }
-    },
-    measured_probe: FrontierProbeReceipt {
-      module_path: "src/v2/compiler/06_translate.dag",
-      blocker_class: SelfEmitReady,
-      located_stage: ProbeStageEmit,
-      located_reason: ^measured_probe_self_emit_ready
-    },
-    tractability_rank: 0
-  }
-}
-
 test fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_seed_retained_row())) == 0
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_06_translate)) == 0
 }
 
-test fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_emitter_produced_row())) == 0
+test fn witness_unbound_module_row_enrolls_no_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_06_translate)) == 0
 }
 
 test fn witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked() -> Bool {
@@ -137,4 +99,3 @@ test fn witness_unbound_module_path_has_no_binding() -> Bool {
     Present { value: _ } => false
   }
 }
-

@@ -67,21 +67,21 @@ fn row_basename_is_registered(row: CompilerModuleFrontierRow) -> Bool {
 
 fn witness_parse_engine_hooks_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_parse_engine_hooks.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => row_basename_is_registered(row: compiler_frontier_row_parse_engine_hooks)
+    EmitterProduced { authorization: _ } => row_basename_is_registered(row: compiler_frontier_row_parse_engine_hooks)
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }
 
 fn witness_use_site_verdict_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_use_site_verdict.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => row_basename_is_registered(row: compiler_frontier_row_use_site_verdict)
+    EmitterProduced { authorization: _ } => row_basename_is_registered(row: compiler_frontier_row_use_site_verdict)
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }
 
 fn witness_discovery_enumeration_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_discovery_enumeration.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => row_basename_is_registered(row: compiler_frontier_row_discovery_enumeration)
+    EmitterProduced { authorization: _ } => row_basename_is_registered(row: compiler_frontier_row_discovery_enumeration)
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }
