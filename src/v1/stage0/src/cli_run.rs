@@ -18687,13 +18687,14 @@ mod floor_witness_a_prove {
 #[cfg(test)]
 mod module_grain_affected_equivalence_tests {
     use super::{
-        build_multi_entry_index, floor_diff_edits_from_diff_text, import_closure_files_from_graph,
+        build_module_graph_facts_live, build_multi_entry_index,
+        entry_file_touched_via_import_closure, floor_diff_edits_from_diff_text,
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, touched_file_in_import_closure,
-        workspace_root, MultiEntryIndex,
+        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
+        MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -18793,26 +18794,38 @@ mod module_grain_affected_equivalence_tests {
         }
     }
 
-    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
-        // Shared selection rule with production (`entry_file_touched_via_import_closure`) and
-        // the `.dag` authority (`entry_without_declared_edges_never_skips_note`): an entry
-        // that declares no imports is never selection-skippable — its name-derived
-        // dependencies are invisible to the import-edge model, so both sides answer
-        // affected=true rather than risking a false skip.
-        let source = std::fs::read_to_string(workspace_root().join(entry_rel))
-            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-        if !source
-            .lines()
-            .any(|l| l.trim_start().starts_with("import "))
-        {
-            return true;
-        }
-        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
-            .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
-        let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
-        touched
-            .iter()
-            .any(|f| touched_file_in_import_closure(f, &closure_files))
+    /// The Rust side of the equivalence is **production itself**, not a twin of it.
+    ///
+    /// This used to be a hand-written reimplementation, and it had drifted into asserting a
+    /// rule both authorities deleted: `if the file declares no imports { return true }`,
+    /// citing `entry_without_declared_edges_never_skips_note` — a note that no longer exists,
+    /// because it was replaced by the one repudiating it. `src/v2/lens/module_graph.dag`
+    /// `edgeless_entry_has_no_special_arm_note` names that arm as the absorbing fallback
+    /// DESIGN §5 describes verbatim: it answered affected=true for every edgeless entry
+    /// (~530 claim modules after the import strip), silently and uncounted, and the cost
+    /// surfaced as a 95-minute CI floor instead of as a diagnostic. Production
+    /// (`entry_file_touched_via_import_closure`) now carries reference-derived edges so an
+    /// edgeless entry gets a precise closure seeded with itself, and REFUSES — typed — only
+    /// when the producer could not read or parse the file (⊤-as-ignorance is not ⊤-as-answer).
+    ///
+    /// So the twin was the stale party while production and `.dag` agreed, and the test
+    /// reported a divergence about code that was fine. A third representation of one
+    /// selection rule is guaranteed to drift (§2/§3); calling production makes the property
+    /// under test the one anyone actually cares about — production ⇄ `.dag` — and deletes the
+    /// copy. It is also what makes this test runnable: the twin resolved (typechecked) every
+    /// entry's closure at 5-10s per module, while the facts scan is cached and does not
+    /// typecheck at all.
+    ///
+    /// A refusal is propagated, never coerced to a bool: silently reading it as `false` would
+    /// re-introduce a skip on an unknown dependency set, and as `true` the absorbing widen.
+    fn rust_entry_affected(
+        facts: &ModuleGraphFactsLive,
+        declared: &HashSet<String>,
+        entry_rel: &str,
+        touched: &[String],
+    ) -> bool {
+        entry_file_touched_via_import_closure(entry_rel, facts, declared, touched)
+            .unwrap_or_else(|refusal| panic!("selection refused for {entry_rel}: {refusal}"))
     }
 
     struct EquivalenceReceipt {
@@ -18833,7 +18846,12 @@ mod module_grain_affected_equivalence_tests {
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let rel_roots = pool_roots_rel();
 
+        // Setup is instrumented because it, not the per-entry work, was the whole runtime:
+        // before the twin was replaced by production this harness never reached entry 1 in a
+        // 50-minute standalone run, and printed nothing while doing so.
+        let t_setup = Instant::now();
         let index = build_multi_entry_index(&rel_roots);
+        eprintln!("[module-grain] index built in {:?}", t_setup.elapsed());
         let diff_text = diff_text_for_commit(sha);
         let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
             panic!(
@@ -18848,10 +18866,23 @@ mod module_grain_affected_equivalence_tests {
             "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
              touches at least one non-data, non-test-fn declaration"
         );
+        let t_facts = Instant::now();
+        let facts = build_module_graph_facts_live(&rel_roots);
+        let declared: HashSet<String> = facts.declared_paths.clone();
+        eprintln!(
+            "[module-grain] selection facts built in {:?} ({} declared paths)",
+            t_facts.elapsed(),
+            declared.len()
+        );
+        let t_mg = Instant::now();
         let (mg_graph, mg_indices) =
             resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
+        eprintln!(
+            "[module-grain] module_graph.dag resolved in {:?}",
+            t_mg.elapsed()
+        );
 
         // Stream each row as it is decided. This harness resolves every entry's closure
         // twice (once per side) and takes tens of minutes on a cold process, and it used
@@ -18865,7 +18896,7 @@ mod module_grain_affected_equivalence_tests {
         let mut rows = Vec::new();
         for (i, entry) in entries.iter().enumerate() {
             let t0 = Instant::now();
-            let rust_decision = rust_entry_affected(&index, entry, &touched);
+            let rust_decision = rust_entry_affected(&facts, &declared, entry, &touched);
             let t_rust = t0.elapsed();
             let t1 = Instant::now();
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
