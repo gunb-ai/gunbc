@@ -13688,23 +13688,8 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     if dag_paths.is_empty() {
         return Ok(());
     }
-    floor_filename_hygiene_refusal_for_dag_paths(source_roots, &dag_paths)
-}
-
-/// Two roles that `source_roots` used to fuse, now separate parameters: `producer_roots`
-/// locates the MACHINERY (the discovery producer whose `.dag` fn decides hygiene), and
-/// `dag_paths` is the SUBJECT (the files being judged). Fusing them meant you could not ask
-/// the hygiene question about one file without also submitting — and resolving — every other
-/// `.dag` in the same roots, so an unrelated corpus file could answer first (review 44641).
-/// Production still passes the same roots for both, which is why the split is a refactor and
-/// not a behaviour change.
-fn floor_filename_hygiene_refusal_for_dag_paths(
-    producer_roots: &[String],
-    dag_paths: &[String],
-) -> Result<(), String> {
-    let dag_paths: Vec<String> = dag_paths.to_vec();
     let (graph, indices) =
-        resolve_entry_graph_shared(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
             .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
@@ -13750,6 +13735,28 @@ fn floor_filename_hygiene_refusal_for_dag_paths(
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+/// The producer entry above is repo-relative, and every resolve of it ultimately reads the
+/// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
+/// The floor runs from the repo root, so that ambient dependency is invisible in production
+/// — but it is not invisible under `cargo test`, whose process cwd is the crate directory:
+/// the resolve then fails with `entry file does not exist`, and that refusal fires *before*
+/// whatever the caller was actually asking about, masking it. `set_current_dir` is not the
+/// fix; this crate's harness is multi-threaded and chdir is process-global (the race is
+/// already documented at the sibling fixture tests in this file).
+///
+/// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
+/// derived, hence identical in both worlds. Both resolve sites go through this one function
+/// so the `resolve_entry_graph_shared` cache stays keyed on a single spelling of the entry —
+/// two spellings would resolve the same closure twice.
+///
+/// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
+/// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
+/// anchoring plumbing when entry resolution stops reading cwd.
+fn floor_discovery_producer_entry_anchored() -> String {
+    let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
+    anchored.to_string_lossy().into_owned()
+}
 
 fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
@@ -13929,16 +13936,39 @@ fn invoke_floor_discovery_producer(
     scan_dirs: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
+    invoke_floor_discovery_producer_over_corpus(
+        source_roots,
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+    )
+}
+
+/// Two roles `source_roots` fuses, here separate parameters: `producer_roots` locates the
+/// MACHINERY (the `.dag` producer that decides discovery and its sidecar refusals), while
+/// `corpus_roots` is the SUBJECT (the roots whose `.dag` files are walked and judged).
+/// Production passes the same list for both — that is the whole floor's shape and does not
+/// change. What the fusion prevented was *asking about one file*: any question had to submit
+/// the entire live `src/v2` + `dag` corpus for judgement too, so an unrelated corpus file's
+/// refusal could answer first and mask the one under test (review 44641). The producer stays
+/// real machinery; only the subject narrows.
+fn invoke_floor_discovery_producer_over_corpus(
+    producer_roots: &[String],
+    corpus_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
     for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(producer_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> = source_roots
+    let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
@@ -21515,31 +21545,81 @@ mod sidecar_placement_hygiene_tests {
              coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
         )
         .expect("write temp file");
-        // SUBJECT is the fixture file alone; MACHINERY roots locate the discovery producer.
-        // Passing one root list for both (the first fix here) submitted every `.dag` in
-        // `src/v2` + `dag` for judgement too, so an unrelated corpus file could answer first
-        // and mask this assertion — the same live-tree coupling this PR removes from the
+        // SUBJECT is the fixture directory alone; MACHINERY roots locate the discovery
+        // producer. Passing one root list for both submitted every `.dag` in `src/v2` + `dag`
+        // for judgement too, so an unrelated corpus file's refusal could answer first and
+        // mask this assertion — the same live-tree coupling this PR removes from the
         // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
         // shared machinery and stays real; only the subject is narrowed.
         //
-        // This calls the seam `discover_floor_witness_roster` delegates to rather than
-        // `discover_floor_witness_roster` itself, because the whole-corpus scan is that outer
-        // wrapper's only other job — the wiring between them is the single `?` at the
-        // `floor_filename_hygiene_refusal_via_producer(source_roots)?` call site.
+        // What this test uniquely carries is the WIRING: that a sidecar refusal raised inside
+        // the `.dag` producer reaches the Rust bridge as an `Err`. The rule itself is not
+        // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
+        // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
+        // it content-side, so re-deriving it here would be a second representation (§2/§3).
+        // Hence the call is at the producer seam and not at
+        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
+        // rule and can never report a wire-contract violation.
+        //
+        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
+        // `floor_discovery_producer_entry_anchored` (git-toplevel, not cwd), so this test
+        // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
+        // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
+        // process-global.
         let ws = super::process_workspace_root();
         let producer_roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dag").to_string_lossy().into_owned(),
         ];
-        let subject = vec![file.to_string_lossy().into_owned()];
-        let result = super::floor_filename_hygiene_refusal_for_dag_paths(&producer_roots, &subject);
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive the hygiene gate to Err");
+            .expect("misplaced wire-contract decl must drive discovery to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
+        );
+    }
+
+    /// Non-vacuity control for the test above. A narrowed corpus is a new shape for the
+    /// producer — one root, no scan dirs, an empty roster — so `Err` on its own proves
+    /// nothing: it could be the narrowing itself refusing rather than the sidecar rule.
+    /// Same call, same narrowing, only the decl's type changed, and it must come back `Ok`.
+    #[test]
+    fn clean_dag_file_leaves_narrowed_discovery_ok() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(
+            dir.join("anthropic.dag"),
+            "data anthropic_chat_message_label: String = \"AnthropicChatMessage\"\n",
+        )
+        .expect("write temp file");
+        let ws = super::process_workspace_root();
+        let producer_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let rows = result.expect("a `.dag` file with no misplaced decl must not refuse");
+        let entries: Vec<&str> = rows.iter().map(|r| r.entry.as_str()).collect();
+        assert!(
+            entries.is_empty(),
+            "the fixture enrolls no witness, so the roster must be empty rather than \
+             carrying rows from outside the narrowed corpus: {entries:?}"
         );
     }
 }
