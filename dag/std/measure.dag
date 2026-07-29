@@ -437,6 +437,19 @@ fn millisecond_count(m: Millisecond) -> Nat {
   measure_count(m)
 }
 
+type PositiveMeasureCount =
+  Int where range(min: 1), brand("PositiveMeasureCount")
+
+type PositiveMillisecond = Measure<Time, Milli, PositiveMeasureCount>
+
+fn positive_millisecond(count: PositiveMeasureCount) -> PositiveMillisecond {
+  PositiveMillisecond { count: count }
+}
+
+fn positive_millisecond_count(m: PositiveMillisecond) -> PositiveMeasureCount {
+  measure_count(m)
+}
+
 fn nanoseconds_per_millisecond() -> Nat {
   1000000
 }

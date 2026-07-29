@@ -3,6 +3,7 @@ module std.state_durability
 import extdeps.crypto.hash { Digest }
 import std.content_hash { content_hash_combine, content_hash_tagged }
 import std.disposition { Disposition, Terminal }
+import std.measure { PositiveMillisecond, positive_millisecond_count }
 import std.types {
   Bool,
   ContentHash,
@@ -133,34 +134,38 @@ type StatePerturbationGeneration =
 
 type StateDurabilityInstant = EpochMs
 
-type PositiveElapsedMilliseconds =
-  Int where range(min: 1), brand("PositiveElapsedMilliseconds")
-
 type StateDurabilityTimeline {
   before_readback_at: StateDurabilityInstant
-  before_to_perturbation_start_ms: PositiveElapsedMilliseconds
-  perturbation_duration_ms: PositiveElapsedMilliseconds
-  completion_to_after_readback_ms: PositiveElapsedMilliseconds
+  before_to_perturbation_start: PositiveMillisecond
+  perturbation_duration: PositiveMillisecond
+  completion_to_after_readback: PositiveMillisecond
 }
 
 fn state_durability_perturbation_started_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = timeline.before_readback_at + timeline.before_to_perturbation_start_ms
+  let instant = timeline.before_readback_at
+    + positive_millisecond_count(
+        m: timeline.before_to_perturbation_start,
+      )
   instant
 }
 
 fn state_durability_perturbation_completed_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_started_at(timeline: timeline) + timeline.perturbation_duration_ms
+  let instant = state_durability_perturbation_started_at(timeline: timeline)
+    + positive_millisecond_count(m: timeline.perturbation_duration)
   instant
 }
 
 fn state_durability_after_readback_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_completed_at(timeline: timeline) + timeline.completion_to_after_readback_ms
+  let instant = state_durability_perturbation_completed_at(timeline: timeline)
+    + positive_millisecond_count(
+        m: timeline.completion_to_after_readback,
+      )
   instant
 }
 

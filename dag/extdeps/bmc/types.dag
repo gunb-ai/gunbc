@@ -147,8 +147,8 @@ type BmcFanCurve {
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
   zone_failsafe_duty: Percent
-  positive_hysteresis_degrees_celsius: Nat
-  negative_hysteresis_degrees_celsius: Nat
+  positive_hysteresis: Celsius
+  negative_hysteresis: Celsius
 }
 
 type ValidatedBmcFanCurve {

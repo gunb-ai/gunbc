@@ -392,7 +392,7 @@ fn linux_overlay_observation_from_rows(
   ) {
     Absent => LinuxOverlayRefused { cause: LinuxOverlayRootMountMissing }
     Present { value: root } =>
-      if !linux_filesystem_kind_is_overlay(kind: root.mount.filesystem) {
+      if root.mount.filesystem != LinuxOverlayFs {
         LinuxOverlayRefused { cause: LinuxOverlayRootIsNotOverlay }
       } else {
         match linux_mount_option_value(row: root, name: "lowerdir") {
@@ -483,46 +483,13 @@ fn linux_overlay_observation_from_proc_mounts(
   }
 }
 
-fn linux_filesystem_kind_is_overlay(kind: LinuxFilesystemKind) -> Bool {
-  match kind {
-    LinuxOverlayFs => true
-    LinuxSquashFs => false
-    LinuxJffs2 => false
-    OtherLinuxFilesystem { mount_type: _ } => false
-  }
-}
-
-fn linux_filesystem_kind_is_squashfs(kind: LinuxFilesystemKind) -> Bool {
-  match kind {
-    LinuxOverlayFs => false
-    LinuxSquashFs => true
-    LinuxJffs2 => false
-    OtherLinuxFilesystem { mount_type: _ } => false
-  }
-}
-
-fn linux_filesystem_kind_is_jffs2(kind: LinuxFilesystemKind) -> Bool {
-  match kind {
-    LinuxOverlayFs => false
-    LinuxSquashFs => false
-    LinuxJffs2 => true
-    OtherLinuxFilesystem { mount_type: _ } => false
-  }
-}
-
 fn linux_overlay_observation_is_flash_backed(
   observation: LinuxOverlayObservation,
 ) -> Bool {
   observation.merged_mount.target == "/"
-    && linux_filesystem_kind_is_overlay(
-      kind: observation.merged_mount.filesystem,
-    )
-    && linux_filesystem_kind_is_squashfs(
-      kind: observation.lower_backing_mount.filesystem,
-    )
-    && linux_filesystem_kind_is_jffs2(
-      kind: observation.upper_backing_mount.filesystem,
-    )
+    && observation.merged_mount.filesystem == LinuxOverlayFs
+    && observation.lower_backing_mount.filesystem == LinuxSquashFs
+    && observation.upper_backing_mount.filesystem == LinuxJffs2
     && linux_mount_target_contains_directory(
       target: observation.lower_backing_mount.target,
       directory: observation.lower_directory,
