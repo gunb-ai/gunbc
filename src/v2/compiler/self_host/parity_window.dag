@@ -4,7 +4,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data parity_window_note: String = "Parity window, DEMOTED to post-flip monitoring (2026-07-28; was the P6 pre-flip routing flip gate of 2026-07-22). Demotion ground is the routed_flip_reverted_note receipt in v2.compiler.self_host.native_routing_frontier: the pre-flip window PASSED for meet_join and complement (three consecutive green srv1 probe windows, parity_receipts_local) and the flip still redded WARM on main run 29963619401 — the pre-flip streak was not the operative protection; the live agreement leg in the per-PR floor plus the one-data-edit frontier revert was. The window observation law is unchanged (green = the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root), and the monitor law is LATCHING (operator rework ruling 2026-07-28, rework of the first cut whose one later green cleared a red with no revert and no acknowledgment — that defeats a monitor): a red observed in the current routing epoch is ABSORBING — the verdict stays ParityRevertRequired naming the FIRST red window until an explicit RevertAcknowledged observation opens a new epoch; a green after an ack (never a green after an unacknowledged red) resumes ParityHolding. Evidence discipline is typed, never accidental: every observation must match the requested family (a mixed-family receipt is ParityEvidenceRefused, never counted), and cadence order is explicit in the evidence — each observation carries cadence_sequence, strictly increasing, an order violation is ParityEvidenceRefused (refusal is itself absorbing — DESIGN section 5, a failure arm refuses, never widens). An empty observation history is ParityUnobserved, never conflated with holding. QUERY SURFACE (review 44185, 2026-07-29): parity_monitor_verdict is the ONLY answer surface — the four-state verdict is what consumers match, exhaustively. There is exactly one Bool projection, parity_routing_admitted, and it is total in the SAFE direction: ONLY ParityHolding admits continued native routing, so RevertRequired, Unobserved AND EvidenceRefused all deny. A Bool named for the unsafe direction is the trap this monitor exists to close and must not be re-added: the deleted parity_revert_required mapped ParityEvidenceRefused to false, so unusable or out-of-order evidence read as 'no revert required' and a routed family stayed routed on evidence the monitor had refused — DESIGN section 5's answer-versus-ignorance conflation, fail-open at the public API. A consumer that needs to distinguish 'a divergence latched' from 'the evidence was refused' matches the verdict; it never asks a Bool. PRODUCTION CONSUMER (reviews 44206 and 44216, 2026-07-29): parity_routing_admitted is consumed by native_routing_frontier.routing_row_is_native, the single predicate the routed/retained partition folds and therefore the one the CI floor's native batch reads through — so a red, unobserved or refused history DENIES native routing by construction rather than advising a human to edit a roster. The carried-evidence shape and the fallback-to-interpreted argument are recorded once, on that carrier, at native_routing_frontier_note — not duplicated here. The flip bar itself lives on the frontier rows: a no-evict cached agreement leg plus a warm green agreement receipt — see native_routing_frontier_note."
+data parity_window_note: String = "Parity window, DEMOTED to post-flip monitoring (2026-07-28; was the P6 pre-flip routing flip gate of 2026-07-22). Demotion ground is the routed_flip_reverted_note receipt in v2.compiler.self_host.native_routing_frontier: the pre-flip window PASSED for meet_join and complement (three consecutive green srv1 probe windows, parity_receipts_local) and the flip still redded WARM on main run 29963619401 — the pre-flip streak was not the operative protection; the live agreement leg in the per-PR floor plus the one-data-edit frontier revert was. The window observation law is unchanged (green = the family's equals_eval agreement leg passed AND the warm leg observed compile_skipped=true on the durable root), and the monitor law is LATCHING (operator rework ruling 2026-07-28, rework of the first cut whose one later green cleared a red with no revert and no acknowledgment — that defeats a monitor): a red observed in the current routing epoch is ABSORBING — the verdict stays ParityRevertRequired naming the FIRST red window until an explicit RevertAcknowledged observation opens a new epoch; a green after an ack (never a green after an unacknowledged red) resumes ParityHolding. Evidence discipline is typed, never accidental: every observation must match the requested family (a mixed-family receipt is ParityEvidenceRefused, never counted), and cadence order is explicit in the evidence — each observation carries cadence_sequence, strictly increasing, an order violation is ParityEvidenceRefused (refusal is itself absorbing — DESIGN section 5, a failure arm refuses, never widens). QUALIFICATION PRECEDES INTERPRETATION, and refusal DOMINATES the revert latch (review 44228, 2026-07-29): qualify_then_apply checks cadence and family for EVERY observation before any verdict arm interprets it, so an unqualified observation refuses no matter what the verdict was — including while a revert is latched. The alternative the first cut shipped, silently ignoring an unqualified observation while latched, was the swallow DESIGN section 5 forbids and it was fail-open in sequence: red, then an unqualified observation, then an ack, then a green read as ParityHolding, so admission was restored across evidence the monitor had never qualified. Refusal dominates because the two absorbing laws are not peers — a corrupt evidence stream means the monitor cannot judge the ACK's legitimacy either, so it must not act on one; ParityEvidenceRefused is the strictly stronger state (no RevertAcknowledged clears it, whereas the latch is by design ack-clearable), and both deny routing, so the cost of dominance is the named red_window_id in the diagnostic, never admission. The latch is still preserved against every QUALIFIED window observation (the review 44225 finding): a later green naming a new window never clears a red. An empty observation history is ParityUnobserved, never conflated with holding. QUERY SURFACE (review 44185, 2026-07-29): parity_monitor_verdict is the ONLY answer surface — the four-state verdict is what consumers match, exhaustively. There is exactly one Bool projection, parity_routing_admitted, and it is total in the SAFE direction: ONLY ParityHolding admits continued native routing, so RevertRequired, Unobserved AND EvidenceRefused all deny. A Bool named for the unsafe direction is the trap this monitor exists to close and must not be re-added: the deleted parity_revert_required mapped ParityEvidenceRefused to false, so unusable or out-of-order evidence read as 'no revert required' and a routed family stayed routed on evidence the monitor had refused — DESIGN section 5's answer-versus-ignorance conflation, fail-open at the public API. A consumer that needs to distinguish 'a divergence latched' from 'the evidence was refused' matches the verdict; it never asks a Bool. PRODUCTION CONSUMER (reviews 44206 and 44216, 2026-07-29): parity_routing_admitted is consumed by native_routing_frontier.routing_row_is_native, the single predicate the routed/retained partition folds and therefore the one the CI floor's native batch reads through — so a red, unobserved or refused history DENIES native routing by construction rather than advising a human to edit a roster. The carried-evidence shape and the fallback-to-interpreted argument are recorded once, on that carrier, at native_routing_frontier_note — not duplicated here. The flip bar itself lives on the frontier rows: a no-evict cached agreement leg plus a warm green agreement receipt — see native_routing_frontier_note."
 
 type ParityWindowReceipt {
   family: String
@@ -54,31 +54,6 @@ fn observation_family(o: ParityObservation) -> String {
   }
 }
 
-fn verdict_is_refused(v: ParityMonitorVerdict) -> Bool {
-  match v {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => false
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => true
-  }
-}
-
-fn verdict_is_latched_revert(v: ParityMonitorVerdict) -> Bool {
-  match v {
-    ParityHolding { family: _, consecutive_green: _ } => false
-    ParityRevertRequired { family: _, red_window_id: _ } => true
-    ParityUnobserved { family: _ } => false
-    ParityEvidenceRefused { family: _, cause: _ } => false
-  }
-}
-
-fn observation_is_revert_ack(o: ParityObservation) -> Bool {
-  match o {
-    WindowObserved { receipt: _, cadence_sequence: _ } => false
-    RevertAcknowledged { family: _, ack_id: _, cadence_sequence: _ } => true
-  }
-}
-
 fn cadence_admits(cursor: ParityCadenceCursor, s: Int) -> Bool {
   match cursor {
     NoCadenceYet => true
@@ -123,58 +98,58 @@ fn apply_admitted_observation(
   }
 }
 
-fn parity_monitor_step(
+fn qualify_then_apply(
   family: String,
   state: ParityFoldState,
   o: ParityObservation
 ) -> ParityFoldState {
-  if verdict_is_refused(v: state.verdict) {
-    state
-  } else if verdict_is_latched_revert(v: state.verdict) {
-    let ack_s = observation_sequence(o: o)
-    if observation_is_revert_ack(o: o)
-      && (observation_family(o: o) == family)
-      && cadence_admits(cursor: state.cursor, s: ack_s) {
+  let s = observation_sequence(o: o)
+  if cadence_admits(cursor: state.cursor, s: s) {
+    if observation_family(o: o) == family {
       ParityFoldState {
-        verdict: ParityUnobserved { family: family },
-        cursor: CadenceAt { value: ack_s }
-      }
-    } else {
-      state
-    }
-  } else {
-    let s = observation_sequence(o: o)
-    if cadence_admits(cursor: state.cursor, s: s) {
-      if observation_family(o: o) == family {
-        ParityFoldState {
-          verdict: apply_admitted_observation(family: family, verdict: state.verdict, o: o),
-          cursor: CadenceAt { value: s }
-        }
-      } else {
-        ParityFoldState {
-          verdict: ParityEvidenceRefused {
-            family: family,
-            cause: MixedFamilyReceipt {
-              requested: family,
-              found: observation_family(o: o),
-              cadence_sequence: s
-            }
-          },
-          cursor: state.cursor
-        }
+        verdict: apply_admitted_observation(family: family, verdict: state.verdict, o: o),
+        cursor: CadenceAt { value: s }
       }
     } else {
       ParityFoldState {
         verdict: ParityEvidenceRefused {
           family: family,
-          cause: CadenceOrderViolation {
-            prior_sequence: cursor_prior_value(cursor: state.cursor),
-            offending_sequence: s
+          cause: MixedFamilyReceipt {
+            requested: family,
+            found: observation_family(o: o),
+            cadence_sequence: s
           }
         },
         cursor: state.cursor
       }
     }
+  } else {
+    ParityFoldState {
+      verdict: ParityEvidenceRefused {
+        family: family,
+        cause: CadenceOrderViolation {
+          prior_sequence: cursor_prior_value(cursor: state.cursor),
+          offending_sequence: s
+        }
+      },
+      cursor: state.cursor
+    }
+  }
+}
+
+fn parity_monitor_step(
+  family: String,
+  state: ParityFoldState,
+  o: ParityObservation
+) -> ParityFoldState {
+  match state.verdict {
+    ParityEvidenceRefused { family: _, cause: _ } => state
+    ParityHolding { family: _, consecutive_green: _ } =>
+      qualify_then_apply(family: family, state: state, o: o)
+    ParityRevertRequired { family: _, red_window_id: _ } =>
+      qualify_then_apply(family: family, state: state, o: o)
+    ParityUnobserved { family: _ } =>
+      qualify_then_apply(family: family, state: state, o: o)
   }
 }
 

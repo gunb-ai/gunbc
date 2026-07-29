@@ -142,46 +142,65 @@ fn latched_revert_names(v: ParityMonitorVerdict, expected_window: String) -> Boo
   }
 }
 
-test fn witness_latch_survives_mixed_family_observation() -> Bool {
+test fn witness_latch_survives_qualified_later_green() -> Bool {
   latched_revert_names(
     v: parity_monitor_verdict(
       family: "add",
       observations: [
         green_obs(id: "w1", seq: 1),
         red_obs(id: "w2", seq: 2),
-        observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
-      ]
-    ),
-    expected_window: "w2"
-  )
-}
-
-test fn witness_latch_survives_cadence_violation() -> Bool {
-  latched_revert_names(
-    v: parity_monitor_verdict(
-      family: "add",
-      observations: [
-        green_obs(id: "w1", seq: 1),
-        red_obs(id: "w2", seq: 2),
-        green_obs(id: "w3", seq: 2)
-      ]
-    ),
-    expected_window: "w2"
-  )
-}
-
-test fn witness_ack_from_other_family_does_not_clear_latch() -> Bool {
-  latched_revert_names(
-    v: parity_monitor_verdict(
-      family: "add",
-      observations: [
-        red_obs(id: "w1", seq: 1),
-        RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
         green_obs(id: "w3", seq: 3)
       ]
     ),
-    expected_window: "w1"
+    expected_window: "w2"
   )
+}
+
+test fn witness_mixed_family_while_latched_refuses() -> Bool {
+  let obs = [
+    green_obs(id: "w1", seq: 1),
+    red_obs(id: "w2", seq: 2),
+    observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
+  ]
+  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
+    && (parity_routing_admitted(family: "add", observations: obs) == false)
+}
+
+test fn witness_cadence_violation_while_latched_refuses() -> Bool {
+  let obs = [
+    green_obs(id: "w1", seq: 1),
+    red_obs(id: "w2", seq: 2),
+    green_obs(id: "w3", seq: 2)
+  ]
+  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
+    && (parity_routing_admitted(family: "add", observations: obs) == false)
+}
+
+test fn witness_ack_from_other_family_refuses_and_never_clears() -> Bool {
+  let obs = [
+    red_obs(id: "w1", seq: 1),
+    RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
+    green_obs(id: "w3", seq: 3)
+  ]
+  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
+    && (parity_routing_admitted(family: "add", observations: obs) == false)
+}
+
+test fn witness_unqualified_observation_blocks_later_ack_recovery() -> Bool {
+  let obs = [
+    red_obs(id: "w1", seq: 1),
+    observed(family: "other_family", id: "w2", seq: 2, green: true, warm: true),
+    ack_obs(id: "ack-1", seq: 3),
+    green_obs(id: "w3", seq: 4)
+  ]
+  let unqualified_free = [
+    red_obs(id: "w1", seq: 1),
+    ack_obs(id: "ack-1", seq: 3),
+    green_obs(id: "w3", seq: 4)
+  ]
+  verdict_is_evidence_refused(v: parity_monitor_verdict(family: "add", observations: obs))
+    && (parity_routing_admitted(family: "add", observations: obs) == false)
+    && parity_routing_admitted(family: "add", observations: unqualified_free)
 }
 
 test fn witness_cold_divergence_demands_revert() -> Bool {
