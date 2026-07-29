@@ -22,8 +22,6 @@ import std.cache_interface {
   Org,
 }
 import std.measure { ByteSize, byte_size }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -81,13 +79,3 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   ]
 }
 
-data resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger: String = "dissolve-on: resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal — v1 disk artifacts carry graph+source_indices only; the compile-clean gate reads a resolve→normalize→typed→ownership diagnostic union. Until the union is serialized into the artifact, cross-process hits are refused and cold assembly runs (cli_run.rs resolved_graph_from_sources_with_index). DISSOLVES WHEN resolved_graph_cache FORMAT_VERSION persists compile_clean_diagnostic_union alongside the graph and the hit path installs the full union into the in-process memo (delete the refuse arm)."
-
-data resolved_graph_cache_compile_clean_diagnostic_union_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.realization.resolved_graph",
-    decl_name: "resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger",
-    field: WholeDeclaration
-  }
-}

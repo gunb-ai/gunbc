@@ -46,11 +46,17 @@ use serde::Serialize;
 
 #[path = "phase_profile.rs"]
 mod phase_profile;
+mod materialization_provider_consumer;
+pub use materialization_provider_consumer::{
+    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    transform_content_digest, write as cross_process_write, CacheLookupResult,
+    closure_content_digest, lookup as cross_process_lookup,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
+    write as cross_process_write, CacheLookupResult, CachedResolvedGraph,
 };
 use crate::std_interface_summary::{module_key, typed_module_key};
 
@@ -654,14 +660,6 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
             "cli_run_compile_clean_diagnostic_histogram"
-        );
-    }
-
-    #[test]
-    fn resolved_graph_cache_compile_clean_diag_union_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER,
-            "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal"
         );
     }
 
@@ -3098,13 +3096,6 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 // ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
-
-/// INTERIM hand-Rust scaffold (issue 11 / extdeps.realization.resolved_graph
-/// `resolved_graph_cache_compile_clean_diagnostic_union_scaffold`): cross-process
-/// resolved-graph cache hits are refused until the disk artifact carries the
-/// compile-clean diagnostic union. Receipt: `rg resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal src/v1/stage0` == 1 until dissolution.
-pub(crate) const CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER: &str =
-    "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal";
 
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.
@@ -7956,6 +7947,43 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
+fn serve_resolved_graph_disk_hit_through_provider(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+    cached: &CachedResolvedGraph,
+) -> Result<
+    Option<(
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    )>,
+    String,
+> {
+    let closure_digest = closure_content_digest(sources);
+    let compiler_digest = transform_content_digest();
+    match serve_resolved_graph_v1_disk_probe(
+        &closure_digest,
+        &compiler_digest,
+        &cached.content_digest,
+        cached.payload_byte_count,
+    )? {
+        ResolvedGraphProviderOutcome::Hit => Err(
+            "provider served disk hit but compile-clean diagnostic union is not installed from artifact"
+                .to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => {
+            eprintln!(
+                "[resolved-graph-cache] provider refused incomplete disk hit: missing {missing:?}; cold resolve"
+            );
+            Ok(None)
+        }
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact
+        | ResolvedGraphProviderOutcome::Miss => Ok(None),
+        ResolvedGraphProviderOutcome::OtherRefusal { label } => {
+            Err(format!("unexpected provider lookup outcome: {label}"))
+        }
+    }
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -8003,15 +8031,18 @@ fn resolved_graph_from_sources_with_index(
     // the share above on hit so later same-subject demands never re-decode.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(_) => {
-                // SCAFFOLD (§7 — CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER;
-                // dissolve trigger: extdeps.realization.resolved_graph
-                // resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger):
-                // v1 disk artifacts carry only the typed graph — refuse hit, cold resolve.
-                eprintln!(
-                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve ({})",
-                    CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER
-                );
+            CacheLookupResult::Hit(cached) => {
+                match serve_resolved_graph_disk_hit_through_provider(&sources, &cached) {
+                    Ok(Some((graph, source_indices, compile_clean_diags))) => {
+                        return Ok((graph, source_indices, compile_clean_diags));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        eprintln!(
+                            "[resolved-graph-cache] provider lookup refused subject={subject}: {e}; cold resolve"
+                        );
+                    }
+                }
             }
             CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
         }

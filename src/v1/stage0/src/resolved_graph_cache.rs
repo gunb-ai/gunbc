@@ -55,6 +55,8 @@ pub enum CacheLookupResult {
 pub struct CachedResolvedGraph {
     pub graph: Rc<ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub content_digest: Hash,
+    pub payload_byte_count: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -338,6 +340,8 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
+        content_digest: computed,
+        payload_byte_count: payload_bytes.len() as u64,
     })
 }
 
@@ -535,6 +539,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
+        content_digest: payload_content_digest(bytes),
+        payload_byte_count: bytes.len() as u64,
     })
 }
 

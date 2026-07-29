@@ -113,6 +113,8 @@ mod measure_periphery_emit_test;
 #[cfg(test)]
 mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
+mod materialization_provider_resolved_graph_consumer_test;
+#[cfg(test)]
 mod module_authority_resolution_test;
 mod namespace_alias_decl_test;
 #[cfg(test)]

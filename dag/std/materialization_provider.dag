@@ -1,7 +1,7 @@
 module std.materialization_provider
 
 import std.types { Bool, Int, List, String, NonEmptyStr, ContentHash }
-import std.measure { ByteSize, measure_count }
+import std.measure { ByteSize, measure_count, byte_size }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.cache_identity {
   ArtifactKindId,
@@ -287,6 +287,33 @@ data materialization_provider_request_family_note: String = "Each variant fixes 
 
 fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
+}
+
+fn serve_resolved_graph_v1_disk_probe(
+  closure_digest: ContentHash,
+  compiler_digest: ContentHash,
+  content_digest: ContentHash,
+  payload_byte_count: Int
+) -> ProviderLookup {
+  let req = ResolveClosureRequest {
+    closure_digest: closure_digest,
+    compiler: compiler_identity_input(digest: compiler_digest)
+  }
+  let key = request_key(req: req)
+  provider_serve(
+    req: req,
+    probe: ProbeFound {
+      artifact: MaterializedArtifact {
+        kind: resolved_graph_artifact_kind,
+        request_key: key,
+        content_digest: content_digest,
+        carried_outputs: [output_resolved_graph, output_source_indices],
+        artifact_bytes: byte_size(count: payload_byte_count)
+      },
+      observed_digest: content_digest
+    },
+    identity: StructurallyIdentical
+  )
 }
 
 data materialization_provider_reader_predicate_contract: Disposition = Terminal {
