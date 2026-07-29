@@ -645,7 +645,9 @@ type EmitterProducedAuthorizationBinding {
   authorization: AuthorizedEmitterProducedDisposition
 }
 
-data emitter_produced_authorization_registry: List<EmitterProducedAuthorizationBinding> = []
+type EmitterProducedAuthorizationRegistry = List<EmitterProducedAuthorizationBinding>
+
+data emitter_produced_authorization_registry: EmitterProducedAuthorizationRegistry = []
 
 data emitter_produced_authorization_registry_note: String = "Review 44504: authorization registry paired with tag-only EmitterProduced frontier rows. A row tagged EmitterProduced without a registry binding fails census — the disposition API cannot carry a forged authorization record. Dissolve-on: witness-realization adds registry bindings atomically with roster flips via mint_emitter_produced_authorization_registry_binding."
 
@@ -710,10 +712,14 @@ fn emitter_produced_authorization_for_module(
     xs: emitter_produced_authorization_registry,
     empty: optional_absent(),
     cons: fn(found, binding) {
-      if binding.module_path == module_path {
-        optional_present(value: binding.authorization)
-      } else {
-        found
+      match found {
+        Present { value: authorization } => optional_present(value: authorization)
+        Absent =>
+          if binding.module_path == module_path {
+            optional_present(value: binding.authorization)
+          } else {
+            optional_absent()
+          }
       }
     }
   )
