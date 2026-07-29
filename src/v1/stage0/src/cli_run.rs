@@ -24431,19 +24431,25 @@ mod resolution_divergence_census_tests {
         std::fs::write(&path, content).expect("write dag");
     }
 
-    /// The closed root set for a hermetic fixture corpus.
+    /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
     ///
-    /// `dag/std` alone stopped closing at #7268, which grounded std's class-1 unit
-    /// constants and relocated the POSIX exit codes onto `extdeps` rows. DESIGN §3
-    /// deleted the `std <- extdeps` layer direction precisely so a std surface may
-    /// cite the extdeps rows that ground it, so any corpus rooted at `dag/std` must
-    /// carry `dag/extdeps` to resolve.
+    /// These are positive controls — the planted divergence lives entirely among
+    /// fixture modules, and `std.types` is present only to supply `Bool`. Rooting at
+    /// the live `dag/std` made every one of them depend on the whole
+    /// std -> extdeps -> {gunbc, v2.std} import closure resolving, so they went red at
+    /// #7268 (which grounded std's class-1 unit constants and relocated the POSIX exit
+    /// codes onto extdeps rows) without the detector under test changing at all.
+    /// DESIGN §3 deleted the `std <- extdeps` layer direction on purpose, so that
+    /// closure is expected to keep widening; chasing it with more roots would re-break
+    /// on the next grounding. A local stub keeps the control discriminating and
+    /// independent of corpus health.
     fn fixture_roots(fixture: &std::path::Path) -> Vec<String> {
-        vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-            ws.join("dag/extdeps").to_string_lossy().into_owned(),
-        ]
+        write_fixture(
+            fixture,
+            "std_types.dag",
+            "module std.types\n\ntype Bool = True | False\n",
+        );
+        vec![fixture.to_string_lossy().into_owned()]
     }
 
     fn positive_control_fixture_root() -> std::path::PathBuf {
