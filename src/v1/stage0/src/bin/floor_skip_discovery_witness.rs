@@ -6,7 +6,12 @@ use std::process::ExitCode;
 use v1_compiler::cli_run::{
     build_multi_entry_index, resolve_entry_graph_shared, resolve_entry_with_index,
     run_discovery_corpus_with_options, workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
-    DiscoveryWidthPolicy, NodeFrontierSelectionMode,
+    DiscoveryWidthPolicy, NodeFrontierSelectionMode, SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    SELECTION_CONTROL_CI_FLOOR_PLAN_REL, SELECTION_CONTROL_DOC_REACHABILITY_REL,
+    SELECTION_CONTROL_FALSIFIER_CONTROL_REL, SELECTION_CONTROL_FLOOR_RUNNER_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL, SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
+    SELECTION_CONTROL_NODE_PRECISE_REL, SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
+    SELECTION_CONTROL_SHARED_HELPER_REL,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -30,7 +35,7 @@ fn floor_skip_source_roots() -> Vec<String> {
 fn floor_skip_test_roster() -> (Vec<String>, Vec<(String, String)>) {
     let ws = workspace_root();
     let entry = ws
-        .join("src/v2/workflow/affected_set_floor_runner_test.dag")
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
         .to_string_lossy()
         .into_owned();
     let function = "floor_test_untouched_skips_assumed_green_holds".to_string();
@@ -154,17 +159,10 @@ fn run_injected_diff_roster_with_mode(
     .expect("predict-only path must not error")
 }
 
-const FALSIFIER_CONTROL_REL: &str =
-    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
-
-const LIVE_TREE_DECLARED_REL: &str = "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
-
-const DOC_REACHABILITY_WITNESS_REL: &str = "dag/test/claim/doc_reachability_witness_test.dag";
-
 fn live_tree_declared_roster() -> Vec<(String, String)> {
     let ws = workspace_root();
     vec![(
-        ws.join(LIVE_TREE_DECLARED_REL)
+        ws.join(SELECTION_CONTROL_LIVE_TREE_DECLARED_REL)
             .to_string_lossy()
             .into_owned(),
         "live_tree_declared_control_holds".to_string(),
@@ -174,7 +172,7 @@ fn live_tree_declared_roster() -> Vec<(String, String)> {
 fn doc_reachability_roster(function: &str) -> Vec<(String, String)> {
     let ws = workspace_root();
     vec![(
-        ws.join(DOC_REACHABILITY_WITNESS_REL)
+        ws.join(SELECTION_CONTROL_DOC_REACHABILITY_REL)
             .to_string_lossy()
             .into_owned(),
         function.to_string(),
@@ -186,7 +184,7 @@ fn declared_live_tree_row_runs_on_unrelated_diff() {
     // The diff touches an UNRELATED fixture; a declared-ReadsLiveTree row must
     // still RUN (its inputs are outside the diff, so no diff proves it unaffected).
     let summary = run_injected_diff_roster(
-        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        SELECTION_CONTROL_NODE_PRECISE_REL,
         3,
         &live_tree_declared_roster(),
     );
@@ -201,7 +199,7 @@ fn declared_live_tree_row_runs_on_unrelated_diff() {
 fn declared_live_tree_row_never_predicted_unaffected() {
     chdir_workspace();
     let summary = run_injected_diff_roster_with_mode(
-        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        SELECTION_CONTROL_NODE_PRECISE_REL,
         3,
         &live_tree_declared_roster(),
         NodeFrontierSelectionMode::PredictOnly,
@@ -251,7 +249,7 @@ fn doc_reachability_never_predicted_unaffected_on_docs_only_diff() {
 fn falsifier_control_roster(function: &str) -> Vec<(String, String)> {
     let ws = workspace_root();
     vec![(
-        ws.join(FALSIFIER_CONTROL_REL)
+        ws.join(SELECTION_CONTROL_FALSIFIER_CONTROL_REL)
             .to_string_lossy()
             .into_owned(),
         function.to_string(),
@@ -262,7 +260,7 @@ fn predict_only_red_predicted_unaffected_is_divergence() {
     chdir_workspace();
     // Diff touches an UNRELATED fixture, so the red control is predicted-unaffected.
     let summary = run_injected_diff_roster_with_mode(
-        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        SELECTION_CONTROL_NODE_PRECISE_REL,
         3,
         &falsifier_control_roster("falsifier_red_control_holds"),
         NodeFrontierSelectionMode::PredictOnly,
@@ -288,7 +286,7 @@ fn predict_only_red_predicted_unaffected_is_divergence() {
 fn predict_only_green_predicted_unaffected_no_divergence() {
     chdir_workspace();
     let summary = run_injected_diff_roster_with_mode(
-        "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+        SELECTION_CONTROL_NODE_PRECISE_REL,
         3,
         &falsifier_control_roster("falsifier_green_control_holds"),
         NodeFrontierSelectionMode::PredictOnly,
@@ -306,11 +304,11 @@ fn predict_only_red_predicted_affected_is_not_divergence() {
     // Diff edits the red control's own declaration line → predicted-AFFECTED → its red
     // is an ordinary failure. Divergence must discriminate, not count every red.
     let ws = workspace_root();
-    let text = std::fs::read_to_string(ws.join(FALSIFIER_CONTROL_REL))
+    let text = std::fs::read_to_string(ws.join(SELECTION_CONTROL_FALSIFIER_CONTROL_REL))
         .expect("falsifier control fixture readable");
     let line = fixture_line(&text, "test fn falsifier_red_control_holds");
     let summary = run_injected_diff_roster_with_mode(
-        FALSIFIER_CONTROL_REL,
+        SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
         line,
         &falsifier_control_roster("falsifier_red_control_holds"),
         NodeFrontierSelectionMode::PredictOnly,
@@ -327,7 +325,7 @@ fn predict_only_red_predicted_affected_is_not_divergence() {
 }
 
 fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
-    ws.join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
+    ws.join(SELECTION_CONTROL_BUDGET_ROSTER_REL)
         .to_string_lossy()
         .into_owned()
 }
@@ -345,9 +343,9 @@ fn budget_roster_resolves_after_frontier_warmup() {
     chdir_workspace();
     let roots = floor_skip_source_roots();
     for path in [
-        "dag/std/realization_schedule.dag",
-        "src/v2/workflow/affected_set_floor_runner.dag",
-        "src/v2/workflow/affected_set_floor_runner_test.dag",
+        SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
+        SELECTION_CONTROL_FLOOR_RUNNER_REL,
+        SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
     ] {
         let _ = resolve_entry_graph_shared(&roots, path);
     }
@@ -411,7 +409,7 @@ fn discovery_corpus_skip_enabled_git_observation_refuses() {
 fn node_precise_referenced_runs_orphan_skips_by_execution() {
     chdir_workspace();
     let ws = workspace_root();
-    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let rel = SELECTION_CONTROL_NODE_PRECISE_REL;
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
     let entry = abs.to_string_lossy().into_owned();
@@ -455,7 +453,7 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
 fn node_precise_transitive_c_edit_runs_conj_witness() {
     chdir_workspace();
     let ws = workspace_root();
-    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let rel = SELECTION_CONTROL_NODE_PRECISE_REL;
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
     let c_line = fixture_line(&text, "^floor_disc_node_c_symbol");
@@ -485,7 +483,7 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
 fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     chdir_workspace();
     let ws = workspace_root();
-    let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let rel = SELECTION_CONTROL_NODE_PRECISE_REL;
     let abs = ws.join(rel);
     let text = std::fs::read_to_string(&abs).expect("discriminator fixture readable");
     let entry = abs.to_string_lossy().into_owned();
@@ -529,13 +527,13 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
 fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
     chdir_workspace();
     let ws = workspace_root();
-    let disc_rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let disc_rel = SELECTION_CONTROL_NODE_PRECISE_REL;
     let disc_abs = ws.join(disc_rel);
     let text = std::fs::read_to_string(&disc_abs).expect("discriminator fixture readable");
     let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
     let disc_entry = disc_abs.to_string_lossy().into_owned();
     let runner_entry = ws
-        .join("src/v2/workflow/affected_set_floor_runner_test.dag")
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
         .to_string_lossy()
         .into_owned();
     let roster = vec![
@@ -569,16 +567,16 @@ fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
 fn import_closure_helper_fn_edit_runs_importer_entry_only() {
     chdir_workspace();
     let ws = workspace_root();
-    let helper_rel = "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
+    let helper_rel = SELECTION_CONTROL_SHARED_HELPER_REL;
     let helper_abs = ws.join(helper_rel);
     let text = std::fs::read_to_string(&helper_abs).expect("shared helper readable");
     let helper_line = fixture_line(&text, "fn floor_disc_shared_helper");
     let disc_entry = ws
-        .join("src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag")
+        .join(SELECTION_CONTROL_NODE_PRECISE_REL)
         .to_string_lossy()
         .into_owned();
     let runner_entry = ws
-        .join("src/v2/workflow/affected_set_floor_runner_test.dag")
+        .join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
         .to_string_lossy()
         .into_owned();
     let roster = vec![
@@ -609,7 +607,7 @@ fn import_closure_helper_fn_edit_runs_importer_entry_only() {
 fn frontier_warmup_does_not_poison_corpus_resolution() {
     chdir_workspace();
     let ws = workspace_root();
-    let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
+    let poisoner_rel = SELECTION_CONTROL_CI_FLOOR_PLAN_REL;
     let poisoner_abs = ws.join(poisoner_rel);
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
     let data_line = fixture_line(&text, "data floor_corpus_node");
@@ -714,5 +712,21 @@ fn main() -> ExitCode {
         }
     }
 
-    ExitCode::SUCCESS
+    // Exit WITHOUT running thread-local destructors. `cli_run`'s PROCESS_RESOLVE_INDEX
+    // (`Rc<MultiEntryIndex>`, the whole-pool index) and PROCESS_RESOLVE_STORE (one
+    // `Rc<ResolvedGraph>` per scenario resolved above) are thread-locals, and thread-locals
+    // ARE dropped when the main thread ends — so returning normally spent 11.2s walking
+    // Rc/HashMap destructors for a whole-corpus graph the process is about to abandon
+    // (measured: run 30482171871 job 90679506428, last receipt line 19:30:55.34, step
+    // completion 19:31:06.53, nothing logged in between). The OS reclaims the address space,
+    // so that teardown buys nothing.
+    //
+    // Safe because no destructor here is load-bearing: every receipt this suite emits is
+    // printed eagerly during the scenarios (visible in the CI log before the gap), the
+    // scenarios are each wrapped in `catch_unwind` above so a panic is already handled, and
+    // the process holds no buffers other than stdout/stderr — flushed explicitly first,
+    // since `process::exit` does not run libstd's at-exit flush.
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    std::process::exit(0);
 }
