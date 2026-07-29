@@ -135,3 +135,34 @@ test fn witness_unicode_escape_hex4_boundary_ffff() -> Bool {
   json_unicode_escape_hex4(cp: 65535) == "FFFF"
 }
 
+
+data json_text_exponent_regression_note: String = "review 44043 RED. RFC 8259's exp production requires 1*DIGIT, but json_text_parse_number consumed the marker and optional sign without demanding one, so `1e` parsed as a complete number and json_text_parseable called the document well-formed. That is the fail-open the admission receipt check now sits on top of. These witnesses pin both directions and, critically, the AGREEMENT between the two readings of one RFC production: the text parser and the json_number_lexeme_valid lexeme surface had forked, and only the lexeme surface was correct."
+
+test fn witness_json_text_bare_exponent_refused() -> Bool {
+  !extdeps.languages.json.grammar.json_text_parseable(s: "1e")
+    && !extdeps.languages.json.grammar.json_text_parseable(s: "1E")
+    && !extdeps.languages.json.grammar.json_text_parseable(s: "1e+")
+    && !extdeps.languages.json.grammar.json_text_parseable(s: "1e-")
+}
+
+test fn witness_json_text_bare_exponent_refused_when_nested() -> Bool {
+  !extdeps.languages.json.grammar.json_text_parseable(s: "[1e]")
+    && !extdeps.languages.json.grammar.json_text_parseable(s: "{\"a\": 1e}")
+}
+
+test fn witness_json_text_valid_exponent_still_accepted() -> Bool {
+  extdeps.languages.json.grammar.json_text_parseable(s: "1e5")
+    && extdeps.languages.json.grammar.json_text_parseable(s: "1E5")
+    && extdeps.languages.json.grammar.json_text_parseable(s: "1e+5")
+    && extdeps.languages.json.grammar.json_text_parseable(s: "-1.5e-10")
+    && extdeps.languages.json.grammar.json_text_parseable(s: "[1e5, 2E+2]")
+}
+
+test fn witness_json_text_parse_agrees_with_lexeme_surface_on_exponents() -> Bool {
+  let cases = ["1e", "1E", "1e+", "1e-", "1e5", "1E5", "1e+5", "-1.5e-10"]
+  all(cases, c => {
+    let by_text = extdeps.languages.json.grammar.json_text_parseable(s: c)
+    let by_lexeme = extdeps.languages.json.grammar.json_number_lexeme_valid(s: c)
+    by_text == by_lexeme
+  })
+}

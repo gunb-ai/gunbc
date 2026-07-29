@@ -25,6 +25,7 @@ import gunbc.roadmap_model {
   section_group,
   section_prose,
 }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_status {
   AuthoredLine,
   DerivableLine,
@@ -56,12 +57,15 @@ fn signed(by: String, works: RedControlEvidence, scope_equivalent: HandbackEvide
   SignedOff { by: by, works: works, scope_equivalent: scope_equivalent, as_expected: as_expected }
 }
 
+data roadmap_execution_contract_frontier_note: String = "Every node below is ExecutionContractUnspecified: the declared, fail-closed migration frontier for gunbc.roadmap_execution_contract. A node states the exact validation operations that close it before the actuator will spawn for it, so dispatch refuses with a typed environment-admission diagnostic rather than guessing validations or dependencies. The prior binding lived on a pre-refresh operator-TODO node deleted by the 2026-07-27 authority refresh; re-binding is per-node roadmap authoring, never a merge-time default."
+
 fn authored(id: String, done: Bool, content: String) -> RoadmapNode {
   RoadmapNode {
     node: nid(s: id),
     line: AuthoredLine { done: done, content: content },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -73,6 +77,7 @@ fn derivable(id: String, prs: List<Int>, title: String, description: String) -> 
     line: DerivableLine { prs: prs, title: title, description: description },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -97,6 +102,7 @@ fn derivable_wi(
       repo: repo,
       acceptance: PrsMerged,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -120,6 +126,7 @@ fn authored_wi(
       repo: repo,
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -131,6 +138,7 @@ fn ticket_row(id: String, done: Bool, t: TicketFields) -> RoadmapNode {
     line: TicketLine { done: done, ticket: t },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -154,6 +162,7 @@ fn ticket_wi(
       repo: repo,
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -165,6 +174,7 @@ fn superseded(id: String, by: String, content: String) -> RoadmapNode {
     line: SupersededLine { by: by, content: content },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -176,6 +186,7 @@ fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
     line: rn.line,
     carriers: rn.carriers,
     sizing: rn.sizing,
+    execution: rn.execution,
     owner: rn.owner,
     signoff: s,
   }
@@ -227,6 +238,7 @@ fn active_sized(
       repo: "gunbc",
       acceptance: ManualAcceptance,
     },
+    execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
   }
