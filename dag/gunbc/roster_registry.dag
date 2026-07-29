@@ -107,6 +107,14 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
+    roster: roster_decl(module_path: "std.emit_on_demand", decl_name: "interpreter_wet_surfaces"),
+    unit_kind: "interpreter-surviving wet live-effect dispatch surface",
+    membership: DeclaredFrontier {
+      reason: "field-granular declaration-Node enumeration is unavailable; every surface row carries its closest .dag authorities and its own reason/dissolve-on",
+      dissolve_on: "gunbc#5364 resolves exact DeclarationRef targets, rows graduate to NodeTreeDerived membership, and the roster reaches zero as v2-emitted per-grant handlers replace the seed surfaces"
+    }
+  },
+  RosterRegistration {
     roster: roster_decl(module_path: "v2.lens.meta_exec_confinement", decl_name: "meta_exec_confinement_exception_roster"),
     unit_kind: ".dag file path",
     membership: DeclaredFrontier {
