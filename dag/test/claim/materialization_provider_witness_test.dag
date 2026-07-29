@@ -3,6 +3,7 @@ module test.claim.materialization_provider_witness
 import std.types { Bool, Int, List, String, ContentHash }
 import std.measure { byte_size, measure_count }
 import std.content_hash { content_hash_atom }
+import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.cache_identity {
   parse_source_artifact_kind,
   typed_module_artifact_kind,
@@ -15,7 +16,9 @@ import std.computation_identity {
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
-  ArtifactOutputId, CarriedOutput, artifact_content_digest, artifact_bytes,
+  ArtifactOutputId, CarriedOutput, ArtifactPart,
+  ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
+  artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   request_key, request_kind, request_required_outputs,
@@ -50,12 +53,12 @@ fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
 }
 
-fn witness_import_a() -> DeclaredInput {
-  DeclaredInput { ref: "import:std.types", digest: content_hash_atom(value: "interface-a") }
+fn witness_import_a() -> InterfaceHash {
+  content_hash_atom(value: "interface-a")
 }
 
-fn witness_import_a_changed() -> DeclaredInput {
-  DeclaredInput { ref: "import:std.types", digest: content_hash_atom(value: "interface-a-changed") }
+fn witness_import_a_changed() -> InterfaceHash {
+  content_hash_atom(value: "interface-a-changed")
 }
 
 fn witness_typecheck_request() -> ArtifactRequest {
@@ -81,43 +84,51 @@ fn witness_closure_request() -> ArtifactRequest {
   }
 }
 
-fn witness_part(id: ArtifactOutputId, payload: String, bytes: Int) -> CarriedOutput {
+fn witness_part(payload: String, bytes: Int) -> ArtifactPart {
+  ArtifactPart { digest: content_hash_atom(value: payload), bytes: byte_size(count: bytes) }
+}
+
+fn witness_labelled_part(id: ArtifactOutputId, payload: String, bytes: Int) -> CarriedOutput {
   CarriedOutput { id: id, digest: content_hash_atom(value: payload), bytes: byte_size(count: bytes) }
 }
 
-fn witness_graph_part() -> CarriedOutput {
-  witness_part(id: output_resolved_graph, payload: "closure-graph-1", bytes: 60)
+fn witness_graph_part() -> ArtifactPart {
+  witness_part(payload: "closure-graph-1", bytes: 60)
 }
 
-fn witness_indices_part() -> CarriedOutput {
-  witness_part(id: output_source_indices, payload: "closure-indices-1", bytes: 25)
+fn witness_indices_part() -> ArtifactPart {
+  witness_part(payload: "closure-indices-1", bytes: 25)
 }
 
-fn witness_union_part() -> CarriedOutput {
-  witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-1", bytes: 15)
+fn witness_union_part() -> ArtifactPart {
+  witness_part(payload: "closure-diagnostics-1", bytes: 15)
 }
 
 fn witness_complete_closure_artifact() -> MaterializedArtifact {
-  MaterializedArtifact {
-    kind: resolved_graph_artifact_kind,
+  ResolvedGraphArtifact {
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()]
+    resolved_graph: witness_graph_part(),
+    source_indices: witness_indices_part(),
+    compile_clean_diagnostic_union: witness_union_part()
   }
 }
 
 fn witness_v1_shape_closure_artifact() -> MaterializedArtifact {
-  MaterializedArtifact {
+  LegacyIncompleteArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part()]
+    carried_outputs: [
+      witness_labelled_part(id: output_resolved_graph, payload: "closure-graph-1", bytes: 60),
+      witness_labelled_part(id: output_source_indices, payload: "closure-indices-1", bytes: 25)
+    ]
   }
 }
 
 fn witness_kind_forged_closure_artifact() -> MaterializedArtifact {
-  MaterializedArtifact {
-    kind: parse_source_artifact_kind,
+  ParsedArtifact {
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()]
+    parse_tree: witness_graph_part(),
+    parse_diagnostics: witness_indices_part()
   }
 }
 
@@ -137,10 +148,10 @@ fn witness_good_probe() -> ProviderProbe {
 }
 
 fn witness_stale_typed_artifact() -> MaterializedArtifact {
-  MaterializedArtifact {
-    kind: typed_module_artifact_kind,
+  TypedModuleArtifact {
     request_key: request_key(req: witness_typecheck_request()),
-    carried_outputs: [witness_part(id: output_typed_module_interface, payload: "typed-payload-1", bytes: 10)]
+    typed_module_interface: witness_part(payload: "typed-payload-1", bytes: 6),
+    typecheck_diagnostics: witness_part(payload: "typed-diagnostics-1", bytes: 4)
   }
 }
 
@@ -259,18 +270,16 @@ test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
 test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
   let store0 = witness_empty_store(budget_count: 150)
   let first_artifact = witness_complete_closure_artifact()
+  let first_key = request_key(req: witness_closure_request())
   let second_request = ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-2"),
     compiler: witness_compiler()
   }
-  let second_artifact = MaterializedArtifact {
-    kind: resolved_graph_artifact_kind,
+  let second_artifact = ResolvedGraphArtifact {
     request_key: request_key(req: second_request),
-    carried_outputs: [
-      witness_part(id: output_resolved_graph, payload: "closure-graph-2", bytes: 60),
-      witness_part(id: output_source_indices, payload: "closure-indices-2", bytes: 25),
-      witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-2", bytes: 15)
-    ]
+    resolved_graph: witness_part(payload: "closure-graph-2", bytes: 60),
+    source_indices: witness_part(payload: "closure-indices-2", bytes: 25),
+    compile_clean_diagnostic_union: witness_part(payload: "closure-diagnostics-2", bytes: 15)
   }
   let first_admit = provider_admit(
     store: store0,
@@ -291,7 +300,7 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
       admission_is_admitted(a: second_admit)
         && (first_evicted.count() == 0)
         && (evicted.count() == 1)
-        && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_artifact.request_key)))
+        && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_key)))
     },
     kind_mismatch_write: (r, f) => false,
     wrong_artifact_write: (k, fk) => false,
@@ -411,10 +420,52 @@ test fn red_understating_the_size_lands_on_wrong_content_not_a_budget_bypass() -
     && (admission_is_admitted(a: understated) == false)
 }
 
+data key_authority_witness_note: String = "Blocker 1 (operator review): the typecheck key must BE the existing std.interface_summary authority, not a second definition of typed-module identity. These execute the equivalence rather than asserting it — the contract's derived key is compared against typed_module_key(module_key(...)) computed independently here from the same ingredients, and the RED shows a changed direct-import interface hash moves BOTH in step, which is what makes them one authority rather than two that happen to agree on one input."
+
+test fn typecheck_request_key_is_the_existing_typed_module_key_authority() -> Bool {
+  let independently = typed_module_key(
+    interface_key: module_key(
+      source_hash: content_hash_atom(value: "module-source-1"),
+      direct_import_interface_hashes: [witness_import_a()]
+    ),
+    compiler_identity: content_hash_atom(value: "compiler-identity-1")
+  )
+  request_key(req: witness_typecheck_request()) == independently
+}
+
+test fn red_typecheck_key_tracks_the_authority_when_an_import_changes() -> Bool {
+  let independently_changed = typed_module_key(
+    interface_key: module_key(
+      source_hash: content_hash_atom(value: "module-source-1"),
+      direct_import_interface_hashes: [witness_import_a_changed()]
+    ),
+    compiler_identity: content_hash_atom(value: "compiler-identity-1")
+  )
+  (request_key(req: witness_typecheck_request_changed_input()) == independently_changed)
+    && ((request_key(req: witness_typecheck_request()) == independently_changed) == false)
+}
+
+data artifact_construction_witness_note: String = "Blocker 2 (operator review): omission, not forgery. The digest-preimage work made lying impossible; these show omitting is now impossible too. A complete resolved-graph artifact reaches its union through a REQUIRED field, so the v1 shape can no longer be spelled as a ResolvedGraphArtifact at all — it is only expressible as the named LegacyIncompleteArtifact variant, which is exactly the extdeps.realization.resolved_graph disk-hit refuse arm this contract's first consumer target retires. The completeness check is therefore still LIVE rather than inert: it is what measures that legacy variant, and the refusal below is reached by execution."
+
+test fn complete_artifact_reaches_its_union_through_a_required_field() -> Bool {
+  let ids = artifact_carried_outputs(artifact: witness_complete_closure_artifact()) |> map(o => o.id)
+  (ids.count() == 3)
+    && output_list_contains(xs: ids, wanted: output_compile_clean_diagnostic_union)
+    && (artifact_kind(artifact: witness_complete_closure_artifact()) == resolved_graph_artifact_kind)
+}
+
+test fn v1_incompleteness_is_a_named_variant_not_a_missing_list_element() -> Bool {
+  let legacy = witness_v1_shape_closure_artifact()
+  let ids = artifact_carried_outputs(artifact: legacy) |> map(o => o.id)
+  (artifact_kind(artifact: legacy) == resolved_graph_artifact_kind)
+    && (ids.count() == 2)
+    && (output_list_contains(xs: ids, wanted: output_compile_clean_diagnostic_union) == false)
+}
+
 test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   completeness_is_complete(c: artifact_completeness(
     required: request_required_outputs(req: witness_closure_request()),
-    carried: witness_complete_closure_artifact().carried_outputs
+    carried: artifact_carried_outputs(artifact: witness_complete_closure_artifact())
   ))
 }
 
