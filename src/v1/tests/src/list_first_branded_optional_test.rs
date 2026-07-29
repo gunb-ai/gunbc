@@ -45,8 +45,16 @@ fn hash_list() -> List<ContentHash> {
   ["a" as ContentHash]
 }
 
+fn empty_hash_list() -> List<ContentHash> {
+  []
+}
+
 fn string_list() -> List<String> {
   ["hello"]
+}
+
+fn empty_string_list() -> List<String> {
+  []
 }
 
 fn first_hash_method(xs: List<ContentHash>) -> ContentHash? {
@@ -73,7 +81,7 @@ fn nonempty_hash_method() -> Bool {
 }
 
 fn empty_hash_method() -> Bool {
-  match ([] as List<ContentHash>).first() {
+  match empty_hash_list().first() {
     Present { value: _ } => false
     Absent => true
   }
@@ -87,7 +95,7 @@ fn nonempty_string_method() -> Bool {
 }
 
 fn empty_string_method() -> Bool {
-  match ([] as List<String>).first() {
+  match empty_string_list().first() {
     Present { value: _ } => false
     Absent => true
   }
@@ -101,7 +109,7 @@ fn nonempty_hash_pipe() -> Bool {
 }
 
 fn empty_hash_pipe() -> Bool {
-  match ([] as List<ContentHash>) |> first {
+  match empty_hash_list() |> first {
     Present { value: _ } => false
     Absent => true
   }
@@ -115,7 +123,7 @@ fn nonempty_string_pipe() -> Bool {
 }
 
 fn empty_string_pipe() -> Bool {
-  match ([] as List<String>) |> first {
+  match empty_string_list() |> first {
     Present { value: _ } => false
     Absent => true
   }
