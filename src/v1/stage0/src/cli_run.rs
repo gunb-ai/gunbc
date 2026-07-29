@@ -2993,27 +2993,112 @@ fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<Str
     dag_closure.contains(&p)
 }
 
+/// Typed cause for a selection-control REFUSAL — the arms where the affected set could not be
+/// computed at all.
+///
+/// DESIGN §5: "can't compute the affected set → rerun the entire suite" is the named absorbing
+/// fallback — ⊤-as-ignorance conflated with ⊤-as-answer. It fails open twice: the deficit's
+/// frequency is zeroed by construction (so it never ranks for fixing), and the cost is
+/// denominated in the corpus rather than the change. The repo already ruled on exactly this
+/// arm: `floor_diff_baseline_law` (src/v2/workflow/floor_diff_observe.dag) records that a
+/// `BaselineRefused` → `NameStatusDiffFail` "HALTS the floor with a typed AFFECTED-SET REFUSAL
+/// (refuses every enrolled row, never widens to a full-corpus run; operator ruling
+/// 2026-07-05)". This enum is that ruling applied to the selection-control step's own skip
+/// decision — FOUND BY REVIEW (review 44745), whose first draft returned the RUN label from
+/// both failure arms and stayed green.
+///
+/// `token()` is the stable, greppable discriminator that makes each refusal COUNTABLE in the
+/// job log, so its frequency is observable and prioritizable rather than absorbed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionControlRefusalCause {
+    /// The merge-base diff could not be observed (`floor_git_diff_name_status_range` failed).
+    DiffObservationFailed,
+    /// The suite's input closure could not be computed (entry unreadable, import walk failed).
+    InputClosureFailed,
+}
+
+impl SelectionControlRefusalCause {
+    pub fn token(&self) -> &'static str {
+        match self {
+            Self::DiffObservationFailed => "DiffObservationFailed",
+            Self::InputClosureFailed => "InputClosureFailed",
+        }
+    }
+}
+
+/// A typed, located, countable refusal. Carries the cause, the mechanism that could not answer
+/// (`located`), and the underlying detail — everything analysis needs before the line restarts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionControlSkipRefusal {
+    pub cause: SelectionControlRefusalCause,
+    pub located: &'static str,
+    pub detail: String,
+}
+
+impl SelectionControlSkipRefusal {
+    /// The single-line diagnostic. Stable prefix + `cause=` token so occurrences are countable.
+    pub fn diagnostic(&self) -> String {
+        format!(
+            "SELECTION_CONTROL_REFUSED cause={} at={} detail={} \
+             — the affected set could not be computed, so this step REFUSES rather than \
+             widening to a full run (DESIGN §5 absorbing fallback; operator ruling 2026-07-05, \
+             floor_diff_baseline_law). Analyse the cause before restarting the line.",
+            self.cause.token(),
+            self.located,
+            self.detail
+        )
+    }
+}
+
 /// CI label for the affected-set selection-control step's skip arm.
-/// `selection_control_not_affected_skip` iff the merge-base diff touches no input of the
-/// control suite; `run_selection_control` on any intersection, empty diff, ANY departed
-/// path, or observation/closure failure (fail-closed). This computes the label
-/// only; the CI shell gates the skip to pull_request events, so push-to-main runs the suite
-/// unconditionally as the cold control.
-pub fn selection_control_skip_label_for_ci() -> String {
+///
+/// `Ok(selection_control_not_affected_skip)` iff the merge-base diff touches no input of the
+/// control suite; `Ok(run_selection_control)` on any intersection, empty diff, or ANY departed
+/// path — those are STRUCTURAL answers, computed from an observed diff.
+///
+/// `Err(SelectionControlSkipRefusal)` when the affected set could not be computed at all
+/// (diff observation or closure failure). Those arms REFUSE rather than widening to a run:
+/// see `SelectionControlRefusalCause` for the §5 reasoning and the 2026-07-05 ruling. The
+/// distinction is the whole point — "everything is affected" and "I could not compute what is
+/// affected" are different states with different remedies, and only the first may be answered
+/// with a label.
+///
+/// This computes the decision only; the CI shell gates the skip to pull_request events, so
+/// push-to-main runs the suite unconditionally as the cold control.
+pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlSkipRefusal> {
     let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
         Ok(v) => v,
-        Err(msg) => {
-            eprintln!(
-                "selection-control skip: diff observation failed ({msg}) — run the control suite"
-            );
-            return RUN_SELECTION_CONTROL_LABEL.to_string();
+        Err(detail) => {
+            // REFUSE, never widen: "diff unavailable → run everything" is the §5 absorbing
+            // fallback. Returning the RUN label here would keep CI green and zero this
+            // deficit's observed frequency, which is exactly how it never gets fixed.
+            return Err(SelectionControlSkipRefusal {
+                cause: SelectionControlRefusalCause::DiffObservationFailed,
+                located: "cli_run::floor_git_diff_name_status_range \
+                          (src/v2/workflow/floor_diff_observe.dag \
+                          floor_observe_git_diff_name_status_for_ci)",
+                detail,
+            });
         }
     };
+    // Empty diff is a STRUCTURAL state, not a failure arm: the observation succeeded and
+    // reported zero changed paths. It is therefore answerable with a label, unlike the
+    // refusals above. It answers RUN (conservative) rather than SKIP because an empty
+    // merge-base diff on a pull_request is degenerate — a PR changes something by definition —
+    // so the honest reading is "this observation tells us nothing useful about THIS PR".
+    //
+    // Noted for the record, because it is adjacent to a ruling: DESIGN's floor-runner receipt
+    // has the empty diff "dissolved into the general disposition, never a special arm"
+    // (operator rulings 2026-07-05). Dissolving it here would make it SKIP (no changed path
+    // can intersect the closure). That is a live question about THIS step rather than the
+    // floor runner, and it moves in the less-checking direction, so it is deliberately not
+    // decided here — flagged for the operator instead of quietly picked.
     if changed_paths.is_empty() {
         eprintln!(
-            "selection-control skip: empty diff — run the control suite (fail-closed cold control)"
+            "selection-control skip: empty diff — run the control suite (degenerate observation \
+             for a pull_request; structural arm, not a refusal)"
         );
-        return RUN_SELECTION_CONTROL_LABEL.to_string();
+        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
     }
     // Departed (deleted / renamed-from) paths: NO carve-out. Two independent causes, which
     // together leave no departed path provably irrelevant:
@@ -3034,16 +3119,20 @@ pub fn selection_control_skip_label_for_ci() -> String {
             "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
             normalize_repo_path(gone)
         );
-        return RUN_SELECTION_CONTROL_LABEL.to_string();
+        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
     }
     let workspace = workspace_root();
     let dag_closure: HashSet<String> = match selection_control_input_sources(&workspace) {
         Ok(sources) => sources.into_iter().collect(),
-        Err(msg) => {
-            eprintln!(
-                "selection-control skip: input-closure computation failed ({msg}) — run the control suite"
-            );
-            return RUN_SELECTION_CONTROL_LABEL.to_string();
+        Err(detail) => {
+            // REFUSE, never widen — same §5 arm as the diff-observation failure above. An
+            // unreadable entry or a dead import walk means the input set is UNKNOWN, which is
+            // a different state from "everything is affected" and has a different remedy.
+            return Err(SelectionControlSkipRefusal {
+                cause: SelectionControlRefusalCause::InputClosureFailed,
+                located: "cli_run::selection_control_input_sources",
+                detail,
+            });
         }
     };
     match changed_paths
@@ -3055,14 +3144,14 @@ pub fn selection_control_skip_label_for_ci() -> String {
                 "selection-control skip: diff intersects the control suite's inputs (e.g. {}) — run the control suite",
                 normalize_repo_path(example)
             );
-            RUN_SELECTION_CONTROL_LABEL.to_string()
+            Ok(RUN_SELECTION_CONTROL_LABEL.to_string())
         }
         None => {
             eprintln!(
-                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
+                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ every .md ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
                 changed_paths.len()
             );
-            SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string()
+            Ok(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string())
         }
     }
 }
@@ -28889,7 +28978,8 @@ mod witness_layer_roots_compile_clean_tests {
                     &format!("M\\000{UNRELATED}\\000"),
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
                 );
             });
@@ -28906,7 +28996,8 @@ mod witness_layer_roots_compile_clean_tests {
                     "M\\000src/v2/workflow/affected_set_floor_runner.dag\\000",
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL
                 );
             });
@@ -28933,7 +29024,8 @@ mod witness_layer_roots_compile_clean_tests {
                     &format!("M\\000{transitive}\\000"),
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL,
                     "a transitively imported closure member ({transitive}) must run the suite"
                 );
@@ -28952,7 +29044,8 @@ mod witness_layer_roots_compile_clean_tests {
                     "M\\000src/v1/stage0/src/cli_run.rs\\000",
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL
                 );
             });
@@ -28972,7 +29065,8 @@ mod witness_layer_roots_compile_clean_tests {
                     "D\\000src/v2/lens/machine_shape.dag\\000",
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL
                 );
             });
@@ -28994,7 +29088,8 @@ mod witness_layer_roots_compile_clean_tests {
                     "M\\000docs/plans/example.md\\000",
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL,
                     "a docs-only diff must RUN the control suite: its doc-reachability entry \
                      reads the live doc graph, so markdown changes its verdict"
@@ -29016,12 +29111,60 @@ mod witness_layer_roots_compile_clean_tests {
                     "D\\000docs/plans/example.md\\000",
                 );
                 assert_eq!(
-                    selection_control_skip_label_for_ci(),
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
                     RUN_SELECTION_CONTROL_LABEL,
                     "a departed doc must RUN the control suite (it changes the live doc graph)"
                 );
             });
         });
+    }
+
+    /// REFUSAL arm — the discriminating control for review 44745. An unrecognized git
+    /// `--name-status` status letter makes the modeled observation answer `NameStatusDiffFail`,
+    /// i.e. the affected set is UNKNOWN. The step must REFUSE (typed, located, countable), not
+    /// widen to a run: "can't compute the affected set → rerun everything" is DESIGN §5's named
+    /// absorbing fallback, and `floor_diff_baseline_law` already records the 2026-07-05 ruling
+    /// that this arm HALTS rather than widening.
+    ///
+    /// This is the RED that would go green again if anyone reinstated the old widening arm:
+    /// with the fail-open version, this returned `Ok(run_selection_control)` and CI stayed green.
+    #[test]
+    fn selection_control_skip_refuses_when_diff_observation_fails() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                // 'Z' is not a status letter git emits; the modeled observation rejects it.
+                let _ns =
+                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
+                let refusal = selection_control_skip_label_for_ci()
+                    .expect_err("an unobservable diff must REFUSE, never widen to a run");
+                assert_eq!(
+                    refusal.cause,
+                    SelectionControlRefusalCause::DiffObservationFailed
+                );
+                let d = refusal.diagnostic();
+                assert!(
+                    d.contains("SELECTION_CONTROL_REFUSED")
+                        && d.contains("cause=DiffObservationFailed"),
+                    "the refusal must be countable by a stable token: {d}"
+                );
+                assert!(
+                    !d.contains(RUN_SELECTION_CONTROL_LABEL)
+                        && !d.contains(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL),
+                    "a refusal must not carry a label — ignorance is not an answer: {d}"
+                );
+            });
+        });
+    }
+
+    /// The two refusal causes must stay distinguishable, so each is separately countable in the
+    /// job log. A single fused cause would re-absorb the deficits into one unprioritizable bucket.
+    #[test]
+    fn selection_control_refusal_causes_are_distinct_and_countable() {
+        assert_ne!(
+            SelectionControlRefusalCause::DiffObservationFailed.token(),
+            SelectionControlRefusalCause::InputClosureFailed.token()
+        );
     }
 
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least

@@ -7,10 +7,21 @@
 //! `.dag` entries plus their import closure through `[src/v2, dag]`, and the Cargo/toolchain
 //! build config), else `run_selection_control`.
 //!
-//! Fail-closed: any diff-observation or closure-computation failure prints
-//! `run_selection_control`. The whole decision lives in
-//! `cli_run::selection_control_skip_label_for_ci`; this bin is just the transport — the same
-//! split `regen_floor_skip_witness` uses.
+//! Fail-closed by REFUSING, not by widening. A diff-observation or closure-computation failure
+//! means the affected set is UNKNOWN, which is a different state from "everything is affected"
+//! and has a different remedy — so this bin prints a typed, located, countable diagnostic to
+//! stderr and exits NON-ZERO, stopping the line. It never prints a label in that case, so the
+//! CI step's string comparison cannot mistake ignorance for an answer, and `bash -e` aborts the
+//! step RED rather than silently running the suite and passing.
+//!
+//! That is DESIGN §5's absorbing-fallback rule ("a failure arm must refuse, never widen") and
+//! matches the ruling already recorded in `floor_diff_baseline_law`: a diff-observation failure
+//! HALTS with a typed AFFECTED-SET REFUSAL (operator ruling 2026-07-05). Deliberately UNLIKE the
+//! `regen_floor_skip_witness` precedent, which suppresses stderr and defaults via a shell
+//! fallback — that shape is the thing this one refuses to copy.
+//!
+//! The whole decision lives in `cli_run::selection_control_skip_label_for_ci`; this bin is just
+//! the transport.
 
 use std::process::ExitCode;
 
@@ -18,8 +29,17 @@ use v1_compiler::cli_run::{selection_control_skip_label_for_ci, workspace_root};
 
 fn main() -> ExitCode {
     std::env::set_current_dir(workspace_root()).expect("chdir to workspace root");
-    println!("{}", selection_control_skip_label_for_ci());
-    ExitCode::SUCCESS
+    match selection_control_skip_label_for_ci() {
+        Ok(label) => {
+            println!("{label}");
+            ExitCode::SUCCESS
+        }
+        Err(refusal) => {
+            // stderr + non-zero, and NO label on stdout: the step must stop, not proceed.
+            eprintln!("{}", refusal.diagnostic());
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]
@@ -36,7 +56,8 @@ mod tests {
             SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL,
             RUN_SELECTION_CONTROL_LABEL
         );
-        let label = selection_control_skip_label_for_ci();
+        let label = selection_control_skip_label_for_ci()
+            .expect("a clean tree observes its diff and answers with a label");
         assert!(
             label == SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
                 || label == RUN_SELECTION_CONTROL_LABEL,
