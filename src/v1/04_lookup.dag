@@ -277,7 +277,12 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
   let normed = normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: Resolved { node: target } } => resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen)
+      Present { value: Resolved { node: target } } =>
+        let outer_optional = normed.return_cardinality == CardOptional
+        let result = resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen)
+        if outer_optional && result.return_cardinality != CardOptional {
+          with_optional_cardinality(n: result)
+        } else { result }
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
@@ -289,7 +294,11 @@ fn resolve_scrutinee_type_node_seen(env: TypeEnv, n: Node, seen: Map<String, Boo
           if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
+            let outer_optional = normed.return_cardinality == CardOptional
+            let result = resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen)
+            if outer_optional && result.return_cardinality != CardOptional {
+              with_optional_cardinality(n: result)
+            } else { result }
           }
         _ => normed
       }

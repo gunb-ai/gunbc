@@ -459,7 +459,17 @@ pub fn resolve_scrutinee_type_node_seen(
         {
             match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone())
+                    let outer_optional =
+                        normed.return_cardinality.clone() == Cardinality::CardOptional;
+                    let result =
+                        resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone());
+                    if outer_optional
+                        && result.return_cardinality.clone() != Cardinality::CardOptional
+                    {
+                        with_optional_cardinality(result.clone())
+                    } else {
+                        result.clone()
+                    }
                 }
                 _ => normed.clone(),
             }
@@ -486,11 +496,21 @@ pub fn resolve_scrutinee_type_node_seen(
                                     {
                                         normed.clone()
                                     } else {
-                                        resolve_scrutinee_type_node_seen(
+                                        let outer_optional = normed.return_cardinality.clone()
+                                            == Cardinality::CardOptional;
+                                        let result = resolve_scrutinee_type_node_seen(
                                             env.clone(),
                                             target.clone(),
                                             next_seen.clone(),
-                                        )
+                                        );
+                                        if outer_optional
+                                            && result.return_cardinality.clone()
+                                                != Cardinality::CardOptional
+                                        {
+                                            with_optional_cardinality(result.clone())
+                                        } else {
+                                            result.clone()
+                                        }
                                     }
                                 }
                                 _ => normed.clone(),
