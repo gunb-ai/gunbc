@@ -1,4 +1,4 @@
-module v2.test.claim.branded_list_first_optional
+module test.claim.branded_list_first_optional_witness
 
 import std.types { ContentHash, List, String }
 import v2.std.collection { Present, Absent }
