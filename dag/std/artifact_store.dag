@@ -4,6 +4,7 @@ import std.types { ContentHash, NonEmptyStr, List, Int, Bool, String }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.materialization_ladder { CacheProvider, EvictionClass, ScopeExit, SpacePacked }
+import std.disposition { Disposition, Terminal }
 
 data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. Dissolve-on for the budget parameter: EvictionClass's budget field currently carries cited upstream policy PROSE in extdeps rows (two concepts in one field - our enforceable budget vs their described mechanism); when that splits into typed variants, store_over_provider derives the budget from the row instead of taking it beside the row."
 
@@ -102,6 +103,8 @@ fn store_get(store: ArtifactStore, key: ContentHash) -> StoreLookup {
   }
 }
 
+data no_evicted_keys: List<ContentHash> = []
+
 type StorePutReceipt {
   store: ArtifactStore
   evicted: List<ContentHash>
@@ -134,12 +137,46 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
   }
 }
 
-fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -> StorePutReceipt {
-  let fresh = ArtifactRow { key: key, artifact_bytes: artifact_bytes, last_use_ordinal: store.next_ordinal }
-  let grown = ArtifactStore {
-    budget: store.budget,
-    next_ordinal: store.next_ordinal + 1,
-    rows: concat(store.rows |> filter(r => (r.key == key) == false), [fresh])
+data store_put_totality_note: String = "store_put is TOTAL over its two real outcomes, and the fit test runs BEFORE any eviction (operator scope call, 2026-07-29; reproduction receipt on PR 7385). The prior signature returned a StorePutReceipt unconditionally, which conflated two states that need opposite remedies: an artifact LARGER than the whole budget fell into the eviction loop, evicted every legitimate row, then evicted ITSELF (the fresh row carries the highest ordinal, so it is the last victim), and returned a receipt whose evicted list contained the key the caller had just put — indistinguishable at the type level from 'stored, and these older ones were evicted'. Measured: 500 bytes into a 100-byte budget holding one valid 40-byte row returned TWO evictions and an empty store, so an oversized put was not merely mislabelled, it was DESTRUCTIVE — it discarded valid cached entries and stored nothing while reporting success. The repair is construction, not a louder report (DESIGN section 5): the fit test precedes eviction, so the destructive path is unwritable rather than detected after the damage, and the two outcomes are distinct VALUES rather than one value whose fields the caller must interpret. Because artifact_bytes <= budget is established before the loop runs, the fresh row can never be its own victim — the self-eviction is gone by construction, not by a guard inside the loop."
+
+type StorePutOutcome
+  = StorePutAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
+  | StorePutDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+
+fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -> StorePutOutcome {
+  if measure_count(m: artifact_bytes) > measure_count(m: store.budget) {
+    StorePutDidNotFit { artifact_bytes: artifact_bytes, budget: store.budget }
+  } else {
+    let fresh = ArtifactRow { key: key, artifact_bytes: artifact_bytes, last_use_ordinal: store.next_ordinal }
+    let grown = ArtifactStore {
+      budget: store.budget,
+      next_ordinal: store.next_ordinal + 1,
+      rows: concat(store.rows |> filter(r => (r.key == key) == false), [fresh])
+    }
+    let packed = evict_until_within_budget(store: grown, evicted: [])
+    StorePutAdmitted { store: packed.store, evicted: packed.evicted }
   }
-  evict_until_within_budget(store: grown, evicted: [])
+}
+
+data store_put_reader_contract: Disposition = Terminal {
+  reason: "store_put_fold is the only match over StorePutOutcome; the readers below derive from it and contain no match of their own, so a third outcome is a type error at exactly one site. There is deliberately NO store_put_store(outcome, fallback) projection — answering DidNotFit with a caller-supplied store is the absorbing fallback DESIGN section 5 forbids, and it is precisely what would let the destructive behavior this type exists to remove return in a new shape. Discriminating corpus: dag/test/claim/artifact_store_witness_test.dag."
+}
+
+fn store_put_fold<T>(
+  outcome: StorePutOutcome,
+  admitted: fn(ArtifactStore, List<ContentHash>) -> T,
+  did_not_fit: fn(ByteSize, ByteSize) -> T
+) -> T {
+  match outcome {
+    StorePutAdmitted { store: s, evicted: e } => admitted(s, e)
+    StorePutDidNotFit { artifact_bytes: a, budget: b } => did_not_fit(a, b)
+  }
+}
+
+fn store_put_is_admitted(outcome: StorePutOutcome) -> Bool {
+  store_put_fold(outcome: outcome, admitted: (s, e) => true, did_not_fit: (a, b) => false)
+}
+
+fn store_put_evicted_keys(outcome: StorePutOutcome) -> List<ContentHash> {
+  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => no_evicted_keys)
 }
