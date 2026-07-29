@@ -7,6 +7,11 @@ import v2.std.optional { Optional, Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts { im_15_1_0_vector_clone_impl_authority }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.e0599_probe_census {
+  e0599_message_pattern_rows_blob,
+  e0599_canonical_seven_module_log_labels_blob,
+  e0599_mechanistic_root_family_labels_blob,
+}
 
 data e0599_measured_producer: String = "V1SeedEmitter"
 
@@ -392,6 +397,22 @@ fn e0599_write_rollup_cause_labels_blob(out_path: String) -> ProcessExit {
     path: out_path,
     content: e0599_rollup_cause_labels_blob(),
     label: "e0599_rollup_cause_labels_blob"
+  )
+}
+
+fn e0599_probe_preamble_blob() -> String {
+  concat("#patterns\n", concat(e0599_message_pattern_rows_blob(),
+  concat("\n#roster\n", concat(e0599_canonical_seven_module_log_labels_blob(),
+  concat("\n#scope\n", concat(e0599_mechanistic_root_family_labels_blob(),
+  concat("\n#causes\n", concat(e0599_rollup_cause_labels_blob(),
+  concat("\n#producer\n", e0599_producer_blob())))))))))
+}
+
+fn e0599_write_probe_preamble_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_probe_preamble_blob(),
+    label: "e0599_probe_preamble_blob"
   )
 }
 
