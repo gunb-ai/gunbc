@@ -23,6 +23,7 @@ import extdeps.tools.pin {
   admit_legacy_cli_tool,
   admit_pin_integrity,
   pin_value_eq,
+  pin_selection_eq,
   pin_key_of,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -162,4 +163,47 @@ test fn value_eq_covers_digest_not_only_version() -> Bool {
     selection: ExactPin,
   }
   !pin_value_eq(a: authored_pin, b: same_version_new_binary)
+}
+
+data selection_is_reconcile_content_note: String = "Added after review 44329, which found pin_value_eq comparing only version and expected_identity while ignoring selection. That was a real reconcile gap, not a style point: membership_reconcile treats value_eq as presence-plus-content, so a pin whose refresh POLICY changed — ExactPin flipped to TrackedChannel, a different channel, a different window — produced no Modified hunk and would never re-upsert. The refresh policy is exactly the content this lane exists to carry, so omitting it from equality silently exempted the feature from reconciliation. RED CONTROLS below cover all three shapes of that change; each fails if value_eq ignores selection again."
+
+test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
+  let flipped = ToolPin {
+    tool_name: "cargo",
+    version: "1.93.0" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
+  }
+  !pin_value_eq(a: authored_pin, b: flipped)
+}
+
+test fn value_eq_detects_channel_change() -> Bool {
+  let other_channel = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
+  }
+  !pin_value_eq(a: tracked_pin, b: other_channel)
+}
+
+test fn value_eq_detects_refresh_window_change() -> Bool {
+  let wider_window = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
+  }
+  !pin_value_eq(a: tracked_pin, b: wider_window)
+}
+
+test fn value_eq_still_holds_for_identical_pins() -> Bool {
+  let same = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
+  }
+  pin_value_eq(a: tracked_pin, b: same)
+    && pin_selection_eq(a: tracked_pin.selection, b: same.selection)
 }
