@@ -6,7 +6,6 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityEndpointStateCaptured,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
@@ -57,7 +56,6 @@ fn synthetic_fourth_handler(
         realization: "synthetic-fourth-r0",
         target: receipt.target,
         generation_evidence: receipt.generation,
-        capture: CompatibilityEndpointStateCaptured,
         projection: concat("synthetic-projection:", receipt.generation),
         read_back: concat("synthetic-readback:", receipt.generation),
         advance: CompatibilityAdvanceUnavailable {

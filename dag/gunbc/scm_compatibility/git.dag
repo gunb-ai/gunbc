@@ -75,7 +75,6 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityEndpointStateCaptured,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
@@ -728,7 +727,6 @@ fn git_compatibility_projection_receipt(
     realization: "git-r0",
     target: receipt.target as NonEmptyStr,
     generation_evidence: generation,
-    capture: CompatibilityEndpointStateCaptured,
     projection: compatibility_projection_handle(
       realization: "git-r0",
       state: state,

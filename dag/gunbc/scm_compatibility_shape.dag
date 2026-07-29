@@ -73,25 +73,6 @@ fn compatibility_read_back_handle(
   ) as CompatibilityReadBackHandle
 }
 
-type CompatibilityCaptureClass
-  = CompatibilityEndpointStateCaptured
-  | CompatibilityUpstreamChangeEvidenceCaptured
-
-type CompatibilityCaptureClassFold<R> {
-  endpoint_state: fn() -> R
-  upstream_change_evidence: fn() -> R
-}
-
-fn compatibility_capture_class_fold<R>(
-  capture: CompatibilityCaptureClass,
-  fold: CompatibilityCaptureClassFold<R>,
-) -> R {
-  match capture {
-    CompatibilityEndpointStateCaptured => fold.endpoint_state()
-    CompatibilityUpstreamChangeEvidenceCaptured => fold.upstream_change_evidence()
-  }
-}
-
 type CompatibilityFidelityDisposition
   = CompatibilityFidelityPreserved
   | CompatibilityFidelityDowngraded { cause: NonEmptyStr }
@@ -252,7 +233,6 @@ type CompatibilityProjectionReceipt {
   realization: CompatibilityRealizationHandle
   target: CompatibilityTargetHandle
   generation_evidence: CompatibilityGenerationEvidenceHandle
-  capture: CompatibilityCaptureClass
   projection: CompatibilityProjectionHandle
   read_back: CompatibilityReadBackHandle
   advance: CompatibilityAdvanceCapability

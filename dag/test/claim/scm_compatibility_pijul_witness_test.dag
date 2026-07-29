@@ -202,7 +202,7 @@ test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
     projection: pijul_r0_fixture_projection(),
     channels: repository.channels
       |> map(channel =>
-        if channel.name == "main" {
+        if channel.name == "main" || channel.name == "review" {
           PijulChannel {
             name: channel.name,
             state_identity: PijulChannelStateIdentity {

@@ -55,7 +55,6 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityUpstreamChangeEvidenceCaptured,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
@@ -660,7 +659,6 @@ fn pijul_compatibility_projection_receipt(
         realization: "pijul-r0",
         target: receipt.target as NonEmptyStr,
         generation_evidence: generation,
-        capture: CompatibilityUpstreamChangeEvidenceCaptured,
         projection: compatibility_projection_handle(
           realization: "pijul-r0",
           state: state,

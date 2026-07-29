@@ -52,7 +52,6 @@ import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityProjectionHandler,
   CompatibilityFidelityProfile,
-  CompatibilityEndpointStateCaptured,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
@@ -616,7 +615,6 @@ fn mercurial_compatibility_projection_receipt(
         realization: "mercurial-r0",
         target: receipt.target as NonEmptyStr,
         generation_evidence: generation,
-        capture: CompatibilityEndpointStateCaptured,
         projection: compatibility_projection_handle(
           realization: "mercurial-r0",
           state: state,

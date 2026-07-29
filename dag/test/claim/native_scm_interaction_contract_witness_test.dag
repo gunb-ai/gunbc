@@ -30,7 +30,6 @@ import gunbc.native_scm_interaction_contract {
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   CompatibilityFidelityProfile,
-  CompatibilityEndpointStateCaptured,
   CompatibilityFidelityPreserved,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
@@ -51,7 +50,6 @@ fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
     realization: "git-r0",
     target: "refs/heads/main",
     generation_evidence: "git-generation-fixture",
-    capture: CompatibilityEndpointStateCaptured,
     projection: "git-projection-fixture",
     read_back: "git-readback-fixture",
     advance: CompatibilityAdvanceUnavailable {
