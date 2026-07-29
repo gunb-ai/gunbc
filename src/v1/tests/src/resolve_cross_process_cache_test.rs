@@ -194,6 +194,7 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let subject = subject_digest_for_closure(&sources);
     let valid = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+    let decodes_before = decode_count();
     let mut poisoned = valid;
     if let Some(last) = poisoned.last_mut() {
         *last ^= 0xff;
@@ -211,6 +212,11 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
         assert!(
             err.contains("provider refused faithful probe"),
             "poisoned hit must refuse before rebuilding: {err}"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "provider refusal must not decode or rebuild"
         );
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
@@ -234,7 +240,6 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let subject = subject_digest_for_closure(&sources);
     let mut poisoned =
         build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
-    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -246,16 +251,13 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let err =
-            resolve_entry_with_index(&index, &a).expect_err("subject-poisoned hit must refuse");
-        assert!(
-            err.contains("provider refused faithful probe"),
-            "subject-poisoned hit must refuse before rebuilding: {err}"
-        );
+        let (recomputed, si2) =
+            resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
+        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
-            "control resolve remains green"
+            "subject poison must fall through to fresh resolve"
         );
     });
 

@@ -6,6 +6,10 @@ import gunbc.materialization_provider_consumer_scaffold {
   materialization_provider_consumer_receipt_plan_anchor,
   materialization_provider_consumer_roadmap_lane_anchor
 }
+import test.claim.materialization_provider_witness {
+  incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union,
+  red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact
+}
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 
@@ -20,4 +24,9 @@ test fn materialization_provider_consumer_scaffold_names_dissolve_trigger() -> B
   !(materialization_provider_consumer_dissolve_trigger == "")
     && !(materialization_provider_consumer_receipt_plan_anchor == "")
     && !(materialization_provider_consumer_roadmap_lane_anchor == "")
+}
+
+test fn witness_request_perturbation_flips_provider_outcome_arm() -> Bool {
+  incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union()
+    && red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact()
 }
