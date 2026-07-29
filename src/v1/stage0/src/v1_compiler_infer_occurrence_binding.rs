@@ -2,11 +2,6 @@
 // Source module: v1.compiler.infer_occurrence_binding
 
 use self::ModulePathBindingProjection::*;
-use crate::std_occurrence_binding::OccurrenceBindingResult::{
-    OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
-};
-pub use crate::std_occurrence_binding::{AmbiguousBindingCandidates, OccurrenceBindingResult};
-pub use crate::std_occurrence_binding_resolve::module_path_binding_decide;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -17,7 +12,7 @@ use std::rc::Rc;
 pub fn infer_occurrence_binding_canonical_decide_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "v1 production adapter: global_bare chain and func parent-closure cardinality route through std.occurrence_binding_resolve.module_path_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate enumeration stays in infer_env/infer_sigs; cardinality never re-implements 0/1/many. Module-path owners only — no infer_env types, so this module stays below infer_env in the import DAG.".to_string()
+            "v1 production adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on owner module paths without importing generic std.occurrence_binding into stage0 (generic emission lacks Clone/serde bounds). Candidate enumeration stays in infer_env/infer_sigs. DISSOLVE-ON: stage0 emits std.occurrence_binding_resolve and this adapter delegates to module_path_binding_decide by execution.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -31,49 +26,35 @@ pub enum ModulePathBindingProjection {
     ModulePathBindingAmbiguous { owners: Rc<Vec<String>> },
 }
 
+pub fn module_path_owner_binding_decide(
+    owners: Rc<Vec<String>>,
+) -> Rc<ModulePathBindingProjection> {
+    {
+        let owner_count = (owners.clone().len() as i64);
+        if (owner_count.clone() == 0) {
+            Rc::new(ModulePathBindingProjection::ModulePathBindingMiss)
+        } else {
+            if (owner_count.clone() == 1) {
+                match owners.clone().first().cloned() {
+                    Some(owner) => Rc::new(ModulePathBindingProjection::ModulePathBindingHit {
+                        owner: owner.clone(),
+                    }),
+                    None => Rc::new(ModulePathBindingProjection::ModulePathBindingMiss),
+                }
+            } else {
+                Rc::new(ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                    owners: owners.clone(),
+                })
+            }
+        }
+    }
+}
+
 pub fn project_module_path_binding_decide(
     env_module_path: String,
     owners: Rc<Vec<String>>,
 ) -> Rc<ModulePathBindingProjection> {
-    match (*module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
-        OccurrenceBindingResult::OccurrenceBound {
-            binding: binding, ..
-        } => Rc::new(ModulePathBindingProjection::ModulePathBindingHit {
-            owner: binding
-                .candidate
-                .clone()
-                .containment
-                .clone()
-                .terminal
-                .clone(),
-        }),
-        OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => {
-            Rc::new(ModulePathBindingProjection::ModulePathBindingMiss)
-        }
-        OccurrenceBindingResult::OccurrenceAmbiguous {
-            candidates:
-                AmbiguousBindingCandidates {
-                    first,
-                    second,
-                    rest,
-                    ..
-                },
-            ..
-        } => Rc::new(ModulePathBindingProjection::ModulePathBindingAmbiguous {
-            owners: v1_rt::concat(
-                v1_rt::concat(
-                    Rc::new(vec![first.containment.clone().terminal.clone()]),
-                    Rc::new(vec![second.containment.clone().terminal.clone()]),
-                ),
-                rest.clone().iter().cloned().fold(
-                    Rc::new(vec![]),
-                    |acc: _, candidate: Rc<BindingCandidate<String>>| {
-                        v1_rt::rc_list_push(acc, candidate.containment.clone().terminal.clone())
-                    },
-                ),
-            ),
-        }),
-    }
+    module_path_owner_binding_decide(owners.clone())
 }
 
 pub fn global_bare_chain_owner_path_from_decide(
