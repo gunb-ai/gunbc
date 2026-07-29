@@ -133,7 +133,11 @@ test fn probe_empty_string_pipe() -> Bool { empty_string_pipe() }
 
 #[test]
 fn list_first_content_hash_method_nonempty() {
-    let outcome = run_fixture(&[("probe.dag", PROBE)], "probe.dag", "probe_nonempty_hash_method");
+    let outcome = run_fixture(
+        &[("probe.dag", PROBE)],
+        "probe.dag",
+        "probe_nonempty_hash_method",
+    );
     assert!(
         matches!(outcome, ClaimOutcome::Pass),
         "List<ContentHash>.first() nonempty method: {outcome:?}"
@@ -142,7 +146,11 @@ fn list_first_content_hash_method_nonempty() {
 
 #[test]
 fn list_first_content_hash_method_empty() {
-    let outcome = run_fixture(&[("probe.dag", PROBE)], "probe.dag", "probe_empty_hash_method");
+    let outcome = run_fixture(
+        &[("probe.dag", PROBE)],
+        "probe.dag",
+        "probe_empty_hash_method",
+    );
     assert!(
         matches!(outcome, ClaimOutcome::Pass),
         "List<ContentHash>.first() empty method: {outcome:?}"
@@ -177,7 +185,11 @@ fn list_first_string_method_empty() {
 
 #[test]
 fn list_first_content_hash_pipe_nonempty() {
-    let outcome = run_fixture(&[("probe.dag", PROBE)], "probe.dag", "probe_nonempty_hash_pipe");
+    let outcome = run_fixture(
+        &[("probe.dag", PROBE)],
+        "probe.dag",
+        "probe_nonempty_hash_pipe",
+    );
     assert!(
         matches!(outcome, ClaimOutcome::Pass),
         "List<ContentHash> |> first nonempty pipe: {outcome:?}"
@@ -186,7 +198,11 @@ fn list_first_content_hash_pipe_nonempty() {
 
 #[test]
 fn list_first_content_hash_pipe_empty() {
-    let outcome = run_fixture(&[("probe.dag", PROBE)], "probe.dag", "probe_empty_hash_pipe");
+    let outcome = run_fixture(
+        &[("probe.dag", PROBE)],
+        "probe.dag",
+        "probe_empty_hash_pipe",
+    );
     assert!(
         matches!(outcome, ClaimOutcome::Pass),
         "List<ContentHash> |> first empty pipe: {outcome:?}"

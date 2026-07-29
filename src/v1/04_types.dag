@@ -601,6 +601,10 @@ fn template_return_has_variables(template: AlgebraFieldTemplate) -> Bool {
 fn has_type_variable(t: AlgebraTypeTemplate) -> Bool {
   match t {
     AlgebraTypeVariable { id: _ } => true
+    ReceiverSelf => true
+    ReceiverElement => true
+    ReceiverKey => true
+    ReceiverValue => true
     ContainerOf { source: _, element: inner } => has_type_variable(t: inner)
     OptionalOf { inner: inner } => has_type_variable(t: inner)
     WitnessOf { inner: inner } => has_type_variable(t: inner)

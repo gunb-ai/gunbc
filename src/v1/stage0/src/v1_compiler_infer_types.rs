@@ -1731,6 +1731,10 @@ pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool
 pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*t.clone()).clone() {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
+        AlgebraTypeTemplate::ReceiverSelf => true,
+        AlgebraTypeTemplate::ReceiverElement => true,
+        AlgebraTypeTemplate::ReceiverKey => true,
+        AlgebraTypeTemplate::ReceiverValue => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => has_type_variable(inner.clone()),
