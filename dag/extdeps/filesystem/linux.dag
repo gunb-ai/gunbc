@@ -2,6 +2,7 @@ module extdeps.filesystem.linux
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Https, Uri }
+import std.nat { Nat }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -48,8 +49,8 @@ type LinuxOverlayObservation {
 type LinuxProcMountRow {
   mount: LinuxMountObservation
   options: List<String>
-  dump_frequency: Int
-  fsck_pass: Int
+  dump_frequency: Nat
+  fsck_pass: Nat
 }
 
 type LinuxProcMountLineRefusal
@@ -199,8 +200,8 @@ fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
                       |> map(option =>
                         linux_proc_mount_unescape(field: trim(option))
                       ),
-                    dump_frequency: dump_frequency,
-                    fsck_pass: fsck_pass,
+                    dump_frequency: dump_frequency as Nat,
+                    fsck_pass: fsck_pass as Nat,
                   },
                 }
               }
@@ -523,13 +524,13 @@ fn linux_overlay_observation_is_flash_backed(
     && linux_filesystem_kind_is_jffs2(
       kind: observation.upper_backing_mount.filesystem,
     )
-    && linux_mount_target_contains_directory(
-      target: observation.lower_backing_mount.target,
-      directory: observation.lower_directory,
+    && starts_with(
+      s: observation.lower_directory as String,
+      prefix: observation.lower_backing_mount.target as String,
     )
-    && linux_mount_target_contains_directory(
-      target: observation.upper_backing_mount.target,
-      directory: observation.upper_directory,
+    && starts_with(
+      s: observation.upper_directory as String,
+      prefix: observation.upper_backing_mount.target as String,
     )
 }
 

@@ -58,6 +58,8 @@ import std.measure {
 import std.nat { Nat }
 import std.state_durability {
   StatePerturbationGeneration,
+  StateRealizationDefinitionHashes,
+  StateRealizationIdentity,
 }
 import std.types { Bool, ContentHash, EpochMs, List, NonEmptyStr, String }
 
@@ -71,6 +73,7 @@ type BmcFanConvergenceReceipt {
   host: HostIdentity
   policy: BmcFanPolicyObservation
   persistence: BmcConfigPersistenceObservation
+  realization: StateRealizationIdentity
   active_config_digest: Digest
   previous_config_digest: Digest
   zone_control_path: NonEmptyStr
@@ -197,6 +200,8 @@ data srv4_bmc_fan_observed_controller_zone_path: NonEmptyStr = "/xyz/openbmc_pro
 data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
 fn bmc_fan_curve_step_content_hash(step: BmcFanCurveStep) -> ContentHash {
   content_hash_combine(
     left: content_hash_atom(
@@ -250,6 +255,39 @@ fn bmc_fan_curve_content_hash(curve: BmcFanCurve) -> ContentHash {
       ),
     ),
   )
+}
+
+fn srv4_bmc_fan_realization_definition_hashes(
+  policy: BmcFanPolicyObservation,
+  active_digest: Digest,
+) -> StateRealizationDefinitionHashes {
+  StateRealizationDefinitionHashes {
+    projection: bmc_fan_curve_content_hash(curve: policy.curve),
+    verifier: content_hash_atom(value: active_digest.hex),
+    observer: content_hash_combine(
+      left: content_hash_atom(value: srv4_bmc_fan_observed_controller_zone_path),
+      right: content_hash_atom(value: policy.selected_config_path),
+    ),
+    transport: content_hash_combine(
+      left: content_hash_atom(value: to_string(policy.firmware.version.major) as NonEmptyStr),
+      right: content_hash_combine(
+        left: content_hash_atom(value: to_string(policy.firmware.version.minor) as NonEmptyStr),
+        right: content_hash_atom(value: to_string(policy.firmware.version.patch) as NonEmptyStr),
+      ),
+    ),
+    actuator: content_hash_combine(
+      left: content_hash_atom(value: policy.controller_service),
+      right: content_hash_atom(value: policy.controller_binary),
+    ),
+  }
+}
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  definition_hashes: srv4_bmc_fan_realization_definition_hashes(
+    policy: srv4_bmc_fan_converged_policy_observation,
+    active_digest: srv4_bmc_fan_active_config_digest,
+  ),
 }
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
@@ -309,6 +347,7 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   host: srv4_host.identity,
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
+  realization: srv4_bmc_fan_realization,
   active_config_digest: srv4_bmc_fan_active_config_digest,
   previous_config_digest: sha256_digest(
     hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
@@ -391,8 +430,6 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
 }
 
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
-
-data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: this layer does not contain the projection, verifier, observer, transport, and actuator definitions whose transitive hashes StateRealizationDefinitionHashes requires. The operation/actuator layer must derive those five hashes from its actual definitions before a durability admission can be written; hashing a remembered label or these observed output values would leave definition changes invisible."
 
 data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
 

@@ -67,9 +67,9 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
                 } else {
                   BmcFirmwareVersionParsed {
                     version: bmc_firmware_semantic_version(
-                      major: major,
-                      minor: minor,
-                      patch: patch,
+                      major: major as Nat,
+                      minor: minor as Nat,
+                      patch: patch as Nat,
                     ),
                   }
                 }
