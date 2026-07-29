@@ -218,8 +218,11 @@ data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
   },
 ]
 
-data asrock_srv3_live_probe_firmware_version: BmcFirmwareSemanticVersion =
-  bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0)
+data asrock_srv3_live_probe_firmware_version: BmcFirmwareSemanticVersion = bmc_firmware_semantic_version(
+  major: 2,
+  minor: 7,
+  patch: 0,
+)
 
 fn live_probe_confirms_shipped_firmware_version() -> Bool {
   asrock_srv3_live_probe_firmware_version == asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version

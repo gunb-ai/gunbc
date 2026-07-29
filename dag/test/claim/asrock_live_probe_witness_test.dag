@@ -8,9 +8,10 @@ test fn srv3_live_bmc_host_is_grounded() -> Bool {
 }
 
 test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool {
+  let expected = bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0)
   live_probe_confirms_shipped_firmware_version()
-    && asrock_srv3_live_probe_firmware_version == "2.07.00"
-    && asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == "2.07.00"
+    && asrock_srv3_live_probe_firmware_version == expected
+    && asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == expected
 }
 
 test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {

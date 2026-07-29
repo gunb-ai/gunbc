@@ -1,7 +1,35 @@
 module test.claim.bmc_capability_solve
 
+import extdeps.bmc.capability {
+  BmcFirmwareVersionParsed,
+  BmcFirmwareVersionRefused,
+  bmc_firmware_semantic_version,
+  bmc_firmware_version_from_wire,
+  bmc_firmware_version_matches_track,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
+  match bmc_firmware_version_from_wire(wire: "3.anything") {
+    BmcFirmwareVersionRefused { wire: _ } =>
+      match bmc_firmware_version_from_wire(wire: "3.22.0") {
+        BmcFirmwareVersionParsed { version: parsed } =>
+          bmc_firmware_version_matches_track(
+            firmware: BmcFirmwareVersion {
+              family: OpenBmc,
+              version: parsed,
+            },
+            track: BmcFirmwareTrack {
+              family: OpenBmc,
+              major_version: 3,
+            },
+          )
+        BmcFirmwareVersionRefused { wire: _ } => false
+      }
+    BmcFirmwareVersionParsed { version: _ } => false
+  }
+}
 
 test fn srv3_capabilities_are_grounded() -> Bool {
   firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
@@ -42,7 +70,7 @@ test fn nbd_proxy_vm_capable_row_solves() -> Bool {
   let nbd_proxy_only_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "2.07.00",
+      version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,
@@ -62,7 +90,7 @@ test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
   let both_vm_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "4.00.00",
+      version: bmc_firmware_semantic_version(major: 4, minor: 0, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,
@@ -82,7 +110,7 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
   let update_only_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "1.00.00",
+      version: bmc_firmware_semantic_version(major: 1, minor: 0, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,
@@ -94,7 +122,7 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
   let vm_capable_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "3.00.00",
+      version: bmc_firmware_semantic_version(major: 3, minor: 0, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,
@@ -117,7 +145,7 @@ test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
   let update_only_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "1.00.00",
+      version: bmc_firmware_semantic_version(major: 1, minor: 0, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,
@@ -136,7 +164,7 @@ test fn node_with_virtual_media_solves_direct() -> Bool {
   let vm_row = BmcFirmwareCapabilityRow {
     firmware: BmcFirmwareVersion {
       family: OpenBmc,
-      version: "3.00.00",
+      version: bmc_firmware_semantic_version(major: 3, minor: 0, patch: 0),
     },
     capabilities: [
       CapabilityPowerControl,

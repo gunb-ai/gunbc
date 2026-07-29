@@ -315,8 +315,7 @@ fn linux_proc_mount_backing_row_rec(
   match rows.first() {
     Absent => selected
     Present { value: row } => {
-      let next =
-        if row.mount.target != excluded_target
+      let next = if row.mount.target != excluded_target
           && linux_mount_target_contains_directory(
             target: row.mount.target,
             directory: directory,
