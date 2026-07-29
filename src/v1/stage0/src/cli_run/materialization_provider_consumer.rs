@@ -14,16 +14,16 @@ pub enum ResolvedGraphProviderOutcome {
 
 fn build_materialization_provider_ctx() -> Result<InterpContext, String> {
     let roots = super::default_source_roots();
-    let (graph, indices) =
-        super::resolve_entry_graph_shared(&roots, MATERIALIZATION_PROVIDER_ENTRY)?;
-    Ok(super::make_eval_context(&graph, indices, ExecutionMode::Hermetic))
+    let entry = super::resolve_entry_file_under_roots(&roots, MATERIALIZATION_PROVIDER_ENTRY)?;
+    let (graph, indices) = super::resolve_entry_graph_shared(&roots, &entry)?;
+    Ok(super::make_eval_context(
+        &graph,
+        indices,
+        ExecutionMode::Hermetic,
+    ))
 }
 
-fn call_lookup_bool(
-    ctx: &InterpContext,
-    fn_name: &str,
-    lookup: &Value,
-) -> Result<bool, String> {
+fn call_lookup_bool(ctx: &InterpContext, fn_name: &str, lookup: &Value) -> Result<bool, String> {
     let args = [(Some("l".to_string()), lookup.clone())];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
         Ok(Value::Bool(b)) => Ok(b),

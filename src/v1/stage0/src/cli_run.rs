@@ -44,9 +44,9 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
-mod materialization_provider_consumer;
 pub use materialization_provider_consumer::{
     serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
     ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
@@ -54,9 +54,9 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, lookup as cross_process_lookup,
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
-    write as cross_process_write, CacheLookupResult, CachedResolvedGraph,
+    closure_content_digest, lookup as cross_process_lookup, resolved_graph_cache_root_from_env,
+    subject_digest_for_closure, transform_content_digest, write as cross_process_write,
+    CacheLookupResult, CachedResolvedGraph,
 };
 use crate::std_interface_summary::{module_key, typed_module_key};
 
@@ -13058,7 +13058,10 @@ pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
-fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+pub(crate) fn resolve_entry_file_under_roots(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<String, String> {
     let path = Path::new(entry);
     if path.is_file() {
         return Ok(path.to_string_lossy().into_owned());
