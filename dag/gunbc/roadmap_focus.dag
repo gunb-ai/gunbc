@@ -1,6 +1,7 @@
 module gunbc.roadmap_focus
 
 import std.types { String, Bool, Int, List }
+import std.graph { GraphEdge, CallGraph, graph_reverse_reachable_members }
 import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
 
 data roadmap_focus_note: String = "A VIEW policy over the roadmap, never an edit to it. When one lane is being worked, the other lanes are noise on the page — but deleting or parking them to get quiet would destroy work, and a roadmap that forgets a deliverable because someone wanted a shorter page is the worst possible failure for a queue. So focus filters the PROJECTION and leaves the authority whole: every node stays declared, every edge stays declared, and clearing the focus restores the full page with no recovery step. The mechanism is one row (roadmap_focus_selection) and reverting it is one edit.\n\nSelection is by OWNER rather than by a list of node ids. An id list would silently stop covering the lane the moment a new node joined it — the focus would look right and quietly understate, which is the same class of failure as a hand-maintained count. Owner is the lane's own identity and a new node in the lane inherits the focus by construction."
@@ -25,11 +26,60 @@ fn focus_admits_node(focus: RoadmapFocus, n: RoadmapNode) -> Bool {
   focus_admits_owner(focus: focus, owner: n.owner)
 }
 
-fn focus_visible_nodes(
+data focus_prerequisite_closure_note: String = "A FOCUS MUST BE CLOSED UNDER PREREQUISITES, or it shows work that cannot start and does not say why. Owner membership alone is the wrong visibility rule: the v1 deletion lane's critical path runs pderive-source-slot-binding, whose prerequisite namespace-canonical-binding belongs to the namespace lane — so an owner-only filter rendered the fourth link of the spine as though it were ready, with its blocker invisible. An operator working that page would pick it up and discover the block by hitting it. Worse for an agent: a dispatched worker reads a ready-looking node, starts, and stalls on work the page never mentioned.\n\nVisibility is therefore lane membership UNIONED with the transitive prerequisite closure of the lane. The closure reuses std.graph.graph_reverse_reachable_members over the roadmap's own edge relation rather than minting a second walk — the roadmap edge (child, parent) is already a dependency edge, reverse reachability from a lane node is exactly its ancestors, and the graph is acyclic by witness so the walk terminates by construction. A blocker is pulled onto the page WITH its own prerequisites, recursively, so the visible subgraph is genuinely startable end to end.\n\nPulled-in nodes stay distinguishable from lane work in the notice. They are not deliverables of this lane; they are the reason part of it cannot move, and conflating the two would misreport the lane's size."
+
+fn focus_lane_nodes(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,
 ) -> List<RoadmapNode> {
   nodes |> filter(n => focus_admits_node(focus: focus, n: n))
+}
+
+fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph {
+  CallGraph {
+    edges: edges |> map(e => GraphEdge {
+      caller: e.parent as String,
+      callee: e.child as String,
+    }),
+  }
+}
+
+fn focus_prerequisite_ids(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+) -> List<String> {
+  let names = nodes |> map(n => n.node as String)
+  let graph = roadmap_dependency_graph(edges: edges)
+  let lane_ids = focus_lane_nodes(focus: focus, nodes: nodes) |> map(n => n.node as String)
+  fold(lane_ids, init: [], f: fn(acc, id) {
+    fold(
+      graph_reverse_reachable_members(names: names, graph: graph, start: id),
+      init: acc,
+      f: fn(inner, anc) {
+        if any(lane_ids, l => l == anc) {
+          inner
+        } else {
+          append_distinct(acc: inner, p: anc)
+        }
+      },
+    )
+  })
+}
+
+fn focus_visible_nodes(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+) -> List<RoadmapNode> {
+  match focus {
+    NoFocus => nodes
+    FocusOnOwners { label: _, owners: _ } =>
+      let pulled = focus_prerequisite_ids(focus: focus, nodes: nodes, edges: edges)
+      nodes |> filter(n =>
+        focus_admits_node(focus: focus, n: n)
+          || any(pulled, p => p == (n.node as String)))
+  }
 }
 
 data focus_edge_containment_note: String = "An edge survives only when BOTH endpoints do. A dependency edge pointing at a hidden node would render as a prerequisite the reader cannot see and cannot act on — worse than omitting it, because it implies the page is complete while pointing off the edge of it. Dropping the edge keeps the visible subgraph internally consistent: everything named on the page is on the page. The cross-lane prerequisite is not lost, it is declared in the authority and returns the moment the focus clears, which is precisely the property that makes filtering safe here and unsafe as an edit."
@@ -39,7 +89,7 @@ fn focus_visible_edges(
   nodes: List<RoadmapNode>,
   edges: List<RoadmapEdge>,
 ) -> List<RoadmapEdge> {
-  let visible = focus_visible_nodes(focus: focus, nodes: nodes)
+  let visible = focus_visible_nodes(focus: focus, nodes: nodes, edges: edges)
   edges |> filter(e =>
     any(visible, n => (n.node as String) == (e.child as String))
       && any(visible, n => (n.node as String) == (e.parent as String)))
@@ -48,8 +98,9 @@ fn focus_visible_edges(
 fn focus_hidden_node_count(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
 ) -> Int {
-  count(nodes) - count(focus_visible_nodes(focus: focus, nodes: nodes))
+  count(nodes) - count(focus_visible_nodes(focus: focus, nodes: nodes, edges: edges))
 }
 
 fn focus_label(focus: RoadmapFocus) -> String {
@@ -71,8 +122,10 @@ data focus_carrier_retention_note: String = "HIDING A NODE MUST NOT ORPHAN ITS D
 fn focus_hidden_nodes(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
 ) -> List<RoadmapNode> {
-  nodes |> filter(n => !focus_admits_node(focus: focus, n: n))
+  let visible = focus_visible_nodes(focus: focus, nodes: nodes, edges: edges)
+  nodes |> filter(n => !any(visible, v => (v.node as String) == (n.node as String)))
 }
 
 fn append_distinct(acc: List<String>, p: String) -> List<String> {
@@ -82,9 +135,10 @@ fn append_distinct(acc: List<String>, p: String) -> List<String> {
 fn focus_hidden_carrier_paths(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
 ) -> List<String> {
   fold(
-    focus_hidden_nodes(focus: focus, nodes: nodes),
+    focus_hidden_nodes(focus: focus, nodes: nodes, edges: edges),
     init: [],
     f: fn(acc, n) {
       fold(n.carriers, init: acc, f: fn(inner, p) {
@@ -97,17 +151,41 @@ fn focus_hidden_carrier_paths(
 fn focus_hidden_carrier_links(
   focus: RoadmapFocus,
   nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
 ) -> String {
   join(
     map(
-      focus_hidden_carrier_paths(focus: focus, nodes: nodes),
+      focus_hidden_carrier_paths(focus: focus, nodes: nodes, edges: edges),
       p => join(["[", p, "](", p, ")"], ""),
     ),
     " · ",
   )
 }
 
-fn focus_notice(focus: RoadmapFocus, nodes: List<RoadmapNode>) -> String {
+fn focus_pulled_in_summary(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+) -> String {
+  let pulled = focus_prerequisite_ids(focus: focus, nodes: nodes, edges: edges)
+  if count(pulled) == 0 {
+    ""
+  } else {
+    join([
+      " ",
+      to_string(count(pulled)),
+      " of the rows below are NOT lane deliverables — they are prerequisites pulled in from other lanes because lane work is blocked on them: ",
+      join(pulled, ", "),
+      ".",
+    ], "")
+  }
+}
+
+fn focus_notice(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+  edges: List<RoadmapEdge>,
+) -> String {
   match focus {
     NoFocus => ""
     FocusOnOwners { label, owners: _ } =>
@@ -115,9 +193,11 @@ fn focus_notice(focus: RoadmapFocus, nodes: List<RoadmapNode>) -> String {
         "**Focused view — ",
         label,
         ".** ",
-        to_string(focus_hidden_node_count(focus: focus, nodes: nodes)),
-        " active deliverable(s) in other lanes are declared in the authority and hidden here; nothing is deleted or parked by focusing. Clear `roadmap_focus_selection` in `dag/gunbc/roadmap_authority.dag` to restore the full page. Hidden lanes remain readable through their carriers: ",
-        focus_hidden_carrier_links(focus: focus, nodes: nodes),
+        to_string(focus_hidden_node_count(focus: focus, nodes: nodes, edges: edges)),
+        " active deliverable(s) in other lanes are declared in the authority and hidden here; nothing is deleted or parked by focusing. Clear `roadmap_focus_selection` in `dag/gunbc/roadmap_authority.dag` to restore the full page.",
+        focus_pulled_in_summary(focus: focus, nodes: nodes, edges: edges),
+        " Hidden lanes remain readable through their carriers: ",
+        focus_hidden_carrier_links(focus: focus, nodes: nodes, edges: edges),
         ".",
       ], "")
   }
