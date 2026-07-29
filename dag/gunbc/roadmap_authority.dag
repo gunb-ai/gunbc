@@ -1636,6 +1636,24 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_by: "operator",
       accepted_on: "2026-07-29",
     },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "v1-test-hygiene-producer-retirement"),
+      criteria_digest: chash(s: "8f77a4b2e0ee3387"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.test_module_hygiene_hand_rust_equivalence_witness",
+        witness_fn: "test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/gunbc/test_module_hygiene.dag",
+        further_artifacts: [
+          "dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag",
+          "src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
   ]
 }
 

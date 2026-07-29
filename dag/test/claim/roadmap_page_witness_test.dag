@@ -86,7 +86,7 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
   let empty = empty_doc_html()
   string_contains(s: authority, pattern: "class=\"finish-line-progress\"")
     && string_contains(s: authority, pattern: "v1 exit: four finish lines")
-    && string_contains(s: authority, pattern: "64 declared · 7 accepted · 57 active")
+    && string_contains(s: authority, pattern: "64 declared · 8 accepted · 56 active")
     && string_contains(s: authority, pattern: "Compiler fixed point")
     && string_contains(s: authority, pattern: "Interpreter deleted")
     && string_contains(s: authority, pattern: "Products v1-free")
