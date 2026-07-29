@@ -33,25 +33,25 @@ fn v1_exit_finish_lines() -> List<V1FinishLineSpec> {
     V1FinishLineSpec {
       line: CompilerFixedPoint,
       name: "Compiler fixed point",
-      claim: "The v2 emitter re-emits and rebuilds itself for two generations with behavioral equivalence on the discriminating corpus; byte identity with the seed is a non-goal.",
+      claim: "The new compiler generates its own source, that source builds, and the result behaves the same again. Matching the old compiler byte for byte is deliberately not the goal.",
       node: v1_exit_node_id(s: "v1-emitter-fixed-point"),
     },
     V1FinishLineSpec {
       line: InterpreterDeleted,
       name: "Interpreter deleted",
-      claim: "No product or required execution surface links or routes through the v1 interpreter, and the interpreter source is deleted; unrelated hand-maintained Rust and v1 compiler tests are not part of this claim.",
+      claim: "Nothing we ship or run reaches the old runner any more, and its code is gone. Unrelated hand-written Rust and the old compiler's tests are not part of this claim.",
       node: v1_exit_node_id(s: "v1-interpreter-delete"),
     },
     V1FinishLineSpec {
       line: ProductsV1Free,
       name: "Products v1-free",
-      claim: "Every product builds and runs with src/v1 absent from its build path; a typed terminal-kernel pin with a reason is the only admissible residue.",
+      claim: "Every product builds and runs with the old code absent. Anything that genuinely has to stay is listed with a reason.",
       node: v1_exit_node_id(s: "v1-products-v1-free"),
     },
     V1FinishLineSpec {
       line: ZeroHandMaintainedRust,
       name: "Zero hand-maintained Rust",
-      claim: "Every tracked Rust source in the repository is emitted from cited .dag models or deleted; hand maintenance is a transitional frontier, never a terminus.",
+      claim: "Every Rust file we track is generated from a description or deleted. Hand-maintaining Rust is a stage we pass through, not where we stop.",
       node: v1_exit_node_id(s: "v1-zero-hand-maintained-rust"),
     },
   ]

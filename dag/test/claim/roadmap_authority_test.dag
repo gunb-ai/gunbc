@@ -413,9 +413,9 @@ test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
   let j = observation_scoped_run_seed_growth_justification()
   j.owning_dissolution_lane == "v1-hand-queue-drain"
     && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
-    && string_contains(s: j.reason, pattern: "interpreter entry seam")
-    && string_contains(s: j.trigger, pattern: "typed host-effect transport")
-    && string_contains(s: j.trigger, pattern: "hollow cli_run.rs Chunk F")
+    && string_contains(s: j.reason, pattern: "where the old runner starts a program")
+    && string_contains(s: j.trigger, pattern: "described operation")
+    && string_contains(s: j.trigger, pattern: "hollow out")
     && id_exists(id: "observation-scoped-run-seed-growth-justification")
     && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
 }
@@ -432,9 +432,9 @@ test fn witness_caret_parse_smoke_seed_frontier_is_countable_owned_and_triggered
     && j.owning_dissolution_lane == "v1-zero-hand-maintained-rust"
     && j.current_boundary == "src/v1/stage0/tests/caret_parse_smoke.rs"
     && string_contains(s: j.reason, pattern: "predates")
-    && string_contains(s: j.reason, pattern: "add no capability")
-    && string_contains(s: j.trigger, pattern: "emitted test")
-    && string_contains(s: j.trigger, pattern: "delete the Rust test")
+    && string_contains(s: j.reason, pattern: "no new behaviour")
+    && string_contains(s: j.trigger, pattern: "regenerate this test")
+    && string_contains(s: j.trigger, pattern: "delete it")
     && edge_exists(
       child: "v1-zero-hand-maintained-rust",
       parent: "caret-parse-smoke-seed-growth-justification",
@@ -521,9 +521,9 @@ test fn witness_projection_is_active_only() -> Bool {
     )
   )
   string_contains(s: out, pattern: "## Active deliverables — dependency order")
-    && string_contains(s: out, pattern: "Build and run every product without src/v1")
-    && !string_contains(s: out, pattern: "Carry exact typed declaration and reference occurrences")
-    && !string_contains(s: out, pattern: "Make nullary coproduct reflection type-safe")
+    && string_contains(s: out, pattern: "Build and run every product without the old code present")
+    && !string_contains(s: out, pattern: "Keep track of exactly which name is which")
+    && !string_contains(s: out, pattern: "Stop the compiler from mixing up one type with another")
     && !string_contains(s: out, pattern: "**superseded →**")
     && !string_contains(s: out, pattern: "awaiting sign-off")
     && !string_contains(s: out, pattern: "Operator TODO")

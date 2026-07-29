@@ -11,7 +11,7 @@ import gunbc.roadmap_model {
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
 
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketFields, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
 fn roadmap_max_depth() -> Int { 12 }
 
@@ -66,6 +66,12 @@ fn desc_inlines(description: String) -> List<MarkdownInline> {
   if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
 }
 
+data why_clause_note: String = "A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field: the authority still states the reason exactly once. An empty reason renders nothing rather than a dangling label, so a row that has not stated its why is visibly missing it instead of quietly padded."
+
+fn why_clause(t: TicketFields) -> String {
+  if t.displaced_cost == "" { "" } else { concat(" Why: ", t.displaced_cost) }
+}
+
 fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
   match line {
     DerivableLine { prs, title, description } =>
@@ -77,7 +83,7 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
     PlainLine { content } => [TextInline { text: content }]
     SupersededLine { by, content } => [TextInline { text: concat(concat("~~", content), concat("~~ **superseded →** ", by)) }]
     TicketLine { done: _, ticket } =>
-      [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief], "") }]
+      [TextInline { text: join(["**", ticket.headline, "** — ", ticket.brief, why_clause(t: ticket)], "") }]
   }
 }
 
