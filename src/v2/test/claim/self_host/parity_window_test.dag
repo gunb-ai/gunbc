@@ -14,13 +14,29 @@ import v2.compiler.self_host.parity_window {
   ParityUnobserved,
   ParityEvidenceRefused,
   parity_monitor_verdict,
-  parity_holding,
-  parity_revert_required,
-  parity_evidence_refused
+  parity_routing_admitted
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+fn verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => true
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+fn verdict_is_evidence_refused(v: ParityMonitorVerdict) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => false
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => true
+  }
+}
 
 fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> ParityObservation {
   WindowObserved {
@@ -57,9 +73,7 @@ test fn witness_empty_history_is_unobserved() -> Bool {
     ParityUnobserved { family: f } => f == "add"
     ParityEvidenceRefused { family: _, cause: _ } => false
   }
-  unobserved
-    && (parity_holding(family: "add", observations: []) == false)
-    && (parity_revert_required(family: "add", observations: []) == false)
+  unobserved && (parity_routing_admitted(family: "add", observations: []) == false)
 }
 
 test fn witness_green_holds() -> Bool {
@@ -120,9 +134,11 @@ test fn witness_latch_names_first_red_window() -> Bool {
 }
 
 test fn witness_cold_divergence_demands_revert() -> Bool {
-  parity_revert_required(
-    family: "add",
-    observations: [green_obs(id: "w1", seq: 1), cold_obs(id: "w2", seq: 2)]
+  verdict_is_revert_required(
+    v: parity_monitor_verdict(
+      family: "add",
+      observations: [green_obs(id: "w1", seq: 1), cold_obs(id: "w2", seq: 2)]
+    )
   )
 }
 
@@ -147,13 +163,34 @@ test fn witness_mixed_family_receipt_refused() -> Bool {
 }
 
 test fn witness_refusal_is_absorbing() -> Bool {
-  parity_evidence_refused(
-    family: "add",
-    observations: [
-      observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
-      green_obs(id: "w2", seq: 2)
-    ]
+  verdict_is_evidence_refused(
+    v: parity_monitor_verdict(
+      family: "add",
+      observations: [
+        observed(family: "meet_join", id: "w1", seq: 1, green: true, warm: true),
+        green_obs(id: "w2", seq: 2)
+      ]
+    )
   )
+}
+
+test fn witness_refused_evidence_denies_routing_admission() -> Bool {
+  let refused_evidence = [
+    green_obs(id: "w1", seq: 1),
+    observed(family: "meet_join", id: "w2", seq: 2, green: true, warm: true)
+  ]
+  let out_of_order = [green_obs(id: "w1", seq: 2), green_obs(id: "w2", seq: 2)]
+  verdict_is_evidence_refused(
+    v: parity_monitor_verdict(family: "add", observations: refused_evidence)
+  )
+    && (parity_routing_admitted(family: "add", observations: refused_evidence) == false)
+    && verdict_is_evidence_refused(
+      v: parity_monitor_verdict(family: "add", observations: out_of_order)
+    )
+    && (parity_routing_admitted(family: "add", observations: out_of_order) == false)
+    && (verdict_is_revert_required(
+      v: parity_monitor_verdict(family: "add", observations: refused_evidence)
+    ) == false)
 }
 
 test fn witness_cadence_order_violation_refused() -> Bool {

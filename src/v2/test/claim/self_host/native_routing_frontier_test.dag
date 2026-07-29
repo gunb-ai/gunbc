@@ -12,13 +12,27 @@ import v2.compiler.self_host.native_routing_frontier {
 import v2.compiler.self_host.parity_window {
   ParityWindowReceipt,
   WindowObserved,
-  parity_holding,
-  parity_revert_required
+  ParityMonitorVerdict,
+  ParityHolding,
+  ParityRevertRequired,
+  ParityUnobserved,
+  ParityEvidenceRefused,
+  parity_monitor_verdict,
+  parity_routing_admitted
 }
 import v2.compiler.self_host.parity_receipts_local { meet_join_local_observations, complement_local_observations }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+fn frontier_verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => true
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
 
 test fn witness_roster_total_holds() -> Bool {
   routing_frontier_total_holds()
@@ -68,8 +82,8 @@ fn family_crate_bound_subject(module_path: String) -> Bool {
 }
 
 test fn witness_local_receipts_seed_post_flip_monitor() -> Bool {
-  parity_holding(family: "meet_join", observations: meet_join_local_observations())
-    && parity_holding(family: "complement", observations: complement_local_observations())
+  parity_routing_admitted(family: "meet_join", observations: meet_join_local_observations())
+    && parity_routing_admitted(family: "complement", observations: complement_local_observations())
     && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_meet_join_equals_eval")
     && family_crate_bound_subject(module_path: "v2.test.execution.emit_host_complement_equals_eval")
 }
@@ -89,24 +103,28 @@ test fn witness_post_flip_red_window_latches_revert() -> Bool {
       }
     ]
   )
-  parity_revert_required(family: "meet_join", observations: with_red)
-    && parity_revert_required(
-      family: "meet_join",
-      observations: concat(
-        with_red,
-        [
-          WindowObserved {
-            receipt: ParityWindowReceipt {
-              family: "meet_join",
-              cadence_window_id: "later-green",
-              agreement_green: true,
-              warm_compile_skipped: true
-            },
-            cadence_sequence: 6
-          }
-        ]
-      )
+  let with_red_then_green = concat(
+    with_red,
+    [
+      WindowObserved {
+        receipt: ParityWindowReceipt {
+          family: "meet_join",
+          cadence_window_id: "later-green",
+          agreement_green: true,
+          warm_compile_skipped: true
+        },
+        cadence_sequence: 6
+      }
+    ]
+  )
+  frontier_verdict_is_revert_required(
+    v: parity_monitor_verdict(family: "meet_join", observations: with_red)
+  )
+    && (parity_routing_admitted(family: "meet_join", observations: with_red) == false)
+    && frontier_verdict_is_revert_required(
+      v: parity_monitor_verdict(family: "meet_join", observations: with_red_then_green)
     )
+    && (parity_routing_admitted(family: "meet_join", observations: with_red_then_green) == false)
 }
 
 test fn witness_retained_rows_carry_reason_and_trigger() -> Bool {
