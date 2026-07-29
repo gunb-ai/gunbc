@@ -4,6 +4,9 @@
 use self::FuncSigLookup::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    func_parent_closure_ambiguity_labels_from_decide, func_parent_closure_owner_count_from_decide,
+};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -159,29 +162,19 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 None => acc.clone(),
             },
         );
-        let owner_count = (scan.owners.clone().len() as i64);
-        if (owner_count.clone() == 0) {
-            Rc::new(FuncSigLookup::FuncSigUnresolved)
-        } else {
-            if (owner_count.clone() == 1) {
-                match scan.first_sig.clone() {
-                    Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                    None => Rc::new(FuncSigLookup::FuncSigUnresolved),
-                }
-            } else {
-                Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                    candidates: Rc::new({
-                        let mut __result = Vec::new();
-                        for o in scan.owners.clone().iter().cloned() {
-                            __result.push(v1_rt::concat(
-                                v1_rt::concat(o.clone(), ".".to_string()),
-                                name.clone(),
-                            ));
-                        }
-                        __result
-                    }),
-                })
-            }
+        match func_parent_closure_owner_count_from_decide(env.name.clone(), scan.owners.clone()) {
+            0 => Rc::new(FuncSigLookup::FuncSigUnresolved),
+            1 => match scan.first_sig.clone() {
+                Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
+                None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+            },
+            _ => Rc::new(FuncSigLookup::FuncSigAmbiguous {
+                candidates: func_parent_closure_ambiguity_labels_from_decide(
+                    env.name.clone(),
+                    scan.owners.clone(),
+                    name.clone(),
+                ),
+            }),
         }
     }
 }

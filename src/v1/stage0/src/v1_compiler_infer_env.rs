@@ -10,6 +10,9 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_infer_occurrence_binding::{
+    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_owner_path_from_decide,
+};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
@@ -964,7 +967,7 @@ pub fn global_bare_nearest_ancestor(
 pub fn unique_on_chain_policy_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default ON = NamespaceOnlyY (8 step 4 flip); host bracket false = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous).".to_string()
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType — never a whole-corpus search (namespace-unique-on-chain operational plan lines 290-291, 408). Cardinality for chain and func-parent populations routes through std.occurrence_binding_resolve.occurrence_binding_decide.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -998,9 +1001,28 @@ pub fn global_bare_unique_chain_candidate(
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
         let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
-        match ((chain.clone().len() as i64) == 1) {
-            true => chain.clone().first().cloned(),
-            false => None,
+        match global_bare_chain_owner_path_from_decide(
+            env_module_path.clone(),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in chain.clone().iter().cloned() {
+                    __result.push(c.module_path.clone());
+                }
+                __result
+            }),
+        ) {
+            Some(owner) => Rc::new({
+                let mut __result = Vec::new();
+                for c in chain.clone().iter().cloned() {
+                    if (c.module_path.clone() == owner.clone()) {
+                        __result.push(c);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned(),
+            None => None,
         }
     }
 }
@@ -1029,27 +1051,17 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
                 candidates: cands, ..
             }) => {
                 let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                if ((chain.clone().len() as i64) == 1) {
-                    Rc::new(vec![])
-                } else {
-                    {
-                        let pool = if ((chain.clone().len() as i64) >= 2) {
-                            chain.clone()
-                        } else {
-                            cands.clone()
-                        };
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for c in pool.clone().iter().cloned() {
-                                __result.push(v1_rt::concat(
-                                    v1_rt::concat(c.module_path.clone(), ".".to_string()),
-                                    name.clone(),
-                                ));
-                            }
-                            __result
-                        })
-                    }
-                }
+                global_bare_chain_ambiguity_labels_from_decide(
+                    env.module_path.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    }),
+                    name.clone(),
+                )
             }
             _ => Rc::new(vec![]),
         }
@@ -1427,7 +1439,11 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
             candidates: cands, ..
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
-                (global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) == None)
+                {
+                    let chain =
+                        global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+                    ((chain.clone().len() as i64) >= 2)
+                }
             } else {
                 (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
             }
