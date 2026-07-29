@@ -39,11 +39,13 @@ import gunbc.bmc_fan_projection {
 }
 import product.placement_supply { HostIdentity }
 import std.state_durability {
+  DurabilityEvidenceAmbiguous,
+  DurabilityEvidenceMissing,
+  StateDurabilityQualified,
+  StateDurabilityRefused,
   StateDurabilityVerdict,
   StatePerturbationGeneration,
-  state_durability_satisfied,
   state_durability_verdict,
-  state_durability_verdict_reason,
 }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.upsert_decision {
@@ -285,6 +287,38 @@ fn bmc_fan_policy_apply_suitability(
   }
 }
 
+fn bmc_fan_durability_verdict_qualified(
+  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+) -> Bool {
+  match verdict {
+    StateDurabilityQualified { qualification: _ } => true
+    StateDurabilityRefused { cause: _ } => false
+  }
+}
+
+fn bmc_fan_durability_refusal_reason(
+  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+) -> String {
+  match verdict {
+    StateDurabilityQualified { qualification: _ } => ""
+    StateDurabilityRefused { cause: cause } =>
+      match cause {
+        DurabilityEvidenceMissing { admission: admission, boundary: _ } =>
+          concat(
+            "selected realization has no exact evidence for target, desired state, realization, capability version, perturbation generation, readback subject, and boundary: ",
+            admission.realization.realization_id as String,
+          )
+        DurabilityEvidenceAmbiguous { admission: admission, boundary: _, count: _ } =>
+          concat(
+            "selected realization has duplicate or conflicting exact durability evidence: ",
+            admission.realization.realization_id as String,
+          )
+        _ =>
+          "bmc fan realizer does not satisfy the declared state lifetime"
+      }
+  }
+}
+
 fn bmc_fan_policy_durability_qualification(
   intent: BmcControlPlaneIntent,
   host: HostIdentity,
@@ -436,13 +470,13 @@ fn bmc_fan_policy_classification(
                   durability_generation: durability_generation,
                   durability_evidence: durability_evidence,
                 )
-                if !state_durability_satisfied(verdict: durability) {
+                if !bmc_fan_durability_verdict_qualified(verdict: durability) {
                   UpsertClassification {
                     verdict: UnknownRefused,
                     decision: Refuse {
                       reason: concat(
                         "bmc fan realizer does not satisfy the declared state lifetime: ",
-                        state_durability_verdict_reason(verdict: durability),
+                        bmc_fan_durability_refusal_reason(verdict: durability),
                       ),
                     },
                   }

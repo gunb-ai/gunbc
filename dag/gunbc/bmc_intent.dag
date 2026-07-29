@@ -17,14 +17,16 @@ import extdeps.bmc.types {
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
 import std.bmc { OpenBmc }
-import std.measure { celsius, celsius_count, percent }
+import std.measure { celsius, celsius_count, celsius_delta, percent }
 import std.state_durability {
   ControlPlaneRestartBoundary,
   DurableAcross,
   LifecycleGracefulRestart,
   StateDurabilityBoundary,
   StateDurabilityIntent,
+  state_durability_boundary_requirements,
 }
+import std.types { List, NonEmptyStr }
 
 type BmcFanPolicyIntent {
   durability: StateDurabilityIntent
@@ -45,7 +47,10 @@ data fleet_bmc_fan_graceful_restart_boundary: StateDurabilityBoundary = ControlP
 }
 
 data fleet_bmc_fan_durability_intent: StateDurabilityIntent = DurableAcross {
-  boundaries: [fleet_bmc_fan_graceful_restart_boundary],
+  boundaries: state_durability_boundary_requirements(
+    first: fleet_bmc_fan_graceful_restart_boundary,
+    additional: [],
+  ),
 }
 
 data fleet_quiet_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
@@ -64,8 +69,8 @@ data fleet_quiet_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis_degrees_celsius: 1,
-  negative_hysteresis_degrees_celsius: 2,
+  positive_hysteresis: celsius_delta(count: 1),
+  negative_hysteresis: celsius_delta(count: 2),
 }
 
 data fleet_fan_acoustic_policy: BmcFanAcousticPolicy = BmcFanAcousticPolicy {
