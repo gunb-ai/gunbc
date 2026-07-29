@@ -183,6 +183,29 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
 const STAGE0_CARGO_TOML_REL: &str = "src/v1/stage0/Cargo.toml";
 const STAGE0_PACKAGE_ROOT: &str = "src/v1/stage0/";
 
+/// Typed parse refusal for stage0 `Cargo.toml` `[[bin]]` extraction (DESIGN §5 — observe refusal without unwind).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage0CargoBinManifestParseRefusal {
+    BinTableMissingPath,
+    BinTableCountMismatch { tables: usize, paths: usize },
+}
+
+impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BinTableMissingPath => {
+                write!(f, "[[bin]] table missing path")
+            }
+            Self::BinTableCountMismatch { tables, paths } => {
+                write!(
+                    f,
+                    "{tables} [[bin]] tables but {paths} paths parsed"
+                )
+            }
+        }
+    }
+}
+
 /// Host-derived repo-relative paths for every `[[bin]]` in stage0 `Cargo.toml`.
 /// Authority: `gunbc.stage0_cargo_manifest` (no hand-listed bin rows in `.dag`).
 pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
@@ -197,7 +220,9 @@ pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
     stage0_cargo_bin_repo_paths_from_manifest_str(&content)
 }
 
-fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
+pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
+    content: &str,
+) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
     let mut paths = Vec::new();
     let mut in_bin = false;
     let mut current_bin_has_path = false;
@@ -210,9 +235,7 @@ fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
         }
         if trimmed == "[[bin]]" {
             if in_bin && !current_bin_has_path {
-                panic!(
-                    "stage0_cargo_bin_repo_paths_from_manifest: [[bin]] table missing path before next table"
-                );
+                return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
             }
             in_bin = true;
             current_bin_has_path = false;
@@ -221,7 +244,7 @@ fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
         }
         if trimmed.starts_with("[[") {
             if in_bin && !current_bin_has_path {
-                panic!("stage0_cargo_bin_repo_paths_from_manifest: [[bin]] table missing path");
+                return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
             }
             in_bin = false;
             current_bin_has_path = false;
@@ -235,15 +258,21 @@ fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
         }
     }
     if in_bin && !current_bin_has_path {
-        panic!("stage0_cargo_bin_repo_paths_from_manifest: trailing [[bin]] table missing path");
+        return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
     }
     if bin_section_count != paths.len() {
-        panic!(
-            "stage0_cargo_bin_repo_paths_from_manifest: {bin_section_count} [[bin]] tables but {} paths parsed",
-            paths.len()
-        );
+        return Err(Stage0CargoBinManifestParseRefusal::BinTableCountMismatch {
+            tables: bin_section_count,
+            paths: paths.len(),
+        });
     }
-    paths
+    Ok(paths)
+}
+
+fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
+    try_stage0_cargo_bin_repo_paths_from_manifest_str(content).unwrap_or_else(|refusal| {
+        panic!("stage0_cargo_bin_repo_paths_from_manifest: {refusal}");
+    })
 }
 
 fn parse_toml_quoted_value(raw: &str) -> Option<String> {
@@ -334,7 +363,10 @@ pub fn stage0_cargo_bin_manifest_parse_complete_holds() -> bool {
 
 pub fn stage0_cargo_bin_manifest_unparsed_bin_fixture_holds() -> bool {
     let incomplete = "[[bin]]\nname = \"orphan\"\n[[bin]]\npath=\"src/bin/ok.rs\"\n";
-    std::panic::catch_unwind(|| stage0_cargo_bin_repo_paths_from_manifest_str(incomplete)).is_err()
+    matches!(
+        try_stage0_cargo_bin_repo_paths_from_manifest_str(incomplete),
+        Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
+    )
 }
 
 /// The workspace root is a property of where the process RUNS, never of where the
@@ -31807,7 +31839,10 @@ pub mod census_exclude_derive;
 
 #[cfg(test)]
 mod stage0_cargo_manifest_tests {
-    use super::stage0_cargo_bin_repo_paths_from_manifest_str;
+    use super::{
+        stage0_cargo_bin_repo_paths_from_manifest_str, try_stage0_cargo_bin_repo_paths_from_manifest_str,
+        Stage0CargoBinManifestParseRefusal,
+    };
 
     #[test]
     fn parses_bin_path_without_spaces_around_equals() {
@@ -31823,9 +31858,10 @@ path="src/bin/demo.rs"
     #[test]
     fn rejects_bin_table_missing_path() {
         let fragment = "[[bin]]\nname = \"orphan\"\n";
-        let err =
-            std::panic::catch_unwind(|| stage0_cargo_bin_repo_paths_from_manifest_str(fragment));
-        assert!(err.is_err(), "[[bin]] without path must refuse");
+        assert_eq!(
+            try_stage0_cargo_bin_repo_paths_from_manifest_str(fragment),
+            Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
+        );
     }
 
     #[test]
