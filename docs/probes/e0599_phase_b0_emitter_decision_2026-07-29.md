@@ -392,6 +392,31 @@ same work dir reproduces the previous TSV **byte-for-byte** (`diff` clean). Pinn
 `e0599_b0_rollup_roster_covers_every_cause_the_classifier_can_emit`, and
 `e0599_b0_rollup_roster_retains_the_unresolved_arm`.
 
+**Fourth control — an unresolved site stops the line.** `review 44380`
+(codex/codex-default) caught that the joiner *counted* unresolved sites and then exited
+**0**, so a newly unrecognized emitter shape would have produced a green, incomplete
+census — indistinguishable from a complete one to any consumer. The count was reported;
+the line did not stop.
+
+Fixed the way DESIGN §5's factory model prescribes, and the ordering is the point: the
+full census is emitted **first**, so every deficit is inspectable and located (the
+sanctioned stopped-line audit "reports, it does not green"), and *then* the probe refuses
+with a non-zero exit naming each unclassified site. Proven by perturbation — neutering
+`e0599_receiver_is_bare_ident` so bare identifiers reach `LoweringUnidentified`:
+
+```
+exit code: 1
+REFUSED: 31 site(s) reached the Unresolved arm — the census above is INCOMPLETE and must
+not be consumed as a measurement. No lowering row in tools.e0599_emitter_decision_census
+names these shapes, so their requirement cause is unknown, not absent. Located:
+src/extdeps_communication_fidelity_carriers.rs:46 source_medium_carried
+(method='clone' receiver='carried'); src/v2_std_algebra.rs:76 list_reverse …
+```
+
+…with all 78 per-site rows still printed. Measured `unresolved` is **0** today, so the arm
+is dead-in-corpus and kept as the fail-closed backstop — which is exactly why it needed a
+perturbation to prove it fires at all.
+
 ## 7. Corrections to the brief's verified facts (it asked for re-verification)
 
 1. **The linked crate is `im` 15.1.0, not `im-rc`.** The probe manifest authority
