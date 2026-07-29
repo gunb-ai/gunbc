@@ -3,6 +3,7 @@ module extdeps.realization.emit_on_demand_host
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { ContentHash, String }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -11,9 +12,34 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data emit_on_demand_host_note: String = "P3 host-transport helpers (witness-realization kernel): the effective cache path is root / emit_on_demand_key(NativeArtifact) / artifact_realization_digest(materialized workspace files + build argv) / resolved_build_toolchain_identity. The outer closure key groups one authored computation; the input-realization digest makes changed emitted source, dispatcher suffix, manifest, or build argv select a cold workspace even when the inferred tree is byte-identical; the final host-observed segment makes a changed resolved compiler select a cold workspace even when files and argv are identical. run_emit_host_cached supplies the first three segments. The HAND-RUST emit_host_run_transport_cached boundary materializes the exact files at that input-realization root, resolves and probes the build toolchain with that root as current_dir (so workspace rust-toolchain selection is observed), and appends the identity before consulting .native_ready. Warm hits skip cargo build via extdeps.cargo and set compile_skipped. Eviction targets the outer workspace through emit_host_native_cache_evict — NOT raw shell.Remove — so it removes every realization and toolchain child and shares the durable rebase authority with the transport."
+data emit_on_demand_host_note: String = "P3 host-transport helpers (witness-realization kernel): the effective cache path is root / emit_on_demand_key(NativeArtifact) / artifact_realization_digest(materialized workspace files + build argv) / resolved_build_context_identity. The outer closure key groups one authored computation; the input-realization digest makes changed emitted source, dispatcher suffix, manifest, or build argv select a cold workspace even when the inferred tree is byte-identical. The final host-observed segment combines the resolved build tools, the exact constructed subprocess environment, and every Cargo configuration file Cargo can discover from the workspace. run_emit_host_cached supplies the first three segments. The HAND-RUST emit_host_run_transport_cached boundary materializes the exact files at that input-realization root, constructs and hashes the only environment admitted to build/run commands, resolves and probes the build toolchain with that root as current_dir (so workspace rust-toolchain selection is observed), observes Cargo configuration, and appends the context identity before consulting .native_ready. Warm hits skip cargo build via extdeps.cargo and set compile_skipped. Eviction targets the outer workspace through emit_host_native_cache_evict — NOT raw shell.Remove — so it removes every realization and context child and shares the durable rebase authority with the transport."
 
-data emit_on_demand_host_concurrent_same_key_note: String = "Concurrent same-key story for persistent workspaces: identical outer closure key, input-realization digest, AND resolved build-toolchain identity share a workspace — benign-by-identity because those segments cover the exact materialized workspace files, build argv, and host tools that realize them. A changed emitter/dispatcher realization or resolved compiler cannot share the ready marker even when its inferred-tree closure digest is unchanged. Concurrent cold builds of identical inputs may still race before .native_ready; no atomic claim exists in the seed HAND-RUST transport yet. Dissolve-on: the self-emitted transport adds flock/claim when witness-family concurrency requires it."
+data emit_on_demand_host_concurrent_same_key_note: String = "Concurrent same-key story for persistent workspaces: identical outer closure key, input-realization digest, AND resolved build-context identity share a workspace — benign-by-identity because those segments cover the exact materialized workspace files, build argv, resolved tools, constructed environment, and Cargo configuration that realize them. A changed emitter/dispatcher realization, compiler, admitted environment row, or Cargo configuration cannot share the ready marker even when its inferred-tree closure digest is unchanged. Concurrent cold builds of identical inputs may still race before .native_ready; no atomic claim exists in the seed HAND-RUST transport yet. Dissolve-on: the self-emitted transport adds flock/claim when witness-family concurrency requires it."
+
+data emit_on_demand_host_seed_deferral_note: String = "Pure Bootstrap receipt for the bounded existing HAND-RUST boundary: no new Rust file or parallel key authority is admitted. This seed observation/apply arm is explicitly deferred to ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and the concrete dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel deletion row. Delete it when the self-emitted transport consumes ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm agreement witnesses stay green with the Rust helpers removed."
+
+type ResolvedBuildContext {
+  toolchain_identity: ContentHash
+  environment_identity: ContentHash
+  cargo_configuration_identity: ContentHash
+}
+
+fn resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash {
+  artifact_realization_digest(inputs: [
+    ArtifactRealizationInput {
+      identity: "resolved-build-toolchain",
+      content_digest: context.toolchain_identity
+    },
+    ArtifactRealizationInput {
+      identity: "constructed-build-environment",
+      content_digest: context.environment_identity
+    },
+    ArtifactRealizationInput {
+      identity: "cargo-configuration",
+      content_digest: context.cargo_configuration_identity
+    },
+  ])
+}
 
 fn native_cache_workspace_root(cache_root: String, key: ContentHash) -> String {
   concat(cache_root, "/", key as String)
@@ -26,11 +52,11 @@ fn native_cache_realization_workspace_root(
   concat(workspace_root, "/", realization_digest as String)
 }
 
-fn native_cache_resolved_toolchain_workspace_root(
+fn native_cache_resolved_build_context_workspace_root(
   realization_workspace_root: String,
-  resolved_toolchain_identity: ContentHash
+  resolved_build_context_identity: ContentHash
 ) -> String {
-  concat(realization_workspace_root, "/", resolved_toolchain_identity as String)
+  concat(realization_workspace_root, "/", resolved_build_context_identity as String)
 }
 
 fn emit_on_demand_evict_native_cache(cache_root: String, key: ContentHash) -> Bool {

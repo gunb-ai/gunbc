@@ -15,14 +15,16 @@ import std.artifact_store {
   StorePutReceipt, store_put, store_bytes_used,
 }
 import extdeps.realization.emit_on_demand_host {
+  ResolvedBuildContext,
   native_cache_realization_workspace_root,
-  native_cache_resolved_toolchain_workspace_root,
+  native_cache_resolved_build_context_workspace_root,
+  resolved_build_context_identity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
+data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider whose declared eviction is not SpacePacked (the eviction field's first behavioral reader, audit F5)."
 
 data spacepacked_provider: CacheProvider = provider_row(
   id: "artifact-store-test",
@@ -98,13 +100,49 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     workspace_root: "/tmp/gunbc_toolchain_identity/outer-key",
     realization_digest: artifact_realization_digest(inputs: fixed_inputs)
   )
-  let before = native_cache_resolved_toolchain_workspace_root(
+  let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
+    toolchain_identity: content_hash_atom(value: "cargo 1.93.0 + rustc 1.93.0"),
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  })
+  let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
+    toolchain_identity: content_hash_atom(value: "cargo 1.94.0 + rustc 1.94.0"),
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  })
+  let before = native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
-    resolved_toolchain_identity: content_hash_atom(value: "cargo 1.93.0 + rustc 1.93.0")
+    resolved_build_context_identity: before_context
   )
-  let after = native_cache_resolved_toolchain_workspace_root(
+  let after = native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
-    resolved_toolchain_identity: content_hash_atom(value: "cargo 1.94.0 + rustc 1.94.0")
+    resolved_build_context_identity: after_context
+  )
+  before != after
+}
+
+test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
+  let fixed_realization = native_cache_realization_workspace_root(
+    workspace_root: "/tmp/gunbc_environment_identity/outer-key",
+    realization_digest: content_hash_atom(value: "fixed files and build argv")
+  )
+  let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
+    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=2"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  })
+  let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
+    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=3"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  })
+  let before = native_cache_resolved_build_context_workspace_root(
+    realization_workspace_root: fixed_realization,
+    resolved_build_context_identity: before_context
+  )
+  let after = native_cache_resolved_build_context_workspace_root(
+    realization_workspace_root: fixed_realization,
+    resolved_build_context_identity: after_context
   )
   before != after
 }

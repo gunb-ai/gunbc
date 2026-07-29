@@ -8092,18 +8092,27 @@ fn eval_emit_host_run_transport_builtin(
 /// content-addressed emit_host transport persists workspace under workspace_dir and
 /// skips build when `.native_ready` is present. workspace_dir carries the caller's
 /// computation and input-realization segments; this boundary derives the actual
-/// resolved build-toolchain identity and appends it before consulting the marker
+/// resolved build-context identity and appends it before consulting the marker
 /// (the effective path modeled by
-/// extdeps.realization.emit_on_demand_host.native_cache_resolved_toolchain_workspace_root).
-/// A different closure, materialized input, build argv, or resolved compiler MUST
-/// therefore land in a different workspace (benign-by-identity on partial writes
-/// before `.native_ready`). `.native_ready`
+/// extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root).
+/// A different closure, materialized input, build argv, resolved compiler,
+/// admitted subprocess environment, or Cargo configuration MUST therefore land
+/// in a different workspace (benign-by-identity on partial writes before
+/// `.native_ready`). `.native_ready`
 /// is written only after a successful run (not after build alone): the P3 kernel's
 /// warm boundary is build+run proof, so a transient run failure must not skip
 /// rebuild on retry. Registered in 04_method.dag as
 /// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
 /// this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
+/// HAND-RUST GATE explicit deferral: this is bounded growth in the existing seed
+/// file, not a census-shrink receipt and not a new Rust authority. Its lane is
+/// ROADMAP "Make native materialization the shared execution kernel",
+/// docs/plans/witness-realization-plan.md P3/P6, with the concrete deletion row
+/// dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// observation/apply helpers when the self-emitted transport consumes the modeled
+/// ResolvedBuildContext and the dispatcher-change, environment-change, and
+/// cold/warm agreement witnesses remain green without them.
 /// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
 /// precedent): the root is WHERE the cache lives, never WHAT identifies an
 /// artifact — the content-hash path component stays the key. Opt-in; only the
@@ -8351,6 +8360,9 @@ fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
             "PATH",
             "HOME",
             "TMPDIR",
+            "CC",
+            "CXX",
+            "AR",
             "LD_LIBRARY_PATH",
             "LIBRARY_PATH",
             "CPATH",
@@ -8359,8 +8371,20 @@ fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
             "MACOSX_DEPLOYMENT_TARGET",
         ];
         const PREFIXES: &[&str] = &[
-            "CARGO_", "RUST", "CC_", "CXX_", "AR_", "CFLAGS", "CXXFLAGS", "CPPFLAGS",
-            "LDFLAGS", "PKG_CONFIG_", "GO", "NODE_", "NPM_", "PYTHON",
+            "CARGO_",
+            "RUST",
+            "CC_",
+            "CXX_",
+            "AR_",
+            "CFLAGS",
+            "CXXFLAGS",
+            "CPPFLAGS",
+            "LDFLAGS",
+            "PKG_CONFIG_",
+            "GO",
+            "NODE_",
+            "NPM_",
+            "PYTHON",
         ];
         if matches!(
             name,
@@ -8393,6 +8417,21 @@ fn emit_host_apply_build_environment(
     command.envs(environment.entries.iter().cloned());
 }
 
+/// Seed mirror of std.artifact_store.artifact_realization_digest. The `.dag`
+/// function is the authority for the ordered/tagged shape; this helper disappears
+/// with the enclosing witness-realization HAND-RUST boundary.
+fn emit_host_artifact_realization_digest(inputs: &[(&str, String)]) -> String {
+    let mut digest = v1_rt::atom_identity_hash("artifact_store.realization".to_string());
+    for (identity, content_digest) in inputs {
+        let tagged = v1_rt::hash_combine(
+            v1_rt::atom_identity_hash((*identity).to_string()),
+            content_digest.clone(),
+        );
+        digest = v1_rt::hash_combine(digest, tagged);
+    }
+    digest
+}
+
 fn emit_host_cargo_configuration_digest(
     environment: &EmitHostBuildEnvironment,
     probe_workspace: &std::path::Path,
@@ -8421,8 +8460,7 @@ fn emit_host_cargo_configuration_digest(
         candidates.push(ancestor.join(".cargo/config.toml"));
     }
 
-    let mut digest =
-        v1_rt::atom_identity_hash("emit-host-cargo-configuration-v1".to_string());
+    let mut digest = v1_rt::atom_identity_hash("emit-host-cargo-configuration-v1".to_string());
     for path in candidates {
         match std::fs::read(&path) {
             Ok(content) => {
@@ -8484,10 +8522,10 @@ fn emit_host_resolved_build_context_identity(
         command.args(version_args).current_dir(probe_workspace);
         emit_host_apply_build_environment(&mut command, environment);
         let output = command.output().map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
-                ),
-            })?;
+            msg: format!(
+                "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
+            ),
+        })?;
         if !output.status.success() {
             return Err(InterpError::TypeError {
                 msg: format!(
@@ -8515,9 +8553,10 @@ fn emit_host_resolved_build_context_identity(
         Ok(digest)
     }
 
-    let mut identity =
-        v1_rt::atom_identity_hash("emit-host-resolved-build-context-v1".to_string());
-    identity = v1_rt::hash_combine(identity, environment.digest.clone());
+    let mut toolchain_identity =
+        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string());
+    let cargo_configuration_identity =
+        emit_host_cargo_configuration_digest(environment, probe_workspace)?;
     for argv in build_argvs {
         let requested = argv.first().ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_run_transport_cached: empty build argv".to_string(),
@@ -8531,24 +8570,24 @@ fn emit_host_resolved_build_context_identity(
         } else {
             &["--version"]
         };
-        identity = v1_rt::hash_combine(
-            identity,
+        toolchain_identity = v1_rt::hash_combine(
+            toolchain_identity,
             observe_tool(requested, version_args, probe_workspace, environment)?,
         );
 
         if requested_name == "cargo" {
-            identity = v1_rt::hash_combine(
-                identity,
-                emit_host_cargo_configuration_digest(environment, probe_workspace)?,
-            );
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            identity = v1_rt::hash_combine(
-                identity,
+            toolchain_identity = v1_rt::hash_combine(
+                toolchain_identity,
                 observe_tool(&rustc, &["-vV"], probe_workspace, environment)?,
             );
         }
     }
-    Ok(identity)
+    Ok(emit_host_artifact_realization_digest(&[
+        ("resolved-build-toolchain", toolchain_identity),
+        ("constructed-build-environment", environment.digest.clone()),
+        ("cargo-configuration", cargo_configuration_identity),
+    ]))
 }
 
 fn emit_host_materialize_workspace_files(
@@ -8655,17 +8694,15 @@ fn emit_host_run_transport_cached_in_workspace(
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
         let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0]));
-        command
-            .args(&argv[1..])
-            .current_dir(workspace);
+        command.args(&argv[1..]).current_dir(workspace);
         emit_host_apply_build_environment(&mut command, build_environment);
         command.env("CARGO_TARGET_DIR", &target_dir);
         command.output().map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: spawn {:?} failed: {e}",
-                    argv[0]
-                ),
-            })
+            msg: format!(
+                "emit_host_run_transport_cached: spawn {:?} failed: {e}",
+                argv[0]
+            ),
+        })
     };
 
     if !compile_skipped {
