@@ -62,7 +62,7 @@ data cli_run_floor_lens_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: 
 data cli_run_floor_lens_hand_rust_loc_delta_net: Int = 22
 
 data cli_run_floor_lens_scaffold_shape_red_control: Disposition = Terminal {
-  reason: "RED CONTROL for the scaffold-shape cells in dag/test/claim/cli_run_floor_lens_oracle_witness_test.dag: a Terminal disposition, so disposition_dissolves_to_single_authority must answer false for it and disposition_is_terminal true. Without this row the shape assertions could pass on a reader that answered true unconditionally; with it, the canonical reader is proven to discriminate. Not a disposition ABOUT any declaration — it is test data declared beside the rows it controls."
+  reason: "RED CONTROL for the scaffold-shape cells in dag/test/claim/cli_run_floor_lens_oracle_witness_test.dag: a Terminal disposition, so the canonical reader v2.lens.disposition_redundancy.disposition_is_terminal must answer true for it while answering false for every Scaffold row above. Without this row the shape assertions could pass on a reader that answered false unconditionally; with it, the reader is proven to discriminate. Not a disposition ABOUT any declaration — it is test data declared beside the rows it controls."
 }
 
 data cli_run_floor_lens_oracle_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md"
