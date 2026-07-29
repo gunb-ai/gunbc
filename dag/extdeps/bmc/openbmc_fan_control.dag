@@ -126,6 +126,18 @@ type OpenBmcCollection<T>
   | OpenBmcCollectionOne { value: T }
   | OpenBmcCollectionMany { values: List<T> }
 
+fn openbmc_collection_from_values<T>(
+  values: List<T>,
+) -> OpenBmcCollection<T> {
+  if values.length() == 0 {
+    OpenBmcCollectionZero
+  } else if values.length() == 1 {
+    OpenBmcCollectionOne { value: values.first() }
+  } else {
+    OpenBmcCollectionMany { values: values }
+  }
+}
+
 type OpenBmcStepwiseController {
   minimum_duty: Int
   zone_failsafe_duty: Int
@@ -567,16 +579,8 @@ fn openbmc_object_mapper_services_rec(
   built: List<NonEmptyStr>,
 ) -> OpenBmcSensorServicesResult {
   if index >= count {
-    if built.length() == 0 {
-      OpenBmcSensorServicesObserved { services: OpenBmcCollectionZero }
-    } else if built.length() == 1 {
-      OpenBmcSensorServicesObserved {
-        services: OpenBmcCollectionOne { value: built.first() },
-      }
-    } else {
-      OpenBmcSensorServicesObserved {
-        services: OpenBmcCollectionMany { values: built },
-      }
+    OpenBmcSensorServicesObserved {
+      services: openbmc_collection_from_values(values: built),
     }
   } else {
     let projected = openbmc.JsonProjection.ObjectMapperServiceAt(

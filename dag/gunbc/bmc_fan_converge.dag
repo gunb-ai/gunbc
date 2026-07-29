@@ -161,6 +161,8 @@ import std.upsert_decision {
 }
 import extdeps.shell
 
+data bmc_fan_atomic_transaction_dissolution_trigger: String = "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds transaction id, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest digest, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate."
+
 type BmcFanConvergeTarget {
   host: ComputeHost
   board: BaseboardModel
@@ -1951,103 +1953,18 @@ fn bmc_fan_apply_typed(
   session: PasswordSshSession,
   plan: BmcFanPolicyApplyPlan,
 ) -> BmcFanTypedMutationResult {
-  let lock = openbmc_make_directory(
-    session: session,
-    path: bmc_fan_remote_lock_path(),
-    parents: false,
+  bmc_fan_mutation_refused(
+    reason: "BMC fan mutation is phase-partial: atomic content-addressed backup manifest and bounded monitoring receipt are not yet admitted",
   )
-  if !lock.success {
-    bmc_fan_mutation_refused(
-      reason: "another BMC fan convergence transaction holds the lock",
-    )
-  } else {
-    let result = bmc_fan_apply_locked(session: session, plan: plan)
-    let stage_cleanup = openbmc_remove_file(
-      session: session,
-      path: bmc_fan_remote_config_stage_path(plan: plan),
-    )
-    let lock_cleanup = openbmc_remove_directory(
-      session: session,
-      path: bmc_fan_remote_lock_path(),
-    )
-    if bmc_fan_mutation_succeeded(result: result)
-      && (!stage_cleanup.success || !lock_cleanup.success) {
-      bmc_fan_record_cleanup_debt(
-        result: result,
-        cleanup_debt: "typed remote transaction cleanup failed",
-      )
-    } else {
-      result
-    }
-  }
 }
 
 fn bmc_fan_rollback_typed(
   session: PasswordSshSession,
   plan: BmcFanPolicyApplyPlan,
 ) -> BmcFanTypedMutationResult {
-  let lock = openbmc_make_directory(
-    session: session,
-    path: bmc_fan_remote_lock_path(),
-    parents: false,
+  bmc_fan_mutation_refused(
+    reason: "BMC fan rollback is phase-partial: no atomic content-addressed backup manifest receipt is admitted",
   )
-  if !lock.success {
-    bmc_fan_mutation_refused(
-      reason: "BMC fan rollback refused because the convergence lock is held",
-    )
-  } else {
-    let restored = match bmc_fan_observe_live_identity(session: session) {
-      BmcFanLiveIdentityRefused { reason: reason } =>
-        bmc_fan_mutation_refused(reason: reason)
-      BmcFanLiveIdentityObserved { identity: identity } =>
-        if identity.firmware != plan.observed.firmware {
-          bmc_fan_mutation_refused(
-            reason: "BMC firmware changed after rollback observation",
-          )
-        } else {
-          let backup = openbmc_path_is_nonempty_file(
-            session: session,
-            path: bmc_fan_remote_backup_path(),
-          )
-          let version_file = openbmc_path_is_nonempty_file(
-            session: session,
-            path: bmc_fan_remote_backup_version_path(),
-          )
-          let version = openbmc_read_file(
-            session: session,
-            path: bmc_fan_remote_backup_version_path(),
-          )
-          if !backup.success || !version_file.success || !version.success {
-            bmc_fan_mutation_refused(
-              reason: "previous fan config or its firmware identity is absent",
-            )
-          } else if trim(version.stdout) != (identity.firmware.version as String) {
-            bmc_fan_mutation_refused(
-              reason: "previous fan config belongs to a different BMC firmware version",
-            )
-          } else {
-            bmc_fan_restore_previous_locked(session: session, plan: plan)
-          }
-        }
-    }
-    let stage_cleanup = openbmc_remove_file(
-      session: session,
-      path: bmc_fan_remote_config_stage_path(plan: plan),
-    )
-    let lock_cleanup = openbmc_remove_directory(
-      session: session,
-      path: bmc_fan_remote_lock_path(),
-    )
-    if bmc_fan_mutation_succeeded(result: restored)
-      && (!stage_cleanup.success || !lock_cleanup.success) {
-      bmc_fan_record_cleanup_debt(
-        result: restored,
-        cleanup_debt: "typed remote rollback cleanup failed",
-      )
-    } else {
-      restored
-    }
-  }
 }
 
 fn bmc_fan_observe_with_credential(
