@@ -8,7 +8,7 @@ data test_module_hygiene_orphan_gate_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.test_module_hygiene",
-    decl_name: "orphan_plain_names",
+    decl_name: "orphan_plain_names_or_refuse",
     field: WholeDeclaration
   }
 }

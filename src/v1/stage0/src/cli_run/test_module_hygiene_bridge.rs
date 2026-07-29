@@ -76,29 +76,44 @@ fn refs_from_body(
     out
 }
 
-fn scan_test_decl_names(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        let rest = trimmed
-            .strip_prefix("test fn ")
-            .or_else(|| trimmed.strip_prefix("test data "));
-        if let Some(rest) = rest {
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                out.push(name);
-            }
-        }
-    }
-    out
+fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
+    let roots = super::default_source_roots();
+    let ctx = resolve_hygiene_ctx(&roots)?;
+    let args = [(
+        Some("content".to_string()),
+        Value::Str(content.to_string()),
+    )];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "enumerate_entry_test_names",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
+    let Value::List(items) = result else {
+        return Err(format!(
+            "enumerate_entry_test_names returned `{}`, expected List",
+            ctx.format_value(&result)
+        ));
+    };
+    items
+        .iter()
+        .map(|item| match item {
+            Value::Str(s) => Ok(s.clone()),
+            other => Err(format!(
+                "enumerate_entry_test_names element `{}` is not String",
+                ctx.format_value(other)
+            )),
+        })
+        .collect()
 }
 
 fn analyze_to_surface(path: &Path, content: &str, entry: &str) -> Option<ModuleSurface> {
     let parsed = parse_dag_file(path)?;
-    let test_names: HashSet<String> = scan_test_decl_names(content).into_iter().collect();
+    let test_names: HashSet<String> = test_decl_names_from_content(content)
+        .ok()?
+        .into_iter()
+        .collect();
     let si = parsed.source_indices.clone();
     let mut test_fns = Vec::new();
     let mut plain_fns = Vec::new();
@@ -339,28 +354,7 @@ pub(crate) fn check_orphan_helpers_or_err(source_roots: &[String]) -> Result<(),
 pub(crate) fn enumerate_entry_test_fns(entry_path: &str) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(entry_path)
         .map_err(|e| format!("file-grain enumerate: read {entry_path}: {e}"))?;
-    let roots = super::default_source_roots();
-    let ctx = resolve_hygiene_ctx(&roots)?;
-    let args = [(Some("content".to_string()), Value::Str(content))];
-    let result =
-        v1_interpreter::run_in_context_with_args(&ctx, "enumerate_entry_test_names", &args, false)
-            .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
-    let Value::List(items) = result else {
-        return Err(format!(
-            "enumerate_entry_test_names returned `{}`, expected List",
-            ctx.format_value(&result)
-        ));
-    };
-    let names: Vec<String> = items
-        .iter()
-        .map(|item| match item {
-            Value::Str(s) => Ok(s.clone()),
-            other => Err(format!(
-                "enumerate_entry_test_names element `{}` is not String",
-                ctx.format_value(other)
-            )),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let names = test_decl_names_from_content(&content)?;
     if names.is_empty() {
         return Err(format!(
             "file-grain enumerate: entry {entry_path} has no test fn / test data declarations"
