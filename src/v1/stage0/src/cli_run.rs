@@ -2892,12 +2892,29 @@ fn selection_control_module_index(
 /// suite's verdict: the declared entries plus their transitive `import` closure through
 /// `[src/v2, dag]`, sorted.
 ///
-/// 🟡 dissolve-on: the import walk here duplicates the shape of `regen_input_sources`'s
+/// 🟡 dissolve-on (two triggers, near then terminal):
+///
+/// NEAR — the import walk here duplicates the shape of `regen_input_sources`'s
 /// walk. They are NOT unified yet because regen's closure is guarded by a byte-identical
 /// oracle (`regen_stage0 --verify`) that this change is not in a position to re-verify, and
 /// the two differ in duplicate policy (refuse vs. superset) and entry selection (whole-root
 /// walk vs. declared list). DISSOLVES WHEN the walk is lifted to one parameterized helper
 /// (duplicate policy + entry source as arguments) and regen's byte oracle re-greens on it.
+///
+/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side
+/// selection Rust in favour of the `.dag` authority. This fn and
+/// `selection_control_skip_label_for_ci` are new members of exactly that Rust-parallel set —
+/// a path/import-closure selection decision living in the seed rather than in
+/// `.dag` — so they inherit Step 5's terminal condition. Stated honestly: Step 5's table
+/// currently enumerates `NodeFrontierSeeds` / `entry_touches_frontier_seeds` and does NOT yet
+/// list these two, so adding them to that roster is the concrete next action this receipt
+/// owes (per DESIGN §7, a seed-retained surface is a declared, countable row — not a silent
+/// escape hatch). Recorded here rather than in a parallel-ledger doc (§6: the mark on the
+/// carrier is the authority).
+///
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* — the
+/// six label tests below are its discriminating consumers, in both directions.
 pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
     let roots = selection_control_source_roots(workspace);
     let index = selection_control_module_index(&roots)?;
