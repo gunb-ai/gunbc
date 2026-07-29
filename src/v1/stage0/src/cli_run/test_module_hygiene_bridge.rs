@@ -9,6 +9,18 @@ use std::rc::Rc;
 
 const TEST_MODULE_HYGIENE_ENTRY: &str = "dag/gunbc/test_module_hygiene.dag";
 
+fn hygiene_entry_file() -> String {
+    let path = Path::new(TEST_MODULE_HYGIENE_ENTRY);
+    if path.is_file() {
+        return path.to_string_lossy().into_owned();
+    }
+    let ws_path = super::workspace_root().join(path);
+    if ws_path.is_file() {
+        return ws_path.to_string_lossy().into_owned();
+    }
+    TEST_MODULE_HYGIENE_ENTRY.to_string()
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct DeclSurface {
     pub name: String,
@@ -226,9 +238,9 @@ fn module_surface_to_value(surface: &ModuleSurface, ctx: &InterpContext) -> Valu
 }
 
 fn resolve_hygiene_ctx(source_roots: &[String]) -> Result<InterpContext, String> {
-    let (graph, indices) =
-        super::resolve_entry_graph_shared(source_roots, TEST_MODULE_HYGIENE_ENTRY)
-            .map_err(|e| format!("test_module_hygiene resolve: {e}"))?;
+    let entry = hygiene_entry_file();
+    let (graph, indices) = super::resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("test_module_hygiene resolve: {e}"))?;
     Ok(super::make_eval_context(
         &graph,
         indices,
