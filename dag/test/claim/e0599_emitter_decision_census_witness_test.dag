@@ -96,8 +96,14 @@ test fn e0599_b0_red_unresolved_row_lookup_is_absent() -> Bool {
   }
 }
 
-test fn e0599_b0_classification_line_carries_six_fields() -> Bool {
-  list_length(items: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 6
+test fn e0599_b0_classification_line_carries_seven_fields() -> Bool {
+  list_length(items: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 7
+}
+
+test fn e0599_b0_classification_line_carries_the_ownership_alternative() -> Bool {
+  string_contains(s: e0599_classification_line(method: "clone", receiver_expr: "item"), pattern: "EmitterArmPresent")
+    && string_contains(s: e0599_classification_line(method: "clone", receiver_expr: "(*acc.clone())"), pattern: "NoEmitterArm")
+    && string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "NotApplicable")
 }
 
 test fn e0599_b0_classification_line_cites_the_linked_crate() -> Bool {
