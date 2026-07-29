@@ -8,7 +8,7 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 import std.algebra { FreeMonoid, Empty, Cons }
 
 import v1.compiler.infer_occurrence_binding {
-  global_bare_chain_owner_from_decide,
+  global_bare_chain_owner_path_from_decide,
   global_bare_chain_ambiguity_labels_from_decide,
 }
 
@@ -570,7 +570,14 @@ fn global_bare_chain_candidates(env_module_path: String, candidates: List<Global
 
 fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
   let chain = global_bare_chain_candidates(env_module_path: env_module_path, candidates: candidates)
-  global_bare_chain_owner_from_decide(env_module_path: env_module_path, chain: chain)
+  match global_bare_chain_owner_path_from_decide(
+    env_module_path: env_module_path,
+    owners: chain |> map(c => c.module_path),
+  ) {
+    Present { value: owner } =>
+      chain |> filter(c => c.module_path == owner) |> first
+    Absent => Absent
+  }
 }
 
 fn global_bare_policy_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
@@ -590,7 +597,7 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
       global_bare_chain_ambiguity_labels_from_decide(
         env_module_path: env.module_path,
-        chain: chain,
+        owners: chain |> map(c => c.module_path),
         name: name,
       )
     _ => []

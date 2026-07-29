@@ -11,9 +11,7 @@ import std.occurrence_binding_resolve {
   module_path_binding_decide,
 }
 
-import v1.compiler.infer_env { GlobalBareCandidate }
-
-data infer_occurrence_binding_canonical_decide_note: String = "v1 production adapter: global_bare chain and func parent-closure cardinality route through std.occurrence_binding_resolve.module_path_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate enumeration stays in infer_env/infer_sigs; cardinality never re-implements 0/1/many."
+data infer_occurrence_binding_canonical_decide_note: String = "v1 production adapter: global_bare chain and func parent-closure cardinality route through std.occurrence_binding_resolve.module_path_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate enumeration stays in infer_env/infer_sigs; cardinality never re-implements 0/1/many. Module-path owners only — no infer_env types, so this module stays below infer_env in the import DAG."
 
 type ModulePathBindingProjection
   = ModulePathBindingHit { owner: String }
@@ -58,18 +56,15 @@ fn project_module_path_binding_decide(
   }
 }
 
-fn global_bare_chain_owner_from_decide(
+fn global_bare_chain_owner_path_from_decide(
   env_module_path: String,
-  chain: List<GlobalBareCandidate>
-) -> GlobalBareCandidate? {
+  owners: List<String>
+) -> String? {
   match project_module_path_binding_decide(
     env_module_path: env_module_path,
-    owners: chain |> map(c => c.module_path),
+    owners: owners,
   ) {
-    ModulePathBindingHit { owner: owner } =>
-      chain
-        |> filter(c => c.module_path == owner)
-        |> first
+    ModulePathBindingHit { owner: owner } => Present { value: owner }
     ModulePathBindingMiss => Absent
     ModulePathBindingAmbiguous { owners: _ } => Absent
   }
@@ -77,12 +72,12 @@ fn global_bare_chain_owner_from_decide(
 
 fn global_bare_chain_ambiguity_labels_from_decide(
   env_module_path: String,
-  chain: List<GlobalBareCandidate>,
+  owners: List<String>,
   name: String
 ) -> List<String> {
   match project_module_path_binding_decide(
     env_module_path: env_module_path,
-    owners: chain |> map(c => c.module_path),
+    owners: owners,
   ) {
     ModulePathBindingAmbiguous { owners: owners } =>
       owners |> map(owner => concat(owner, ".", name))
