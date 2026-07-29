@@ -10,7 +10,11 @@ import gunbc.roadmap_dispatch_actuator {
   git_for_each_ref_dispatch_argv, dispatch_attempt_key, dispatch_branch_name,
   dispatch_worktree_path,
 }
-import gunbc.roadmap_component { dispatch_client_js_source }
+import gunbc.roadmap_component {
+  dispatch_client_js_source,
+  attempts_route_path,
+  js_attempts_observe_fn,
+}
 import gunbc.roadmap_style { roadmap_css }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -83,8 +87,13 @@ test fn attempts_refusal_is_loud_on_the_wire() -> Bool {
 
 test fn attempts_client_renders_and_shouts() -> Bool {
   let js = dispatch_client_js_source()
-  return string_contains(s: js, pattern: "fetch('/attempts.json')")
+  return string_contains(s: js, pattern: join(["fetch('", attempts_route_path, "')"], ""))
     && string_contains(s: js, pattern: "aj.attempts_refused")
+    && string_contains(s: js, pattern: join(["const ", js_attempts_observe_fn, " ="], ""))
+    && string_contains(s: js, pattern: join([js_attempts_observe_fn, "()"], ""))
+    && string_contains(s: js, pattern: "querySelectorAll('.dispatch-attempts')")
+    && string_contains(s: js, pattern: "staleAttempts.remove()")
+    && string_contains(s: js, pattern: "oldAttempts.remove()")
     && string_contains(s: js, pattern: "'dispatch-attempts'")
     && string_contains(s: js, pattern: "att.branch")
     && string_contains(s: js, pattern: "attempt observation refused: ")

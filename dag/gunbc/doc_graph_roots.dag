@@ -97,6 +97,18 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "e0599_phase_a_body_evidence_2026-07-28",
+    work: DeclarationRef { module_path: "v2.test.manual.e0599_phase_a_body_evidence_probe", decl_name: "e0599pa_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the P-fn re-ruling lands — either a carrier keyed on emission-time lowering decisions, or the Rc-ownership wrap-decision lane absorbing R1/R3 — at which point this audit's recommendation section retires and its measurements fold into the successor receipt" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
+    slug: "e0599_phase_b0_emitter_decision_2026-07-29",
+    work: DeclarationRef { module_path: "tools.e0599_emitter_decision_census", decl_name: "e0599_emitter_decision_census_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "B1 lands the sharing model on the materialization axis and the lowering rows in tools.e0599_emitter_decision_census migrate to it, at which point this audit's section 5 folds into the successor plan and its measurements stay as the receipt; OR the V2-emitter recentering of CompilerFixedPoint retires the V1SeedEmitter producer this census measures, at which point the histogram becomes historical and only the bootstrap-adapter-queue enumeration survives" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
     work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
@@ -187,6 +199,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "recursive-workflow-advancement-design",
+    work: DeclarationRef { module_path: "gunbc.workflow_reconcile", decl_name: "workflow_recursive_reconcile_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the advancement plan, exact-candidate receipt producers through goal audit, and recursive child-workflow realization land as typed carriers and register as a gunbc.plan.Plan row; then this bind deletes while the md remains the design record" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "ci-two-tier-placement-redesign",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_spec", field: WholeDeclaration },
     dissolution: HasTrigger { text: "D3 lands the placement axis (PrTier | Gauntlet) on CiSpec rows with the measured 5s-rule roster — the spec rows become the authority; the D4 audit-step deletion and D0/D1 preconditions are tracked on their carriers" },
@@ -220,6 +238,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "v1rt-witness-diagnostic-carrier-decouple-design",
     work: DeclarationRef { module_path: "v2.std.witness", decl_name: "witness_from_optional", field: WholeDeclaration },
     dissolution: HasTrigger { text: "Stage-4 Gate-1 E0308 burn-down probe receipt lands (design note §3 — measurement only); doc archives or registers as a gunbc.plan.Plan row" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "hermetic-tool-provisioning-design",
+    work: DeclarationRef { module_path: "extdeps.tools", decl_name: "resolve", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "P1/P2 land the digest-bearing pin and the tool instantiation of gunbc.membership_reconcile — extdeps.tools.resolve gains its ensure arm and the four forked resolvers delete; the pin carrier becomes the authority and the plan registers as a gunbc.plan.Plan row" },
   },
 ]
 

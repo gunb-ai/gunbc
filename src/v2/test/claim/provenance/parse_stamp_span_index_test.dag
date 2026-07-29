@@ -59,7 +59,7 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
 
 fn parse_stamp_from_source_extent_holds(
   index: SpanIndex,
-  id: OccurrenceId,
+  id: v2.std.node.OccurrenceId,
   start: Int,
   end: Int
 ) -> Bool {
@@ -85,9 +85,9 @@ fn parse_stamp_from_source_extent_holds(
 
 fn parse_stamp_derived_by_pair_holds(
   index: SpanIndex,
-  id: OccurrenceId,
-  left: OccurrenceId,
-  right: OccurrenceId
+  id: v2.std.node.OccurrenceId,
+  left: v2.std.node.OccurrenceId,
+  right: v2.std.node.OccurrenceId
 ) -> Bool {
   match span_index_lookup(index: index, id: id) {
     Holds { value: got } =>
@@ -225,4 +225,3 @@ test fn parse_stamp_sequence_derived_by_holds() -> Bool {
       }
   }
 }
-

@@ -535,6 +535,79 @@ fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: 
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 
+fn shape_git_bundle_create_argv(
+  repo: FilePath,
+  bundle: FilePath,
+  source_ref: GitRef,
+) -> List<String> {
+  ["-C", repo as String, "bundle", "create", bundle as String, source_ref as String]
+}
+
+fn shape_git_bundle_verify_argv(bundle: FilePath) -> List<String> {
+  ["bundle", "verify", bundle as String]
+}
+
+fn shape_git_is_shallow_repository_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "rev-parse", "--is-shallow-repository"]
+}
+
+fn shape_git_remote_get_url_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "remote", "get-url", remote as String]
+}
+
+fn shape_git_fetch_unshallow_argv(
+  repo: FilePath,
+  remote: NonEmptyStr,
+) -> List<String> {
+  ["-C", repo as String, "fetch", "--no-tags", "--unshallow", remote as String]
+}
+
+fn shape_git_init_bare_argv(path: FilePath) -> List<String> {
+  ["init", "--bare", path as String]
+}
+
+fn shape_git_bare_fetch_argv(
+  repo: FilePath,
+  bundle: FilePath,
+  source_ref: GitRef,
+) -> List<String> {
+  ["--git-dir", repo as String, "fetch", "--force", bundle as String, source_ref as String]
+}
+
+fn shape_git_bare_update_ref_argv(
+  repo: FilePath,
+  publish_ref: GitRef,
+) -> List<String> {
+  ["--git-dir", repo as String, "update-ref", publish_ref as String, "FETCH_HEAD"]
+}
+
+fn shape_git_clone_branch_argv(
+  origin: FilePath,
+  repo: FilePath,
+  branch: NonEmptyStr,
+) -> List<String> {
+  ["clone", "--branch", branch as String, origin as String, repo as String]
+}
+
+fn shape_git_status_porcelain_argv(repo: FilePath) -> List<String> {
+  ["-C", repo as String, "status", "--porcelain"]
+}
+
+fn shape_git_fetch_remote_argv(repo: FilePath, remote: NonEmptyStr) -> List<String> {
+  ["-C", repo as String, "fetch", remote as String]
+}
+
+fn shape_git_reset_hard_argv(repo: FilePath, target: GitRef) -> List<String> {
+  ["-C", repo as String, "reset", "--hard", target as String]
+}
+
+fn shape_git_rev_parse_argv(repo: FilePath, target: GitRef) -> List<String> {
+  ["-C", repo as String, "rev-parse", target as String]
+}
+
 service git.Worktree {
   operation Add {
     input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }

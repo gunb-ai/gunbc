@@ -4,9 +4,6 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
-  OpenBmcCriticalLow,
-  OpenBmcFanConfigScalar,
-  OpenBmcReadingAt,
   OpenBmcSensorServicesObserved,
   OpenBmcSensorValueRefused,
   OpenBmcTachAtOrAboveThreshold,
@@ -18,6 +15,11 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_operation_argv,
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
+}
+import extdeps.bmc.openbmc_operation {
+  OpenBmcCriticalLow,
+  OpenBmcFanConfigScalar,
+  OpenBmcReadingAt,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

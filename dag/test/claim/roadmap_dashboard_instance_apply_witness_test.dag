@@ -1,0 +1,534 @@
+module test.claim.roadmap_dashboard_instance_apply_witness
+
+import std.types { Bool, String, FilePath, GitRef }
+import extdeps.git {
+  shape_git_bundle_create_argv,
+  shape_git_is_shallow_repository_argv,
+  shape_git_remote_get_url_argv,
+  shape_git_fetch_unshallow_argv,
+  shape_git_init_bare_argv,
+  shape_git_bare_fetch_argv,
+  shape_git_bare_update_ref_argv,
+  shape_git_clone_branch_argv,
+}
+import extdeps.tmux {
+  shape_tmux_has_session_argv_for,
+  shape_tmux_new_session_argv_for,
+}
+import extdeps.ssh.session { shape_scp_copy_to_argv }
+import extdeps.llm.cli {
+  shape_codex_login_status_env_args_for_program,
+  shape_codex_version_env_args_for_program,
+}
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import gunbc.roadmap_dashboard_instance {
+  srv1_lab_dashboard_instance,
+  srv1_live_dashboard_instance,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_service_session_name,
+  dashboard_instance_checkout_branch,
+  dashboard_instance_serve_argv,
+  dashboard_instances_have_disjoint_owned_paths,
+  dashboard_instance_provision_plan_rows,
+  dashboard_instance_dispatch_platform_executables,
+}
+import gunbc.roadmap_dashboard_instance_apply {
+  DashboardExecResult,
+  DashboardProvisionStepReceipt,
+  DashboardInstanceApplyResult,
+  DashboardApplyRefused,
+  DashboardApplyPreflightResult,
+  DashboardApplyPreflightReady,
+  DashboardApplyPreflightRefused,
+  DashboardBootstrapPreflight,
+  DashboardBootstrapReady,
+  DashboardBootstrapRefused,
+  dashboard_next_path,
+  dashboard_instance_health_url,
+  dashboard_health_names_instance,
+  dashboard_apply_result_json_value,
+  dashboard_source_preflight_decision,
+  dashboard_apply_preflight_json_value,
+  dashboard_bootstrap_preflight_decision,
+  dashboard_required_target_executables,
+  dashboard_health_poll_seconds,
+  dashboard_health_poll_attempts,
+}
+import gunbc.roadmap_serve { dashboard_instance_json }
+import extdeps.languages.json.emit { serialize_json }
+
+data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes."
+
+test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let local = "/tmp/dashboard-source.bundle" as FilePath
+  let staged = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as FilePath
+  let next = dashboard_next_path(path: staged)
+  shape_git_bundle_create_argv(
+    repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+    bundle: local,
+    source_ref: "refs/heads/session/codex-provider-feedback-v0" as GitRef,
+  ) == [
+    "-C",
+    "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+    "bundle",
+    "create",
+    "/tmp/dashboard-source.bundle",
+    "refs/heads/session/codex-provider-feedback-v0",
+  ]
+    && shape_git_is_shallow_repository_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "rev-parse",
+      "--is-shallow-repository",
+    ]
+    && shape_git_remote_get_url_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      remote: "origin",
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "remote",
+      "get-url",
+      "origin",
+    ]
+    && shape_git_fetch_unshallow_argv(
+      repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath,
+      remote: "origin",
+    ) == [
+      "-C",
+      "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
+      "fetch",
+      "--no-tags",
+      "--unshallow",
+      "origin",
+    ]
+    && next == concat(staged as String, ".next")
+    && shape_scp_copy_to_argv(
+      host: "srv1",
+      local_path: local,
+      remote_path: next,
+    ) == [
+      "/tmp/dashboard-source.bundle",
+      "srv1:/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle.next",
+    ]
+}
+
+test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
+  let origin = "/instance/origin.git" as FilePath
+  let bundle = "/instance/inbox/source.bundle" as FilePath
+  shape_git_init_bare_argv(path: origin) == ["init", "--bare", "/instance/origin.git"]
+    && shape_git_bare_fetch_argv(
+      repo: origin,
+      bundle: bundle,
+      source_ref: "refs/heads/session/codex-provider-feedback-v0" as GitRef,
+    ) == [
+      "--git-dir",
+      "/instance/origin.git",
+      "fetch",
+      "--force",
+      "/instance/inbox/source.bundle",
+      "refs/heads/session/codex-provider-feedback-v0",
+    ]
+    && shape_git_bare_update_ref_argv(
+      repo: origin,
+      publish_ref: "refs/heads/main" as GitRef,
+    ) == [
+      "--git-dir",
+      "/instance/origin.git",
+      "update-ref",
+      "refs/heads/main",
+      "FETCH_HEAD",
+    ]
+    && shape_git_clone_branch_argv(
+      origin: origin,
+      repo: "/instance/source" as FilePath,
+      branch: "main",
+    ) == [
+      "clone",
+      "--branch",
+      "main",
+      "/instance/origin.git",
+      "/instance/source",
+    ]
+}
+
+test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let session = dashboard_instance_service_session_name(instance: lab)
+  shape_tmux_has_session_argv_for(
+    scope: lab.tmux_server,
+    session_name: session as String,
+  ) == [
+    "-L",
+    "srv1-lab-codex-feedback-v0",
+    "has-session",
+    "-t",
+    "gunbc-dashboard-srv1-lab-codex-feedback-v0",
+  ]
+    && shape_tmux_new_session_argv_for(
+      scope: lab.tmux_server,
+      session_name: session as String,
+      working_dir: lab.repo_root as String,
+      inner_argv: concat(
+        [lab.serve_binary as String],
+        dashboard_instance_serve_argv(instance: lab),
+      ),
+    ) == [
+      "-L",
+      "srv1-lab-codex-feedback-v0",
+      "new-session",
+      "-d",
+      "-s",
+      "gunbc-dashboard-srv1-lab-codex-feedback-v0",
+      "-c",
+      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source",
+      "/opt/gunbc/bin/gunbc",
+      "serve",
+      "--source-root",
+      "dag",
+      "--source-root",
+      "src/v2",
+      "--entry",
+      "dag/gunbc/roadmap_serve.dag",
+      "--function",
+      "roadmap_serve_handle_srv1_lab",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "18081",
+    ]
+}
+
+test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let runtime_argv = concat(
+    ["/usr/bin/env"],
+    shape_codex_version_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: lab) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
+    ),
+  )
+  let auth_argv = concat(
+    ["/usr/bin/env"],
+    shape_codex_login_status_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: lab) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
+    ),
+  )
+  runtime_argv == [
+    "/usr/bin/env",
+    "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
+    "/usr/bin/codex",
+    "--version",
+  ]
+    && auth_argv == [
+    "/usr/bin/env",
+    "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
+    "/usr/bin/codex",
+    "login",
+    "status",
+  ]
+    && match typed_argv_shell_safe_refusal_argv(argv: runtime_argv) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match typed_argv_shell_safe_refusal_argv(argv: auth_argv) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let required = dashboard_required_target_executables(instance: lab)
+  all(
+    dashboard_instance_dispatch_platform_executables(instance: lab),
+    platform_path => any(required, path => path == platform_path),
+  )
+    && count(required) == 15
+    && any(required, path => path == ("/usr/bin/sh" as FilePath))
+    && any(required, path => path == ("/usr/bin/tee" as FilePath))
+    && any(required, path => path == ("/usr/bin/env" as FilePath))
+    && any(required, path => path == ("/usr/bin/install" as FilePath))
+    && any(required, path => path == ("/usr/bin/ln" as FilePath))
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/cargo" as FilePath),
+    )
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/rustc" as FilePath),
+    )
+    && !any(
+      required,
+      path => path == ("/home/briansrls/.cargo/bin/rustfmt" as FilePath),
+    )
+}
+
+data dashboard_poll_interval_witness_note: String = "This witness exists because a data row can typecheck and still fail to EVALUATE: dashboard_health_poll_seconds was authored as `2 as Seconds` and no single-entry witness run forced the row, so it went green locally and reded only in CI's affected-set re-eval leg, which evaluates changed data items (`cannot cast Int to Seconds` — the interpreter has no cast into a branded scalar; the corpus idiom is a bare literal, as in srv3_install_hang_no_installer_progress_ms: Milliseconds). Reading the value here forces the evaluation locally, so the same authoring mistake reds in the witness run rather than 15 minutes into the floor."
+
+test fn dashboard_poll_interval_is_a_usable_duration() -> Bool {
+  dashboard_health_poll_seconds == 2
+    && to_string(dashboard_health_poll_seconds) == "2"
+    && dashboard_health_poll_attempts == 31
+}
+
+data dashboard_health_identity_witness_note: String = "review 44058. The served document is the oracle, so the green arm feeds dashboard_instance_json's real output rather than a hand-spelled stub — a stub is exactly what let the previous scan look correct while accepting anything. The REDs are the two ways a wrong server passes a scan but must fail positional identity: a different instance, and a document that merely MENTIONS the wanted id in a nested value."
+
+fn health_result(body: String) -> DashboardExecResult {
+  DashboardExecResult { success: true, stdout: body, stderr: "" }
+}
+
+test fn dashboard_health_requires_intended_instance_identity() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let live = srv1_live_dashboard_instance()
+  let mentions_lab_id_in_a_nested_value = join([
+    "{\"schema\": \"roadmap-dashboard-instance/v1\", \"instance_id\": \"srv1-live\", ",
+    "\"note\": \"\\\"instance_id\\\": \\\"",
+    lab.instance_id as String,
+    "\\\"\"}",
+  ], "")
+  dashboard_instance_health_url(instance: lab) == "http://127.0.0.1:18081/instance.json"
+    && dashboard_health_names_instance(
+      instance: lab,
+      result: health_result(body: dashboard_instance_json(instance: lab)),
+    )
+    && !dashboard_health_names_instance(
+      instance: lab,
+      result: health_result(body: dashboard_instance_json(instance: live)),
+    )
+    && !dashboard_health_names_instance(
+      instance: lab,
+      result: health_result(body: mentions_lab_id_in_a_nested_value),
+    )
+}
+
+test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let rows = dashboard_instance_provision_plan_rows(instance: lab)
+  count(rows) == 14
+    && any(rows, row => row.kind == "hydrate-controller-history")
+    && any(rows, row => row.kind == "prepare-git-bundle")
+    && any(rows, row => row.kind == "stage-git-bundle")
+    && any(
+      rows,
+      row =>
+        row.kind == "ensure-directory"
+          && row.target == lab.dispatch_attempt_state_root as String,
+    )
+    && any(rows, row => row.kind == "verify-provider-runtime")
+    && any(rows, row => row.kind == "verify-provider-auth")
+    && any(rows, row => row.kind == "verify-health")
+    && dashboard_instances_have_disjoint_owned_paths(
+      a: lab,
+      b: srv1_live_dashboard_instance(),
+    )
+    && lab.listen_port != srv1_live_dashboard_instance().listen_port
+}
+
+test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool {
+  let result = DashboardApplyRefused {
+    instance_id: "srv1-lab-codex-feedback-v0",
+    step: "verify-provider-auth",
+    detail: "codex login status exited nonzero",
+    receipts: [
+      DashboardProvisionStepReceipt {
+        kind: "verify-provider-auth",
+        target: "/home/briansrls/.codex@gunbc-roadmap",
+        success: false,
+        detail: "codex login status exited nonzero",
+      },
+    ],
+  }
+  let wire = serialize_json(v: dashboard_apply_result_json_value(result: result))
+  string_contains(s: wire, pattern: "\"status\": \"refused\"")
+    && string_contains(s: wire, pattern: "\"step\": \"verify-provider-auth\"")
+    && string_contains(s: wire, pattern: "\"success\": false")
+}
+
+test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let dirty = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "deadbeef",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: " M dag/gunbc/roadmap_dashboard_instance.dag",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "true",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: true,
+      stdout: "configured",
+      stderr: "",
+    },
+  )
+  let clean = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "deadbeef",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "false",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: false,
+      stdout: "",
+      stderr: "unused when history is complete",
+    },
+  )
+  let missing_remote = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "deadbeef",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "true",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: false,
+      stdout: "",
+      stderr: "No such remote",
+    },
+  )
+  let empty_revision = dashboard_source_preflight_decision(
+    instance: lab,
+    ref_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    status_read: DashboardExecResult {
+      success: true,
+      stdout: "",
+      stderr: "",
+    },
+    shallow_read: DashboardExecResult {
+      success: true,
+      stdout: "false",
+      stderr: "",
+    },
+    history_remote_read: DashboardExecResult {
+      success: true,
+      stdout: "unused",
+      stderr: "",
+    },
+  )
+  let dirty_ok = match dirty {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      step == "controller-source-dirty"
+        && string_contains(s: detail, pattern: "bundle carries committed objects only")
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
+  }
+  let clean_ok = match clean {
+    DashboardApplyPreflightReady { instance_id, source_revision } =>
+      instance_id == lab.instance_id
+        && source_revision == "deadbeef"
+    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } => false
+  }
+  let missing_remote_ok = match missing_remote {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      step == "controller-history-remote"
+        && string_contains(s: detail, pattern: "modeled hydration remote")
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
+  }
+  let empty_revision_ok = match empty_revision {
+    DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
+      step == "controller-source-ref"
+        && string_contains(s: detail, pattern: "empty revision")
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => false
+  }
+  dirty_ok
+    && clean_ok
+    && missing_remote_ok
+    && empty_revision_ok
+    && string_contains(
+      s: serialize_json(v: dashboard_apply_preflight_json_value(result: dirty)),
+      pattern: "\"status\": \"refused\"",
+    )
+    && string_contains(
+      s: serialize_json(v: dashboard_apply_preflight_json_value(result: clean)),
+      pattern: "\"source_revision\": \"deadbeef\"",
+    )
+}
+
+test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let ready = dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root_present: false,
+    bootstrap_present: true,
+    bootstrap_writable: true,
+  )
+  let refused = dashboard_bootstrap_preflight_decision(
+    instance: lab,
+    root_present: false,
+    bootstrap_present: true,
+    bootstrap_writable: false,
+  )
+  let ready_ok = match ready {
+    DashboardBootstrapReady { bootstrap_root } =>
+      bootstrap_root == "/home/briansrls/.local/share"
+    DashboardBootstrapRefused { bootstrap_root: _, reason: _ } => false
+  }
+  let refused_ok = match refused {
+    DashboardBootstrapReady { bootstrap_root: _ } => false
+    DashboardBootstrapRefused { bootstrap_root, reason } =>
+      bootstrap_root == "/home/briansrls/.local/share"
+        && string_contains(s: reason as String, pattern: "not writable")
+  }
+  ready_ok && refused_ok
+}
+
+test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
+  dashboard_source_transport_argv_is_exact_and_atomic()
+    && dashboard_local_origin_ref_translation_is_exact()
+    && dashboard_service_is_named_and_scoped_off_production()
+    && dashboard_provider_runtime_and_auth_share_one_state_binding()
+    && dashboard_target_preflight_derives_dispatch_platform_dependencies()
+    && dashboard_health_requires_intended_instance_identity()
+    && dashboard_plan_is_end_to_end_and_production_disjoint()
+    && dashboard_refusal_receipt_is_typed_and_located()
+    && dashboard_dirty_controller_source_refuses_before_apply()
+    && dashboard_bootstrap_parent_writability_is_a_preflight_fact()
+    && dashboard_poll_interval_is_a_usable_duration()
+}

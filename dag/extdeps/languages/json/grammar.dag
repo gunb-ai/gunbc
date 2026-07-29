@@ -248,6 +248,8 @@ fn json_text_parse_number_digits(s: String, i: Int) -> Int {
   }
 }
 
+data json_text_exponent_digit_note: String = "RFC 8259 number = [minus] int [frac] [exp], and exp = (e/E) [minus/plus] 1*DIGIT — the exponent's digits are REQUIRED. This branch previously consumed the marker and optional sign and then accepted whatever json_text_parse_number_digits returned, so `1e` and `1e+` parsed as complete numbers; a receipt carrying one read as well-formed JSON (review 44043). The guard now mirrors the fraction branch directly above it: no digits means the exponent was never part of the number, so the scan backtracks to after_frac and the stray marker surfaces as unconsumed trailing input, which json_text_parseable and every enclosing production refuse. The sibling lexeme surface json_number_consume_optional_exp always required the digit — the two readings of one RFC production had forked (DESIGN 3), and this restores them to agreement."
+
 fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
   let start = i
   let after_minus = if char_at(s: s, i: i) == "-" { i + 1 } else { i }
@@ -264,7 +266,8 @@ fn json_text_parse_number(s: String, i: Int) -> JsonTextParseResult {
     let end = if char_at(s: s, i: after_frac) == "e" || char_at(s: s, i: after_frac) == "E" {
       let exp = after_frac + 1
       let signed = if char_at(s: s, i: exp) == "+" || char_at(s: s, i: exp) == "-" { exp + 1 } else { exp }
-      json_text_parse_number_digits(s: s, i: signed)
+      let exp_digits = json_text_parse_number_digits(s: s, i: signed)
+      if exp_digits == signed { after_frac } else { exp_digits }
     } else {
       after_frac
     }
@@ -292,7 +295,12 @@ fn json_text_parse_array_values(s: String, i: Int) -> JsonTextParseResult {
         if char_at(s: s, i: q) == "]" {
           json_text_parse_ok(end: q + 1)
         } else if char_at(s: s, i: q) == "," {
-          json_text_parse_array_values(s: s, i: q + 1)
+          let next = json_text_skip_ws(s: s, i: q + 1)
+          if char_at(s: s, i: next) == "]" {
+            json_text_parse_fail(end: next)
+          } else {
+            json_text_parse_array_values(s: s, i: next)
+          }
         } else {
           json_text_parse_fail(end: q)
         }
@@ -328,7 +336,12 @@ fn json_text_parse_object_members(s: String, i: Int) -> JsonTextParseResult {
               if char_at(s: s, i: q) == "}" {
                 json_text_parse_ok(end: q + 1)
               } else if char_at(s: s, i: q) == "," {
-                json_text_parse_object_members(s: s, i: q + 1)
+                let next = json_text_skip_ws(s: s, i: q + 1)
+                if char_at(s: s, i: next) == "}" {
+                  json_text_parse_fail(end: next)
+                } else {
+                  json_text_parse_object_members(s: s, i: next)
+                }
               } else {
                 json_text_parse_fail(end: q)
               }

@@ -173,10 +173,10 @@ pub use crate::v1_std_core::{
     make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
-    param_node_name_at, param_node_type_expr, qualified_last_segment, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
+    qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
+    return_value, slice_base, slice_end, slice_start, string_type, type_name_compatible,
+    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -2262,9 +2262,9 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => pattern_subject_from_node(resolve_scrutinee_type_node(
-            scope.type_env.clone(),
+        } => pattern_subject_from_node(preserve_outer_optional_cardinality(
             scrutinee_type.clone(),
+            resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()),
         )),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
@@ -16777,6 +16777,7 @@ pub fn typecheck_module(
                         parents: Rc::new(vec![]),
                     }),
                     item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                    occurrence_transport: Some(resolved.occurrence_transport.clone()),
                 }),
                 diagnostics: v1_rt::concat(env_diags.clone(), seed_diags.clone()),
                 binding_forks: env_result.binding_forks.clone(),
@@ -16930,6 +16931,7 @@ pub fn typecheck_module(
                 ),
                 func_env: updated_func_env.clone(),
                 item_registry: ctx.item_registry.clone(),
+                occurrence_transport: Some(resolved.occurrence_transport.clone()),
             }),
             diagnostics: v1_rt::concat(
                 v1_rt::concat(
@@ -18029,6 +18031,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }
@@ -18337,6 +18340,7 @@ pub fn rewire_type_env_parent_links(
                         interface: m.interface.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }
@@ -18394,6 +18398,7 @@ pub fn rewire_func_env_parent_links(
                             parents: flatten_parent_envs(parents.clone()),
                         }),
                         item_registry: m.item_registry.clone(),
+                        occurrence_transport: m.occurrence_transport.clone(),
                     })
                 });
             }

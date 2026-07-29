@@ -44,13 +44,24 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[doc(hidden)]
+pub use materialization_provider_consumer::{
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
+};
+pub use materialization_provider_consumer::{
+    serve_resolved_graph_v1_disk_probe, serve_resolved_graph_v1_disk_probe_for_test,
+    ResolvedGraphProviderOutcome, OUTPUT_COMPILE_CLEAN_DIAGNOSTIC_UNION,
+};
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    transform_content_digest, write as cross_process_write, CacheLookupResult,
+    closure_content_digest, faithful_probe_unavailable_gap, lookup as cross_process_lookup,
+    probe as cross_process_probe, resolved_graph_cache_root_from_env, subject_digest_for_closure,
+    supports_faithful_probe, transform_content_digest, write as cross_process_write,
+    CacheLookupResult, CacheProbeResult, CachedResolvedGraph,
 };
 use crate::std_interface_summary::{module_key, typed_module_key};
 
@@ -654,14 +665,6 @@ mod process_workspace_root_tests {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
             "cli_run_compile_clean_diagnostic_histogram"
-        );
-    }
-
-    #[test]
-    fn resolved_graph_cache_compile_clean_diag_union_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER,
-            "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal"
         );
     }
 
@@ -1289,6 +1292,8 @@ const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
+const SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL: &str =
+    "src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
@@ -2457,9 +2462,14 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
-        return CompileCleanScopePlan::SkipNoAffected {
-            reason: "no touched paths in diff observation".to_string(),
-        };
+        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
+        // observation that saw nothing is indistinguishable from one that could not
+        // observe, so the whole tree is the only sound baseline. A main-push squash
+        // merge lands here, which is what makes main-push a real cold control.
+        eprintln!(
+            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
+        );
+        return CompileCleanScopePlan::WholeTree;
     }
 
     match compile_clean_all_touched_paths_docs_universe(touched_paths) {
@@ -3099,13 +3109,6 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
 pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
     "cli_run_compile_clean_diagnostic_histogram";
 
-/// INTERIM hand-Rust scaffold (issue 11 / extdeps.realization.resolved_graph
-/// `resolved_graph_cache_compile_clean_diagnostic_union_scaffold`): cross-process
-/// resolved-graph cache hits are refused until the disk artifact carries the
-/// compile-clean diagnostic union. Receipt: `rg resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal src/v1/stage0` == 1 until dissolution.
-pub(crate) const CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER: &str =
-    "resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal";
-
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.
 ///
@@ -3341,6 +3344,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
+        CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -3365,6 +3369,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
+        CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
+            "(occurrence-transport-refusal)".to_string()
+        }
     };
     (class.to_string(), name)
 }
@@ -3604,6 +3611,13 @@ pub struct ModuleGraphFactsLive {
     // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
     // content-key's reference-derived import term) does not re-derive it per module.
     path_to_module: HashMap<String, String>,
+    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
+    // facts), and every observed path whose content read refused. The producers skip an
+    // unreadable file at scan time, so without these rows a vanished module is
+    // indistinguishable from an absent one — the fail-open undercount consumers like the
+    // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
+    observed_paths: HashSet<String>,
+    read_refusals: Vec<(String, String)>,
 }
 
 #[cfg(test)]
@@ -4088,7 +4102,8 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    let observation = import_resolution_facts_with_observation(&roots, &roots, EXCLUDE);
+    let edges = observation.facts;
     let nodes = module_declaration_facts(&roots);
     // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
     // reaches reads this one.
@@ -4121,6 +4136,8 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         declared_paths,
         reference_unaccounted,
         path_to_module,
+        observed_paths: observation.observed_paths,
+        read_refusals: observation.read_refusals,
     }
 }
 
@@ -5653,6 +5670,34 @@ thread_local! {
     #[allow(clippy::type_complexity)]
     static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
         const { RefCell::new(None) };
+
+    // While loading the materialization-provider authority, cross-process disk hits
+    // must not re-enter provider routing (review 44268: bootstrap recursion).
+    static CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED: Cell<usize> = const { Cell::new(0) };
+}
+
+pub(crate) fn cross_process_provider_routing_suppressed() -> bool {
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| c.get() > 0)
+}
+
+pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+                c.set(c.get().saturating_sub(1));
+            });
+        }
+    }
+
+    CROSS_PROCESS_PROVIDER_ROUTING_SUPPRESSED.with(|c| {
+        c.set(c.get().saturating_add(1));
+    });
+    let _guard = Guard;
+    f()
 }
 
 /// Canonical spelling for the shared-index roots — both the key AND the build
@@ -7952,6 +7997,44 @@ fn compile_clean_diags_from_resolved_stages(
     Rc::new(acc)
 }
 
+fn serve_resolved_graph_disk_hit_through_provider(
+    sources: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<ErrorNode>>>,
+    ),
+    String,
+> {
+    let closure_digest = closure_content_digest(sources);
+    let compiler_digest = transform_content_digest();
+    match serve_resolved_graph_v1_disk_probe(&closure_digest, &compiler_digest)? {
+        ResolvedGraphProviderOutcome::Hit => Err(
+            "resolved-graph-cache provider served disk hit but compile-clean diagnostic union is not installed from artifact"
+                .to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedIncomplete { missing } => Err(format!(
+            "resolved-graph-cache provider refused incomplete disk hit: missing {missing:?}"
+        )),
+        ResolvedGraphProviderOutcome::RefusedWrongArtifact => Err(
+            "resolved-graph-cache provider refused disk hit: wrong artifact key".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::Miss => Err(
+            "resolved-graph-cache provider refused disk hit: probe miss".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedKindMismatch => Err(
+            "resolved-graph-cache provider refused disk hit: kind mismatch".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::RefusedWrongContent => Err(
+            "resolved-graph-cache provider refused disk hit: wrong content".to_string(),
+        ),
+        ResolvedGraphProviderOutcome::LookupUnclassified { label } => Err(format!(
+            "resolved-graph-cache provider refused disk hit: {label}"
+        )),
+    }
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -7996,20 +8079,28 @@ fn resolved_graph_from_sources_with_index(
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Cross-process store tier: opt-in via GUNBC_RESOLVED_GRAPH_CACHE_DIR; installs into
-    // the share above on hit so later same-subject demands never re-decode.
+    // the share above on hit so later same-subject demands never re-decode. CI leaves
+    // this unset (mechanism-inventory-red-controls: inert on floor), so PR jobs never
+    // inherit warmed v1 artifacts from a prior run — only explicit test harnesses arm it.
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        match cross_process_lookup(&cache_root, &subject) {
-            CacheLookupResult::Hit(_) => {
-                // SCAFFOLD (§7 — CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER;
-                // dissolve trigger: extdeps.realization.resolved_graph
-                // resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger):
-                // v1 disk artifacts carry only the typed graph — refuse hit, cold resolve.
-                eprintln!(
-                    "[resolved-graph-cache] refusing hit subject={subject}: compile-clean diagnostic union absent from disk artifact; cold resolve ({})",
-                    CLI_RUN_RESOLVED_GRAPH_CACHE_COMPILE_CLEAN_DIAG_UNION_SCAFFOLD_MARKER
-                );
+        match cross_process_probe(&cache_root, &subject) {
+            CacheProbeResult::Hit(_probe) if !cross_process_provider_routing_suppressed() => {
+                if !supports_faithful_probe() {
+                    return Err(format!(
+                        "resolved-graph-cache provider refused faithful probe: {}",
+                        faithful_probe_unavailable_gap()
+                    ));
+                }
+                match cross_process_lookup(&cache_root, &subject) {
+                    CacheLookupResult::Hit(_cached) => {
+                        return serve_resolved_graph_disk_hit_through_provider(&sources);
+                    }
+                    CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+                }
             }
-            CacheLookupResult::RejectedHit(_) | CacheLookupResult::Miss => {}
+            CacheProbeResult::Hit(_)
+            | CacheProbeResult::RejectedHit(_)
+            | CacheProbeResult::Miss => {}
         }
     }
 
@@ -10038,9 +10129,11 @@ fn failure_receipt_companion(function: &str) -> Option<String> {
 /// Empty string = no divergence detail (clean companion **or** companion not declared).
 /// Non-empty refusal sentinel on wrong type / non-missing interpreter error — never silent
 /// None when a companion *is* declared (review 41847, §5). A missing companion
-/// (`NoSuchFunction` / `NoMainFunction` from the `_holds` → `_failure_receipt` naming
-/// convention) is "not declared", not a refused receipt — the auto-derived name must not
-/// invent a required loudness hook for every Bool(false) witness.
+/// (`NoSuchFunction` from the `_holds` → `_failure_receipt` naming convention) is
+/// "not declared", not a refused receipt — the auto-derived name must not invent a
+/// required loudness hook for every Bool(false) witness. This arm used to name a second
+/// variant, `NoMainFunction`, because `run_in_context` reported EVERY missing named
+/// function that way; that variant is deleted and the one honest arm now covers it.
 pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: &str) -> String {
     match v1_interpreter::run_in_context(ctx, function, false) {
         Ok(v1_interpreter::Value::Str(s)) => s,
@@ -10048,8 +10141,7 @@ pub fn run_claim_failure_receipt(ctx: &v1_interpreter::InterpContext, function: 
             "failure_receipt_refused: {function} returned {}, expected String",
             ctx.format_value(&other)
         ),
-        Err(v1_interpreter::InterpError::NoSuchFunction { .. })
-        | Err(v1_interpreter::InterpError::NoMainFunction) => String::new(),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. }) => String::new(),
         Err(e) => format!("failure_receipt_refused: {function}: {e}"),
     }
 }
@@ -10641,6 +10733,374 @@ fn parse_run_args(raw: &[String]) -> Result<Vec<(Option<String>, v1_interpreter:
         .collect()
 }
 
+struct ScopedRunObservation {
+    ctx: v1_interpreter::InterpContext,
+    entry_file: String,
+    module_path: String,
+    function: String,
+    addressable: bool,
+    emoji: bool,
+    state: v1_interpreter::Value,
+    started: std::time::Instant,
+    last_wall_ns: u128,
+    seed_resolution_ns: u128,
+}
+
+impl ScopedRunObservation {
+    fn resolve(
+        entry_file: &str,
+        module_path: &str,
+        function: &str,
+        started: std::time::Instant,
+    ) -> Result<Self, String> {
+        use std::io::IsTerminal;
+        let authority_index = build_module_path_index_from_witness_roots();
+        let authority = authority_index
+            .get("gunbc.observation_seed_render")
+            .cloned()
+            .ok_or_else(|| {
+                "cached module-path index has no gunbc.observation_seed_render binding".to_string()
+            })?;
+        let authority_roots = witness_layer_roots();
+        let (graph, indices) =
+            resolve_entry_graph_shared(&authority_roots, &authority).map_err(|e| {
+                format!("scoped run observation authority resolve failed for {authority}: {e}")
+            })?;
+        let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
+        let state = v1_interpreter::Value::Variant {
+            type_name: ctx.sym("DynamicLineState"),
+            variant_name: ctx.sym("DynamicLineClosed"),
+            fields: Rc::new(vec![]),
+        };
+        Ok(Self {
+            ctx,
+            entry_file: entry_file.to_string(),
+            module_path: module_path.to_string(),
+            function: function.to_string(),
+            addressable: std::io::stderr().is_terminal(),
+            emoji: std::io::stderr().is_terminal()
+                && std::env::var("TERM").map_or(true, |term| term != "dumb"),
+            state,
+            started,
+            last_wall_ns: 0,
+            seed_resolution_ns: 0,
+        })
+    }
+
+    fn emit(
+        &mut self,
+        projection: &str,
+        detail: Option<(&str, &str)>,
+        measured: bool,
+    ) -> Result<(), String> {
+        use std::io::Write;
+        use v1_interpreter::Value;
+
+        let mut args = vec![
+            (
+                Some("entry_file".to_string()),
+                Value::Str(self.entry_file.clone()),
+            ),
+            (
+                Some("module_path".to_string()),
+                Value::Str(self.module_path.clone()),
+            ),
+            (
+                Some("function".to_string()),
+                Value::Str(self.function.clone()),
+            ),
+        ];
+        if let Some((name, value)) = detail {
+            args.push((Some(name.to_string()), Value::Str(value.to_string())));
+        }
+        if measured {
+            let wall_ns = self.started.elapsed().as_nanos();
+            if wall_ns < self.last_wall_ns {
+                return Err("scoped run monotonic Nanosecond wall regressed".to_string());
+            }
+            self.last_wall_ns = wall_ns;
+            args.push((
+                Some("wall".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(self.ctx.sym("count"), Value::Int(wall_ns as i64))]),
+                },
+            ));
+        }
+        args.extend([
+            (
+                Some("addressable".to_string()),
+                Value::Bool(self.addressable),
+            ),
+            (Some("emoji".to_string()), Value::Bool(self.emoji)),
+            (Some("prior".to_string()), self.state.clone()),
+        ]);
+        let projected =
+            v1_interpreter::run_in_context_with_args(&self.ctx, projection, &args, false)
+                .map_err(|e| format!("scoped run observation projection failed: {e}"))?;
+        let Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } = &projected
+        else {
+            return Err(format!(
+                "scoped run observation projection returned {}, expected ScopedRunWriteProjection",
+                projected.type_label_public()
+            ));
+        };
+        if self.ctx.sym_eq(*variant_name, "ScopedRunWriteRefused")
+            || (measured && self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredRefused"))
+        {
+            let cause = match self.ctx.field(fields, "cause") {
+                Some(Value::Str(cause)) => cause.clone(),
+                _ => "typed refusal without a String cause".to_string(),
+            };
+            if projection != "scoped_run_projection_refusal_write" {
+                return self.emit(
+                    "scoped_run_projection_refusal_write",
+                    Some(("diagnostic", &cause)),
+                    false,
+                );
+            }
+            return Err(format!(
+                "scoped run observation refusal projection refused: {cause}"
+            ));
+        }
+        let measured_wall_ns = if measured {
+            if !self.ctx.sym_eq(*variant_name, "ScopedRunMeasuredProjected") {
+                return Err("scoped measured projection returned a non-measured arm".to_string());
+            }
+            let Some(Value::Record {
+                fields: wall_fields,
+                ..
+            }) = self.ctx.field(fields, "wall")
+            else {
+                return Err("scoped measured projection omitted canonical wall".to_string());
+            };
+            match self.ctx.field(wall_fields, "count") {
+                Some(Value::Int(value)) if *value >= 0 => Some(*value as u128),
+                _ => return Err("scoped measured Nanosecond omitted count".to_string()),
+            }
+        } else if !self.ctx.sym_eq(*variant_name, "ScopedRunWriteProjected") {
+            return Err("scoped run observation returned an unknown projection arm".to_string());
+        } else {
+            None
+        };
+        let bytes = match self.ctx.field(fields, "bytes") {
+            Some(Value::Str(bytes)) => bytes,
+            _ => return Err("scoped run observation projected non-String bytes".to_string()),
+        };
+        let next_state = match self.ctx.field(fields, "next") {
+            Some(
+                state @ Value::Variant {
+                    type_name,
+                    variant_name,
+                    fields: next_fields,
+                },
+            ) if self.ctx.sym_eq(*type_name, "DynamicLineState")
+                && (self.ctx.sym_eq(*variant_name, "DynamicLineOpen")
+                    || self.ctx.sym_eq(*variant_name, "DynamicLineClosed"))
+                && next_fields.is_empty() =>
+            {
+                state.clone()
+            }
+            _ => return Err("scoped run observation projected non-canonical state".to_string()),
+        };
+        if let Some(projected_wall_ns) = measured_wall_ns {
+            let expected = self.last_wall_ns;
+            if projected_wall_ns != expected {
+                return Err(format!(
+                    "scoped measured projection wall mismatch: projected={projected_wall_ns} expected={expected}"
+                ));
+            }
+            if self.seed_resolution_ns == 0 {
+                self.seed_resolution_ns = self.started.elapsed().as_nanos();
+            }
+        }
+        let mut stderr = std::io::stderr().lock();
+        stderr
+            .write_all(bytes.as_bytes())
+            .and_then(|_| stderr.flush())
+            .map_err(|e| format!("scoped run observation stderr write failed: {e}"))?;
+        self.state = next_state;
+        if measured && std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
+            eprintln!(
+                "[scoped-observation-measured-receipt wall_ns={} seed_resolution_ns={}]",
+                self.last_wall_ns, self.seed_resolution_ns
+            );
+        }
+        Ok(())
+    }
+
+    fn begin(&mut self) -> Result<(), String> {
+        self.emit("scoped_run_begin_write_measured", None, true)
+    }
+    fn finish(&mut self) -> Result<(), String> {
+        // Clean Final has no attention basis; carry end timing in the separate typed receipt.
+        let end_wall_ns = self.started.elapsed().as_nanos();
+        if end_wall_ns < self.last_wall_ns {
+            return Err("scoped run monotonic Nanosecond wall regressed at Final".to_string());
+        }
+        self.last_wall_ns = end_wall_ns;
+        self.emit("scoped_run_final_write", None, false)?;
+        if std::env::var_os("GUNBC_SCOPED_OBSERVATION_RECEIPT").is_some() {
+            let (wall_ns, seed_resolution_ns) = self.timing_receipt()?;
+            eprintln!(
+                "[scoped-observation-end-receipt wall_ns={} seed_resolution_ns={}]",
+                wall_ns, seed_resolution_ns
+            );
+        }
+        Ok(())
+    }
+
+    fn timing_receipt(&self) -> Result<(u128, u128), String> {
+        use v1_interpreter::Value;
+        let args = vec![
+            (
+                Some("wall".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(
+                        self.ctx.sym("count"),
+                        Value::Int(self.last_wall_ns as i64),
+                    )]),
+                },
+            ),
+            (
+                Some("seed_resolution".to_string()),
+                Value::Record {
+                    type_name: self.ctx.sym("Nanosecond"),
+                    fields: Rc::new(vec![(
+                        self.ctx.sym("count"),
+                        Value::Int(self.seed_resolution_ns as i64),
+                    )]),
+                },
+            ),
+        ];
+        let receipt = v1_interpreter::run_in_context_with_args(
+            &self.ctx,
+            "scoped_run_timing_receipt",
+            &args,
+            false,
+        )
+        .map_err(|e| format!("scoped run timing receipt failed: {e}"))?;
+        let Value::Variant { fields, .. } = receipt else {
+            return Err("scoped run timing receipt returned non-typed value".to_string());
+        };
+        let decode = |name: &str| -> Result<u128, String> {
+            let Some(Value::Record { fields, .. }) = self.ctx.field(&fields, name) else {
+                return Err(format!("scoped run timing receipt omitted {name}"));
+            };
+            match self.ctx.field(fields, "count") {
+                Some(Value::Int(value)) if *value >= 0 => Ok(*value as u128),
+                _ => Err(format!("scoped run timing receipt {name} omitted count")),
+            }
+        };
+        Ok((decode("wall")?, decode("seed_resolution")?))
+    }
+    fn refused(&mut self, cause: &str) -> Result<(), String> {
+        self.emit(
+            "scoped_run_refused_write_measured",
+            Some(("diagnostic", cause)),
+            true,
+        )
+    }
+    fn failed(&mut self, cause: &str) -> Result<(), String> {
+        self.emit(
+            "scoped_run_failed_write_measured",
+            Some(("error", cause)),
+            true,
+        )
+    }
+    fn close_before_deferred(&mut self) -> Result<(), String> {
+        self.emit("scoped_run_close_before_deferred_write", None, false)
+    }
+}
+
+#[cfg(unix)]
+fn capture_scoped_run_stderr<T>(f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::FromRawFd;
+    use std::os::raw::c_int;
+
+    unsafe extern "C" {
+        fn pipe(fds: *mut c_int) -> c_int;
+        fn dup(fd: c_int) -> c_int;
+        fn dup2(oldfd: c_int, newfd: c_int) -> c_int;
+        fn close(fd: c_int) -> c_int;
+    }
+
+    struct RestoreStderr(c_int);
+    impl Drop for RestoreStderr {
+        fn drop(&mut self) {
+            unsafe {
+                dup2(self.0, 2);
+                close(self.0);
+            }
+        }
+    }
+
+    std::io::stderr()
+        .flush()
+        .map_err(|e| format!("flush before scoped stderr capture: {e}"))?;
+    let mut fds = [-1, -1];
+    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(format!(
+            "open scoped stderr capture pipe: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let saved = unsafe { dup(2) };
+    if saved < 0 || unsafe { dup2(fds[1], 2) } < 0 {
+        unsafe {
+            close(fds[0]);
+            close(fds[1]);
+            if saved >= 0 {
+                close(saved);
+            }
+        }
+        return Err(format!(
+            "redirect scoped stderr capture: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    unsafe {
+        close(fds[1]);
+    }
+    let restore = RestoreStderr(saved);
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut file = unsafe { File::from_raw_fd(fds[0]) };
+        file.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let value = f();
+    std::io::stderr()
+        .flush()
+        .map_err(|e| format!("flush scoped stderr capture: {e}"))?;
+    drop(restore);
+    let bytes = reader
+        .join()
+        .map_err(|_| "scoped stderr capture reader panicked".to_string())?
+        .map_err(|e| format!("read scoped stderr capture: {e}"))?;
+    Ok((value, bytes))
+}
+
+#[cfg(not(unix))]
+fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), String> {
+    Err("scoped dynamic-line stderr capture requires a Unix host".to_string())
+}
+
+fn replay_scoped_run_stderr(bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    use std::io::Write;
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_all(bytes).and_then(|_| stderr.flush());
+}
+
 pub fn handle_run_with_options(
     source_roots: Vec<String>,
     function: String,
@@ -10680,12 +11140,22 @@ pub fn handle_run_with_options(
     install_output_policy(&source_roots);
     install_group_syntax(&source_roots);
 
+    let mut scoped_periodic_dump = None;
+    let mut scoped_periodic_secs = None;
     if let Ok(secs) = std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
-            std::thread::spawn(move || loop {
-                std::thread::sleep(std::time::Duration::from_secs(secs));
-                dump_residual_hunt_instrumentation();
-            });
+            if entry_file.is_some() {
+                // The producer is started only after capture_scoped_run_stderr
+                // has installed fd 2.  Starting it here leaves a timeout window
+                // between Begin and capture in which raw diagnostics can corrupt
+                // the Open dynamic line.
+                scoped_periodic_secs = Some(secs);
+            } else {
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(secs));
+                    dump_residual_hunt_instrumentation();
+                });
+            }
         }
     }
 
@@ -10748,7 +11218,6 @@ pub fn handle_run_with_options(
         }
     };
 
-    eprintln!("running {}()...", function);
     let execution_mode = if dry_run {
         v1_interpreter::ExecutionMode::Hermetic
     } else {
@@ -10756,55 +11225,246 @@ pub fn handle_run_with_options(
     };
     let ctx =
         v1_interpreter::InterpContext::new(graph, result.source_indices.clone(), execution_mode);
+    let scoped_identity = entry_file.as_ref().map(|_| {
+        let module_path_index = build_module_path_index(&source_roots);
+        ctx.selected_function_identity(&function, &module_path_index)
+            .filter(|identity| !identity.bare_name_ambiguous || function.contains('.'))
+            .unwrap_or_else(|| {
+                eprintln!(
+                    "error: scoped run function `{function}` has no unique runtime-selected declaration identity"
+                );
+                std::process::exit(1);
+            })
+    });
+    let mut scoped_observation = entry_file.as_deref().map(|entry| {
+        let identity = scoped_identity
+            .as_ref()
+            .expect("scoped identity exists for scoped entry");
+        ScopedRunObservation::resolve(
+            entry,
+            &identity.module_path,
+            &identity.decl_name,
+            std::time::Instant::now(),
+        )
+        .unwrap_or_else(|cause| {
+            eprintln!("error: {cause}");
+            std::process::exit(1);
+        })
+    });
+    if let Some(observation) = scoped_observation.as_mut() {
+        observation.begin().unwrap_or_else(|cause| {
+            eprintln!("error: {cause}");
+            std::process::exit(1);
+        });
+    } else {
+        eprintln!("running {}()...", function);
+    }
     v1_interpreter::with_active_context(&ctx, || {
         // One path, not two: with an empty `--arg` list this is byte-identical
         // to `run_in_context`, which passes the same empty slice.
-        let run_outcome =
-            v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
-        v1_interpreter::print_eval_recompute_trace(&ctx);
+        let mut run = || {
+            if let Some(secs) = scoped_periodic_secs {
+                let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+                let (armed_tx, armed_rx) = std::sync::mpsc::channel();
+                let periodic_ticks = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                let tick_count = periodic_ticks.clone();
+                let witness = std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some();
+                let handle = std::thread::spawn(move || loop {
+                    if witness && secs == 0 {
+                        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) =
+                            stop_rx.recv_timeout(std::time::Duration::ZERO)
+                        {
+                            tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            dump_residual_hunt_instrumentation();
+                        }
+                        let _ = armed_tx.send(());
+                        break;
+                    }
+                    let _ = armed_tx.send(());
+                    match stop_rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+                        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            let tick =
+                                tick_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            dump_residual_hunt_instrumentation();
+                            if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some()
+                                && tick == 0
+                            {
+                                break;
+                            }
+                        }
+                    }
+                });
+                if witness {
+                    let _ = armed_rx.recv();
+                }
+                scoped_periodic_dump = Some((stop_tx, handle, periodic_ticks));
+            }
+            let outcome =
+                v1_interpreter::run_in_context_with_args(&ctx, &function, &run_args, !claim_run);
+            if let Some((stop, handle, periodic_ticks)) = scoped_periodic_dump.take() {
+                let _ = stop.send(());
+                let _ = handle.join();
+                if std::env::var_os("GUNBC_SCOPED_PERIODIC_WITNESS").is_some() {
+                    eprintln!(
+                        "[scoped-periodic-ticks={}]",
+                        periodic_ticks.load(std::sync::atomic::Ordering::Relaxed)
+                    );
+                }
+            }
+            v1_interpreter::print_eval_recompute_trace(&ctx);
+            if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
+                dump_residual_hunt_instrumentation();
+            }
+            outcome
+        };
+        let (run_outcome, mut deferred_stderr) = if scoped_observation.is_some() {
+            capture_scoped_run_stderr(run).unwrap_or_else(|cause| {
+                if let Some(observation) = scoped_observation.as_mut() {
+                    observation
+                        .failed(&cause)
+                        .unwrap_or_else(|projection_cause| {
+                            eprintln!("error: {projection_cause}");
+                            std::process::exit(1);
+                        });
+                }
+                std::process::exit(1);
+            })
+        } else {
+            (run(), Vec::new())
+        };
+        if !deferred_stderr.is_empty() {
+            if let Some(observation) = scoped_observation.as_mut() {
+                observation
+                    .close_before_deferred()
+                    .unwrap_or_else(|projection_cause| {
+                        eprintln!("error: {projection_cause}");
+                        std::process::exit(1);
+                    });
+            }
+            replay_scoped_run_stderr(&deferred_stderr);
+            deferred_stderr.clear();
+        }
         match run_outcome {
             Ok(val) => {
-                println!("{}", val);
-                if std::env::var("GUNBC_FLATTEN_SITE_DUMP_SECS").is_ok() {
-                    dump_residual_hunt_instrumentation();
-                }
                 if claim_run {
                     match &val {
-                        v1_interpreter::Value::Bool(false) => std::process::exit(1),
-                        v1_interpreter::Value::Bool(true) => return,
+                        v1_interpreter::Value::Bool(false) => {
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation.failed("claim returned false").unwrap_or_else(
+                                    |cause| {
+                                        eprintln!("error: {cause}");
+                                        std::process::exit(1);
+                                    },
+                                );
+                            }
+                            replay_scoped_run_stderr(&deferred_stderr);
+                            println!("{}", val);
+                            std::process::exit(1)
+                        }
+                        v1_interpreter::Value::Bool(true) => {
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation.finish().unwrap_or_else(|cause| {
+                                    eprintln!("error: {cause}");
+                                    std::process::exit(1);
+                                });
+                            }
+                            replay_scoped_run_stderr(&deferred_stderr);
+                            println!("{}", val);
+                            return;
+                        }
                         other => {
-                            eprintln!(
-                                "error: function `{}` returned `{}`, not `Bool`. \
-                                 With --claim-run the entry must return Bool (false → exit 1).",
+                            let cause = format!(
+                                "function `{}` returned `{}`, not Bool; --claim-run requires Bool",
                                 function, other
                             );
+                            if let Some(observation) = scoped_observation.as_mut() {
+                                observation
+                                    .refused(&cause)
+                                    .unwrap_or_else(|projection_cause| {
+                                        eprintln!("error: {projection_cause}");
+                                        std::process::exit(1);
+                                    });
+                            } else {
+                                eprintln!(
+                                    "error: function `{}` returned `{}`, not `Bool`. \
+                                     With --claim-run the entry must return Bool (false → exit 1).",
+                                    function, other
+                                );
+                            }
+                            replay_scoped_run_stderr(&deferred_stderr);
+                            println!("{}", val);
                             std::process::exit(2);
                         }
                     }
                 }
                 match classify_exit(&val, &ctx) {
-                    ExitClass::Success => {}
+                    ExitClass::Success => {
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation.finish().unwrap_or_else(|cause| {
+                                eprintln!("error: {cause}");
+                                std::process::exit(1);
+                            });
+                        }
+                    }
                     ExitClass::Failure { code, reason } => {
-                        if let Some(message) = reason {
+                        let cause = reason
+                            .clone()
+                            .unwrap_or_else(|| format!("process exited {code}"));
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation
+                                .failed(&cause)
+                                .unwrap_or_else(|projection_cause| {
+                                    eprintln!("error: {projection_cause}");
+                                    std::process::exit(1);
+                                });
+                        } else if let Some(message) = &reason {
                             eprintln!("{message}");
                         }
+                        replay_scoped_run_stderr(&deferred_stderr);
+                        println!("{}", val);
                         std::process::exit(code);
                     }
                     ExitClass::NotProcessExit { type_name } => {
-                        eprintln!(
-                            "error: function `{}` returned `{}`, not `ProcessExit`. \
-                             Functions invoked via `dag run` must return std/process.dag's \
-                             ProcessExit so the host can map success/failure to an exit code. \
-                             Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
-                             --claim-run for Bool witness entry points under src/v2.",
+                        let cause = format!(
+                            "function `{}` returned `{}`, not ProcessExit",
                             function, type_name
                         );
+                        if let Some(observation) = scoped_observation.as_mut() {
+                            observation
+                                .refused(&cause)
+                                .unwrap_or_else(|projection_cause| {
+                                    eprintln!("error: {projection_cause}");
+                                    std::process::exit(1);
+                                });
+                        } else {
+                            eprintln!(
+                                "error: function `{}` returned `{}`, not `ProcessExit`. \
+                                 Functions invoked via `dag run` must return std/process.dag's \
+                                 ProcessExit so the host can map success/failure to an exit code. \
+                                 Wrap your rich result type in ExitSuccess / ExitFailure, or pass \
+                                 --claim-run for Bool witness entry points under src/v2.",
+                                function, type_name
+                            );
+                        }
+                        replay_scoped_run_stderr(&deferred_stderr);
+                        println!("{}", val);
                         std::process::exit(2);
                     }
                 }
+                replay_scoped_run_stderr(&deferred_stderr);
+                println!("{}", val);
             }
             Err(e) => {
-                eprintln!("runtime error: {}", e);
+                if let Some(observation) = scoped_observation.as_mut() {
+                    observation.failed(&e.to_string()).unwrap_or_else(|cause| {
+                        eprintln!("error: {cause}");
+                        std::process::exit(1);
+                    });
+                } else {
+                    eprintln!("runtime error: {}", e);
+                }
+                replay_scoped_run_stderr(&deferred_stderr);
                 std::process::exit(1);
             }
         }
@@ -12455,7 +13115,10 @@ pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
-fn resolve_entry_file_under_roots(source_roots: &[String], entry: &str) -> Result<String, String> {
+pub(crate) fn resolve_entry_file_under_roots(
+    source_roots: &[String],
+    entry: &str,
+) -> Result<String, String> {
     let path = Path::new(entry);
     if path.is_file() {
         return Ok(path.to_string_lossy().into_owned());
@@ -12654,12 +13317,19 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
+// Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
-// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms
-// until the host consumes the `.dag`-authoritative
+// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
+// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
+// cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
+// The third target is NOT new HAND-RUST surface (review 44441): wet_receipt aliases the leaf as
+// `falsifier_self_host_wet_known_red_entries = seed_emitter_behavioral_wet_known_red_entries`
+// without parseable `seed_emitter_behavioral_wet_known_red_entry(` heads, so the leaf must be
+// scanned until the host consumes the `.dag`-authoritative
 // `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
-// supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
+// supply-carrier pattern; that manifest already folds falsifier_self_host_wet_known_red_entries). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
 // seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands
 // to leaf keys the way `expand_explicit_entries` already does for execution.
 // Not a census shrink: HAND_MAINTAINED `cli_run.rs` LOC grows by the file-grain arm until
@@ -12720,10 +13390,14 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
+        (
+            "seed_emitter_behavioral_wet_known_red_entry(",
+            "entry: String",
+        ),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -12811,6 +13485,23 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
         for key in witness_admission_entry_function_keys_from_source(
             WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
             &wet,
+        ) {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+        let known_red = std::fs::read_to_string(
+            workspace_root().join(SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL),
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "witness admission: failed to read {}: {e}",
+                SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL
+            )
+        });
+        for key in witness_admission_entry_function_keys_from_source(
+            SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL,
+            &known_red,
         ) {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
@@ -13294,14 +13985,14 @@ pub fn discover_floor_witness_roster(
     crate::test_module_hygiene::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    let FloorLensImportGraph {
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    } = build_floor_lens_import_graph(source_roots)?;
+    // ONE module-graph facts build serves effect-reach, the inert-lens reach, and the
+    // justification census (6A repoint: `build_floor_lens_import_graph`'s second
+    // corpus scan is deleted; `v2.lens.module_graph` facts are the single
+    // edge/declaration authority on this path).
     let facts = build_module_graph_facts_live(source_roots);
+    refuse_on_module_graph_read_refusals(&facts)?;
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
+    let inert = inert_lens_modules(&rows, &facts);
     if !inert.is_empty() {
         return Err(format!(
             "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
@@ -13312,7 +14003,8 @@ pub fn discover_floor_witness_roster(
             inert.join(", ")
         ));
     }
-    let unjustified = unjustified_lens_modules(&module_to_path, &lens_with_justification);
+    let (lens_module_to_path, lens_with_justification) = lens_justification_census(&facts)?;
+    let unjustified = unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
     if !unjustified.is_empty() {
         return Err(format!(
             "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
@@ -13328,54 +14020,6 @@ pub fn discover_floor_witness_roster(
     Ok(rows)
 }
 
-struct FloorLensImportGraph {
-    path_imports: std::collections::HashMap<String, Vec<String>>,
-    module_to_path: std::collections::HashMap<String, String>,
-    lens_with_justification: std::collections::BTreeSet<String>,
-}
-
-fn build_floor_lens_import_graph(source_roots: &[String]) -> Result<FloorLensImportGraph, String> {
-    let mut path_imports: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
-    let mut module_to_path: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut lens_with_justification: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        dag_files.sort();
-        for path in dag_files {
-            let entry = path.to_string_lossy().into_owned();
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            let rel = repo_relative_dag_path(&entry);
-            if let Some(m) = extract_module_path(&content) {
-                if is_top_level_lens_module(&m) && declares_construction_justification(&content) {
-                    lens_with_justification.insert(m.clone());
-                }
-                module_to_path.insert(m, rel.clone());
-            }
-            path_imports.insert(rel, extract_import_paths(&content));
-        }
-    }
-    for edge in reference_edges_as_import_facts(
-        &reference_resolution_facts(source_roots, source_roots, &[]),
-        true,
-    ) {
-        let importer = repo_relative_dag_path(&edge.path);
-        let entry = path_imports.entry(importer).or_default();
-        if !entry.contains(&edge.import_module) {
-            entry.push(edge.import_module);
-        }
-    }
-    Ok(FloorLensImportGraph {
-        path_imports,
-        module_to_path,
-        lens_with_justification,
-    })
-}
-
 fn default_floor_lens_hygiene_excludes() -> Vec<String> {
     witness_exclusion_substrings()
 }
@@ -13386,27 +14030,27 @@ pub fn inert_lens_unreached_module_count() -> i64 {
     let roots = default_source_roots();
     let scan_dirs = witness_discovery_scan_dirs();
     let excludes = default_floor_lens_hygiene_excludes();
-    match build_floor_lens_import_graph(&roots) {
-        Ok(graph) => match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
-            Ok(rows) => {
-                inert_lens_modules(&rows, &graph.path_imports, &graph.module_to_path).len() as i64
-            }
-            Err(_) => -1,
-        },
+    let facts = build_module_graph_facts_live(&roots);
+    if refuse_on_module_graph_read_refusals(&facts).is_err() {
+        return -1;
+    }
+    match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
+        Ok(rows) => inert_lens_modules(&rows, &facts).len() as i64,
         Err(_) => -1,
     }
 }
 
 /// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
 pub fn inert_lens_top_level_module_count() -> i64 {
-    match build_floor_lens_import_graph(&default_source_roots()) {
-        Ok(graph) => graph
-            .module_to_path
-            .keys()
-            .filter(|m| is_top_level_lens_module(m))
-            .count() as i64,
-        Err(_) => -1,
+    let facts = build_module_graph_facts_live(&default_source_roots());
+    if refuse_on_module_graph_read_refusals(&facts).is_err() {
+        return -1;
     }
+    facts
+        .nodes
+        .iter()
+        .filter(|n| is_top_level_lens_module(&n.module))
+        .count() as i64
 }
 
 fn declares_construction_justification(content: &str) -> bool {
@@ -13545,63 +14189,122 @@ fn is_top_level_lens_module(module: &str) -> bool {
     }
 }
 
-fn inert_lens_modules(
-    rows: &[DiscoveryRow],
-    path_imports: &std::collections::HashMap<String, Vec<String>>,
-    module_to_path: &std::collections::HashMap<String, String>,
-) -> Vec<String> {
-    let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+/// Fail-closed arm for every lens-census consumer of the module-graph facts
+/// (operator review 2026-07-28, PR #7384): the fact producers skip unreadable files at
+/// scan time, so an unreadable top-level lens would otherwise VANISH from both the
+/// lens universe (`inert_lens_top_level_module_count`) and the justification census —
+/// an absorbing fail-open undercount, not an over-flag. Any read refusal recorded by
+/// the single facts authority stops the census, typed and located (paths named),
+/// never narrowed.
+fn refuse_on_module_graph_read_refusals(facts: &ModuleGraphFactsLive) -> Result<(), String> {
+    if facts.read_refusals.is_empty() {
+        return Ok(());
+    }
+    let listed: Vec<String> = facts
+        .read_refusals
+        .iter()
+        .map(|(path, err)| format!("{path} ({err})"))
+        .collect();
+    Err(format!(
+        "module-graph facts read refusal (DESIGN §5 fail-closed): {} source path(s) \
+         under the scan roots could not be read, so the lens census cannot answer — an \
+         unreadable lens would silently vanish from the universe instead of flagging: {}",
+        listed.len(),
+        listed.join(", ")
+    ))
+}
+
+/// Reachability walk for the inert-lens hygiene census over the module-graph facts
+/// SELECTION tier (import edges + strict-tier reference edges) — the same
+/// `v2.lens.module_graph` authority affected-set selection reads. 6A repoint: replaces
+/// the deleted `build_floor_lens_import_graph`, which re-scanned the whole corpus into
+/// a second module-name-grain adjacency beside the facts build the roster already
+/// performs. One edge authority, walked at path grain; module names derive from the
+/// same facts' declaration rows. The legacy walk also carried undeclared raw import
+/// names in its reached set; `build_import_adjacency` drops edges to undeclared
+/// targets, and an undeclared name can never be a declared lens module, so the inert
+/// set is unchanged (proven by the legacy-oracle equivalence test:
+/// `facts_walk_matches_legacy_floor_lens_graph_on_live_corpus`).
+fn inert_lens_modules(rows: &[DiscoveryRow], facts: &ModuleGraphFactsLive) -> Vec<String> {
+    // Seed reachability from ALL *_test.dag files the facts scan saw (declared modules
+    // plus edge-bearing importers — a file with neither contributes no module and no
+    // edges, so omitting it cannot change reachability), not just enrolled rows, so
+    // witnesses in the execution corpus also count for lens coverage even though they
+    // are excluded from the main corpus rows.
+    let mut seeds: BTreeSet<String> = rows
+        .iter()
+        .map(|r| repo_relative_dag_path(&r.entry))
+        .collect();
+    for path in facts
+        .declared_paths
+        .iter()
+        .chain(facts.selection_adjacency.keys())
+    {
+        if path.ends_with("_test.dag") {
+            seeds.insert(path.clone());
+        }
+    }
+    let mut reached_paths: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = Vec::new();
-    let path_to_module: std::collections::HashMap<&String, &String> =
-        module_to_path.iter().map(|(m, p)| (p, m)).collect();
-    // Seed reachability from ALL *_test.dag files found in the source tree (not
-    // just enrolled rows), so that witnesses in the execution corpus also count
-    // for lens coverage even though they are excluded from the main corpus rows.
-    let entry_paths: std::collections::BTreeSet<String> = {
-        let mut s: std::collections::BTreeSet<String> = rows
-            .iter()
-            .map(|r| repo_relative_dag_path(&r.entry))
-            .collect();
-        for path in path_imports.keys() {
-            if path.ends_with("_test.dag") {
-                s.insert(path.clone());
-            }
+    for path in seeds {
+        if reached_paths.insert(path.clone()) {
+            queue.push(path);
         }
-        s
-    };
-    for ep in &entry_paths {
-        if let Some(module) = path_to_module.get(ep) {
-            if reached.insert((*module).clone()) {
-                queue.push((*module).clone());
-            }
-        }
-        if let Some(imports) = path_imports.get(ep) {
-            for imp in imports {
-                if reached.insert(imp.clone()) {
-                    queue.push(imp.clone());
-                }
+    }
+    while let Some(path) = queue.pop() {
+        for target in facts.selection_adjacency.get(&path).into_iter().flatten() {
+            if reached_paths.insert(target.clone()) {
+                queue.push(target.clone());
             }
         }
     }
-    while let Some(module) = queue.pop() {
-        if let Some(mpath) = module_to_path.get(&module) {
-            if let Some(imports) = path_imports.get(mpath) {
-                for imp in imports {
-                    if reached.insert(imp.clone()) {
-                        queue.push(imp.clone());
-                    }
-                }
-            }
-        }
-    }
-    let mut inert: Vec<String> = module_to_path
-        .keys()
-        .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+    let reached_modules: HashSet<&String> = reached_paths
+        .iter()
+        .filter_map(|p| facts.path_to_module.get(p))
+        .collect();
+    let mut inert: Vec<String> = facts
+        .nodes
+        .iter()
+        .map(|n| &n.module)
+        .filter(|m| is_top_level_lens_module(m) && !reached_modules.contains(m))
         .cloned()
         .collect();
     inert.sort();
     inert.dedup();
     inert
+}
+
+/// Top-level `v2.lens.*` (module → path) rows from the module-graph facts, plus the
+/// subset recording a `construction_justification`. Fail-closed per file: a lens file
+/// that cannot be read refuses, never counts as justified (the arm the deleted
+/// `build_floor_lens_import_graph` carried for the whole corpus, kept here scoped to
+/// the lens declarations — the only file reads left on this census path).
+fn lens_justification_census(
+    facts: &ModuleGraphFactsLive,
+) -> Result<
+    (
+        std::collections::HashMap<String, String>,
+        std::collections::BTreeSet<String>,
+    ),
+    String,
+> {
+    let ws = workspace_root();
+    let mut lens_module_to_path: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    let mut justified: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for node in &facts.nodes {
+        if !is_top_level_lens_module(&node.module) {
+            continue;
+        }
+        let rel = workspace_relative_repo_path(&node.path);
+        let content =
+            std::fs::read_to_string(ws.join(&rel)).map_err(|e| format!("read {rel}: {e}"))?;
+        if declares_construction_justification(&content) {
+            justified.insert(node.module.clone());
+        }
+        lens_module_to_path.insert(node.module.clone(), rel);
+    }
+    Ok((lens_module_to_path, justified))
 }
 
 /// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
@@ -19743,7 +20446,7 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence, OccurrenceId }\n");
+    out.push_str("import v2.std.node { MintedOccurrence }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -19801,12 +20504,30 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
+/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
+/// correspondingly absent from this manifest's `v2.std.node` import list.
+///
+/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
+/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
+/// record-literal position resolves to two candidates and the indexer refuses:
+/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
+/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
+/// only construction sites need the qualification, which is why this reads as an inconsistency.
+///
+/// #7352 applied exactly this qualification to the one COMMITTED construction site
+/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
+/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
+/// sees it, and its only executing consumer is the module-binding supply gate, which moved
+/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
+///
+/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
+/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
 fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
     let start = span.start.max(0);
     let end = span.end.max(start);
     let occurrence_id = start.max(1);
     format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
     )
 }
 
@@ -20020,11 +20741,11 @@ mod source_root_ingest_manifest_tests {
 #[cfg(test)]
 mod inert_lens_hygiene_tests {
     use super::{
-        default_source_roots, discover_floor_witness_roster, inert_lens_modules,
-        is_top_level_lens_module, witness_discovery_scan_dirs, witness_exclusion_substrings,
-        DiscoveryRow,
+        build_import_adjacency, build_module_graph_facts_live, default_source_roots,
+        discover_floor_witness_roster, inert_lens_modules, is_top_level_lens_module,
+        witness_discovery_scan_dirs, witness_exclusion_substrings, DiscoveryRow,
+        ImportResolutionFactRaw, ModuleDeclarationFactRaw, ModuleGraphFactsLive,
     };
-    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -20041,6 +20762,54 @@ mod inert_lens_hygiene_tests {
             entry: entry.to_string(),
             function: function.to_string(),
             reads_live_tree: false,
+        }
+    }
+
+    /// Synthetic `ModuleGraphFactsLive` through the SAME construction path the live
+    /// build uses (`build_import_adjacency`), so the walk tests exercise real
+    /// adjacency construction, not a parallel hand map.
+    fn synthetic_facts(nodes: &[(&str, &str)], edges: &[(&str, &str)]) -> ModuleGraphFactsLive {
+        let node_rows: Vec<ModuleDeclarationFactRaw> = nodes
+            .iter()
+            .map(|(module, path)| ModuleDeclarationFactRaw {
+                module: module.to_string(),
+                path: path.to_string(),
+            })
+            .collect();
+        let declared_modules: std::collections::HashSet<&str> =
+            nodes.iter().map(|(module, _)| *module).collect();
+        let edge_rows: Vec<ImportResolutionFactRaw> = edges
+            .iter()
+            .map(|(path, target)| ImportResolutionFactRaw {
+                path: path.to_string(),
+                import_module: target.to_string(),
+                target_declared: declared_modules.contains(*target),
+            })
+            .collect();
+        let adjacency = build_import_adjacency(&edge_rows, &node_rows);
+        let declared_paths: std::collections::HashSet<String> = node_rows
+            .iter()
+            .map(|n| super::workspace_relative_repo_path(&n.path))
+            .collect();
+        let path_to_module: super::HashMap<String, String> = node_rows
+            .iter()
+            .map(|n| {
+                (
+                    super::workspace_relative_repo_path(&n.path),
+                    n.module.clone(),
+                )
+            })
+            .collect();
+        ModuleGraphFactsLive {
+            edges: edge_rows,
+            nodes: node_rows,
+            adjacency: adjacency.clone(),
+            selection_adjacency: adjacency,
+            declared_paths,
+            reference_unaccounted: std::collections::HashSet::new(),
+            path_to_module,
+            observed_paths: std::collections::HashSet::new(),
+            read_refusals: Vec::new(),
         }
     }
 
@@ -20062,40 +20831,361 @@ mod inert_lens_hygiene_tests {
 
     #[test]
     fn detector_red_on_unreached_green_on_wired() {
-        let mut module_to_path: HashMap<String, String> = HashMap::new();
-        let mut path_imports: HashMap<String, Vec<String>> = HashMap::new();
-        module_to_path.insert(
-            "v2.lens.demo".to_string(),
-            "src/v2/lens/demo.dag".to_string(),
-        );
-        path_imports.insert("src/v2/lens/demo.dag".to_string(), vec![]);
-
-        let inert = inert_lens_modules(&[], &path_imports, &module_to_path);
+        // Discriminating RED for the facts-tier walk: an unwired lens flags inert…
+        let facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
+        let inert = inert_lens_modules(&[], &facts);
         assert_eq!(inert, vec!["v2.lens.demo".to_string()]);
 
-        module_to_path.insert(
-            "v2.test.lens_demo.w".to_string(),
-            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
-        );
-        path_imports.insert(
-            "src/v2/workflow/lens_demo_family_eval_test.dag".to_string(),
-            vec!["v2.lens.demo".to_string()],
+        // …wiring a discovered witness clears it…
+        let facts = synthetic_facts(
+            &[
+                ("v2.lens.demo", "src/v2/lens/demo.dag"),
+                (
+                    "v2.test.lens_demo.w",
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                ),
+            ],
+            &[(
+                "src/v2/workflow/lens_demo_family_eval_test.dag",
+                "v2.lens.demo",
+            )],
         );
         let rows = vec![row("src/v2/workflow/lens_demo_family_eval_test.dag", "w")];
         assert!(
-            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            inert_lens_modules(&rows, &facts).is_empty(),
             "wiring a discovered witness must clear the inert flag"
         );
 
-        module_to_path.insert("v2.lens.sib".to_string(), "src/v2/lens/sib.dag".to_string());
-        path_imports.insert("src/v2/lens/sib.dag".to_string(), vec![]);
-        path_imports.insert(
-            "src/v2/lens/demo.dag".to_string(),
-            vec!["v2.lens.sib".to_string()],
+        // …and reachability is transitive through the selection adjacency.
+        let facts = synthetic_facts(
+            &[
+                ("v2.lens.demo", "src/v2/lens/demo.dag"),
+                ("v2.lens.sib", "src/v2/lens/sib.dag"),
+                (
+                    "v2.test.lens_demo.w",
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                ),
+            ],
+            &[
+                (
+                    "src/v2/workflow/lens_demo_family_eval_test.dag",
+                    "v2.lens.demo",
+                ),
+                ("src/v2/lens/demo.dag", "v2.lens.sib"),
+            ],
         );
         assert!(
-            inert_lens_modules(&rows, &path_imports, &module_to_path).is_empty(),
+            inert_lens_modules(&rows, &facts).is_empty(),
             "a transitively-reached sibling lens must count as wired"
+        );
+    }
+
+    // ── 6A closure repoint receipts ─────────────────────────────────────────────
+    //
+    // Legacy oracle, retained TEST-SIDE only (the Phase-1 pattern:
+    // `resolve_transitively_bfs_legacy`): the deleted `build_floor_lens_import_graph`
+    // corpus scan + module-name-grain walk, kept to prove the facts-tier walk computes
+    // the identical inert set and edge relation over the live corpus.
+
+    fn floor_lens_graph_legacy(
+        source_roots: &[String],
+    ) -> (
+        std::collections::HashMap<String, Vec<String>>,
+        std::collections::HashMap<String, String>,
+    ) {
+        let mut path_imports: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        let mut module_to_path: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for root in source_roots {
+            let mut dag_files: Vec<std::path::PathBuf> = Vec::new();
+            super::collect_dag_files_tolerant(std::path::Path::new(root), &mut dag_files);
+            dag_files.sort();
+            for path in dag_files {
+                let entry = path.to_string_lossy().into_owned();
+                let content = std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+                let rel = super::repo_relative_dag_path(&entry);
+                if let Some(m) = super::extract_module_path(&content) {
+                    module_to_path.insert(m, rel.clone());
+                }
+                path_imports.insert(rel, super::extract_import_paths(&content));
+            }
+        }
+        for edge in super::reference_edges_as_import_facts(
+            &super::reference_resolution_facts(source_roots, source_roots, &[]),
+            true,
+        ) {
+            let importer = super::repo_relative_dag_path(&edge.path);
+            let entry = path_imports.entry(importer).or_default();
+            if !entry.contains(&edge.import_module) {
+                entry.push(edge.import_module);
+            }
+        }
+        (path_imports, module_to_path)
+    }
+
+    fn inert_lens_modules_legacy(
+        rows: &[DiscoveryRow],
+        path_imports: &std::collections::HashMap<String, Vec<String>>,
+        module_to_path: &std::collections::HashMap<String, String>,
+    ) -> Vec<String> {
+        let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut queue: Vec<String> = Vec::new();
+        let path_to_module: std::collections::HashMap<&String, &String> =
+            module_to_path.iter().map(|(m, p)| (p, m)).collect();
+        let entry_paths: std::collections::BTreeSet<String> = {
+            let mut s: std::collections::BTreeSet<String> = rows
+                .iter()
+                .map(|r| super::repo_relative_dag_path(&r.entry))
+                .collect();
+            for path in path_imports.keys() {
+                if path.ends_with("_test.dag") {
+                    s.insert(path.clone());
+                }
+            }
+            s
+        };
+        for ep in &entry_paths {
+            if let Some(module) = path_to_module.get(ep) {
+                if reached.insert((*module).clone()) {
+                    queue.push((*module).clone());
+                }
+            }
+            if let Some(imports) = path_imports.get(ep) {
+                for imp in imports {
+                    if reached.insert(imp.clone()) {
+                        queue.push(imp.clone());
+                    }
+                }
+            }
+        }
+        while let Some(module) = queue.pop() {
+            if let Some(mpath) = module_to_path.get(&module) {
+                if let Some(imports) = path_imports.get(mpath) {
+                    for imp in imports {
+                        if reached.insert(imp.clone()) {
+                            queue.push(imp.clone());
+                        }
+                    }
+                }
+            }
+        }
+        let mut inert: Vec<String> = module_to_path
+            .keys()
+            .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
+            .cloned()
+            .collect();
+        inert.sort();
+        inert.dedup();
+        inert
+    }
+
+    #[test]
+    fn facts_walk_matches_legacy_floor_lens_graph_on_live_corpus() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let (path_imports, module_to_path) = floor_lens_graph_legacy(&roots);
+        let facts = build_module_graph_facts_live(&roots);
+
+        // Edge-set equivalence at the grain the walk consumes: (importer path →
+        // declared target module). The legacy map carries undeclared raw names and the
+        // facts adjacency carries paths; projected to the shared grain they must agree
+        // row-for-row.
+        let mut mismatches: Vec<String> = Vec::new();
+        for (path, imports) in &path_imports {
+            let legacy_targets: std::collections::BTreeSet<String> = imports
+                .iter()
+                .filter(|m| module_to_path.contains_key(*m))
+                .cloned()
+                .collect();
+            let facts_targets: std::collections::BTreeSet<String> = facts
+                .selection_adjacency
+                .get(path)
+                .into_iter()
+                .flatten()
+                .filter_map(|p| facts.path_to_module.get(p).cloned())
+                .collect();
+            if legacy_targets != facts_targets {
+                mismatches.push(format!(
+                    "{path}: legacy {legacy_targets:?} vs facts {facts_targets:?}"
+                ));
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "6A repoint: selection-tier edge sets diverged from the legacy corpus scan \
+             ({} importer(s)):\n{}",
+            mismatches.len(),
+            mismatches.join("\n")
+        );
+
+        // Inert-set equivalence (the census answer itself).
+        let legacy = inert_lens_modules_legacy(&[], &path_imports, &module_to_path);
+        let repointed = inert_lens_modules(&[], &facts);
+        assert_eq!(
+            repointed, legacy,
+            "6A repoint: facts-tier inert set diverged from the legacy walk"
+        );
+
+        // Discriminating RED control: sever the edge tier and the same comparison must
+        // diverge — proves the equality receipts above can go red on a real divergence.
+        let mut severed = facts.clone();
+        severed.selection_adjacency = super::HashMap::new();
+        let inert_severed = inert_lens_modules(&[], &severed);
+        assert!(
+            !inert_severed.is_empty(),
+            "severed-edge control: with no edges some lens must flag inert"
+        );
+        assert_ne!(
+            inert_severed, legacy,
+            "severed-edge control must diverge from the legacy answer \
+             (the equality receipt discriminates)"
+        );
+    }
+
+    // BLOCKER-1 RED (operator review 2026-07-28): a top-level lens PRESENT in the
+    // source inventory whose content cannot be read must surface as a counted read
+    // refusal — never vanish from the lens universe. The bad file is invalid UTF-8, so
+    // `read_to_string` refuses for every uid (a chmod-based probe would pass under
+    // root).
+    #[test]
+    fn unreadable_lens_is_a_read_refusal_not_an_absence() {
+        // Scratch roots live INSIDE the workspace (gitignored target/): the walk's
+        // path keys are workspace-anchored and an outside-tree root panics by design.
+        // Pool root and importer root are SEPARATE dirs because the pool's
+        // module-binding walk (`for_each_parsed_module_binding`) panics loudly on an
+        // unreadable file — that panic remains the pool-side backstop; the arm under
+        // test here is the importer walk's recorded refusal, which previously was a
+        // silent `continue`.
+        let scratch = workspace_root()
+            .join("target")
+            .join(format!("gunbc-unreadable-lens-{}", std::process::id()));
+        let pool_dir = scratch.join("pool");
+        let lens_dir = scratch.join("lens");
+        std::fs::create_dir_all(&pool_dir).expect("scratch pool dir");
+        std::fs::create_dir_all(&lens_dir).expect("scratch lens dir");
+        std::fs::write(
+            pool_dir.join("pool_probe.dag"),
+            "module v2.lens.pool_probe\n\ndata marker: String = \"x\"\n",
+        )
+        .expect("write pool module");
+        std::fs::write(
+            lens_dir.join("good.dag"),
+            "module v2.lens.good_probe\n\ndata marker: String = \"x\"\n",
+        )
+        .expect("write good lens");
+        // Invalid UTF-8, so `read_to_string` refuses for every uid (a chmod-based
+        // probe would pass under root).
+        std::fs::write(lens_dir.join("bad_lens.dag"), [0xFFu8, 0xFE, 0x00, 0xC0])
+            .expect("write unreadable lens");
+        let pool_root = pool_dir.to_string_lossy().into_owned();
+        let lens_root = lens_dir.to_string_lossy().into_owned();
+        let observation =
+            super::import_resolution_facts_with_observation(&[pool_root], &[lens_root], &[]);
+        std::fs::remove_dir_all(&scratch).ok();
+        let observed_bad = observation
+            .observed_paths
+            .iter()
+            .any(|p| p.ends_with("lens/bad_lens.dag"));
+        assert!(
+            observed_bad,
+            "the unreadable file must be in the source inventory (observed_paths)"
+        );
+        let refusal = observation
+            .read_refusals
+            .iter()
+            .find(|(p, _)| p.ends_with("lens/bad_lens.dag"));
+        assert!(
+            refusal.is_some(),
+            "the unreadable file must surface as a typed, located read refusal; got {:?}",
+            observation.read_refusals
+        );
+        assert!(
+            !observation
+                .facts
+                .iter()
+                .any(|f| f.path.ends_with("bad_lens.dag")),
+            "no facts may be fabricated for an unreadable file"
+        );
+        // End-to-end: a facts value carrying this observation must STOP the census —
+        // the lens is present in the inventory, produced no module declaration, and
+        // the refusal (not absence) is the surfaced state.
+        let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
+        facts.observed_paths = observation.observed_paths;
+        facts.read_refusals = observation.read_refusals;
+        let err = super::refuse_on_module_graph_read_refusals(&facts)
+            .expect_err("census must refuse while a lens-bearing path is unreadable");
+        assert!(
+            err.contains("bad_lens.dag"),
+            "refusal must locate the unreadable path: {err}"
+        );
+    }
+
+    // The refusal arm itself: red on a recorded refusal (typed, path named), green on
+    // none — and green over the LIVE corpus (the no-refusal control that keeps the
+    // arm honest about today's tree).
+    #[test]
+    fn census_refuses_on_read_refusals_red_and_green() {
+        let mut facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
+        assert!(super::refuse_on_module_graph_read_refusals(&facts).is_ok());
+        facts.read_refusals.push((
+            "src/v2/lens/vanished.dag".to_string(),
+            "permission denied".to_string(),
+        ));
+        let err = super::refuse_on_module_graph_read_refusals(&facts)
+            .expect_err("a recorded read refusal must stop the census");
+        assert!(
+            err.contains("src/v2/lens/vanished.dag") && err.contains("fail-closed"),
+            "refusal must be typed and located: {err}"
+        );
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let live = build_module_graph_facts_live(&default_source_roots());
+        assert!(
+            super::refuse_on_module_graph_read_refusals(&live).is_ok(),
+            "live corpus must scan without read refusals: {:?}",
+            live.read_refusals
+        );
+        assert!(
+            !live.observed_paths.is_empty(),
+            "live corpus inventory must be non-empty (non-vacuity)"
+        );
+    }
+
+    // 6A cost receipt: the whole lens census (reach + justification) runs on ONE
+    // module-graph facts build — the deleted second corpus scan cannot come back
+    // silently. Uses the same instruments as
+    // `resolve_transitively_threads_prebuilt_facts_without_rescan`.
+    #[test]
+    fn lens_census_single_facts_build_receipt() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        super::reset_module_graph_facts_cache_for_test();
+        super::reset_module_graph_facts_build_count_for_test();
+        super::reset_import_resolution_facts_call_counts_for_test();
+        let facts = build_module_graph_facts_live(&roots);
+        let _ = inert_lens_modules(&[], &facts);
+        let (lens_module_to_path, justified) =
+            super::lens_justification_census(&facts).expect("justification census");
+        let _ = super::unjustified_lens_modules(&lens_module_to_path, &justified);
+        assert_eq!(
+            super::module_graph_facts_build_count_for_test(),
+            1,
+            "one facts build must serve the whole lens census"
+        );
+        assert_eq!(
+            super::import_resolution_facts_call_count_for_test(),
+            1,
+            "the census must not trigger a second import-facts corpus scan"
+        );
+        assert_eq!(
+            super::module_declaration_facts_call_count_for_test(),
+            1,
+            "the census must not trigger a second module-declaration scan"
         );
     }
 
@@ -21072,11 +22162,27 @@ pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
     MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-pub fn import_resolution_facts(
+/// The import-facts walk plus what it OBSERVED: every in-scope `.dag` path the walk
+/// saw on disk, and every path whose content read refused. The skip arm on an
+/// unreadable file used to be silent (`Err(_) => continue`), which made a vanished
+/// module indistinguishable from an absent one — the fail-open undercount the
+/// inert-lens census must refuse on (operator review 2026-07-28, PR #7384). One walk,
+/// projected two ways: `import_resolution_facts` stays the thin fact projection.
+pub(crate) struct ImportResolutionObservation {
+    pub(crate) facts: Vec<ImportResolutionFactRaw>,
+    /// Workspace-relative `.dag` paths seen by the importer walk (post-exclusion),
+    /// whether or not their content produced facts.
+    pub(crate) observed_paths: HashSet<String>,
+    /// (path, error) for every observed file whose content read refused — sorted by
+    /// walk order (deterministic: the walk sorts per root).
+    pub(crate) read_refusals: Vec<(String, String)>,
+}
+
+pub(crate) fn import_resolution_facts_with_observation(
     pool_roots: &[String],
     importer_roots: &[String],
     exclude_substrings: &[String],
-) -> Vec<ImportResolutionFactRaw> {
+) -> ImportResolutionObservation {
     #[cfg(test)]
     IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
@@ -21086,6 +22192,8 @@ pub fn import_resolution_facts(
         .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
+    let mut observed_paths: HashSet<String> = HashSet::new();
+    let mut read_refusals: Vec<(String, String)> = Vec::new();
     for root in &abs_importer_roots {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
@@ -21099,9 +22207,13 @@ pub fn import_resolution_facts(
             if is_excluded_import_path(&rel, exclude_substrings) {
                 continue;
             }
+            observed_paths.insert(workspace_relative_repo_path(&rel));
             let content = match std::fs::read_to_string(&file) {
                 Ok(c) => c,
-                Err(_) => continue,
+                Err(e) => {
+                    read_refusals.push((workspace_relative_repo_path(&rel), e.to_string()));
+                    continue;
+                }
             };
             for import_module in extract_import_paths(&content) {
                 let target_declared = declared.contains(&import_module);
@@ -21113,7 +22225,19 @@ pub fn import_resolution_facts(
             }
         }
     }
-    out
+    ImportResolutionObservation {
+        facts: out,
+        observed_paths,
+        read_refusals,
+    }
+}
+
+pub fn import_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    import_resolution_facts_with_observation(pool_roots, importer_roots, exclude_substrings).facts
 }
 
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
@@ -27041,7 +28165,28 @@ fn test_migration_delete_guard_deleted_v1_test_paths(
 ) -> Result<Vec<String>, String> {
     let out = if test_migration_delete_guard_merge_base_mode() {
         let range = format!("{base}...{head}");
-        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?
+        match test_migration_delete_guard_run_git(&[
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            &range,
+        ]) {
+            Ok(out) => out,
+            Err(err) => {
+                // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
+                // always be computed even though the base ref itself exists. Fall back to the
+                // two-point diff in that case so the delete guard still evaluates the real branch
+                // delta instead of red-ing on missing history.
+                test_migration_delete_guard_run_git(&[
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=D",
+                    base,
+                    head,
+                ])
+                .map_err(|fallback_err| format!("{err}; fallback diff failed: {fallback_err}"))?
+            }
+        }
     } else {
         test_migration_delete_guard_run_git(&[
             "diff",
@@ -27090,10 +28235,11 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
         return Ok(Vec::new());
     }
     let floor_stems = test_migration_delete_authorize_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
+    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev)?;
     let mut violations = Vec::new();
     for path in deleted {
-        let content = test_migration_delete_guard_run_git(&["show", &format!("{base}:{path}")])?;
+        let content =
+            test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])?;
         if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
             continue;
         }
@@ -27351,6 +28497,24 @@ mod witness_layer_roots_compile_clean_tests {
                     .iter()
                     .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
                 "a dag/std touch must select affected src/v2 importers"
+            );
+        });
+    }
+
+    /// An empty touched-path set widens to the whole tree rather than skipping. This is
+    /// the arm a main-push squash merge lands on, so a skip here makes main-push report
+    /// green without compiling anything. #7412 fixed the `.dag` model
+    /// (`witness_empty_touched_requires_whole_tree`) but this hot-path mirror kept
+    /// skipping and had NO test, so the model went green while the realization still
+    /// fell open — the fork stayed invisible for exactly that reason.
+    #[test]
+    fn floor_fast_plan_empty_touched_requires_whole_tree() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = HashSet::new();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[], &departed);
+            assert!(
+                matches!(plan, CompileCleanScopePlan::WholeTree),
+                "an unobservable diff must widen, not skip; got {plan:?}"
             );
         });
     }
@@ -28373,6 +29537,27 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
+        let synthetic =
+            "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
+             data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
+               seed_emitter_behavioral_wet_known_red_entry(\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 f: \"self_host_body_producer_behavioral_receipt_holds\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                    .to_string()
+            ),
+            "re-homed known-red authority rows must register as executing consumer keys; got {keys:?}"
         );
     }
 

@@ -1,6 +1,11 @@
 module test.claim.bmc_live_receipts_witness
 
 import extdeps.bmc.types {
+  BmcFanCurve,
+  BmcFanCurveDutyDecreased,
+  BmcFanCurveInvalid,
+  BmcFanCurveStep,
+  BmcFanCurveValid,
   BmcConfigPersistenceUnsupported,
   BmcOverlayConfigObserved,
   RedfishFanControlResourceAbsent,
@@ -8,8 +13,14 @@ import extdeps.bmc.types {
   RedfishLegacyChassisThermal,
   RedfishThermalSubsystemSensorCollection,
   ResetGracefulRestart,
+  validate_bmc_fan_curve,
 }
 import extdeps.filesystem.linux {
+  LinuxOverlayDirectoryNotAbsolute,
+  LinuxOverlayMultipleLowerDirectoriesUnsupported,
+  LinuxOverlayParsed,
+  LinuxOverlayRefused,
+  linux_overlay_observation_from_proc_mounts,
   linux_overlay_observation_is_flash_backed,
 }
 import gunbc.fleet_bmc_observation {
@@ -28,14 +39,17 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_intent { srv4_host }
-import std.measure { rpm_count }
+import std.measure { celsius, celsius_delta, percent, rpm_count }
+import std.types { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn firmware_and_redfish_surfaces_are_literal_versioned_observations() -> Bool {
-  srv3_bmc_firmware_observation.firmware.version == "2.07.00"
-    && srv4_bmc_firmware_observation.firmware.version == "3.22.00"
+  srv3_bmc_firmware_observation.firmware.version.major == 2
+    && srv3_bmc_firmware_observation.firmware.version.minor == 7
+    && srv4_bmc_firmware_observation.firmware.version.major == 3
+    && srv4_bmc_firmware_observation.firmware.version.minor == 22
     && srv3_bmc_redfish_surface_observation.thermal_surface == RedfishThermalSubsystemSensorCollection
     && srv3_bmc_redfish_surface_observation.fan_control_surface == RedfishFanControlResourceAbsent
     && srv4_bmc_redfish_surface_observation.thermal_surface == RedfishLegacyChassisThermal
@@ -58,9 +72,11 @@ test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
       writable: writable,
       upper_override_present: upper_override_present,
       available_bytes: _,
+      evidence_scope: _,
       observed_at: _,
     } =>
-      firmware.version == "3.22.00"
+      firmware.version.major == 3
+        && firmware.version.minor == 22
         && config_path == srv4_bmc_fan_observed_config_path
         && linux_overlay_observation_is_flash_backed(observation: overlay)
         && writable
@@ -69,8 +85,82 @@ test fn overlay_receipt_records_literal_mount_and_write_facts_only() -> Bool {
       firmware: _,
       config_path: _,
       reason: _,
+      evidence_scope: _,
       observed_at: _,
     } => false
+  }
+}
+
+test fn observed_fan_curve_is_validated_before_use() -> Bool {
+  match validate_bmc_fan_curve(curve: srv4_bmc_fan_observed_curve) {
+    BmcFanCurveValid { curve: validated } =>
+      validated.curve == srv4_bmc_fan_observed_curve
+    BmcFanCurveInvalid { cause: _ } => false
+  }
+}
+
+test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
+  let falling = BmcFanCurve {
+    control_sensor: "TEMP_SOC",
+    steps: [
+      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+      BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+    ],
+    minimum_duty: percent(30),
+    sensor_unavailable_duty: percent(100),
+    zone_failsafe_duty: percent(100),
+    positive_hysteresis: celsius_delta(count: 1),
+    negative_hysteresis: celsius_delta(count: 1),
+  }
+  match validate_bmc_fan_curve(curve: falling) {
+    BmcFanCurveInvalid {
+      cause: BmcFanCurveDutyDecreased { previous: _, current: _ },
+    } => true
+    _ => false
+  }
+}
+
+data fixture_proc_mounts: String = "cow / overlay rw,lowerdir=/run/initramfs/ro,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0\n"
+
+test fn proc_mounts_parser_derives_literal_overlay_paths() -> Bool {
+  match linux_overlay_observation_from_proc_mounts(
+    proc_mounts: fixture_proc_mounts,
+  ) {
+    LinuxOverlayParsed { observation: observation } =>
+      observation.lower_directory == "/run/initramfs/ro"
+        && observation.upper_directory == "/run/initramfs/rw/cow"
+        && linux_overlay_observation_is_flash_backed(observation: observation)
+    LinuxOverlayRefused { cause: _ } => false
+  }
+}
+
+test fn proc_mounts_parser_decodes_kernel_mount_escapes() -> Bool {
+  let escaped = "cow / overlay rw,lowerdir=/run/initramfs/ro\\040image,upperdir=/run/initramfs/rw/cow 0 0\n/dev/mtdblock4 /run/initramfs/ro\\040image squashfs ro 0 0\n/dev/mtdblock5 /run/initramfs/rw jffs2 rw 0 0"
+  match linux_overlay_observation_from_proc_mounts(proc_mounts: escaped) {
+    LinuxOverlayParsed { observation: observation } =>
+      observation.lower_directory == "/run/initramfs/ro image"
+        && observation.lower_backing_mount.target == "/run/initramfs/ro image"
+    LinuxOverlayRefused { cause: _ } => false
+  }
+}
+
+test fn proc_mounts_parser_refuses_multi_lower_overlay() -> Bool {
+  let multiple = "cow / overlay rw,lowerdir=/ro/a:/ro/b,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
+  match linux_overlay_observation_from_proc_mounts(proc_mounts: multiple) {
+    LinuxOverlayRefused {
+      cause: LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: _ },
+    } => true
+    _ => false
+  }
+}
+
+test fn proc_mounts_parser_refuses_relative_overlay_paths() -> Bool {
+  let relative = "cow / overlay rw,lowerdir=ro,upperdir=/rw/cow 0 0\n/dev/a /ro squashfs ro 0 0\n/dev/b /rw jffs2 rw 0 0"
+  match linux_overlay_observation_from_proc_mounts(proc_mounts: relative) {
+    LinuxOverlayRefused {
+      cause: LinuxOverlayDirectoryNotAbsolute { path: "ro" },
+    } => true
+    _ => false
   }
 }
 

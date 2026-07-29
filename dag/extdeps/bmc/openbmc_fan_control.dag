@@ -16,7 +16,58 @@ import extdeps.languages.json.emit {
   json_string,
   serialize_json,
 }
-import extdeps.uri { Https, Uri }
+import extdeps.tools.jq { jq_authority }
+import extdeps.bmc.openbmc_operation {
+  OpenBmcCopyFilePreservingMetadata,
+  OpenBmcDiskUsageKib,
+  OpenBmcFanConfigDesired,
+  OpenBmcFanConfigQuery,
+  OpenBmcFanConfigScalar,
+  OpenBmcFanConfigValidate,
+  OpenBmcFanConfigVerify,
+  OpenBmcFanControllerCount,
+  OpenBmcFanControllerNameAt,
+  OpenBmcFanInputAt,
+  OpenBmcFanInputCountAt,
+  OpenBmcFileSha256,
+  OpenBmcMakeDirectory,
+  OpenBmcMinimumDuty,
+  OpenBmcNegativeHysteresis,
+  OpenBmcOperation,
+  OpenBmcOutputAt,
+  OpenBmcParentDirectory,
+  OpenBmcPathExists,
+  OpenBmcPathIsNonemptyFile,
+  OpenBmcPathIsWritable,
+  OpenBmcPositiveHysteresis,
+  OpenBmcReadFile,
+  OpenBmcReadingAt,
+  OpenBmcReadingCount,
+  OpenBmcRemoveDirectory,
+  OpenBmcRemoveFile,
+  OpenBmcRenameReplace,
+  OpenBmcResolvePath,
+  OpenBmcSensorFailsafeDuty,
+  OpenBmcSensorServices,
+  OpenBmcSensorThreshold,
+  OpenBmcSensorValue,
+  OpenBmcStepwiseCount,
+  OpenBmcSynchronizeFilesystems,
+  OpenBmcSystemdIsActive,
+  OpenBmcSystemdRestart,
+  OpenBmcThresholdProperty,
+  OpenBmcUtcTimestamp,
+  OpenBmcWaitSeconds,
+  OpenBmcWarningLow,
+  OpenBmcCriticalLow,
+  OpenBmcZoneFailsafe,
+  OpenBmcZoneFailsafeDuty,
+  openbmc_busctl_authority,
+}
+import extdeps.bmc.openbmc_password_ssh_transport {
+  OpenBmcCommandWire,
+  openbmc_password_ssh_execute_wire,
+}
 import std.measure {
   Celsius,
   CelsiusDelta,
@@ -33,21 +84,11 @@ import std.measure {
   rpm_count,
   second_count,
 }
-import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
-  },
-}
+data extdeps_external_authority_anchor: ExternalAuthority = openbmc_busctl_authority
 
-data jq_filter_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "jqlang.org/manual/",
-  },
-}
+data openbmc_json_projection_authority: ExternalAuthority = jq_authority
 
 type OpenBmcLocalTransformResult {
   exit_code: Int
@@ -55,68 +96,6 @@ type OpenBmcLocalTransformResult {
   content: String
   stderr: String
 }
-
-type OpenBmcOperation
-  = OpenBmcReadFile { path: NonEmptyStr }
-  | OpenBmcResolvePath { path: NonEmptyStr }
-  | OpenBmcParentDirectory { path: NonEmptyStr }
-  | OpenBmcSystemdIsActive { service: NonEmptyStr }
-  | OpenBmcSystemdRestart { service: NonEmptyStr }
-  | OpenBmcZoneFailsafe { zone_path: NonEmptyStr }
-  | OpenBmcSensorServices { sensor_path: NonEmptyStr }
-  | OpenBmcSensorValue { service: NonEmptyStr, sensor_path: NonEmptyStr }
-  | OpenBmcSensorThreshold {
-      service: NonEmptyStr,
-      sensor_path: NonEmptyStr,
-      threshold: OpenBmcThresholdProperty,
-    }
-  | OpenBmcFanConfigScalar {
-      config_path: NonEmptyStr,
-      query: OpenBmcFanConfigQuery,
-    }
-  | OpenBmcFanConfigValidate { config_path: NonEmptyStr }
-  | OpenBmcFanConfigVerify {
-      config_path: NonEmptyStr,
-      desired: OpenBmcFanConfigDesired,
-    }
-  | OpenBmcPathIsWritable { path: NonEmptyStr }
-  | OpenBmcPathExists { path: NonEmptyStr }
-  | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
-  | OpenBmcDiskUsageKib { path: NonEmptyStr }
-  | OpenBmcFileSha256 { path: NonEmptyStr }
-  | OpenBmcUtcTimestamp
-  | OpenBmcMakeDirectory { path: NonEmptyStr, parents: Bool }
-  | OpenBmcRemoveDirectory { path: NonEmptyStr }
-  | OpenBmcRemoveFile { path: NonEmptyStr }
-  | OpenBmcCopyFilePreservingMetadata {
-      source_path: NonEmptyStr,
-      destination_path: NonEmptyStr,
-    }
-  | OpenBmcRenameReplace {
-      source_path: NonEmptyStr,
-      destination_path: NonEmptyStr,
-    }
-  | OpenBmcSynchronizeFilesystems
-  | OpenBmcWaitSeconds { duration: Second }
-
-type OpenBmcFanConfigQuery
-  = OpenBmcStepwiseCount
-  | OpenBmcMinimumDuty
-  | OpenBmcZoneFailsafeDuty
-  | OpenBmcSensorFailsafeDuty
-  | OpenBmcPositiveHysteresis
-  | OpenBmcNegativeHysteresis
-  | OpenBmcReadingCount
-  | OpenBmcReadingAt { index: Int }
-  | OpenBmcOutputAt { index: Int }
-  | OpenBmcFanControllerCount
-  | OpenBmcFanControllerNameAt { index: Int }
-  | OpenBmcFanInputCountAt { fan_index: Int }
-  | OpenBmcFanInputAt { fan_index: Int, input_index: Int }
-
-type OpenBmcThresholdProperty
-  = OpenBmcWarningLow
-  | OpenBmcCriticalLow
 
 fn openbmc_threshold_interface(threshold: OpenBmcThresholdProperty) -> NonEmptyStr {
   match threshold {
@@ -162,18 +141,6 @@ type OpenBmcStepwiseController {
   negative_hysteresis: CelsiusDelta
   readings: List<Celsius>
   outputs: List<Percent>
-}
-
-type OpenBmcFanConfigDesired {
-  minimum_duty: Percent
-  zone_failsafe_duty: Percent
-  sensor_failsafe_duty: Percent
-  positive_hysteresis: CelsiusDelta
-  negative_hysteresis: CelsiusDelta
-  readings: List<Celsius>
-  outputs: List<Percent>
-  fan_controller_name: NonEmptyStr
-  fan_inputs: List<NonEmptyStr>
 }
 
 fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
@@ -267,8 +234,6 @@ fn openbmc_fan_config_query_args(query: OpenBmcFanConfigQuery) -> List<String> {
   }
 }
 
-type OpenBmcCommandWire = NonEmptyStr where brand("OpenBmcCommandWire")
-
 fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
   match operation {
     OpenBmcReadFile { path } => ["cat", path as String]
@@ -355,73 +320,14 @@ fn openbmc_operation_wire(operation: OpenBmcOperation) -> OpenBmcCommandWire {
   ) as OpenBmcCommandWire
 }
 
-service openbmc.PasswordSsh {
-  operation Execute {
-    input {
-      host: NonEmptyStr
-      username: NonEmptyStr
-      password: Secret
-      known_hosts_path: NonEmptyStr
-      command_wire: OpenBmcCommandWire
-    }
-    output {
-      exit_code: Int from "exit_code"
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-      stderr: String from "stderr"
-    }
-    transport shell {
-      argv: [
-        "sshpass",
-        "-d",
-        "0",
-        "ssh",
-        "-T",
-        "-o",
-        "PreferredAuthentications=password,keyboard-interactive",
-        "-o",
-        "PubkeyAuthentication=no",
-        "-o",
-        "StrictHostKeyChecking=yes",
-        "-o",
-        "UserKnownHostsFile={known_hosts_path}",
-        "-o",
-        "LogLevel=ERROR",
-        "-o",
-        "ConnectTimeout=10",
-        "{username}@{host}",
-        "--",
-        "{command_wire}",
-      ]
-      stdin: password
-    }
-    exit {
-      0 => Unit
-      nonzero => String "OpenBMC operation failed"
-    }
-    mock_response {
-      0 => { exit_code: 0, success: true, stdout: "mock-openbmc-operation", stderr: "" } "hermetic closed OpenBMC operation"
-    }
-  }
-}
-
 fn openbmc_execute(
   session: PasswordSshSession,
   operation: OpenBmcOperation,
 ) -> PasswordSshExecResult {
-  let result = openbmc.PasswordSsh.Execute(
-    host: session.host,
-    username: session.username,
-    password: session.password,
-    known_hosts_path: session.known_hosts_path,
+  openbmc_password_ssh_execute_wire(
+    session: session,
     command_wire: openbmc_operation_wire(operation: operation),
   )
-  PasswordSshExecResult {
-    exit_code: result.exit_code,
-    success: result.success,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  }
 }
 
 service openbmc.JsonProjection {

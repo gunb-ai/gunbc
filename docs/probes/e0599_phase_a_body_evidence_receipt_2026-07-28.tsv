@@ -1,0 +1,192 @@
+label	E0599_phase_a_body_evidence_receipt
+question	do canonical-seven R1/R2/R3 sites expose method-invoke + receiver->type-param evidence in normalized substrate?
+verdict	NO - the reported methods are emitter-synthesized; no modeled operation exists to witness
+plan_of_record	docs/plans/e0599-implementation-proposal.md section 3 P-fn coverage audit
+census_baseline	docs/probes/e0599_canonical_seven_census_2026-07-26.tsv
+classifier_authority	dag/tools/e0599_probe_census.dag (patterns loaded via gunbc, no second table)
+base_sha	1fbc32d2976141118648b65d0d90923ec584c747
+head_sha	eefbf30d06c69dbfbb87e37a85489d49abefd323
+measured_against	base_sha - this PR adds only a probe module and docs; no compiler source is modified, so emitted output is the base tree's
+gunbc_sha256	03a95007c3f3b42c571a40177cad01ba9a4c5564d7c489f6382deeaf709fe133
+cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+protocol	CSSL_STD_SEED_LINK=1; gunbc compile --target rust -> cssl_assemble -> cargo build --release --lib; empty shim
+modules_measured	04_infer,05_emit,05_eval,06_translate,emit_host,emit_module,materialization_carriers
+
+# section=per_module_totals
+module	E0599_measured	E0599_census_baseline	delta
+04_infer	88	88	0
+05_emit	93	93	0
+05_eval	91	91	0
+06_translate	93	93	0
+emit_host	96	96	0
+emit_module	93	93	0
+materialization_carriers	81	81	0
+TOTAL_measured	635	635	0
+
+# section=family_totals_measured
+root_family	count
+R1_clone_bound_on_type_param	261
+R2_vector_method_bounds	168
+R3_container_clone_bounds	161
+R4_optional_coproduct_grounding	24
+R5_as_deref_unit	12
+R6_other	9
+
+# section=site_bearing_emitted_files
+note	R1R2R3 sites do NOT live in the seven entry modules; they live in the shared import closure recompiled once per entry
+emitted_file	R1R2R3_diagnostics
+v2_std_algebra.rs	413
+v2_std_diagnostic.rs	112
+v2_std_optional.rs	18
+v2_std_node.rs	14
+extdeps_communication_fidelity_carriers.rs	12
+v2_compiler_translate.rs	8
+v2_std_witness.rs	6
+v2_std_collection.rs	6
+v2_std_staging.rs	1
+
+# section=cross_module_site_replication
+note	one distinct source site is counted once per entry-module build; the census total is sites x modules
+modules_hit	distinct_sites	diagnostics_accounted
+7	66	462
+6	4	24
+5	1	5
+4	2	8
+3	2	6
+1	4	4
+TOTAL	79	509
+
+# section=phase_a_disposition_per_site
+note	the brief's three dispositions plus the one the measurement forced; classification is per distinct source site
+disposition	distinct_sites	diagnostics	basis
+note	sites are distinct (file,line,method,receiver) positions; diagnostics is the raw R1+R2+R3 count, which exceeds site x module because one position can be reported at several columns
+note	the unresolved row is a SEPARATE disposition and is deliberately NOT folded into no_modeled_operation: classifying an uninspected site as 'no modeled operation' would substitute top-as-ignorance for an answer (DESIGN section 5 absorbing fallback)
+evidence_present	0	0	no postfix method-projection step named clone/is_empty/iter exists in any INSPECTED source file (executed detector, see substrate section)
+wrapper_retained	0	0	NOT the deficit: these bodies lower; body_lower_wrapper_retained_shell is not reached for them
+ambiguous	0	0	of the inspected sites none is undecidable - the operand is simply absent
+no_modeled_operation_emitter_synthesized	71	555	INSPECTED: the reported .clone()/.is_empty()/.iter() are inserted by v1 emitter lowering templates (sharing.deref_clone / sharing.clone_value), not present in the .dag body
+unresolved_not_inspected	8	35	NO DISPOSITION CLAIMED: 1 site(s)/14 diagnostics in src/v2/std/node.dag (parse_module refused) plus 7 site(s)/21 diagnostics in files outside the probe roster
+TOTAL	79	590	
+
+# section=per_site_source_linkage_04_infer
+note	every R1/R2/R3 diagnostic in 04_infer resolved emitted file:line -> enclosing emitted fn -> .dag source fn; modeled_invoke = does that source body contain a .clone()/.is_empty()/.iter() call
+emitted_fn	dag_source_file	dag_fn_resolved	modeled_invoke_present	diagnostics
+zip_eq	src/v2/std/algebra.dag	yes	no	7
+zip_map	src/v2/std/algebra.dag	yes	no	7
+is_prefix_of	src/v2/std/algebra.dag	yes	no	6
+absorb_outcome_diagnostics	src/v2/std/diagnostic.dag	yes	no	5
+fold_list	src/v2/std/algebra.dag	yes	no	3
+fold_list_right	src/v2/std/algebra.dag	yes	no	3
+list_flat_map	src/v2/std/algebra.dag	yes	no	3
+filter	src/v2/std/algebra.dag	yes	no	3
+append_outcome_value	src/v2/std/diagnostic.dag	yes	no	3
+outcome_eq	src/v2/std/diagnostic.dag	yes	no	3
+optional_prefer_first_present	src/v2/std/optional.dag	yes	no	2
+fold_node_topdown	src/v2/std/node.dag	yes	no	2
+list_reverse	src/v2/std/algebra.dag	yes	no	2
+list_map	src/v2/std/algebra.dag	yes	no	2
+list_tail	src/v2/std/algebra.dag	yes	no	2
+list_head	src/v2/std/algebra.dag	yes	no	2
+skip	src/v2/std/algebra.dag	yes	no	2
+contains	src/v2/std/algebra.dag	yes	no	2
+count_equal	src/v2/std/algebra.dag	yes	no	2
+unique	src/v2/std/algebra.dag	yes	no	2
+list_append	src/v2/std/algebra.dag	yes	no	2
+bag_eq	src/v2/std/algebra.dag	yes	no	2
+optional_present	src/v2/std/optional.dag	yes	no	1
+fold_list_node	src/v2/std/algebra.dag	yes	no	1
+is_empty	src/v2/std/algebra.dag	yes	no	1
+for_all	src/v2/std/algebra.dag	yes	no	1
+any	src/v2/std/algebra.dag	yes	no	1
+count_where	src/v2/std/algebra.dag	yes	no	1
+list_snoc_item	src/v2/std/algebra.dag	yes	no	1
+list_init	src/v2/std/algebra.dag	yes	no	1
+outcome_accepted	src/v2/std/diagnostic.dag	yes	no	1
+outcome_with_diagnostics	src/v2/std/diagnostic.dag	yes	no	1
+accepted_thread_diagnostics	src/v2/std/diagnostic.dag	yes	no	1
+bind_outcome_accepted	src/v2/std/diagnostic.dag	yes	no	1
+bind_outcome	src/v2/std/diagnostic.dag	yes	no	1
+witness_from_optional	src/v2/std/witness.dag	yes	no	1
+optional_present_witness	src/v2/std/collection.dag	yes	no	1
+TOTAL_fns_resolved_in_dag_source	37
+TOTAL_fns_unresolved	0
+TOTAL_fns_with_modeled_invoke	0
+TOTAL_fns_without_modeled_invoke	37
+TOTAL_diagnostics_covered	82
+
+# section=substrate_evidence_measurement_executed
+note	detector is body_lower_postfix_projection_step (v2.compiler.body_lowering_fold) - the same accessor body_lower_try_postfix_projection uses, not a second walker
+probe	src/v2/test/claim/manual/e0599_phase_a_body_evidence_probe.dag
+measurement	source	any_projection	clone	is_empty	iter	R1R2R3_diagnostics_emitted_from_it
+RED_control	inline source text carrying all three methods	3	1	1	1	n/a
+corpus	src/v2/std/algebra.dag	5	0	0	0	413
+corpus	src/v2/std/diagnostic.dag	24	0	0	0	112
+corpus	src/v2/std/optional.dag	0	0	0	0	18
+corpus	src/v2/std/node.dag	-1	-1	-1	-1	14
+corpus	src/v2/std/collection.dag	6	0	0	0	6
+corpus	src/v2/std/witness.dag	0	0	0	0	6
+CORPUS_TOTAL_measured	5 of 6 roster files	35	0	0	0	555
+REFUSED	src/v2/std/node.dag - parse_module returned Rejected; probe yields -1 sentinel, never 0	-1	-1	-1	-1	14
+UNMEASURED	extdeps_communication_fidelity_carriers / v2_compiler_translate / v2_std_staging - outside the probe roster	n/a	n/a	n/a	n/a	21
+coverage_note	measured sources account for 555 of 590 R1R2R3 diagnostics (94.1 pct); residue is one typed refusal (14) plus three off-roster files (21), neither counted as evidence-present
+
+# section=emitter_clone_insertion_sites
+note	the requirement's actual origin: template applications in src/v1/05_emit_rust.dag
+emit_site_line	construct	template
+4930	variant payload extraction	sharing.clone_value
+6320	ident reference	sharing.clone_value
+6330	ident reference	sharing.clone_value
+6412	tuple index projection	sharing.clone_value
+6421	TupleFirst projection	sharing.clone_value
+6422	TupleSecond projection	sharing.clone_value
+6423	OptionalUnwrap	sharing.clone_value
+6434	field access (Rc)	sharing.deref_clone
+6438	field access	sharing.clone_value
+6932	list index get	clone_iterator_suffix
+6959	record spread	sharing.deref_clone / clone_value
+7561	list index get	clone_iterator_suffix
+7587	record spread	sharing.deref_clone / clone_value
+7890	match scrutinee as_deref	clone_iterator_suffix
+7893	match scrutinee deref	sharing.deref_clone
+8745	match scrutinee as_deref	clone_iterator_suffix
+8748	match scrutinee deref	sharing.deref_clone
+
+# section=existing_helper_coverage_must_not_regress
+note	v1_generic_params_needing_clone_bound currently emits these bounds from its two structural rules; a flip to an uninhabited witness list would DELETE them and add errors
+emitted_file	fn_with_clone_bound
+std_types.rs	list_length<T: Clone>
+v2_std_algebra.rs	fold_list<T, A: Clone>
+v2_std_algebra.rs	fold_non_empty<T: Clone>
+v2_std_algebra.rs	fold_list_right<T, A: Clone>
+v2_std_algebra.rs	reduce_or<T: Clone>
+v2_std_collection.rs	map_insert<K: Clone, V: Clone>
+v2_std_collection.rs	map_get<K: Clone, V: Clone>
+v2_std_collection.rs	list_nth<T: Clone>
+v2_std_collection.rs	list_at_optional<T: Clone>
+v2_std_compilers_lexing.rs	fold_lex_pattern<R: Clone>
+v2_std_grammar.rs	fold_grammar_expr<R: Clone>
+v2_std_grammar.rs	grammar_relation_tokens_node<T: Clone>
+v2_std_nat.rs	nat_cata<A: Clone>
+v2_std_node.rs	fold_node<R: Clone>
+v2_std_node.rs	fold_node_topdown<A, R: Clone>
+v2_std_node.rs	fold_node_content_hash<R: Clone>
+v2_std_text.rs	fold_source<R: Clone>
+TOTAL_bounded_today	17
+
+# section=existing_helper_coverage_by_structural_rule
+note	the brief requires the helper's TWO structural cases be counted: rule (a) bare-generic return (ret_name == param, body not a param ref); rule (b) param used as collection element in a value param. Neither=0 means the helper has no third undocumented path, so a successor must reproduce exactly these two cases
+helper_rule	fns	members
+a_bare_generic_return_only	7	fold_node,fold_node_topdown,fold_node_content_hash,fold_source,fold_grammar_expr,fold_lex_pattern,nat_cata
+b_param_as_collection_element_only	6	list_length,map_get,map_insert,list_nth,list_at_optional,grammar_relation_tokens_node
+both_a_and_b	4	fold_list,fold_list_right,fold_non_empty,reduce_or
+neither	0	every bound emitted today is explained by one of the two rules
+depends_on_rule_a	11	
+depends_on_rule_b	10	
+
+# section=predicted_delta
+claim	value	basis
+brief_hypothesis_E0599_delta	-590	R1+R2+R3 on the canonical seven
+population_inspected	555 of 590 (94.1 pct)	sites whose source file was parsed by the executed detector
+population_unresolved	35	not inspected - typed parse refusal plus off-roster files; carried as unknown, never as confirmation
+covered_subset_under_proposed_carrier	0 over the inspected population	TraitBoundSiteMethodInvoke has zero inhabitants across all inspected site-bearing sources; the unresolved residue is not counted for or against
+phase_a_verdict	WITHDRAW -590 as a P-fn claim; escape clause of the plan-of-record fires	docs/plans/e0599-implementation-proposal.md: 'if implementation cannot name the missing fact without inventing it, return for a new ruling before claiming census movement'

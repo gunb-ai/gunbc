@@ -1,0 +1,13 @@
+module v2.test.fixture.coproduct_reflection_generic_wrapper
+
+import v2.std.node_query { coproduct_nullary_inhabitants }
+
+fn nullary_reflection_through_generic_wrapper<T>(
+  type_name: Symbol,
+  discriminant_of: fn(T) -> Symbol
+) -> Outcome<List<T>> {
+  coproduct_nullary_inhabitants(
+    type_name: type_name,
+    discriminant_of: discriminant_of
+  )
+}

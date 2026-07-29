@@ -1,0 +1,1441 @@
+module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
+
+import std.algebra { Cons, Empty }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Scaffold, SingleAuthority }
+import std.trait_derive_shape {
+  ReprDeriveClone,
+  ReprDeriveDebug,
+  ReprDeriveDeserialize,
+  ReprDeriveOrd,
+  ReprDerivePartialEq,
+  ReprDeriveSerialize,
+  ReprGroundingDeriveTrait
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.rust.derive_contracts {
+  RustSupplementalGenericBoundContractCoverageDisposition,
+  im_15_1_0_vector_clone_impl_authority,
+  im_15_1_0_vector_debug_impl_authority,
+  im_15_1_0_vector_deserialize_impl_authority,
+  im_15_1_0_vector_partial_eq_impl_authority,
+  im_15_1_0_vector_serialize_impl_authority,
+  rust_1_93_btree_set_trait_implementations_authority,
+  rust_1_93_hash_set_trait_implementations_authority,
+  rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
+  serde_1_0_228_btree_set_deserialize_authority,
+  serde_1_0_228_btree_set_serialize_authority,
+  serde_1_0_228_hash_set_deserialize_authority,
+  serde_1_0_228_hash_set_serialize_authority
+}
+import v2.std.compilers.target_model {
+  TargetCollectionRealization,
+  TargetCollectionWitnessHash,
+  TargetCollectionReprVec,
+  TargetDeriveSupplementalGenericBoundContract,
+  TargetDeriveSupplementalGenericBoundContractAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementAuthority,
+  TargetDeriveSupplementalGenericBoundRequirementSet,
+  TargetDeriveTraitKey,
+  TargetGenericApply,
+  TargetRepresentation,
+  TargetRepresentationChoice,
+  TargetRepresentationParameterSlot,
+  char_kernel_type_node,
+  target_carrier_free_monoid_node,
+  target_collection_free_monoid_no_representation_diagnostic,
+  target_derive_supplemental_generic_bound_contract_authorities_empty,
+  target_derive_supplemental_generic_bound_contract_requirements_empty,
+  target_derive_supplemental_generic_bound_contract_lookup_in_realization,
+  target_derive_supplemental_generic_bound_requirement_authority,
+  target_derive_supplemental_generic_bound_requirement_set_empty,
+  target_derive_supplemental_generic_bound_contract_wire_node,
+  target_derive_supplemental_generic_bound_requirement_wire_node,
+  target_grounding_derive_trait_key,
+  target_representation_parameter_slot_empty,
+  target_representation_parameter_slots_empty
+}
+import v2.compiler.translate {
+  collection_realization_from_target,
+  free_monoid_collection_realization_from_target,
+  target_collection_choice_from_node
+}
+import v2.extdeps.languages.rust {
+  RustSupplementalGenericBoundContractCoverageBlocker,
+  rust_collection_choice_bundle_node,
+  rust_free_monoid_collection_primary_choice,
+  rust_hash_set_supplemental_generic_bound_contract_blockers,
+  rust_set_collection_hash_choice,
+  rust_set_collection_primary_choice,
+  rust_target_model
+}
+import v2.std.algebra { fold_list_node }
+import v2.std.collection { List, Map, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Instantiation,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  node_rebuild
+}
+import v2.std.optional { Absent, Optional, Present }
+
+data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. The production Vec surface is the emitter's im::Vector alias, so its contracts consume exact im 15.1.0 implementation authorities rather than inapplicable std::vec::Vec or serde Vec rows. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside ReprGroundingDeriveTrait remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
+
+data sgb_type_param: Symbol = ^sgb_type_param
+data sgb_left_slot: Symbol = ^sgb_left_slot
+data sgb_right_slot: Symbol = ^sgb_right_slot
+data sgb_unknown_slot: Symbol = ^sgb_unknown_slot
+data sgb_vec_surface: Symbol = ^sgb_vec_surface
+data sgb_vec_open: Symbol = ^sgb_vec_open
+data sgb_vec_separator: Symbol = ^sgb_vec_separator
+data sgb_vec_close: Symbol = ^sgb_vec_close
+data sgb_unrelated_source: Symbol = ^sgb_unrelated_source
+data sgb_phantom_source: Symbol = ^sgb_phantom_source
+
+fn sgb_left_param_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_right_param_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_nested_source_carrier_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: target_carrier_free_monoid_node() },
+      Edge { label: Positional, target: sgb_left_param_node() },
+      Edge { label: Positional, target: sgb_right_param_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_concrete_source_carrier_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: target_carrier_free_monoid_node() },
+      Edge { label: Positional, target: char_kernel_type_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_collection_eligible_elem_node() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: ^target_collection_kernel_string }
+    },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_atom_source_carrier_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_vec_representation() -> TargetRepresentation {
+  TargetRepresentation {
+    kind: TargetCollectionReprVec,
+    apply: TargetGenericApply {
+      surface: ^sgb_vec_surface,
+      open: ^sgb_vec_open,
+      separator: ^sgb_vec_separator,
+      field_label_separator: Absent,
+      close: ^sgb_vec_close
+    }
+  }
+}
+
+fn sgb_requirement_set(
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_requirement_set_empty(),
+    key: target_grounding_derive_trait_key(derive_trait: required_trait),
+    value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+      authority: authority
+    }
+  )
+}
+
+fn sgb_single_parameter_requirements(
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
+    key: representation_parameter,
+    value: sgb_requirement_set(
+      required_trait: required_trait,
+      authority: authority
+    )
+  )
+}
+
+fn sgb_single_clone_requirement(
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  sgb_single_parameter_requirements(
+    representation_parameter: ^sgb_left_slot,
+    required_trait: ReprDeriveClone,
+    authority: authority
+  )
+}
+
+fn sgb_deserialize_requirements(
+  clone_authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  map_insert(
+    m: sgb_single_clone_requirement(authority: clone_authority),
+    key: ^sgb_right_slot,
+    value: sgb_requirement_set(
+      required_trait: ReprDeriveOrd,
+      authority: serde_1_0_228_btree_set_deserialize_authority
+    )
+  )
+}
+
+fn sgb_contract(
+  authority: ExternalAuthority,
+  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
+) -> TargetDeriveSupplementalGenericBoundContractAuthority {
+  TargetDeriveSupplementalGenericBoundContractAuthority {
+    authority: authority,
+    requirements: requirements
+  }
+}
+
+fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+  let debug_contracts = map_insert(
+    m: target_derive_supplemental_generic_bound_contract_authorities_empty(),
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDebug),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_debug_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_debug_impl_authority
+      )
+    )
+  )
+  let partial_eq_contracts = map_insert(
+    m: debug_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDerivePartialEq),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_partial_eq_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_partial_eq_impl_authority
+      )
+    )
+  )
+  let serialize_contracts = map_insert(
+    m: partial_eq_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveSerialize),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_serialize_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_serialize_impl_authority
+      )
+    )
+  )
+  let deserialize_contracts = map_insert(
+    m: serialize_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDeserialize),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_deserialize_impl_authority,
+      requirements: sgb_deserialize_requirements(
+        clone_authority: im_15_1_0_vector_deserialize_impl_authority
+      )
+    )
+  )
+  map_insert(
+    m: deserialize_contracts,
+    key: target_grounding_derive_trait_key(derive_trait: ReprDeriveClone),
+    value: sgb_contract(
+      authority: im_15_1_0_vector_clone_impl_authority,
+      requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
+    )
+  )
+}
+
+fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationParameterSlot> {
+  map_insert(
+    m: map_insert(
+      m: target_representation_parameter_slots_empty(),
+      key: ^sgb_left_slot,
+      value: target_representation_parameter_slot_empty()
+    ),
+    key: ^sgb_right_slot,
+    value: target_representation_parameter_slot_empty()
+  )
+}
+
+fn sgb_choice(
+  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
+  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
+) -> TargetRepresentationChoice {
+  TargetRepresentationChoice {
+    form: sgb_vec_representation(),
+    representation_parameters: representation_parameters,
+    constraints: Empty,
+    supplemental_generic_bound_contracts: contracts
+  }
+}
+
+fn sgb_empty_choice() -> TargetRepresentationChoice {
+  sgb_choice(
+    representation_parameters: target_representation_parameter_slots_empty(),
+    contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
+  )
+}
+
+fn sgb_nested_choice() -> TargetRepresentationChoice {
+  sgb_choice(
+    representation_parameters: sgb_nested_representation_parameters(),
+    contracts: sgb_nested_contracts()
+  )
+}
+
+fn sgb_realization(
+  source_carrier: Node,
+  primary: TargetRepresentationChoice,
+  alternatives: List<TargetRepresentationChoice>
+) -> TargetCollectionRealization {
+  TargetCollectionRealization {
+    source_carrier: source_carrier,
+    primary: primary,
+    alternatives: alternatives,
+    fallback_diagnostic: target_collection_free_monoid_no_representation_diagnostic(),
+    text_carrier: Absent
+  }
+}
+
+fn sgb_nested_realization() -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_nested_choice(),
+    alternatives: Empty
+  )
+}
+
+fn sgb_empty_realization(source_carrier: Node) -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: source_carrier,
+    primary: sgb_empty_choice(),
+    alternatives: Empty
+  )
+}
+
+fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
+  sgb_realization(
+    source_carrier: sgb_nested_source_carrier_node(),
+    primary: sgb_empty_choice(),
+    alternatives: Cons {
+      head: sgb_nested_choice(),
+      tail: Empty
+    }
+  )
+}
+
+fn sgb_optional_symbol_matches(
+  left: Optional<Symbol>,
+  right: Optional<Symbol>
+) -> Bool {
+  match left {
+    Absent =>
+      match right {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: left_value } =>
+      match right {
+        Absent => false
+        Present { value: right_value } => left_value == right_value
+      }
+  }
+}
+
+fn sgb_representation_matches(
+  left: TargetRepresentation,
+  right: TargetRepresentation
+) -> Bool {
+  left.kind == right.kind
+    && left.apply.surface == right.apply.surface
+    && left.apply.open == right.apply.open
+    && left.apply.separator == right.apply.separator
+    && sgb_optional_symbol_matches(
+      left: left.apply.field_label_separator,
+      right: right.apply.field_label_separator
+    )
+    && left.apply.close == right.apply.close
+}
+
+fn sgb_choice_matches_exact(
+  choice: TargetRepresentationChoice,
+  expected: TargetRepresentationChoice
+) -> Bool {
+  sgb_representation_matches(left: choice.form, right: expected.form)
+    && choice.representation_parameters == expected.representation_parameters
+    && choice.constraints == expected.constraints
+    && choice.supplemental_generic_bound_contracts == expected.supplemental_generic_bound_contracts
+}
+
+fn sgb_requirement_authority_matches(
+  contract: TargetDeriveSupplementalGenericBoundContract,
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Bool {
+  match target_derive_supplemental_generic_bound_requirement_authority(
+    contract: contract,
+    representation_parameter: representation_parameter,
+    required_trait: required_trait
+  ) {
+    Absent => false
+    Present { value: actual } => actual == authority
+  }
+}
+
+fn sgb_contract_has_single_requirement(
+  contract: TargetDeriveSupplementalGenericBoundContract,
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Bool {
+  count(contract.requirements.keys()) == 1
+    && match contract.requirements.lookup(representation_parameter) {
+      Absent => false
+      Present { value: requirements } =>
+        count(requirements.keys()) == 1
+          && sgb_requirement_authority_matches(
+            contract: contract,
+            representation_parameter: representation_parameter,
+            required_trait: required_trait,
+            authority: authority
+          )
+    }
+}
+
+fn sgb_contract_has_two_requirements(
+  contract: TargetDeriveSupplementalGenericBoundContract,
+  first_parameter: Symbol,
+  first_trait: ReprGroundingDeriveTrait,
+  first_authority: ExternalAuthority,
+  second_parameter: Symbol,
+  second_trait: ReprGroundingDeriveTrait,
+  second_authority: ExternalAuthority
+) -> Bool {
+  count(contract.requirements.keys()) == 2
+    && match contract.requirements.lookup(first_parameter) {
+      Absent => false
+      Present { value: first_requirements } =>
+        count(first_requirements.keys()) == 1
+          && match contract.requirements.lookup(second_parameter) {
+            Absent => false
+            Present { value: second_requirements } =>
+              count(second_requirements.keys()) == 1
+                && sgb_requirement_authority_matches(
+                  contract: contract,
+                  representation_parameter: first_parameter,
+                  required_trait: first_trait,
+                  authority: first_authority
+                )
+                && sgb_requirement_authority_matches(
+                  contract: contract,
+                  representation_parameter: second_parameter,
+                  required_trait: second_trait,
+                  authority: second_authority
+                )
+          }
+    }
+}
+
+fn sgb_contract_is_explicit_empty(
+  contract: TargetDeriveSupplementalGenericBoundContract,
+  derive_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Bool {
+  contract.derive_trait == derive_trait
+    && contract.authority == authority
+    && count(contract.requirements.keys()) == 0
+}
+
+fn sgb_hash_set_coverage_blocker_matches(
+  blocker: RustSupplementalGenericBoundContractCoverageBlocker,
+  derive_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Bool {
+  blocker.derive_trait == derive_trait
+    && blocker.authority == authority
+    && blocker.coverage == rust_hash_set_supplemental_generic_bound_contract_coverage_disposition
+    && sgb_hash_set_coverage_disposition_matches(coverage: blocker.coverage)
+    && blocker.requirements.member(
+      TargetCollectionWitnessEq { type_param: ^target_collection_type_param_t }
+    )
+    && blocker.requirements.member(
+      TargetCollectionWitnessHash { type_param: ^target_collection_type_param_t }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessOrd { type_param: ^target_collection_type_param_t }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessEq { type_param: ^sgb_unrelated_slot }
+    )
+    && !blocker.requirements.member(
+      TargetCollectionWitnessHash { type_param: ^sgb_unrelated_slot }
+    )
+}
+
+fn sgb_hash_set_coverage_disposition_matches(
+  coverage: RustSupplementalGenericBoundContractCoverageDisposition
+) -> Bool {
+  let requirement_set_ref = DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
+      field: WholeDeclaration
+    }
+  let property_carrier_ref = DeclarationRef {
+      module_path: "v2.std.compilers.target_model",
+      decl_name: "RequiredTraitWitness",
+      field: WholeDeclaration
+    }
+  coverage.owner == requirement_set_ref
+    && coverage.lane == property_carrier_ref
+    && match coverage.dissolution {
+      Scaffold { dissolves_to: SingleAuthority, bind: bind } =>
+        bind == property_carrier_ref
+      _ => false
+    }
+}
+
+fn sgb_hash_set_coverage_blockers_match_exact() -> Bool {
+  match rust_hash_set_supplemental_generic_bound_contract_blockers {
+    Empty => false
+    Cons { head: partial_eq_blocker, tail: remaining } =>
+      match remaining {
+        Empty => false
+        Cons { head: deserialize_blocker, tail: tail } =>
+          match tail {
+            Cons { head: _, tail: _ } => false
+            Empty =>
+              sgb_hash_set_coverage_blocker_matches(
+                blocker: partial_eq_blocker,
+                derive_trait: ReprDerivePartialEq,
+                authority: rust_1_93_hash_set_trait_implementations_authority
+              )
+                && sgb_hash_set_coverage_blocker_matches(
+                  blocker: deserialize_blocker,
+                  derive_trait: ReprDeriveDeserialize,
+                  authority: serde_1_0_228_hash_set_deserialize_authority
+                )
+          }
+      }
+  }
+}
+
+fn sgb_choice_bundle_node() -> Node {
+  rust_collection_choice_bundle_node(choice: sgb_nested_choice())
+}
+
+fn sgb_contract_wire_node(
+  derive_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority,
+  requirement_nodes: List<Node>
+) -> Node {
+  target_derive_supplemental_generic_bound_contract_wire_node(
+    derive_trait: derive_trait,
+    authority: authority,
+    requirement_nodes: requirement_nodes
+  )
+}
+
+fn sgb_requirement_wire_node(
+  representation_parameter: Symbol,
+  required_trait: ReprGroundingDeriveTrait,
+  authority: ExternalAuthority
+) -> Node {
+  target_derive_supplemental_generic_bound_requirement_wire_node(
+    representation_parameter: representation_parameter,
+    required_trait: required_trait,
+    authority: authority
+  )
+}
+
+fn sgb_debug_contract_wire_node() -> Node {
+  sgb_contract_wire_node(
+    derive_trait: ReprDeriveDebug,
+    authority: im_15_1_0_vector_debug_impl_authority,
+    requirement_nodes: [
+      sgb_requirement_wire_node(
+        representation_parameter: ^sgb_left_slot,
+        required_trait: ReprDeriveClone,
+        authority: im_15_1_0_vector_debug_impl_authority
+      )
+    ]
+  )
+}
+
+fn sgb_choice_bundle_with_contract_nodes(
+  contract_nodes: List<Node>
+) -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: params_edge,
+        tail: Cons {
+          head: constraints_edge,
+          tail: Cons {
+            head: Edge { label: contracts_label, target: _ },
+            tail: Empty
+          }
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: [
+          form_edge,
+          params_edge,
+          constraints_edge,
+          Edge {
+            label: contracts_label,
+            target: fold_list_node(
+              xs: contract_nodes,
+              item_node: fn(contract_node) { contract_node }
+            )
+          }
+        ]
+      )
+    _ => bundle
+  }
+}
+
+fn sgb_choice_bundle_with_parameter_nodes(
+  parameter_nodes: List<Node>
+) -> Node {
+  let bundle = rust_collection_choice_bundle_node(
+    choice: sgb_choice(
+      representation_parameters: sgb_nested_representation_parameters(),
+      contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
+    )
+  )
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: Edge { label: params_label, target: _ },
+        tail: Cons {
+          head: constraints_edge,
+          tail: Cons {
+            head: contracts_edge,
+            tail: Empty
+          }
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: [
+          form_edge,
+          Edge {
+            label: params_label,
+            target: fold_list_node(
+              xs: parameter_nodes,
+              item_node: fn(parameter_node) { parameter_node }
+            )
+          },
+          constraints_edge,
+          contracts_edge
+        ]
+      )
+    _ => bundle
+  }
+}
+
+fn sgb_atom_node(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_choice_bundle_missing_contract_edge_node() -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: params_edge,
+        tail: Cons {
+          head: constraints_edge,
+          tail: Cons { head: _, tail: Empty }
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: [form_edge, params_edge, constraints_edge]
+      )
+    _ => bundle
+  }
+}
+
+fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
+  let bundle = sgb_choice_bundle_node()
+  match bundle.children {
+    Cons {
+      head: form_edge,
+      tail: Cons {
+        head: params_edge,
+        tail: Cons {
+          head: constraints_edge,
+          tail: Cons {
+            head: contracts_edge,
+            tail: Empty
+          }
+        }
+      }
+    } =>
+      node_rebuild(
+        n: bundle,
+        children: [
+          form_edge,
+          params_edge,
+          constraints_edge,
+          contracts_edge,
+          contracts_edge
+        ]
+      )
+    _ => bundle
+  }
+}
+
+fn sgb_malformed_contract_row_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: sgb_atom_node(identity: discriminant(v: ReprDeriveDebug))
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sgb_contract_missing_authority_node() -> Node {
+  let contract = sgb_debug_contract_wire_node()
+  match contract.children {
+    Cons {
+      head: derive_edge,
+      tail: Cons {
+        head: _authority_edge,
+        tail: Cons {
+          head: requirements_edge,
+          tail: Empty
+        }
+      }
+    } =>
+      node_rebuild(
+        n: contract,
+        children: [derive_edge, requirements_edge]
+      )
+    _ => contract
+  }
+}
+
+test fn nested_generic_debug_requires_clone_on_exact_slot() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      contract.derive_trait == ReprDeriveDebug
+        && contract.authority == im_15_1_0_vector_debug_impl_authority
+        && sgb_contract_has_single_requirement(
+          contract: contract,
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone,
+          authority: im_15_1_0_vector_debug_impl_authority
+        )
+  }
+}
+
+test fn nested_generic_partial_eq_requires_clone_on_exact_slot() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDerivePartialEq
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      contract.derive_trait == ReprDerivePartialEq
+        && sgb_contract_has_single_requirement(
+          contract: contract,
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone,
+          authority: im_15_1_0_vector_partial_eq_impl_authority
+        )
+  }
+}
+
+test fn nested_generic_serialize_requires_clone_on_exact_slot() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveSerialize
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      contract.derive_trait == ReprDeriveSerialize
+        && sgb_contract_has_single_requirement(
+          contract: contract,
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveClone,
+          authority: im_15_1_0_vector_serialize_impl_authority
+        )
+  }
+}
+
+test fn nested_generic_deserialize_requires_clone_and_ord_on_exact_slots() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDeserialize
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      contract.derive_trait == ReprDeriveDeserialize
+        && sgb_contract_has_two_requirements(
+          contract: contract,
+          first_parameter: ^sgb_left_slot,
+          first_trait: ReprDeriveClone,
+          first_authority: im_15_1_0_vector_deserialize_impl_authority,
+          second_parameter: ^sgb_right_slot,
+          second_trait: ReprDeriveOrd,
+          second_authority: serde_1_0_228_btree_set_deserialize_authority
+        )
+  }
+}
+
+test fn nested_generic_swap_red_rejects_swapped_slot_requirements() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDeserialize
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_requirement_authority(
+        contract: contract,
+        representation_parameter: ^sgb_right_slot,
+        required_trait: ReprDeriveClone
+      ) {
+        Present { value: _ } => false
+        Absent =>
+          match target_derive_supplemental_generic_bound_requirement_authority(
+            contract: contract,
+            representation_parameter: ^sgb_left_slot,
+            required_trait: ReprDeriveOrd
+          ) {
+            Present { value: _ } => false
+            Absent => true
+          }
+      }
+  }
+}
+
+test fn nested_generic_required_trait_red_rejects_derive_trait_echo() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      sgb_requirement_authority_matches(
+        contract: contract,
+        representation_parameter: ^sgb_left_slot,
+        required_trait: ReprDeriveClone,
+        authority: im_15_1_0_vector_debug_impl_authority
+      )
+        && match target_derive_supplemental_generic_bound_requirement_authority(
+          contract: contract,
+          representation_parameter: ^sgb_left_slot,
+          required_trait: ReprDeriveDebug
+        ) {
+          Present { value: _ } => false
+          Absent => true
+        }
+  }
+}
+
+test fn nested_generic_outer_inner_trait_axes_are_distinct() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: debug_contract, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: sgb_nested_realization(),
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveClone
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: clone_contract, diagnostics: _ } =>
+          debug_contract.derive_trait == ReprDeriveDebug
+            && sgb_contract_has_single_requirement(
+              contract: debug_contract,
+              representation_parameter: ^sgb_left_slot,
+              required_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_debug_impl_authority
+            )
+            && sgb_contract_is_explicit_empty(
+              contract: clone_contract,
+              derive_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_clone_impl_authority
+            )
+      }
+  }
+}
+
+test fn nested_generic_clone_has_explicit_empty_requirements() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_nested_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveClone
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: contract, diagnostics: _ } =>
+      sgb_contract_is_explicit_empty(
+        contract: contract,
+        derive_trait: ReprDeriveClone,
+        authority: im_15_1_0_vector_clone_impl_authority
+      )
+  }
+}
+
+test fn nested_generic_contract_round_trip_preserves_keyed_authority() -> Bool {
+  match target_collection_choice_from_node(node: sgb_choice_bundle_node()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      sgb_choice_matches_exact(choice: decoded, expected: sgb_nested_choice())
+  }
+}
+
+test fn rust_vec_target_bundle_round_trip_preserves_im_vector_policy() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      sgb_choice_matches_exact(
+        choice: decoded.primary,
+        expected: rust_free_monoid_collection_primary_choice()
+      )
+  }
+}
+
+test fn rust_vec_debug_contract_requires_clone_from_im_vector_authority() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveDebug
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDeriveDebug
+            && contract.authority == im_15_1_0_vector_debug_impl_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_debug_impl_authority
+            )
+      }
+  }
+}
+
+test fn rust_vec_partial_eq_contract_requires_clone_from_im_vector_authority() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDerivePartialEq
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDerivePartialEq
+            && contract.authority == im_15_1_0_vector_partial_eq_impl_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_partial_eq_impl_authority
+            )
+      }
+  }
+}
+
+test fn rust_vec_serialize_contract_requires_clone_from_im_vector_authority() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveSerialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDeriveSerialize
+            && contract.authority == im_15_1_0_vector_serialize_impl_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_serialize_impl_authority
+            )
+      }
+  }
+}
+
+test fn rust_vec_deserialize_contract_requires_clone_from_im_vector_authority() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveDeserialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDeriveDeserialize
+            && contract.authority == im_15_1_0_vector_deserialize_impl_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveClone,
+              authority: im_15_1_0_vector_deserialize_impl_authority
+            )
+      }
+  }
+}
+
+test fn rust_vec_clone_contract_remains_explicit_empty_from_im_vector_authority() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveClone
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          sgb_contract_is_explicit_empty(
+            contract: contract,
+            derive_trait: ReprDeriveClone,
+            authority: im_15_1_0_vector_clone_impl_authority
+          )
+      }
+  }
+}
+
+test fn rust_vec_unmodeled_ord_contract_refuses_as_missing() -> Bool {
+  match free_monoid_collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: char_kernel_type_node(),
+        derive_trait: ReprDeriveOrd
+      ) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+  }
+}
+
+test fn rust_set_target_bundle_round_trip_preserves_both_production_policies() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      sgb_choice_matches_exact(
+        choice: decoded.primary,
+        expected: rust_set_collection_primary_choice()
+      )
+        && match decoded.alternatives {
+          Empty => false
+          Cons { head: hash_choice, tail: tail } =>
+            match tail {
+              Cons { head: _, tail: _ } => false
+              Empty =>
+                sgb_choice_matches_exact(
+                  choice: hash_choice,
+                  expected: rust_set_collection_hash_choice()
+                )
+            }
+        }
+  }
+}
+
+test fn rust_btree_set_debug_contract_is_explicit_known_zero_from_std_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveDebug
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          sgb_contract_is_explicit_empty(
+            contract: contract,
+            derive_trait: ReprDeriveDebug,
+            authority: rust_1_93_btree_set_trait_implementations_authority
+          )
+      }
+  }
+}
+
+test fn rust_btree_set_serialize_contract_is_explicit_known_zero_from_serde_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveSerialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          sgb_contract_is_explicit_empty(
+            contract: contract,
+            derive_trait: ReprDeriveSerialize,
+            authority: serde_1_0_228_btree_set_serialize_authority
+          )
+      }
+  }
+}
+
+test fn rust_btree_set_deserialize_contract_requires_ord_from_serde_authority() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+        row: decoded,
+        elem: sgb_collection_eligible_elem_node(),
+        derive_trait: ReprDeriveDeserialize
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: contract, diagnostics: _ } =>
+          contract.derive_trait == ReprDeriveDeserialize
+            && contract.authority == serde_1_0_228_btree_set_deserialize_authority
+            && sgb_contract_has_single_requirement(
+              contract: contract,
+              representation_parameter: ^target_collection_type_param_t,
+              required_trait: ReprDeriveOrd,
+              authority: serde_1_0_228_btree_set_deserialize_authority
+            )
+      }
+  }
+}
+
+test fn rust_hash_set_serialize_contract_is_known_zero_after_bundle_decode() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match decoded.alternatives {
+        Empty => false
+        Cons { head: hash_choice, tail: _ } =>
+          match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+            row: sgb_realization(
+              source_carrier: decoded.source_carrier,
+              primary: hash_choice,
+              alternatives: Empty
+            ),
+            elem: sgb_collection_eligible_elem_node(),
+            derive_trait: ReprDeriveSerialize
+          ) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: contract, diagnostics: _ } =>
+              sgb_contract_is_explicit_empty(
+                contract: contract,
+                derive_trait: ReprDeriveSerialize,
+                authority: serde_1_0_228_hash_set_serialize_authority
+              )
+          }
+      }
+  }
+}
+
+test fn rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers() -> Bool {
+  match collection_realization_from_target(target: rust_target_model()) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: decoded, diagnostics: _ } =>
+      match decoded.alternatives {
+        Empty => false
+        Cons { head: hash_choice, tail: _ } =>
+          let hash_realization = sgb_realization(
+            source_carrier: decoded.source_carrier,
+            primary: hash_choice,
+            alternatives: Empty
+          )
+          match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+            row: hash_realization,
+            elem: sgb_collection_eligible_elem_node(),
+            derive_trait: ReprDerivePartialEq
+          ) {
+            Accepted { value: _, diagnostics: _ } => false
+            Rejected { diagnostics: _ } =>
+              match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+                row: hash_realization,
+                elem: sgb_collection_eligible_elem_node(),
+                derive_trait: ReprDeriveDeserialize
+              ) {
+                Accepted { value: _, diagnostics: _ } => false
+                Rejected { diagnostics: _ } =>
+                  sgb_hash_set_coverage_blockers_match_exact()
+              }
+          }
+      }
+  }
+}
+
+test fn concrete_carrier_refuses_missing_contract() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_empty_realization(
+      source_carrier: sgb_concrete_source_carrier_node()
+    ),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn unrelated_carrier_refuses_missing_contract() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_empty_realization(
+      source_carrier: sgb_atom_source_carrier_node(
+        identity: ^sgb_unrelated_source
+      )
+    ),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn phantom_carrier_refuses_missing_contract() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_empty_realization(
+      source_carrier: sgb_atom_source_carrier_node(
+        identity: ^sgb_phantom_source
+      )
+    ),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn missing_row_refuses_without_binding() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_empty_realization(
+      source_carrier: sgb_nested_source_carrier_node()
+    ),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn wrong_choice_refuses_internally_valid_nonselected_contracts() -> Bool {
+  match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
+    row: sgb_wrong_choice_realization(),
+    elem: char_kernel_type_node(),
+    derive_trait: ReprDeriveDebug
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn missing_contract_edge_refuses_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_missing_contract_edge_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_contract_edge_refuses_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_duplicate_contract_edge_node()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn malformed_contract_row_refuses_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [sgb_malformed_contract_row_node()]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn missing_contract_authority_refuses_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [sgb_contract_missing_authority_node()]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_derive_rows_refuse_on_bundle_decode() -> Bool {
+  let debug_contract = sgb_debug_contract_wire_node()
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [debug_contract, debug_contract]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn undeclared_slot_refuses_on_bundle_decode() -> Bool {
+  let malformed_contract = sgb_contract_wire_node(
+    derive_trait: ReprDeriveDebug,
+    authority: im_15_1_0_vector_debug_impl_authority,
+    requirement_nodes: [
+      sgb_requirement_wire_node(
+        representation_parameter: ^sgb_unknown_slot,
+        required_trait: ReprDeriveClone,
+        authority: im_15_1_0_vector_debug_impl_authority
+      )
+    ]
+  )
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [malformed_contract]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn malformed_unrelated_row_poison_refuses_valid_debug_decode() -> Bool {
+  let malformed_serialize_contract = sgb_contract_wire_node(
+    derive_trait: ReprDeriveSerialize,
+    authority: im_15_1_0_vector_serialize_impl_authority,
+    requirement_nodes: [
+      sgb_requirement_wire_node(
+        representation_parameter: ^sgb_unknown_slot,
+        required_trait: ReprDeriveClone,
+        authority: im_15_1_0_vector_serialize_impl_authority
+      )
+    ]
+  )
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [
+        sgb_debug_contract_wire_node(),
+        malformed_serialize_contract
+      ]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_parameter_slots_refuse_on_bundle_decode() -> Bool {
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_parameter_nodes(
+      parameter_nodes: [
+        sgb_atom_node(identity: ^sgb_left_slot),
+        sgb_atom_node(identity: ^sgb_left_slot)
+      ]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn duplicate_requirement_pairs_refuse_on_bundle_decode() -> Bool {
+  let requirement = sgb_requirement_wire_node(
+    representation_parameter: ^sgb_left_slot,
+    required_trait: ReprDeriveClone,
+    authority: im_15_1_0_vector_debug_impl_authority
+  )
+  let duplicate_requirement_contract = sgb_contract_wire_node(
+    derive_trait: ReprDeriveDebug,
+    authority: im_15_1_0_vector_debug_impl_authority,
+    requirement_nodes: [requirement, requirement]
+  )
+  match target_collection_choice_from_node(
+    node: sgb_choice_bundle_with_contract_nodes(
+      contract_nodes: [duplicate_requirement_contract]
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

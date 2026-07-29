@@ -1,0 +1,414 @@
+module test.claim.workflow_reconcile_witness_test
+
+import std.types { String, Bool, List }
+import std.reducible { Reduced, Unknown }
+import gunbc.workflow_reconcile {
+  WorkflowFactState,
+  WorkflowFactPending,
+  WorkflowFactSatisfied,
+  WorkflowFactFailed,
+  WorkflowFactRefused,
+  WorkflowFactWaived,
+  WorkflowFactKey,
+  WorkflowFact,
+  WorkflowFactTree,
+  WorkflowFactLeaf,
+  WorkflowFactDecomposed,
+  WorkflowFactRoot,
+  WorkflowFactChild,
+  WorkflowReconcileReport,
+  workflow_reconcile_report,
+  workflow_reconcile_status_key,
+}
+import gunbc.membership_reconcile {
+  MemberUpsert,
+  MemberTeardown,
+  MemberTeardownRefused,
+}
+
+fn workflow_fact_fixture(
+  obligation_id: String,
+  revision: String,
+  state: WorkflowFactState,
+) -> WorkflowFact {
+  WorkflowFact {
+    key: WorkflowFactKey {
+      workflow_id: "feature-1",
+      obligation_id: obligation_id,
+    },
+    intent_revision: revision,
+    state: state,
+    detail: obligation_id,
+  }
+}
+
+fn workflow_leaf_fixture(
+  obligation_id: String,
+  revision: String,
+  state: WorkflowFactState,
+) -> WorkflowFactTree {
+  WorkflowFactLeaf {
+    fact: workflow_fact_fixture(
+      obligation_id: obligation_id,
+      revision: revision,
+      state: state,
+    ),
+  }
+}
+
+fn workflow_decomposed_fixture(
+  obligation_id: String,
+  revision: String,
+  state: WorkflowFactState,
+  children: List<WorkflowFactTree>,
+) -> WorkflowFactTree {
+  WorkflowFactDecomposed {
+    fact: workflow_fact_fixture(
+      obligation_id: obligation_id,
+      revision: revision,
+      state: state,
+    ),
+    children: children,
+  }
+}
+
+fn desired_feature_tree() -> List<WorkflowFactTree> {
+  [
+    workflow_decomposed_fixture(
+      obligation_id: "deliver-feature",
+      revision: "goal-a",
+      state: WorkflowFactSatisfied,
+      children: [
+        workflow_leaf_fixture(
+          obligation_id: "frontend",
+          revision: "frontend-a",
+          state: WorkflowFactSatisfied,
+        ),
+        workflow_decomposed_fixture(
+          obligation_id: "backend",
+          revision: "backend-a",
+          state: WorkflowFactSatisfied,
+          children: [
+            workflow_leaf_fixture(
+              obligation_id: "database",
+              revision: "database-a",
+              state: WorkflowFactSatisfied,
+            ),
+          ],
+        ),
+      ],
+    ),
+  ]
+}
+
+test fn recursive_reconcile_all_satisfied_is_noop() -> Bool {
+  let desired = desired_feature_tree()
+  let report = workflow_reconcile_report(
+    desired: desired,
+    observed: desired,
+  )
+  report.desired_count == 4
+    && report.observed_count == 4
+    && report.remaining_count == 0
+    && report.observed_failure_count == 0
+    && report.observed_refusal_count == 0
+    && report.plan_refusal_count == 0
+    && count(report.plan.actions) == 0
+    && workflow_reconcile_status_key(report: report) == "converged"
+    && match report.verdict {
+      Reduced { last_parts: _ } => true
+      _ => false
+    }
+}
+
+test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
+  let observed = [
+    workflow_decomposed_fixture(
+      obligation_id: "deliver-feature",
+      revision: "goal-a",
+      state: WorkflowFactSatisfied,
+      children: [
+        workflow_leaf_fixture(
+          obligation_id: "frontend",
+          revision: "frontend-a",
+          state: WorkflowFactSatisfied,
+        ),
+        workflow_leaf_fixture(
+          obligation_id: "backend",
+          revision: "backend-a",
+          state: WorkflowFactSatisfied,
+        ),
+      ],
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired_feature_tree(),
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.plan_refusal_count == 0
+    && count(report.plan.actions) == 1
+    && all(report.plan.actions, action => match action {
+      MemberUpsert { member } =>
+        member.fact.key.obligation_id == "database"
+      MemberTeardown { member: _ } => false
+      MemberTeardownRefused { member: _, cause: _ } => false
+    })
+    && match report.verdict {
+      Unknown { missing } =>
+        string_contains(s: missing, pattern: ":database")
+      _ => false
+    }
+}
+
+test fn goal_revision_change_is_modified_not_delete_add() -> Bool {
+  let desired = [
+    workflow_leaf_fixture(
+      obligation_id: "frontend",
+      revision: "frontend-v2",
+      state: WorkflowFactSatisfied,
+    ),
+  ]
+  let observed = [
+    workflow_leaf_fixture(
+      obligation_id: "frontend",
+      revision: "frontend-v1",
+      state: WorkflowFactSatisfied,
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired,
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.plan_refusal_count == 0
+    && count(report.plan.actions) == 1
+    && all(report.plan.actions, action => match action {
+      MemberUpsert { member } =>
+        member.fact.key.obligation_id == "frontend"
+          && member.fact.intent_revision == "frontend-v2"
+      MemberTeardown { member: _ } => false
+      MemberTeardownRefused { member: _, cause: _ } => false
+    })
+}
+
+test fn reparented_child_is_one_modified_upsert() -> Bool {
+  let observed = [
+    workflow_decomposed_fixture(
+      obligation_id: "deliver-feature",
+      revision: "goal-a",
+      state: WorkflowFactSatisfied,
+      children: [
+        workflow_decomposed_fixture(
+          obligation_id: "frontend",
+          revision: "frontend-a",
+          state: WorkflowFactSatisfied,
+          children: [
+            workflow_leaf_fixture(
+              obligation_id: "database",
+              revision: "database-a",
+              state: WorkflowFactSatisfied,
+            ),
+          ],
+        ),
+        workflow_leaf_fixture(
+          obligation_id: "backend",
+          revision: "backend-a",
+          state: WorkflowFactSatisfied,
+        ),
+      ],
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired_feature_tree(),
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.plan_refusal_count == 0
+    && count(report.plan.actions) == 1
+    && all(report.plan.actions, action => match action {
+      MemberUpsert { member } =>
+        member.fact.key.obligation_id == "database"
+          && match member.parent {
+            WorkflowFactChild { parent_key: parent } =>
+              parent.obligation_id == "backend"
+            WorkflowFactRoot => false
+          }
+      MemberTeardown { member: _ } => false
+      MemberTeardownRefused { member: _, cause: _ } => false
+    })
+}
+
+test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool {
+  let desired = [
+    workflow_leaf_fixture(
+      obligation_id: "frontend",
+      revision: "frontend-a",
+      state: WorkflowFactSatisfied,
+    ),
+  ]
+  let observed = [
+    workflow_leaf_fixture(
+      obligation_id: "frontend",
+      revision: "frontend-a",
+      state: WorkflowFactSatisfied,
+    ),
+    workflow_leaf_fixture(
+      obligation_id: "backend",
+      revision: "backend-a",
+      state: WorkflowFactSatisfied,
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired,
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.observed_refusal_count == 0
+    && report.plan_refusal_count == 1
+    && count(report.plan.actions) == 1
+    && all(report.plan.actions, action => match action {
+      MemberTeardownRefused { member, cause: _ } =>
+        member.fact.key.obligation_id == "backend"
+      MemberUpsert { member: _ } => false
+      MemberTeardown { member: _ } => false
+    })
+    && workflow_reconcile_status_key(report: report) == "refused"
+}
+
+test fn explicit_waiver_is_a_fact_not_deletion() -> Bool {
+  let desired = [
+    workflow_leaf_fixture(
+      obligation_id: "backend",
+      revision: "backend-waiver-1",
+      state: WorkflowFactWaived,
+    ),
+  ]
+  let observed = desired
+  let report = workflow_reconcile_report(
+    desired: desired,
+    observed: observed,
+  )
+  report.remaining_count == 0
+    && report.observed_refusal_count == 0
+    && report.plan_refusal_count == 0
+    && workflow_reconcile_status_key(report: report) == "converged"
+}
+
+test fn deep_failure_blocks_green_parent_and_siblings() -> Bool {
+  let observed = [
+    workflow_decomposed_fixture(
+      obligation_id: "deliver-feature",
+      revision: "goal-a",
+      state: WorkflowFactSatisfied,
+      children: [
+        workflow_leaf_fixture(
+          obligation_id: "frontend",
+          revision: "frontend-a",
+          state: WorkflowFactSatisfied,
+        ),
+        workflow_decomposed_fixture(
+          obligation_id: "backend",
+          revision: "backend-a",
+          state: WorkflowFactSatisfied,
+          children: [
+            workflow_leaf_fixture(
+              obligation_id: "database",
+              revision: "database-a",
+              state: WorkflowFactFailed,
+            ),
+          ],
+        ),
+      ],
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired_feature_tree(),
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.observed_failure_count == 1
+    && workflow_reconcile_status_key(report: report) == "failed"
+    && match report.verdict {
+      Unknown { missing } =>
+        string_contains(s: missing, pattern: ":database:failed")
+      _ => false
+    }
+}
+
+test fn observed_refusal_is_not_generic_non_convergence() -> Bool {
+  let desired = [
+    workflow_leaf_fixture(
+      obligation_id: "provider-auth",
+      revision: "provider-auth-a",
+      state: WorkflowFactSatisfied,
+    ),
+  ]
+  let observed = [
+    workflow_leaf_fixture(
+      obligation_id: "provider-auth",
+      revision: "provider-auth-a",
+      state: WorkflowFactRefused,
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired,
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && report.observed_failure_count == 0
+    && report.observed_refusal_count == 1
+    && report.plan_refusal_count == 0
+    && workflow_reconcile_status_key(report: report) == "refused"
+}
+
+test fn green_children_do_not_complete_pending_parent() -> Bool {
+  let observed = [
+    workflow_decomposed_fixture(
+      obligation_id: "deliver-feature",
+      revision: "goal-a",
+      state: WorkflowFactPending,
+      children: [
+        workflow_leaf_fixture(
+          obligation_id: "frontend",
+          revision: "frontend-a",
+          state: WorkflowFactSatisfied,
+        ),
+        workflow_decomposed_fixture(
+          obligation_id: "backend",
+          revision: "backend-a",
+          state: WorkflowFactSatisfied,
+          children: [
+            workflow_leaf_fixture(
+              obligation_id: "database",
+              revision: "database-a",
+              state: WorkflowFactSatisfied,
+            ),
+          ],
+        ),
+      ],
+    ),
+  ]
+  let report = workflow_reconcile_report(
+    desired: desired_feature_tree(),
+    observed: observed,
+  )
+  report.remaining_count == 1
+    && match report.verdict {
+      Unknown { missing } =>
+        string_contains(s: missing, pattern: ":deliver-feature:pending")
+      _ => false
+    }
+}
+
+test fn workflow_reconcile_keystone_holds() -> Bool {
+  recursive_reconcile_all_satisfied_is_noop()
+    && missing_nested_child_derives_one_reconcile_action()
+    && goal_revision_change_is_modified_not_delete_add()
+    && reparented_child_is_one_modified_upsert()
+    && silent_goal_shrink_refuses_evidence_deletion()
+    && explicit_waiver_is_a_fact_not_deletion()
+    && deep_failure_blocks_green_parent_and_siblings()
+    && observed_refusal_is_not_generic_non_convergence()
+    && green_children_do_not_complete_pending_parent()
+}

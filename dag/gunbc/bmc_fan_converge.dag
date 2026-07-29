@@ -24,7 +24,6 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
-  OpenBmcFanConfigDesired,
   OpenBmcFanConfigObservation,
   OpenBmcFanConfigObservationRefused,
   OpenBmcFanConfigObserved,
@@ -73,6 +72,7 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_zone_failsafe,
   openbmc_tach_health,
 }
+import extdeps.bmc.openbmc_operation { OpenBmcFanConfigDesired }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux {
@@ -255,8 +255,13 @@ type BmcFanLiveObservation {
 
 type BmcFanTemperatureObservation {
   sensor: NonEmptyStr
-  value: OpenBmcSensorValueResult
+  value: BmcFanTemperatureValueResult
 }
+
+type BmcFanTemperatureValueResult
+  = BmcFanTemperatureObserved { value: Celsius }
+  | BmcFanTemperatureAbsent
+  | BmcFanTemperatureRefused { reason: String }
 
 type BmcFanLiveObservationResult
   = BmcFanLiveObserved { observation: BmcFanLiveObservation }
@@ -599,7 +604,7 @@ fn bmc_fan_observe_temperature(
     session: session,
     sensor_path: sensor_path,
   )
-  let value = match service_result {
+  let raw_value = match service_result {
     OpenBmcSensorServicesRefused { reason } =>
       OpenBmcSensorValueRefused { reason: reason }
     OpenBmcSensorServicesObserved { services } =>
@@ -616,6 +621,13 @@ fn bmc_fan_observe_temperature(
             sensor_path: sensor_path,
           )
       }
+  }
+  let value = match raw_value {
+    OpenBmcSensorValueAbsent => BmcFanTemperatureAbsent
+    OpenBmcSensorValueRefused { reason } =>
+      BmcFanTemperatureRefused { reason: reason }
+    OpenBmcSensorValueObserved { value } =>
+      BmcFanTemperatureObserved { value: celsius(value) }
   }
   BmcFanTemperatureObservation { sensor: sensor_name, value: value }
 }
@@ -1038,7 +1050,7 @@ fn bmc_fan_build_live_observation(
 fn bmc_fan_temperature_for_sensor(
   temperatures: List<BmcFanTemperatureObservation>,
   sensor: NonEmptyStr,
-) -> OpenBmcSensorValueResult? {
+) -> BmcFanTemperatureValueResult? {
   if temperatures.length() == 0 {
     none
   } else {
@@ -1134,7 +1146,7 @@ fn bmc_fan_first_unhealthy_tach(
 fn bmc_fan_first_unhealthy_component(
   temperatures: List<BmcFanTemperatureObservation>,
   required: List<NonEmptyStr>,
-  rollback_temperature: Int,
+  rollback_temperature: Celsius,
 ) -> String? {
   if required.length() == 0 {
     none
@@ -1148,28 +1160,28 @@ fn bmc_fan_first_unhealthy_component(
         Present {
           value: join(["required component temperature is absent: ", sensor as String], ""),
         }
-      Present { value: OpenBmcSensorValueAbsent } =>
+      Present { value: BmcFanTemperatureAbsent } =>
         Present {
           value: join(["required component temperature is absent: ", sensor as String], ""),
         }
-      Present { value: OpenBmcSensorValueRefused { reason } } =>
+      Present { value: BmcFanTemperatureRefused { reason } } =>
         Present {
           value: join(
             ["required component temperature was refused: ", sensor as String, ": ", reason],
             "",
           ),
         }
-      Present { value: OpenBmcSensorValueObserved { value: temperature } } =>
-          if temperature >= rollback_temperature {
+      Present { value: BmcFanTemperatureObserved { value: temperature } } =>
+          if celsius_count(temperature) >= celsius_count(rollback_temperature) {
             Present {
               value: join(
                 [
                   "component reached rollback temperature: ",
                   sensor as String,
                   "=",
-                  to_string(temperature),
+                  to_string(celsius_count(temperature)),
                   "C >= ",
-                  to_string(rollback_temperature),
+                  to_string(celsius_count(rollback_temperature)),
                   "C",
                 ],
                 "",
@@ -1191,27 +1203,23 @@ fn bmc_fan_live_thermal_tach_safety_refusal(
   intent: BmcControlPlaneIntent,
   projection: BmcFanPolicyProjectionCapability,
 ) -> String? {
-  let processor_rollback = celsius_count(
-    intent.fan_policy.thermal_guard.processor_rollback_temperature,
-  )
-  let component_rollback = celsius_count(
-    intent.fan_policy.thermal_guard.component_rollback_temperature,
-  )
+  let processor_rollback = intent.fan_policy.thermal_guard.processor_rollback_temperature
+  let component_rollback = intent.fan_policy.thermal_guard.component_rollback_temperature
   match bmc_fan_temperature_for_sensor(
     temperatures: observation.temperatures,
     sensor: "TEMP_SOC",
   ) {
     Absent => Present { value: "TEMP_SOC is absent" }
-    Present { value: OpenBmcSensorValueAbsent } =>
+    Present { value: BmcFanTemperatureAbsent } =>
       Present { value: "TEMP_SOC is absent" }
-    Present { value: OpenBmcSensorValueRefused { reason } } =>
+    Present { value: BmcFanTemperatureRefused { reason } } =>
       Present { value: join(["TEMP_SOC observation was refused: ", reason], "") }
-    Present { value: OpenBmcSensorValueObserved { value: temperature } } =>
-      if temperature >= processor_rollback {
+    Present { value: BmcFanTemperatureObserved { value: temperature } } =>
+      if celsius_count(temperature) >= celsius_count(processor_rollback) {
         Present {
           value: concat(
-            concat("TEMP_SOC reached rollback temperature: ", to_string(temperature)),
-            concat("C >= ", concat(to_string(processor_rollback), "C")),
+            concat("TEMP_SOC reached rollback temperature: ", to_string(celsius_count(temperature))),
+            concat("C >= ", concat(to_string(celsius_count(processor_rollback)), "C")),
           ),
         }
       } else {

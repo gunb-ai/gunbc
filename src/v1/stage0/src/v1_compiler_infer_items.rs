@@ -5,6 +5,7 @@ use self::ItemKind::*;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
+pub use crate::std_occurrence_identity::OccurrenceTransport;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::empty_type_env_cache;
@@ -78,6 +79,7 @@ pub struct TypedModule {
     pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub occurrence_transport: Option<Rc<OccurrenceTransport>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

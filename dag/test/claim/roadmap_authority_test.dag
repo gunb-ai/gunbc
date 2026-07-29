@@ -1,118 +1,574 @@
 module test.claim.roadmap_authority
 
+import std.types { ContentHash }
+import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
+import gunbc.roadmap_authority {
+  roadmap_authority_for,
+  declared_roadmap_nodes,
+  declared_roadmap_edges,
+  active_roadmap_nodes,
+  active_roadmap_edges,
+  roadmap_acceptance_receipts,
+  accepted_roadmap_node_ids,
+  roadmap_authority,
+  authored_merged_prs,
+  observation_scoped_run_seed_growth_justification,
+  caret_parse_smoke_seed_growth_justification,
+}
+import gunbc.v1_deletion_plan {
+  V1FinishLine,
+  CompilerFixedPoint,
+  InterpreterDeleted,
+  ProductsV1Free,
+  ZeroHandMaintainedRust,
+  v1_exit_finish_lines,
+  v1_finish_line_key,
+  v1_finish_lines_accepted_count,
+}
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_document { project_roadmap_to_markdown }
+import gunbc.roadmap_model {
+  RoadmapNode,
+  RoadmapEdge,
+  RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  node_accepted,
+  receipt_matches_node,
+  node_criteria_digest,
+  roadmap_parent_ids,
+  is_top_level,
+  Pointer,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  VolumeSmall,
+  VolumeMedium,
+  VolumeLarge,
+  Sized,
+  Unsized,
+  ManualAcceptance,
+}
+import gunbc.roadmap_status {
+  RoadmapItem,
+  Signoff,
+  TicketLine,
+  TicketFields,
+  SupersededLine,
+  AuthoredLine,
+  PlainLine,
+  DerivableLine,
+  Unsigned,
+  SignedOff,
+  RedControlExecuted,
+  RedControlNotRun,
+  HandbackDelivered,
+  HandbackNotDelivered,
+  line_ticket,
+  item_is_done,
+  signoff_is_present,
+}
+import extdeps.languages.markdown { serialize_markdown_source }
+import std.graph { GraphEdge, CallGraph, graph_has_multi_node_scc }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn merged() -> List<Int> { authored_merged_prs() }
+fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
+fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
+fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
+fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
 
-fn emit_with(m: List<Int>) -> String {
-  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: m))
-}
-fn out() -> String { emit_with(m: merged()) }
+fn tnid(s: String) -> RoadmapNodeId { s }
+fn tchash(s: String) -> ContentHash { s }
 
-test fn witness_frame_all_sections() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "# gunbc — Roadmap")
-    && string_contains(s: o, pattern: "## 1. Get off v1 — v2 self-hosts (TERMINAL: `src/v1` deleted)")
-    && string_contains(s: o, pattern: "## 2. Compute fabric — own the infra (CI · deploy · control plane)")
-    && string_contains(s: o, pattern: "## 3. The floor — audit what we have (does it actually do what it claims?)")
-    && string_contains(s: o, pattern: "## 4. Shelved (parked 2026-07-01 — not deleted)")
-}
-
-test fn witness_reset_marker() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "**Reset 2026-07-01 (operator-directed).**")
-    && string_contains(s: o, pattern: "The prior roadmap with full detail is in git history.")
+fn digest_or_zero(rn: RoadmapNode) -> ContentHash {
+  match node_criteria_digest(rn: rn) {
+    Present { value } => value
+    Absent => tchash(s: "0000000000000000")
+  }
 }
 
-test fn witness_subgroup_labels() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "**Now — correctness of the current posture:**")
-    && string_contains(s: o, pattern: "**Floor throughput — reduce work, then schedule it (26m → <1min on a typical PR):**")
-    && string_contains(s: o, pattern: "**Control plane — the #6096 re-land, done right (G2/G3):**")
-    && string_contains(s: o, pattern: "**Fabric dispatch — RunShape → Allocation → Receipt (GitHub is the queue, not the scheduler):**")
-    && string_contains(s: o, pattern: "**Fleet hardening — make our metal safe for the load it carries:**")
+fn declared_node(id: String) -> List<RoadmapNode> {
+  nodes() |> filter(n => n.node == id)
 }
 
-test fn witness_fabric_design_rule() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "provider-specific power is earned behind a `ProviderOffer` adapter")
-    && string_contains(s: o, pattern: "oversubscription is an optimization proven by receipts, never assumed by placement")
-    && string_contains(s: o, pattern: "**TERMINAL: required CI runs on the compute fabric")
-    && string_contains(s: o, pattern: "immutable storage + stateless compute + explicit route + read-back receipt")
-    && string_contains(s: o, pattern: "**stateless frontend MVP on fabric**")
-    && string_contains(s: o, pattern: "**Ordering (operator-signed):**")
+fn receipt_fixture(node: String, digest: ContentHash) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: tnid(s: node),
+    criteria_digest: digest,
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
 }
 
-test fn witness_emit_refs_from_binding() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "**provenance ingest live at floor runtime** (#6105)")
-    && string_contains(s: o, pattern: "**registry-dispatch foundation** — #6106 merged")
-    && string_contains(s: o, pattern: "**superseded →** 2-emit-partition")
-    && string_contains(s: o, pattern: "**no-dual-representation-test lens rebuilt pure-v2** (#6104)")
+fn evidenceless_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlNotRun,
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
 }
 
-test fn witness_pillar1_no_overclaim() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "interim fixpoint gate, 2-of-92 roster ✓ (#6009)")
-    && string_contains(s: o, pattern: "**TERMINAL: `src/v1` deleted**")
-    && string_contains(s: o, pattern: "the ~154k figure in older docs is stale")
-    && !string_contains(s: o, pattern: "- [x] **real fixed point**")
+fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackNotDelivered,
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
 }
 
-test fn witness_pillar2_posture() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "required CI is back on the fleet")
-    && string_contains(s: o, pattern: "#6107, reverted #6111")
-    && string_contains(s: o, pattern: "#6096 (fleet converge control plane) was **closed unmerged**")
-    && string_contains(s: o, pattern: "the re-land is an architecture change, not a rebase")
+fn id_exists(id: RoadmapNodeId) -> Bool {
+  nodes() |> any(n => n.node == id)
 }
 
-test fn witness_a_prose_verbatim() -> Bool {
-  string_contains(s: out(),
-    pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)")
+fn id_count(id: RoadmapNodeId) -> Int {
+  nodes() |> filter(n => n.node == id) |> count
 }
 
-test fn witness_b_ordered_interleaving() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-05):")
-    && string_contains(s: o, pattern: "so the walls are CI-proven now.\n\n**◆ Milestones:** front-end ✓")
-    && string_contains(s: o, pattern: "[host-converge inventory](docs/plans/host-converge-inventory.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
-    && string_contains(s: o, pattern: "Phase 2, earned by receipts.\n\n**◆ Milestones:** OOM root-caused")
+fn active_id_exists(id: RoadmapNodeId) -> Bool {
+  active_nodes() |> any(n => n.node == id)
 }
 
-test fn witness_b_order_discriminator() -> Bool {
-  !string_contains(s: out(), pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)\n\nGround truth (2026-07-05):")
+fn edge_exists(child: String, parent: String) -> Bool {
+  edges() |> any(e => e.child == child && e.parent == parent)
 }
 
-test fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
-  let full = out()
-  let flipped = emit_with(m: [6104, 6105, 6106])
-  let pat = "- [ ] **provenance ingest live at floor runtime** (#6105)"
-  string_contains(s: full, pattern: pat)
-    && string_contains(s: flipped, pattern: pat)
-    && !string_contains(s: full, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
-    && !string_contains(s: flipped, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
+fn node_has_carrier_path(path: String) -> Bool {
+  nodes() |> any(n => n.carriers |> any(p => p.path == path))
 }
 
-test fn witness_legend_separates_evidence_acceptance_and_supersession() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "`[x]` checklist-closed by accepting operator sign-off or authored supersession")
-    && string_contains(s: o, pattern: "`[ ]` not accepted")
-    && string_contains(s: o, pattern: "`⏳ awaiting sign-off` implementation evidence present but acceptance absent")
-    && string_contains(s: o, pattern: "page status `done` = accepting sign-off only")
+fn node_count_with_carrier_path(path: String) -> Int {
+  nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
 }
 
-test fn witness_shelf_is_uncheckboxed() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "- **fold-ergonomics lane** —")
-    && !string_contains(s: o, pattern: "- [ ] **fold-ergonomics lane** —")
+fn mechanical_graph() -> CallGraph {
+  CallGraph {
+    edges: edges() |> map(e => GraphEdge {
+      caller: e.parent as String,
+      callee: e.child as String,
+    }),
+  }
 }
 
-test fn witness_audit_lane_present() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "**Audit — green by execution, red by perturbation:**")
-    && string_contains(s: o, pattern: "**affected-set lens — discharged by a standing mechanism**")
-    && string_contains(s: o, pattern: "A mechanism claim without a red-control is *unverified*")
-    && string_contains(s: o, pattern: "**artifact-freshness gate**")
-    && string_contains(s: o, pattern: "**one tree, one verdict**")
+fn node_names() -> List<String> {
+  nodes() |> map(n => n.node as String)
+}
+
+fn ticket_fields_complete(ticket: TicketFields) -> Bool {
+  !(ticket.headline == "")
+        && !(ticket.brief == "")
+        && !(ticket.displaced_cost == "")
+        && !(ticket.current_state == "")
+        && !(ticket.first_slice == "")
+        && !(ticket.red_control == "")
+        && !(ticket.out_of_scope == "")
+        && !(ticket.handback == "")
+}
+
+fn active_node_admissible(n: RoadmapNode) -> Bool {
+  !item_is_done(item: n.line, merged: [])
+    && !signoff_is_present(s: n.signoff)
+    && match line_ticket(item: n.line) {
+      Present { value } => ticket_fields_complete(ticket: value)
+      Absent => false
+    }
+    && count(n.carriers) > 0
+    && !(n.owner == "")
+    && match n.sizing {
+      Sized { intricacy: _, volume: _, repo, acceptance } =>
+        repo == "gunbc" && acceptance == ManualAcceptance
+      Unsized => false
+  }
+}
+
+fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
+  RoadmapNode {
+    node: "red-fixture",
+    line: line,
+    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    sizing: Sized {
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: "roadmap-authority",
+    signoff: signoff,
+  }
+}
+
+fn red_ticket(done: Bool) -> RoadmapItem {
+  TicketLine {
+    done: done,
+    ticket: TicketFields {
+      headline: "planted completed-row RED",
+      brief: "Every required field is populated so only the forbidden completion or acceptance state can reject this fixture.",
+      displaced_cost: "none",
+      current_state: "fixture",
+      first_slice: "fixture",
+      red_control: "fixture",
+      out_of_scope: "fixture",
+      handback: "fixture",
+      updates: [],
+      authored_on: "",
+      last_verified_on: "",
+    },
+  }
+}
+
+test fn witness_declared_graph_has_justified_size() -> Bool {
+  count(nodes()) > 0 && count(edges()) > 0
+    && count(active_nodes()) > 0 && count(active_edges()) > 0
+}
+
+test fn witness_declared_node_ids_are_unique() -> Bool {
+  all(nodes(), n => id_count(id: n.node) == 1)
+}
+
+test fn witness_every_edge_endpoint_exists() -> Bool {
+  all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
+}
+
+test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
+  all(edges(), e => !(e.parent == e.child))
+    && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
+}
+
+test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
+  all(nodes(), n => active_node_admissible(n: n))
+}
+
+test fn witness_active_set_is_declared_minus_accepted() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  count(accepted) == 7
+    && (accepted |> any(a => a == "namespace-occurrence-transport"))
+    && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+    && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+    && (accepted |> any(a => a == "2-scm-git-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(a => a == "2-claim-indexed-evidence"))
+    && count(active_nodes()) == count(nodes()) - count(accepted)
+    && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+    && all(accepted, a => id_exists(id: a))
+}
+
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+  let receipts = roadmap_acceptance_receipts()
+  count(receipts) > 0
+    && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
+    && all(receipts, r => id_exists(id: r.node))
+    && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+}
+
+test fn witness_accepted_parents_precede_dependents() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+}
+
+test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(
+      receipts: [receipt_fixture(node: "namespace-occurrence-transport", digest: tchash(s: "0000000000000000"))],
+      rn: n,
+    ))
+}
+
+test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
+  let rs = roadmap_acceptance_receipts() |> filter(r => r.node == "namespace-occurrence-transport")
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(rs) == 1
+    && count(victims) == 1
+    && all(victims, n => node_accepted(receipts: rs, rn: n))
+    && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+}
+
+test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(receipts: [evidenceless_receipt_fixture(rn: n)], rn: n))
+    && all(victims, n => !node_accepted(receipts: [undelivered_receipt_fixture(rn: n)], rn: n))
+}
+
+test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
+  let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
+  all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
+}
+
+test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
+  let act = active_edges()
+  !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
+    && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
+    && !(act |> any(e => e.child == "2-scm-compatibility-shape"))
+    && is_top_level(edges: act, node: "namespace-canonical-binding")
+    && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
+    && is_top_level(edges: act, node: "2-scm-compatibility-shape")
+    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
+    && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
+}
+
+fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
+  let matches = v1_exit_finish_lines()
+    |> filter(s => v1_finish_line_key(l: s.line) == v1_finish_line_key(l: l))
+  count(matches) == 1 && all(matches, s => s.node == node && id_exists(id: s.node))
+}
+
+test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
+  let specs = v1_exit_finish_lines()
+  count(specs) == 4
+    && all(specs, s => id_exists(id: s.node))
+    && exit_line_bound_to(l: CompilerFixedPoint, node: "v1-emitter-fixed-point")
+    && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
+    && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
+    && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
+    && v1_finish_lines_accepted_count(accepted: accepted_roadmap_node_ids()) == 0
+}
+
+test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
+}
+
+test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(
+    line: red_ticket(done: false),
+    signoff: SignedOff {
+      by: "operator",
+      works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" },
+      scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+      as_expected: true,
+    },
+  ))
+}
+
+test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
+  !active_node_admissible(n: red_fixture(
+    line: SupersededLine { by: "replacement", content: "retired history" },
+    signoff: Unsigned,
+  ))
+}
+
+test fn witness_active_sizes_are_intentional_and_nonuniform() -> Bool {
+  all(nodes(), n => match n.sizing {
+    Sized { intricacy: _, volume: _, repo: _, acceptance: ManualAcceptance } => true
+    _ => false
+  })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: _, acceptance: _ } => true
+      _ => false
+    })
+    && any(nodes(), n => match n.sizing {
+      Sized { intricacy: IntricacyHigh, volume: VolumeLarge, repo: _, acceptance: _ } => true
+      _ => false
+    })
+}
+
+test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
+  all(nodes(), n => match n.line {
+    TicketLine { done: _, ticket } =>
+      count(ticket.updates) == 0
+        && ticket.authored_on == ""
+        && ticket.last_verified_on == ""
+        && !string_contains(s: ticket.current_state, pattern: "PR #")
+        && !string_contains(s: ticket.current_state, pattern: "session/")
+        && !string_contains(s: ticket.current_state, pattern: "CI run")
+    _ => false
+  }) && count(authored_merged_prs()) == 0
+}
+
+test fn witness_namespace_chain_is_explicit() -> Bool {
+  edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding")
+    && edge_exists(child: "namespace-v2-import-completion", parent: "namespace-bound-only-consumers")
+    && edge_exists(child: "namespace-legacy-choice-retirement", parent: "namespace-v2-import-completion")
+}
+
+test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool {
+    edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract")
+    && edge_exists(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding")
+    && edge_exists(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer")
+}
+
+test fn witness_pderive_vertical_slice_gates_bootstrap_widening() -> Bool {
+    edge_exists(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt")
+}
+
+test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool {
+    edge_exists(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance")
+    && edge_exists(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door")
+    && edge_exists(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module")
+    && edge_exists(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap")
+    && edge_exists(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover")
+    && edge_exists(child: "v1-emitter-delete", parent: "v1-emitter-quarantine")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-emitter-delete")
+}
+
+test fn witness_observation_and_placement_chains_are_explicit() -> Bool {
+  edge_exists(
+    child: "observation-scoped-run-consumer",
+    parent: "observation-scoped-run-seed-growth-justification",
+  )
+    && edge_exists(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer")
+    && edge_exists(child: "observation-collapse-watchdog-restatement", parent: "observation-ci-event-grouping")
+    && edge_exists(child: "observation-raw-print-retirement", parent: "observation-collapse-watchdog-restatement")
+    && edge_exists(child: "placement-live-roster-preflight", parent: "observation-scoped-run-consumer")
+    && edge_exists(child: "placement-two-host-warm-qualification", parent: "placement-live-roster-preflight")
+    && edge_exists(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification")
+    && edge_exists(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality")
+}
+
+test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
+  let j = observation_scoped_run_seed_growth_justification()
+  j.owning_dissolution_lane == "v1-hand-queue-drain"
+    && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
+    && string_contains(s: j.reason, pattern: "where the old runner starts a program")
+    && string_contains(s: j.trigger, pattern: "described operation")
+    && string_contains(s: j.trigger, pattern: "hollow out")
+    && id_exists(id: "observation-scoped-run-seed-growth-justification")
+    && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
+}
+
+test fn witness_caret_parse_smoke_seed_frontier_is_countable_owned_and_triggered() -> Bool {
+  let id = "caret-parse-smoke-seed-growth-justification"
+  let j = caret_parse_smoke_seed_growth_justification()
+  id_count(id: id) == 1
+    && (nodes() |> any(n =>
+      n.node == id
+        && n.owner == "self-host"
+        && (n.carriers |> any(p => p.path == "dag/gunbc/v1_deletion_plan.dag"))
+    ))
+    && j.owning_dissolution_lane == "v1-zero-hand-maintained-rust"
+    && j.current_boundary == "src/v1/stage0/tests/caret_parse_smoke.rs"
+    && string_contains(s: j.reason, pattern: "predates")
+    && string_contains(s: j.reason, pattern: "no new behaviour")
+    && string_contains(s: j.trigger, pattern: "regenerate this test")
+    && string_contains(s: j.trigger, pattern: "delete it")
+    && edge_exists(
+      child: "v1-zero-hand-maintained-rust",
+      parent: "caret-parse-smoke-seed-growth-justification",
+    )
+}
+
+test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
+  edge_exists(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier")
+    && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger")
+    && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover")
+    && !edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-test-migration")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-interpreter-delete")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free")
+    && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
+    && edge_exists(
+      child: "v1-zero-hand-maintained-rust",
+      parent: "caret-parse-smoke-seed-growth-justification",
+    )
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement")
+}
+
+test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
+  edge_exists(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation")
+    && edge_exists(child: "shell-gate-migration", parent: "shell-effectplan-to-bash")
+    && edge_exists(child: "roadmap-runtime-ready-override", parent: "roadmap-runtime-identity-join")
+    && edge_exists(child: "roadmap-runtime-dispatch-consumer", parent: "roadmap-runtime-ready-override")
+    && edge_exists(child: "fleet-closed-loop-converge", parent: "shell-gate-migration")
+    && edge_exists(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene")
+}
+
+test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
+  !edge_exists(child: "namespace-occurrence-transport", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "pderive-typesafe-nullary-reflection", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "observation-scoped-run-consumer", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-hygiene-producer-retirement", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-emitter-fixed-point", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-materialization-kernel", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-hand-queue-drain", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-test-migration", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "v1-seed-honesty-decision", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "shell-typed-invocation", parent: "roadmap-runtime-identity-join")
+    && !edge_exists(child: "fleet-state-frontier", parent: "roadmap-runtime-identity-join")
+}
+
+data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
+
+test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  let out = serialize_markdown_source(
+    doc: project_roadmap_to_markdown(
+      doc: roadmap_authority_for(focus: NoFocus),
+      merged: authored_merged_prs()
+    )
+  )
+  string_contains(s: out, pattern: "(docs/plans/dag-scm-design.md)")
+    && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
+    && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
+    && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 5
+    && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
+    && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
+    && id_exists(id: "2-scm-git-upstream-model")
+    && id_exists(id: "2-scm-mercurial-upstream-model")
+    && id_exists(id: "2-scm-pijul-upstream-model")
+    && id_exists(id: "2-claim-indexed-evidence")
+    && id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-git-upstream-model")
+    && !active_id_exists(id: "2-scm-mercurial-upstream-model")
+    && !active_id_exists(id: "2-scm-pijul-upstream-model")
+    && !active_id_exists(id: "2-claim-indexed-evidence")
+    && active_id_exists(id: "2-scm-compatibility-shape")
+    && (accepted |> any(id => id == "2-scm-git-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(id => id == "2-claim-indexed-evidence"))
+    && !id_exists(id: "2-scm-node-merge")
+    && !id_exists(id: "2-scm-design-partner-shadow")
+}
+
+test fn witness_projection_is_active_only() -> Bool {
+  let out = serialize_markdown_source(
+    doc: project_roadmap_to_markdown(
+      doc: roadmap_authority(),
+      merged: authored_merged_prs()
+    )
+  )
+  string_contains(s: out, pattern: "## Active deliverables — dependency order")
+    && string_contains(s: out, pattern: "Build and run every product without the old code present")
+    && !string_contains(s: out, pattern: "Keep track of exactly which name is which")
+    && !string_contains(s: out, pattern: "Stop the compiler from mixing up one type with another")
+    && !string_contains(s: out, pattern: "**superseded →**")
+    && !string_contains(s: out, pattern: "awaiting sign-off")
+    && !string_contains(s: out, pattern: "Operator TODO")
 }

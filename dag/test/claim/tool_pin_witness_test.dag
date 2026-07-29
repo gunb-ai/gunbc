@@ -1,0 +1,208 @@
+module test.claim.tool_pin_witness
+
+import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
+import extdeps.version { VersionIdentity, VersionConstraint }
+import extdeps.tools { CliTool, SourceApt }
+import extdeps.tools.pin {
+  ToolPin,
+  PinSelection,
+  ExactPin,
+  TrackedChannel,
+  CurrencyGap,
+  AuthoredPinHasNoReviewDate,
+  TrackedPinHasNoResolutionDate,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  PinRefusalCause,
+  ConstraintIsNotIdentity,
+  PinAbsent,
+  TrackedResolutionUnrecorded,
+  ObservedIdentityMismatch,
+  pin_currency_gap,
+  admit_legacy_cli_tool,
+  admit_pin_integrity,
+  pin_value_eq,
+  pin_key_of,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cargo_identity: ContentHash = "sha256-cargo-1930-aarch64" as ContentHash
+data other_identity: ContentHash = "sha256-cargo-1920-aarch64" as ContentHash
+
+data authored_pin: ToolPin = ToolPin {
+  tool_name: "cargo",
+  version: "1.93.0" as VersionIdentity,
+  expected_identity: cargo_identity,
+  selection: ExactPin,
+}
+
+data tracked_pin: ToolPin = ToolPin {
+  tool_name: "jq",
+  version: "1.7.1" as VersionIdentity,
+  expected_identity: cargo_identity,
+  selection: TrackedChannel {
+    channel: "latest",
+    refresh_window_days: 30,
+  },
+}
+
+data currency_family_note: String = "Currency family, REWRITTEN after review 44274 found that ExactPin returned PinFresh unconditionally — a fabricated positive. Authorship proves reproducibility, not currency: an exact pin authored three years ago is exactly as reproducible and exactly as rotten. pin_currency_gap is now TOTAL and never returns a positive verdict for either variant. RED CONTROLS are the two below: each fails if its variant ever reports anything other than a named gap, which is exactly the 'pinned and never updated' silence the refresh axis exists to break."
+
+test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: authored_pin) {
+    AuthoredPinHasNoReviewDate => true
+    TrackedPinHasNoResolutionDate { channel: _ } => false
+  }
+}
+
+test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
+  match pin_currency_gap(pin: tracked_pin) {
+    TrackedPinHasNoResolutionDate { channel: c } => (c as String) == "latest"
+    AuthoredPinHasNoReviewDate => false
+  }
+}
+
+data integrity_family_note: String = "Integrity family: admission establishes ONLY that the observed binary is the one the pin declares, and is named admit_pin_integrity so it cannot be misread as a currency verdict (review 44274). RED CONTROL mismatched_identity_refuses covers what a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where digest comparison refuses. RED CONTROL tracked_pin_refuses_even_when_identity_matches is the standing regression control for review 44242: a tracked pin whose observed digest matches EXACTLY is still refused, because its expected_identity was resolved from a moving reference with no record of that resolution."
+
+test fn matching_identity_admits_integrity() -> Bool {
+  match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
+    PinIntegrityAdmitted { pin: p } => (p.tool_name as String) == "cargo"
+    PinRefused { tool_name: _, cause: _ } => false
+  }
+}
+
+test fn mismatched_identity_refuses() -> Bool {
+  match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "cargo") && match c {
+        ObservedIdentityMismatch { expected: e, observed: o } =>
+          (e == cargo_identity) && (o == other_identity)
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
+  match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "jq") && match c {
+        TrackedResolutionUnrecorded { channel: ch } => (ch as String) == "latest"
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+data legacy_ranged_tool: CliTool = CliTool {
+  name: "curl",
+  min_version: Present { value: ">= 7.68" as VersionConstraint },
+  installable_via: [SourceApt { package: "curl" }],
+}
+
+data legacy_unversioned_tool: CliTool = CliTool {
+  name: "jq",
+  min_version: Absent,
+  installable_via: [SourceApt { package: "jq" }],
+}
+
+data legacy_ingest_family_note: String = "Migration-frontier family, and the load-bearing RED for P1: EVERY CliTool row in the corpus today refuses conversion, which is the correct answer rather than a gap. ranged_legacy_tool_refuses_as_not_an_identity fails if a range is silently promoted to an identity — two hosts satisfying '>= 7.68' run different binaries, exactly the variance a pin removes, so widening here would be the absorbing fallback DESIGN section 5 forbids. unversioned_legacy_tool_refuses_as_absent keeps 'no version stated' a DISTINCT cause from 'a range stated'; collapsing the two would be a state-space conflation and would hide which deficit a given row actually has."
+
+test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
+  match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "curl") && match c {
+        ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
+        PinAbsent => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
+  match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "jq") && match c {
+        PinAbsent => true
+        ConstraintIsNotIdentity { constraint: _ } => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+data reconcile_bundle_family_note: String = "The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close."
+
+test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
+  let bumped = ToolPin {
+    tool_name: "cargo",
+    version: "1.94.0" as VersionIdentity,
+    expected_identity: other_identity,
+    selection: ExactPin,
+  }
+  ((pin_key_of(pin: authored_pin) as String) == (pin_key_of(pin: bumped) as String))
+    && !pin_value_eq(a: authored_pin, b: bumped)
+}
+
+test fn value_eq_covers_digest_not_only_version() -> Bool {
+  let same_version_new_binary = ToolPin {
+    tool_name: "cargo",
+    version: "1.93.0" as VersionIdentity,
+    expected_identity: other_identity,
+    selection: ExactPin,
+  }
+  !pin_value_eq(a: authored_pin, b: same_version_new_binary)
+}
+
+data selection_is_reconcile_content_note: String = "Added after review 44329, which found pin_value_eq comparing only version and expected_identity while ignoring selection. That was a real reconcile gap, not a style point: membership_reconcile treats value_eq as presence-plus-content, so a pin whose refresh POLICY changed — ExactPin flipped to TrackedChannel, a different channel, a different window — produced no Modified hunk and would never re-upsert. The refresh policy is exactly the content this lane exists to carry, so omitting it from equality silently exempted the feature from reconciliation. RED CONTROLS below cover all three shapes of that change; each fails if value_eq ignores selection again."
+
+test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
+  let flipped = ToolPin {
+    tool_name: "cargo",
+    version: "1.93.0" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
+  }
+  !pin_value_eq(a: authored_pin, b: flipped)
+}
+
+test fn value_eq_detects_channel_change() -> Bool {
+  let other_channel = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
+  }
+  !pin_value_eq(a: tracked_pin, b: other_channel)
+}
+
+test fn value_eq_detects_refresh_window_change() -> Bool {
+  let wider_window = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
+  }
+  !pin_value_eq(a: tracked_pin, b: wider_window)
+}
+
+test fn value_eq_still_holds_for_identical_pins() -> Bool {
+  let same = ToolPin {
+    tool_name: "jq",
+    version: "1.7.1" as VersionIdentity,
+    expected_identity: cargo_identity,
+    selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
+  }
+  pin_value_eq(a: tracked_pin, b: same)
+    && (tracked_pin.selection == same.selection)
+}

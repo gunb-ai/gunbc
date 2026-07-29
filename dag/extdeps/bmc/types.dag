@@ -1,6 +1,10 @@
 module extdeps.bmc.types
 
-import extdeps.bmc.capability { BmcFirmwareObservation, BmcFirmwareVersion }
+import extdeps.bmc.capability {
+  BmcEvidenceTemporalScope,
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+}
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -11,11 +15,10 @@ import std.measure {
   RevolutionsPerMinute,
   Watt,
   celsius_count,
-  celsius_delta_count,
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -109,7 +112,7 @@ type BmcUpdateServiceObservation {
   firmware_inventory_member_count: Nat
   bmc_image_member_count: Nat
   backup_bmc_image_observed: Bool
-  observed_at: NonEmptyStr
+  observed_at: EpochMs
 }
 
 type RedfishThermalQueryVerdict
@@ -155,8 +158,14 @@ type ValidatedBmcFanCurve {
 
 type BmcFanCurveInvalidCause
   = BmcFanCurveEmpty
-  | BmcFanCurveTemperatureNotStrictlyIncreasing { previous: Celsius, current: Celsius }
-  | BmcFanCurveDutyDecreased { previous: Percent, current: Percent }
+  | BmcFanCurveTemperatureNotStrictlyIncreasing {
+      previous: Celsius,
+      current: Celsius,
+    }
+  | BmcFanCurveDutyDecreased {
+      previous: Percent,
+      current: Percent,
+    }
   | BmcFanCurveTerminalDutyNotFull { terminal_duty: Percent }
 
 type BmcFanCurveValidation
@@ -195,16 +204,20 @@ fn bmc_fan_curve_step_order_refusal(
 
 fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
   match curve.steps.first() {
-    Absent => BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+    Absent =>
+      BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
     Present { value: first } =>
       match bmc_fan_curve_step_order_refusal(
         remaining: curve.steps.skip(n: 1),
         previous: first,
       ) {
-        Present { value: cause } => BmcFanCurveInvalid { cause: cause }
-        Absent =>
-          match curve.steps.skip(n: curve.steps.length() - 1).first() {
-            Absent => BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+        Present { value: cause } =>
+          BmcFanCurveInvalid { cause: cause }
+        Absent => {
+          let terminal = curve.steps.skip(n: curve.steps.length() - 1).first()
+          match terminal {
+            Absent =>
+              BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
             Present { value: final_step } =>
               if percent_count(final_step.duty) != 100 {
                 BmcFanCurveInvalid {
@@ -218,79 +231,9 @@ fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
                 }
               }
           }
+        }
       }
   }
-}
-
-type BmcFanAcousticPolicy {
-  quiet_through_temperature: Celsius
-  quiet_duty_ceiling: Percent
-  emergency_full_duty_at_or_below: Celsius
-}
-
-type BmcFanThermalGuard {
-  processor_rollback_temperature: Celsius
-  component_rollback_temperature: Celsius
-  required_component_sensors: List<NonEmptyStr>
-}
-
-fn bmc_fan_curve_stays_within_quiet_duty(
-  validated: ValidatedBmcFanCurve,
-  policy: BmcFanAcousticPolicy,
-) -> Bool {
-  let curve = validated.curve
-  fold(
-    curve.steps,
-    init: true,
-    f: (ok, step) =>
-      ok
-        && (
-          celsius_count(step.at_or_above) > celsius_count(policy.quiet_through_temperature)
-            || percent_count(step.duty) <= percent_count(policy.quiet_duty_ceiling)
-        )
-  )
-    && percent_count(
-      bmc_fan_curve_duty_at(
-        validated: validated,
-        reading: policy.quiet_through_temperature,
-      )
-    ) <= percent_count(policy.quiet_duty_ceiling)
-}
-
-fn bmc_fan_curve_reaches_emergency_full_duty(
-  validated: ValidatedBmcFanCurve,
-  policy: BmcFanAcousticPolicy,
-) -> Bool {
-  let curve = validated.curve
-  fold(
-    curve.steps,
-    init: false,
-    f: (found, step) =>
-      found
-        || (
-          percent_count(step.duty) == 100
-            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
-        )
-  )
-}
-
-fn bmc_fan_curve_effectively_reaches_full_duty_before(
-  validated: ValidatedBmcFanCurve,
-  temperature: Celsius,
-) -> Bool {
-  let curve = validated.curve
-  fold(
-    curve.steps,
-    init: false,
-    f: (found, step) =>
-      found
-        || (
-          percent_count(step.duty) == 100
-            && (
-              celsius_count(step.at_or_above) + celsius_delta_count(curve.positive_hysteresis)
-            ) < celsius_count(temperature)
-        )
-  )
 }
 
 type BmcFanDutyDecision
@@ -344,13 +287,14 @@ type BmcFanControllerShape
 
 type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
+  evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr
   controller_binary: NonEmptyStr
   controller_shape: BmcFanControllerShape
-  observed_at: NonEmptyStr
+  observed_at: EpochMs
 }
 
 type BmcConfigPersistenceObservation
@@ -361,13 +305,15 @@ type BmcConfigPersistenceObservation
       writable: Bool
       upper_override_present: Bool
       available_bytes: ByteSize
-      observed_at: NonEmptyStr
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
     }
   | BmcConfigPersistenceUnsupported {
       firmware: BmcFirmwareVersion
       config_path: NonEmptyStr
       reason: NonEmptyStr
-      observed_at: NonEmptyStr
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
     }
 
 type BmcTelemetrySnapshot {
@@ -413,9 +359,10 @@ type RedfishResetType =
 type RedfishManagerResetObservation {
   action_target: NonEmptyStr
   reset_type: RedfishResetType
-  http_status: Nat
+  http_status: HttpStatus
   accepted: Bool
-  observed_at: NonEmptyStr
+  evidence_scope: BmcEvidenceTemporalScope
+  observed_at: EpochMs
 }
 
 type RedfishAccountRole =

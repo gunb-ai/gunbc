@@ -28,7 +28,7 @@ test fn witness_hand_edit_drifts() -> Bool {
 test fn witness_signed_emits_checked() -> Bool {
   let node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
-    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+    s: signed(by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   )
   let out = emit_node(node: node, merged: [])
   string_contains(s: out, pattern: "[x] **signoff witness**")
@@ -43,10 +43,30 @@ test fn witness_unsigned_with_evidence_awaiting() -> Bool {
     && !string_contains(s: out, pattern: "[x] **signoff witness**")
 }
 
+test fn witness_asserted_signoff_without_red_control_evidence_refuses() -> Bool {
+  let node = sign(
+    rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
+    s: signed(by: "operator", works: RedControlNotRun, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
+  )
+  let out = emit_node(node: node, merged: [])
+  string_contains(s: out, pattern: "[ ] **signoff witness**")
+    && !string_contains(s: out, pattern: "[x] **signoff witness**")
+}
+
+test fn witness_asserted_signoff_without_handback_evidence_refuses() -> Bool {
+  let node = sign(
+    rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
+    s: signed(by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackNotDelivered, as_expected: true),
+  )
+  let out = emit_node(node: node, merged: [])
+  string_contains(s: out, pattern: "[ ] **signoff witness**")
+    && !string_contains(s: out, pattern: "[x] **signoff witness**")
+}
+
 test fn witness_merge_perturb_does_not_flip_box() -> Bool {
   let signed_node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
-    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+    s: signed(by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true),
   )
   let unsigned_node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
   let signed_stays_checked = string_contains(s: emit_node(node: signed_node, merged: []), pattern: "[x] **signoff witness**")

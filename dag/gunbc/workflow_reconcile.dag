@@ -1,0 +1,498 @@
+module gunbc.workflow_reconcile
+
+import std.types { String, Bool, Int, List }
+import std.reducible { ReduceVerdict, Reduced, Unknown }
+import std.workflow_recursive {
+  VerdictTree,
+  Leaf,
+  Decomposed,
+  settle_verdict_tree,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberUpsert,
+  MemberTeardown,
+  MemberTeardownRefused,
+  membership_reconcile,
+}
+import gunbc.ownership { Ownership, Ensured }
+
+type WorkflowFactState
+  = WorkflowFactPending
+  | WorkflowFactActive
+  | WorkflowFactSatisfied
+  | WorkflowFactFailed
+  | WorkflowFactRefused
+  | WorkflowFactWaived
+
+type WorkflowFactKey {
+  workflow_id: String
+  obligation_id: String
+}
+
+type WorkflowFact {
+  key: WorkflowFactKey
+  intent_revision: String
+  state: WorkflowFactState
+  detail: String
+}
+
+type WorkflowFactTree
+  = WorkflowFactLeaf { fact: WorkflowFact }
+  | WorkflowFactDecomposed {
+      fact: WorkflowFact,
+      children: List<WorkflowFactTree>,
+    }
+
+type WorkflowFactParent
+  = WorkflowFactRoot
+  | WorkflowFactChild { parent_key: WorkflowFactKey }
+
+type WorkflowFactMember {
+  fact: WorkflowFact
+  parent: WorkflowFactParent
+}
+
+type WorkflowFactTreeFold<R> {
+  init: fn(WorkflowFact) -> R
+  step: fn(R, R) -> R
+}
+
+type WorkflowFactMembershipFold {
+  root: WorkflowFact
+  descendants: List<WorkflowFactMember>
+}
+
+type WorkflowReconcileFold {
+  remaining: Int
+  plan_refusals: Int
+  first_missing: String
+}
+
+type WorkflowObservationTally {
+  failures: Int
+  refusals: Int
+}
+
+type WorkflowReconcileReport {
+  desired_count: Int
+  observed_count: Int
+  remaining_count: Int
+  observed_failure_count: Int
+  observed_refusal_count: Int
+  plan_refusal_count: Int
+  plan: MembershipPlan<WorkflowFactMember>
+  verdict: ReduceVerdict
+}
+
+data workflow_recursive_reconcile_note: String = "A workflow is desired facts reconciled against observed facts, not a stored stage enum. WorkflowFactTree is recursive at every grain: a fact may be a leaf or may be decomposed into child workflow facts while retaining its own verdict. fold_workflow_fact_tree is THE catamorphism over that shape; membership, verdict, and observation tallies are algebras over the same traversal rather than independent recursive walkers. Its membership algebra DERIVES each WorkflowFactMember parent_key from the tree edge, so moving an unchanged child between parents is one Modified upsert rather than an invisible no-op or hand-authored remove/add pair. Desired and observed members feed the existing generic membership_reconcile; Added/Modified members become one generic upsert obligation, unchanged members disappear by monoid identity, and an observed member removed from desired REFUSES because workflow facts are Ensured rather than Owned. Goal shrink therefore cannot compile into evidence deletion: an intentional removal must remain as an explicit WorkflowFactWaived desired fact. intent_revision is per-obligation semantic identity, so an approved refinement produces a Modified hunk while unchanged sibling facts remain noops. The verdict projection reuses std.workflow_recursive: a decomposed parent participates beside its descendants, so green children cannot silently complete a pending parent and one deep refusal latches the whole tree. Observed failure/refusal and plan refusal are separate typed counts: a provider refusal cannot degrade into generic not-converged, and an unsafe goal removal cannot masquerade as provider failure. Realizations consume the generic MemberUpsert as either a direct effect or another planned workflow; they do not each reimplement desired-vs-observed mutation logic."
+
+fn workflow_fact_state_key(state: WorkflowFactState) -> String {
+  match state {
+    WorkflowFactPending => "pending"
+    WorkflowFactActive => "active"
+    WorkflowFactSatisfied => "satisfied"
+    WorkflowFactFailed => "failed"
+    WorkflowFactRefused => "refused"
+    WorkflowFactWaived => "waived"
+  }
+}
+
+fn workflow_fact_states_equal(
+  a: WorkflowFactState,
+  b: WorkflowFactState,
+) -> Bool {
+  workflow_fact_state_key(state: a) == workflow_fact_state_key(state: b)
+}
+
+fn workflow_fact_key_equal(
+  a: WorkflowFactKey,
+  b: WorkflowFactKey,
+) -> Bool {
+  a.workflow_id == b.workflow_id
+    && a.obligation_id == b.obligation_id
+}
+
+fn workflow_fact_value_equal(
+  a: WorkflowFact,
+  b: WorkflowFact,
+) -> Bool {
+  a.intent_revision == b.intent_revision
+    && workflow_fact_states_equal(a: a.state, b: b.state)
+}
+
+fn workflow_fact_ownership(fact: WorkflowFact) -> Ownership? {
+  Present { value: Ensured }
+}
+
+fn workflow_fact_locus(fact: WorkflowFact) -> String {
+  join([
+    "workflow:",
+    fact.key.workflow_id,
+    ":obligation:",
+    fact.key.obligation_id,
+  ], "")
+}
+
+fn fold_workflow_fact_tree<R>(
+  tree: WorkflowFactTree,
+  algebra: WorkflowFactTreeFold<R>,
+) -> R {
+  match tree {
+    WorkflowFactLeaf { fact } => algebra.init(fact)
+    WorkflowFactDecomposed { fact, children } =>
+      fold(
+        children,
+        init: algebra.init(fact),
+        f: fn(acc, child) {
+          algebra.step(
+            acc,
+            fold_workflow_fact_tree(tree: child, algebra: algebra),
+          )
+        },
+      )
+  }
+}
+
+fn workflow_fact_membership_init(
+  fact: WorkflowFact,
+) -> WorkflowFactMembershipFold {
+  WorkflowFactMembershipFold {
+    root: fact,
+    descendants: [],
+  }
+}
+
+fn workflow_fact_membership_step(
+  acc: WorkflowFactMembershipFold,
+  child: WorkflowFactMembershipFold,
+) -> WorkflowFactMembershipFold {
+  WorkflowFactMembershipFold {
+    root: acc.root,
+    descendants: concat(
+      acc.descendants,
+      concat(
+        [
+          WorkflowFactMember {
+            fact: child.root,
+            parent: WorkflowFactChild {
+              parent_key: acc.root.key,
+            },
+          },
+        ],
+        child.descendants,
+      ),
+    ),
+  }
+}
+
+fn workflow_fact_membership_fold(
+  tree: WorkflowFactTree,
+) -> WorkflowFactMembershipFold {
+  fold_workflow_fact_tree(
+    tree: tree,
+    algebra: WorkflowFactTreeFold {
+      init: workflow_fact_membership_init,
+      step: workflow_fact_membership_step,
+    },
+  )
+}
+
+fn workflow_fact_tree_members(
+  tree: WorkflowFactTree,
+) -> List<WorkflowFactMember> {
+  let folded = workflow_fact_membership_fold(tree: tree)
+  concat(
+    [
+      WorkflowFactMember {
+        fact: folded.root,
+        parent: WorkflowFactRoot,
+      },
+    ],
+    folded.descendants,
+  )
+}
+
+fn workflow_fact_forest_members(
+  forest: List<WorkflowFactTree>,
+) -> List<WorkflowFactMember> {
+  flat_map(
+    forest,
+    tree => workflow_fact_tree_members(tree: tree),
+  )
+}
+
+fn workflow_fact_parents_equal(
+  a: WorkflowFactParent,
+  b: WorkflowFactParent,
+) -> Bool {
+  match a {
+    WorkflowFactRoot => match b {
+      WorkflowFactRoot => true
+      WorkflowFactChild { parent_key: _ } => false
+    }
+    WorkflowFactChild { parent_key: a_key } => match b {
+      WorkflowFactRoot => false
+      WorkflowFactChild { parent_key: b_key } =>
+        workflow_fact_key_equal(a: a_key, b: b_key)
+    }
+  }
+}
+
+fn workflow_fact_member_value_equal(
+  a: WorkflowFactMember,
+  b: WorkflowFactMember,
+) -> Bool {
+  workflow_fact_value_equal(a: a.fact, b: b.fact)
+    && workflow_fact_parents_equal(
+      a: a.parent,
+      b: b.parent,
+    )
+}
+
+fn workflow_fact_member_ownership(
+  member: WorkflowFactMember,
+) -> Ownership? {
+  workflow_fact_ownership(fact: member.fact)
+}
+
+fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> ReduceVerdict {
+  match fact.state {
+    WorkflowFactSatisfied => Reduced { last_parts: 1 }
+    WorkflowFactWaived => Reduced { last_parts: 1 }
+    WorkflowFactPending =>
+      Unknown {
+        missing: join([workflow_fact_locus(fact: fact), ":pending"], ""),
+      }
+    WorkflowFactActive =>
+      Unknown {
+        missing: join([workflow_fact_locus(fact: fact), ":active"], ""),
+      }
+    WorkflowFactFailed =>
+      Unknown {
+        missing: join([workflow_fact_locus(fact: fact), ":failed"], ""),
+      }
+    WorkflowFactRefused =>
+      Unknown {
+        missing: join([workflow_fact_locus(fact: fact), ":refused"], ""),
+      }
+  }
+}
+
+fn workflow_fact_tree_verdict_tree(tree: WorkflowFactTree) -> VerdictTree {
+  fold_workflow_fact_tree(
+    tree: tree,
+    algebra: WorkflowFactTreeFold {
+      init: fn(fact) {
+        Leaf {
+          verdict: workflow_fact_reduce_verdict(fact: fact),
+        }
+      },
+      step: fn(acc, child) {
+        Decomposed {
+          children: [acc, child],
+        }
+      },
+    },
+  )
+}
+
+fn workflow_observation_tally_combine(
+  a: WorkflowObservationTally,
+  b: WorkflowObservationTally,
+) -> WorkflowObservationTally {
+  WorkflowObservationTally {
+    failures: a.failures + b.failures,
+    refusals: a.refusals + b.refusals,
+  }
+}
+
+fn workflow_fact_observation_tally(
+  fact: WorkflowFact,
+) -> WorkflowObservationTally {
+  match fact.state {
+    WorkflowFactFailed =>
+      WorkflowObservationTally {
+        failures: 1,
+        refusals: 0,
+      }
+    WorkflowFactRefused =>
+      WorkflowObservationTally {
+        failures: 0,
+        refusals: 1,
+      }
+    _ =>
+      WorkflowObservationTally {
+        failures: 0,
+        refusals: 0,
+      }
+  }
+}
+
+fn workflow_fact_tree_observation_tally(
+  tree: WorkflowFactTree,
+) -> WorkflowObservationTally {
+  fold_workflow_fact_tree(
+    tree: tree,
+    algebra: WorkflowFactTreeFold {
+      init: fn(fact) {
+        workflow_fact_observation_tally(fact: fact)
+      },
+      step: fn(acc, child) {
+        workflow_observation_tally_combine(a: acc, b: child)
+      },
+    },
+  )
+}
+
+fn workflow_fact_forest_observation_tally(
+  forest: List<WorkflowFactTree>,
+) -> WorkflowObservationTally {
+  fold(
+    forest,
+    init: WorkflowObservationTally {
+      failures: 0,
+      refusals: 0,
+    },
+    f: fn(acc, tree) {
+      workflow_observation_tally_combine(
+        a: acc,
+        b: workflow_fact_tree_observation_tally(tree: tree),
+      )
+    },
+  )
+}
+
+fn workflow_fact_forest_verdict(
+  forest: List<WorkflowFactTree>,
+) -> ReduceVerdict {
+  settle_verdict_tree(
+    w: Decomposed {
+      children: map(
+        forest,
+        tree => workflow_fact_tree_verdict_tree(tree: tree),
+      ),
+    },
+  )
+}
+
+fn workflow_fact_reconcile(
+  desired: List<WorkflowFactTree>,
+  observed: List<WorkflowFactTree>,
+) -> MembershipPlan<WorkflowFactMember> {
+  membership_reconcile(
+    desired: workflow_fact_forest_members(forest: desired),
+    observed: workflow_fact_forest_members(forest: observed),
+    key_of: fn(member) { member.fact.key },
+    key_eq: workflow_fact_key_equal,
+    value_eq: workflow_fact_member_value_equal,
+    ownership_of: workflow_fact_member_ownership,
+  )
+}
+
+fn workflow_reconcile_fold_action(
+  acc: WorkflowReconcileFold,
+  action: MemberAction<WorkflowFactMember>,
+) -> WorkflowReconcileFold {
+  match action {
+    MemberUpsert { member } =>
+      WorkflowReconcileFold {
+        remaining: acc.remaining + 1,
+        plan_refusals: acc.plan_refusals,
+        first_missing: if acc.first_missing == "" {
+          workflow_fact_locus(fact: member.fact)
+        } else {
+          acc.first_missing
+        },
+      }
+    MemberTeardown { member } =>
+      WorkflowReconcileFold {
+        remaining: acc.remaining + 1,
+        plan_refusals: acc.plan_refusals + 1,
+        first_missing: if acc.first_missing == "" {
+          join([workflow_fact_locus(fact: member.fact), ":unexpected-teardown"], "")
+        } else {
+          acc.first_missing
+        },
+      }
+    MemberTeardownRefused { member, cause: _ } =>
+      WorkflowReconcileFold {
+        remaining: acc.remaining + 1,
+        plan_refusals: acc.plan_refusals + 1,
+        first_missing: if acc.first_missing == "" {
+          join([workflow_fact_locus(fact: member.fact), ":goal-removal-refused"], "")
+        } else {
+          acc.first_missing
+        },
+      }
+  }
+}
+
+fn workflow_reconcile_fold(
+  plan: MembershipPlan<WorkflowFactMember>,
+) -> WorkflowReconcileFold {
+  fold(
+    plan.actions,
+    init: WorkflowReconcileFold {
+      remaining: 0,
+      plan_refusals: 0,
+      first_missing: "",
+    },
+    f: fn(acc, action) {
+      workflow_reconcile_fold_action(acc: acc, action: action)
+    },
+  )
+}
+
+fn workflow_reconcile_report(
+  desired: List<WorkflowFactTree>,
+  observed: List<WorkflowFactTree>,
+) -> WorkflowReconcileReport {
+  let plan = workflow_fact_reconcile(
+    desired: desired,
+    observed: observed,
+  )
+  let folded = workflow_reconcile_fold(plan: plan)
+  let observation_tally = workflow_fact_forest_observation_tally(
+    forest: observed,
+  )
+  let observed_verdict = workflow_fact_forest_verdict(forest: observed)
+  let verdict = match observed_verdict {
+    Unknown { missing: _ } => observed_verdict
+    _ =>
+      if folded.remaining == 0 {
+        observed_verdict
+      } else {
+        Unknown { missing: folded.first_missing }
+      }
+  }
+  WorkflowReconcileReport {
+    desired_count: count(workflow_fact_forest_members(forest: desired)),
+    observed_count: count(workflow_fact_forest_members(forest: observed)),
+    remaining_count: folded.remaining,
+    observed_failure_count: observation_tally.failures,
+    observed_refusal_count: observation_tally.refusals,
+    plan_refusal_count: folded.plan_refusals,
+    plan: plan,
+    verdict: verdict,
+  }
+}
+
+fn workflow_reconcile_status_key(
+  report: WorkflowReconcileReport,
+) -> String {
+  if report.plan_refusal_count > 0
+    || report.observed_refusal_count > 0 {
+    "refused"
+  } else if report.observed_failure_count > 0 {
+    "failed"
+  } else if report.remaining_count > 0 {
+    "not_converged"
+  } else {
+    match report.verdict {
+      Unknown { missing: _ } => "refused"
+      _ => "converged"
+    }
+  }
+}

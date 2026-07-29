@@ -1,0 +1,243 @@
+label	canonical_seven_cause_signature_attribution_2026-07-28
+classifier_stamp	cause-signature-not-error-code-v1
+protocol	Task B of mandate msg_2c058326: cargo build --message-format=json over the SAME assembled crate as canonical_seven_sweep_2026-07-28.tsv (identical gunbc/cssl_assemble binary pair, no re-emit between passes); each error grouped by CAUSE SIGNATURE not error code — E0308 by concrete expected/found type pair, E0599 by receiver type + missing method, E0277 by unsatisfied trait + self type; counts below are FULL RESIDUAL (every error cargo reported for that module in one clean build), never first-error-limited
+gunbc_sha256	54c3fea91dbb87fd6794f29d5f23f79ee58bfff51fb99c935e5878bdd8b145c7
+cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+git_sha	623519aa3ca871b7afbcbd47c7ac137542c8f426
+seed_vs_v2_emit_caveat	every file_line below is under a v1-seed-emitted crate (gunbc compile --target rust runs src/v1/05_emit_rust.dag over the v2 AST as data); a fix for any row here lands in the seed + regen_stage0, NEVER in v2-emit-only wiring — v2-only changes will not move these counts
+rows	233 distinct cause signatures across 2898 total errors (2 residual UNLOCATED E0308 rows out of 845 E0308 occurrences — genuinely un-patterned messages, not a regex gap; see rows tagged "(UNLOCATED)")
+companion	docs/probes/canonical_seven_sweep_2026-07-28.tsv (Task A: per-module error-code histograms + baseline delta)
+cause_signature	count	distinct_emitted_files	example_file_line
+E0599: missing `clone` (no method named `clone` found for type parameter `T` in the )	206	24	06_translate/src/v2_std_optional.rs:18
+E0277: bound `T: Clone` not satisfied	181	20	06_translate//session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/im-15.1.0/src/vector/mod.rs:90
+E0308: expected `()` found `std::option::Option<_>`	134	24	06_translate/src/v2_std_compilers_target_model.rs:305
+unreachable_patterns: unreachable pattern	126	54	06_translate/src/v2_std_node.rs:509
+E0599: the method `is_empty` exists for struct `Rc<im::Vector<T>>`, but its trait bounds were not satisfied	84	7	06_translate/src/v2_std_algebra.rs:55
+E0277: bound `CommutativeSemiring<Magnitude>: serde::Deserialize<'de>` not satisfied	75	10	emit_host/src/std_measure.rs:363
+E0599: the method `clone` exists for enum `Outcome<T>`, but its trait bounds were not satisfied	63	7	06_translate/src/v2_std_diagnostic.rs:347
+E0308: expected `bool` found `Bool`	60	6	06_translate/src/v2_std_logic.rs:57
+E0599: the method `iter` exists for struct `im::Vector<T>`, but its trait bounds were not satisfied	56	7	06_translate/src/v2_std_algebra.rs:55
+E0282: type annotations needed	55	37	06_translate/src/v2_std_collection.rs:104
+E0308: expected `Rc<Nat>` found `{integer}`	50	5	06_translate/src/v2_std_integer.rs:1363
+E0107: type alias takes 0 generic arguments but 1 generic argument was supplied	48	12	06_translate/src/v2_std_qualified_name.rs:300
+E0308: expected `Rc<CommutativeSemiring<Magnitude>>` found `{integer}`	40	8	materialization_carriers/src/extdeps_units_dimensionless.rs:53
+E0308: expected `Rc<Correction>` found `std::option::Option<_>`	35	13	06_translate/src/v2_std_host_transport.rs:152
+E0308: expected `Rc<Rc<CommutativeSemiring<Magnitude>>>` found `{integer}`	33	7	emit_host/src/extdeps_units_dimensionless.rs:53
+E0277: bound `EnvironmentBindingKey: std::hash::Hash` not satisfied	32	8	06_translate/src/v2_std_runtime.rs:68
+E0277: bound `Node: std::hash::Hash` not satisfied	30	6	06_translate/src/v2_compiler_infer.rs:86
+E0277: bound `Node: Eq` not satisfied	30	6	06_translate/src/v2_compiler_infer.rs:86
+E0107: missing generics for enum `Witness`	28	16	06_translate/src/v2_std_collection.rs:75
+E0599: the method `clone` exists for enum `Outcome<U>`, but its trait bounds were not satisfied	28	7	06_translate/src/v2_std_diagnostic.rs:338
+E0308: expected `Rc<im::Vector<_>>` found `std::string::String`	28	14	06_translate/src/v2_std_text.rs:66
+E0599: the method `clone` exists for struct `im::Vector<T>`, but its trait bounds were not satisfied	25	11	06_translate/src/v2_std_algebra.rs:76
+E0599: the method `clone` exists for enum `std::option::Option<T>`, but its trait bounds were not satisfied	24	18	06_translate/src/v2_std_optional.rs:22
+E0308: expected `Rc<DecimalDigitsStep>` found `DecimalDigitsStep`	24	6	06_translate/src/v2_std_integer.rs:325
+E0063: missing field `token` in initializer of `TargetOperatorShape`	24	6	06_translate/src/v2_std_compilers_target_model.rs:1285
+E0063: missing field `ident` in initializer of `TargetOperatorShape`	24	6	06_translate/src/v2_std_compilers_target_model.rs:1313
+E0308: expected `OrdSet<std::string::String>` found `PointwisePower<_>`	24	24	06_translate/src/v2_std_grammar.rs:402
+E0599: missing `clone` (no method named `clone` found for type parameter `A` in the )	22	15	06_translate/src/v2_std_node.rs:329
+E0277: bound `U: Clone` not satisfied	18	8	06_translate//session-home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/im-15.1.0/src/vector/mod.rs:90
+E0308: expected `std::string::String` found `Rc<im::Vector<i64>>`	18	12	06_translate/src/v2_std_text.rs:39
+E0277: bound `ValueInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:391
+E0277: bound `TransformInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:394
+E0277: bound `BranchInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:397
+E0277: bound `LoopInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:400
+E0277: bound `BindInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:403
+E0277: bound `MatchInterpreter: serde::Deserialize<'de>` not satisfied	18	6	06_translate/src/v2_std_runtime.rs:406
+E0609: no field `member` on type `Rc<OrdSet<Rc<FormalNonterminal>>>`	18	6	06_translate/src/v2_std_grammar.rs:130
+E0308: expected `OccurrenceId` found `Rc<NodeOccurrenceId>`	18	6	06_translate/src/v2_extdeps_languages_dag.rs:2117
+E0308: expected `std::option::Option<Rc<_>>` found `Rc<_>`	18	6	06_translate/src/v2_extdeps_languages_dag.rs:2975
+E0614: type `Nat` cannot be dereferenced	18	1	05_eval/src/v2_std_verdict.rs:177
+E0614: type `v2_std_nat::Nat` cannot be dereferenced	18	1	emit_host/src/v2_std_verdict.rs:179
+E0063: missing fields `contains_key`, `empty`, `get` and 6 other fields in initializer of `PartialFunction<	16	16	06_translate/src/v2_std_collection.rs:103
+E0597: `tree` does not live long enough	16	12	06_translate/src/v2_compiler_infer.rs:1075
+E0597: `target` does not live long enough	16	4	06_translate/src/v2_compiler_translate.rs:1060
+E0369: binary operation `==` cannot be applied to type `Rc<Measure<(), (), Rc<CommutativeSemiring<Magnitude	16	6	materialization_carriers/src/std_measure.rs:362
+E0277: `CommutativeSemiring<Magnitude>` doesn't implement `Debug`	15	10	emit_host/src/std_measure.rs:363
+E0277: bound `CommutativeSemiring<Magnitude>: serde::Serialize` not satisfied	15	10	emit_host/src/std_measure.rs:361
+E0308: expected `_` found `&_`	14	14	06_translate/src/v2_extdeps_languages_fidelity.rs:27
+E0599: the method `clone` exists for struct `im::Vector<U>`, but its trait bounds were not satisfied	14	7	06_translate/src/v2_std_algebra.rs:80
+E0599: missing `clone` (no method named `clone` found for type parameter `U` in the )	14	14	06_translate/src/v2_std_algebra.rs:84
+E0369: binary operation `==` cannot be applied to type `Rc<im::Vector<T>>`	13	13	06_translate/src/v2_std_algebra.rs:48
+E0308: expected `Nat` found `Rc<Nat>`	13	6	06_translate/src/v2_std_cardinality.rs:103
+E0392: type parameter `Dimension` is never used	12	6	06_translate/src/v2_std_integer.rs:64
+E0599: missing `clone` (no method named `clone` found for type parameter `R` in the )	12	4	06_translate/src/extdeps_communication_fidelity_carriers.rs:46
+E0308: expected `Rc<im::Vector<i64>>` found `std::string::String`	12	6	06_translate/src/v2_std_text.rs:44
+E0308: expected `Rc<DecimalDigitStep>` found `DecimalDigitStep`	12	6	06_translate/src/v2_std_integer.rs:326
+E0599: missing `as_deref` (no method named `as_deref` found for unit type `()` in the c)	12	6	06_translate/src/v2_std_symbol_index.rs:118
+E0599: no variant, associated function, or constant named `GlobalBareAmbiguous` found for enum `std::option	12	6	06_translate/src/v2_std_symbol_index.rs:119
+E0599: `std::option::Option<_>` missing `GlobalBareUnique`	12	6	06_translate/src/v2_std_symbol_index.rs:120
+E0614: type `std::option::Option<std::string::String>` cannot be dereferenced	12	6	06_translate/src/v2_std_compilers_target_model.rs:399
+E0063: missing field `algebra_field` in initializer of `CanonicalOperation`	12	6	06_translate/src/v2_std_compilers_target_model.rs:1107
+E0063: missing fields `binary_field` and `inverse_field` in initializer of `CanonicalOperation`	12	6	06_translate/src/v2_std_compilers_target_model.rs:1121
+E0063: missing fields `compare_field` and `predicate` in initializer of `CanonicalOperation`	12	6	06_translate/src/v2_std_compilers_target_model.rs:1135
+E0063: missing fields `eq_field` and `predicate` in initializer of `CanonicalOperation`	12	6	06_translate/src/v2_std_compilers_target_model.rs:1149
+E0308: expected `Rc<DeriveGrammarRelationTokensProgress>` found `DeriveGrammarRelationTokensProgress`	12	6	06_translate/src/v2_std_grammar.rs:1293
+E0609: no field `member` on type `Rc<OrdSet<std::string::String>>`	12	12	06_translate/src/v2_extdeps_languages_dag.rs:1224
+E0597: `partials` does not live long enough	12	6	06_translate/src/v2_compiler_infer.rs:1074
+E0369: binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<EvaluationEnvironment>) -> R	12	2	05_eval/src/v2_compiler_eval.rs:224
+E0308: arguments to this function are incorrect (UNLOCATED)	12	2	05_eval/src/v2_compiler_eval.rs:1254
+E0369: binary operation `==` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	12	4	emit_host/src/std_measure.rs:190
+E0308: expected `i64` found `Rc<CommutativeSemiring<Magnitude>>`	12	3	materialization_carriers/src/std_measure.rs:627
+E0369: binary operation `==` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`	11	3	emit_host/src/std_measure.rs:178
+E0369: binary operation `==` cannot be applied to type `Rc<Measure<(), (), Rc<Rc<CommutativeSemiring<Magnit	11	4	emit_host/src/std_measure.rs:363
+E0369: binary operation `<` cannot be applied to type `Rc<Nat>`	10	10	06_translate/src/v2_std_nat.rs:58
+E0308: expected `()` found `std::option::Option<Rc<Node>>`	10	10	06_translate/src/v2_std_compilers_target_model.rs:302
+E0308: expected `Rc<v2_std_nat::Nat>` found `{integer}`	10	1	emit_host/src/v2_std_integer.rs:1363
+E0308: expected `i64` found `Rc<Rc<CommutativeSemiring<Magnitude>>>`	9	2	emit_host/src/std_measure.rs:628
+E0308: expected `v2_std_nat::Nat` found `Rc<v2_std_nat::Nat>`	9	2	emit_host/src/v2_std_cardinality.rs:103
+E0560: struct `Rc<PartialFunction<_, _>>` has no field named `lookup`	8	8	06_translate/src/v2_compiler_infer.rs:387
+E0308: expected `&HashMap<String, _>` found `&Rc<HashMap<Rc<Node>, Rc<...>>>`	8	8	06_translate/src/v2_compiler_infer.rs:395
+E0597: `projection` does not live long enough	8	4	06_translate/src/v2_compiler_translate.rs:1032
+E0308: expected `Rc<Rc<CommutativeSemiring<Magnitude>>>` found `i64`	8	2	emit_host/src/std_realization_measurement.rs:91
+E0308: expected `Rc<CommutativeSemiring<Magnitude>>` found `i64`	8	2	materialization_carriers/src/std_realization_measurement.rs:91
+E0369: binary operation `==` cannot be applied to type `&Rc<im::Vector<T>>`	7	7	06_translate/src/v2_std_algebra.rs:91
+E0599: the method `is_empty` exists for struct `Rc<im::Vector<A>>`, but its trait bounds were not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0277: bound `A: Clone` not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0599: the method `iter` exists for struct `im::Vector<A>`, but its trait bounds were not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0599: the method `is_empty` exists for struct `Rc<im::Vector<B>>`, but its trait bounds were not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0277: bound `B: Clone` not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0599: missing `clone` (no method named `clone` found for type parameter `B` in the )	7	7	06_translate/src/v2_std_algebra.rs:910
+E0599: the method `iter` exists for struct `im::Vector<B>`, but its trait bounds were not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0599: the method `clone` exists for struct `im::Vector<C>`, but its trait bounds were not satisfied	7	7	06_translate/src/v2_std_algebra.rs:910
+E0369: cannot multiply `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`	7	1	emit_host/src/std_measure.rs:100
+E0369: cannot multiply `Rc<CommutativeSemiring<Magnitude>>` by `Rc<CommutativeSemiring<Magnitude>>`	7	1	materialization_carriers/src/std_measure.rs:99
+uncoded: UNRESOLVED_CompilerError	6	6	06_translate/src/v2_std_grammar.rs:1372
+E0308: expected `&im::HashMap<std::string::String, _>` found `&Rc<im::HashMap<K, _>>`	6	6	06_translate/src/v2_std_collection.rs:106
+E0308: expected `&HashMap<String, _>` found `&Rc<HashMap<K, V>>`	6	6	06_translate/src/v2_std_collection.rs:113
+E0308: expected `Rc<PrimitiveFactBundle>` found `PrimitiveFactBundle`	6	6	06_translate/src/v2_std_model_core.rs:367
+E0308: expected `Rc<Edge>` found `Rc<Witness<Rc<v2_std_cardinality::TerminationProof>>>`	6	6	06_translate/src/v2_std_cardinality.rs:596
+E0308: expected `im::Vector<Rc<Token>>` found `Rc<im::Vector<Rc<Token>>>`	6	6	06_translate/src/v2_std_compilers_lexing.rs:223
+E0308: expected `Rc<DecimalNonZeroMagnitude>` found `DecimalNonZeroMagnitude`	6	6	06_translate/src/v2_std_integer.rs:880
+E0369: binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<EnvironmentBindingKey>, Rc<Runtim	6	6	06_translate/src/v2_std_runtime.rs:68
+E0277: `ValueInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:391
+E0277: `TransformInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:394
+E0277: `BranchInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:397
+E0277: `LoopInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:400
+E0277: `BindInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:403
+E0277: `MatchInterpreter` doesn't implement `Debug`	6	6	06_translate/src/v2_std_runtime.rs:406
+E0369: binary operation `==` cannot be applied to type `&Rc<ValueInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:391
+E0369: binary operation `==` cannot be applied to type `&Rc<TransformInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:394
+E0369: binary operation `==` cannot be applied to type `&Rc<BranchInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:397
+E0369: binary operation `==` cannot be applied to type `&Rc<LoopInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:400
+E0369: binary operation `==` cannot be applied to type `&Rc<BindInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:403
+E0369: binary operation `==` cannot be applied to type `&Rc<MatchInterpreter>`	6	6	06_translate/src/v2_std_runtime.rs:406
+E0277: bound `ValueInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:391
+E0277: bound `TransformInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:394
+E0277: bound `BranchInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:397
+E0277: bound `LoopInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:400
+E0277: bound `BindInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:403
+E0277: bound `MatchInterpreter: serde::Serialize` not satisfied	6	6	06_translate/src/v2_std_runtime.rs:406
+E0308: expected `std::option::Option<Rc<Node>>` found `()`	6	6	06_translate/src/v2_std_symbol_index.rs:109
+E0061: this function takes 2 arguments but 3 arguments were supplied	6	6	06_translate/src/v2_std_find_witness.rs:84
+E0308: expected `()` found `std::option::Option<std::string::String>`	6	6	06_translate/src/v2_std_compilers_target_model.rs:1805
+E0308: expected `std::option::Option<std::string::String>` found `()`	6	6	06_translate/src/v2_std_compilers_target_model.rs:1826
+E0308: expected `i64` found `String`	6	6	06_translate/src/v2_std_compilers_target_model.rs:2105
+E0308: expected `String` found `i64`	6	6	06_translate/src/v2_std_compilers_target_model.rs:2352
+E0308: expected `im::HashMap<_, _>` found `Rc<im::HashMap<_, _>>`	6	6	06_translate/src/v2_std_compilers_target_model.rs:2615
+E0614: type `std::option::Option<_>` cannot be dereferenced	6	6	06_translate/src/v2_std_compilers_target_model.rs:2615
+E0308: expected `()` found `std::option::Option<TargetConstructorTemplate>`	6	6	06_translate/src/v2_std_compilers_target_model.rs:4272
+E0308: expected `std::option::Option<TargetConstructorTemplate>` found `()`	6	6	06_translate/src/v2_std_compilers_target_model.rs:4437
+E0308: expected `TargetUseSiteOwnershipLookup` found `TargetUseSiteOwnershipCatalogLookup`	6	6	06_translate/src/v2_std_compilers_target_model.rs:6327
+E0609: no field `member` on type `Rc<OrdSet<Rc<FormalTerminal>>>`	6	6	06_translate/src/v2_std_grammar.rs:129
+E0308: expected `()` found `Rc<im::Vector<Rc<Edge>>>`	6	6	06_translate/src/v2_std_grammar.rs:1373
+E0308: expected `Witness<Rc<im::Vector<Rc<Edge>>>>` found `Witness<()>`	6	6	06_translate/src/v2_std_grammar.rs:1372
+E0308: expected `Rc<NodeOccurrenceId>` found `OccurrenceId`	6	6	06_translate/src/v2_extdeps_languages_dag.rs:1869
+E0308: expected `Rc<Witness<Rc<v2_std_cardinality::TerminationProof>>>` found `Rc<Witness<v2_std_cardinality::TerminationProof>>`	6	6	06_translate/src/v2_compiler_infer.rs:80
+E0369: binary operation `==` cannot be applied to type `Rc<im::HashMap<Rc<Node>, Rc<InferredFacts>>>`	6	6	06_translate/src/v2_compiler_infer.rs:86
+E0308: expected `Witness<Rc<v2_std_cardinality::TerminationProof>>` found `Witness<v2_std_cardinality::TerminationProof>`	6	6	06_translate/src/v2_compiler_infer.rs:272
+E0308: expected `Rc<Witness<v2_std_cardinality::TerminationProof>>` found `Rc<Witness<Rc<v2_std_cardinality::TerminationProof>>>`	6	6	06_translate/src/v2_compiler_infer.rs:294
+E0308: expected `im::HashMap<Rc<Node>, Rc<InferredFacts>>` found `Rc<PartialFunction<_, _>>`	6	6	06_translate/src/v2_compiler_infer.rs:386
+E0004: non-exhaustive patterns: `Outcome::Accepted { value: false, .. }` not covered	6	6	06_translate/src/v2_std_compilers_target_model.rs:5438
+E0597: `sym` does not live long enough	6	6	06_translate/src/v2_std_grammar.rs:1488
+E0597: `base` does not live long enough	6	6	06_translate/src/v2_compiler_resolve.rs:182
+E0599: the method `clone` exists for enum `Verdict<Subj, T>`, but its trait bounds were not satisfied	6	2	05_eval/src/v2_std_verdict.rs:106
+E0277: bound `EffectIoEvalBundle: serde::Deserialize<'de>` not satisfied	6	2	05_eval/src/v2_compiler_eval.rs:153
+E0369: cannot divide `Rc<Nat>` by `{integer}`	5	5	06_translate/src/v2_std_integer.rs:1411
+E0308: expected `()` found `Rc<Node>`	4	4	06_translate/src/v2_compiler_target_carriers.rs:118
+E0308: expected `Rc<Outcome<()>>` found `Rc<Outcome<std::option::Option<Rc<TargetTextCarrier>>>>`	4	4	06_translate/src/v2_compiler_translate.rs:846
+E0308: expected `std::option::Option<Rc<TargetTextCarrier>>` found `()`	4	4	06_translate/src/v2_compiler_translate.rs:865
+E0308: expected `Rc<Outcome<()>>` found `Rc<Outcome<std::option::Option<Rc<TargetFunctionSignatureRealization>>>>`	4	4	06_translate/src/v2_compiler_translate.rs:1461
+E0308: expected `Rc<Outcome<()>>` found `Rc<Outcome<std::option::Option<Rc<Node>>>>`	4	4	06_translate/src/v2_compiler_translate.rs:1590
+E0369: binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<Vector<Rc<RuntimeValue>>>, R	4	2	05_eval/src/v2_compiler_eval.rs:236
+E0369: binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<Node>, Rc<RuntimeValue>, Rc<Evaluation	4	2	05_eval/src/v2_compiler_eval.rs:244
+E0369: binary operation `==` cannot be applied to type `Rc<dyn Fn(Rc<EnvironmentBindingKey>, Rc<RuntimeValu	4	2	05_eval/src/v2_compiler_eval.rs:260
+E0369: binary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`	4	2	05_eval/src/v2_compiler_eval.rs:336
+E0308: expected `Witness<Rc<InferredFacts>>` found `Witness<Rc<RuntimeValueAcceptanceWitness>>`	4	2	05_eval/src/v2_compiler_eval.rs:790
+E0597: `store` does not live long enough	4	2	05_eval/src/v2_extdeps_runtimes_v2_effect_io_pure.rs:298
+E0369: binary operation `>` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`	4	2	emit_host/src/std_nat.rs:20
+E0308: expected `Rc<Vector<_>>` found `String`	4	2	emit_host/src/v2_compiler_emit_module.rs:51
+E0308: expected `Rc<Outcome<std::string::String>>` found `Rc<Outcome<Rc<im::Vector<_>>>>`	4	2	emit_host/src/v2_compiler_emit_module.rs:51
+E0308: expected `std::string::String` found `Rc<im::Vector<_>>`	4	2	emit_host/src/v2_compiler_emit_module.rs:60
+E0369: binary operation `>` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	4	2	materialization_carriers/src/std_nat.rs:20
+E0308: mismatched types (UNLOCATED)	4	2	materialization_carriers/src/extdeps_realization_compile_stage_memo.rs:98
+E0369: cannot multiply `Rc<CommutativeSemiring<Magnitude>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`	3	1	emit_host/src/std_measure.rs:181
+E0369: cannot divide `Rc<CommutativeSemiring<Magnitude>>` by `Rc<CommutativeSemiring<Magnitude>>`	3	2	emit_host/src/std_measure.rs:193
+E0369: cannot add `Rc<CommutativeSemiring<Magnitude>>` to `Rc<CommutativeSemiring<Magnitude>>`	3	2	emit_host/src/std_measure.rs:211
+E0308: expected `bool` found `True`	3	1	emit_host/src/v2_std_logic.rs:57
+E0308: expected `bool` found `False`	3	1	emit_host/src/v2_std_logic.rs:58
+E0369: cannot multiply `CommutativeSemiring<Magnitude>` by `Rc<CommutativeSemiring<Magnitude>>`	3	1	materialization_carriers/src/std_measure.rs:180
+E0308: expected `A` found `im::HashMap<std::string::String, Rc<CacheProbe<B>>>`	3	2	materialization_carriers/src/v2_std_staging.rs:45
+E0308: expected `im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>` found `Rc<PartialFunction<_, _>>`	2	2	05_eval/src/v2_extdeps_runtimes_v2_effect_io_pure.rs:129
+E0614: type `std::option::Option<Rc<RuntimeValue>>` cannot be dereferenced	2	2	05_eval/src/v2_extdeps_runtimes_v2_effect_io_pure.rs:222
+E0308: expected `Rc<EffectHandler>` found `EffectHandler`	2	2	05_eval/src/v2_extdeps_runtimes_v2_effect_io_pure.rs:289
+E0271: expected `v2_eval_binding_lookup_miss` to return `Option<_>`, but it returns `Rc<Witness<Rc<RuntimeV	2	2	05_eval/src/v2_extdeps_runtimes_v2_evaluator.rs:167
+E0308: expected `im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>` found `PartialFunction<Rc<EnvironmentBindingKey>, _>`	2	2	05_eval/src/v2_extdeps_runtimes_v2_evaluator.rs:166
+E0308: expected `Rc<Edge>` found `Edge`	2	2	05_eval/src/v2_extdeps_runtimes_v2_evaluator.rs:348
+E0277: `EffectIoEvalBundle` doesn't implement `Debug`	2	2	05_eval/src/v2_compiler_eval.rs:153
+E0369: binary operation `==` cannot be applied to type `&Rc<EffectIoEvalBundle>`	2	2	05_eval/src/v2_compiler_eval.rs:153
+E0277: bound `EffectIoEvalBundle: serde::Serialize` not satisfied	2	2	05_eval/src/v2_compiler_eval.rs:153
+E0308: expected `im::HashMap<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>` found `PartialFunction<Rc<EnvironmentBindingKey>, Rc<RuntimeValue>>`	2	2	05_eval/src/v2_compiler_eval.rs:690
+E0308: expected `Witness<Rc<Node>>` found `Witness<Rc<RuntimeValueAcceptanceWitness>>`	2	2	05_eval/src/v2_compiler_eval.rs:781
+E0308: expected `&HashMap<String, _>` found `&Rc<HashMap<Rc<...>, ...>>`	2	2	05_eval/src/v2_compiler_eval.rs:888
+E0308: expected `Rc<EvalParamBindAcc>` found `EvalParamBindAcc`	2	2	05_eval/src/v2_compiler_eval.rs:955
+E0308: expected `Rc<RuntimeBehaviorInterpreter>` found `Rc<InferredFacts>`	2	2	05_eval/src/v2_compiler_eval.rs:1253
+E0310: the parameter type `Subj` may not live long enough	2	2	05_eval/src/v2_std_verdict.rs:147
+E0310: the parameter type `T` may not live long enough	2	2	05_eval/src/v2_std_verdict.rs:147
+E0107: missing generics for type alias `std_types::List`	2	1	emit_host/src/std_realization_measurement.rs:165
+E0107: type alias takes 0 generic arguments but 3 generic arguments were supplied	2	2	emit_host/src/std_realization_measurement.rs:72
+E0369: binary operation `<` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`	2	1	emit_host/src/std_nat.rs:17
+E0369: binary operation `<=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	2	2	emit_host/src/std_measure.rs:217
+E0369: cannot divide `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `Rc<Rc<CommutativeSemiring<Magnitude>>>`	2	1	emit_host/src/std_measure.rs:437
+E0369: cannot add `Rc<Rc<CommutativeSemiring<Magnitude>>>` to `Rc<Rc<CommutativeSemiring<Magnitude>>>`	2	1	emit_host/src/std_realization_measurement.rs:69
+E0369: binary operation `!=` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`	2	2	emit_host/src/std_realization_measurement.rs:184
+E0369: cannot subtract `Rc<Rc<CommutativeSemiring<Magnitude>>>` from `Rc<Rc<CommutativeSemiring<Magnitude>>	2	1	emit_host/src/std_realization_width.rs:85
+E0369: binary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`	2	2	emit_host/src/v2_std_nat.rs:58
+E0308: expected `Rc<_>` found `std::option::Option<Rc<_>>`	2	2	emit_host/src/std_effect_grant.rs:291
+E0107: missing generics for type alias `List`	2	1	materialization_carriers/src/std_realization_measurement.rs:165
+E0369: binary operation `<` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	2	1	materialization_carriers/src/std_nat.rs:17
+E0061: this function takes 2 arguments but 1 argument was supplied	2	2	materialization_carriers/src/v2_std_staging.rs:45
+E0599: the method `clone` exists for enum `CacheLookupResult<T>`, but its trait bounds were not satisfied	2	1	materialization_carriers/src/std_cache_interface.rs:438
+E0369: binary operation `>=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	2	2	materialization_carriers/src/std_cache_interface.rs:541
+E0308: expected `std::string::String` found `std::option::Option<std::string::String>`	2	1	materialization_carriers/src/std_cache_interface.rs:569
+E0369: binary operation `!=` cannot be applied to type `Rc<CommutativeSemiring<Magnitude>>`	2	2	materialization_carriers/src/std_realization_measurement.rs:184
+E0369: cannot subtract `Rc<CommutativeSemiring<Magnitude>>` from `Rc<CommutativeSemiring<Magnitude>>`	2	1	materialization_carriers/src/std_realization_width.rs:85
+E0308: expected `std::string::String` found `fn() -> std::string::String {parse_table_memo_id}`	2	1	materialization_carriers/src/v2_compiler_materialization_carriers.rs:177
+E0308: expected `Rc<Rc<CommutativeSemiring<_>>>` found `Rc<CommutativeSemiring<_>>`	1	1	emit_host/src/std_measure.rs:191
+E0369: cannot subtract `{integer}` from `Rc<Rc<CommutativeSemiring<Magnitude>>>`	1	1	emit_host/src/std_measure.rs:203
+E0369: cannot divide `Rc<Rc<CommutativeSemiring<Magnitude>>>` by `{integer}`	1	1	emit_host/src/std_measure.rs:624
+E0369: binary operation `==` cannot be applied to type `Rc<Measure<(), S, Rc<Rc<CommutativeSemiring<Magnitu	1	1	emit_host/src/std_realization_schedule.rs:44
+E0277: cannot add `Rc<Rc<CommutativeSemiring<Magnitude>>>` to `i64`	1	1	emit_host/src/std_realization_measurement.rs:91
+E0369: binary operation `>=` cannot be applied to type `Rc<Rc<CommutativeSemiring<Magnitude>>>`	1	1	emit_host/src/std_realization_width.rs:113
+E0369: cannot divide `Rc<v2_std_nat::Nat>` by `{integer}`	1	1	emit_host/src/v2_std_integer.rs:1411
+E0425: cannot find function `emit_host_run_transport_cached` in this scope	1	1	emit_host/src/v2_compiler_emit_host.rs:285
+E0425: cannot find function `emit_host_run_transport` in this scope	1	1	emit_host/src/v2_compiler_emit_host.rs:287
+E0308: expected `Rc<HostLogicalRun>` found `HostLogicalRun`	1	1	emit_host/src/v2_compiler_emit_host.rs:364
+E0369: binary operation `==` cannot be applied to type `CommutativeSemiring<Magnitude>`	1	1	materialization_carriers/src/std_measure.rs:189
+E0308: expected `Rc<CommutativeSemiring<_>>` found `CommutativeSemiring<_>`	1	1	materialization_carriers/src/std_measure.rs:190
+E0369: cannot divide `CommutativeSemiring<Magnitude>` by `CommutativeSemiring<Magnitude>`	1	1	materialization_carriers/src/std_measure.rs:192
+E0369: cannot subtract `{integer}` from `Rc<CommutativeSemiring<Magnitude>>`	1	1	materialization_carriers/src/std_measure.rs:202
+E0369: cannot add `CommutativeSemiring<Magnitude>` to `CommutativeSemiring<Magnitude>`	1	1	materialization_carriers/src/std_measure.rs:210
+E0369: binary operation `<=` cannot be applied to type `CommutativeSemiring<Magnitude>`	1	1	materialization_carriers/src/std_measure.rs:216
+E0308: expected `GroupCompletion<Rc<Rc<CommutativeSemiring<Magnitude>>>>` found `i64`	1	1	materialization_carriers/src/std_measure.rs:304
+E0308: expected `Rc<Measure<_, _, i64>>` found `Rc<Measure<(), (), GroupCompletion<Rc<Rc<CommutativeSemiring<Magnitude>>>>>>`	1	1	materialization_carriers/src/std_measure.rs:310
+E0369: cannot divide `Rc<CommutativeSemiring<Magnitude>>` by `{integer}`	1	1	materialization_carriers/src/std_measure.rs:623
+E0369: binary operation `==` cannot be applied to type `Rc<Measure<(), S, Rc<CommutativeSemiring<Magnitude>	1	1	materialization_carriers/src/std_realization_schedule.rs:44
+E0599: the method `clone` exists for enum `CacheProbe<B>`, but its trait bounds were not satisfied	1	1	materialization_carriers/src/v2_std_staging.rs:38
+E0308: expected `Rc<(dyn Fn(A) -> Rc<Outcome<B>> + 'static)>` found `{closure@src/v2_std_staging.rs:45:5: 45:8}`	1	1	materialization_carriers/src/v2_std_staging.rs:45
+E0369: binary operation `==` cannot be applied to type `&Rc<Measure<(), (), Rc<CommutativeSemiring<Magnitud	1	1	materialization_carriers/src/std_cache_interface.rs:88
+E0308: expected `std::option::Option<std::string::String>` found `std_cache_interface::None`	1	1	materialization_carriers/src/std_cache_interface.rs:512
+E0277: cannot add `Rc<CommutativeSemiring<Magnitude>>` to `i64`	1	1	materialization_carriers/src/std_realization_measurement.rs:91
+E0308: expected `std::string::String` found `fn() -> std::string::String {compile_stage_memo_id}`	1	1	materialization_carriers/src/v2_compiler_materialization_carriers.rs:181
+E0308: expected `Rc<(dyn Fn(A) -> Rc<Outcome<B>> + 'static)>` found `{closure@src/v2_compiler_materialization_carriers.rs:218:5: 218:8}`	1	1	materialization_carriers/src/v2_compiler_materialization_carriers.rs:218
+E0277: can't compare `std::string::String` with `fn() -> std::string::String {parse_table_memo_id}`	1	1	materialization_carriers/src/v2_compiler_materialization_carriers.rs:261
