@@ -1,26 +1,5 @@
 module test.claim.asrock_live_probe
 
-import extdeps.bmc.capability {
-  CapabilityNbdProxyVirtualMedia,
-  CapabilityVirtualMedia,
-  bmc_firmware_semantic_version,
-  firmware_has_capability,
-}
-import extdeps.bmc.webui.nbd_proxy { VmSlotIndexEndpoint }
-import extdeps.boards.asrock_rack {
-  ProbeAbsent,
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
-  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-  asrock_srv3_live_bmc_host,
-  asrock_srv3_live_probe_firmware_version,
-  asrock_srv3_live_readonly_probe_rows,
-  live_probe_confirms_nbd_proxy_vm_slot_ws_present,
-  live_probe_confirms_nbd_slot_ws_absent,
-  live_probe_confirms_shipped_firmware_version,
-  live_probe_confirms_redfish_virtual_media_absent,
-}
-import std.types { Bool, NonEmptyStr, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
