@@ -38,15 +38,6 @@ import v2.compiler.self_host.emitter_producer_provenance {
   v2_emitter_production_routed_count
 }
 import v2.compiler.self_host.frontier {
-  CompilerModuleFrontierRow,
-  EmitterProduced,
-  SeedRetained,
-  compiler_frontier_row_03_body_producer,
-  compiler_frontier_row_03_normalize,
-  compiler_frontier_row_07_target_carriers,
-  compiler_frontier_row_discovery_enumeration,
-  compiler_frontier_row_parse_engine_hooks,
-  compiler_frontier_row_use_site_verdict,
   compiler_frontier_census_holds,
   compiler_frontier_emitter_produced_oracle_backed_holds,
   compiler_frontier_emitter_produced_authorization_mint_consistent_holds,
@@ -54,6 +45,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds,
   compiler_frontier_emitter_produced_count,
   compiler_frontier_producer_qualified_baselines_holds,
+  compiler_frontier_quarantine_oracle_modules_seed_retained_holds,
   emitter_produced_tag_without_registry_binding_fails_holds
 }
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
@@ -168,20 +160,8 @@ test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> B
   }
 }
 
-fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
-  match row.disposition {
-    EmitterProduced => false
-    SeedRetained { reason: _, migration_trigger: _ } => true
-  }
-}
-
 test fn witness_quarantine_oracle_modules_seed_retained_holds() -> Bool {
-  frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_03_body_producer)
-    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_03_normalize)
-    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_07_target_carriers)
-    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_discovery_enumeration)
-    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_parse_engine_hooks)
-    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_use_site_verdict)
+  compiler_frontier_quarantine_oracle_modules_seed_retained_holds()
 }
 
 test fn witness_producer_qualified_baselines_holds() -> Bool {

@@ -719,6 +719,64 @@ fn count_rows_with_module_path(xs: List<CompilerModuleFrontierRow>, target: Stri
   )
 }
 
+fn count_emitter_produced_rows_with_module_path(
+  xs: List<CompilerModuleFrontierRow>,
+  target: String
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target {
+        match row.disposition {
+          EmitterProduced => count + 1
+          SeedRetained { reason: _, migration_trigger: _ } => count
+        }
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_seed_retained_rows_with_module_path(
+  xs: List<CompilerModuleFrontierRow>,
+  target: String
+) -> Int {
+  fold_list(
+    xs: xs,
+    empty: 0,
+    cons: fn(count, row) {
+      if row.module_path == target {
+        match row.disposition {
+          SeedRetained { reason: _, migration_trigger: _ } => count + 1
+          EmitterProduced => count
+        }
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn compiler_frontier_quarantine_oracle_modules_seed_retained_holds() -> Bool {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: true,
+    cons: fn(ok, oracle_row) {
+      ok
+        && (count_seed_retained_rows_with_module_path(
+          xs: compiler_frontier_roster,
+          target: oracle_row.module_path
+        ) == 1)
+        && (count_emitter_produced_rows_with_module_path(
+          xs: compiler_frontier_roster,
+          target: oracle_row.module_path
+        ) == 0)
+    }
+  )
+}
+
 fn compiler_frontier_roster_paths_unique_holds() -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
