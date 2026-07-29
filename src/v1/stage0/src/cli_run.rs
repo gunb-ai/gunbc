@@ -24989,35 +24989,74 @@ mod reference_edge_producer_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Repro for main-red false edges: prelude bare names in import-less std files must not
-    /// surface cross-layer dependency edges (layering-imports gate §5).
+    /// A cross-layer edge out of a std file must be *grounded in that file's own text* —
+    /// either a real `import`, or a real reference occurrence (the reference-derived
+    /// edge the sibling control above proves is emitted). An edge naming a module the
+    /// file never mentions is fabricated by the producer, which is the actual
+    /// "prelude bare name" defect class this test was built for.
+    ///
+    /// It used to assert the strictly stronger `no std -> extdeps/compiler edge at all`,
+    /// which DESIGN §3 deleted on 2026-07-24: the layer DAG
+    /// `std <- extdeps <- compiler <- workflow` was "convention standing where no
+    /// necessity stood, and it blocked correct grounding — a std surface citing the
+    /// extdeps rows that ground it". Under that deleted rule every such edge was false
+    /// by definition; today the 9 in-corpus edges are exactly those sanctioned
+    /// citations (`std.measure` -> `extdeps.units.*` and `std.process` ->
+    /// `extdeps.process.*` from #7268, `std.claim_evidence` and
+    /// `v2.std.compilers.target_model` -> `extdeps.external_authority`), so the old
+    /// assertion reported grounding as a violation. Acyclicity is the only structural
+    /// law; folders are browsing conventions.
     #[test]
-    fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
-        use super::layer_import_facts;
+    fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
+        use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
+
+        fn ungrounded(facts: &[LayerImportFactRaw]) -> Vec<String> {
+            let mut out = Vec::new();
+            for f in facts.iter().filter(|f| {
+                f.layer == "LayerPrefixStd"
+                    && (f.import_module.starts_with("extdeps.")
+                        || f.import_module.starts_with("v2.compiler"))
+            }) {
+                let Ok(content) = std::fs::read_to_string(&f.path) else {
+                    out.push(format!("{} -> {} (unreadable)", f.path, f.import_module));
+                    continue;
+                };
+                let imported = extract_import_paths(&content)
+                    .iter()
+                    .any(|m| m == &f.import_module);
+                if !imported && !content.contains(&f.import_module) {
+                    out.push(format!("{} -> {}", f.path, f.import_module));
+                }
+            }
+            out
+        }
 
         let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
         let extdeps_roots = vec!["src/v2/extdeps".to_string(), "dag/extdeps".to_string()];
         let facts = layer_import_facts(&std_roots, &extdeps_roots);
-        let violations: Vec<_> = facts
-            .iter()
-            .filter(|f| {
-                f.layer == "LayerPrefixStd"
-                    && (f.import_module.starts_with("extdeps.")
-                        || f.import_module.starts_with("v2.compiler"))
-            })
-            .collect();
-        if !violations.is_empty() {
-            for v in &violations {
-                eprintln!(
-                    "FALSE EDGE: {} -> {} (layer={})",
-                    v.path, v.import_module, v.layer
-                );
-            }
-        }
         assert!(
-            violations.is_empty(),
-            "prelude bare names must not produce false std->extdeps/compiler edges (got {})",
-            violations.len()
+            !facts.is_empty(),
+            "producer emitted no layer facts at all — the corpus read is broken, so an \
+             empty violation set below would be vacuous"
+        );
+        let fabricated = ungrounded(&facts);
+        assert!(
+            fabricated.is_empty(),
+            "cross-layer std edges must be grounded in the file's own text; fabricated: {fabricated:?}"
+        );
+
+        // RED control: the same predicate must FIRE on a fact naming a module that the
+        // (real, readable) file provably never mentions. Without this, the assertion
+        // above would pass just as happily on a broken predicate.
+        let planted = vec![LayerImportFactRaw {
+            layer: "LayerPrefixStd",
+            path: "dag/std/measure.dag".to_string(),
+            import_module: "extdeps.units.no_such_module_mentioned_anywhere".to_string(),
+        }];
+        assert_eq!(
+            ungrounded(&planted).len(),
+            1,
+            "predicate must flag an edge whose module never appears in the file text"
         );
     }
 }
