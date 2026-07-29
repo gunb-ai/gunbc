@@ -235,7 +235,13 @@ type Joule = Measure<Energy, One, Nat>
 
 type Celsius = Measure<Temperature, One, Int>
 
-type CelsiusDelta = Measure<TemperatureDifference, One, Nat>
+type CelsiusDelta = Measure<TemperatureDifference, One, Int>
+
+type PositiveCelsiusDeltaCount =
+  Int where range(min: 1), brand("PositiveCelsiusDeltaCount")
+
+type PositiveCelsiusDelta =
+  Measure<TemperatureDifference, One, PositiveCelsiusDeltaCount>
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
@@ -263,11 +269,23 @@ fn celsius_count(c: Celsius) -> Int {
   measure_count(c)
 }
 
-fn celsius_delta(count: Nat) -> CelsiusDelta {
+fn celsius_delta(count: Int) -> CelsiusDelta {
   CelsiusDelta { count: count }
 }
 
-fn celsius_delta_count(delta: CelsiusDelta) -> Nat {
+fn celsius_delta_count(delta: CelsiusDelta) -> Int {
+  measure_count(delta)
+}
+
+fn positive_celsius_delta(
+  count: PositiveCelsiusDeltaCount,
+) -> PositiveCelsiusDelta {
+  PositiveCelsiusDelta { count: count }
+}
+
+fn positive_celsius_delta_count(
+  delta: PositiveCelsiusDelta,
+) -> PositiveCelsiusDeltaCount {
   measure_count(delta)
 }
 

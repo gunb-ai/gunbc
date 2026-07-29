@@ -295,6 +295,10 @@ pub type Celsius = Rc<Measure<(), (), i64>>;
 
 pub type CelsiusDelta = Rc<Measure<(), (), i64>>;
 
+pub type PositiveCelsiusDeltaCount = i64;
+
+pub type PositiveCelsiusDelta = Rc<Measure<(), (), i64>>;
+
 pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
 pub fn watt(count: Nat) -> Watt {
@@ -330,14 +334,25 @@ pub fn celsius_count(c: Celsius) -> i64 {
     measure_count(c.clone())
 }
 
-pub fn celsius_delta(count: Nat) -> CelsiusDelta {
+pub fn celsius_delta(count: i64) -> CelsiusDelta {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn celsius_delta_count(delta: CelsiusDelta) -> Nat {
+pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
+    measure_count(delta.clone())
+}
+
+pub fn positive_celsius_delta(count: i64) -> PositiveCelsiusDelta {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn positive_celsius_delta_count(delta: PositiveCelsiusDelta) -> i64 {
     measure_count(delta.clone())
 }
 

@@ -210,69 +210,62 @@ fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
   }
 }
 
-fn linux_proc_mounts_parse_rec(
-  lines: List<String>,
-  line_number: Int,
-  rows: List<LinuxProcMountRow>,
-) -> LinuxProcMountsParse {
-  match lines.first() {
-    Absent => LinuxProcMountsParsed { rows: rows }
-    Present { value: line } =>
-      if trim(line) == "" {
-        linux_proc_mounts_parse_rec(
-          lines: lines.skip(n: 1),
-          line_number: line_number + 1,
-          rows: rows,
-        )
-      } else {
-        match linux_proc_mount_row_from_line(line: line) {
-          LinuxProcMountLineRefused { cause: cause } =>
-            LinuxProcMountsRefused {
-              line_number: line_number,
-              cause: cause,
-            }
-          LinuxProcMountLineParsed { row: row } =>
-            linux_proc_mounts_parse_rec(
-              lines: lines.skip(n: 1),
-              line_number: line_number + 1,
-              rows: append(rows, items: [row]),
-            )
-        }
-      }
-  }
+type LinuxProcMountsParseFold {
+  line_number: Int
+  parse: LinuxProcMountsParse
 }
 
 fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
-  linux_proc_mounts_parse_rec(
-    lines: split(s: proc_mounts, delimiter: "\n"),
-    line_number: 1,
-    rows: [],
+  let folded = fold(
+    split(s: proc_mounts, delimiter: "\n"),
+    init: LinuxProcMountsParseFold {
+      line_number: 1,
+      parse: LinuxProcMountsParsed { rows: [] },
+    },
+    f: (acc, line) =>
+      match acc.parse {
+        LinuxProcMountsRefused { line_number: _, cause: _ } =>
+          LinuxProcMountsParseFold {
+            line_number: acc.line_number + 1,
+            parse: acc.parse,
+          }
+        LinuxProcMountsParsed { rows: rows } =>
+          if trim(line) == "" {
+            LinuxProcMountsParseFold {
+              line_number: acc.line_number + 1,
+              parse: acc.parse,
+            }
+          } else {
+            match linux_proc_mount_row_from_line(line: line) {
+              LinuxProcMountLineRefused { cause: cause } =>
+                LinuxProcMountsParseFold {
+                  line_number: acc.line_number + 1,
+                  parse: LinuxProcMountsRefused {
+                    line_number: acc.line_number,
+                    cause: cause,
+                  },
+                }
+              LinuxProcMountLineParsed { row: row } =>
+                LinuxProcMountsParseFold {
+                  line_number: acc.line_number + 1,
+                  parse: LinuxProcMountsParsed {
+                    rows: append(rows, items: [row]),
+                  },
+                }
+            }
+          }
+      },
   )
-}
-
-fn linux_proc_mount_row_for_target_rec(
-  rows: List<LinuxProcMountRow>,
-  target: NonEmptyStr,
-) -> LinuxProcMountRow? {
-  match rows.first() {
-    Absent => none
-    Present { value: row } =>
-      if row.mount.target == target {
-        Present { value: row }
-      } else {
-        linux_proc_mount_row_for_target_rec(
-          rows: rows.skip(n: 1),
-          target: target,
-        )
-      }
-  }
+  folded.parse
 }
 
 fn linux_proc_mount_row_for_target(
   rows: List<LinuxProcMountRow>,
   target: NonEmptyStr,
 ) -> LinuxProcMountRow? {
-  linux_proc_mount_row_for_target_rec(rows: rows, target: target)
+  rows
+    |> filter(row => row.mount.target == target)
+    |> first
 }
 
 fn linux_mount_target_contains_directory(
@@ -313,86 +306,60 @@ fn linux_more_specific_backing_mount(
   }
 }
 
-fn linux_proc_mount_backing_row_rec(
-  rows: List<LinuxProcMountRow>,
-  directory: NonEmptyStr,
-  excluded_target: NonEmptyStr,
-  selected: LinuxProcMountRow?,
-) -> LinuxProcMountRow? {
-  match rows.first() {
-    Absent => selected
-    Present { value: row } => {
-      let next = if row.mount.target != excluded_target
-          && linux_mount_target_contains_directory(
-            target: row.mount.target,
-            directory: directory,
-          ) {
-          linux_more_specific_backing_mount(
-            current: selected,
-            candidate: row,
-          )
-        } else {
-          selected
-        }
-      linux_proc_mount_backing_row_rec(
-        rows: rows.skip(n: 1),
-        directory: directory,
-        excluded_target: excluded_target,
-        selected: next,
-      )
-    }
-  }
-}
-
 fn linux_proc_mount_backing_row(
   rows: List<LinuxProcMountRow>,
   directory: NonEmptyStr,
   excluded_target: NonEmptyStr,
 ) -> LinuxProcMountRow? {
-  linux_proc_mount_backing_row_rec(
-    rows: rows,
-    directory: directory,
-    excluded_target: excluded_target,
-    selected: none,
+  fold(
+    rows,
+    init: none,
+    f: (selected, row) =>
+      if row.mount.target != excluded_target
+        && linux_mount_target_contains_directory(
+          target: row.mount.target,
+          directory: directory,
+        ) {
+        linux_more_specific_backing_mount(
+          current: selected,
+          candidate: row,
+        )
+      } else {
+        selected
+      },
   )
-}
-
-fn linux_mount_option_value_rec(
-  options: List<String>,
-  name: NonEmptyStr,
-) -> NonEmptyStr? {
-  if options.length() == 0 {
-    none
-  } else {
-    let option = options.first()
-    if starts_with(s: option, prefix: name as String)
-      && option.length() > name.length() + 1
-      && substring(
-        s: option,
-        start: name.length(),
-        end: name.length() + 1,
-      ) == "=" {
-      Present {
-        value: substring(
-          s: option,
-          start: name.length() + 1,
-          end: option.length(),
-        ) as NonEmptyStr,
-      }
-    } else {
-      linux_mount_option_value_rec(
-        options: options.skip(n: 1),
-        name: name,
-      )
-    }
-  }
 }
 
 fn linux_mount_option_value(
   row: LinuxProcMountRow,
   name: NonEmptyStr,
 ) -> NonEmptyStr? {
-  linux_mount_option_value_rec(options: row.options, name: name)
+  fold(
+    row.options,
+    init: none,
+    f: (selected, option) =>
+      match selected {
+        Present { value: _ } => selected
+        Absent =>
+          if starts_with(s: option, prefix: name as String)
+            && option.length() > name.length() + 1
+            && substring(
+              s: option,
+              start: name.length(),
+              end: name.length() + 1,
+            ) == "=" {
+            Present {
+              value: substring(
+                s: option,
+                start: name.length() + 1,
+                end: option.length(),
+              ) as NonEmptyStr,
+            }
+          } else {
+            none
+          }
+      },
+  )
 }
 
 fn linux_overlay_observation_from_rows(
