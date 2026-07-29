@@ -325,7 +325,7 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
     && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
-    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
+    && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {

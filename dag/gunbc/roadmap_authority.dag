@@ -1263,7 +1263,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
-    edge(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence"),
 
     edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
