@@ -35,6 +35,7 @@ export E0599_B0_WORK="$1"
 
 python3 - <<'PY'
 import collections
+import hashlib
 import json
 import os
 import pathlib
@@ -52,8 +53,17 @@ WORK = pathlib.Path(os.environ["E0599_B0_WORK"])
 MODULES = None
 
 FN_RE = re.compile(r"^\s*pub fn ([A-Za-z0-9_]+)\s*(<[^(]*>)?\s*\(")
-MSG_MISSING = re.compile(r"no method named `([^`]+)` found for (.+?) in the current scope")
-MSG_BOUNDS = re.compile(r"the method `([^`]+)` exists for (.+?), but its trait bounds were not satisfied")
+
+# Message shapes are NOT restated here. They load from their single authority
+# (tools.e0599_probe_census e0599_message_pattern_rows), the same rows
+# docs/probes/e0599_census_extract.sh consumes. This joiner previously hardcoded two
+# regexes covering only MissingMethod and BoundsUnsatisfied, so the authority's NoVariant /
+# NoAssocFn shapes fell through to an untyped "other" and were then discarded by the
+# R1/R2/R3 filter — a third duplicated roster, and the reason a real NoVariant diagnostic
+# was silently leaving the denominator. Patterns are anchored with the authority's own
+# "error[E0599]: " prefix, so the raw JSON message is prefixed before matching.
+MESSAGE_PATTERNS = None
+E0599_PREFIX = "error[E0599]: "
 
 CLOSERS = {")": "(", "]": "[", "}": "{"}
 OPENERS = {"(": ")", "[": "]", "{": "}"}
@@ -73,6 +83,21 @@ def gunbc_blob(entry, function, blob):
         return pathlib.Path(out_path).read_text(encoding="utf-8")
     finally:
         pathlib.Path(out_path).unlink(missing_ok=True)
+
+
+def load_message_patterns():
+    """The E0599 message shapes, from their single authority — never restated here."""
+    blob = gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
+                            "e0599_write_message_pattern_rows_blob")
+    pats = []
+    for line in blob.splitlines():
+        if not line.strip():
+            continue
+        shape, pattern = line.split("\t", 1)
+        pats.append((shape, re.compile(pattern)))
+    if not pats:
+        raise SystemExit("REFUSED: message-pattern authority returned no rows")
+    return pats
 
 
 def load_module_roster():
@@ -142,12 +167,17 @@ MODULE_INDEX = {}
 
 
 def build_module_index():
-    """emitted-file stem -> .dag path, keyed on each module's OWN `module` declaration.
+    """emitted-file stem -> [(declared module identity, .dag path)], a MULTIMAP.
 
     A .dag file's path is a storage fact; its module identity is the declaration. The v1
     emitter names the emitted file after the module path, so joining on the declaration is
     the faithful inverse — a filename heuristic mis-resolves every module whose file stem
     differs from its module name (v2.compiler.translate lives in 06_translate.dag).
+
+    The stem is a LOSSY projection of that identity: `a.b_c` and `a_b.c` both flatten to
+    `a_b_c`. The previous `setdefault` silently kept whichever file the walk reached first
+    — the exact first-match ambiguity the namespace program exists to remove. Collisions
+    are now retained and resolved by REFUSAL at lookup, never by arrival order.
     """
     if MODULE_INDEX:
         return
@@ -163,31 +193,96 @@ def build_module_index():
             m = re.match(r"\s*module\s+([A-Za-z0-9_.]+)", head)
             if not m:
                 continue
-            stem = m.group(1).replace(".", "_")
-            MODULE_INDEX.setdefault(stem, str(cand.relative_to(ROOT)))
+            module_id = m.group(1)
+            MODULE_INDEX.setdefault(module_id.replace(".", "_"), []).append(
+                (module_id, str(cand.relative_to(ROOT))))
 
 
 def dag_source_for(emitted_file):
+    """The .dag source for an emitted artifact, or a located refusal. Never a guess."""
     build_module_index()
-    return MODULE_INDEX.get(pathlib.Path(emitted_file).stem, "")
+    stem = pathlib.Path(emitted_file).stem
+    hits = MODULE_INDEX.get(stem, [])
+    if len(hits) == 1:
+        return hits[0][1]
+    if not hits:
+        raise SystemExit(
+            "REFUSED: no .dag module declares an identity flattening to {!r} (emitted file "
+            "{!r}). The census cannot report a source-side type-parameter declaration it "
+            "did not locate, and an empty dag_source column would read as 'no source' "
+            "rather than 'not found' (DESIGN §5).".format(stem, emitted_file))
+    raise SystemExit(
+        "REFUSED: emitted file {!r} flattens to stem {!r}, which {} distinct declared "
+        "modules share: {}. Underscore-flattening is not injective, so the join cannot "
+        "identify the exact declaration; picking one by walk order is the first-match "
+        "ambiguity this probe must not reintroduce.".format(
+            emitted_file, stem, len(hits), ", ".join(sorted(m for m, _ in hits))))
 
 
 SRC_FN_CACHE = {}
 
 
-def dag_fn_signature(dag_rel, fn_name):
-    """The exact source type-parameter declaration, read from the .dag authority."""
+def dag_fn_signature(dag_rel, fn_name, emitted_file):
+    """The exact source type-parameter declaration, or a located refusal.
+
+    Declarations are collected into a MULTIMAP. A duplicate `fn` name means the join cannot
+    identify which declaration produced the emitted function, and the previous `setdefault`
+    answered with whichever came first in file order — a silent wrong answer in a column
+    the census reports as the exact source declaration. Both the ambiguous and the absent
+    case now refuse, because "" would read as "declares no type parameters" rather than
+    "could not be located".
+    """
     if not dag_rel:
-        return ("", "")
-    key = dag_rel
-    if key not in SRC_FN_CACHE:
+        raise SystemExit("REFUSED: dag_fn_signature called with no dag_source for {!r}"
+                         .format(emitted_file))
+    if not fn_name:
+        raise SystemExit(
+            "REFUSED: no enclosing `pub fn` was resolved for a diagnostic in {!r}, so the "
+            "source function is unknown. The census reports one row per emitted function; "
+            "an unnamed row cannot be joined to its .dag declaration.".format(emitted_file))
+    if dag_rel not in SRC_FN_CACHE:
         text = (ROOT / dag_rel).read_text(encoding="utf-8", errors="replace")
         sigs = {}
         for m in re.finditer(r"^fn ([A-Za-z0-9_]+)(<[^>(]*>)?\s*\(", text, re.M):
-            sigs.setdefault(m.group(1), (m.group(2) or "", text[:m.start()].count("\n") + 1))
-        SRC_FN_CACHE[key] = sigs
-    sig = SRC_FN_CACHE[key].get(fn_name)
-    return (sig[0], str(sig[1])) if sig else ("", "")
+            sigs.setdefault(m.group(1), []).append(
+                (m.group(2) or "", text[:m.start()].count("\n") + 1))
+        SRC_FN_CACHE[dag_rel] = sigs
+    hits = SRC_FN_CACHE[dag_rel].get(fn_name, [])
+    if len(hits) == 1:
+        return (hits[0][0], str(hits[0][1]))
+    if not hits:
+        raise SystemExit(
+            "REFUSED: emitted fn {!r} (from {!r}) has no `fn {}` declaration in its source "
+            "{!r}. The exact source type-parameter declaration is a required census field "
+            "and must not be reported as empty.".format(fn_name, emitted_file, fn_name, dag_rel))
+    raise SystemExit(
+        "REFUSED: {!r} declares `fn {}` {} times (lines {}), so the join cannot identify "
+        "which declaration produced emitted fn {!r} in {!r}. Taking the first is the "
+        "first-match ambiguity this probe must not reintroduce.".format(
+            dag_rel, fn_name, len(hits), ", ".join(str(l) for _, l in hits),
+            fn_name, emitted_file))
+
+
+DIGEST_CACHE = {}
+
+
+def emitted_file_digest(module, fname):
+    """sha256 of the emitted artifact this diagnostic was produced from.
+
+    The same dependency is emitted into all seven module closures. Collapsing those into
+    one census row is only sound if the emitted bytes are identical; the digest makes that
+    a fact in the key rather than an assumption. Differing content becomes distinct sites.
+    """
+    key = (module, fname)
+    if key not in DIGEST_CACHE:
+        p = WORK / module / fname
+        if not p.is_file():
+            raise SystemExit(
+                "REFUSED: emitted artifact {!r} for module {!r} is absent from the work "
+                "dir, so its content digest cannot be computed and cross-module collapse "
+                "would be unverified.".format(fname, module))
+        DIGEST_CACHE[key] = hashlib.sha256(p.read_bytes()).hexdigest()[:16]
+    return DIGEST_CACHE[key]
 
 
 def collect():
@@ -199,16 +294,27 @@ def collect():
             missing.append(module)
             continue
         fn_cache = {}
-        for raw in cj.open(encoding="utf-8", errors="replace"):
+        for lineno, raw in enumerate(cj.open(encoding="utf-8", errors="replace"), 1):
+            if not raw.strip():
+                continue
             try:
                 msg = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as exc:
+                # A truncated or malformed compiler message must not vanish from the
+                # denominator. Silently skipping it under-counts the population and the
+                # census would report the shortfall as a smaller, cleaner corpus.
+                raise SystemExit(
+                    "REFUSED: {}/cargo.json line {} is not valid JSON ({}). A dropped "
+                    "compiler message silently shrinks the measured population, so the "
+                    "census refuses rather than reporting an under-count. First 200 "
+                    "chars: {!r}".format(module, lineno, exc, raw[:200]))
             if msg.get("reason") != "compiler-message":
                 continue
             d = msg["message"]
             if (d.get("code") or {}).get("code") != "E0599":
                 continue
+            if MESSAGE_PATTERNS is None:
+                raise SystemExit("REFUSED: message-pattern authority not loaded")
             spans = [s for s in d["spans"] if s.get("is_primary")]
             if not spans:
                 rows.append({"module": module, "file": "", "line": 0, "method": "",
@@ -217,13 +323,29 @@ def collect():
                 continue
             s = spans[0]
             text = d["message"]
-            mm, mb = MSG_MISSING.search(text), MSG_BOUNDS.search(text)
-            if mm:
-                shape, method, recv_type = "missing_method", mm.group(1), " ".join(mm.group(2).split())
-            elif mb:
-                shape, method, recv_type = "bounds_unsatisfied", mb.group(1), " ".join(mb.group(2).split())
-            else:
-                shape, method, recv_type = "other", "", " ".join(text.split())
+            probe_text = E0599_PREFIX + " ".join(text.split())
+            shape, method, recv_type = None, "", ""
+            for shape_label, rx in MESSAGE_PATTERNS:
+                m = rx.search(probe_text)
+                if not m:
+                    continue
+                shape = shape_label
+                if shape_label == "other":
+                    break
+                method = m.group(1)
+                recv_type = " ".join(m.group(2).split()) if m.lastindex and m.lastindex >= 2 else ""
+                break
+            if shape is None or shape == "other":
+                # An E0599 whose message shape neither pattern understands must refuse HERE,
+                # before the R1/R2/R3 filter can quietly discard it as out-of-scope. An
+                # unparsed diagnostic is not evidence of a tail family; it is evidence the
+                # probe does not understand the compiler's output.
+                raise SystemExit(
+                    "REFUSED: {}/cargo.json carries an E0599 whose message shape matches "
+                    "neither the missing-method nor the trait-bounds pattern, so its method "
+                    "and receiver type are unknown. It must not reach the scope filter, "
+                    "where it would be discarded as a tail family and silently leave the "
+                    "denominator. Message: {!r}".format(module, " ".join(text.split())[:300]))
 
             t = (s.get("text") or [{}])[0]
             line_text = t.get("text", "")
@@ -238,6 +360,12 @@ def collect():
             enc = resolve_fn(fn_cache[fname], s["line_start"])
             rows.append({
                 "module": module, "file": fname, "line": s["line_start"],
+                # Exact primary-span identity. `line` alone collapses two distinct clone
+                # expressions on one generated line; the span start/end separate them.
+                "col_start": s.get("column_start", 0), "col_end": s.get("column_end", 0),
+                "line_end": s.get("line_end", s["line_start"]),
+                "byte_start": s.get("byte_start", -1), "byte_end": s.get("byte_end", -1),
+                "emitted_digest": emitted_file_digest(module, fname),
                 "method": method, "receiver_type": recv_type, "receiver_expr": rexpr,
                 "shape": shape,
                 "emitted_fn": enc[1] if enc else "",
@@ -246,6 +374,7 @@ def collect():
     return rows, missing
 
 
+MESSAGE_PATTERNS = load_message_patterns()
 MODULES = load_module_roster()
 rows, missing = collect()
 if missing:
@@ -303,16 +432,33 @@ for key, line in zip(cls_keys, cls_out):
                       external_authority=f[6])
 
 # --- join ------------------------------------------------------------------------------
+# SITE IDENTITY. Previously (file, line, method, receiver_type) — which excluded the
+# primary span column, the receiver expression and the emitted artifact's content, so two
+# distinct clone expressions on one generated line with the same receiver type collapsed
+# into a single row and inherited occs[0]'s cause. The key now carries the emitted digest
+# and the exact primary span, and — decisively — the receiver expression itself, which
+# makes a heterogeneous group UNWRITABLE rather than merely detected (DESIGN §5:
+# construction over validation). The assertion below is a backstop against a future edit
+# that removes receiver_expr from the key, not the primary mechanism.
+SITE_KEY_FIELDS = ("emitted_digest", "file", "line", "col_start", "line_end", "col_end",
+                   "method", "receiver_expr")
 SITES = collections.defaultdict(list)
 for r in scoped:
-    SITES[(r["file"], r["line"], r["method"], r["receiver_type"])].append(r)
+    SITES[tuple(r[k] for k in SITE_KEY_FIELDS)].append(r)
 
 out_rows = []
-for key, occs in sorted(SITES.items()):
+for key, occs in sorted(SITES.items(), key=lambda kv: tuple(str(x) for x in kv[0])):
     f0 = occs[0]
+    distinct_exprs = {o["receiver_expr"] for o in occs}
+    if len(distinct_exprs) != 1:
+        raise SystemExit(
+            "REFUSED: site {!r} groups {} distinct receiver expressions {} — classifying "
+            "the group by its first member would attribute one expression's lowering cause "
+            "to another. Site identity must separate them.".format(
+                key, len(distinct_exprs), sorted(distinct_exprs)))
     c = CLASS[(f0["method"], f0["receiver_expr"])]
     dag_rel = dag_source_for(f0["file"])
-    src_tp, src_line = dag_fn_signature(dag_rel, f0["emitted_fn"])
+    src_tp, src_line = dag_fn_signature(dag_rel, f0["emitted_fn"], f0["file"])
     emitted_tp = f0["emitted_type_params"]
     # which type param does this site need a bound on?
     needed = ""
@@ -327,7 +473,9 @@ for key, occs in sorted(SITES.items()):
     if needed:
         legacy = "covered" if re.search(rf"\b{re.escape(needed)}\s*:\s*Clone\b", emitted_tp) else "not_covered"
     out_rows.append({
-        "emitted_file": f0["file"], "emitted_line": key[1],
+        "emitted_file": f0["file"], "emitted_line": f0["line"],
+        "emitted_span": "{}:{}-{}:{}".format(f0["line"], f0["col_start"], f0["line_end"], f0["col_end"]),
+        "emitted_digest": f0["emitted_digest"],
         "emitted_fn": f0["emitted_fn"], "emitted_type_params": emitted_tp,
         "dag_source": dag_rel, "dag_source_line": src_line, "source_type_params": src_tp,
         "source_construct": c["source_construct"],
@@ -350,9 +498,18 @@ for key, occs in sorted(SITES.items()):
 
 unresolved = [r for r in out_rows if r["requirement_cause"] == "Unresolved"]
 
+# The producer label and its caveat are NOT restated here. They load from their single
+# authority (tools.e0599_emitter_decision_census e0599_measured_producer /
+# e0599_measured_producer_caveat) — a hardcoded label is not provenance evidence.
+_prod = [s for s in (x.strip() for x in gunbc_blob_noarg(
+    "dag/tools/e0599_emitter_decision_census.dag",
+    "e0599_write_producer_blob").split("\n")) if s]
+if len(_prod) != 2:
+    raise SystemExit("REFUSED: producer authority returned {} lines, expected "
+                     "producer + caveat".format(len(_prod)))
 print("# section=b0_scope")
-print("measured_producer\tV1SeedEmitter")
-print("measured_producer_caveat\tDIAGNOSTIC COMPARISON ONLY - not CompilerFixedPoint progress and not a v2 sizing authority; CompilerFixedPoint recenters on the V2 emitter, a different producer (operator ruling 2026-07-29)")
+print("measured_producer\t{}".format(_prod[0]))
+print("measured_producer_caveat\t{}".format(_prod[1]))
 print(f"modules_measured\t{','.join(MODULES)}")
 print(f"E0599_all_families_diagnostics\t{len(rows)}")
 print(f"R1R2R3_diagnostics\t{len(scoped)}")
@@ -431,7 +588,8 @@ for k in overlap:
     print(f"{k[0]}\t{k[1]}\t{helper[k]}\t{','.join(req)}\t{disjoint}")
 print()
 print("# section=per_site")
-cols = ["emitted_file", "emitted_line", "emitted_fn", "emitted_type_params", "dag_source",
+cols = ["emitted_file", "emitted_line", "emitted_span", "emitted_digest",
+        "emitted_fn", "emitted_type_params", "dag_source",
         "dag_source_line", "source_type_params", "source_construct", "target_representation",
         "lowering_operation", "ownership_verdict", "required_trait", "requirement_cause",
         "external_authority", "emitter_authority", "legacy_helper", "root_family",
