@@ -24587,6 +24587,28 @@ fn caller() -> Bool {
         ))
     }
 
+    // Four silent-pick positive controls were deleted here, not repaired: they planted
+    // a §13 silent pick (two sibling `shared_pick` fns; two homonymous types) and
+    // asserted the telemetry counted it. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY`
+    // now defaults to true (v1_rt.rs), so the resolver REFUSES those fixtures with a
+    // typed `AmbiguousReference` instead of picking — the planted fail-open is
+    // unwritable by construction (DESIGN §5), and a validation control for an
+    // unwritable class cannot fire. The surviving behaviour is the refusal itself,
+    // already carried by `v1-compiler-tests`
+    // `namespace_unique_on_chain_policy_test::namespace_only_refuses_{chain_homonym_on_type_path,
+    // fn_parent_first_hit_at_call_site}` (green by execution, both policy arms, and
+    // it reds if the refusal ever regresses to a silent pick). Keeping these four
+    // would be a second representation of that one fact (§2/§3).
+    //
+    // This fires the dissolve-on that `dag/gunbc/ci_layer_roots.dag`
+    // `falsifier_silent_pick_gate_note` declares for itself: "§13's unique-on-chain
+    // resolution ships as the resolver's actual behavior ... then telemetry, this
+    // witness, and this note all delete together." The rest of that dissolution —
+    // the `v1_rt` telemetry, the 04_env/04_sigs recording sites, main.rs's
+    // SILENT-PICK-GATE, the two census bins, the falsifier roster row and the note —
+    // is a separate lane; `resolution_divergence_silent_pick_clean_corpus_refusal_none`
+    // below is vacuous under the same flip and dissolves with it.
+
     /// Same fixture family, but the leaf imports only module `a` — one parent, not
     /// two — so `shared_pick` resolves via a single parent hit (match_count=1) and
     /// no telemetry fires. Proves the gate does not over-trigger on ordinary
