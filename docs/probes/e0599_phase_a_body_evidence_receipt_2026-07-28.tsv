@@ -5,7 +5,7 @@ plan_of_record	docs/plans/e0599-implementation-proposal.md section 3 P-fn covera
 census_baseline	docs/probes/e0599_canonical_seven_census_2026-07-26.tsv
 classifier_authority	dag/tools/e0599_probe_census.dag (patterns loaded via gunbc, no second table)
 base_sha	1fbc32d2976141118648b65d0d90923ec584c747
-head_sha	5d425e265ce30198ebcc3688063cc5de30876f3a
+head_sha	eefbf30d06c69dbfbb87e37a85489d49abefd323
 measured_against	base_sha - this PR adds only a probe module and docs; no compiler source is modified, so emitted output is the base tree's
 gunbc_sha256	03a95007c3f3b42c571a40177cad01ba9a4c5564d7c489f6382deeaf709fe133
 cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
@@ -172,6 +172,16 @@ v2_std_node.rs	fold_node_topdown<A, R: Clone>
 v2_std_node.rs	fold_node_content_hash<R: Clone>
 v2_std_text.rs	fold_source<R: Clone>
 TOTAL_bounded_today	17
+
+# section=existing_helper_coverage_by_structural_rule
+note	the brief requires the helper's TWO structural cases be counted: rule (a) bare-generic return (ret_name == param, body not a param ref); rule (b) param used as collection element in a value param. Neither=0 means the helper has no third undocumented path, so a successor must reproduce exactly these two cases
+helper_rule	fns	members
+a_bare_generic_return_only	7	fold_node,fold_node_topdown,fold_node_content_hash,fold_source,fold_grammar_expr,fold_lex_pattern,nat_cata
+b_param_as_collection_element_only	6	list_length,map_get,map_insert,list_nth,list_at_optional,grammar_relation_tokens_node
+both_a_and_b	4	fold_list,fold_list_right,fold_non_empty,reduce_or
+neither	0	every bound emitted today is explained by one of the two rules
+depends_on_rule_a	11	
+depends_on_rule_b	10	
 
 # section=predicted_delta
 claim	value	basis

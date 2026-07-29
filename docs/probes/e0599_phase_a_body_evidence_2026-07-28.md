@@ -270,10 +270,23 @@ wrong place.
 ## 4. Coverage that a Phase C flip would destroy
 
 `v1_generic_params_needing_clone_bound`'s two structural rules currently emit Clone
-bounds on **17 modeled generic fns** in the `04_infer` closure (`fold_list`,
-`fold_node`, `fold_node_topdown`, `fold_source`, `map_get`, `map_insert`, `list_nth`,
-`nat_cata`, …). A further **38** modeled generic fns are unbounded while their
-emitted bodies clone or iterate — the defect population.
+bounds on **17 modeled generic fns** in the `04_infer` closure. Split by which rule
+fires — the brief's requirement that the helper's *two structural cases* be counted,
+because at flip time each must be witness-backed or its coverage regresses:
+
+| helper rule | fns | examples |
+|---|---:|---|
+| **(a)** bare-generic return (`ret_name == param`, body not a param ref) — only | 7 | `fold_node`, `fold_node_topdown`, `fold_node_content_hash`, `fold_source`, `fold_grammar_expr`, `fold_lex_pattern`, `nat_cata` |
+| **(b)** param used as collection element in a value param — only | 6 | `list_length`, `map_get`, `map_insert`, `list_nth`, `list_at_optional`, `grammar_relation_tokens_node` |
+| **both (a) and (b)** | 4 | `fold_list`, `fold_list_right`, `fold_non_empty`, `reduce_or` |
+| **neither** | **0** | — every bound today is explained by one of the two rules |
+
+The zero in the last row matters: the helper has no third, undocumented path, so a
+successor mechanism must reproduce exactly these two cases — 11 fns depend on rule (a)
+and 10 on rule (b) — and nothing else.
+
+A further **38** modeled generic fns are unbounded while their emitted bodies clone or
+iterate — the defect population.
 
 Phase C as specified swaps `clone_param_names` onto the witness list and deletes the
 helper's body classification. Since the witness list has **zero inhabitants**, that
