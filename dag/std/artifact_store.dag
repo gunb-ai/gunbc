@@ -14,6 +14,29 @@ type ArtifactKey {
   toolchain: NonEmptyStr
 }
 
+type ArtifactRealizationInput {
+  identity: NonEmptyStr
+  content_digest: ContentHash
+}
+
+fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> ContentHash {
+  content_hash_tagged(
+    tag: realization_input.identity,
+    payload: realization_input.content_digest
+  )
+}
+
+fn artifact_realization_digest(inputs: List<ArtifactRealizationInput>) -> ContentHash {
+  fold(
+    inputs,
+    init: content_hash_atom(value: "artifact_store.realization"),
+    f: (acc, realization_input) => content_hash_combine(
+      left: acc,
+      right: artifact_realization_input_digest(realization_input: realization_input)
+    )
+  )
+}
+
 fn artifact_key_hash(key: ArtifactKey) -> ContentHash {
   content_hash_tagged(
     tag: "artifact_store.key",
