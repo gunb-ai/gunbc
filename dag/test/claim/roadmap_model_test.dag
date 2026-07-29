@@ -66,6 +66,7 @@ data existing_docs: List<String> = [
 
 fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_P8CGH3E7ERD8M55W9X49" as RoadmapNodeIdentity,
     node: child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
@@ -96,6 +97,7 @@ test fn witness_no_carrier_clean() -> Bool {
 
 test fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
+    identity: "rnfx_WZ1MVE2JJZ2CCAWP2TVM" as RoadmapNodeIdentity,
     node: child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
@@ -109,6 +111,7 @@ test fn witness_node_status_drifts() -> Bool {
 
 test fn witness_node_unsigned_box_clean() -> Bool {
   let rn = RoadmapNode {
+    identity: "rnfx_Q203PA6K5BSTTSCXR7JB" as RoadmapNodeIdentity,
     node: child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],

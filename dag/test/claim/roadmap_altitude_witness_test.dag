@@ -76,8 +76,9 @@ fn doc_html(nodes: List<RoadmapNode>) -> String {
 }
 
 fn done_signed_node() -> RoadmapNode {
-  let base = authored(id: "alt-done", done: true, content: "finished work")
+  let base = authored(identity: "rnfx_WA4EZDD0ZGMCQMTKQA21", id: "alt-done", done: true, content: "finished work")
   RoadmapNode {
+    identity: "rnfx_2K15QJ1CVZY55K15AHJK" as RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -89,7 +90,7 @@ fn done_signed_node() -> RoadmapNode {
 }
 
 fn open_node() -> RoadmapNode {
-  authored(id: "alt-open", done: false, content: "working item")
+  authored(identity: "rnfx_140ZV0QZTY3R9PTENK99", id: "alt-open", done: false, content: "working item")
 }
 
 data fold_by_statuses_note: String = "The fold decision proven over the RENDERED page, not the predicate alone: an all-routine section serializes its details WITHOUT the open attribute (folded — the summary band still carries the counts, so nothing is hidden silently), and adding one working member to the same section flips the SAME serialization to open. The two fixtures differ by exactly that member, so the discrimination is located in the status data — hand-curation has no input to reach. Fixture lesson, kept: a done-but-UNSIGNED node renders review (the sign-off gate), and review is WORKING under the law — the operator's pending gesture holds a section open, which is the attention law agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the signed fixture."
@@ -108,7 +109,7 @@ test fn altitude_working_member_holds_section_open() -> Bool {
 }
 
 test fn altitude_unsigned_done_holds_section_open() -> Bool {
-  let unsigned_done = doc_html(nodes: [authored(id: "alt-unsigned", done: true, content: "done but unsigned")])
+  let unsigned_done = doc_html(nodes: [authored(identity: "rnfx_0A9N7HZG1Q9HRP760WD7", id: "alt-unsigned", done: true, content: "done but unsigned")])
   return string_contains(s: unsigned_done, pattern: "<details class=\"section-fold\" open=\"\">")
     && string_contains(s: unsigned_done, pattern: "1 review")
 }

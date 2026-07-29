@@ -65,6 +65,7 @@ fn nid(s: String) -> RoadmapNodeId { s }
 
 fn ready_node(id: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_RWT4XRCGS4GR90YZXK0Y" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
@@ -315,6 +316,7 @@ test fn witness_find_node_misses() -> Bool {
 
 fn owned_node(id: String, owner: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as RoadmapNodeIdentity,
     node: nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],

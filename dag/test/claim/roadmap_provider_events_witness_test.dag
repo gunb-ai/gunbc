@@ -1,6 +1,6 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool, String }
+import std.types { Bool, String, Int }
 import std.measure { character_count, character_count_value }
 import gunbc.roadmap_provider_events {
   CodexEventsParsed,
@@ -14,6 +14,7 @@ import gunbc.roadmap_provider_events {
   codex_provider_event_line_observation_budget,
   codex_provider_projection_type_budget,
   codex_provider_projection_detail_budget,
+  codex_provider_projection_message_budget,
   codex_provider_event_projection_filter,
   provider_execution_state,
   provider_execution_state_label,
@@ -216,4 +217,35 @@ test fn roadmap_provider_events_keystone_holds() -> Bool {
     && braced_but_invalid_json_cannot_fabricate_terminal_success()
     && oversized_event_refuses_without_echoing_payload()
     && refusal_marks_prior_activity_as_historical()
+}
+
+data agent_report_projection_witness_note: String = "The agent REPORT members of the projection filter, pinned as a string contract because the filter is a jq program the substrate assembles but does not itself interpret (codex_projection_filter_scaffold_note). Nothing downstream of the shell can prove what the projector emitted, so the claims that matter here are: the report bound is the MESSAGE budget and not the detail budget beside it (a copy-paste of the wrong bound would still emit valid jq and still look fine on a short message, failing only on the day a long one arrived); the truncation flag is computed with a length comparison against the ORIGINAL text, so it describes the provider output rather than the slice; and the anchored item.type walk is untouched, since the report is emitted as a member AFTER item.type and the walk depends on that position. The behavioural half — real captured events through real jq — is dag/test/fixture/codex_provider_events, whose third line carries the item.text this filter reads."
+
+fn projection_filter_text() -> String { codex_provider_event_projection_filter as String }
+
+fn message_budget_chars() -> Int { character_count_value(c: codex_provider_projection_message_budget) }
+
+fn detail_budget_chars() -> Int { character_count_value(c: codex_provider_projection_detail_budget) }
+
+test fn agent_report_is_bounded_by_the_message_budget() -> Bool {
+  string_contains(
+    s: projection_filter_text(),
+    pattern: concat(".item.text[0:", concat(to_string(message_budget_chars()), "]")),
+  )
+}
+
+test fn agent_report_budget_is_not_the_detail_budget() -> Bool {
+  let m = message_budget_chars()
+  let d = detail_budget_chars()
+  !(m == d)
+}
+
+test fn agent_report_declares_truncation_from_original_length() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "\"truncated\":((.item.text | length) > ")
+    && string_contains(s: projection_filter_text(), pattern: "agent_message")
+}
+
+test fn agent_report_does_not_disturb_the_item_type_anchor() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type,\"message\":agent_report}")
+    && string_contains(s: projection_filter_text(), pattern: "\"item\":{\"type\":item_type}")
 }
