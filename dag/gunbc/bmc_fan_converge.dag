@@ -141,6 +141,8 @@ import gunbc.tools.bmc_onboard { onboarding_secret_ref }
 import std.bmc { OpenBmc }
 import std.measure {
   ByteSize,
+  Celsius,
+  Percent,
   byte_size,
   byte_size_count,
   celsius,
@@ -333,12 +335,12 @@ type BmcFanTypedMutationResult
       rollback: BmcFanRollbackReceipt,
     }
 
-fn bmc_fan_curve_readings(curve: BmcFanCurve) -> List<Int> {
-  curve.steps |> map(step => celsius_count(step.at_or_above))
+fn bmc_fan_curve_readings(curve: BmcFanCurve) -> List<Celsius> {
+  curve.steps |> map(step => step.at_or_above)
 }
 
-fn bmc_fan_curve_outputs(curve: BmcFanCurve) -> List<Int> {
-  curve.steps |> map(step => percent_count(step.duty))
+fn bmc_fan_curve_outputs(curve: BmcFanCurve) -> List<Percent> {
+  curve.steps |> map(step => step.duty)
 }
 
 fn bmc_fan_policy_projection_request(
@@ -348,11 +350,11 @@ fn bmc_fan_policy_projection_request(
   OpenBmcFanConfigDesired {
     readings: bmc_fan_curve_readings(curve: curve),
     outputs: bmc_fan_curve_outputs(curve: curve),
-    minimum_duty: percent_count(curve.minimum_duty),
-    sensor_failsafe_duty: percent_count(curve.sensor_unavailable_duty),
-    zone_failsafe_duty: percent_count(curve.zone_failsafe_duty),
-    positive_hysteresis: curve.positive_hysteresis_degrees_celsius,
-    negative_hysteresis: curve.negative_hysteresis_degrees_celsius,
+    minimum_duty: curve.minimum_duty,
+    sensor_failsafe_duty: curve.sensor_unavailable_duty,
+    zone_failsafe_duty: curve.zone_failsafe_duty,
+    positive_hysteresis: celsius(curve.positive_hysteresis_degrees_celsius),
+    negative_hysteresis: celsius(curve.negative_hysteresis_degrees_celsius),
     fan_controller_name: projection.aggregate_fan_pid_entry,
     fan_inputs: projection.required_tach_inputs,
   }

@@ -17,6 +17,19 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.uri { Https, Uri }
+import std.measure {
+  Celsius,
+  Percent,
+  RevolutionsPerMinute,
+  Second,
+  celsius,
+  celsius_count,
+  percent,
+  percent_count,
+  rpm,
+  rpm_count,
+  second_count,
+}
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -81,7 +94,7 @@ type OpenBmcOperation
       destination_path: NonEmptyStr,
     }
   | OpenBmcSynchronizeFilesystems
-  | OpenBmcWaitSeconds { seconds: Int }
+  | OpenBmcWaitSeconds { duration: Second }
 
 type OpenBmcFanConfigQuery
   = OpenBmcStepwiseCount
@@ -139,41 +152,41 @@ fn openbmc_collection_from_values<T>(
 }
 
 type OpenBmcStepwiseController {
-  minimum_duty: Int
-  zone_failsafe_duty: Int
-  sensor_failsafe_duty: Int
-  positive_hysteresis: Int
-  negative_hysteresis: Int
-  readings: List<Int>
-  outputs: List<Int>
+  minimum_duty: Percent
+  zone_failsafe_duty: Percent
+  sensor_failsafe_duty: Percent
+  positive_hysteresis: Celsius
+  negative_hysteresis: Celsius
+  readings: List<Celsius>
+  outputs: List<Percent>
 }
 
 type OpenBmcFanConfigDesired {
-  minimum_duty: Int
-  zone_failsafe_duty: Int
-  sensor_failsafe_duty: Int
-  positive_hysteresis: Int
-  negative_hysteresis: Int
-  readings: List<Int>
-  outputs: List<Int>
+  minimum_duty: Percent
+  zone_failsafe_duty: Percent
+  sensor_failsafe_duty: Percent
+  positive_hysteresis: Celsius
+  negative_hysteresis: Celsius
+  readings: List<Celsius>
+  outputs: List<Percent>
   fan_controller_name: NonEmptyStr
   fan_inputs: List<NonEmptyStr>
 }
 
 fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
   serialize_json(v: json_object(members: [
-    json_kv(key: "minimum", value: json_int(n: desired.minimum_duty)),
-    json_kv(key: "zone_failsafe_duty", value: json_int(n: desired.zone_failsafe_duty)),
-    json_kv(key: "sensor_failsafe", value: json_int(n: desired.sensor_failsafe_duty)),
-    json_kv(key: "positive_hysteresis", value: json_int(n: desired.positive_hysteresis)),
-    json_kv(key: "negative_hysteresis", value: json_int(n: desired.negative_hysteresis)),
+    json_kv(key: "minimum", value: json_int(n: percent_count(desired.minimum_duty))),
+    json_kv(key: "zone_failsafe_duty", value: json_int(n: percent_count(desired.zone_failsafe_duty))),
+    json_kv(key: "sensor_failsafe", value: json_int(n: percent_count(desired.sensor_failsafe_duty))),
+    json_kv(key: "positive_hysteresis", value: json_int(n: celsius_count(desired.positive_hysteresis))),
+    json_kv(key: "negative_hysteresis", value: json_int(n: celsius_count(desired.negative_hysteresis))),
     json_kv(
       key: "readings",
-      value: json_array(elements: desired.readings |> map(value => json_int(n: value))),
+      value: json_array(elements: desired.readings |> map(value => json_int(n: celsius_count(value)))),
     ),
     json_kv(
       key: "outputs",
-      value: json_array(elements: desired.outputs |> map(value => json_int(n: value))),
+      value: json_array(elements: desired.outputs |> map(value => json_int(n: percent_count(value)))),
     ),
     json_kv(
       key: "fan_pid_entry",
@@ -329,7 +342,7 @@ fn openbmc_operation_argv(operation: OpenBmcOperation) -> List<String> {
     OpenBmcRenameReplace { source_path, destination_path } =>
       ["mv", "-f", source_path as String, destination_path as String]
     OpenBmcSynchronizeFilesystems => ["sync"]
-    OpenBmcWaitSeconds { seconds } => ["sleep", to_string(seconds)]
+    OpenBmcWaitSeconds { duration } => ["sleep", to_string(second_count(duration))]
   }
 }
 
@@ -553,14 +566,14 @@ type OpenBmcTachHealth
   = OpenBmcTachThresholdUnstated { sensor: NonEmptyStr, reason: String }
   | OpenBmcTachBelowThreshold {
       sensor: NonEmptyStr,
-      reading_rpm: Int,
-      minimum_rpm: Int,
+      reading_rpm: RevolutionsPerMinute,
+      minimum_rpm: RevolutionsPerMinute,
       source: OpenBmcTachThresholdSource,
     }
   | OpenBmcTachAtOrAboveThreshold {
       sensor: NonEmptyStr,
-      reading_rpm: Int,
-      minimum_rpm: Int,
+      reading_rpm: RevolutionsPerMinute,
+      minimum_rpm: RevolutionsPerMinute,
       source: OpenBmcTachThresholdSource,
     }
 
@@ -707,12 +720,12 @@ fn openbmc_sensor_threshold_value(
 
 fn openbmc_tach_health_from_floor(
   sensor: NonEmptyStr,
-  reading: Int,
-  minimum: Int,
+  reading: RevolutionsPerMinute,
+  minimum: RevolutionsPerMinute,
   source: OpenBmcTachThresholdSource,
 ) -> OpenBmcTachHealthResult {
   OpenBmcTachHealthObserved {
-    health: if reading < minimum {
+    health: if rpm_count(reading) < rpm_count(minimum) {
       OpenBmcTachBelowThreshold {
         sensor: sensor,
         reading_rpm: reading,
@@ -750,6 +763,9 @@ fn openbmc_tach_health_for_binding(
       }
     OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
     OpenBmcSensorValueObserved { value: reading } =>
+      if reading < 0 {
+        OpenBmcTachHealthRefused { reason: "tach reading is negative" }
+      } else {
       match openbmc_sensor_threshold_value(
         session: session,
         service: service,
@@ -757,12 +773,16 @@ fn openbmc_tach_health_for_binding(
         threshold: OpenBmcWarningLow,
       ) {
         OpenBmcSensorValueObserved { value: minimum } =>
-          openbmc_tach_health_from_floor(
-            sensor: sensor,
-            reading: reading,
-            minimum: minimum,
-            source: OpenBmcWarningLowThreshold,
-          )
+          if minimum < 0 {
+            OpenBmcTachHealthRefused { reason: "tach warning threshold is negative" }
+          } else {
+            openbmc_tach_health_from_floor(
+              sensor: sensor,
+              reading: rpm(reading),
+              minimum: rpm(minimum),
+              source: OpenBmcWarningLowThreshold,
+            )
+          }
         OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
         OpenBmcSensorValueAbsent =>
           match openbmc_sensor_threshold_value(
@@ -772,12 +792,16 @@ fn openbmc_tach_health_for_binding(
             threshold: OpenBmcCriticalLow,
           ) {
             OpenBmcSensorValueObserved { value: minimum } =>
-              openbmc_tach_health_from_floor(
-                sensor: sensor,
-                reading: reading,
-                minimum: minimum,
-                source: OpenBmcCriticalLowThreshold,
-              )
+              if minimum < 0 {
+                OpenBmcTachHealthRefused { reason: "tach critical threshold is negative" }
+              } else {
+                openbmc_tach_health_from_floor(
+                  sensor: sensor,
+                  reading: rpm(reading),
+                  minimum: rpm(minimum),
+                  source: OpenBmcCriticalLowThreshold,
+                )
+              }
             OpenBmcSensorValueRefused { reason } => OpenBmcTachHealthRefused { reason: reason }
             OpenBmcSensorValueAbsent =>
               OpenBmcTachHealthObserved {
@@ -787,6 +811,7 @@ fn openbmc_tach_health_for_binding(
                 },
               }
           }
+      }
       }
   }
 }
@@ -1203,9 +1228,11 @@ fn openbmc_fan_config_observe_one(
             OpenBmcIntegerListRefused { reason } =>
               OpenBmcFanConfigObservationRefused { reason: reason }
             OpenBmcIntegerListObserved { values: outputs } =>
-              if scalars.length() != 5 || readings.length() != outputs.length() {
+              if scalars.length() != 5 || readings.length() != outputs.length()
+                || scalars |> any(value => value < 0)
+                || outputs |> any(value => value < 0) {
                 OpenBmcFanConfigObservationRefused {
-                  reason: "OpenBMC fan config response has inconsistent structured cardinality",
+                  reason: "OpenBMC fan config response has invalid structured cardinality or negative duty",
                 }
               } else {
                 openbmc_fan_config_finish_observation(
@@ -1213,13 +1240,13 @@ fn openbmc_fan_config_observe_one(
                   config_path: config_path,
                   stepwise: OpenBmcSelectionOne {
                     value: OpenBmcStepwiseController {
-                      minimum_duty: scalars.first(),
-                      zone_failsafe_duty: scalars.skip(n: 1).first(),
-                      sensor_failsafe_duty: scalars.skip(n: 2).first(),
-                      positive_hysteresis: scalars.skip(n: 3).first(),
-                      negative_hysteresis: scalars.skip(n: 4).first(),
-                      readings: readings,
-                      outputs: outputs,
+                      minimum_duty: percent(scalars.first()),
+                      zone_failsafe_duty: percent(scalars.skip(n: 1).first()),
+                      sensor_failsafe_duty: percent(scalars.skip(n: 2).first()),
+                      positive_hysteresis: celsius(scalars.skip(n: 3).first()),
+                      negative_hysteresis: celsius(scalars.skip(n: 4).first()),
+                      readings: readings |> map(value => celsius(value)),
+                      outputs: outputs |> map(value => percent(value)),
                     },
                   },
                 )
