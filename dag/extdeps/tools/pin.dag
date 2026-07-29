@@ -2,13 +2,16 @@ module extdeps.tools.pin
 
 import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.tools { CliTool }
-import extdeps.tools
 
-data extdeps_external_authority_anchor_note: String = "CONSUMES extdeps.tools' anchor rather than re-spelling its URI (review 44329). An earlier version copied the locator literal verbatim, which forked one source into two independent authorities — the exact consume-never-fork violation DESIGN section 3 names, and the more embarrassing for sitting in the module whose whole purpose is removing forks. Note the contrast with sibling tool modules: extdeps.tools.jq anchors at jqlang.org and extdeps.rustup at the rustup book, because each cites its OWN distinct upstream. This module has no separate upstream — a pin is our concept, hosted in the tools hub — so the correct anchor is the hub's, referenced, not duplicated."
-
-data extdeps_external_authority_anchor: ExternalAuthority = extdeps.tools.extdeps_external_authority_anchor
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools"
+  }
+}
 
 data tool_pin_authority_note: String = "P1 of the hermetic tool-provisioning lane (docs/plans/hermetic-tool-provisioning-design.md). A mechanical tool dependency is a PIN — an exact version identity plus the expected content identity of the binary — never a location and never a range. Both fields are REQUIRED, so a digest-less or range-only pin is unwritable rather than validated (DESIGN section 5 construction, not a post-check). This module deliberately mints NO new digest concept: expected_identity is the same std.types.ContentHash that extdeps.realization.emit_on_demand_host's ResolvedBuildContext.toolchain_identity already carries for the OBSERVED side (#7388, which digests logical name + executable bytes + version-probe output). Pin declares expected, #7388 observes actual, and P2's membership_reconcile value_eq is the comparison between them — one identity concept with two ends, not a second authority. No consumer reads this module yet; P1 is model-before-implement."
 
@@ -102,26 +105,8 @@ fn admit_pin_integrity(pin: ToolPin, observed_identity: ContentHash) -> PinAdmis
 
 data pin_value_eq_note: String = "The bundle member P2 hands to gunbc.membership_reconcile as value_eq. Identity-vs-content split per that spine's authority note: key_of is the TOOL NAME (stable identity), so a version or digest change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the tool down and reinstall it. value_eq is therefore presence-plus-content over the pinned version AND the expected identity together: a same-name drift in either field must re-upsert."
 
-fn pin_selection_eq(a: PinSelection, b: PinSelection) -> Bool {
-  match a {
-    ExactPin =>
-      match b {
-        ExactPin => true
-        TrackedChannel { channel: _, refresh_window_days: _ } => false
-      }
-    TrackedChannel { channel: ac, refresh_window_days: aw } =>
-      match b {
-        TrackedChannel { channel: bc, refresh_window_days: bw } =>
-          ((ac as String) == (bc as String)) && (aw == bw)
-        ExactPin => false
-      }
-  }
-}
-
 fn pin_value_eq(a: ToolPin, b: ToolPin) -> Bool {
-  (a.version == b.version)
-    && (a.expected_identity == b.expected_identity)
-    && pin_selection_eq(a: a.selection, b: b.selection)
+  (a.version == b.version) && (a.expected_identity == b.expected_identity)
 }
 
 fn pin_key_of(pin: ToolPin) -> NonEmptyStr {
