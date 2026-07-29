@@ -12,10 +12,13 @@ import extdeps.bmc.types {
   BmcFanControllerShape,
   BmcFanCurve,
   BmcFanCurveStep,
+  BmcFanCurveInvalid,
+  BmcFanCurveValid,
   BmcFanPolicyObservation,
   BmcOverlayConfigObserved,
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
+  validate_bmc_fan_curve,
 }
 import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,
@@ -861,9 +864,8 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
           outputs: controller.outputs,
         ) {
           CurveStepsParseRefused { reason } => FanCurveParseRefused { reason: reason }
-          CurveStepsParsed { steps } =>
-            FanCurveParsed {
-              curve: BmcFanCurve {
+          CurveStepsParsed { steps } => {
+            let raw_curve = BmcFanCurve {
                 control_sensor: "TEMP_SOC",
                 steps: steps,
                 minimum_duty: percent(controller.minimum_duty),
@@ -871,8 +873,16 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
                 zone_failsafe_duty: percent(controller.zone_failsafe_duty),
                 positive_hysteresis_degrees_celsius: controller.positive_hysteresis,
                 negative_hysteresis_degrees_celsius: controller.negative_hysteresis,
-              },
+              }
+            match validate_bmc_fan_curve(curve: raw_curve) {
+              BmcFanCurveInvalid { cause: _ } =>
+                FanCurveParseRefused {
+                  reason: "fan curve failed the shared validated-curve constructor",
+                }
+              BmcFanCurveValid { curve: validated } =>
+                FanCurveParsed { curve: validated.curve }
             }
+          }
         }
       }
   }

@@ -6,6 +6,13 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcWarningLowThreshold,
 }
 import extdeps.crypto.hash { sha256_digest }
+import extdeps.bmc.types {
+  BmcFanCurve,
+  BmcFanCurveInvalid,
+  BmcFanCurveStep,
+  validate_bmc_fan_curve,
+}
+import std.measure { celsius, percent }
 import gunbc.bmc_fan_converge {
   BmcFanAppliedAndVerified,
   BmcFanAppliedWithCleanupDebt,
@@ -28,11 +35,21 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
-  match bmc_fan_build_curve_steps(
-    readings: [90, 95],
-    outputs: [100, 30],
+  match validate_bmc_fan_curve(
+    curve: BmcFanCurve {
+      control_sensor: "TEMP_SOC",
+      steps: [
+        BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+        BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+      ],
+      minimum_duty: percent(30),
+      sensor_unavailable_duty: percent(100),
+      zone_failsafe_duty: percent(100),
+      positive_hysteresis_degrees_celsius: 1,
+      negative_hysteresis_degrees_celsius: 1,
+    },
   ) {
-    CurveStepsParseRefused { reason: _ } => true
+    BmcFanCurveInvalid { cause: _ } => true
     _ => false
   }
 }

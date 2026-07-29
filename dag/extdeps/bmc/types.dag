@@ -1,6 +1,10 @@
 module extdeps.bmc.types
 
-import extdeps.bmc.capability { BmcFirmwareObservation, BmcFirmwareVersion }
+import extdeps.bmc.capability {
+  BmcEvidenceTemporalScope,
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+}
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -13,7 +17,7 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -107,7 +111,7 @@ type BmcUpdateServiceObservation {
   firmware_inventory_member_count: Nat
   bmc_image_member_count: Nat
   backup_bmc_image_observed: Bool
-  observed_at: NonEmptyStr
+  observed_at: EpochMs
 }
 
 type RedfishThermalQueryVerdict
@@ -147,72 +151,88 @@ type BmcFanCurve {
   negative_hysteresis_degrees_celsius: Nat
 }
 
-type BmcFanAcousticPolicy {
-  quiet_through_temperature: Celsius
-  quiet_duty_ceiling: Percent
-  emergency_full_duty_at_or_below: Celsius
+type ValidatedBmcFanCurve {
+  curve: BmcFanCurve
 }
 
-type BmcFanThermalGuard {
-  processor_rollback_temperature: Celsius
-  component_rollback_temperature: Celsius
-  required_component_sensors: List<NonEmptyStr>
-}
+type BmcFanCurveInvalidCause
+  = BmcFanCurveEmpty
+  | BmcFanCurveTemperatureNotStrictlyIncreasing {
+      previous: Celsius,
+      current: Celsius,
+    }
+  | BmcFanCurveDutyDecreased {
+      previous: Percent,
+      current: Percent,
+    }
+  | BmcFanCurveTerminalDutyNotFull { terminal_duty: Percent }
 
-fn bmc_fan_curve_stays_within_quiet_duty(
-  curve: BmcFanCurve,
-  policy: BmcFanAcousticPolicy,
-) -> Bool {
-  fold(
-    curve.steps,
-    init: true,
-    f: (ok, step) =>
-      ok
-        && (
-          celsius_count(step.at_or_above) > celsius_count(policy.quiet_through_temperature)
-            || percent_count(step.duty) <= percent_count(policy.quiet_duty_ceiling)
+type BmcFanCurveValidation
+  = BmcFanCurveValid { curve: ValidatedBmcFanCurve }
+  | BmcFanCurveInvalid { cause: BmcFanCurveInvalidCause }
+
+fn bmc_fan_curve_step_order_refusal(
+  remaining: List<BmcFanCurveStep>,
+  previous: BmcFanCurveStep,
+) -> BmcFanCurveInvalidCause? {
+  match remaining.first() {
+    Absent => none
+    Present { value: current } =>
+      if celsius_count(current.at_or_above) <= celsius_count(previous.at_or_above) {
+        Present {
+          value: BmcFanCurveTemperatureNotStrictlyIncreasing {
+            previous: previous.at_or_above,
+            current: current.at_or_above,
+          },
+        }
+      } else if percent_count(current.duty) < percent_count(previous.duty) {
+        Present {
+          value: BmcFanCurveDutyDecreased {
+            previous: previous.duty,
+            current: current.duty,
+          },
+        }
+      } else {
+        bmc_fan_curve_step_order_refusal(
+          remaining: remaining.skip(n: 1),
+          previous: current,
         )
-  )
-    && percent_count(
-      bmc_fan_curve_duty_at(
-        curve: curve,
-        reading: policy.quiet_through_temperature,
-      )
-    ) <= percent_count(policy.quiet_duty_ceiling)
+      }
+  }
 }
 
-fn bmc_fan_curve_reaches_emergency_full_duty(
-  curve: BmcFanCurve,
-  policy: BmcFanAcousticPolicy,
-) -> Bool {
-  fold(
-    curve.steps,
-    init: false,
-    f: (found, step) =>
-      found
-        || (
-          percent_count(step.duty) == 100
-            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
-        )
-  )
-}
-
-fn bmc_fan_curve_effectively_reaches_full_duty_before(
-  curve: BmcFanCurve,
-  temperature: Celsius,
-) -> Bool {
-  fold(
-    curve.steps,
-    init: false,
-    f: (found, step) =>
-      found
-        || (
-          percent_count(step.duty) == 100
-            && (
-              celsius_count(step.at_or_above) + curve.positive_hysteresis_degrees_celsius
-            ) < celsius_count(temperature)
-        )
-  )
+fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
+  match curve.steps.first() {
+    Absent =>
+      BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+    Present { value: first } =>
+      match bmc_fan_curve_step_order_refusal(
+        remaining: curve.steps.skip(n: 1),
+        previous: first,
+      ) {
+        Present { value: cause } =>
+          BmcFanCurveInvalid { cause: cause }
+        Absent => {
+          let terminal = curve.steps.skip(n: curve.steps.length() - 1).first()
+          match terminal {
+            Absent =>
+              BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+            Present { value: final_step } =>
+              if percent_count(final_step.duty) != 100 {
+                BmcFanCurveInvalid {
+                  cause: BmcFanCurveTerminalDutyNotFull {
+                    terminal_duty: final_step.duty,
+                  },
+                }
+              } else {
+                BmcFanCurveValid {
+                  curve: ValidatedBmcFanCurve { curve: curve },
+                }
+              }
+          }
+        }
+      }
+  }
 }
 
 type BmcFanDutyDecision
@@ -221,7 +241,11 @@ type BmcFanDutyDecision
 
 data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
 
-fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+fn bmc_fan_curve_duty_at(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius,
+) -> Percent {
+  let curve = validated.curve
   fold(
     curve.steps,
     init: curve.minimum_duty,
@@ -234,14 +258,21 @@ fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
   )
 }
 
-fn bmc_fan_duty_decision(curve: BmcFanCurve, reading: Celsius?) -> BmcFanDutyDecision {
+fn bmc_fan_duty_decision(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius?,
+) -> BmcFanDutyDecision {
+  let curve = validated.curve
   match reading {
     Absent =>
       BmcFanDutyFromSensorFailsafe { duty: curve.sensor_unavailable_duty }
     Present { value: temperature } =>
       BmcFanDutyFromCurve {
         reading: temperature,
-        duty: bmc_fan_curve_duty_at(curve: curve, reading: temperature),
+        duty: bmc_fan_curve_duty_at(
+          validated: validated,
+          reading: temperature,
+        ),
       }
   }
 }
@@ -255,13 +286,14 @@ type BmcFanControllerShape
 
 type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
+  evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr
   controller_binary: NonEmptyStr
   controller_shape: BmcFanControllerShape
-  observed_at: NonEmptyStr
+  observed_at: EpochMs
 }
 
 type BmcConfigPersistenceObservation
@@ -272,13 +304,15 @@ type BmcConfigPersistenceObservation
       writable: Bool
       upper_override_present: Bool
       available_bytes: ByteSize
-      observed_at: NonEmptyStr
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
     }
   | BmcConfigPersistenceUnsupported {
       firmware: BmcFirmwareVersion
       config_path: NonEmptyStr
       reason: NonEmptyStr
-      observed_at: NonEmptyStr
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
     }
 
 type BmcTelemetrySnapshot {
@@ -326,7 +360,8 @@ type RedfishManagerResetObservation {
   reset_type: RedfishResetType
   http_status: Nat
   accepted: Bool
-  observed_at: NonEmptyStr
+  evidence_scope: BmcEvidenceTemporalScope
+  observed_at: EpochMs
 }
 
 type RedfishAccountRole =
