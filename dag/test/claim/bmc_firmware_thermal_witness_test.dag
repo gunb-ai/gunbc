@@ -58,6 +58,7 @@ import gunbc.fleet_bmc_state {
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_durability_admission,
   bmc_fan_quiet_curve_changed_digest,
 }
 import std.state_durability { StateDurabilityCapabilityVersion }
@@ -455,15 +456,14 @@ test fn srv4_live_receipt_is_converged_quiet_and_failsafe_clear() -> Bool {
 }
 
 test fn srv4_durability_admission_binds_the_literal_live_subject() -> Bool {
-  let admission = srv4_bmc_fan_durability_admission
-  admission.target == srv4_host.identity
-    && admission.desired_state_digest == srv4_bmc_fan_projection_capability.projected_config_digest
-    && admission.desired_state_digest == srv4_bmc_fan_convergence_receipt.active_config_digest
-    && admission.realization == srv4_bmc_fan_projection_capability.realization
-    && admission.capability_version == srv4_bmc_fan_projection_capability.durability_capability_version
-    && admission.perturbation_generation == srv4_bmc_fan_perturbation_generation
-    && admission.readback_subject.config_path == srv4_bmc_fan_projection_capability.config_path
-    && srv4_bmc_fan_projection_capability.projected_curve == fleet_quiet_temp_soc_fan_curve
+  let capability = srv4_bmc_fan_projection_capability
+  srv4_bmc_fan_durability_admission == bmc_fan_policy_projection_durability_admission(
+    host: srv4_host.identity,
+    capability: capability,
+    perturbation_generation: srv4_bmc_fan_perturbation_generation,
+  )
+    && capability.projected_config_digest == srv4_bmc_fan_convergence_receipt.active_config_digest
+    && capability.projected_curve == fleet_quiet_temp_soc_fan_curve
 }
 
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
