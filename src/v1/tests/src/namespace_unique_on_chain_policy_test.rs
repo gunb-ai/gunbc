@@ -105,9 +105,8 @@ fn unique_on_chain_fixture() -> Vec<Rc<SourceFile>> {
 
 /// Control fixture: whole-pool homonym with ZERO binders on the referencing chain
 /// (`Stray` declared only in two non-ancestor siblings). ImportScoped already refuses
-/// (all-disjoint LCP tie) as `UnresolvedType`; NamespaceOnlyY refuses as the honest
-/// `AmbiguousReference` with the full pool — mirroring the census containment walk
-/// (lexical Unbound + whole-pool-ambiguous => Ambiguous, never a fabricated bind).
+/// (all-disjoint LCP tie) as `UnresolvedType`; NamespaceOnlyY also refuses as
+/// `UnresolvedType` — an empty on-chain population never authorizes a whole-corpus search.
 fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src("fixother.dag", "module fixother\ntype Stray { a: Int }\n"),
@@ -210,19 +209,16 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
         let _guard = ResolutionPolicyGuard::set(true);
         error_diag_messages(zero_on_chain_fixture())
     };
-    let stray: Vec<&String> = strict
-        .iter()
-        .filter(|m| m.contains("ambiguous reference 'Stray'"))
-        .collect();
     assert!(
-        !stray.is_empty(),
-        "NamespaceOnlyY labels the zero-on-chain whole-pool homonym honestly as \
-         Ambiguous (census walk parity), never a mislabeled UnresolvedType; got {strict:?}"
+        strict
+            .iter()
+            .any(|m| m.contains("unresolved type 'Stray'")),
+        "NamespaceOnlyY labels the zero-on-chain whole-pool homonym as UnresolvedType \
+         (empty chain never authorizes whole-corpus search); got {strict:?}"
     );
     assert!(
-        stray[0].contains("fixother.Stray") && stray[0].contains("fixother2.Stray"),
-        "the refusal must carry the full pool candidate list; got {}",
-        stray[0]
+        !strict.iter().any(|m| m.contains("ambiguous")),
+        "zero on-chain candidates must not widen into AmbiguousReference; got {strict:?}"
     );
 }
 

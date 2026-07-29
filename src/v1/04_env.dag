@@ -558,7 +558,7 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
   }
 }
 
-data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1: under NameResolutionPolicy = NamespaceOnlyY (name_resolution_policy_is_namespace_only, thread-local host gate, default ON = NamespaceOnlyY (8 step 4 flip); host bracket false = ImportScoped byte-for-byte), a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; zero or two-plus REFUSES (Absent from lookup + global_bare_is_ambiguous true, surfaced as the typed AmbiguousReference diagnostic at the reference site) — no nearest-wins, no fallback chain: adding a nearer homonym must loudly break a reference, never silently rebind it (the 13 edit-stability invariant). The zero-on-chain whole-pool-homonym case is Ambiguous, not Unresolved, mirroring the census containment walk (cli_run.rs containment_resolve_fn_v1: lexical Unbound + GlobalBareAmbiguousBinding => Ambiguous)."
+data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType — never a whole-corpus search (namespace-unique-on-chain operational plan lines 290-291, 408). Cardinality for chain and func-parent populations routes through std.occurrence_binding_resolve.occurrence_binding_decide."
 
 fn global_bare_chain_candidates(env_module_path: String, candidates: List<GlobalBareCandidate>) -> List<GlobalBareCandidate> {
   let env_segs = module_path_segments(path: env_module_path)
@@ -588,20 +588,11 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
-      let chain_labels = global_bare_chain_ambiguity_labels_from_decide(
+      global_bare_chain_ambiguity_labels_from_decide(
         env_module_path: env.module_path,
         chain: chain,
         name: name,
       )
-      if (chain_labels |> count) > 0 {
-        chain_labels
-      } else {
-        global_bare_chain_ambiguity_labels_from_decide(
-          env_module_path: env.module_path,
-          chain: cands,
-          name: name,
-        )
-      }
     _ => []
   }
 }
@@ -790,7 +781,8 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       if name_resolution_policy_is_namespace_only() {
-        global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) == none
+        let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
+        (chain |> count) >= 2
       } else {
         global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
       }
