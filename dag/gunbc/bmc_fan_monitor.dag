@@ -142,7 +142,7 @@ fn bmc_fan_tach_health_for_sensor(
   }
 }
 
-fn bmc_fan_first_unhealthy_tach(
+fn bmc_fan_monitor_first_unhealthy_tach(
   health: List<OpenBmcTachHealth>,
   required: List<NonEmptyStr>,
 ) -> String? {
@@ -189,7 +189,7 @@ fn bmc_fan_first_unhealthy_tach(
           source: _,
         },
       } =>
-        bmc_fan_first_unhealthy_tach(
+        bmc_fan_monitor_first_unhealthy_tach(
           health: health,
           required: required.skip(n: 1),
         )

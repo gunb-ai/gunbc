@@ -220,45 +220,6 @@ fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
   }
 }
 
-type BmcFanDutyDecision
-  = BmcFanDutyFromCurve { reading: Celsius, duty: Percent }
-  | BmcFanDutyFromSensorFailsafe { duty: Percent }
-
-fn bmc_fan_curve_duty_at(
-  validated: ValidatedBmcFanCurve,
-  reading: Celsius,
-) -> Percent {
-  let curve = validated.curve
-  fold(
-    curve.steps,
-    init: curve.minimum_duty,
-    f: (selected, step) =>
-      if celsius_count(reading) >= celsius_count(step.at_or_above) {
-        step.duty
-      } else {
-        selected
-      }
-  )
-}
-
-fn bmc_fan_duty_decision(
-  validated: ValidatedBmcFanCurve,
-  reading: Celsius?,
-) -> BmcFanDutyDecision {
-  let curve = validated.curve
-  match reading {
-    Absent => BmcFanDutyFromSensorFailsafe { duty: curve.sensor_unavailable_duty }
-    Present { value: temperature } =>
-      BmcFanDutyFromCurve {
-        reading: temperature,
-        duty: bmc_fan_curve_duty_at(
-          validated: validated,
-          reading: temperature,
-        ),
-      }
-  }
-}
-
 type BmcFanAcousticPolicy {
   quiet_through_temperature: Celsius
   quiet_duty_ceiling: Percent
@@ -333,7 +294,11 @@ type BmcFanDutyDecision
 
 data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
 
-fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+fn bmc_fan_curve_duty_at(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius,
+) -> Percent {
+  let curve = validated.curve
   fold(
     curve.steps,
     init: curve.minimum_duty,
@@ -346,14 +311,21 @@ fn bmc_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
   )
 }
 
-fn bmc_fan_duty_decision(curve: BmcFanCurve, reading: Celsius?) -> BmcFanDutyDecision {
+fn bmc_fan_duty_decision(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius?,
+) -> BmcFanDutyDecision {
+  let curve = validated.curve
   match reading {
     Absent =>
       BmcFanDutyFromSensorFailsafe { duty: curve.sensor_unavailable_duty }
     Present { value: temperature } =>
       BmcFanDutyFromCurve {
         reading: temperature,
-        duty: bmc_fan_curve_duty_at(curve: curve, reading: temperature),
+        duty: bmc_fan_curve_duty_at(
+          validated: validated,
+          reading: temperature,
+        ),
       }
   }
 }
