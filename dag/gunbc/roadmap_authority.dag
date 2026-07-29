@@ -1063,9 +1063,9 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/hermetic-tool-provisioning-design.md",
       t: fields(
         headline: "Model pinned tool identity and its refresh policy",
-        boundary: "A mechanical tool declares an exact version and content digest; selection is either an authored pin or a recorded resolution of a moving reference, and execution never resolves a moving reference.",
-        displaced_cost: "Removes per-host binary variance from every mechanical path and ends range-only or absent pins.",
-        first_slice: "Extend CliTool with an exact digest-bearing pin and a selection policy, and carry a digest on SourceGitHubRelease.",
+        boundary: "A carrier exists in which a mechanical tool declares an exact version and content digest, selection is either an authored pin or a tracked channel, and execution never resolves a moving reference; existing tool rows are untouched by this row.",
+        displaced_cost: "Supplies the vocabulary the resolver collapse needs; per-host binary variance is removed when consumers migrate onto it, not by this row.",
+        first_slice: "Land a ToolPin carrier alongside CliTool with an exact version identity, an expected content digest, and a selection policy; CliTool and SourceGitHubRelease are unchanged until their real upstream digests are sourced.",
         red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match.",
         out_of_scope: "No consumer migrates in this row; the model lands before any resolver reads it.",
         handback: "Return the pin carrier, the refresh-policy arms, and the refusing controls."

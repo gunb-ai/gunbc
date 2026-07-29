@@ -245,18 +245,34 @@ and ~1.5 GB is cheap). No content-addressed cross-worktree root in this lane.
 Each phase names its own RED control. Model-before-implement: P1 lands with no
 consumers.
 
-- **P1 — the pin model.** Extend `CliTool` into a pinned identity: exact version
+- **P1 — the pin carrier, alongside `CliTool` (model-only, no consumers).**
+  Land `ToolPin` in a new `extdeps.tools.pin` module: exact version
   (`extdeps.version.VersionIdentity`, the exact brand — never
   `VersionConstraint`, which is a range) + expected `ContentHash` reusing
-  #7388's identity, `SourceGitHubRelease` gains the digest, selection policy
-  (`ExactPin | TrackedChannel`) and a refresh window. Both fields are required
-  and non-optional, so a range-only or digest-less pin is **unwritable** rather
-  than validated — the RED lives at the ingest boundary instead: converting a
-  legacy `CliTool` whose `min_version` is a `VersionConstraint` refuses,
-  because a constraint is not an identity. A `TrackedChannel` pin refuses
-  admission outright, since its currency cannot be established without a
-  resolution date and day arithmetic (§4 above); the window is carried but not
-  yet load-bearing.
+  #7388's identity, selection policy (`ExactPin | TrackedChannel`) and a
+  refresh window. Both fields are required and non-optional, so a range-only or
+  digest-less **`ToolPin`** is unwritable. The RED is at the ingest boundary:
+  converting a legacy `CliTool` whose `min_version` is a `VersionConstraint`
+  refuses, because a constraint is not an identity. A `TrackedChannel` pin
+  refuses admission outright, since its currency cannot be established without
+  a resolution date and day arithmetic (§4 above); the window is carried but
+  not yet load-bearing.
+
+  **Scope limit, stated precisely.** P1 does *not* modify `CliTool` and does
+  *not* add a digest to `SourceGitHubRelease`. Both remain exactly as they are:
+  `min_version: VersionConstraint?` still admits a range or nothing, and
+  `SourceGitHubRelease` is still digestless. `ToolPin` therefore constrains
+  only values built as `ToolPin` — it makes **nothing in the existing corpus
+  unwritable yet**. This is the add-replacement half of add-replacement →
+  migrate → delete, and calling it more than that would be the
+  specification-without-execution trap §5 names.
+
+  The migration is **P2/P4 work, gated on sourcing real digests.** A required
+  `digest` on `SourceGitHubRelease` is cheap structurally — `websocat.dag:32`
+  is its only construction site — but it must carry the *actual* upstream
+  digest. Inventing one to make the field typecheck would be the fabricated
+  plausible output §5 forbids, so the field lands when the digests are sourced
+  from the upstream release authority, not before.
 - **P2 — one resolver.** Instantiate `membership_reconcile` for tools with the
   pin as desired and #7388's observed identity as observed, and collapse the
   sites onto it. Delete `resolve_host_tool_program` and the bash ladder — the
