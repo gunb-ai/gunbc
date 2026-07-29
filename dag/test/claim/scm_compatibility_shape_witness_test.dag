@@ -18,6 +18,30 @@ import gunbc.native_scm_interaction_contract {
   native_scm_primary_label,
   native_scm_attach_projection,
 }
+import test.claim.scm_compatibility_git_witness {
+  git_fixture_binding,
+}
+import test.claim.scm_compatibility_mercurial_witness {
+  mercurial_fixture_binding,
+}
+import test.claim.scm_compatibility_pijul_witness {
+  pijul_fixture_binding,
+}
+import gunbc.scm_compatibility.git {
+  GitCompatibilityBound,
+  GitCompatibilityBindingRefused,
+  git_compatibility_projection_receipt,
+}
+import gunbc.scm_compatibility.mercurial {
+  MercurialCompatibilityBound,
+  MercurialCompatibilityBindingRefused,
+  mercurial_compatibility_projection_receipt,
+}
+import gunbc.scm_compatibility.pijul {
+  PijulCompatibilityBound,
+  PijulCompatibilityBindingRefused,
+  pijul_compatibility_projection_receipt,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -140,4 +164,51 @@ test fn witness_projection_attachment_is_idempotent_per_realization_target() -> 
           && row.generation_evidence == "synthetic-generation-2"
       )
     && count(second_target.projections.realizations) == 2
+}
+
+test fn witness_one_c0_fixture_projects_through_three_native_realizations() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt: git } =>
+      match mercurial_fixture_binding() {
+        MercurialCompatibilityBindingRefused { cause: _ } => false
+        MercurialCompatibilityBound { receipt: mercurial } =>
+          match pijul_fixture_binding() {
+            PijulCompatibilityBindingRefused { cause: _ } => false
+            PijulCompatibilityBound { receipt: pijul } => {
+              let with_git = native_scm_attach_projection(
+                receipt: original,
+                projection: git_compatibility_projection_receipt(
+                  receipt: git,
+                ),
+              )
+              let with_mercurial = native_scm_attach_projection(
+                receipt: with_git,
+                projection: mercurial_compatibility_projection_receipt(
+                  receipt: mercurial,
+                ),
+              )
+              let with_all = native_scm_attach_projection(
+                receipt: with_mercurial,
+                projection: pijul_compatibility_projection_receipt(
+                  receipt: pijul,
+                ),
+              )
+              with_all.identity == original.identity
+                && with_all.transition == original.transition
+                && with_all.primary == original.primary
+                && count(with_all.projections.realizations) == 3
+                && with_all.projections.realizations
+                  |> any(row => row.realization == "git-r0")
+                && with_all.projections.realizations
+                  |> any(row => row.realization == "mercurial-r0")
+                && with_all.projections.realizations
+                  |> any(row => row.realization == "pijul-r0")
+            }
+          }
+      }
+  }
 }

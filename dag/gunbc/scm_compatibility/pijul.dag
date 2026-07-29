@@ -9,6 +9,7 @@ import extdeps.pijul {
   PijulDecodedRepository,
   PijulProjectionRefusal,
   PijulReadBackObservation,
+  PijulReadBackMismatchAxis,
   PijulConditionalAdvanceCapability,
   PijulDecoded,
   PijulDecodeRefused,
@@ -46,7 +47,7 @@ type PijulCompatibilityReceipt {
 type PijulCompatibilityRefusal
   = PijulCompatibilityDecodeRejected { cause: PijulProjectionRefusal }
   | PijulCompatibilityTargetMissing { target: PijulChannelName }
-  | PijulCompatibilityReadBackMismatch
+  | PijulCompatibilityReadBackMismatch { axis: PijulReadBackMismatchAxis }
   | PijulCompatibilityReadBackInvalid { cause: PijulProjectionRefusal }
 
 type PijulCompatibilityBindingOutcome
@@ -103,9 +104,9 @@ fn pijul_compatibility_bind(
                   advance: pijul_r0_conditional_advance(),
                 },
               }
-            PijulReadBackMismatch { axis: _ } =>
+            PijulReadBackMismatch { axis } =>
               PijulCompatibilityBindingRefused {
-                cause: PijulCompatibilityReadBackMismatch,
+                cause: PijulCompatibilityReadBackMismatch { axis: axis },
               }
             PijulReadBackInvalid { cause } =>
               PijulCompatibilityBindingRefused {
