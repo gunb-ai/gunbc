@@ -159,6 +159,14 @@ fn bmc_fan_reboot_preservation_outcome(
   }
 }
 
+fn bmc_fan_reboot_digest_mismatch(
+  receipt: BmcFanRebootPersistenceReceipt,
+  capability: BmcFanPolicyProjectionCapability,
+) -> Bool {
+  receipt.before.active_config_digest != capability.projected_config_digest
+    || receipt.post_reboot_active_config_digest != capability.projected_config_digest
+}
+
 fn bmc_fan_reboot_durability_evidence(
   receipt: BmcFanRebootPersistenceReceipt,
   capability: BmcFanPolicyProjectionCapability,
@@ -171,37 +179,38 @@ fn bmc_fan_reboot_durability_evidence(
     BmcFanDurabilityEvidenceConstructionRefused {
       cause: DurabilityReceiptCapabilityVersionMismatch,
     }
-  } else if receipt.before.active_config_digest != capability.projected_config_digest
-    || receipt.post_reboot_active_config_digest != capability.projected_config_digest {
+  } else if bmc_fan_reboot_digest_mismatch(receipt: receipt, capability: capability) {
     BmcFanDurabilityEvidenceConstructionRefused {
       cause: DurabilityReceiptDigestMismatch,
     }
-  } else if receipt.reset.reset_type != ResetGracefulRestart {
-    BmcFanDurabilityEvidenceConstructionRefused {
-      cause: DurabilityReceiptBoundaryMismatch,
-    }
   } else {
-    let admission = bmc_fan_policy_projection_durability_admission(
-      host: receipt.host,
-      capability: capability,
-      perturbation_generation: receipt.perturbation_generation,
-    )
-    BmcFanDurabilityEvidenceBuilt {
-      evidence: StateDurabilityEvidence {
-        admission: admission,
-        perturbation: StatePerturbationReceipt {
-          receipt_id: receipt.perturbation_receipt_id,
-          target: receipt.host,
-          boundary: fleet_bmc_fan_graceful_restart_boundary,
-          generation: receipt.perturbation_generation,
-          started_at: receipt.reset.observed_at,
-          completed_at: receipt.observed_at,
-        },
-        outcome: bmc_fan_reboot_preservation_outcome(
-          receipt: receipt,
+    if receipt.reset.reset_type != ResetGracefulRestart {
+      BmcFanDurabilityEvidenceConstructionRefused {
+        cause: DurabilityReceiptBoundaryMismatch,
+      }
+    } else {
+      let admission = bmc_fan_policy_projection_durability_admission(
+        host: receipt.host,
+        capability: capability,
+        perturbation_generation: receipt.perturbation_generation,
+      )
+      BmcFanDurabilityEvidenceBuilt {
+        evidence: StateDurabilityEvidence {
           admission: admission,
-        ),
-      },
+          perturbation: StatePerturbationReceipt {
+            receipt_id: receipt.perturbation_receipt_id,
+            target: receipt.host,
+            boundary: fleet_bmc_fan_graceful_restart_boundary,
+            generation: receipt.perturbation_generation,
+            started_at: receipt.reset.observed_at,
+            completed_at: receipt.observed_at,
+          },
+          outcome: bmc_fan_reboot_preservation_outcome(
+            receipt: receipt,
+            admission: admission,
+          ),
+        },
+      }
     }
   }
 }
