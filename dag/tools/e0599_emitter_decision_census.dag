@@ -1,6 +1,6 @@
 module tools.e0599_emitter_decision_census
 
-import std.types { Bool, Int, String, list_length }
+import std.types { Bool, Int, String, list_length, int_to_string }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import v2.std.optional { Optional, Present, Absent }
@@ -11,6 +11,7 @@ import tools.e0599_probe_census {
   e0599_message_pattern_rows_blob,
   e0599_canonical_seven_module_log_labels_blob,
   e0599_mechanistic_root_family_labels_blob,
+  e0599_canonical_seven_module_count,
 }
 
 data e0599_measured_producer: String = "V1SeedEmitter"
@@ -407,7 +408,8 @@ fn e0599_probe_preamble_blob() -> String {
   concat("\n#roster\n", concat(e0599_canonical_seven_module_log_labels_blob(),
   concat("\n#scope\n", concat(e0599_mechanistic_root_family_labels_blob(),
   concat("\n#causes\n", concat(e0599_rollup_cause_labels_blob(),
-  concat("\n#producer\n", e0599_producer_blob())))))))))
+  concat("\n#roster_count\n", concat(int_to_string(e0599_canonical_seven_module_count()),
+  concat("\n#producer\n", e0599_producer_blob())))))))))))
 }
 
 fn e0599_write_probe_preamble_blob(out_path: String) -> ProcessExit {

@@ -110,7 +110,7 @@ def load_preamble():
         if cur is None:
             raise SystemExit("REFUSED: preamble content before any section header: {!r}".format(s))
         sections[cur].append(s)
-    for need in ("patterns", "roster", "scope", "causes", "producer"):
+    for need in ("patterns", "roster", "roster_count", "scope", "causes", "producer"):
         if not sections.get(need):
             raise SystemExit(
                 "REFUSED: preamble authority returned no {!r} section. An absent roster "
@@ -132,8 +132,13 @@ def load_message_patterns():
 def load_module_roster():
     """The canonical-seven roster, from its single authority — never restated here."""
     roster = list(PREAMBLE["roster"])
-    if len(roster) != 7:
-        raise SystemExit(f"REFUSED: roster authority returned {len(roster)} modules, expected 7")
+    # The expected size is NOT restated here either — it loads from
+    # e0599_canonical_seven_module_count, so the roster and its cardinality cannot drift
+    # apart in this file (the same single-authority rule the producer tag now follows).
+    expected = int(PREAMBLE["roster_count"][0])
+    if len(roster) != expected:
+        raise SystemExit(f"REFUSED: roster authority returned {len(roster)} modules, "
+                         f"but its own declared count is {expected}")
     return roster
 
 
