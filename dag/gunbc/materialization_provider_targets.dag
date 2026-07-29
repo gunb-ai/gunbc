@@ -48,9 +48,9 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
   ProviderContractTarget {
     cache: resolved_graph_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
-    consumer_seam: target_decl(module_path: "std.materialization_provider", decl_name: "serve_resolved_graph_v1_disk_probe"),
-    reason: "the FIRST NAMED CONSUMER TARGET: cross-process disk hits route through serve_resolved_graph_v1_disk_probe and provider_serve; v1 artifacts still refuse as ProviderRefusedIncomplete until FORMAT_VERSION persists the compile-clean diagnostic union",
-    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, ResolveClosureRequest's derived required outputs are satisfiable on disk hits, provider_serve returns ProviderHit, and gunbc.materialization_provider_consumer_scaffold retires the v1 interpreter bridge (cli_run_hollowing_plan area 2.6 / witness-realization lane)"
+    consumer_seam: target_decl(module_path: "v1_compiler.cli_run.materialization_provider_consumer", decl_name: "serve_resolved_graph_v1_disk_probe"),
+    reason: "the FIRST NAMED CONSUMER TARGET: the Rust bridge now refuses faithfully instead of fabricating a read-back; the disk-hit seam stays red until the cache format carries per-output digests and byte sizes",
+    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists per-output digests and byte sizes, the Rust bridge can probe faithfully, provider_serve returns ProviderHit, and gunbc.materialization_provider_consumer_scaffold retires the v1 interpreter bridge"
   },
   ProviderContractTarget {
     cache: compile_stage_memo_id,

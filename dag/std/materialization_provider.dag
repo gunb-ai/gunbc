@@ -436,42 +436,6 @@ fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
 }
 
-fn serve_resolved_graph_v1_disk_probe(
-  closure_digest: ContentHash,
-  compiler_digest: ContentHash,
-  content_digest: ContentHash,
-  payload_bytes: ByteSize
-) -> ProviderLookup {
-  let req = ResolveClosureRequest {
-    closure_digest: closure_digest,
-    compiler: compiler_identity_input(digest: compiler_digest)
-  }
-  let key = request_key(req: req)
-  let artifact = LegacyIncompleteArtifact {
-    kind: resolved_graph_artifact_kind,
-    request_key: key,
-    carried_outputs: [
-      CarriedOutput {
-        id: output_resolved_graph,
-        digest: content_hash_atom(value: "resolved_graph_disk_probe"),
-        bytes: byte_size(count: 1)
-      },
-      CarriedOutput {
-        id: output_source_indices,
-        digest: content_hash_atom(value: "source_indices_disk_probe"),
-        bytes: byte_size(count: 1)
-      }
-    ]
-  }
-  provider_serve(
-    req: req,
-    probe: ProbeFound {
-      artifact: artifact,
-      observed_digest: artifact_content_digest(artifact: artifact)
-    }
-  )
-}
-
 data materialization_provider_reader_predicate_contract: Disposition = Terminal {
   reason: "One canonical fold per outcome coproduct is the total-match authority (codex rework, review 44158): lookup_fold and admission_fold are the ONLY matches over ProviderLookup / ProviderAdmission, and completeness_missing is the single projection over ArtifactCompleteness. Every predicate and projection below is a DERIVATION of its fold and contains no match of its own, so a new outcome variant is a type error at exactly one site per coproduct, never a sweep over a hand-rolled selector family. Handler returns are a bare type variable by design — the seed types fn-typed parameters returning bare vars or concrete types, not generic-applied enums (realization_reconcile substrate-limit receipt). There is deliberately NO admission_store(admission, fallback) projection: it answered every refusal arm with a caller-supplied store, which is the absorbing fallback section 5 forbids — it erases the stopped line and lets processing continue against a plausible substitute. A consumer that needs the post-admission store folds the ProviderAdmission and handles refusal explicitly; the store exists on exactly one arm, so the fold makes that unavoidable. Discriminating corpus: dag/test/claim/materialization_provider_witness_test.dag."
 }

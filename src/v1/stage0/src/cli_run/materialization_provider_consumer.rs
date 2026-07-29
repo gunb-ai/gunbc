@@ -58,14 +58,6 @@ fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
     })
 }
 
-fn byte_size_value_in_ctx(ctx: &InterpContext, count: u64) -> Result<Value, String> {
-    let count_i64 = i64::try_from(count)
-        .map_err(|_| "payload byte count exceeds i64 range for ByteSize carrier".to_string())?;
-    let args = [(Some("count".to_string()), Value::Int(count_i64))];
-    v1_interpreter::run_in_context_with_args(ctx, "byte_size", &args, false)
-        .map_err(|e| format!("byte_size: {e}"))
-}
-
 fn call_lookup_bool(ctx: &InterpContext, fn_name: &str, lookup: &Value) -> Result<bool, String> {
     let args = [(Some("l".to_string()), lookup.clone())];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
@@ -163,7 +155,13 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
-    let _ = (ctx, closure_digest, compiler_digest, content_digest, payload_byte_count);
+    let _ = (
+        ctx,
+        closure_digest,
+        compiler_digest,
+        content_digest,
+        payload_byte_count,
+    );
     Ok(ResolvedGraphProviderOutcome::RefusedFaithfulProbeUnavailable {
         gap: "faithful resolved-graph disk probe unavailable: resolved_graph_cache only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant".to_string(),
     })
