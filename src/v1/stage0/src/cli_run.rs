@@ -2907,15 +2907,17 @@ fn selection_control_module_index(
 /// selection Rust in favour of the `.dag` authority. This fn and
 /// `selection_control_skip_label_for_ci` are new members of exactly that Rust-parallel set —
 /// a path/import-closure selection decision living in the seed rather than in
-/// `.dag` — so they inherit Step 5's terminal condition. Stated honestly: Step 5's table
-/// currently enumerates `NodeFrontierSeeds` / `entry_touches_frontier_seeds` and does NOT yet
-/// list these two, so adding them to that roster is the concrete next action this receipt
-/// owes (per DESIGN §7, a seed-retained surface is a declared, countable row — not a silent
-/// escape hatch). Recorded here rather than in a parallel-ledger doc (§6: the mark on the
-/// carrier is the authority).
+/// `.dag` — so they inherit Step 5's terminal condition. They are ENUMERATED on that roster as
+/// an explicit deferral (the "Step 5 roster — CI skip-decision surfaces" row, added by this
+/// change), which is what makes this a declared, countable seed-retained surface rather than a
+/// silent escape hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run
+/// BEFORE the floor resolves anything — that is its entire purpose — so a `.dag` consumer would
+/// pay the ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with
+/// the persistent content-keyed node store, not on its own schedule.
 ///
-/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* — the
-/// six label tests below are its discriminating consumers, in both directions.
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
+/// execution — 9 label arms below (7 structural + 2 refusal), discriminating in both
+/// directions, plus 3 bin unit tests.
 pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
     let roots = selection_control_source_roots(workspace);
     let index = selection_control_module_index(&roots)?;
