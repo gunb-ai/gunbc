@@ -112,6 +112,76 @@ the same *shape* (38.8s pre-`resolved`, 64.9s post-compile pre-eval) but no samp
 runner, so the CI attribution to these two specific passes is **by analogy, not by measurement on
 that host.** Confirming it needs a `perf`/gdb sample on a fleet host.
 
+### 4.1 The passes are not the defect — the throughput is (2026-07-29, second pass)
+
+Naming *which* passes run is not the same as explaining why they are slow, and the number that
+matters is throughput. Measured on the same box:
+
+| operation | bytes | wall | throughput |
+|---|---:|---:|---:|
+| read the whole `dag/` corpus (`cat` all 1,428 files) | 8,505,296 | **0.044s** cold, 0.023s warm | **193 MB/s** |
+| tokenize + parse real corpus content (isolated source root, count swept 25→400 files) | 1.5–6.2 MB | 1.8–12.5s | **~0.5 MB/s** |
+| tokenize + parse dense generated code (`fn` decls only, no comments) | 0.22–0.44 MB | 1.34–2.68s | **~0.16 MB/s** |
+
+**Reading the corpus is 0.044 seconds. Parsing it is ~400–1200× slower than reading it.** A
+competent tokenizer runs at 50–500 MB/s; this one runs at 0.16 MB/s on dense code.
+
+Three hypotheses tested and **refuted**:
+
+1. **Quadratic in file size — NO.** Holding total content constant (~4,800 `fn` decls, ~270 KB)
+   and varying granularity: 8 files × 600 fns = 2.23s; 24 × 200 = 1.86s; 80 × 60 = 1.57s;
+   240 × 20 = 1.45s; 800 × 6 = 1.61s. A 30× file-size increase costs ~1.5×, not ~900×. The cost
+   is **linear in total bytes**, at a bad constant.
+2. **Linear in file *count* — NO.** It tracks bytes, not files.
+3. **The non-ASCII `is_ascii()` fallback — NOT DOMINANT.** Identical generated corpora differing
+   only in one marker character inside a string literal (`-` vs `—`): 40×100 fns, ASCII 1.339s vs
+   non-ASCII 1.264s; 20×400 fns, ASCII 2.681s vs non-ASCII 2.857s. The penalty is **0–7%**, not
+   orders of magnitude. (35% of real `.dag` files contain non-ASCII, so the path is well
+   exercised — it is just not where the time goes.)
+
+**What it actually is: allocation.** 30 innermost-frame samples (`gdb -ex "bt 1"`) during a
+whole-corpus parse: **15 of 18 resolved samples (~83%) were in the allocator or `memcpy`** —
+`_int_malloc`, `__GI___libc_malloc`, `_int_free`, `__GI___libc_free`, `tcache_get_n`,
+`malloc_consolidate`, `checked_request2size`, `__memcpy_avx512_unaligned_erms`, and
+`alloc::sync::Arc<T,A>::make_mut`. The tokenizer is **allocation-bound, not algorithm-bound.**
+
+The mechanism is visible in the seed runtime's interface, not its logic:
+
+```rust
+pub fn char_at(s: &str, pos: i64) -> String { ... String::from(bytes[pos] as char) ... }
+```
+
+`char_at` **returns a heap-allocated `String` per character**, and `string_length` /
+`char_at` are called per character from `tokenize_loop`/`scan_next_token`. Add `im::Vector`
+persistent collections with `Arc::make_mut` copy-on-write (sampled in `build_newline_index`,
+`scan_string_body`) and every scanned character costs allocations rather than a pointer bump.
+
+This is the **model↔realization fork** DESIGN already names, at the string layer: the modeled
+value semantics (immutable `String` values, persistent vectors, character-ordinal indexing)
+were transliterated into the Rust seed instead of *realized* as native byte-slice cursor
+operations. The grounded operation for a tokenizer is "advance a byte cursor over a UTF-8 slice",
+which is O(1), allocation-free, and **encoding-correct for ASCII and non-ASCII alike** — so the
+right fix deletes the `is_ascii()` branch rather than optimizing either of its arms.
+
+### 4.2 The `is_ascii()` fallback is a fallback pattern, and should be deleted on those grounds
+
+Independent of its ~7% cost, the shape is the one DESIGN §5 forbids, in its performance register:
+
+```rust
+if s.is_ascii() { /* O(1) byte index */ } else { /* O(n) chars().nth(pos) */ }
+```
+
+It **degrades silently on content**. Nothing is typed, nothing is counted, nothing is located —
+so the frequency of the slow arm is zero by construction, it never ranks for fixing (§6 prices by
+displaced cost, and a masked cost displaces nothing), and the fact that 35% of the corpus takes
+the slow arm was not knowable before this measurement. It is also a **second representation** of
+"index into a string": two code paths that must agree, where the byte-cursor model needs one.
+There are **11 `is_ascii()` branch sites in the seed**, 8 of them in `v1_rt.rs`
+(lines 39, 253, 267, 280, 561, 584, 607, 631) — a repeated pattern, not a one-off.
+
+Priced honestly: deleting the fallback buys ~7%; deleting *what it is a fallback for* — the
+`String`-per-character interface — is the ~400× lever. They are the same edit.
+
 ---
 
 ## 5. The same disease at the per-entry grain (floor discovery)
@@ -136,18 +206,23 @@ same pre-evaluation tax, paid per entry instead of per process, and it is what t
 
 ## 6. Ranked levers (priced against §2/§3, not the stale audit)
 
+Ordering correction (2026-07-29, after §4.1): **caching the passes was the wrong first lever.**
+A cache would preserve a 0.16 MB/s parser and hide it behind a hit rate — the §5 shape where a
+mechanism stays green by not doing the work rather than by doing it correctly. DESIGN §6's
+standing **bare-minimum-cost** rule is explicit that a proven cost-shape defect is *always* fixed
+regardless of realized n. §4.1 is that proof. Fix the constant first; then cache what remains,
+against a baseline worth caching.
+
 | # | lever | displaces | risk | notes |
 |---|---|---|---|---|
-| 1 | **Cross-process module-path index cache** | ~40% of every invocation | low | pure function of file contents ⇒ content-addressable. DESIGN §5 cache-impurity rule applies: key on declared-input content; byte-identical cached-vs-cold is the purity oracle. |
-| 2 | **Stop full-tokenizing to read a module header** | large share of pass 1 | low | terminate the parse once the module binding is bound. Same parser, earlier stop — not a second representation, no new authority. |
-| 3 | **Fuse merge-admission stamp + gate** | ~108s/run | low | two cold processes where one suffices; after 1–2 both approach seconds. |
-| 4 | **Bare-reference census (`tree_bare_census_for_root`)** | ~55% of every invocation, and the §5 per-entry walk | high | the `#6848` class. Dissolves via the namespace-only resolution lane (`build_module_path_index` becomes a projection of `v2.compiler.source_authority`). Biggest prize, deepest change. |
-| 5 | **`regen` → `ci` `needs:` edge** | ~8.5 min of PR critical path | low | independent of the above; `ci` consumes only `build`'s artifact. Counter-argument: it is a deliberate fail-fast before the 34-min floor. |
+| 1 | **Realize string primitives as byte-cursor ops** — delete `char_at -> String`, `string_length`'s rescan, and the 11 `is_ascii()` branches | targets the ~400–1200× gap; ~83% of samples are allocator | medium | the model↔realization fork at the string layer. Oracle: byte-identical token streams on the corpus, plus a non-ASCII discriminating case. Encoding-correct by construction, so the fallback disappears rather than being optimized. |
+| 2 | **Fuse merge-admission stamp + gate** | ~108s/run today, ~2×83s of process tax | low | independent of lever 1 and compounding with it; after lever 1 both approach seconds. |
+| 3 | **Cross-process module-path index cache** | ~40% of what remains *after* lever 1 | low | pure function of file contents ⇒ content-addressable. DESIGN §5 cache-impurity rule: key on declared-input content; byte-identical cached-vs-cold is the purity oracle. **Sequence after lever 1**, or it cements the current constant. |
+| 4 | **Bare-reference census (`tree_bare_census_for_root`)** | ~55% of every invocation, and the §5 per-entry walk | high | the `#6848` class. Dissolves via the namespace-only resolution lane (`build_module_path_index` becomes a projection of `v2.compiler.source_authority`). Still the deepest structural fix; lever 1 shrinks its constant without removing the pass. |
+| 5 | **`regen` → `ci` `needs:` edge** | ~8.5 min of PR critical path | low | independent of the above; `ci` consumes only `build`'s artifact. Counter-argument: it is a deliberate fail-fast before the 34-min floor, and unsequencing it starts two memory-heavy cold processes concurrently on a fleet already at width=1. |
 
-Levers 1+2 are mechanical and share one oracle. Lever 4 is the real fix and already has a
-designed lane. Note the interaction: **every lever above multiplies with invocation count**, so
-reducing process count (lever 3, and the heal job's separate regen) is only worth doing *after*
-1–2, or it optimizes the wrong term.
+Note the interaction: **every lever multiplies with invocation count**, so reducing process count
+is only worth doing once the per-process constant is fixed, or it optimizes the wrong term.
 
 ---
 
@@ -226,3 +301,25 @@ for i in $(seq 1 24); do gdb -p $PID -batch -ex "bt 40" 2>/dev/null \
 - Related: [floor-shared-compute-memoization.md](floor-shared-compute-memoization.md),
   [namespace-resolution-design.md](namespace-resolution-design.md),
   [v1-run-stability-throughline.md](v1-run-stability-throughline.md).
+
+---
+
+## 10. Corrections to this note's own first pass
+
+Recorded rather than silently edited, because two of them were load-bearing:
+
+1. **"Not corpus-linear; shape-dependent" (§3) — superseded.** That read came from comparing two
+   whole-corpus runs whose variance (~10s) swamped the effect. The controlled sweep in §4.1 shows
+   cost is **linear in total bytes** at ~0.16–0.5 MB/s. The original observation (2,677 files
+   measuring faster than 1,428) stands as *data* and is explained by content density, not file
+   count.
+2. **A quadratic-tokenizer hypothesis — refuted by execution.** `char_at`'s per-call
+   `s.is_ascii()` and `chars().nth(pos)` look O(n²) in file size. The constant-total sweep says
+   otherwise: 30× file size costs 1.5×. Stated because the code still *reads* quadratic and the
+   next reader will form the same hypothesis.
+3. **Two probe configurations in an earlier draft were measuring a parse abort, not a parse.**
+   `//` comment lines placed before the first item declaration panic
+   `for_each_parsed_module_binding`, so those runs returned in ~80 ms having parsed nothing, and
+   briefly appeared to show "comments are cheap" and "non-ASCII is free". Every timing in §4.1
+   is guarded by an explicit parsed/PARSE-ABORT check. Any future probe here must assert the
+   parse succeeded before its wall clock means anything.
