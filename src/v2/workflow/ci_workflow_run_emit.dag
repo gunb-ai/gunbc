@@ -26,9 +26,11 @@ data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_T
 
 data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
 
-data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. The rustc-version segment derived at prelude time remains a coarse operator-readable partition; correctness no longer depends on it because extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity (tools + constructed environment + Cargo configuration) beneath each input realization before .native_ready is consulted. Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
+data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. The rustc-version segment derived after setup-rust-toolchain remains a coarse operator-readable partition; correctness no longer depends on it because extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity (tools + constructed environment + Cargo configuration) beneath each input realization before .native_ready is consulted. Fail-closed: rustc -V must succeed — a fabricated toolchain-unresolved slug would poison every native-cache write into one shared root (DESIGN 5). Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
 
-data ci_native_cache_root_toolchain_segment_command: String = "GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); if [ -z \"$GUNBC_TOOLCHAIN_SEG\" ]; then GUNBC_TOOLCHAIN_SEG=toolchain-unresolved; fi"
+data ci_native_cache_root_toolchain_segment_assign_command: String = "GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-')"
+
+data ci_native_cache_root_toolchain_segment_missing_command: String = "if [ -z \"$GUNBC_TOOLCHAIN_SEG\" ]; then echo \"::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment\"; exit 1; fi"
 
 data ci_native_cache_root_mkdir_command: String = "mkdir -p \"$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG\""
 
@@ -89,9 +91,6 @@ fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
       ci_workflow_do(command: ci_isolate_echo_rustup_home_command),
       ci_workflow_do(command: ci_isolate_echo_makeflags_command),
       ci_workflow_do(command: ci_isolate_cargo_build_jobs_command(build_jobs_count: build_jobs_count)),
-      ci_workflow_do(command: ci_native_cache_root_toolchain_segment_command),
-      ci_workflow_do(command: ci_native_cache_root_mkdir_command),
-      ci_workflow_do(command: ci_native_cache_root_echo_command),
       ci_workflow_do(command: ci_sccache_provider_shell_injection())
     ],
     on_failure: FailFast
@@ -100,6 +99,22 @@ fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
 
 fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
   ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
+}
+
+fn ci_native_cache_root_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_native_cache_root_toolchain_segment_assign_command),
+      ci_workflow_do(command: ci_native_cache_root_toolchain_segment_missing_command),
+      ci_workflow_do(command: ci_native_cache_root_mkdir_command),
+      ci_workflow_do(command: ci_native_cache_root_echo_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_native_cache_root_script() -> String {
+  ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
 }
 
 fn ci_pin_rustup_default_intent() -> Pipeline {
