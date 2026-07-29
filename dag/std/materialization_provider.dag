@@ -127,23 +127,47 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
   )
 }
 
+data materialization_provider_payload_binding_note: String = "Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape carried an artifact's completeness as a caller-authored List<ArtifactOutputId> sitting BESIDE a caller-authored content_digest, with no relation between them — so an artifact could list every required output, including the compile-clean diagnostic union, while its bytes contained none of them, and request_artifact_binding would answer BindingOk. That is the specification-without-execution trap section 5 names: the completeness rule was asserted through labels rather than represented. Note that a validation pass cannot close it either — this contract never sees bytes, so a check 'do the bytes contain this output' is not expressible here, and a check that is not expressible is not a wall. The construction fix is to make the label ACCOUNTABLE TO THE DIGEST THE CONTRACT ALREADY VERIFIES: a CarriedOutput is (id, digest) — the part's own content hash — and the artifact's content digest is no longer a field at all but a DERIVATION, carried_outputs_digest, folded over those parts. So the roster is not beside the digest, it IS the digest's preimage. Adding a phantom output label to satisfy completeness necessarily changes the derived digest; dropping a real part changes it too; and the door already compares that derived digest against observed_digest, the read-back the realization computes from the stored bytes. A forged roster therefore lands on BindingWrongContent rather than BindingOk — the forgery is no longer self-consistent, which is exactly what it was before. What this DOES still rest on is the ordinary content-address boundary: observed_digest must be computed from the stored parts by this same derivation, which is the transport's obligation and the same trust boundary any CAS has (it is also why the digest is TAGGED and order-fixed — see the key-order note). It does not rest on the caller being honest, which is the property review 44278 found missing."
+
+type CarriedOutput {
+  id: ArtifactOutputId
+  digest: ContentHash
+}
+
+fn carried_output_digest(o: CarriedOutput) -> ContentHash {
+  content_hash_combine(left: content_hash_atom(value: o.id), right: o.digest)
+}
+
+fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
+  content_hash_tagged(
+    tag: "materialization_provider.carried_outputs",
+    payload: outputs |> fold(
+      init: content_hash_atom(value: "materialization_provider.no_outputs"),
+      f: (acc, o) => content_hash_combine(left: acc, right: carried_output_digest(o: o))
+    )
+  )
+}
+
 type MaterializedArtifact {
   kind: ArtifactKindId
   request_key: ContentHash
-  content_digest: ContentHash
-  carried_outputs: List<ArtifactOutputId>
+  carried_outputs: List<CarriedOutput>
   artifact_bytes: ByteSize
+}
+
+fn artifact_content_digest(artifact: MaterializedArtifact) -> ContentHash {
+  carried_outputs_digest(outputs: artifact.carried_outputs)
 }
 
 type ArtifactCompleteness
   = ArtifactComplete
   | ArtifactMissingOutputs { missing: List<ArtifactOutputId> }
 
-fn output_list_contains(xs: List<ArtifactOutputId>, wanted: ArtifactOutputId) -> Bool {
-  xs |> fold(init: false, f: (acc, x) => acc || (x == wanted))
+fn output_list_contains(xs: List<CarriedOutput>, wanted: ArtifactOutputId) -> Bool {
+  xs |> fold(init: false, f: (acc, x) => acc || (x.id == wanted))
 }
 
-fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<ArtifactOutputId>) -> ArtifactCompleteness {
+fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<CarriedOutput>) -> ArtifactCompleteness {
   let missing = required |> filter(o => !output_list_contains(xs: carried, wanted: o))
   if missing.count() == 0 {
     ArtifactComplete
