@@ -2,8 +2,12 @@ module gunbc.native_scm_interaction_contract
 
 import std.types { Bool, Int, List, String }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  compatibility_projection_upsert,
+}
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, and workspace/target/git projections stay optional. No engine, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -19,10 +23,16 @@ type NativeScmLifecycle
   | NativeScmLifecycleReady
   | NativeScmLifecycleRefused { reason: String }
 
+type NativeScmOperationalState
+  = NativeScmOperationalReady
+  | NativeScmProjectionRepairPending
+  | NativeScmInternalWorkPending
+  | NativeScmOperationalRefused { reason: String }
+
 type NativeScmProjection {
   workspace: Optional<String>
   target: Optional<String>
-  git: Optional<String>
+  realizations: List<CompatibilityProjectionReceipt>
 }
 
 type NativeScmContinuation {
@@ -60,11 +70,26 @@ type NativeScmReceipt {
   review: NativeScmLifecycle
   access: NativeScmLifecycle
   check: NativeScmLifecycle
-  operational: NativeScmLifecycle
+  operational: NativeScmOperationalState
   projections: NativeScmProjection
   primary: NativeScmPrimaryOutcome
   receipt_details: Optional<String>
 }
+
+type NativeScmProjectionRepairOutcome
+  = NativeScmProjectionRepaired {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairNotPending {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairBlockedByInternalWork {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairAlreadyRefused {
+      receipt: NativeScmReceipt
+      reason: String
+    }
 
 type NativeScmSubmissionLedger {
   applied: List<String>
@@ -79,8 +104,8 @@ type NativeScmScenario
   | IncompatibleGoalsNeedAuthorizedDecider
   | EvidenceGatheredInternally
   | ToolModelProofDeficitRoutesInternally
-  | GitExportFailureRepairsWithoutReinterpretation
-  | ConventionalGitImportWithoutRebase
+  | ProjectionFailureRepairsWithoutReinterpretation
+  | ConventionalScmImportWithoutManualRewrite
   | VisibilityAuthorizedDetails
 
 fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIdentity {
@@ -117,13 +142,13 @@ fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIden
       name: "tool-model-proof-deficit-routes-internally",
       attempt_key: "attempt-tool-model-proof-deficit",
     }
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
-      name: "git-export-failure-repairs-without-reinterpretation",
-      attempt_key: "attempt-git-export-failure",
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
+      name: "projection-failure-repairs-without-reinterpretation",
+      attempt_key: "attempt-projection-failure",
     }
-    ConventionalGitImportWithoutRebase => NativeScmProposalIdentity {
-      name: "conventional-git-import-without-rebase",
-      attempt_key: "attempt-conventional-git-import",
+    ConventionalScmImportWithoutManualRewrite => NativeScmProposalIdentity {
+      name: "conventional-scm-import-without-manual-rewrite",
+      attempt_key: "attempt-conventional-scm-import",
     }
     VisibilityAuthorizedDetails => NativeScmProposalIdentity {
       name: "visibility-authorized-details",
@@ -146,17 +171,17 @@ fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTran
     DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
     RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
     EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
-    ConventionalGitImportWithoutRebase => NativeScmCommitTransitionCommitted
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
+    ConventionalScmImportWithoutManualRewrite => NativeScmCommitTransitionCommitted
     VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
   }
 }
 
-fn native_scm_projection(workspace: String, target: String, git: String) -> NativeScmProjection {
+fn native_scm_projection(workspace: String, target: String) -> NativeScmProjection {
   NativeScmProjection {
     workspace: optional_present(value: workspace),
     target: optional_present(value: target),
-    git: optional_present(value: git),
+    realizations: [],
   }
 }
 
@@ -204,11 +229,11 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
     ToolModelProofDeficitRoutesInternally => InProgress {
       progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
     }
-    GitExportFailureRepairsWithoutReinterpretation => Landed {
-      result_preview: "accepted result remains landed while the Git export projection is repaired separately",
+    ProjectionFailureRepairsWithoutReinterpretation => Landed {
+      result_preview: "accepted result remains landed while its compatibility projection is repaired separately",
     }
-    ConventionalGitImportWithoutRebase => Landed {
-      result_preview: "a conventional Git branch import lands as an ordinary import with no manual rewrite",
+    ConventionalScmImportWithoutManualRewrite => Landed {
+      result_preview: "a conventional SCM import lands as an ordinary import with no manual synchronization rewrite",
     }
     VisibilityAuthorizedDetails => Landed {
       result_preview: "details stay optional and can be projected only when visibility authorizes them",
@@ -242,11 +267,11 @@ fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<Strin
     ToolModelProofDeficitRoutesInternally => Present {
       value: "details: internal progress stays internal until the machine finishes its own continuation",
     }
-    GitExportFailureRepairsWithoutReinterpretation => Present {
-      value: "details: Git export repair updates only the projection, not the semantic result",
+    ProjectionFailureRepairsWithoutReinterpretation => Present {
+      value: "details: compatibility repair updates only the projection, not the semantic result",
     }
-    ConventionalGitImportWithoutRebase => Present {
-      value: "details: import is accepted as a normal branch import with the ordinary projection",
+    ConventionalScmImportWithoutManualRewrite => Present {
+      value: "details: import is accepted through its native realization without a manual synchronization rewrite",
     }
     VisibilityAuthorizedDetails => Present {
       value: "details: this text is only available when visibility authorizes it",
@@ -264,8 +289,8 @@ fn native_scm_review_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
@@ -280,8 +305,8 @@ fn native_scm_access_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
@@ -296,25 +321,25 @@ fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
     TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
     IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
     EvidenceGatheredInternally => NativeScmLifecycleReady
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
     VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
-fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmOperationalState {
   match scenario {
-    GitExportFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
-    ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    TwoIndependentChangesLand => NativeScmLifecycleReady
-    StaleTargetAutoResync => NativeScmLifecycleReady
-    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
-    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
-    EvidenceGatheredInternally => NativeScmLifecycleReady
-    ConventionalGitImportWithoutRebase => NativeScmLifecycleReady
-    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjectionRepairPending
+    ToolModelProofDeficitRoutesInternally => NativeScmInternalWorkPending
+    TwoIndependentChangesLand => NativeScmOperationalReady
+    StaleTargetAutoResync => NativeScmOperationalReady
+    DuplicateSubmissionAppliesOnce => NativeScmOperationalReady
+    RenameReferenceUniqueMeaning => NativeScmOperationalReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmOperationalReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmOperationalReady
+    EvidenceGatheredInternally => NativeScmOperationalReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmOperationalReady
+    VisibilityAuthorizedDetails => NativeScmOperationalReady
   }
 }
 
@@ -328,61 +353,51 @@ fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
     check: native_scm_check_for(scenario: scenario),
     operational: native_scm_operational_for(scenario: scenario),
     projections: match scenario {
-      GitExportFailureRepairsWithoutReinterpretation => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-export-repair"),
+      ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjection {
+        workspace: optional_present(value: "/workspaces/native-scm-projection-repair"),
         target: optional_present(value: "main"),
-        git: optional_absent(),
+        realizations: [],
       }
-      ConventionalGitImportWithoutRebase => native_scm_projection(
-        workspace: "/workspaces/native-scm-import",
+      ConventionalScmImportWithoutManualRewrite => native_scm_projection(
+        workspace: "/workspaces/native-scm-conventional-import",
         target: "main",
-        git: "origin/session/native-scm-import",
       )
-      TwoIndependentChangesLand => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      StaleTargetAutoResync => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      DuplicateSubmissionAppliesOnce => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      RenameReferenceUniqueMeaning => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      TwoLegitimateMeaningsNeedChoice => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      IncompatibleGoalsNeedAuthorizedDecider => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      EvidenceGatheredInternally => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      ToolModelProofDeficitRoutesInternally => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
-      VisibilityAuthorizedDetails => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-contract"),
-        target: optional_present(value: "main"),
-        git: optional_present(value: "origin/main"),
-      }
+      TwoIndependentChangesLand => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      StaleTargetAutoResync => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      DuplicateSubmissionAppliesOnce => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      RenameReferenceUniqueMeaning => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      TwoLegitimateMeaningsNeedChoice => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      IncompatibleGoalsNeedAuthorizedDecider => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      EvidenceGatheredInternally => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      ToolModelProofDeficitRoutesInternally => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
+      VisibilityAuthorizedDetails => native_scm_projection(
+        workspace: "/workspaces/native-scm-contract",
+        target: "main",
+      )
     },
     primary: native_scm_primary_for(scenario: scenario, identity: identity),
     receipt_details: native_scm_receipt_details_for(scenario: scenario),
@@ -458,21 +473,67 @@ fn native_scm_resolve_choice(
   }
 }
 
-fn native_scm_repair_git_projection(receipt: NativeScmReceipt, git_ref: String) -> NativeScmReceipt {
+fn native_scm_attach_projection(
+  receipt: NativeScmReceipt,
+  projection: CompatibilityProjectionReceipt,
+) -> NativeScmReceipt {
   NativeScmReceipt {
     identity: receipt.identity,
     transition: receipt.transition,
     review: receipt.review,
     access: receipt.access,
     check: receipt.check,
-    operational: NativeScmLifecycleReady,
+    operational: receipt.operational,
     projections: NativeScmProjection {
       workspace: receipt.projections.workspace,
       target: receipt.projections.target,
-      git: optional_present(value: git_ref),
+      realizations: compatibility_projection_upsert(
+        existing: receipt.projections.realizations,
+        projection: projection,
+      ),
     },
     primary: receipt.primary,
     receipt_details: receipt.receipt_details,
+  }
+}
+
+fn native_scm_record_repaired_projection(
+  receipt: NativeScmReceipt,
+  projection: CompatibilityProjectionReceipt,
+) -> NativeScmProjectionRepairOutcome {
+  match receipt.operational {
+    NativeScmProjectionRepairPending => {
+      let attached = native_scm_attach_projection(
+        receipt: receipt,
+        projection: projection,
+      )
+      NativeScmProjectionRepaired {
+        receipt: NativeScmReceipt {
+          identity: attached.identity,
+          transition: attached.transition,
+          review: attached.review,
+          access: attached.access,
+          check: attached.check,
+          operational: NativeScmOperationalReady,
+          projections: attached.projections,
+          primary: attached.primary,
+          receipt_details: attached.receipt_details,
+        },
+      }
+    }
+    NativeScmInternalWorkPending =>
+      NativeScmProjectionRepairBlockedByInternalWork {
+        receipt: receipt,
+      }
+    NativeScmOperationalReady =>
+      NativeScmProjectionRepairNotPending {
+        receipt: receipt,
+      }
+    NativeScmOperationalRefused { reason } =>
+      NativeScmProjectionRepairAlreadyRefused {
+        receipt: receipt,
+        reason: reason,
+      }
   }
 }
 
