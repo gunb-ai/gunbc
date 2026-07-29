@@ -193,7 +193,7 @@ test fn witness_baseline_oracle_row_quarantine_does_not_authorize_reds() -> Bool
   }
 }
 
-data witness_absent_from_known_red_without_green_does_not_authorize_red_note: String = "Review 44435 RED: deleting a known-red quarantine row without landing seed_emitter_behavioral_wet_green_entries must NOT mint BuildGreen authorization — absence is BuildRefused, not green."
+data witness_absent_from_known_red_without_green_does_not_authorize_red_note: String = "Review 44441 RED: static oracle derivation never mints BuildGreen — a row absent from known-red still receives BuildRefused (not_executed), so authorization cannot be fabricated by roster edits."
 
 test fn witness_absent_from_known_red_without_green_does_not_authorize_reds() -> Bool {
   let synthetic = producer_emission_oracle_row_00_compile_flip_wave_red
