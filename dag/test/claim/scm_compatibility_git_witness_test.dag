@@ -6,8 +6,8 @@ import extdeps.git.object_store {
   GitR0ReadBackObservation,
 }
 import test.claim.git_upstream_model_witness {
-  fixture_repository,
-  fixture_read_back_observation,
+  git_compatibility_fixture_repository,
+  git_compatibility_fixture_read_back_observation,
   sha1_root_tree,
   sha1_parent_commit,
   sha1_next_commit,
@@ -43,8 +43,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn git_fixture_binding() -> GitCompatibilityBindingOutcome {
   git_compatibility_bind(
-    repository: fixture_repository(),
-    read_back: fixture_read_back_observation(),
+    repository: git_compatibility_fixture_repository(),
+    read_back: git_compatibility_fixture_read_back_observation(),
     target: "refs/heads/main",
     expected_generation: sha1_parent_commit,
     proposed_generation: sha1_next_commit,
@@ -155,7 +155,7 @@ test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
 }
 
 test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
-  let observed = fixture_read_back_observation()
+  let observed = git_compatibility_fixture_read_back_observation()
   let wrong = GitR0ReadBackObservation {
     git_version: observed.git_version,
     object_format: observed.object_format,
@@ -168,7 +168,7 @@ test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
     unavailable: observed.unavailable,
   }
   match git_compatibility_bind(
-    repository: fixture_repository(),
+    repository: git_compatibility_fixture_repository(),
     read_back: wrong,
     target: "refs/heads/main",
     expected_generation: sha1_parent_commit,
@@ -181,8 +181,8 @@ test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
 
 test fn witness_git_generation_derives_tree_from_commit() -> Bool {
   match git_compatibility_bind(
-    repository: fixture_repository(),
-    read_back: fixture_read_back_observation(),
+    repository: git_compatibility_fixture_repository(),
+    read_back: git_compatibility_fixture_read_back_observation(),
     target: "refs/heads/main",
     expected_generation: sha1_root_tree,
     proposed_generation: sha1_next_commit,

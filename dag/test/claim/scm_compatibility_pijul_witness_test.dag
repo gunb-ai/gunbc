@@ -8,7 +8,7 @@ import extdeps.pijul {
   pijul_upstream_version,
 }
 import test.claim.pijul_upstream_model_witness {
-  fixture_projection,
+  pijul_compatibility_fixture_projection,
 }
 import gunbc.scm_compatibility.pijul {
   PijulCompatibilityBindingOutcome,
@@ -41,13 +41,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn pijul_fixture_observation() -> PijulReadBackObservation {
   PijulReadBackObservation {
     pijul_version: pijul_upstream_version,
-    projection: fixture_projection(),
+    projection: pijul_compatibility_fixture_projection(),
   }
 }
 
 fn pijul_fixture_binding() -> PijulCompatibilityBindingOutcome {
   pijul_compatibility_bind(
-    projection: fixture_projection(),
+    projection: pijul_compatibility_fixture_projection(),
     target: "main",
     read_back: pijul_fixture_observation(),
   )
@@ -142,7 +142,7 @@ test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
 
 test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
   match pijul_compatibility_bind(
-    projection: fixture_projection(),
+    projection: pijul_compatibility_fixture_projection(),
     target: "main",
     read_back: PijulReadBackObservation {
       pijul_version: pijul_upstream_version,
