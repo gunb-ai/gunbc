@@ -1197,7 +1197,11 @@ fn inferred_or_error(result: InferredNode?, fallback_message: String, fallback_s
 fn resolve_pattern_subject(scope: InferScope, scrutinee_subject: PatternSubject) -> PatternSubject {
   match scrutinee_subject {
     PatternResolved { node: scrutinee_type } =>
-      pattern_subject_from_node(n: resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type))
+      let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: scrutinee_type)
+      let restored = if scrutinee_type.return_cardinality == CardOptional && resolved.return_cardinality != CardOptional {
+        with_optional_cardinality(n: resolved)
+      } else { resolved }
+      pattern_subject_from_node(n: restored)
     PatternDynamic { span: dynamic_span } =>
       PatternDynamic { span: dynamic_span }
     PatternLookupBlocked =>

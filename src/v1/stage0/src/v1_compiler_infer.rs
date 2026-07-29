@@ -2262,10 +2262,21 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => pattern_subject_from_node(resolve_scrutinee_type_node(
-            scope.type_env.clone(),
-            scrutinee_type.clone(),
-        )),
+        } => {
+            let resolved = resolve_scrutinee_type_node(
+                scope.type_env.clone(),
+                scrutinee_type.clone(),
+            );
+            let restored = if scrutinee_type.return_cardinality.clone()
+                == Cardinality::CardOptional
+                && resolved.return_cardinality.clone() != Cardinality::CardOptional
+            {
+                with_optional_cardinality(resolved.clone())
+            } else {
+                resolved.clone()
+            };
+            pattern_subject_from_node(restored)
+        }
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
         } => Rc::new(PatternSubject::PatternDynamic {
