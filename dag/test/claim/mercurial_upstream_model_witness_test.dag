@@ -17,6 +17,8 @@ import extdeps.mercurial {
   MercurialFileRevision,
   MercurialManifestWire,
   MercurialManifestWireEntry,
+  MercurialBranchRemainsOpen,
+  MercurialClosesBranch,
   MercurialChangeset,
   MercurialLocalRevisionEntry,
   MercurialHead,
@@ -190,6 +192,7 @@ fn fixture_changesets() -> List<MercurialChangeset> {
       manifest: hg_manifest,
       parents: MercurialNoParents,
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-0",
       description: "root",
@@ -199,6 +202,7 @@ fn fixture_changesets() -> List<MercurialChangeset> {
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-1",
       description: "left",
@@ -208,6 +212,7 @@ fn fixture_changesets() -> List<MercurialChangeset> {
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-2",
       description: "right",
@@ -1034,6 +1039,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_missing_c },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
@@ -1059,6 +1065,7 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
     manifest: hg_manifest,
     parents: MercurialTwoParents { first: hg_c0, second: hg_c0 },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
@@ -1085,6 +1092,7 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c2 },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
@@ -1110,6 +1118,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c2 },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-1",
     description: "left",
@@ -1119,6 +1128,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c1 },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
@@ -1131,6 +1141,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
         manifest: hg_manifest,
         parents: MercurialNoParents,
         branch: "default",
+        branch_closure: MercurialBranchRemainsOpen,
         user: "author@example.invalid",
         authored_at: "provenance-only-0",
         description: "root",
@@ -1245,6 +1256,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       manifest: hg_manifest,
       parents: MercurialNoParents,
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-0",
       description: "default root",
@@ -1254,6 +1266,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
       branch: "feature",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-1",
       description: "feature bridge",
@@ -1263,6 +1276,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c1 },
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-2",
       description: "default descendant",
@@ -1283,6 +1297,60 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
   )
   match mercurial_decode_projection(projection: complete) {
     MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+fn fixture_projection_with_closed_right_head() -> MercurialRepositoryProjection {
+  let closed = fixture_changesets() |> map(changeset =>
+    if changeset.node == hg_c2 {
+      MercurialChangeset {
+        node: changeset.node,
+        manifest: changeset.manifest,
+        parents: changeset.parents,
+        branch: changeset.branch,
+        branch_closure: MercurialClosesBranch,
+        user: changeset.user,
+        authored_at: changeset.authored_at,
+        description: changeset.description,
+      }
+    } else {
+      changeset
+    }
+  )
+  projection_with_changesets(
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
+    changesets: closed,
+  )
+}
+
+test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bool {
+  let complete = projection_with_heads(
+    projection: fixture_projection_with_closed_right_head(),
+    heads: [MercurialHead { changeset: hg_c1 }],
+  )
+  match mercurial_decode_projection(projection: complete) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Bool {
+  let invalid = projection_with_heads(
+    projection: fixture_projection_with_closed_right_head(),
+    heads: [
+      MercurialHead { changeset: hg_c1 },
+      MercurialHead { changeset: hg_c2 },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialHeadSetMismatch { observed, derived },
+    } =>
+      observed == [hg_c1, hg_c2]
+        && derived == [hg_c1]
     _ => false
   }
 }
@@ -1319,6 +1387,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
     manifest: hg_manifest,
     parents: MercurialTwoParents { first: hg_c0, second: hg_c1 },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "merge",

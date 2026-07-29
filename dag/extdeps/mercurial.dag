@@ -54,6 +54,13 @@ data mercurial_subrepositories_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
+data mercurial_closed_branch_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.mercurial-scm.org/release/mercurial-7.2.3.tar.gz#mercurial-7.2.3/mercurial/commands.py:hg-commit-close-branch"
+  }
+}
+
 type MercurialUpstreamVersion {
   major: NonNegativeInt
   minor: NonNegativeInt
@@ -344,11 +351,31 @@ type MercurialFileRevision {
   content: Bytes
 }
 
+type MercurialBranchClosure
+  = MercurialBranchRemainsOpen
+  | MercurialClosesBranch
+
+type MercurialBranchClosureFold<R> {
+  open: R
+  closed: R
+}
+
+fn mercurial_branch_closure_fold<R>(
+  closure: MercurialBranchClosure,
+  fold: MercurialBranchClosureFold<R>,
+) -> R {
+  match closure {
+    MercurialBranchRemainsOpen => fold.open
+    MercurialClosesBranch => fold.closed
+  }
+}
+
 type MercurialChangeset {
   node: MercurialNodeId
   manifest: MercurialNodeId
   parents: MercurialRevisionParents
   branch: MercurialNamedBranchName
+  branch_closure: MercurialBranchClosure
   user: NonEmptyStr
   authored_at: Timestamp
   description: NonEmptyStr
@@ -1199,11 +1226,17 @@ fn mercurial_derived_open_branch_heads(
         graph: graph,
         start: mercurial_node_id_text(node: candidate.node),
       )
-      !any(changesets, descendant =>
-        descendant.branch == candidate.branch
-          && descendants |> any(member =>
-            member == mercurial_node_id_text(node: descendant.node)
-          )
+      mercurial_branch_closure_fold(
+        closure: candidate.branch_closure,
+        fold: MercurialBranchClosureFold {
+          open: !any(changesets, descendant =>
+            descendant.branch == candidate.branch
+              && descendants |> any(member =>
+                member == mercurial_node_id_text(node: descendant.node)
+              )
+          ),
+          closed: false,
+        },
       )
     })
     |> map(changeset => changeset.node)
