@@ -376,6 +376,17 @@ fn bmc_fan_policy_classification(
         },
       }
     Present { value: observed } =>
+      if !bmc_fan_policy_firmware_supported(
+        desired_firmware: intent.firmware,
+        observed_firmware: observed.firmware,
+      ) {
+        UpsertClassification {
+          verdict: Conflict,
+          decision: Refuse {
+            reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+          },
+        }
+      } else {
       match projection {
         Absent =>
           UpsertClassification {
@@ -455,6 +466,7 @@ fn bmc_fan_policy_classification(
                 }
               }
           }
+      }
       }
   }
 }

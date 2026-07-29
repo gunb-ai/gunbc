@@ -703,7 +703,7 @@ test fn major_three_track_does_not_authorize_a_322_projection_on_306() -> Bool {
     durability_generation: srv4_bmc_fan_perturbation_generation,
     durability_evidence: [],
   )
-  classified.verdict == Conflict
+  classified.verdict == UnknownRefused
     && match classified.decision {
       Refuse { reason: _ } => true
       Noop => false
