@@ -13383,10 +13383,11 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
+        ("seed_emitter_behavioral_wet_known_red_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -13474,6 +13475,23 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
         for key in witness_admission_entry_function_keys_from_source(
             WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
             &wet,
+        ) {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+        let known_red = std::fs::read_to_string(
+            workspace_root().join(SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL),
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "witness admission: failed to read {}: {e}",
+                SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL
+            )
+        });
+        for key in witness_admission_entry_function_keys_from_source(
+            SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL,
+            &known_red,
         ) {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
@@ -29491,6 +29509,26 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
+        let synthetic = "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
+             data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
+               seed_emitter_behavioral_wet_known_red_entry(\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 f: \"self_host_body_producer_behavioral_receipt_holds\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                    .to_string()
+            ),
+            "re-homed known-red authority rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
