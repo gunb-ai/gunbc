@@ -48,7 +48,7 @@ pub fn generated_stage0_filenames() -> Rc<Vec<String>> {
 pub fn generated_stage0_dirs() -> Rc<Vec<String>> {
     thread_local! {
         static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["cli_run".to_string(), "module_path_index".to_string()])
+            Rc::new(vec!["module_path_index".to_string(), "cli_run".to_string()])
         };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
