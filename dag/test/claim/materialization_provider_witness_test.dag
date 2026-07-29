@@ -15,6 +15,7 @@ import std.computation_identity {
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
+  ArtifactOutputId, CarriedOutput, artifact_content_digest,
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   request_key, request_kind, request_required_outputs,
@@ -80,12 +81,27 @@ fn witness_closure_request() -> ArtifactRequest {
   }
 }
 
+fn witness_part(id: ArtifactOutputId, payload: String) -> CarriedOutput {
+  CarriedOutput { id: id, digest: content_hash_atom(value: payload) }
+}
+
+fn witness_graph_part() -> CarriedOutput {
+  witness_part(id: output_resolved_graph, payload: "closure-graph-1")
+}
+
+fn witness_indices_part() -> CarriedOutput {
+  witness_part(id: output_source_indices, payload: "closure-indices-1")
+}
+
+fn witness_union_part() -> CarriedOutput {
+  witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-1")
+}
+
 fn witness_complete_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
+    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()],
     artifact_bytes: byte_size(count: 100)
   }
 }
@@ -94,8 +110,7 @@ fn witness_v1_shape_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices],
+    carried_outputs: [witness_graph_part(), witness_indices_part()],
     artifact_bytes: byte_size(count: 100)
   }
 }
@@ -104,14 +119,17 @@ fn witness_kind_forged_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: parse_source_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    content_digest: content_hash_atom(value: "closure-payload-1"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
+    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()],
     artifact_bytes: byte_size(count: 100)
   }
 }
 
 fn witness_closure_digest() -> ContentHash {
-  content_hash_atom(value: "closure-payload-1")
+  artifact_content_digest(artifact: witness_complete_closure_artifact())
+}
+
+fn witness_v1_shape_digest() -> ContentHash {
+  artifact_content_digest(artifact: witness_v1_shape_closure_artifact())
 }
 
 fn witness_good_probe() -> ProviderProbe {
@@ -125,10 +143,13 @@ fn witness_stale_typed_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: typed_module_artifact_kind,
     request_key: request_key(req: witness_typecheck_request()),
-    content_digest: content_hash_atom(value: "typed-payload-1"),
-    carried_outputs: [output_typed_module_interface],
+    carried_outputs: [witness_part(id: output_typed_module_interface, payload: "typed-payload-1")],
     artifact_bytes: byte_size(count: 10)
   }
+}
+
+fn witness_stale_typed_digest() -> ContentHash {
+  artifact_content_digest(artifact: witness_stale_typed_artifact())
 }
 
 fn witness_empty_store(budget_count: Int) -> ArtifactStore {
@@ -195,7 +216,7 @@ test fn red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact() -> Bo
     req: witness_typecheck_request_changed_input(),
     probe: ProbeFound {
       artifact: witness_stale_typed_artifact(),
-      observed_digest: content_hash_atom(value: "typed-payload-1")
+      observed_digest: witness_stale_typed_digest()
     }
   )
   lookup_is_refused_wrong_artifact(l: stale) && (lookup_is_hit(l: stale) == false)
@@ -217,7 +238,7 @@ test fn incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union() -> Bo
     req: witness_closure_request(),
     probe: ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
-      observed_digest: witness_closure_digest()
+      observed_digest: witness_v1_shape_digest()
     }
   )
   let missing = lookup_refused_incomplete_missing(l: refused)
@@ -249,8 +270,11 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
   let second_artifact = MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: second_request),
-    content_digest: content_hash_atom(value: "closure-payload-2"),
-    carried_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union],
+    carried_outputs: [
+      witness_part(id: output_resolved_graph, payload: "closure-graph-2"),
+      witness_part(id: output_source_indices, payload: "closure-indices-2"),
+      witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-2")
+    ],
     artifact_bytes: byte_size(count: 100)
   }
   let first_admit = provider_admit(
@@ -266,7 +290,7 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
         store: warmed,
         req: second_request,
         artifact: second_artifact,
-        observed_digest: content_hash_atom(value: "closure-payload-2")
+        observed_digest: artifact_content_digest(artifact: second_artifact)
       )
       let evicted = admission_evicted_keys(a: second_admit)
       admission_is_admitted(a: second_admit)
@@ -297,7 +321,7 @@ test fn red_admission_derives_completeness_from_request_v1_shape_refused() -> Bo
     store: witness_empty_store(budget_count: 1000),
     req: witness_closure_request(),
     artifact: witness_v1_shape_closure_artifact(),
-    observed_digest: witness_closure_digest()
+    observed_digest: witness_v1_shape_digest()
   )
   let missing = admission_refused_incomplete_missing(a: a)
   admission_is_refused_incomplete_write(a: a)
@@ -321,7 +345,7 @@ test fn red_admission_stale_key_is_refused_as_wrong_artifact() -> Bool {
     store: witness_empty_store(budget_count: 1000),
     req: witness_typecheck_request_changed_input(),
     artifact: witness_stale_typed_artifact(),
-    observed_digest: content_hash_atom(value: "typed-payload-1")
+    observed_digest: witness_stale_typed_digest()
   )
   admission_is_refused_wrong_artifact_write(a: a) && (admission_is_admitted(a: a) == false)
 }
@@ -337,6 +361,34 @@ test fn red_admission_wrong_content_is_refused() -> Bool {
 }
 
 
+
+data forged_roster_witness_note: String = "The attack codex review 44278 named, now closed by construction and exercised on BOTH doors: the bytes at the key are the v1 shape (graph + source_indices, NO compile-clean diagnostic union), so the realization's read-back is witness_v1_shape_digest. The caller submits an artifact whose carried roster claims all three outputs — under the old label-beside-digest shape that roster satisfied artifact_completeness and the door answered BindingOk, admitting bytes that could green a red. Because the content digest is now DERIVED from the carried parts, claiming a part the bytes do not hold changes the derivation, so the forgery is no longer self-consistent and lands on the wrong-content refusal instead. The paired positive control below (same artifact, its OWN derived digest) shows the refusal is discriminating rather than a blanket red: the honest complete artifact still serves and still admits."
+
+test fn red_forged_output_roster_refuses_as_wrong_content_on_serve() -> Bool {
+  let forged = provider_serve(
+    req: witness_closure_request(),
+    probe: ProbeFound {
+      artifact: witness_complete_closure_artifact(),
+      observed_digest: witness_v1_shape_digest()
+    }
+  )
+  lookup_is_refused_wrong_content(l: forged) && (lookup_is_hit(l: forged) == false)
+}
+
+test fn red_forged_output_roster_refuses_as_wrong_content_on_admit() -> Bool {
+  let a = provider_admit(
+    store: witness_empty_store(budget_count: 1000),
+    req: witness_closure_request(),
+    artifact: witness_complete_closure_artifact(),
+    observed_digest: witness_v1_shape_digest()
+  )
+  admission_is_refused_wrong_content_write(a: a) && (admission_is_admitted(a: a) == false)
+}
+
+test fn carried_roster_is_the_content_digest_preimage() -> Bool {
+  (witness_closure_digest() == witness_v1_shape_digest()) == false
+    && (witness_closure_digest() == artifact_content_digest(artifact: witness_complete_closure_artifact()))
+}
 
 test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   completeness_is_complete(c: artifact_completeness(
@@ -374,7 +426,7 @@ test fn incomplete_artifact_derives_unknown_identity() -> Bool {
     req: witness_closure_request(),
     probe: ProbeFound {
       artifact: witness_v1_shape_closure_artifact(),
-      observed_digest: witness_closure_digest()
+      observed_digest: witness_v1_shape_digest()
     }
   )
   identity_grade_is_known(ci: lookup_served_identity(l: refused)) == false

@@ -22,7 +22,7 @@ data materialization_provider_identity_note: String = "Computation identity is C
 
 data materialization_provider_backend_seam_note: String = "Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3): CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide serve or typed refusal under the request's correctness demands (declared-input key, artifact kind, content verification, artifact completeness, identity grade). Backend faults stay in CacheRejectReason at the transport and are deliberately not restated here; a transport that cannot probe refuses at its own layer and no ProviderProbe is fabricated."
 
-data materialization_provider_completeness_note: String = "The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped its diagnostics would green a red, which is the fabricated-plausible-output arm section 5 forbids. Completeness is enforced on BOTH doors, and BOTH doors derive every obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened obligation list is UNWRITABLE at the admission door by construction — and checks kind, request key, content digest, completeness, and identity grade before any byte enters the store; provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door — it is unrepresentable in the request. FIRST NAMED CONSUMER TARGET: extdeps.realization.resolved_graph's disk-hit refusal (resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger) — v1 disk artifacts carry graph+source_indices only, so cross-process hits are refused today; under this contract that hand-rolled refuse arm becomes ProviderRefusedIncomplete { missing: [compile_clean_diagnostic_union] }, and it dissolves when the artifact FORMAT_VERSION persists the union and the artifact satisfies ResolveClosureRequest's derived required outputs."
+data materialization_provider_completeness_note: String = "The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped its diagnostics would green a red, which is the fabricated-plausible-output arm section 5 forbids. The rule has TWO halves and both are load-bearing: the obligation roster is derived from the request (below), and the SATISFACTION roster is derived from the payload — carried outputs are digested parts whose fold IS the artifact's content digest, so a claimed-but-absent output is caught by the read-back comparison rather than believed (codex review 44278; the payload-binding note carries the reasoning). Completeness is enforced on BOTH doors, and BOTH doors derive every obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened obligation list is UNWRITABLE at the admission door by construction — and checks kind, request key, content digest, completeness, and identity grade before any byte enters the store; provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door — it is unrepresentable in the request. FIRST NAMED CONSUMER TARGET: extdeps.realization.resolved_graph's disk-hit refusal (resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger) — v1 disk artifacts carry graph+source_indices only, so cross-process hits are refused today; under this contract that hand-rolled refuse arm becomes ProviderRefusedIncomplete { missing: [compile_clean_diagnostic_union] }, and it dissolves when the artifact FORMAT_VERSION persists the union and the artifact satisfies ResolveClosureRequest's derived required outputs."
 
 data materialization_provider_key_order_note: String = "Declared-input order is part of the key: declared_inputs_digest folds in list order, so the REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows below, which fix an order by construction."
 
@@ -163,12 +163,20 @@ type ArtifactCompleteness
   = ArtifactComplete
   | ArtifactMissingOutputs { missing: List<ArtifactOutputId> }
 
-fn output_list_contains(xs: List<CarriedOutput>, wanted: ArtifactOutputId) -> Bool {
-  xs |> fold(init: false, f: (acc, x) => acc || (x.id == wanted))
+fn output_list_contains(xs: List<ArtifactOutputId>, wanted: ArtifactOutputId) -> Bool {
+  xs |> fold(init: false, f: (acc, x) => acc || (x == wanted))
+}
+
+fn carried_output_ids(carried: List<CarriedOutput>) -> List<ArtifactOutputId> {
+  carried |> map(o => o.id)
+}
+
+fn carried_outputs_contain(carried: List<CarriedOutput>, wanted: ArtifactOutputId) -> Bool {
+  output_list_contains(xs: carried_output_ids(carried: carried), wanted: wanted)
 }
 
 fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<CarriedOutput>) -> ArtifactCompleteness {
-  let missing = required |> filter(o => !output_list_contains(xs: carried, wanted: o))
+  let missing = required |> filter(o => !carried_outputs_contain(carried: carried, wanted: o))
   if missing.count() == 0 {
     ArtifactComplete
   } else {
@@ -176,7 +184,7 @@ fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<Carried
   }
 }
 
-data materialization_provider_binding_note: String = "request_artifact_binding is the ONE authority for the request-to-artifact obligations, consumed by BOTH doors (serve and admit) so they cannot drift apart: kind must match (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact and exactly what the validation backstop exists to catch), the artifact's recorded request_key must equal the request's derived key, the read-back digest must equal the recorded content digest, and the carried outputs must cover the request's required outputs. Checks run cheapest-semantic first; the first failure is the verdict, typed and located."
+data materialization_provider_binding_note: String = "request_artifact_binding is the ONE authority for the request-to-artifact obligations, consumed by BOTH doors (serve and admit) so they cannot drift apart: kind must match (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact and exactly what the validation backstop exists to catch), the artifact's recorded request_key must equal the request's derived key, the read-back digest must equal the artifact's DERIVED content digest (carried_outputs_digest — the payload-binding note explains why that derivation, not a recorded field, is what makes the next check load-bearing), and the carried outputs must cover the request's required outputs. Checks run cheapest-semantic first; the first failure is the verdict, typed and located."
 
 type RequestArtifactBinding
   = BindingOk
@@ -196,8 +204,8 @@ fn request_artifact_binding(
     BindingKindMismatch { requested: kind, found: artifact.kind }
   } else if (artifact.request_key == key) == false {
     BindingWrongArtifact { key: key, found_key: artifact.request_key }
-  } else if (observed_digest == artifact.content_digest) == false {
-    BindingWrongContent { recorded: artifact.content_digest, observed: observed_digest }
+  } else if (observed_digest == artifact_content_digest(artifact: artifact)) == false {
+    BindingWrongContent { recorded: artifact_content_digest(artifact: artifact), observed: observed_digest }
   } else {
     match artifact_completeness(required: request_required_outputs(req: req), carried: artifact.carried_outputs) {
       ArtifactComplete => BindingOk
