@@ -17,10 +17,10 @@ import std.measure {
   Percent,
   celsius,
   celsius_count,
-  celsius_delta,
-  celsius_delta_count,
   percent,
   percent_count,
+  positive_celsius_delta,
+  positive_celsius_delta_count,
 }
 import std.state_durability {
   ControlPlaneRestartBoundary,
@@ -107,7 +107,7 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
         || (
           percent_count(step.duty) == 100
             && (
-              celsius_count(step.at_or_above) + celsius_delta_count(curve.positive_hysteresis)
+              celsius_count(step.at_or_above) + positive_celsius_delta_count(curve.positive_hysteresis)
             ) < celsius_count(temperature)
         ),
   )
@@ -154,8 +154,8 @@ data fleet_quiet_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis: celsius_delta(count: 1),
-  negative_hysteresis: celsius_delta(count: 2),
+  positive_hysteresis: positive_celsius_delta(count: 1),
+  negative_hysteresis: positive_celsius_delta(count: 2),
 }
 
 data fleet_fan_acoustic_policy: BmcFanAcousticPolicy = BmcFanAcousticPolicy {
