@@ -339,6 +339,20 @@ fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
 // later corpus case share ONE process index. The cold case below deliberately keeps its
 // own bare build — it is the named cold-resolution control (the import-strip Class-B
 // pool-coincidence class needs a fresh-index resolution witness), one cold build by design.
+//
+// REGRESSED, and this note read as resolved while it was not (2026-07-29): the step measured
+// 9m02s on run 30482171871 (job 90679506428) — ~1.9x the 4m51s state the D3 fix above was
+// written to repair. Accounting from that job log: the assertions cost nothing (every witness
+// row reports 0.0-0.3ms), and the wall is 18 serial scenario setups — ~2m15s for the shared
+// index build in the warmup case below, ~2m34s for the deliberate cold build after it, ~34s
+// total for the eight scenarios that hit the shared index, ~3m30s for the ~7 that land in the
+// affected closure and pay ~30s each resolving to decide the node frontier, and 11.2s of
+// thread-local teardown at exit. Two of those are addressed in the same change as this line:
+// the teardown (see main) and the step's placement, which is now affected-set scoped by
+// gunbc.ci_workflow's selection-control step so most PRs do not pay any of it. The ~30s
+// per-resolve unit is NOT explained — it is 4x the ~7.2s/resolve the floor resolve receipt
+// records, so it is either a genuinely larger closure or a PROCESS_RESOLVE_STORE miss, and it
+// is left as a named measurement rather than a guessed fix.
 fn budget_roster_resolves_after_frontier_warmup() {
     chdir_workspace();
     let roots = floor_skip_source_roots();
