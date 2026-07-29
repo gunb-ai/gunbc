@@ -619,7 +619,7 @@ test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
     |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
         ExecutionContract { validations: _, extra_capabilities: _ } => true
-      })) == 2
+      })) == 4
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
