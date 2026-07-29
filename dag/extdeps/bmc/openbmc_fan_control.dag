@@ -703,8 +703,14 @@ fn openbmc_sensor_threshold_value(
       threshold: threshold,
     },
   )
+  openbmc_sensor_threshold_result(remote: remote)
+}
+
+fn openbmc_sensor_threshold_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcSensorValueResult {
   if !remote.success {
-    OpenBmcSensorValueAbsent
+    OpenBmcSensorValueRefused { reason: remote.stderr }
   } else {
     let extracted = openbmc.JsonProjection.SensorIntegerValue(content: remote.stdout)
     if !extracted.success || trim(extracted.value) == "" {

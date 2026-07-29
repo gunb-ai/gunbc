@@ -8,6 +8,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcFanConfigScalar,
   OpenBmcReadingAt,
   OpenBmcSensorServicesObserved,
+  OpenBmcSensorValueRefused,
   OpenBmcTachAtOrAboveThreshold,
   OpenBmcTachBelowThreshold,
   OpenBmcTachHealthObserved,
@@ -15,8 +16,10 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_collection_from_values,
   openbmc_object_mapper_services_rec,
   openbmc_operation_argv,
+  openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
 }
+import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { rpm, rpm_count }
 
@@ -64,6 +67,21 @@ test fn duplicate_object_mapper_matches_remain_many() -> Bool {
     ],
   ) {
     OpenBmcCollectionMany { values } => values.length() == 2
+    _ => false
+  }
+}
+
+test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
+  match openbmc_sensor_threshold_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: false,
+      stdout: "",
+      stderr: "SSH host identity verification failed",
+    },
+  ) {
+    OpenBmcSensorValueRefused { reason } =>
+      reason == "SSH host identity verification failed"
     _ => false
   }
 }
