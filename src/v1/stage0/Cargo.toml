@@ -45,7 +45,6 @@ ureq = { version = "2", features = ["json"] }
 # time-slicing is not misclassified as an eval-wedge (a true non-terminating eval still
 # burns CPU and is caught). Already present transitively; declared direct for this use.
 libc = "0.2"
-toml = { workspace = true }
 
 [[bin]]
 name = "gunbc"

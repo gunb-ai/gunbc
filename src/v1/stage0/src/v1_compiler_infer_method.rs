@@ -398,41 +398,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "stage0_cargo_bin_manifest_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "stage0_cargo_bin_manifest_paths_unique_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "stage0_cargo_bin_manifest_all_under_package_root_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "git_tracked_rust_repo_path_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "stage0_cargo_bin_manifest_repo_paths".to_string(),
-            list_of_type_variable("stage0_cargo_bin_manifest_repo_path_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "stage0_cargo_bin_manifest_parse_complete_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "stage0_cargo_bin_manifest_unparsed_bin_fixture_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "commit_witness_claim_roster_unresolvable_count".to_string(),
             int_type(),
         );

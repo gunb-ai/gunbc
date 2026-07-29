@@ -1,7 +1,7 @@
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -188,238 +188,6 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
          binaries are shared across runner workspaces and the compiling checkout's \
          path is not a runtime fact)",
         start_cwd.display()
-    )
-}
-
-const STAGE0_CARGO_MANIFEST_AUTHORITY_REL: &str = "dag/gunbc/stage0_cargo_manifest.dag";
-const STAGE0_CARGO_TOML_REPO_PATH_DATA_NAME: &str = "stage0_cargo_toml_repo_path";
-const STAGE0_PACKAGE_ROOT_DATA_NAME: &str = "stage0_package_root";
-
-fn stage0_cargo_toml_repo_path() -> &'static str {
-    static PATH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    PATH.get_or_init(|| {
-        lens_string_data(
-            STAGE0_CARGO_MANIFEST_AUTHORITY_REL,
-            STAGE0_CARGO_TOML_REPO_PATH_DATA_NAME,
-        )
-    })
-    .as_str()
-}
-
-fn stage0_package_root() -> &'static str {
-    static ROOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    ROOT.get_or_init(|| {
-        lens_string_data(
-            STAGE0_CARGO_MANIFEST_AUTHORITY_REL,
-            STAGE0_PACKAGE_ROOT_DATA_NAME,
-        )
-    })
-    .as_str()
-}
-
-/// Typed parse refusal for stage0 `Cargo.toml` `[[bin]]` extraction (DESIGN §5 — observe refusal without unwind).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Stage0CargoBinManifestParseRefusal {
-    BinTableMissingPath,
-    BinTableCountMismatch { tables: usize, paths: usize },
-    BinTablePathUnquoted,
-    BinTableTomlParse,
-    BinTablePathEscapesPackageRoot,
-}
-
-impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::BinTableMissingPath => {
-                write!(f, "[[bin]] table missing path")
-            }
-            Self::BinTableCountMismatch { tables, paths } => {
-                write!(f, "{tables} [[bin]] tables but {paths} paths parsed")
-            }
-            Self::BinTablePathUnquoted => {
-                write!(f, "[[bin]] path value must be a quoted TOML string")
-            }
-            Self::BinTableTomlParse => {
-                write!(f, "Cargo.toml [[bin]] extraction requires valid TOML")
-            }
-            Self::BinTablePathEscapesPackageRoot => {
-                write!(
-                    f,
-                    "[[bin]] path escapes stage0 package root after normalization"
-                )
-            }
-        }
-    }
-}
-
-/// Host-derived repo-relative paths for every `[[bin]]` in stage0 `Cargo.toml`.
-/// Authority: `gunbc.stage0_cargo_manifest` (no hand-listed bin rows in `.dag`).
-pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
-    let root = workspace_root();
-    let manifest = root.join(stage0_cargo_toml_repo_path());
-    let content = std::fs::read_to_string(&manifest).unwrap_or_else(|e| {
-        panic!(
-            "stage0_cargo_bin_repo_paths_from_manifest: failed to read {}: {e}",
-            manifest.display()
-        )
-    });
-    stage0_cargo_bin_repo_paths_from_manifest_str(&content)
-}
-
-pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
-    content: &str,
-) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
-    try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-        content,
-        stage0_package_root(),
-    )
-}
-
-fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-    content: &str,
-    package_root: &str,
-) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
-    let doc: toml::Table = toml::from_str(content)
-        .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
-    let bins = match doc.get("bin") {
-        None => return Ok(Vec::new()),
-        Some(toml::Value::Array(bins)) => bins,
-        Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
-    };
-
-    let mut paths = Vec::with_capacity(bins.len());
-    for bin in bins {
-        let table = bin
-            .as_table()
-            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
-        let path_val = table
-            .get("path")
-            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?;
-        let path_str = path_val
-            .as_str()
-            .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
-        paths.push(join_repo_path_under_package_root(package_root, path_str)?);
-    }
-    Ok(paths)
-}
-
-fn normalize_path_under_root(
-    root: &Path,
-    rel: &Path,
-) -> Result<PathBuf, Stage0CargoBinManifestParseRefusal> {
-    if rel.is_absolute() {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-    }
-    let mut normalized = PathBuf::new();
-    for component in root.join(rel).components() {
-        match component {
-            Component::Prefix(_) | Component::RootDir => {
-                return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-            }
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-                }
-            }
-            Component::CurDir => {}
-            Component::Normal(part) => normalized.push(part),
-        }
-    }
-    Ok(normalized)
-}
-
-fn join_repo_path_under_package_root(
-    package_root: &str,
-    path_val: &str,
-) -> Result<String, Stage0CargoBinManifestParseRefusal> {
-    let root = Path::new(package_root);
-    let rel = Path::new(path_val);
-    let normalized = normalize_path_under_root(root, rel)?;
-    if !normalized.starts_with(root) {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-    }
-    if !normalized
-        .components()
-        .all(|c| matches!(c, Component::Normal(_)))
-    {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
-    }
-    Ok(normalized.to_string_lossy().replace('\\', "/"))
-}
-
-fn repo_path_is_normalized_under_package_root(repo_path: &str, package_root: &str) -> bool {
-    let path = Path::new(repo_path);
-    let root = Path::new(package_root);
-    path.starts_with(root) && path.components().all(|c| matches!(c, Component::Normal(_)))
-}
-
-fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
-    try_stage0_cargo_bin_repo_paths_from_manifest_str(content).unwrap_or_else(|refusal| {
-        panic!("stage0_cargo_bin_repo_paths_from_manifest: {refusal}");
-    })
-}
-
-/// Tracked `.rs` paths from `git ls-files` at the workspace root (host execution surface).
-pub fn git_tracked_rust_repo_paths() -> Vec<String> {
-    let root = workspace_root();
-    let output = std::process::Command::new("git")
-        .args(["ls-files", "*.rs"])
-        .current_dir(&root)
-        .output()
-        .unwrap_or_else(|e| panic!("git_tracked_rust_repo_paths: git ls-files failed: {e}"));
-    if !output.status.success() {
-        panic!(
-            "git_tracked_rust_repo_paths: git ls-files exited {:?}",
-            output.status
-        );
-    }
-    String::from_utf8(output.stdout)
-        .unwrap_or_else(|e| panic!("git_tracked_rust_repo_paths: invalid utf8: {e}"))
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
-pub fn stage0_cargo_bin_manifest_count() -> i64 {
-    i64::try_from(stage0_cargo_bin_repo_paths_from_manifest().len())
-        .expect("stage0_cargo_bin_manifest_count: bin count fits i64")
-}
-
-pub fn stage0_cargo_bin_manifest_paths_unique_holds() -> bool {
-    let paths = stage0_cargo_bin_repo_paths_from_manifest();
-    let mut seen = std::collections::HashSet::new();
-    paths.iter().all(|p| seen.insert(p.clone()))
-}
-
-pub fn stage0_cargo_bin_manifest_all_under_package_root_holds() -> bool {
-    let package_root = stage0_package_root();
-    stage0_cargo_bin_repo_paths_from_manifest()
-        .iter()
-        .all(|p| repo_path_is_normalized_under_package_root(p, package_root))
-}
-
-pub fn git_tracked_rust_repo_path_count() -> i64 {
-    i64::try_from(git_tracked_rust_repo_paths().len())
-        .expect("git_tracked_rust_repo_path_count: path count fits i64")
-}
-
-pub fn stage0_cargo_bin_manifest_repo_paths() -> Vec<String> {
-    stage0_cargo_bin_repo_paths_from_manifest()
-}
-
-pub fn stage0_cargo_bin_manifest_parse_complete_holds() -> bool {
-    let paths = stage0_cargo_bin_repo_paths_from_manifest();
-    !paths.is_empty()
-        && stage0_cargo_bin_manifest_paths_unique_holds()
-        && stage0_cargo_bin_manifest_all_under_package_root_holds()
-}
-
-pub fn stage0_cargo_bin_manifest_unparsed_bin_fixture_holds() -> bool {
-    let incomplete = "[[bin]]\nname = \"orphan\"\n[[bin]]\npath=\"src/bin/ok.rs\"\n";
-    matches!(
-        try_stage0_cargo_bin_repo_paths_from_manifest_str(incomplete),
-        Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
     )
 }
 
@@ -1614,65 +1382,6 @@ pub(crate) fn string_list_data_from_module_source(
     panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
 }
 
-/// Project a `String` data literal out of a `.dag` module's SOURCE TEXT via the real front-end.
-pub(crate) fn string_data_from_module_source(
-    module_rel_path: &str,
-    content: &str,
-    data_name: &str,
-) -> String {
-    use crate::v1_std_core::{ExprData, LiteralValue};
-
-    let filename = module_rel_path.to_string();
-    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
-    let source_index =
-        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
-    let mut source_indices = HashMap::new();
-    source_indices.insert(filename.clone(), source_index);
-    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
-    if let Some(err) = result.error.as_ref() {
-        panic!(
-            "lens string reader: parse error in {module_rel_path}: {}",
-            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
-        );
-    }
-    let module = result
-        .module
-        .as_ref()
-        .unwrap_or_else(|| panic!("lens string reader: {module_rel_path} parsed to no module"));
-    for item in module.children.iter() {
-        if item.name != data_name
-            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
-        {
-            continue;
-        }
-        let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!("lens string reader: `data {data_name}` in {module_rel_path} has no value body")
-        });
-        match body.expr_data.as_ref() {
-            ExprData::ExprLiteral { value } => match value.as_ref() {
-                LiteralValue::LitStr { value } => return value.clone(),
-                _ => panic!(
-                    "lens string reader: `data {data_name}` in {module_rel_path} is not a \
-                     string literal"
-                ),
-            },
-            _ => panic!(
-                "lens string reader: `data {data_name}` in {module_rel_path} is not a \
-                 `String` literal"
-            ),
-        }
-    }
-    panic!("lens string reader: no `data {data_name}` def in {module_rel_path}")
-}
-
-/// Read a `String` data row from a live `.dag` lens authority on disk.
-pub fn lens_string_data(module_rel_path: &str, data_name: &str) -> String {
-    let path = workspace_root().join(module_rel_path);
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("lens string reader: failed to read {}: {e}", path.display()));
-    string_data_from_module_source(module_rel_path, &content, data_name)
-}
-
 /// Read a `List<String>` data table from a live `.dag` lens authority on disk.
 pub fn lens_string_list_data(
     module_rel_path: &str,
@@ -2751,9 +2460,14 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
-        return CompileCleanScopePlan::SkipNoAffected {
-            reason: "no touched paths in diff observation".to_string(),
-        };
+        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
+        // observation that saw nothing is indistinguishable from one that could not
+        // observe, so the whole tree is the only sound baseline. A main-push squash
+        // merge lands here, which is what makes main-push a real cold control.
+        eprintln!(
+            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
+        );
+        return CompileCleanScopePlan::WholeTree;
     }
 
     match compile_clean_all_touched_paths_docs_universe(touched_paths) {
@@ -28739,6 +28453,24 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// An empty touched-path set widens to the whole tree rather than skipping. This is
+    /// the arm a main-push squash merge lands on, so a skip here makes main-push report
+    /// green without compiling anything. #7412 fixed the `.dag` model
+    /// (`witness_empty_touched_requires_whole_tree`) but this hot-path mirror kept
+    /// skipping and had NO test, so the model went green while the realization still
+    /// fell open — the fork stayed invisible for exactly that reason.
+    #[test]
+    fn floor_fast_plan_empty_touched_requires_whole_tree() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = HashSet::new();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[], &departed);
+            assert!(
+                matches!(plan, CompileCleanScopePlan::WholeTree),
+                "an unobservable diff must widen, not skip; got {plan:?}"
+            );
+        });
+    }
+
     /// Docs-only departure stays a skip — the departed guard fires only outside docs/**.
     #[test]
     fn floor_fast_plan_docs_only_departure_still_skips() {
@@ -32034,127 +31766,3 @@ mod compile_clean_loader_closure_fork_regression {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
-
-#[cfg(test)]
-mod stage0_cargo_manifest_tests {
-    use super::{
-        stage0_cargo_bin_repo_paths_from_manifest_str, stage0_package_root,
-        try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root,
-        Stage0CargoBinManifestParseRefusal,
-    };
-
-    #[test]
-    fn parses_bin_path_without_spaces_around_equals() {
-        let fragment = r#"
-[[bin]]
-name = "demo"
-path="src/bin/demo.rs"
-"#;
-        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
-        assert_eq!(paths, vec!["src/v1/stage0/src/bin/demo.rs".to_string()]);
-    }
-
-    #[test]
-    fn rejects_bin_table_missing_path() {
-        let fragment = "[[bin]]\nname = \"orphan\"\n";
-        assert_eq!(
-            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-                fragment,
-                stage0_package_root()
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)
-        );
-    }
-
-    #[test]
-    fn parses_bin_path_entries_from_manifest_fragment() {
-        let fragment = r#"
-[[bin]]
-name = "gunbc"
-path = "src/main.rs"
-
-[[bin]]
-name = "claim_batch"
-path = "src/bin/claim_batch.rs"
-"#;
-        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
-        assert_eq!(
-            paths,
-            vec![
-                "src/v1/stage0/src/main.rs".to_string(),
-                "src/v1/stage0/src/bin/claim_batch.rs".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn rejects_unquoted_bin_path() {
-        let fragment = "[[bin]]\nname = \"demo\"\npath = 42\n";
-        assert_eq!(
-            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-                fragment,
-                stage0_package_root()
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)
-        );
-    }
-
-    #[test]
-    fn parses_bin_table_header_with_inline_comment() {
-        let fragment = "[[bin]] # cache-bust\nname = \"regen\"\npath=\"src/bin/regen_stage0.rs\"\n";
-        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
-        assert_eq!(
-            paths,
-            vec!["src/v1/stage0/src/bin/regen_stage0.rs".to_string()]
-        );
-    }
-
-    #[test]
-    fn leaves_section_on_non_bin_table() {
-        let fragment = r#"
-[[bin]]
-name = "gunbc"
-path = "src/main.rs"
-
-[[example]]
-name = "demo"
-path = "examples/demo.rs"
-"#;
-        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
-        assert_eq!(paths, vec!["src/v1/stage0/src/main.rs".to_string()]);
-    }
-
-    #[test]
-    fn rejects_path_traversal_outside_package_root() {
-        let fragment = "[[bin]]\nname = \"escape\"\npath = \"../../outside.rs\"\n";
-        assert_eq!(
-            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-                fragment,
-                stage0_package_root()
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot)
-        );
-    }
-
-    #[test]
-    fn parses_escaped_quote_in_bin_path() {
-        let fragment = r#"[[bin]]
-name = "demo"
-path = "src/bin/a\"b.rs"
-"#;
-        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
-        assert_eq!(paths, vec!["src/v1/stage0/src/bin/a\"b.rs".to_string()]);
-    }
-
-    #[test]
-    fn rejects_invalid_toml() {
-        let fragment = "[[bin]]\npath = \"unclosed\n";
-        assert_eq!(
-            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
-                fragment,
-                stage0_package_root()
-            ),
-            Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)
-        );
-    }
-}

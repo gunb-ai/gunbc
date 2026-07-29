@@ -1,6 +1,9 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
-import gunbc.stage0_cargo_manifest { stage0_cargo_bin_repo_paths_from_manifest_ref }
+import gunbc.stage0_cargo_manifest {
+  stage0_cargo_bin_paths_observation_ref,
+  stage0_cargo_toml_repo_path
+}
 import gunbc.stage0_emit_model {
   generated_stage0_files,
   is_generated_stage0_file
@@ -13,27 +16,27 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
-data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine in PR #7393). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths are host-derived from Cargo.toml (gunbc.stage0_cargo_manifest), never hand-listed. Full-repo tracked .rs manifest is RustManifestUnmeasured until host execution supplies RustManifestMeasured — Unmeasured cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children. Dissolves when rust_source_tracked_manifest_note host consumer lands and this scaffold promotes to the ZeroHandMaintainedRust acceptance graph."
+data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument (V1FinishLine ZeroHandMaintainedRust, authority dag/gunbc/v1_deletion_plan.dag, ROADMAP node v1-zero-hand-maintained-rust). Stage0 seed-surface lifecycle: joins existing .dag authorities (generated_stage0_files, hand_maintained_stage0_filenames, stage0_partition_crate_rows) plus file-grain residue rows. Cargo [[bin]] paths join only after the host observation boundary (gunbc.stage0_rust_host_observation, PR B) — never hand-listed. Full-repo tracked .rs census is RustManifestUnobserved until host observation supplies path evidence with repository_revision and manifest_digest — Unobserved cannot masquerade as zero unclassified. Discovery prefix hints name where the future manifest consumer should look; they do NOT classify children."
 
-data zero_hand_maintained_rust_finish_line_attachment_note: String = "Attach to V1FinishLine ZeroHandMaintainedRust (PR #7393) when that finish line lands: acceptance requires RustManifestMeasured with newly_unclassified=0, stale_lifecycle_rows=0, duplicate_exact_paths=0, and hand_maintained_count ratchet — not this scaffold's partial joins alone."
+data zero_hand_maintained_rust_finish_line_attachment_note: String = "Attach to V1FinishLine ZeroHandMaintainedRust (merged #7393): acceptance requires RustManifestObserved path evidence with derived newly_unclassified=0, stale_lifecycle_rows=0, duplicate_exact_paths=0, and hand-maintained ratchet — not this scaffold's partial joins alone."
 
-data rust_source_tracked_manifest_note: String = "Follow-on: host emits tracked .rs paths (git ls-files shape) and computes set-difference against file_grain_classified + residue rows. Discovery prefix hints (rust_source_discovery_prefix_hints) are INPUTS to that consumer only — never lifecycle dispositions. Until measured, rust_source_manifest_state stays RustManifestUnmeasured."
+data rust_source_host_observation_note: String = "Follow-on PR B: host observation boundary emits RustManifestObserved { repository_revision, manifest_digest, tracked_rust_repo_paths, prior_tracked_rust_repo_paths, cargo_bin_repo_paths } or typed ManifestReadRefused / ManifestParseRefused / GitObservationRefused. Verdict derives unclassified, stale, duplicate, and hand-maintained counts from path evidence — callers must not supply conclusions as integers."
 
-type RustSourceManifestState
-  = RustManifestUnmeasured { awaiting: String }
-  | RustManifestMeasured {
-      tracked_count: Int,
-      classified_file_grain_count: Int,
-      unclassified_count: Int,
-      newly_unclassified: Int,
-      stale_lifecycle_rows: Int,
-      duplicate_exact_paths: Int,
-      hand_maintained_count: Int,
-      hand_maintained_prior_count: Int
+type RustSourceHostObservation
+  = RustManifestUnobserved { awaiting: String }
+  | RustManifestObserved {
+      repository_revision: String,
+      manifest_digest: String,
+      tracked_rust_repo_paths: List<String>,
+      prior_tracked_rust_repo_paths: List<String>,
+      cargo_bin_repo_paths: List<String>
     }
+  | RustManifestReadRefused { detail: String }
+  | RustManifestParseRefused { detail: String }
+  | GitObservationRefused { detail: String }
 
-data rust_source_manifest_state: RustSourceManifestState = RustManifestUnmeasured {
-  awaiting: "v1_compiler.cli_run.git_tracked_rust_repo_paths + set-difference consumer"
+data rust_source_host_observation: RustSourceHostObservation = RustManifestUnobserved {
+  awaiting: "gunbc.stage0_rust_host_observation host boundary (PR B) — git ls-files + Cargo.toml parse with typed refusals"
 }
 
 type RustSourceManifestStateVerdict
@@ -41,13 +44,15 @@ type RustSourceManifestStateVerdict
   | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
 
 type RustSourceManifestStateRefusal
-  = UnmeasuredTrackedManifest { awaiting: String }
-  | MeasuredNewlyUnclassified { count: Int }
-  | MeasuredStaleLifecycleRows { count: Int }
-  | MeasuredDuplicateExactPaths { count: Int }
-  | MeasuredHandMaintainedGrew { prior: Int, current: Int }
-  | MeasuredClaimsUnclassified { count: Int }
-  | MeasuredCountInconsistent { tracked: Int, classified: Int, unclassified: Int }
+  = UnobservedTrackedManifest { awaiting: String }
+  | HostManifestReadRefused { detail: String }
+  | HostManifestParseRefused { detail: String }
+  | HostGitObservationRefused { detail: String }
+  | DerivedNewlyUnclassified { count: Int }
+  | DerivedStaleLifecycleRows { count: Int }
+  | DerivedDuplicateExactPaths { count: Int }
+  | DerivedHandMaintainedGrew { prior: Int, current: Int }
+  | DerivedUnclassifiedTracked { count: Int }
 
 data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -58,56 +63,164 @@ data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   }
 }
 
-data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold query fold over RustSourceManifestState; DISSOLVES WHEN PR #7393 ZeroHandMaintainedRust V1FinishLine lands (ROADMAP.md hand-maintained-Rust-to-zero lane, authority dag/gunbc/v1_deletion_plan.dag) and manifest ratchet enforcement moves to the finish-line acceptance graph"
+data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:30 / v1-zero-hand-maintained-rust)"
 
-fn rust_source_manifest_state_measured_counts_consistent(
-  tracked_count: Int,
-  classified_file_grain_count: Int,
-  unclassified_count: Int
-) -> Bool {
-  tracked_count == classified_file_grain_count + unclassified_count
+fn path_in_list(path: String, paths: List<String>) -> Bool {
+  any(xs: paths, predicate: fn(p) { p == path })
 }
 
-fn rust_source_manifest_state_verdict(state: RustSourceManifestState) -> RustSourceManifestStateVerdict {
-  match state {
-    RustManifestUnmeasured { awaiting: awaiting } =>
-      ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: awaiting } }
-    RustManifestMeasured {
-      tracked_count: tracked_count,
-      classified_file_grain_count: classified_file_grain_count,
-      unclassified_count: unclassified_count,
-      newly_unclassified: newly_unclassified,
-      stale_lifecycle_rows: stale_lifecycle_rows,
-      duplicate_exact_paths: duplicate_exact_paths,
-      hand_maintained_count: hand_maintained_count,
-      hand_maintained_prior_count: hand_maintained_prior_count
-    } =>
-      if !rust_source_manifest_state_measured_counts_consistent(
-        tracked_count: tracked_count,
-        classified_file_grain_count: classified_file_grain_count,
-        unclassified_count: unclassified_count
-      ) {
-        ManifestStateScaffoldRefused {
-          cause: MeasuredCountInconsistent {
-            tracked: tracked_count,
-            classified: classified_file_grain_count,
-            unclassified: unclassified_count
-          }
-        }
-      } else if newly_unclassified != 0 {
-        ManifestStateScaffoldRefused { cause: MeasuredNewlyUnclassified { count: newly_unclassified } }
-      } else if stale_lifecycle_rows != 0 {
-        ManifestStateScaffoldRefused { cause: MeasuredStaleLifecycleRows { count: stale_lifecycle_rows } }
-      } else if duplicate_exact_paths != 0 {
-        ManifestStateScaffoldRefused { cause: MeasuredDuplicateExactPaths { count: duplicate_exact_paths } }
-      } else if hand_maintained_count > hand_maintained_prior_count {
-        ManifestStateScaffoldRefused {
-          cause: MeasuredHandMaintainedGrew { prior: hand_maintained_prior_count, current: hand_maintained_count }
-        }
-      } else if unclassified_count != 0 {
-        ManifestStateScaffoldRefused { cause: MeasuredClaimsUnclassified { count: unclassified_count } }
+fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
+  fold_list(
+    xs: tracked_paths,
+    init: 0,
+    cons: fn(count, path) {
+      if path_in_list(path: path, paths: classified_paths) {
+        count
       } else {
-        ManifestStateScaffoldOk
+        count + 1
+      }
+    }
+  )
+}
+
+fn count_newly_unclassified_tracked(
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  classified_paths: List<String>
+) -> Int {
+  fold_list(
+    xs: tracked_paths,
+    init: 0,
+    cons: fn(count, path) {
+      let is_new = !path_in_list(path: path, paths: prior_tracked_paths)
+      let is_classified = path_in_list(path: path, paths: classified_paths)
+      if is_new && !is_classified {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List<String>) -> Int {
+  fold_list(
+    xs: lifecycle_paths,
+    init: 0,
+    cons: fn(count, path) {
+      if path_in_list(path: path, paths: tracked_paths) {
+        count
+      } else {
+        count + 1
+      }
+    }
+  )
+}
+
+fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
+  fold_list(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    init: 0,
+    cons: fn(count, hand_path) {
+      if path_in_list(path: hand_path, paths: tracked_paths) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
+  fold_list(
+    xs: derived_hand_maintained_stage0_repo_paths(),
+    init: 0,
+    cons: fn(count, hand_path) {
+      if path_in_list(path: hand_path, paths: prior_tracked_paths) {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn path_occurrence_count(paths: List<String>, needle: String) -> Int {
+  fold_list(
+    xs: paths,
+    init: 0,
+    cons: fn(count, path) {
+      if path == needle {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn count_duplicate_path_excess(paths: List<String>) -> Int {
+  fold_list(
+    xs: paths,
+    init: 0,
+    cons: fn(excess, path) {
+      let occurrences = path_occurrence_count(paths: paths, needle: path)
+      if occurrences > 1 {
+        excess + (occurrences - 1)
+      } else {
+        excess
+      }
+    }
+  )
+}
+
+fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
+  match observation {
+    RustManifestUnobserved { awaiting: awaiting } =>
+      ManifestStateScaffoldRefused { cause: UnobservedTrackedManifest { awaiting: awaiting } }
+    RustManifestReadRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
+    RustManifestParseRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } }
+    GitObservationRefused { detail: detail } =>
+      ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
+    RustManifestObserved {
+      repository_revision: repository_revision,
+      manifest_digest: manifest_digest,
+      tracked_rust_repo_paths: tracked_paths,
+      prior_tracked_rust_repo_paths: prior_tracked_paths,
+      cargo_bin_repo_paths: cargo_bin_repo_paths
+    } =>
+      if repository_revision == "" || manifest_digest == "" {
+        ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: "observed manifest missing repository_revision or manifest_digest" } }
+      } else {
+        let classified_paths = file_grain_lifecycle_repo_paths()
+        let lifecycle_paths = file_grain_lifecycle_repo_paths()
+        let newly_unclassified = count_newly_unclassified_tracked(
+          tracked_paths: tracked_paths,
+          prior_tracked_paths: prior_tracked_paths,
+          classified_paths: classified_paths
+        )
+        let unclassified = count_tracked_unclassified(tracked_paths: tracked_paths, classified_paths: classified_paths)
+        let stale = count_stale_lifecycle_rows(tracked_paths: tracked_paths, lifecycle_paths: lifecycle_paths)
+        let duplicate_excess = count_duplicate_path_excess(paths: lifecycle_paths)
+        let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
+        let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
+        if newly_unclassified != 0 {
+          ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: newly_unclassified } }
+        } else if stale != 0 {
+          ManifestStateScaffoldRefused { cause: DerivedStaleLifecycleRows { count: stale } }
+        } else if duplicate_excess != 0 {
+          ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: duplicate_excess } }
+        } else if hand_current > hand_prior {
+          ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: hand_prior, current: hand_current } }
+        } else if unclassified != 0 {
+          ManifestStateScaffoldRefused { cause: DerivedUnclassifiedTracked { count: unclassified } }
+        } else if length(xs: cargo_bin_repo_paths) == 0 {
+          ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
+        } else {
+          ManifestStateScaffoldOk
+        }
       }
   }
 }
@@ -139,7 +252,7 @@ data stage0_partition_crate_rows_authority_ref: DeclarationRef = DeclarationRef 
   field: WholeDeclaration
 }
 
-data stage0_cargo_bin_manifest_authority_ref: DeclarationRef = stage0_cargo_bin_repo_paths_from_manifest_ref
+data stage0_cargo_bin_manifest_authority_ref: DeclarationRef = stage0_cargo_bin_paths_observation_ref
 
 data behavioral_oracle_carrier_ref: DeclarationRef = DeclarationRef {
   module_path: "tools.self_host_module_behavioral_transport_roster",
@@ -186,10 +299,6 @@ fn derived_partition_crate_lib_repo_paths() -> List<String> {
   )
 }
 
-fn derived_cargo_bin_repo_paths() -> List<String> {
-  stage0_cargo_bin_manifest_repo_paths()
-}
-
 fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
   fold_list(
     xs: items,
@@ -207,21 +316,7 @@ fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
 fn derived_authority_join_repo_paths() -> List<String> {
   let from_generated = derived_generated_stage0_repo_paths()
   let with_hand = list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
-  let with_partition = list_concat_unique(acc: with_hand, items: derived_partition_crate_lib_repo_paths())
-  list_concat_unique(acc: with_partition, items: derived_cargo_bin_repo_paths())
-}
-
-fn derived_cargo_bin_paths_in_authority_join_holds() -> Bool {
-  fold_list(
-    xs: derived_cargo_bin_repo_paths(),
-    init: true,
-    cons: fn(ok, cargo_path) {
-      ok && any(
-        xs: derived_authority_join_repo_paths(),
-        predicate: fn(join_path) { join_path == cargo_path }
-      )
-    }
-  )
+  list_concat_unique(acc: with_hand, items: derived_partition_crate_lib_repo_paths())
 }
 
 fn path_has_prefix(path: String, prefix: String) -> Bool {
@@ -318,15 +413,6 @@ fn residue_lifecycle_repo_paths() -> List<String> {
   list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
 }
 
-fn derived_cargo_bin_paths_disjoint_from_residue_holds() -> Bool {
-  !any(
-    xs: derived_cargo_bin_repo_paths(),
-    predicate: fn(cargo_path) {
-      any(xs: residue_lifecycle_repo_paths(), predicate: fn(residue_path) { residue_path == cargo_path })
-    }
-  )
-}
-
 fn file_grain_lifecycle_repo_paths() -> List<String> {
   list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
 }
@@ -356,7 +442,7 @@ data lifecycle_row_well_formed_query_scaffold: Disposition = Scaffold {
   }
 }
 
-data lifecycle_row_well_formed_query_dissolve_trigger: String = "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN PR #7393 ZeroHandMaintainedRust V1FinishLine lands and row well-formedness derives from the finish-line acceptance graph"
+data lifecycle_row_well_formed_query_dissolve_trigger: String = "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)"
 
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")
@@ -462,7 +548,7 @@ fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
 }
 
 fn manifest_state_verdict_scaffold_holds() -> Bool {
-  match rust_source_manifest_state_verdict(state: rust_source_manifest_state) {
+  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
     ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }
@@ -474,9 +560,6 @@ fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
     && partition_crate_paths_complete_holds()
     && derived_generated_hand_disjoint_holds()
     && classified_residue_disjoint_holds()
-    && derived_cargo_bin_paths_in_authority_join_holds()
-    && derived_cargo_bin_paths_disjoint_from_residue_holds()
-    && stage0_cargo_bin_manifest_parse_complete_holds()
     && file_grain_paths_avoid_discovery_prefix_holds()
     && duplicate_exact_paths_zero_holds()
     && rust_source_lifecycle_residue_rows_well_formed()

@@ -8181,8 +8181,8 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.v1_deletion_plan
-/// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap_authority
+/// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists workspace under workspace_dir and
 /// skips build when `.native_ready` is present. workspace_dir carries the caller's
@@ -10046,30 +10046,6 @@ fn eval_builtin_inner(
         ))),
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
             crate::cli_run::non_fold_residue_coproduct_universe_count(),
-        ))),
-
-        "stage0_cargo_bin_manifest_count" => Ok(Some(Value::Int(
-            crate::cli_run::stage0_cargo_bin_manifest_count(),
-        ))),
-        "stage0_cargo_bin_manifest_paths_unique_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::stage0_cargo_bin_manifest_paths_unique_holds(),
-        ))),
-        "stage0_cargo_bin_manifest_all_under_package_root_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::stage0_cargo_bin_manifest_all_under_package_root_holds(),
-        ))),
-        "git_tracked_rust_repo_path_count" => Ok(Some(Value::Int(
-            crate::cli_run::git_tracked_rust_repo_path_count(),
-        ))),
-        "stage0_cargo_bin_manifest_repo_paths" => {
-            let paths = crate::cli_run::stage0_cargo_bin_manifest_repo_paths();
-            let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
-            Ok(Some(list_value(items)))
-        }
-        "stage0_cargo_bin_manifest_parse_complete_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::stage0_cargo_bin_manifest_parse_complete_holds(),
-        ))),
-        "stage0_cargo_bin_manifest_unparsed_bin_fixture_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::stage0_cargo_bin_manifest_unparsed_bin_fixture_holds(),
         ))),
 
         "commit_witness_claim_roster_unresolvable_count" => Ok(Some(Value::Int(

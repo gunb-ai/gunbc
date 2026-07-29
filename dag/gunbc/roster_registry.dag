@@ -268,7 +268,7 @@ data roster_registry: List<RosterRegistration> = [
     unit_kind: "tracked .rs path outside derived authority joins (file-grain residue)",
     membership: DeclaredFrontier {
       reason: "file-grain paths tracked on disk that no authority join classifies yet — bootstrap copies, hand-retained harness kernels, module_path_index files, frontier layout lag, and authority contradictions (stage0_core lib.rs vs partition rows); each row carries reason and dissolve_on. Cargo [[bin]] paths are host-derived (gunbc.stage0_cargo_manifest), not residue rows",
-      dissolve_on: "per row: the path derives from generated_stage0_files, hand_maintained_stage0_filenames, stage0_cargo_bin_repo_paths_from_manifest, or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_tracked_manifest_note host manifest makes unclassified a live set-difference and promotes the scaffold to ZeroHandMaintainedRust acceptance (PR #7393)"
+      dissolve_on: "per row: the path derives from generated_stage0_files, hand_maintained_stage0_filenames, stage0_cargo_bin_paths_observed (PR B host boundary), or stage0_partition_crate_rows and the row deletes; roster-wide, rust_source_host_observation_note host boundary supplies path evidence and promotes the scaffold to ZeroHandMaintainedRust acceptance (V1FinishLine, dag/gunbc/v1_deletion_plan.dag)"
     }
   }
 ]
