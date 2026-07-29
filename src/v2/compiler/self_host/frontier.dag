@@ -71,7 +71,7 @@ import v2.std.diagnostic {
   port_locus
 }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection {
   List
 }
@@ -141,7 +141,11 @@ type EmitterProducedFrontierPromotion {
 data emitter_produced_frontier_promotions_note: String = "Review 44509 single authority: EmitterProduced roster rows and authorization bindings are minted together via mint_emitter_produced_frontier_promotion and stored here — never as parallel hand-edited authorities. The authorization registry is a derived projection (emitter_produced_authorization_registry_from_promotions). Baseline empty until witness-realization appends promotions atomically with roster flips."
 
 fn emitter_produced_frontier_promotions() -> List<EmitterProducedFrontierPromotion> {
-  freemonoid_empty<EmitterProducedFrontierPromotion>()
+  []
+}
+
+fn empty_emitter_produced_authorization_bindings() -> List<EmitterProducedAuthorizationBinding> {
+  []
 }
 
 data compiler_frontier_producer_qualified_baseline_note: String = "Producer-qualified progress ratchets (calm-badger-682 ruling 2026-07-29): replaces compiler_frontier_self_emitted_baseline. seed_emitter_behavioral_green_count is the independent floor for V1SeedEmitter + BehavioralEquivalent rows; v2_* counters start at zero and derive from producer-identified executing receipts, never source location. Retired SelfEmitted vocabulary atomically with this ratchet set — reclassifying the six rows to V1SeedEmitter without retiring the old baseline would trip the guard."
@@ -262,7 +266,7 @@ fn emitter_produced_authorization_bindings_from_promotions(
 ) -> List<EmitterProducedAuthorizationBinding> {
   fold_list(
     xs: promotions,
-    empty: freemonoid_empty<EmitterProducedAuthorizationBinding>(),
+    empty: empty_emitter_produced_authorization_bindings(),
     cons: fn(acc, promotion) {
       list_snoc_item(xs: acc, item: promotion.authorization_binding)
     }
