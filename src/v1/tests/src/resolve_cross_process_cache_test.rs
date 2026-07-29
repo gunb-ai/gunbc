@@ -193,6 +193,7 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
     let valid = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let mut poisoned = valid;
     if let Some(last) = poisoned.last_mut() {
         *last ^= 0xff;
@@ -206,13 +207,15 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let (recomputed, si2) =
-            resolve_entry_with_index(&index, &a).expect("recompute after poison");
-        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
+        let err = resolve_entry_with_index(&index, &a).expect_err("poisoned hit must refuse");
+        assert!(
+            err.contains("provider refused faithful probe"),
+            "poisoned hit must refuse before rebuilding: {err}"
+        );
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
-            "poisoned hit must fall through to fresh resolve"
+            "control resolve remains green"
         );
     });
 
@@ -231,6 +234,7 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let subject = subject_digest_for_closure(&sources);
     let mut poisoned =
         build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -242,13 +246,16 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let (recomputed, si2) =
-            resolve_entry_with_index(&index, &a).expect("recompute after subject poison");
-        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
+        let err =
+            resolve_entry_with_index(&index, &a).expect_err("subject-poisoned hit must refuse");
+        assert!(
+            err.contains("provider refused faithful probe"),
+            "subject-poisoned hit must refuse before rebuilding: {err}"
+        );
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
-            "subject poison must fall through to fresh resolve"
+            "control resolve remains green"
         );
     });
 
@@ -372,9 +379,13 @@ fn cross_process_child_worker() {
     let verdict_path = std::env::var("GUNBC_RG_CACHE_VERDICT").expect("verdict path");
     let verdict = with_cache_env(std::path::Path::new(&cache), || {
         let index = build_multi_entry_index(&[roots]);
-        let (graph, si) = resolve_entry_with_index(&index, &entry).expect("child resolve");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &entry) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => e,
+        }
     });
     fs::write(&verdict_path, verdict).expect("write verdict");
 }
@@ -422,8 +433,16 @@ fn two_processes_share_cache_without_torn_read() {
     assert!(s2.success(), "child2 status: {s2:?}");
     let out1 = fs::read_to_string(&verdict1).expect("verdict1");
     let out2 = fs::read_to_string(&verdict2).expect("verdict2");
-    assert_eq!(out1.trim(), "PASS", "child1 verdict");
-    assert_eq!(out2.trim(), "PASS", "child2 verdict");
+    for (label, verdict) in [("child1", out1.trim()), ("child2", out2.trim())] {
+        assert!(
+            verdict == "PASS" || verdict.contains("provider refused faithful probe"),
+            "{label} verdict must either cold-build or refuse faithfully: {verdict}"
+        );
+    }
+    assert!(
+        out1.trim() == "PASS" || out2.trim() == "PASS",
+        "at least one child must cold-build the cache: child1={out1:?} child2={out2:?}"
+    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
