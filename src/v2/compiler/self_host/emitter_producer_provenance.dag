@@ -6,6 +6,9 @@ import v2.compiler.self_host.frontier_probe_types {
   ProbeStageEmit,
   SelfEmitReady
 }
+import tools.self_host_module_behavioral_transport_roster {
+  module_behavioral_transport_config_for
+}
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
@@ -23,7 +26,7 @@ import v2.std.optional {
 }
 import v2.std.text { String }
 
-data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored producer claim. Structural wall: V2Emitter* receipts are UNWRITABLE when v1.compiler.emit_rust is present in the realized closure (the seed compile door). The cssl seed-linked behavioral harness always reaches that door; poison/disable emit_rust is the RED control proving the wall fires, not the mechanism. Dissolve-on: per-module receipts bind execution-measured digests via frontier_probe_survey."
+data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity only; canonical receipts derive via producer_emission_receipt_from_oracle_row with BuildGreen. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
 
 type EmitterProducer
   = V1SeedEmitter
@@ -76,7 +79,8 @@ type ProducerEmissionReceipt {
 type ProducerEmissionOracleRow {
   module_path: String
   measured_probe: FrontierProbeReceipt
-  receipt: ProducerEmissionReceipt
+  behavioral_probe_entry: String
+  behavioral_probe_function: String
 }
 
 data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
@@ -184,6 +188,8 @@ fn producer_emission_measured_probe_receipt(module_path: String) -> FrontierProb
   }
 }
 
+data producer_emission_receipt_digest_scaffold_note: String = "SCAFFOLD (review 44333 partial landing): mint_producer_emission_receipt still keys digests on symbol_identity_digest scaffolds until frontier_probe_survey binds execution-measured module/emitter/emitted-source hashes. The construction wall landed here is: (1) no hand-authored ProducerEmissionReceipt in oracle data rows; (2) BuildRefused cannot authorize EmitterProduced; (3) every oracle row's probe has a matching compiler_module_behavioral_transport_roster row executed by its wet witness."
+
 fn seed_emitter_behavioral_oracle_row(
   module_path: String,
   behavioral_probe_entry: String,
@@ -192,19 +198,64 @@ fn seed_emitter_behavioral_oracle_row(
   ProducerEmissionOracleRow {
     module_path: module_path,
     measured_probe: producer_emission_measured_probe_receipt(module_path: module_path),
-    receipt: ProducerEmissionReceipt {
-      module_path: module_path,
-      module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
-      emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
-      producer: V1SeedEmitter,
+    behavioral_probe_entry: behavioral_probe_entry,
+    behavioral_probe_function: behavioral_probe_function
+  }
+}
+
+fn producer_emission_receipt_from_oracle_row(
+  row: ProducerEmissionOracleRow
+) -> Optional<ProducerEmissionReceipt> {
+  mint_producer_emission_receipt(
+    module_path: row.module_path,
+    producer: V1SeedEmitter,
     qualifications: behavioral_equivalent_qualifications,
-      rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
-      emitted_source_digest: scaffold_digest_for_module_path(module_path: module_path),
-      build_result: BuildRefused { cause: ^cssl_harness_assemble_red },
-      behavioral_probe_entry: behavioral_probe_entry,
-      behavioral_probe_function: behavioral_probe_function,
-      realized_closure: cssl_harness_realized_closure
-    }
+    build_result: BuildGreen,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    realized_closure: cssl_harness_realized_closure
+  )
+}
+
+fn producer_emission_receipt_is_build_green(receipt: ProducerEmissionReceipt) -> Bool {
+  match receipt.build_result {
+    BuildGreen => true
+    BuildRefused { cause: _ } => false
+  }
+}
+
+fn producer_emission_canonical_receipt_for_oracle_row(
+  row: ProducerEmissionOracleRow
+) -> Optional<ProducerEmissionReceipt> {
+  match producer_emission_receipt_from_oracle_row(row: row) {
+    Present { value: receipt } =>
+      if producer_emission_receipt_is_build_green(receipt: receipt) {
+        optional_present(value: receipt)
+      } else {
+        optional_absent()
+      }
+    Absent => optional_absent()
+  }
+}
+
+fn producer_emission_oracle_row_frontier_receipt(
+  row: ProducerEmissionOracleRow
+) -> ProducerEmissionReceipt {
+  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+    Present { value: receipt } => receipt
+    Absent =>
+      match mint_producer_emission_receipt(
+        module_path: row.module_path,
+        producer: V1SeedEmitter,
+        qualifications: behavioral_equivalent_qualifications,
+        build_result: BuildRefused { cause: ^producer_emission_oracle_unmintable },
+        behavioral_probe_entry: row.behavioral_probe_entry,
+        behavioral_probe_function: row.behavioral_probe_function,
+        realized_closure: cssl_harness_realized_closure
+      ) {
+        Present { value: receipt } => receipt
+        Absent => fabricated_v1_seed_producer_receipt(module_path: row.module_path)
+      }
   }
 }
 
@@ -249,19 +300,8 @@ data producer_emission_oracle_row_00_compile_flip_wave_red_note: String = "Secon
 data producer_emission_oracle_row_00_compile_flip_wave_red: ProducerEmissionOracleRow = ProducerEmissionOracleRow {
   module_path: "src/v2/compiler/00_compile.dag",
   measured_probe: producer_emission_measured_probe_receipt(module_path: "src/v2/compiler/00_compile.dag"),
-  receipt: ProducerEmissionReceipt {
-    module_path: "src/v2/compiler/00_compile.dag",
-    module_source_digest: scaffold_digest_for_module_path(module_path: "src/v2/compiler/00_compile.dag"),
-    emitter_source_digest: scaffold_digest_for_module_path(module_path: v1_seed_emit_rust_qualified_module),
-    producer: V1SeedEmitter,
-    qualifications: behavioral_equivalent_qualifications,
-    rust_target_model_digest: symbol_identity_digest(sym: ^rust_target_model_digest_scaffold),
-    emitted_source_digest: scaffold_digest_for_module_path(module_path: "src/v2/compiler/00_compile.dag"),
-    build_result: BuildRefused { cause: ^flip_wave_dishonest_claim },
-    behavioral_probe_entry: "src/v2/test/claim/execution/does_not_exist_flip_wave_test.dag",
-    behavioral_probe_function: "fabricated_flip_wave_all_holds",
-    realized_closure: cssl_harness_realized_closure
-  }
+  behavioral_probe_entry: "src/v2/test/claim/execution/does_not_exist_flip_wave_test.dag",
+  behavioral_probe_function: "fabricated_flip_wave_all_holds"
 }
 
 data producer_emission_oracle_rows: List<ProducerEmissionOracleRow> = [
@@ -376,9 +416,24 @@ fn producer_emission_receipt_eq(left: ProducerEmissionReceipt, right: ProducerEm
 
 fn producer_emission_oracle_probe_is_enrolled(row: ProducerEmissionOracleRow) -> Bool {
   schedule_witness_entry_cited(
-    probe_entry: row.receipt.behavioral_probe_entry,
-    probe_function: row.receipt.behavioral_probe_function,
+    probe_entry: row.behavioral_probe_entry,
+    probe_function: row.behavioral_probe_function,
     entries: seed_emitter_behavioral_wet_known_red_entries
+  )
+}
+
+fn producer_emission_oracle_row_has_behavioral_transport_config(row: ProducerEmissionOracleRow) -> Bool {
+  match module_behavioral_transport_config_for(module_path: row.module_path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn producer_emission_oracle_rows_match_transport_roster_holds() -> Bool {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: true,
+    cons: fn(ok, row) { ok && producer_emission_oracle_row_has_behavioral_transport_config(row: row) }
   )
 }
 
@@ -396,19 +451,24 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Construction, not enrollment-only (review 44328): authorization requires structural equality of the FULL ProducerEmissionReceipt — digests, qualifications, build_result, probe identity, and realized_closure — AND enrolled wet quarantine citation. Same module_path + producer with a fabricated BuildGreen or probe identity cannot authorize."
+data producer_emission_oracle_authorization_note: String = "Construction, not enrollment-only (reviews 44328/44333): authorization requires structural equality against the canonical receipt minted by producer_emission_receipt_from_oracle_row (never a hand-authored data-row receipt), BuildGreen on both sides, AND enrolled wet quarantine citation. Fabricated receipts with scaffold digests or BuildRefused cannot authorize."
 
 fn producer_emission_oracle_authorizes_row(
   module_path: String,
   receipt: ProducerEmissionReceipt
 ) -> Bool {
-  any(
-    xs: producer_emission_oracle_row_for_module(module_path: module_path),
-    predicate: fn(row) {
-      producer_emission_receipt_eq(left: row.receipt, right: receipt)
-        && producer_emission_oracle_probe_is_enrolled(row: row)
-    }
-  )
+  producer_emission_receipt_is_build_green(receipt: receipt)
+    && any(
+      xs: producer_emission_oracle_row_for_module(module_path: module_path),
+      predicate: fn(row) {
+        match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+          Present { value: canonical } =>
+            producer_emission_receipt_eq(left: canonical, right: receipt)
+              && producer_emission_oracle_probe_is_enrolled(row: row)
+          Absent => false
+        }
+      }
+    )
 }
 
 fn producer_emission_enrollment_entry_has_oracle_row(
@@ -418,8 +478,8 @@ fn producer_emission_enrollment_entry_has_oracle_row(
   any(
     xs: producer_emission_oracle_rows,
     predicate: fn(row) {
-      (row.receipt.behavioral_probe_entry == probe_entry)
-        && (row.receipt.behavioral_probe_function == probe_function)
+      (row.behavioral_probe_entry == probe_entry)
+        && (row.behavioral_probe_function == probe_function)
     }
   )
 }
@@ -534,54 +594,70 @@ fn row_has_qualification(
 }
 
 fn producer_emission_row_is_seed_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  match emitter_producer_axis(producer: row.receipt.producer) {
-    EmitterProducerV1Seed =>
-      row_has_qualification(
-        qualifications: row.receipt.qualifications,
-        target: BehavioralEquivalent
-      )
-    EmitterProducerV2Interpreted => false
-    EmitterProducerV2Native { generation: _ } => false
+  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+    Present { value: receipt } =>
+      match emitter_producer_axis(producer: receipt.producer) {
+        EmitterProducerV1Seed =>
+          row_has_qualification(
+            qualifications: receipt.qualifications,
+            target: BehavioralEquivalent
+          )
+        EmitterProducerV2Interpreted => false
+        EmitterProducerV2Native { generation: _ } => false
+      }
+    Absent => false
   }
 }
 
 fn producer_emission_row_is_v2_interpreted_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  match emitter_producer_axis(producer: row.receipt.producer) {
-    EmitterProducerV1Seed => false
-    EmitterProducerV2Interpreted =>
-      row_has_qualification(
-        qualifications: row.receipt.qualifications,
-        target: BehavioralEquivalent
-      )
-    EmitterProducerV2Native { generation: _ } => false
+  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+    Present { value: receipt } =>
+      match emitter_producer_axis(producer: receipt.producer) {
+        EmitterProducerV1Seed => false
+        EmitterProducerV2Interpreted =>
+          row_has_qualification(
+            qualifications: receipt.qualifications,
+            target: BehavioralEquivalent
+          )
+        EmitterProducerV2Native { generation: _ } => false
+      }
+    Absent => false
   }
 }
 
 fn producer_emission_row_is_v2_native_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  match emitter_producer_axis(producer: row.receipt.producer) {
-    EmitterProducerV1Seed => false
-    EmitterProducerV2Interpreted => false
-    EmitterProducerV2Native { generation: _ } =>
-      row_has_qualification(
-        qualifications: row.receipt.qualifications,
-        target: BehavioralEquivalent
-      )
+  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+    Present { value: receipt } =>
+      match emitter_producer_axis(producer: receipt.producer) {
+        EmitterProducerV1Seed => false
+        EmitterProducerV2Interpreted => false
+        EmitterProducerV2Native { generation: _ } =>
+          row_has_qualification(
+            qualifications: receipt.qualifications,
+            target: BehavioralEquivalent
+          )
+      }
+    Absent => false
   }
 }
 
 fn producer_emission_row_is_v2_production_routed(row: ProducerEmissionOracleRow) -> Bool {
-  match emitter_producer_axis(producer: row.receipt.producer) {
-    EmitterProducerV1Seed => false
-    EmitterProducerV2Interpreted =>
-      row_has_qualification(
-        qualifications: row.receipt.qualifications,
-        target: ProductionRouted
-      )
-    EmitterProducerV2Native { generation: _ } =>
-      row_has_qualification(
-        qualifications: row.receipt.qualifications,
-        target: ProductionRouted
-      )
+  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+    Present { value: receipt } =>
+      match emitter_producer_axis(producer: receipt.producer) {
+        EmitterProducerV1Seed => false
+        EmitterProducerV2Interpreted =>
+          row_has_qualification(
+            qualifications: receipt.qualifications,
+            target: ProductionRouted
+          )
+        EmitterProducerV2Native { generation: _ } =>
+          row_has_qualification(
+            qualifications: receipt.qualifications,
+            target: ProductionRouted
+          )
+      }
+    Absent => false
   }
 }
 

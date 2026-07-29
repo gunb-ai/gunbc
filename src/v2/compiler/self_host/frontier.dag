@@ -10,6 +10,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
   producer_emission_oracle_authorizes_row,
+  producer_emission_canonical_receipt_for_oracle_row,
+  producer_emission_oracle_row_frontier_receipt,
   producer_emission_oracle_row_03_normalize,
   producer_emission_oracle_row_body_producer,
   producer_emission_oracle_row_07_target_carriers,
@@ -244,7 +246,9 @@ fn emitter_produced_row_from_oracle(
 ) -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
     module_path: oracle_row.module_path,
-    disposition: EmitterProduced { provenance: oracle_row.receipt },
+    disposition: EmitterProduced {
+      provenance: producer_emission_oracle_row_frontier_receipt(row: oracle_row)
+    },
     measured_probe: oracle_row.measured_probe,
     tractability_rank: tractability_rank
   }
