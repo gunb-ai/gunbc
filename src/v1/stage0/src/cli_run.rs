@@ -13319,8 +13319,10 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
-// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms
-// until the host consumes the `.dag`-authoritative
+// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
+// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and
+// src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag until the host
+// consumes the `.dag`-authoritative
 // `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
 // supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
 // seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands

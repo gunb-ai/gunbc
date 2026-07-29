@@ -30,7 +30,7 @@ import v2.std.optional {
 }
 import v2.std.text { String }
 
-data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity only; canonical receipts derive via producer_emission_receipt_from_oracle_row with BuildGreen. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
+data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Oracle rows bind module_path to enrolled wet probe identity; BuildGreen requires positive seed_emitter_behavioral_wet_green_entries citation (review 44435) — not absence from known-red. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. Scaffold digests dissolve-on frontier_probe_survey."
 
 type EmitterProducer
   = V1SeedEmitter
@@ -489,18 +489,21 @@ fn producer_emission_oracle_authorizes_row(
   module_path: String,
   receipt: ProducerEmissionReceipt
 ) -> Bool {
-  producer_emission_receipt_is_build_green(receipt: receipt)
-    && any(
-      xs: producer_emission_oracle_row_for_module(module_path: module_path),
-      predicate: fn(row) {
-        match producer_emission_canonical_receipt_for_oracle_row(row: row) {
-          Present { value: canonical } =>
-            producer_emission_receipt_eq(left: canonical, right: receipt)
-              && producer_emission_oracle_row_has_behavioral_transport_config(row: row)
-          Absent => false
+  match emission_build_result_axis(result: receipt.build_result) {
+    EmissionBuildResultGreen =>
+      any(
+        xs: producer_emission_oracle_row_for_module(module_path: module_path),
+        predicate: fn(row) {
+          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+            Present { value: canonical } =>
+              producer_emission_receipt_eq(left: canonical, right: receipt)
+                && producer_emission_oracle_row_has_behavioral_transport_config(row: row)
+            Absent => false
+          }
         }
-      }
-    )
+      )
+    EmissionBuildResultRefused { cause: _ } => false
+  }
 }
 
 fn producer_emission_oracle_authorization_promotion_path_holds() -> Bool {
@@ -509,18 +512,18 @@ fn producer_emission_oracle_authorization_promotion_path_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && (
-        if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
-          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
-            Present { value: _ } => false
-            Absent => true
-          }
-        } else {
+        if producer_emission_oracle_probe_is_executed_green(row: row) {
           match producer_emission_canonical_receipt_for_oracle_row(row: row) {
             Present { value: canonical } =>
               producer_emission_oracle_authorizes_row(
                 module_path: row.module_path,
                 receipt: canonical
               )
+            Absent => false
+          }
+        } else {
+          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+            Present { value: _ } => false
             Absent => true
           }
         }
@@ -698,9 +701,9 @@ fn producer_qualified_count_axis_eq(
 fn producer_qualified_count_axis_for_receipt(
   receipt: ProducerEmissionReceipt
 ) -> Optional<ProducerQualifiedCountAxis> {
-  if !producer_emission_receipt_is_build_green(receipt: receipt) {
-    optional_absent()
-  } else {
+  match emission_build_result_axis(result: receipt.build_result) {
+    EmissionBuildResultRefused { cause: _ } => optional_absent()
+    EmissionBuildResultGreen =>
     match emitter_producer_axis(producer: receipt.producer) {
       EmitterProducerV1Seed =>
         if row_has_qualification(
