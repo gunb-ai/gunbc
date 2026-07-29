@@ -32,6 +32,11 @@ type WorkspaceFile {
   content: WorkspaceContent
 }
 
+type MaterializedWorkspaceFile {
+  path: RelPath
+  text: String
+}
+
 type InvocationArg
   = LiteralArg { text: String }
   | WorkspacePath { path: RelPath }
