@@ -1,0 +1,74 @@
+module gunbc.claim_evidence_probe_rule
+
+import std.types { NonEmptyStr }
+import std.claim_evidence {
+  RecordedFact,
+  InferenceRuleId,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceDirection,
+  EvidenceDirectionFold,
+  EvidenceLink,
+  EvidenceInsufficiency,
+  EvidenceInference,
+  evidence_direction_fold,
+  applicable_evidence_inference,
+  insufficient_evidence_inference,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeEffectOnSubjectFold,
+  probe_effect_on_subject_fold,
+}
+
+fn infer_probe_evidence<F, C, A, FidelityBoundary>(
+  fact: RecordedFact<F>,
+  direction: EvidenceDirection,
+  inference_rule: InferenceRuleId,
+  authority: A,
+  provenance: EvidenceProvenance,
+  freshness: EvidenceFreshness<C>,
+  fidelity: EvidenceFidelity<FidelityBoundary>,
+  probe: ReadBackProbe,
+) -> EvidenceInference<F, C, A, FidelityBoundary, ReadBackProbe> {
+  let supports = evidence_direction_fold(
+    direction: direction,
+    fold: EvidenceDirectionFold {
+      supports: true,
+      challenges: false,
+    },
+  )
+  let probe_is_independent = probe_effect_on_subject_fold(
+    effect: probe.effect_on_subject,
+    fold: ProbeEffectOnSubjectFold {
+      inert: true,
+      may_establish: fn(_) { false },
+      unknown: fn(_) { false },
+    },
+  )
+  if supports && !probe_is_independent {
+    insufficient_evidence_inference(
+      insufficiency: EvidenceInsufficiency {
+        fact: fact,
+        claim: freshness.maximum_conclusion,
+        inference_rule: inference_rule,
+        probe_independence: probe,
+        reason: "a positive result from this probe may establish the subject it reports",
+      },
+    )
+  } else {
+    applicable_evidence_inference(
+      link: EvidenceLink {
+        fact: fact,
+        direction: direction,
+        inference_rule: inference_rule,
+        authority: authority,
+        provenance: provenance,
+        freshness: freshness,
+        fidelity: fidelity,
+        probe_independence: probe,
+      },
+    )
+  }
+}

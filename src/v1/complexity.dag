@@ -60,7 +60,7 @@ import std.algebra {
   CostShape, ShapeConstant, ShapeLinearScan, ShapeIterateBody, ShapeSortBody
 }
 import std.graph {
-  CallGraph, GraphEdge, DfsFinishAcc, SccComponentAcc, SccCycleAcc,
+  CallGraph, GraphEdge, DfsFinishAcc, SccComponentAcc,
   seed_adjacency_map, build_call_graph_from_proof_edges,
   forward_adjacency, reverse_adjacency,
   dfs_finish_order, dfs_collect_component, graph_has_multi_node_scc,
