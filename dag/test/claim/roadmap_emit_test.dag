@@ -15,6 +15,7 @@ data child_id: RoadmapNodeId = "pr-checkbox-status"
 
 fn parent_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_5E27VQFME81E3RP60RE6" as RoadmapNodeIdentity,
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
@@ -27,6 +28,7 @@ fn parent_node() -> RoadmapNode {
 
 fn child_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as RoadmapNodeIdentity,
     node: child_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -39,6 +41,7 @@ fn child_node() -> RoadmapNode {
 
 fn signed_child_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as RoadmapNodeIdentity,
     node: child_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -110,6 +113,7 @@ test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
 
 fn superseded_child_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_HSDEAR3FG68K530CRD70" as RoadmapNodeIdentity,
     node: child_id,
     line: SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
     carriers: [],

@@ -25,7 +25,13 @@ import gunbc.v1_deletion_plan {
   v1_finish_line_key,
   v1_finish_lines_accepted_count,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  WorkItemExecutionContract,
+  dispatch_required_capabilities,
+  execution_capability_label,
+}
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -141,6 +147,10 @@ fn id_count(id: RoadmapNodeId) -> Int {
   nodes() |> filter(n => n.node == id) |> count
 }
 
+fn active_id_exists(id: RoadmapNodeId) -> Bool {
+  active_nodes() |> any(n => n.node == id)
+}
+
 fn edge_exists(child: String, parent: String) -> Bool {
   edges() |> any(e => e.child == child && e.parent == parent)
 }
@@ -195,6 +205,7 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
 
 fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
     node: "red-fixture",
     line: line,
     carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
@@ -253,9 +264,14 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  count(accepted) == 2
+  count(accepted) == 7
     && (accepted |> any(a => a == "namespace-occurrence-transport"))
     && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+    && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+    && (accepted |> any(a => a == "2-scm-git-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(a => a == "2-claim-indexed-evidence"))
     && count(active_nodes()) == count(nodes()) - count(accepted)
     && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
     && all(accepted, a => id_exists(id: a))
@@ -308,10 +324,16 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
   let act = active_edges()
   !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
+    && !(act |> any(e => e.child == "2-scm-compatibility-shape"))
     && is_top_level(edges: act, node: "namespace-canonical-binding")
     && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
+    && is_top_level(edges: act, node: "2-scm-compatibility-shape")
     && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
     && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
+    && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
@@ -509,7 +531,8 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
 
 data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
 
-test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
+test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
       doc: roadmap_authority_for(focus: NoFocus),
@@ -520,14 +543,23 @@ test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
     && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
     && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
     && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
-    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 4
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 5
     && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")
     && id_exists(id: "2-scm-pijul-upstream-model")
     && id_exists(id: "2-claim-indexed-evidence")
-    && !id_exists(id: "2-scm-compatibility-shape")
+    && id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-git-upstream-model")
+    && !active_id_exists(id: "2-scm-mercurial-upstream-model")
+    && !active_id_exists(id: "2-scm-pijul-upstream-model")
+    && !active_id_exists(id: "2-claim-indexed-evidence")
+    && active_id_exists(id: "2-scm-compatibility-shape")
+    && (accepted |> any(id => id == "2-scm-git-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(id => id == "2-claim-indexed-evidence"))
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }
@@ -546,4 +578,50 @@ test fn witness_projection_is_active_only() -> Bool {
     && !string_contains(s: out, pattern: "**superseded →**")
     && !string_contains(s: out, pattern: "awaiting sign-off")
     && !string_contains(s: out, pattern: "Operator TODO")
+}
+
+data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
+
+fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
+  match nodes()
+    |> filter(n => (n.node as String) == id)
+    |> map(n => n.execution)
+    |> first {
+    Present { value: c } => c
+    Absent => ExecutionContractUnspecified
+  }
+}
+
+test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
+  match bound_execution_contract_for(id: "shell-typed-invocation") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+}
+
+test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
+  let caps = dispatch_required_capabilities(
+    contract: bound_execution_contract_for(id: "shell-typed-invocation"),
+  )
+  count(caps) == 9
+    && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
+}
+
+test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
+  count(nodes()
+    |> filter(n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations: _, extra_capabilities: _ } => true
+      })) == 2
+}
+
+test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
+  match bound_execution_contract_for(id: "observation-raw-print-retirement") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+    && match bound_execution_contract_for(id: "shell-typed-invocation") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    }
 }
