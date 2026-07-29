@@ -31291,6 +31291,22 @@ mod sigs_env_flat_parents {
     // an EARLIER import; (c) own local beats every parent.
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
+        // (a) and (b) are properties of the *ImportScoped* linearization, not of
+        // resolution in general. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY` now defaults
+        // to true (§13 unique-on-chain, v1_rt.rs), under which a name defined by two
+        // parents is a typed AmbiguousReference instead of a first-hit pick — so both
+        // read None on the default policy, which is what made this test red. Pin the
+        // policy the assertions are about, then cover the default's refusal explicitly
+        // at the end rather than leaving it unstated.
+        struct PolicyGuard(bool);
+        impl Drop for PolicyGuard {
+            fn drop(&mut self) {
+                crate::v1_rt::name_resolution_policy_set_namespace_only(self.0);
+            }
+        }
+        let _policy = PolicyGuard(crate::v1_rt::name_resolution_policy_is_namespace_only());
+        crate::v1_rt::name_resolution_policy_set_namespace_only(false);
+
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
             crate::v1_compiler_infer_lookup::func_sig_if_resolved(
                 crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
@@ -31323,6 +31339,26 @@ mod sigs_env_flat_parents {
             read(&own, "f").as_deref(),
             Some("FromSelf"),
             "own local shadows all parents"
+        );
+
+        // Default policy (§13 NamespaceOnlyY): the same two-parent homonyms must
+        // REFUSE rather than silently pick a winner by import order. Own-local still
+        // resolves — it is unique on the chain, so nothing is ambiguous about it.
+        crate::v1_rt::name_resolution_policy_set_namespace_only(true);
+        assert_eq!(
+            read(&m, "f"),
+            None,
+            "namespace-only must refuse the 2-parent homonym, never first-hit it"
+        );
+        assert_eq!(
+            read(&m2, "g"),
+            None,
+            "namespace-only must refuse the closure-vs-direct homonym, never order-pick it"
+        );
+        assert_eq!(
+            read(&own, "f").as_deref(),
+            Some("FromSelf"),
+            "own local is unique on the chain and must still resolve under namespace-only"
         );
     }
 
