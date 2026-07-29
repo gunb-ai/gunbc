@@ -1365,11 +1365,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-<<<<<<< HEAD
-        section_prose(content: "The graph has ten lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three SCM R0 models, the P−1 evidence carrier, and the toolchain pin model are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
-=======
-        section_prose(content: "The graph has nine lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The three independent SCM R0 models and P−1 evidence carrier are landed prerequisites; R1 compatibility-shape extraction is the active SCM slice, while semantic-kernel and later product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
->>>>>>> fa45abd9601 (WIP: business)
+        section_prose(content: "The graph has ten lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three independent SCM R0 models and P−1 evidence carrier are landed prerequisites; R1 compatibility-shape extraction is the active SCM slice, while semantic-kernel and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {
