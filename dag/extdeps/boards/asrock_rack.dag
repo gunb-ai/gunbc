@@ -118,8 +118,8 @@ data asrock_altrad8ud_factory_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(30),
-  positive_hysteresis_degrees_celsius: 1,
-  negative_hysteresis_degrees_celsius: 1,
+  positive_hysteresis: celsius(1),
+  negative_hysteresis: celsius(1),
 }
 
 data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {

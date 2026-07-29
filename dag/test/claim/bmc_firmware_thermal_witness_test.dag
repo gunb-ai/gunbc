@@ -404,8 +404,8 @@ fn minimum_duty_perturbation() -> BmcFanCurve {
     minimum_duty: percent(31),
     sensor_unavailable_duty: fleet_quiet_temp_soc_fan_curve.sensor_unavailable_duty,
     zone_failsafe_duty: fleet_quiet_temp_soc_fan_curve.zone_failsafe_duty,
-    positive_hysteresis_degrees_celsius: fleet_quiet_temp_soc_fan_curve.positive_hysteresis_degrees_celsius,
-    negative_hysteresis_degrees_celsius: fleet_quiet_temp_soc_fan_curve.negative_hysteresis_degrees_celsius,
+    positive_hysteresis: fleet_quiet_temp_soc_fan_curve.positive_hysteresis,
+    negative_hysteresis: fleet_quiet_temp_soc_fan_curve.negative_hysteresis,
   }
 }
 

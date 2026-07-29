@@ -45,8 +45,8 @@ test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
       minimum_duty: percent(30),
       sensor_unavailable_duty: percent(100),
       zone_failsafe_duty: percent(100),
-      positive_hysteresis_degrees_celsius: 1,
-      negative_hysteresis_degrees_celsius: 1,
+      positive_hysteresis: celsius(1),
+      negative_hysteresis: celsius(1),
     },
   ) {
     BmcFanCurveInvalid { cause: _ } => true

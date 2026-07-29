@@ -176,8 +176,8 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis_degrees_celsius: 1,
-  negative_hysteresis_degrees_celsius: 2,
+  positive_hysteresis: celsius(1),
+  negative_hysteresis: celsius(2),
 }
 
 data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"

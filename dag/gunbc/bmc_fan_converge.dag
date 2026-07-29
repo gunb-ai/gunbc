@@ -369,8 +369,8 @@ fn bmc_fan_policy_projection_request(
     minimum_duty: curve.minimum_duty,
     sensor_failsafe_duty: curve.sensor_unavailable_duty,
     zone_failsafe_duty: curve.zone_failsafe_duty,
-    positive_hysteresis: celsius(curve.positive_hysteresis_degrees_celsius),
-    negative_hysteresis: celsius(curve.negative_hysteresis_degrees_celsius),
+    positive_hysteresis: curve.positive_hysteresis,
+    negative_hysteresis: curve.negative_hysteresis,
     fan_controller_name: projection.aggregate_fan_pid_entry,
     fan_inputs: projection.required_tach_inputs,
   }
@@ -854,8 +854,8 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
                 minimum_duty: controller.minimum_duty,
                 sensor_unavailable_duty: controller.sensor_failsafe_duty,
                 zone_failsafe_duty: controller.zone_failsafe_duty,
-                positive_hysteresis_degrees_celsius: celsius_count(controller.positive_hysteresis),
-                negative_hysteresis_degrees_celsius: celsius_count(controller.negative_hysteresis),
+                positive_hysteresis: controller.positive_hysteresis,
+                negative_hysteresis: controller.negative_hysteresis,
               }
             match validate_bmc_fan_curve(curve: raw_curve) {
               BmcFanCurveInvalid { cause: _ } =>

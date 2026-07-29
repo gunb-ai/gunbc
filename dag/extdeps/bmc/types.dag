@@ -143,8 +143,8 @@ type BmcFanCurve {
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
   zone_failsafe_duty: Percent
-  positive_hysteresis_degrees_celsius: Nat
-  negative_hysteresis_degrees_celsius: Nat
+  positive_hysteresis: Celsius
+  negative_hysteresis: Celsius
 }
 
 type ValidatedBmcFanCurve {
@@ -282,7 +282,7 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
         || (
           percent_count(step.duty) == 100
             && (
-              celsius_count(step.at_or_above) + curve.positive_hysteresis_degrees_celsius
+              celsius_count(step.at_or_above) + celsius_count(curve.positive_hysteresis)
             ) < celsius_count(temperature)
         )
   )
