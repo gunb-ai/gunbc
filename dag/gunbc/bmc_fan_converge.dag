@@ -156,6 +156,7 @@ import std.measure {
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
+import product.placement_supply { HostIdentity }
 import std.state_durability { StatePerturbationGeneration }
 import std.types {
   Bool,
@@ -185,6 +186,7 @@ type BmcFanConvergeTarget {
 }
 
 type BmcFanSshIdentityAdmission {
+  target: HostIdentity
   known_hosts_path: NonEmptyStr
   expected_machine_id_path: NonEmptyStr
 }
@@ -221,6 +223,7 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   durability_generation: 1,
   durability_evidence: [],
   ssh_identity: BmcFanSshIdentityAdmission {
+    target: srv3_host.identity,
     known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
     expected_machine_id_path: "/etc/gunbc/bmc-identities/srv3-machine-id",
   },
@@ -234,6 +237,7 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   durability_generation: srv4_bmc_fan_perturbation_generation,
   durability_evidence: srv4_bmc_fan_durability_evidence,
   ssh_identity: BmcFanSshIdentityAdmission {
+    target: srv4_host.identity,
     known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
     expected_machine_id_path: "/etc/gunbc/bmc-identities/srv4-machine-id",
   },
@@ -1962,6 +1966,11 @@ fn bmc_fan_observe_with_credential(
   target: BmcFanConvergeTarget,
   credential: Secret,
 ) -> BmcFanLiveObservationResult {
+  if target.ssh_identity.target != target.host.identity {
+    BmcFanLiveObservationRefused {
+      reason: "BMC SSH identity admission is bound to a different host target",
+    }
+  } else {
   let session = PasswordSshSession {
     host: target.onboarding.bmc.host,
     username: target.onboarding.factory_login.username,
@@ -2071,6 +2080,7 @@ fn bmc_fan_observe_with_credential(
             }
         }
   }
+}
 }
 }
 
