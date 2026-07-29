@@ -180,6 +180,163 @@ pub(crate) fn workspace_root_from(start_cwd: &Path) -> PathBuf {
     )
 }
 
+const STAGE0_CARGO_TOML_REL: &str = "src/v1/stage0/Cargo.toml";
+const STAGE0_PACKAGE_ROOT: &str = "src/v1/stage0/";
+
+/// Host-derived repo-relative paths for every `[[bin]]` in stage0 `Cargo.toml`.
+/// Authority: `gunbc.stage0_cargo_manifest` (no hand-listed bin rows in `.dag`).
+pub fn stage0_cargo_bin_repo_paths_from_manifest() -> Vec<String> {
+    let root = workspace_root();
+    let manifest = root.join(STAGE0_CARGO_TOML_REL);
+    let content = std::fs::read_to_string(&manifest).unwrap_or_else(|e| {
+        panic!(
+            "stage0_cargo_bin_repo_paths_from_manifest: failed to read {}: {e}",
+            manifest.display()
+        )
+    });
+    stage0_cargo_bin_repo_paths_from_manifest_str(&content)
+}
+
+fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut in_bin = false;
+    let mut current_bin_has_path = false;
+    let mut bin_section_count = 0usize;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed == "[[bin]]" {
+            if in_bin && !current_bin_has_path {
+                panic!(
+                    "stage0_cargo_bin_repo_paths_from_manifest: [[bin]] table missing path before next table"
+                );
+            }
+            in_bin = true;
+            current_bin_has_path = false;
+            bin_section_count += 1;
+            continue;
+        }
+        if trimmed.starts_with("[[") {
+            if in_bin && !current_bin_has_path {
+                panic!("stage0_cargo_bin_repo_paths_from_manifest: [[bin]] table missing path");
+            }
+            in_bin = false;
+            current_bin_has_path = false;
+            continue;
+        }
+        if in_bin {
+            if let Some(path_val) = parse_bin_table_path_line(trimmed) {
+                paths.push(format!("{STAGE0_PACKAGE_ROOT}{path_val}"));
+                current_bin_has_path = true;
+            }
+        }
+    }
+    if in_bin && !current_bin_has_path {
+        panic!("stage0_cargo_bin_repo_paths_from_manifest: trailing [[bin]] table missing path");
+    }
+    if bin_section_count != paths.len() {
+        panic!(
+            "stage0_cargo_bin_repo_paths_from_manifest: {bin_section_count} [[bin]] tables but {} paths parsed",
+            paths.len()
+        );
+    }
+    paths
+}
+
+fn parse_toml_quoted_value(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.starts_with('"') {
+        let rest = &raw[1..];
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    } else if raw.starts_with('\'') {
+        let rest = &raw[1..];
+        let end = rest.find('\'')?;
+        Some(rest[..end].to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_bin_table_path_line(trimmed: &str) -> Option<String> {
+    let eq = trimmed.find('=')?;
+    let key = trimmed[..eq].trim();
+    if key != "path" {
+        return None;
+    }
+    let value = trimmed[eq + 1..].trim();
+    parse_toml_quoted_value(value).or_else(|| {
+        if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    })
+}
+
+/// Tracked `.rs` paths from `git ls-files` at the workspace root (host execution surface).
+pub fn git_tracked_rust_repo_paths() -> Vec<String> {
+    let root = workspace_root();
+    let output = std::process::Command::new("git")
+        .args(["ls-files", "*.rs"])
+        .current_dir(&root)
+        .output()
+        .unwrap_or_else(|e| panic!("git_tracked_rust_repo_paths: git ls-files failed: {e}"));
+    if !output.status.success() {
+        panic!(
+            "git_tracked_rust_repo_paths: git ls-files exited {:?}",
+            output.status
+        );
+    }
+    String::from_utf8(output.stdout)
+        .unwrap_or_else(|e| panic!("git_tracked_rust_repo_paths: invalid utf8: {e}"))
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn stage0_cargo_bin_manifest_count() -> i64 {
+    i64::try_from(stage0_cargo_bin_repo_paths_from_manifest().len())
+        .expect("stage0_cargo_bin_manifest_count: bin count fits i64")
+}
+
+pub fn stage0_cargo_bin_manifest_paths_unique_holds() -> bool {
+    let paths = stage0_cargo_bin_repo_paths_from_manifest();
+    let mut seen = std::collections::HashSet::new();
+    paths.iter().all(|p| seen.insert(p.clone()))
+}
+
+pub fn stage0_cargo_bin_manifest_all_under_package_root_holds() -> bool {
+    stage0_cargo_bin_repo_paths_from_manifest()
+        .iter()
+        .all(|p| p.starts_with(STAGE0_PACKAGE_ROOT))
+}
+
+pub fn git_tracked_rust_repo_path_count() -> i64 {
+    i64::try_from(git_tracked_rust_repo_paths().len())
+        .expect("git_tracked_rust_repo_path_count: path count fits i64")
+}
+
+pub fn stage0_cargo_bin_manifest_repo_paths() -> Vec<String> {
+    stage0_cargo_bin_repo_paths_from_manifest()
+}
+
+pub fn stage0_cargo_bin_manifest_parse_complete_holds() -> bool {
+    let paths = stage0_cargo_bin_repo_paths_from_manifest();
+    !paths.is_empty()
+        && stage0_cargo_bin_manifest_paths_unique_holds()
+        && stage0_cargo_bin_manifest_all_under_package_root_holds()
+}
+
+pub fn stage0_cargo_bin_manifest_unparsed_bin_fixture_holds() -> bool {
+    let incomplete = "[[bin]]\nname = \"orphan\"\n[[bin]]\npath=\"src/bin/ok.rs\"\n";
+    std::panic::catch_unwind(|| stage0_cargo_bin_repo_paths_from_manifest_str(incomplete)).is_err()
+}
+
 /// The workspace root is a property of where the process RUNS, never of where the
 /// binary was COMPILED. A `CARGO_MANIFEST_DIR` bake is not a runtime fact: CI shares
 /// the release binaries across jobs via artifacts, and the build job and the consuming
@@ -31647,3 +31804,63 @@ mod compile_clean_loader_closure_fork_regression {
 
 #[path = "census_exclude_derive.rs"]
 pub mod census_exclude_derive;
+
+#[cfg(test)]
+mod stage0_cargo_manifest_tests {
+    use super::stage0_cargo_bin_repo_paths_from_manifest_str;
+
+    #[test]
+    fn parses_bin_path_without_spaces_around_equals() {
+        let fragment = r#"
+[[bin]]
+name = "demo"
+path="src/bin/demo.rs"
+"#;
+        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
+        assert_eq!(paths, vec!["src/v1/stage0/src/bin/demo.rs".to_string()]);
+    }
+
+    #[test]
+    fn rejects_bin_table_missing_path() {
+        let fragment = "[[bin]]\nname = \"orphan\"\n";
+        let err =
+            std::panic::catch_unwind(|| stage0_cargo_bin_repo_paths_from_manifest_str(fragment));
+        assert!(err.is_err(), "[[bin]] without path must refuse");
+    }
+
+    #[test]
+    fn parses_bin_path_entries_from_manifest_fragment() {
+        let fragment = r#"
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[bin]]
+name = "claim_batch"
+path = "src/bin/claim_batch.rs"
+"#;
+        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
+        assert_eq!(
+            paths,
+            vec![
+                "src/v1/stage0/src/main.rs".to_string(),
+                "src/v1/stage0/src/bin/claim_batch.rs".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn leaves_section_on_non_bin_table() {
+        let fragment = r#"
+[[bin]]
+name = "gunbc"
+path = "src/main.rs"
+
+[[example]]
+name = "demo"
+path = "examples/demo.rs"
+"#;
+        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
+        assert_eq!(paths, vec!["src/v1/stage0/src/main.rs".to_string()]);
+    }
+}
