@@ -97,9 +97,33 @@ pub fn node_rebuild(n: Rc<Node>, children: Rc<Vec<Rc<Edge>>>) -> Rc<Node> {
     })
 }
 
+// src/v2/std/node.dag:568  `fn well_formed(n: Node) -> Bool`
+//
+// UNION OF BODIES, not just of names. The two per-transport copies this bridge replaces
+// DISAGREED here: body_producer's was `let _ = n; true` and 03_normalize's carried the real
+// root check below. Taking the weaker one would have been a §5 fail-open on a fail-closed
+// path — emitted 03_normalize gates graft output on `well_formed` and raises
+// `post_normalize_not_well_formed_diagnostic` on false, so an always-true stub lets a
+// malformed empty Conj/Disj through the normalize gate in the seed-linked Rust path.
+// The name-superset check that cleared the other eleven replacements does NOT catch this
+// class: both copies define `well_formed`, and only the bodies differ. Bodies are compared
+// too now (review 44739 found this one).
+//
+// RESIDUAL GAP vs the authority, stated rather than implied: the authority folds
+// `locally_well_formed` over the whole tree (`connective_edges_conform` /
+// `behavior_edges_conform` per node). This carries the strongest surviving SHIM behavior —
+// a root-level Conj/Disj non-emptiness check — not that fold. It is strictly stronger than
+// either copy it replaces and strictly weaker than the authority.
+// dissolve-on: emitted v2 std closure compiles; then the authority's fold is used directly.
 pub fn well_formed(n: Rc<Node>) -> bool {
-    let _ = n;
-    true
+    match n.kind.as_ref() {
+        NodeKind::TypeNode { connective } => match connective.as_ref() {
+            Connective::Atom { .. } => true,
+            Connective::Conj | Connective::Disj => !n.children.is_empty(),
+            _ => true,
+        },
+        NodeKind::ComputationNode { .. } => true,
+    }
 }
 
 // src/v2/std/node.dag:355  `type NamedEdgeTargetLookup = Found { target: Node } | Ambiguous | Absent`
