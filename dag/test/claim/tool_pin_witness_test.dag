@@ -23,7 +23,6 @@ import extdeps.tools.pin {
   admit_legacy_cli_tool,
   admit_pin_integrity,
   pin_value_eq,
-  pin_selection_eq,
   pin_key_of,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -205,5 +204,5 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
   pin_value_eq(a: tracked_pin, b: same)
-    && pin_selection_eq(a: tracked_pin.selection, b: same.selection)
+    && (tracked_pin.selection == same.selection)
 }

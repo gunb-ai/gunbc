@@ -105,28 +105,12 @@ fn admit_pin_integrity(pin: ToolPin, observed_identity: ContentHash) -> PinAdmis
   }
 }
 
-data pin_value_eq_note: String = "The bundle member P2 hands to gunbc.membership_reconcile as value_eq. Identity-vs-content split per that spine's authority note: key_of is the TOOL NAME (stable identity), so a version or digest change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the tool down and reinstall it. value_eq is therefore presence-plus-content over the pinned version AND the expected identity together: a same-name drift in either field must re-upsert."
-
-fn pin_selection_eq(a: PinSelection, b: PinSelection) -> Bool {
-  match a {
-    ExactPin =>
-      match b {
-        ExactPin => true
-        TrackedChannel { channel: _, refresh_window_days: _ } => false
-      }
-    TrackedChannel { channel: ac, refresh_window_days: aw } =>
-      match b {
-        TrackedChannel { channel: bc, refresh_window_days: bw } =>
-          ((ac as String) == (bc as String)) && (aw == bw)
-        ExactPin => false
-      }
-  }
-}
+data pin_value_eq_note: String = "The bundle member P2 hands to gunbc.membership_reconcile as value_eq. Identity-vs-content split per that spine's authority note: key_of is the TOOL NAME (stable identity), so a version, digest, or selection change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the tool down and reinstall it. value_eq is therefore presence-plus-content over every field that changes what gets installed or when it is re-resolved: the pinned version, the expected identity, AND the selection policy. Selection is content, not metadata: flipping ExactPin to TrackedChannel, or widening a refresh window, changes the ensure behaviour with no version or digest movement, so omitting it would emit no hunk for a real drift (review 44329). Selection is compared with the substrate's structural equality on the coproduct rather than a hand-written per-variant predicate — the closed vocabulary already decides it, so a predicate would be a second representation of a decision the substrate makes (review 44341)."
 
 fn pin_value_eq(a: ToolPin, b: ToolPin) -> Bool {
   (a.version == b.version)
     && (a.expected_identity == b.expected_identity)
-    && pin_selection_eq(a: a.selection, b: b.selection)
+    && (a.selection == b.selection)
 }
 
 fn pin_key_of(pin: ToolPin) -> NonEmptyStr {
