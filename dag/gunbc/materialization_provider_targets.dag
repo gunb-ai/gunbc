@@ -48,9 +48,15 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
   ProviderContractTarget {
     cache: resolved_graph_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
+<<<<<<< HEAD
     consumer_seam: target_decl(module_path: "std.materialization_provider", decl_name: "serve_resolved_graph_v1_disk_probe"),
     reason: "the FIRST NAMED CONSUMER TARGET: cross-process disk hits route through serve_resolved_graph_v1_disk_probe and provider_serve; v1 artifacts still refuse as ProviderRefusedIncomplete until FORMAT_VERSION persists the compile-clean diagnostic union",
     dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, ResolveClosureRequest's derived required outputs are satisfiable on disk hits, provider_serve returns ProviderHit, and gunbc.materialization_provider_consumer_scaffold retires the v1 interpreter bridge (cli_run_hollowing_plan area 2.6 / witness-realization lane)"
+=======
+    consumer_seam: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger"),
+    reason: "the FIRST NAMED CONSUMER TARGET: the disk-hit refuse arm (artifacts carry graph+source_indices without the compile-clean diagnostic union) is this contract's ProviderRefusedIncomplete, hand-rolled — the consumer_seam bind IS that arm's own dissolve trigger, not a restatement",
+    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, ResolveClosureRequest's derived required outputs are satisfiable, and the hand refuse arm deletes"
+>>>>>>> origin/main
   },
   ProviderContractTarget {
     cache: compile_stage_memo_id,

@@ -5,7 +5,11 @@ import std.types { ContentHash, String }
 import std.content_hash { content_hash_atom }
 import std.types { Int }
 import std.measure { byte_size }
+<<<<<<< HEAD
 import std.artifact_store { ArtifactKey, artifact_key_hash, ArtifactStore, store_put }
+=======
+import std.artifact_store { ArtifactKey, artifact_key_hash, ArtifactStore, store_put, store_put_fold }
+>>>>>>> origin/main
 import std.effect_grant { Read, verb_eq }
 import std.artifact_store_scratch_grant { artifact_store_scratch_frame }
 import extdeps.realization.artifact_store_fs {
@@ -20,7 +24,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service (wet lane; hermetic runs replay the service mock). Store root under /tmp per the filesystem_write_closure_scale_witness precedent. Grant refusals surface as typed ArtifactFs*Refused variants — never widened to miss/false/[] (review 40162). RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."
+data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service. COVERAGE, STATED HONESTLY (corrected 2026-07-29 after an operator question exposed the previous sentence as false): this file runs WET ONLY. The old text claimed 'hermetic runs replay the service mock', and they do not - a hermetic run of artifact_fs_roundtrip_holds fails with 'no mock_response for operation Write - refusing to fabricate Unit', which is the envelope refusing fail-closed, not a mock being replayed. Nor does CI run it in either mode: the file is in gunbc.ci_layer_roots witness_exclusion_frontier as OfflineLocalRecipe and is absent from the explicit witness_entries roster, so discovery never selects it. The accurate claim these witnesses support is therefore 'green under a manual local wet run', never 'green in CI' - a transport whose real behavior CI never exercises is the proxy-assertion class, and the fix is a wet-lane cadence enrollment (where the other real-effect witnesses ride), not a stronger sentence here. PRECONDITION of the local recipe: the store-root directory must already exist, because Filesystem.Write does not create parents - without it all of these fail identically, which is a property of the recipe rather than of any one test. Store root under /tmp per the filesystem_write_closure_scale_witness precedent. Grant refusals surface as typed ArtifactFs*Refused variants — never widened to miss/false/[] (review 40162). RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."
 
 data fs_store_root: String = "/tmp/gunbc_artifact_store_witness"
 data non_scratch_store_root: String = "/tmp/other_scratch"
@@ -142,6 +146,7 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
     ArtifactFsPutRefused { verb: v, target: t, frame: f } => false
     ArtifactFsPutFailed { path: p } => false
   }
+<<<<<<< HEAD
   let warmed = store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)).store
   let receipt = store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40))
   let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
@@ -155,11 +160,48 @@ test fn artifact_fs_eviction_removes_only_the_evicted_key() -> Bool {
     ArtifactFsListRefused { verb: v, target: t, frame: f } => false
     ArtifactFsListFailed { path: p } => false
   }
+=======
+  store_put_fold(
+    outcome: store_put(store: eviction_probe_store(), key: victim, artifact_bytes: byte_size(count: 40)),
+    admitted: fn(warmed, warmed_evicted) {
+      store_put_fold(
+        outcome: store_put(store: warmed, key: survivor, artifact_bytes: byte_size(count: 40)),
+        admitted: fn(packed, evicted) {
+          let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+          let applied = eviction_all_applied(steps: steps) && (eviction_deleted_count(steps: steps) == 1)
+          match artifact_fs_list(store_root: eviction_store_root) {
+            ArtifactFsListOk { entries: entries } =>
+              both_written
+                && (warmed_evicted.count() == 0)
+                && applied
+                && (fs_list_contains(entries: entries, key: victim) == false)
+                && fs_list_contains(entries: entries, key: survivor)
+            ArtifactFsListRefused { verb: v, target: t, frame: f } => false
+            ArtifactFsListFailed { path: p } => false
+          }
+        },
+        did_not_fit: (a, b) => false
+      )
+    },
+    did_not_fit: (a, b) => false
+  )
+>>>>>>> origin/main
 }
 
 test fn artifact_fs_eviction_of_empty_receipt_deletes_nothing() -> Bool {
   let solo = eviction_key(tag: "eviction-solo")
+<<<<<<< HEAD
   let receipt = store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40))
   let steps = apply_store_evictions(store_root: eviction_store_root, receipt: receipt)
   (steps.count() == 0) && eviction_all_applied(steps: steps)
+=======
+  store_put_fold(
+    outcome: store_put(store: eviction_probe_store(), key: solo, artifact_bytes: byte_size(count: 40)),
+    admitted: fn(packed, evicted) {
+      let steps = apply_store_evictions(store_root: eviction_store_root, evicted: evicted)
+      (steps.count() == 0) && eviction_all_applied(steps: steps)
+    },
+    did_not_fit: (a, b) => false
+  )
+>>>>>>> origin/main
 }
