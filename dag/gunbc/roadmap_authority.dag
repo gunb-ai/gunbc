@@ -535,17 +535,17 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active_large(
-      id: "pderive-single-emitter",
+      id: "pderive-v2-emitter-consumer",
       owner: "self-host",
-      path: "docs/plans/v2-self-hosting.md",
+      path: "src/v2/compiler/05_emit.dag",
       t: fields(
-        headline: "Emit supplemental bounds through the one Rust emitter",
-        boundary: "The Rust realization consumes the bound contract and exact slot binding through the existing emitter fold.",
-        displaced_cost: "Deletes per-shape derive patches and hand-maintained template exceptions.",
-        first_slice: "Emit one previously failing nested generic declaration through the shared derive path.",
-        red_control: "Removing or swapping one required contract changes the emitted bound or refuses, never silently cargo-greens.",
-        out_of_scope: "No new Rust template authority.",
-        handback: "Return emitted source and cargo execution for the discriminating fixture."
+        headline: "Consume the bound contract through the v2 Rust emitter",
+        boundary: "The v2 emitter consumes the bound contract and exact slot binding and emits the generic bound; a seed adapter is admissible only where the bootstrap path demonstrably requires it, and must consume the same derived decision rather than restate the rule.",
+        displaced_cost: "Deletes per-shape derive patches and hand-maintained template exceptions, and proves the model-to-execution spine before any wider carrier is built on it.",
+        first_slice: "Emit one previously failing nested generic declaration through the v2 producer and cargo-build it.",
+        red_control: "Removing or swapping one required contract changes the emitted bound or refuses, never silently cargo-greens; and the run must be shown not to have reached the seed emitter.",
+        out_of_scope: "No new Rust template authority, and no restatement of the representation rule inside the seed emitter.",
+        handback: "Return producer-tagged emitted source and cargo execution for the discriminating fixture."
       )
     ),
     active_small(
@@ -558,8 +558,8 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "Prevents a locally green fixture from masquerading as progress on the self-host frontier.",
         first_slice: "Measure the exact before/after corpus without changing unrelated emit behavior.",
         red_control: "The named generic-bound class must fall and no replacement class may be hidden by a first-error-only report.",
-        out_of_scope: "No acceptance based only on typecheck or golden text.",
-        handback: "Return full histograms, emitted builds, and any newly exposed class."
+        out_of_scope: "No acceptance based only on typecheck or golden text, and a seed-producer histogram is diagnostic comparison only, never fixed-point progress.",
+        handback: "Return full producer-tagged histograms, emitted builds, and any newly exposed class."
       )
     ),
 
@@ -697,6 +697,62 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return equivalence, producer deletion readiness, and frontier update."
       )
     ),
+    active(
+      id: "v2-emitter-producer-provenance",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/frontier.dag",
+      t: fields(
+        headline: "Make emitter provenance part of every emission receipt",
+        boundary: "SelfEmitted splits into orthogonal producer and qualification axes, so a receipt names which emitter produced the artifact and at what generation; a producer claim without its binding receipt is unwritable.",
+        displaced_cost: "Stops seed-produced evidence being counted as self-hosting progress, which is the quantity CompilerFixedPoint is measured in.",
+        first_slice: "Reclassify the existing rows as V1SeedEmitter with their current qualification, and retire the single self-emitted baseline in favour of producer-qualified counters in the same change.",
+        red_control: "Poisoning or disabling the seed Rust emitter must not change any artifact claimed for a v2 producer; a receipt whose harness reaches the seed Rust compile door cannot claim one, and source location alone never establishes a producer.",
+        out_of_scope: "No module flips producer here, and no probe is weakened to keep a count.",
+        handback: "Return the producer-qualified frontier, the retired baseline, and the poisoned-seed control receipt."
+      )
+    ),
+    active_large(
+      id: "v2-emitter-direct-rust-door",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/candidate_generation.dag",
+      t: fields(
+        headline: "Assemble one direct source-root-to-Rust v2 emission door",
+        boundary: "A source-root ingest runs assemble, infer, translate, Rust target serialization, and module assembly to written source without calling the seed Rust emitter; the execution engine may remain v1 while the emission semantics are v2.",
+        displaced_cost: "Removes the seed emitter from the decision path for generated Rust while leaving bootstrap execution untouched.",
+        first_slice: "Carry the existing candidate path past translate into target serialization, since the emit composition already exists and only the wiring stops short.",
+        red_control: "A deliberately missing Rust realization row refuses rather than emitting, and poisoning the seed emitter leaves the produced source unchanged.",
+        out_of_scope: "No native compilation of the emitter itself, and no second Rust template authority beside the target model.",
+        handback: "Return emitted source, the cargo result, producer and target-model digests, and a zero seed-emitter-call receipt."
+      )
+    ),
+    active(
+      id: "v2-emitter-first-behavioral-module",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/frontier.dag",
+      t: fields(
+        headline: "Emit one behaviorally grounded compiler module with the v2 emitter",
+        boundary: "A module whose behavioral harness already exists is re-emitted with only the producer swapped, and passes the same positive and injected-fault comparison.",
+        displaced_cost: "Proves the migration path itself works before any wider carrier is built on the assumption that it does.",
+        first_slice: "Pick a module whose frontier closure is small, run the existing behavioral corpus against the interpreted v2 producer, and record the first honest interpreted-producer row.",
+        red_control: "The injected fault must still diverge, and the run must be shown not to have reached the seed emitter.",
+        out_of_scope: "No byte comparison against the seed artifact, and no flip of unrelated rows.",
+        handback: "Return the producer-tagged behavioral receipt and the reclassified frontier row."
+      )
+    ),
+    active_large(
+      id: "v2-emitter-native-bootstrap",
+      owner: "self-host",
+      path: "src/v2/compiler/self_host/frontier.dag",
+      t: fields(
+        headline: "Build native generation one and generation two of the v2 emitter",
+        boundary: "The interpreted v2 emitter emits and builds a native generation one; generation one emits and builds generation two; generation two requires no v1 emitter.",
+        displaced_cost: "Converts the emitter from something the seed produces into something that reproduces itself.",
+        first_slice: "Drain the emitter closure ordered by what generation one needs to compile, not by total seed-emitted error count.",
+        red_control: "A second-generation behavioral divergence blocks the gate, every divergence is located and classified, and byte equality is never accepted as evidence.",
+        out_of_scope: "Byte identity with the seed is explicitly not required and must not be pursued.",
+        handback: "Return both generation builds, the discriminating behavioral corpus, and the located divergence classification."
+      )
+    ),
     active_large(
       id: "v1-emitter-fixed-point",
       owner: "self-host",
@@ -705,9 +761,9 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Reach the behavioral emitter fixed point",
         boundary: "The v2 emitter re-emits and rebuilds itself for two generations with behavioral equivalence on the discriminating corpus.",
         displaced_cost: "Establishes the executable replacement required before any v1 cutover.",
-        first_slice: "Close the remaining emitter import and representation gaps while keeping cargo and witnesses green.",
+        first_slice: "Close generation-two divergences located by the native bootstrap, with every seed-emitter change justified as a bootstrap adapter carrying its own deletion trigger.",
         red_control: "A second-generation behavioral divergence or seed-only emitter dependency blocks the gate.",
-        out_of_scope: "Byte identity with the Rust seed is not required.",
+        out_of_scope: "Byte identity with the Rust seed is not required, and the seed emitter is not improved beyond what the bootstrap path demonstrably needs.",
         handback: "Return two-generation behavioral, build, and corpus receipts."
       )
     ),
@@ -810,6 +866,34 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
     active(
+      id: "v1-emitter-quarantine",
+      owner: "self-host",
+      path: "src/v1/05_emit_rust.dag",
+      t: fields(
+        headline: "Run the floor on v2-produced artifacts with the seed emitter unavailable",
+        boundary: "The compiler probes and CI floor consume v2-produced artifacts, no execution selector falls back to the seed Rust emitter, and its consumer census is zero.",
+        displaced_cost: "Separates emitter authority from runtime execution, so the seed emitter can be deleted while the bootstrap runtime remains.",
+        first_slice: "Make the seed Rust emitter deliberately unavailable and show the v2 floor is unchanged.",
+        red_control: "A deliberately unavailable seed emitter must not change the v2 floor, and a clean checkout must still bootstrap through the checked-in stage0 runtime into generation one.",
+        out_of_scope: "The v1 interpreter is not quarantined here; it may still execute the v2 bootstrap.",
+        handback: "Return the zero-consumer census, the unavailable-seed floor receipt, and the clean-checkout bootstrap receipt."
+      )
+    ),
+    active(
+      id: "v1-emitter-delete",
+      owner: "self-host",
+      path: "src/v1/05_emit_rust.dag",
+      t: fields(
+        headline: "Delete the seed Rust emitter",
+        boundary: "The seed emitter source and its generated Rust are removed, the Rust arm leaves the legacy compile path, and seed-emitter-only fixtures, predicates, and histograms are deleted with it.",
+        displaced_cost: "Removes the second Rust emission authority permanently, ending the fork the target model was meant to replace.",
+        first_slice: "Remove the Rust arm from the legacy compile path once its consumer census is zero.",
+        red_control: "Any surviving consumer, fixture, or histogram keyed to the seed emitter blocks the deletion.",
+        out_of_scope: "Bootstrap runtime components still required to execute the generation-one construction are retained.",
+        handback: "Return the deletion diff, the zero-residue census, and a green floor on v2-produced artifacts."
+      )
+    ),
+    active_large(
       id: "v1-interpreter-quarantine",
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
@@ -1069,8 +1153,9 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection"),
     edge(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract"),
     edge(child: "pderive-source-slot-binding", parent: "namespace-canonical-binding"),
-    edge(child: "pderive-single-emitter", parent: "pderive-source-slot-binding"),
-    edge(child: "pderive-error-movement-receipt", parent: "pderive-single-emitter"),
+    edge(child: "pderive-v2-emitter-consumer", parent: "pderive-source-slot-binding"),
+    edge(child: "pderive-v2-emitter-consumer", parent: "v2-emitter-direct-rust-door"),
+    edge(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer"),
 
     edge(child: "observation-scoped-run-consumer", parent: "observation-scoped-run-seed-growth-justification"),
     edge(child: "observation-ci-event-grouping", parent: "observation-scoped-run-consumer"),
@@ -1083,14 +1168,21 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
 
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
+    edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
+    edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door"),
+    edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module"),
+    edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
     edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
     edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
+    edge(child: "v1-emitter-quarantine", parent: "v1-ci-floor-cutover"),
+    edge(child: "v1-emitter-delete", parent: "v1-emitter-quarantine"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
+    edge(child: "v1-interpreter-delete", parent: "v1-emitter-delete"),
     edge(child: "v1-interpreter-delete", parent: "v1-test-migration"),
     edge(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
