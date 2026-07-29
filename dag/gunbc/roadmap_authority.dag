@@ -1451,6 +1451,24 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       accepted_by: "operator",
       accepted_on: "2026-07-28",
     },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "pderive-static-supplemental-contract"),
+      criteria_digest: chash(s: "fa6378dabdb12432"),
+      red_control: RedControlExecuted {
+        witness_module: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract",
+        witness_fn: "nested_generic_swap_red_rejects_swapped_slot_requirements",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/trait_derive_shape.dag",
+        further_artifacts: [
+          "dag/extdeps/languages/rust/derive_contracts.dag",
+          "src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
   ]
 }
 
