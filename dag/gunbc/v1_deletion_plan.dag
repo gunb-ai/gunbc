@@ -33,7 +33,7 @@ fn v1_exit_finish_lines() -> List<V1FinishLineSpec> {
     V1FinishLineSpec {
       line: CompilerFixedPoint,
       name: "Compiler fixed point",
-      claim: "The new compiler generates its own source, that source builds, and the result behaves the same again. Matching the old compiler byte for byte is deliberately not the goal.",
+      claim: "Every part of the new compiler generates its own source, that source builds, and the result behaves the same again — the generator itself first, then everything else it does. Matching the old compiler byte for byte is deliberately not the goal.",
       node: v1_exit_node_id(s: "v1-emitter-fixed-point"),
     },
     V1FinishLineSpec {
