@@ -21372,9 +21372,15 @@ mod sidecar_placement_hygiene_tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
+    /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
+    /// `discover_floor_witness_roster` normalizes every path it reports through
+    /// `repo_relative_path_normalized`, which fail-closed refuses anything outside the
+    /// workspace root — so a `/tmp` fixture made this test panic on that refusal before
+    /// reaching its actual assertion. The refusal is correct; the fixture location was
+    /// not. `target/` is the convention the other fixture-based tests in this file use.
     fn tmp_dir() -> std::path::PathBuf {
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!(
+        super::process_workspace_root().join("target").join(format!(
             "sidecar_placement_test_{}_{}",
             std::process::id(),
             id
@@ -21420,8 +21426,20 @@ mod sidecar_placement_hygiene_tests {
              coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
         )
         .expect("write temp file");
-        let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_witness_roster(&[root], &[], &[], &[]);
+        // The fixture root alone is not a sufficient universe any more:
+        // `discover_floor_witness_roster` resolves its own discovery producer
+        // (`src/v2/workflow/floor_discovery_producer.dag`) through the module-graph
+        // facts pool and fail-closed refuses when no passed root covers it. That
+        // refusal is correct, but it fires FIRST and masked the filename-hygiene
+        // error this test is actually about, so carry the roots that cover the
+        // producer alongside the fixture.
+        let ws = super::process_workspace_root();
+        let roots = vec![
+            dir.to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let result = discover_floor_witness_roster(&roots, &[], &[], &[]);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
