@@ -16,19 +16,19 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "census_exclude_derive.rs",
     "memory_governor.rs",
     "std_lens_verdict.rs",
+    "v2_compiler_body_producer.rs",
+    "v2_compiler_normalize.rs",
+    "v2_compiler_target_carriers.rs",
+    "v2_compiler_discovery_enumeration.rs",
+    "v2_compiler_parse_engine_hooks.rs",
+    "v2_compiler_use_site_verdict.rs",
     "usv_pilot_v2_std_algebra.rs",
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",
     "v2_compiler_resolve.rs",
     "v2_compiler_program_partition.rs",
     "v2_compiler_tokenize.rs",
-    "v2_compiler_infer.rs",
-    "v2_compiler_body_producer.rs",
-    "v2_compiler_normalize.rs",
-    "v2_compiler_target_carriers.rs",
-    "v2_compiler_discovery_enumeration.rs",
-    "v2_compiler_parse_engine_hooks.rs",
-    "v2_compiler_use_site_verdict.rs"
+    "v2_compiler_infer.rs"
 ];
 
 #[rustfmt::skip]
