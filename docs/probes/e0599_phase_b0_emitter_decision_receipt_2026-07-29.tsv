@@ -1,6 +1,4 @@
 label	E0599_phase_b0_emitter_decision_census
-measured_producer	V1SeedEmitter
-measured_producer_caveat	DIAGNOSTIC COMPARISON ONLY - characterizes what the V1 SEED emitter synthesizes. NOT CompilerFixedPoint progress and NOT a v2 sizing authority; CompilerFixedPoint recenters on the V2 emitter, a different producer built from target-model rows (operator ruling 2026-07-29). Load-bearing for making the finite bootstrap adapter queue enumerable.
 question	at the emitter-decision grain, what does each R1/R2/R3 site require, why, and is it removable by ownership analysis?
 verdict	every site classifies; the requirement is a lowering decision, and the causes split 3 ways with the MAJORITY ownership-removable
 plan_of_record	P-fn Phase B0 brief (2026-07-29), superseding docs/plans/e0599-implementation-proposal.md phases B and C
