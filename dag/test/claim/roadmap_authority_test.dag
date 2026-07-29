@@ -25,7 +25,13 @@ import gunbc.v1_deletion_plan {
   v1_finish_line_key,
   v1_finish_lines_accepted_count,
 }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_execution_contract {
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  WorkItemExecutionContract,
+  dispatch_required_capabilities,
+  execution_capability_label,
+}
 import gunbc.roadmap_document { project_roadmap_to_markdown }
 import gunbc.roadmap_model {
   RoadmapNode,
@@ -572,4 +578,50 @@ test fn witness_projection_is_active_only() -> Bool {
     && !string_contains(s: out, pattern: "**superseded →**")
     && !string_contains(s: out, pattern: "awaiting sign-off")
     && !string_contains(s: out, pattern: "Operator TODO")
+}
+
+data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
+
+fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
+  match nodes()
+    |> filter(n => (n.node as String) == id)
+    |> map(n => n.execution)
+    |> first {
+    Present { value: c } => c
+    Absent => ExecutionContractUnspecified
+  }
+}
+
+test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
+  match bound_execution_contract_for(id: "shell-typed-invocation") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+}
+
+test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
+  let caps = dispatch_required_capabilities(
+    contract: bound_execution_contract_for(id: "shell-typed-invocation"),
+  )
+  count(caps) == 9
+    && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
+}
+
+test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
+  count(nodes()
+    |> filter(n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations: _, extra_capabilities: _ } => true
+      })) == 2
+}
+
+test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
+  match bound_execution_contract_for(id: "observation-raw-print-retirement") {
+    ExecutionContractUnspecified => false
+    ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+  }
+    && match bound_execution_contract_for(id: "shell-typed-invocation") {
+      ExecutionContractUnspecified => false
+      ExecutionContract { validations, extra_capabilities: _ } => count(validations) == 1
+    }
 }
