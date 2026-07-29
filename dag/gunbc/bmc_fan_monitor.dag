@@ -1,30 +1,16 @@
 module gunbc.bmc_fan_monitor
 
-import extdeps.bmc.openbmc_fan_control {
-  OpenBmcSensorValueAbsent,
-  OpenBmcSensorValueObserved,
-  OpenBmcSensorValueRefused,
-  OpenBmcSensorValueResult,
-  OpenBmcTachAtOrAboveThreshold,
-  OpenBmcTachBelowThreshold,
-  OpenBmcTachHealth,
-  OpenBmcTachThresholdUnstated,
-}
-import std.types { Int, List, NonEmptyStr, String }
-
-type BmcFanTemperatureObservation {
-  sensor: NonEmptyStr
-  value: OpenBmcSensorValueResult
-}
+import std.measure { Second, second, second_count }
+import std.types { Int, List, String }
 
 type BmcFanMonitoringSample {
-  elapsed_seconds: Int
+  elapsed: Second
   safety_refusal: String?
 }
 
 type BmcFanMonitoringReceipt {
   sample_count: Int
-  elapsed_seconds: Int
+  elapsed: Second
 }
 
 type BmcFanMonitoringResult
@@ -36,16 +22,16 @@ type BmcFanMonitoringResult
 
 fn bmc_fan_assess_monitoring_samples_rec(
   remaining: List<BmcFanMonitoringSample>,
-  previous_elapsed: Int,
+  previous_elapsed: Second,
   sample_count: Int,
-  required_elapsed_seconds: Int,
+  required_elapsed: Second,
 ) -> BmcFanMonitoringResult {
   if remaining.length() == 0 {
     let receipt = BmcFanMonitoringReceipt {
       sample_count: sample_count,
-      elapsed_seconds: previous_elapsed,
+      elapsed: previous_elapsed,
     }
-    if previous_elapsed >= required_elapsed_seconds {
+    if second_count(previous_elapsed) >= second_count(required_elapsed) {
       BmcFanMonitoringCompleted { receipt: receipt }
     } else {
       BmcFanMonitoringRefused {
@@ -57,9 +43,9 @@ fn bmc_fan_assess_monitoring_samples_rec(
     let sample = remaining.first()
     let receipt = BmcFanMonitoringReceipt {
       sample_count: sample_count + 1,
-      elapsed_seconds: sample.elapsed_seconds,
+      elapsed: sample.elapsed,
     }
-    if sample.elapsed_seconds <= previous_elapsed {
+    if second_count(sample.elapsed) <= second_count(previous_elapsed) {
       BmcFanMonitoringRefused {
         reason: "post-restart monitoring samples are not strictly time-ordered",
         receipt: receipt,
@@ -71,9 +57,9 @@ fn bmc_fan_assess_monitoring_samples_rec(
         Absent =>
           bmc_fan_assess_monitoring_samples_rec(
             remaining: remaining.skip(n: 1),
-            previous_elapsed: sample.elapsed_seconds,
+            previous_elapsed: sample.elapsed,
             sample_count: sample_count + 1,
-            required_elapsed_seconds: required_elapsed_seconds,
+            required_elapsed: required_elapsed,
           )
       }
     }
@@ -82,117 +68,12 @@ fn bmc_fan_assess_monitoring_samples_rec(
 
 fn bmc_fan_assess_monitoring_samples(
   samples: List<BmcFanMonitoringSample>,
-  required_elapsed_seconds: Int,
+  required_elapsed: Second,
 ) -> BmcFanMonitoringResult {
   bmc_fan_assess_monitoring_samples_rec(
     remaining: samples,
-    previous_elapsed: -1,
+    previous_elapsed: second(0),
     sample_count: 0,
-    required_elapsed_seconds: required_elapsed_seconds,
+    required_elapsed: required_elapsed,
   )
-}
-
-fn bmc_fan_temperature_for_sensor(
-  temperatures: List<BmcFanTemperatureObservation>,
-  sensor: NonEmptyStr,
-) -> OpenBmcSensorValueResult? {
-  if temperatures.length() == 0 {
-    none
-  } else {
-    match temperatures.first() {
-      Absent => none
-      Present { value: candidate } =>
-        if candidate.sensor == sensor {
-          Present { value: candidate.value }
-        } else {
-          bmc_fan_temperature_for_sensor(
-            temperatures: temperatures.skip(n: 1),
-            sensor: sensor,
-          )
-        }
-    }
-  }
-}
-
-fn bmc_fan_tach_health_for_sensor(
-  health: List<OpenBmcTachHealth>,
-  sensor: NonEmptyStr,
-) -> OpenBmcTachHealth? {
-  if health.length() == 0 {
-    none
-  } else {
-    match health.first() {
-      Absent => none
-      Present { value: candidate } => {
-        let candidate_sensor = match candidate {
-          OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
-          OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-          OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-        }
-        if candidate_sensor == sensor {
-          Present { value: candidate }
-        } else {
-          bmc_fan_tach_health_for_sensor(
-            health: health.skip(n: 1),
-            sensor: sensor,
-          )
-        }
-      }
-    }
-  }
-}
-
-fn bmc_fan_monitor_first_unhealthy_tach(
-  health: List<OpenBmcTachHealth>,
-  required: List<NonEmptyStr>,
-) -> String? {
-  if required.length() == 0 {
-    none
-  } else {
-    let tach = required.first()
-    match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
-      Absent =>
-        Present { value: join(["required tach health is absent: ", tach as String], "") }
-      Present { value: OpenBmcTachThresholdUnstated { sensor: _, reason } } =>
-        Present {
-          value: join(
-            ["required tach threshold is unstated: ", tach as String, ": ", reason],
-            "",
-          ),
-        }
-      Present {
-        value: OpenBmcTachBelowThreshold {
-          sensor: _,
-          reading_rpm,
-          minimum_rpm,
-          source: _,
-        },
-      } =>
-        Present {
-          value: join(
-            [
-              "required tach is below its OpenBMC threshold: ",
-              tach as String,
-              "=",
-              to_string(reading_rpm),
-              " < ",
-              to_string(minimum_rpm),
-            ],
-            "",
-          ),
-        }
-      Present {
-        value: OpenBmcTachAtOrAboveThreshold {
-          sensor: _,
-          reading_rpm: _,
-          minimum_rpm: _,
-          source: _,
-        },
-      } =>
-        bmc_fan_monitor_first_unhealthy_tach(
-          health: health,
-          required: required.skip(n: 1),
-        )
-    }
-  }
 }

@@ -143,12 +143,16 @@ import std.measure {
   ByteSize,
   Celsius,
   Percent,
+  RevolutionsPerMinute,
+  Second,
   byte_size,
   byte_size_count,
   celsius,
   celsius_count,
   percent,
   percent_count,
+  rpm_count,
+  second,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -177,8 +181,12 @@ type BmcFanConvergeTarget {
   projection: BmcFanPolicyProjectionCapability?
   durability_generation: StatePerturbationGeneration
   durability_evidence: List<BmcFanDurabilityEvidence>
-  ssh_known_hosts_path: NonEmptyStr
-  expected_bmc_machine_id_path: NonEmptyStr
+  ssh_identity: BmcFanSshIdentityAdmission
+}
+
+type BmcFanSshIdentityAdmission {
+  known_hosts_path: NonEmptyStr
+  expected_machine_id_path: NonEmptyStr
 }
 
 type BmcFanTypedObservationPlan {
@@ -212,8 +220,10 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   projection: none,
   durability_generation: 1,
   durability_evidence: [],
-  ssh_known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
-  expected_bmc_machine_id_path: "/etc/gunbc/bmc-identities/srv3-machine-id",
+  ssh_identity: BmcFanSshIdentityAdmission {
+    known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv3",
+    expected_machine_id_path: "/etc/gunbc/bmc-identities/srv3-machine-id",
+  },
 }
 
 data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
@@ -223,8 +233,10 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   projection: Present { value: srv4_bmc_fan_projection_capability },
   durability_generation: srv4_bmc_fan_perturbation_generation,
   durability_evidence: srv4_bmc_fan_durability_evidence,
-  ssh_known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
-  expected_bmc_machine_id_path: "/etc/gunbc/bmc-identities/srv4-machine-id",
+  ssh_identity: BmcFanSshIdentityAdmission {
+    known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
+    expected_machine_id_path: "/etc/gunbc/bmc-identities/srv4-machine-id",
+  },
 }
 
 type BmcFanLiveObservation {
@@ -493,25 +505,13 @@ fn bmc_fan_firmware_intent_requirement(intent: BmcFirmwareIntent) -> String {
 }
 
 fn bmc_fan_build_curve_steps_rec(
-  readings: List<Int>,
-  outputs: List<Int>,
-  previous_reading: Int?,
-  previous_output: Int?,
+  readings: List<Celsius>,
+  outputs: List<Percent>,
   built: List<BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
   if readings.length() == 0 {
-    if outputs.length() == 0 && built.length() > 0 {
-      match previous_output {
-        Present { value: 100 } => CurveStepsParsed { steps: built }
-        Present { value: _ } =>
-          CurveStepsParseRefused {
-            reason: "fan curve lacks terminal full duty",
-          }
-        Absent =>
-          CurveStepsParseRefused {
-            reason: "fan curve has no terminal duty",
-          }
-      }
+    if outputs.length() == 0 {
+      CurveStepsParsed { steps: built }
     } else {
       CurveStepsParseRefused {
         reason: "fan curve readings/outputs differ or are empty",
@@ -524,55 +524,29 @@ fn bmc_fan_build_curve_steps_rec(
   } else {
     let reading = readings.first()
     let output = outputs.first()
-    let ordered = match previous_reading {
-      Present { value: previous } => reading > previous
-      Absent => true
-    }
-    let nondecreasing = match previous_output {
-      Present { value: previous } => output >= previous
-      Absent => true
-    }
-    if !ordered {
-      CurveStepsParseRefused {
-        reason: "fan curve temperature breakpoints are not strictly increasing",
-      }
-    } else if output < 0 || output > 100 {
-      CurveStepsParseRefused {
-        reason: "fan curve output is outside 0..100 percent",
-      }
-    } else if !nondecreasing {
-      CurveStepsParseRefused {
-        reason: "fan curve duty decreases at a later temperature",
-      }
-    } else {
       bmc_fan_build_curve_steps_rec(
         readings: readings.skip(n: 1),
         outputs: outputs.skip(n: 1),
-        previous_reading: Present { value: reading },
-        previous_output: Present { value: output },
         built: append(
           built,
           items: [
             BmcFanCurveStep {
-              at_or_above: celsius(reading),
-              duty: percent(output),
+              at_or_above: reading,
+              duty: output,
             },
           ],
         ),
       )
-    }
   }
 }
 
 fn bmc_fan_build_curve_steps(
-  readings: List<Int>,
-  outputs: List<Int>,
+  readings: List<Celsius>,
+  outputs: List<Percent>,
 ) -> ParsedCurveSteps {
   bmc_fan_build_curve_steps_rec(
     readings: readings,
     outputs: outputs,
-    previous_reading: none,
-    previous_output: none,
     built: [],
   )
 }
@@ -855,10 +829,11 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
     OpenBmcSelectionMany { count: _ } =>
       FanCurveParseRefused { reason: "TEMP_SOC stepwise controller is ambiguous" }
     OpenBmcSelectionOne { value: controller } =>
-      if controller.minimum_duty < 0 || controller.minimum_duty > 100
-        || controller.sensor_failsafe_duty < 0 || controller.sensor_failsafe_duty > 100
-        || controller.zone_failsafe_duty < 0 || controller.zone_failsafe_duty > 100
-        || controller.positive_hysteresis < 0 || controller.negative_hysteresis < 0 {
+      if percent_count(controller.minimum_duty) > 100
+        || percent_count(controller.sensor_failsafe_duty) > 100
+        || percent_count(controller.zone_failsafe_duty) > 100
+        || celsius_count(controller.positive_hysteresis) < 0
+        || celsius_count(controller.negative_hysteresis) < 0 {
         FanCurveParseRefused {
           reason: "fan curve duty or hysteresis is outside its admissible range",
         }
@@ -872,11 +847,11 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
             let raw_curve = BmcFanCurve {
                 control_sensor: "TEMP_SOC",
                 steps: steps,
-                minimum_duty: percent(controller.minimum_duty),
-                sensor_unavailable_duty: percent(controller.sensor_failsafe_duty),
-                zone_failsafe_duty: percent(controller.zone_failsafe_duty),
-                positive_hysteresis_degrees_celsius: controller.positive_hysteresis,
-                negative_hysteresis_degrees_celsius: controller.negative_hysteresis,
+                minimum_duty: controller.minimum_duty,
+                sensor_unavailable_duty: controller.sensor_failsafe_duty,
+                zone_failsafe_duty: controller.zone_failsafe_duty,
+                positive_hysteresis_degrees_celsius: celsius_count(controller.positive_hysteresis),
+                negative_hysteresis_degrees_celsius: celsius_count(controller.negative_hysteresis),
               }
             match validate_bmc_fan_curve(curve: raw_curve) {
               BmcFanCurveInvalid { cause: _ } =>
@@ -1136,9 +1111,9 @@ fn bmc_fan_first_unhealthy_tach(
                 "required tach is below its OpenBMC threshold: ",
                 tach as String,
                 "=",
-                to_string(reading_rpm),
+                to_string(rpm_count(reading_rpm)),
                 " < ",
-                to_string(minimum_rpm),
+                to_string(rpm_count(minimum_rpm)),
               ],
               "",
             ),
@@ -1316,6 +1291,8 @@ fn bmc_fan_live_safety_holds(
 fn bmc_fan_remote_state_directory() -> NonEmptyStr {
   "/var/lib/gunbc/bmc-fan-policy"
 }
+
+data bmc_fan_unreachable_transaction_helpers_dissolve_on: String = bmc_fan_atomic_transaction_dissolution_trigger
 
 fn bmc_fan_remote_backup_path() -> NonEmptyStr {
   "/var/lib/gunbc/bmc-fan-policy/previous.json"
@@ -1545,7 +1522,7 @@ fn bmc_fan_wait_for_failsafe_clear(
       reason: "fan controller zone remained in failsafe after bounded restart polling",
     )
   } else {
-    let waited = openbmc_wait_seconds(session: session, seconds: 1)
+    let waited = openbmc_wait_seconds(session: session, duration: second(1))
     if !waited.success {
       bmc_fan_mutation_refused(
         reason: concat("failsafe polling delay failed: ", waited.stderr),
@@ -1574,7 +1551,7 @@ fn bmc_fan_restart_and_verify_controller(
       reason: concat("fan controller restart failed: ", restarted.stderr),
     )
   } else {
-    let waited = openbmc_wait_seconds(session: session, seconds: 5)
+    let waited = openbmc_wait_seconds(session: session, duration: second(5))
     if !waited.success {
       bmc_fan_mutation_refused(
         reason: concat("fan controller stabilization delay failed: ", waited.stderr),
@@ -1989,8 +1966,8 @@ fn bmc_fan_observe_with_credential(
     host: target.onboarding.bmc.host,
     username: target.onboarding.factory_login.username,
     password: credential,
-    known_hosts_path: target.ssh_known_hosts_path,
-    expected_machine_id_path: target.expected_bmc_machine_id_path,
+    known_hosts_path: target.ssh_identity.known_hosts_path,
+    expected_machine_id_path: target.ssh_identity.expected_machine_id_path,
   }
   match bmc_fan_observe_live_identity(session: session) {
     BmcFanLiveIdentityRefused { reason: reason } =>
@@ -2108,8 +2085,8 @@ fn bmc_fan_rollback_after_failed_readback(
       host: target.onboarding.bmc.host,
       username: target.onboarding.factory_login.username,
       password: credential,
-      known_hosts_path: target.ssh_known_hosts_path,
-      expected_machine_id_path: target.expected_bmc_machine_id_path,
+      known_hosts_path: target.ssh_identity.known_hosts_path,
+      expected_machine_id_path: target.ssh_identity.expected_machine_id_path,
     },
     plan: plan,
   )
@@ -2246,8 +2223,8 @@ fn bmc_fan_rollback_previous_with_credential(
               host: target.onboarding.bmc.host,
               username: target.onboarding.factory_login.username,
               password: credential,
-              known_hosts_path: target.ssh_known_hosts_path,
-              expected_machine_id_path: target.expected_bmc_machine_id_path,
+              known_hosts_path: target.ssh_identity.known_hosts_path,
+              expected_machine_id_path: target.ssh_identity.expected_machine_id_path,
             },
             plan: plan,
           )
@@ -2361,8 +2338,8 @@ fn bmc_fan_converge_with_credential(
                 host: target.onboarding.bmc.host,
                 username: target.onboarding.factory_login.username,
                 password: credential,
-                known_hosts_path: target.ssh_known_hosts_path,
-                expected_machine_id_path: target.expected_bmc_machine_id_path,
+                known_hosts_path: target.ssh_identity.known_hosts_path,
+                expected_machine_id_path: target.ssh_identity.expected_machine_id_path,
               },
               plan: plan,
             )

@@ -18,6 +18,7 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_tach_health_from_floor,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,8 +71,8 @@ test fn duplicate_object_mapper_matches_remain_many() -> Bool {
 test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
   match openbmc_tach_health_from_floor(
     sensor: "FAN4",
-    reading: 899,
-    minimum: 900,
+    reading: rpm(899),
+    minimum: rpm(900),
     source: OpenBmcWarningLowThreshold,
   ) {
     OpenBmcTachHealthObserved {
@@ -81,7 +82,7 @@ test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
         minimum_rpm,
         source: _,
       },
-    } => sensor == "FAN4" && reading_rpm == 899 && minimum_rpm == 900
+    } => sensor == "FAN4" && rpm_count(reading_rpm) == 899 && rpm_count(minimum_rpm) == 900
     _ => false
   }
 }
@@ -89,8 +90,8 @@ test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
 test fn tach_at_controller_threshold_is_healthy() -> Bool {
   match openbmc_tach_health_from_floor(
     sensor: "FAN4",
-    reading: 900,
-    minimum: 900,
+    reading: rpm(900),
+    minimum: rpm(900),
     source: OpenBmcWarningLowThreshold,
   ) {
     OpenBmcTachHealthObserved {
@@ -100,7 +101,7 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
         minimum_rpm,
         source: _,
       },
-    } => sensor == "FAN4" && reading_rpm == 900 && minimum_rpm == 900
+    } => sensor == "FAN4" && rpm_count(reading_rpm) == 900 && rpm_count(minimum_rpm) == 900
     _ => false
   }
 }

@@ -1432,9 +1432,9 @@ fn openbmc_synchronize_filesystems(
 
 fn openbmc_wait_seconds(
   session: PasswordSshSession,
-  seconds: Int,
+  duration: Second,
 ) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcWaitSeconds { seconds: seconds })
+  openbmc_execute(session: session, operation: OpenBmcWaitSeconds { duration: duration })
 }
 
 fn openbmc_upload_file(

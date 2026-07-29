@@ -12,7 +12,7 @@ import extdeps.bmc.types {
   BmcFanCurveStep,
   validate_bmc_fan_curve,
 }
-import std.measure { celsius, percent }
+import std.measure { celsius, percent, rpm, second, second_count }
 import gunbc.bmc_fan_converge {
   BmcFanAppliedAndVerified,
   BmcFanAppliedWithCleanupDebt,
@@ -72,8 +72,8 @@ test fn sub_threshold_tach_is_a_discriminating_refusal() -> Bool {
     health: [
       OpenBmcTachBelowThreshold {
         sensor: "FAN4",
-        reading_rpm: 899,
-        minimum_rpm: 900,
+        reading_rpm: rpm(899),
+        minimum_rpm: rpm(900),
         source: OpenBmcWarningLowThreshold,
       },
     ],
@@ -89,8 +89,8 @@ test fn threshold_satisfied_tach_is_not_refused() -> Bool {
     health: [
       OpenBmcTachAtOrAboveThreshold {
         sensor: "FAN4",
-        reading_rpm: 900,
-        minimum_rpm: 900,
+        reading_rpm: rpm(900),
+        minimum_rpm: rpm(900),
         source: OpenBmcWarningLowThreshold,
       },
     ],
@@ -114,18 +114,18 @@ test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bo
 test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed_seconds: 30, safety_refusal: none },
-      BmcFanMonitoringSample { elapsed_seconds: 60, safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
       BmcFanMonitoringSample {
-        elapsed_seconds: 90,
+        elapsed: second(90),
         safety_refusal: Present { value: "TEMP_SOC crossed rollback threshold" },
       },
-      BmcFanMonitoringSample { elapsed_seconds: 360, safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
-    required_elapsed_seconds: 360,
+    required_elapsed: second(360),
   ) {
     BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 3 && receipt.elapsed_seconds == 90
+      receipt.sample_count == 3 && second_count(receipt.elapsed) == 90
     BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
@@ -133,13 +133,13 @@ test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
 test fn short_monitoring_window_cannot_claim_completion() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed_seconds: 30, safety_refusal: none },
-      BmcFanMonitoringSample { elapsed_seconds: 330, safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
     ],
-    required_elapsed_seconds: 360,
+    required_elapsed: second(360),
   ) {
     BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 2 && receipt.elapsed_seconds == 330
+      receipt.sample_count == 2 && second_count(receipt.elapsed) == 330
     BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
