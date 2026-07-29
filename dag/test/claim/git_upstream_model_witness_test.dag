@@ -332,7 +332,7 @@ fn fixture_wire_entries() -> List<GitTreeWireEntry> {
   ]
 }
 
-fn fixture_tree() -> Tree {
+fn git_r0_fixture_tree() -> Tree {
   Tree {
     entries: [
       SymlinkEntry { name: name_symlink, oid: sha1_blob_symlink },
@@ -343,6 +343,10 @@ fn fixture_tree() -> Tree {
       RegularBlobEntry { name: name_non_ascii, oid: sha1_blob_regular },
     ],
   }
+}
+
+fn fixture_tree() -> Tree {
+  git_r0_fixture_tree()
 }
 
 fn fixture_content_address(
@@ -443,7 +447,7 @@ fn fixture_objects() -> List<StoredObject> {
     ),
     fixture_stored_object(
       oid: sha1_root_tree,
-      object: ObjectTree { tree: fixture_tree() },
+      object: ObjectTree { tree: git_r0_fixture_tree() },
     ),
     fixture_stored_object(
       oid: sha1_parent_commit,
@@ -484,8 +488,8 @@ fn fixture_objects() -> List<StoredObject> {
   ]
 }
 
-fn fixture_repository() -> GitRepositoryState {
-  let decoded = fixture_tree()
+fn git_r0_fixture_repository() -> GitRepositoryState {
+  let decoded = git_r0_fixture_tree()
   GitRepositoryState {
     object_format: GitObjectFormatSha1,
     objects: fixture_objects(),
@@ -570,6 +574,10 @@ fn fixture_repository() -> GitRepositoryState {
       },
     ],
   }
+}
+
+fn fixture_repository() -> GitRepositoryState {
+  git_r0_fixture_repository()
 }
 
 test fn witness_git_tree_modes_and_raw_paths_decode_without_collapse() -> Bool {
@@ -827,8 +835,8 @@ test fn witness_git_bounded_fixture_projects_declared_fragment() -> Bool {
   }
 }
 
-fn fixture_read_back_observation() -> GitR0ReadBackObservation {
-  let repo = fixture_repository()
+fn git_r0_fixture_read_back_observation() -> GitR0ReadBackObservation {
+  let repo = git_r0_fixture_repository()
   GitR0ReadBackObservation {
     git_version: "git version 2.39.5",
     object_format: GitObjectFormatSha1,
@@ -840,6 +848,10 @@ fn fixture_read_back_observation() -> GitR0ReadBackObservation {
     worktree: repo.worktree,
     unavailable: repo.unavailable,
   }
+}
+
+fn fixture_read_back_observation() -> GitR0ReadBackObservation {
+  git_r0_fixture_read_back_observation()
 }
 
 test fn witness_git_empty_commit_and_tag_messages_are_representable() -> Bool {

@@ -49,7 +49,7 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality,
+    preserve_outer_optional_cardinality, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
@@ -459,7 +459,10 @@ pub fn resolve_scrutinee_type_node_seen(
         {
             match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone())
+                    preserve_outer_optional_cardinality(
+                        normed.clone(),
+                        resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone()),
+                    )
                 }
                 _ => normed.clone(),
             }
@@ -486,10 +489,13 @@ pub fn resolve_scrutinee_type_node_seen(
                                     {
                                         normed.clone()
                                     } else {
-                                        resolve_scrutinee_type_node_seen(
-                                            env.clone(),
-                                            target.clone(),
-                                            next_seen.clone(),
+                                        preserve_outer_optional_cardinality(
+                                            normed.clone(),
+                                            resolve_scrutinee_type_node_seen(
+                                                env.clone(),
+                                                target.clone(),
+                                                next_seen.clone(),
+                                            ),
                                         )
                                     }
                                 }
@@ -519,21 +525,14 @@ pub fn resolve_scrutinee_type_node_seen(
                                         {
                                             normed.clone()
                                         } else {
-                                            {
-                                                let result = resolve_scrutinee_type_node_seen(
+                                            preserve_outer_optional_cardinality(
+                                                normed.clone(),
+                                                resolve_scrutinee_type_node_seen(
                                                     env.clone(),
                                                     resolved.clone(),
                                                     next_seen.clone(),
-                                                );
-                                                let is_optional =
-                                                    (normed.return_cardinality.clone()
-                                                        == Cardinality::CardOptional);
-                                                if is_optional.clone() {
-                                                    with_optional_cardinality(result.clone())
-                                                } else {
-                                                    result.clone()
-                                                }
-                                            }
+                                                ),
+                                            )
                                         }
                                     }
                                     None => normed.clone(),
