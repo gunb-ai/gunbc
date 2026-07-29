@@ -1,31 +1,26 @@
 module test.claim.cli_run_floor_lens_oracle_witness
 
 
-fn disposition_is_single_authority_scaffold(d: Disposition) -> Bool {
-  match d {
-    Scaffold { dissolves_to: mechanism, bind: _ } =>
-      match mechanism {
-        SingleAuthority => true
-        RealizationDispatch => false
-        SubstrateMandatoryTag => false
-      }
-    Terminal { reason: _ } => false
-  }
-}
-
 test fn floor_lens_legacy_graph_oracle_is_declared_scaffold() -> Bool {
-  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_legacy_graph_oracle_scaffold)
+  disposition_dissolves_to_single_authority(d: cli_run_floor_lens_legacy_graph_oracle_scaffold)
 }
 
 test fn floor_lens_legacy_walk_oracle_is_declared_scaffold() -> Bool {
-  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_legacy_walk_oracle_scaffold)
+  disposition_dissolves_to_single_authority(d: cli_run_floor_lens_legacy_walk_oracle_scaffold)
 }
 
 test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool {
-  disposition_is_single_authority_scaffold(d: cli_run_floor_lens_census_walk_hand_rust_scaffold) &&
-    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_justification_hand_rust_scaffold) &&
-    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
-    disposition_is_single_authority_scaffold(d: cli_run_floor_lens_observation_hand_rust_scaffold)
+  disposition_dissolves_to_single_authority(d: cli_run_floor_lens_census_walk_hand_rust_scaffold) &&
+    disposition_dissolves_to_single_authority(d: cli_run_floor_lens_justification_hand_rust_scaffold) &&
+    disposition_dissolves_to_single_authority(d: cli_run_floor_lens_read_refusal_hand_rust_scaffold) &&
+    disposition_dissolves_to_single_authority(d: cli_run_floor_lens_observation_hand_rust_scaffold)
+}
+
+test fn floor_lens_scaffold_shape_reader_discriminates() -> Bool {
+  disposition_dissolves_to_single_authority(d: cli_run_floor_lens_census_walk_hand_rust_scaffold)
+    && !disposition_dissolves_to_single_authority(d: cli_run_floor_lens_scaffold_shape_red_control)
+    && !disposition_is_terminal(d: cli_run_floor_lens_census_walk_hand_rust_scaffold)
+    && disposition_is_terminal(d: cli_run_floor_lens_scaffold_shape_red_control)
 }
 
 test fn floor_lens_oracle_dissolve_trigger_names_sites_and_lane() -> Bool {
