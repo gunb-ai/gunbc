@@ -3,6 +3,7 @@ module std.materialization_provider
 import std.types { Bool, Int, List, String, NonEmptyStr, ContentHash }
 import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
 import std.cache_identity {
   ArtifactKindId,
   parse_source_artifact_kind,
@@ -51,7 +52,7 @@ type ArtifactRequest
   = ParseModuleRequest { source_digest: ContentHash, compiler: DeclaredInput }
   | TypecheckModuleRequest {
       source_digest: ContentHash,
-      direct_import_interfaces: List<DeclaredInput>,
+      direct_import_interfaces: List<InterfaceHash>,
       compiler: DeclaredInput
     }
   | ResolveClosureRequest { closure_digest: ContentHash, compiler: DeclaredInput }
@@ -59,7 +60,7 @@ type ArtifactRequest
 fn request_fold<T>(
   req: ArtifactRequest,
   parse_module: fn(ContentHash, DeclaredInput) -> T,
-  typecheck_module: fn(ContentHash, List<DeclaredInput>, DeclaredInput) -> T,
+  typecheck_module: fn(ContentHash, List<InterfaceHash>, DeclaredInput) -> T,
   resolve_closure: fn(ContentHash, DeclaredInput) -> T
 ) -> T {
   match req {
@@ -92,7 +93,8 @@ fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
   request_fold(
     req: req,
     parse_module: (sd, c) => [c],
-    typecheck_module: (sd, ii, c) => concat(ii, [c]),
+    typecheck_module: (sd, ii, c) =>
+      concat(ii |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }), [c]),
     resolve_closure: (cd, c) => [c]
   )
 }
@@ -118,7 +120,9 @@ fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
   )
 }
 
-fn request_key(req: ArtifactRequest) -> ContentHash {
+data materialization_provider_key_authority_note: String = "WHICH AUTHORITY EACH FAMILY'S KEY COMES FROM (operator review, blocker 1 — a section 3 nickname violation in its exact form). The typed-module key already had a single authority: std.interface_summary's module_key (source hash + direct-import interface hashes) wrapped by typed_module_key (+ compiler identity), with its own RED controls in v2.test.claim.interface_summary.typed_module_key_test proving each term load-bearing. The earlier shape here reconstructed those same ingredients as an arbitrary ordered List<DeclaredInput> and hashed the LIST, which forked typed-module identity into two live definitions and re-homed the canonical direct-import ordering duty onto the caller — and nothing proved the two agreed. Generalizing the cited FACTS is not enough while both definitions are live. So the typecheck arm now CONSUMES the existing authority verbatim: TypecheckModuleRequest carries List<InterfaceHash>, the branded type module_key already takes, and its key IS typed_module_key(module_key(...)). The ordering duty is not a new one — it is the one that authority already owns, discharged by the same fold. Parse and resolve-closure have no prior key authority, so they keep the local tagged derivation, and the tags differ from typed-module-compiler, so no two families can collide on a shared subject. request_declared_inputs survives as a REPORTING projection over every family's reads, not as the typecheck key's ingredient list — one authority per fact, and the equivalence is witnessed by execution rather than asserted."
+
+fn local_request_key(req: ArtifactRequest) -> ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.request",
     payload: content_hash_combine(
@@ -128,6 +132,19 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
         right: declared_inputs_digest(inputs: request_declared_inputs(req: req))
       )
     )
+  )
+}
+
+fn request_key(req: ArtifactRequest) -> ContentHash {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => local_request_key(req: req),
+    typecheck_module: (sd, ii, c) =>
+      typed_module_key(
+        interface_key: module_key(source_hash: sd, direct_import_interface_hashes: ii),
+        compiler_identity: c.digest
+      ),
+    resolve_closure: (cd, c) => local_request_key(req: req)
   )
 }
 
@@ -153,14 +170,104 @@ fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
   )
 }
 
-type MaterializedArtifact {
-  kind: ArtifactKindId
-  request_key: ContentHash
-  carried_outputs: List<CarriedOutput>
+data materialization_provider_artifact_construction_note: String = "The artifact is a COPRODUCT WITH REQUIRED PER-KIND PARTS (operator review, blocker 2), and this is a DIFFERENT fix from the digest-preimage work above — they are complementary. The preimage construction closed FORGERY: a producer can no longer CLAIM an output it does not carry, because the roster is the digest's preimage. What stayed open was OMISSION: while carried_outputs was a plain list, a resolved-graph artifact that simply LACKED the compile-clean diagnostic union was still WRITABLE — it merely got refused at the door. Section 5 says making the state unwritable beats catching it, which is the same argument this module already used on the request side when required_outputs became a coproduct (review 44175); applying it there and not here was inconsistent. So a complete artifact names its parts as REQUIRED FIELDS: ResolvedGraphArtifact cannot be constructed without its union, TypedModuleArtifact cannot drop its diagnostics, ParsedArtifact cannot drop its parse diagnostics. Note what did NOT change: a part is still (digest, bytes), never a payload — this contract still holds no bytes, so per-kind fields cost it nothing it was not already holding. Two further consequences follow from the derivation invariant. First, the part's ID is no longer carried: an ArtifactPart is (digest, bytes) and its id comes from its POSITION in the variant, so a mislabelled part is unwritable too — one more caller-asserted fact removed rather than checked. Second, v1's incomplete disk artifacts still have to be REPRESENTABLE, because refusing them is this contract's first named consumer target; they decode to the explicit LegacyIncompleteArtifact variant, which is the only shape carrying a free List<CarriedOutput>. So incompleteness is a NAMED VARIANT rather than a missing list element, artifact_completeness stays live (it is what LegacyIncompleteArtifact is measured by, and it is reached), and the day the resolved_graph FORMAT_VERSION persists the union, that variant is what deletes."
+
+type ArtifactPart {
+  digest: ContentHash
+  bytes: ByteSize
+}
+
+fn positioned_part(id: ArtifactOutputId, part: ArtifactPart) -> CarriedOutput {
+  CarriedOutput { id: id, digest: part.digest, bytes: part.bytes }
+}
+
+type MaterializedArtifact
+  = ParsedArtifact {
+      request_key: ContentHash,
+      parse_tree: ArtifactPart,
+      parse_diagnostics: ArtifactPart
+    }
+  | TypedModuleArtifact {
+      request_key: ContentHash,
+      typed_module_interface: ArtifactPart,
+      typecheck_diagnostics: ArtifactPart
+    }
+  | ResolvedGraphArtifact {
+      request_key: ContentHash,
+      resolved_graph: ArtifactPart,
+      source_indices: ArtifactPart,
+      compile_clean_diagnostic_union: ArtifactPart
+    }
+  | LegacyIncompleteArtifact {
+      kind: ArtifactKindId,
+      request_key: ContentHash,
+      carried_outputs: List<CarriedOutput>
+    }
+
+fn artifact_fold<T>(
+  artifact: MaterializedArtifact,
+  parsed: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  typed_module: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  resolved_graph: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
+  legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
+) -> T {
+  match artifact {
+    ParsedArtifact { request_key: k, parse_tree: t, parse_diagnostics: d } => parsed(k, t, d)
+    TypedModuleArtifact { request_key: k, typed_module_interface: i, typecheck_diagnostics: d } =>
+      typed_module(k, i, d)
+    ResolvedGraphArtifact {
+      request_key: k,
+      resolved_graph: g,
+      source_indices: s,
+      compile_clean_diagnostic_union: u
+    } => resolved_graph(k, g, s, u)
+    LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
+      legacy_incomplete(kd, k, cs)
+  }
+}
+
+fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => parse_source_artifact_kind,
+    typed_module: (k, i, d) => typed_module_artifact_kind,
+    resolved_graph: (k, g, s, u) => resolved_graph_artifact_kind,
+    legacy_incomplete: (kd, k, cs) => kd
+  )
+}
+
+fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => k,
+    typed_module: (k, i, d) => k,
+    resolved_graph: (k, g, s, u) => k,
+    legacy_incomplete: (kd, k, cs) => k
+  )
+}
+
+fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutput> {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => [
+      positioned_part(id: output_parse_tree, part: t),
+      positioned_part(id: output_parse_diagnostics, part: d)
+    ],
+    typed_module: (k, i, d) => [
+      positioned_part(id: output_typed_module_interface, part: i),
+      positioned_part(id: output_typecheck_diagnostics, part: d)
+    ],
+    resolved_graph: (k, g, s, u) => [
+      positioned_part(id: output_resolved_graph, part: g),
+      positioned_part(id: output_source_indices, part: s),
+      positioned_part(id: output_compile_clean_diagnostic_union, part: u)
+    ],
+    legacy_incomplete: (kd, k, cs) => cs
+  )
 }
 
 fn artifact_content_digest(artifact: MaterializedArtifact) -> ContentHash {
-  carried_outputs_digest(outputs: artifact.carried_outputs)
+  carried_outputs_digest(outputs: artifact_carried_outputs(artifact: artifact))
 }
 
 fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
@@ -168,7 +275,7 @@ fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
 }
 
 fn artifact_bytes(artifact: MaterializedArtifact) -> ByteSize {
-  carried_outputs_bytes(outputs: artifact.carried_outputs)
+  carried_outputs_bytes(outputs: artifact_carried_outputs(artifact: artifact))
 }
 
 type ArtifactCompleteness
@@ -212,14 +319,17 @@ fn request_artifact_binding(
 ) -> RequestArtifactBinding {
   let key = request_key(req: req)
   let kind = request_kind(req: req)
-  if (artifact.kind == kind) == false {
-    BindingKindMismatch { requested: kind, found: artifact.kind }
-  } else if (artifact.request_key == key) == false {
-    BindingWrongArtifact { key: key, found_key: artifact.request_key }
+  if (artifact_kind(artifact: artifact) == kind) == false {
+    BindingKindMismatch { requested: kind, found: artifact_kind(artifact: artifact) }
+  } else if (artifact_request_key(artifact: artifact) == key) == false {
+    BindingWrongArtifact { key: key, found_key: artifact_request_key(artifact: artifact) }
   } else if (observed_digest == artifact_content_digest(artifact: artifact)) == false {
     BindingWrongContent { recorded: artifact_content_digest(artifact: artifact), observed: observed_digest }
   } else {
-    match artifact_completeness(required: request_required_outputs(req: req), carried: artifact.carried_outputs) {
+    match artifact_completeness(
+      required: request_required_outputs(req: req),
+      carried: artifact_carried_outputs(artifact: artifact)
+    ) {
       ArtifactComplete => BindingOk
       ArtifactMissingOutputs { missing: m } => BindingIncomplete { missing: m }
     }
@@ -290,7 +400,7 @@ fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) ->
   if measure_count(m: bytes) > measure_count(m: store.budget) {
     ProviderBudgetExhausted { needed: bytes, budget: store.budget }
   } else {
-    let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: bytes)
+    let receipt = store_put(store: store, key: artifact_request_key(artifact: artifact), artifact_bytes: bytes)
     ProviderAdmitted { store: receipt.store, evicted: receipt.evicted }
   }
 }
