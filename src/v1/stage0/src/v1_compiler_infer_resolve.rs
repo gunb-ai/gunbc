@@ -168,6 +168,13 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<Node> {
+    let merged_cardinality = if identity.return_cardinality.clone() == Cardinality::CardOptional
+        || structural.return_cardinality.clone() == Cardinality::CardOptional
+    {
+        Cardinality::CardOptional
+    } else {
+        structural.return_cardinality.clone()
+    };
     Rc::new(Node {
         name: structural.name.clone(),
         ident: structural.ident.clone(),
@@ -177,7 +184,7 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
         connective: structural.connective.clone(),
         params: structural.params.clone(),
         inferred: structural.inferred.clone(),
-        return_cardinality: structural.return_cardinality.clone(),
+        return_cardinality: merged_cardinality,
         uses: structural.uses.clone(),
         body: structural.body.clone(),
         transport: structural.transport.clone(),

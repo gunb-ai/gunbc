@@ -13,7 +13,7 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
   InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
-  Cardinality, Required,
+  Cardinality, Required, CardOptional,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
   ExprData, NoExprData,
@@ -114,10 +114,15 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
 }
 
 fn with_authored_identity(identity: Node, structural: Node) -> Node {
+  let merged_cardinality = if identity.return_cardinality == CardOptional || structural.return_cardinality == CardOptional {
+    CardOptional
+  } else {
+    structural.return_cardinality
+  }
   Node {
     name: structural.name, ident: structural.ident, span: structural.span, ident_span: identity.ident_span,
     children: structural.children, connective: structural.connective, params: structural.params,
-    inferred: structural.inferred, return_cardinality: structural.return_cardinality,
+    inferred: structural.inferred, return_cardinality: merged_cardinality,
     uses: structural.uses, body: structural.body, transport: structural.transport,
     properties: structural.properties, type_annotation: structural.type_annotation,
     is_self_recursive: structural.is_self_recursive, has_non_tail_self_call: structural.has_non_tail_self_call,
