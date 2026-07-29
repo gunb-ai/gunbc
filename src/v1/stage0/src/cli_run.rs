@@ -28357,6 +28357,24 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// An empty touched-path set widens to the whole tree rather than skipping. This is
+    /// the arm a main-push squash merge lands on, so a skip here makes main-push report
+    /// green without compiling anything. #7412 fixed the `.dag` model
+    /// (`witness_empty_touched_requires_whole_tree`) but this hot-path mirror kept
+    /// skipping and had NO test, so the model went green while the realization still
+    /// fell open — the fork stayed invisible for exactly that reason.
+    #[test]
+    fn floor_fast_plan_empty_touched_requires_whole_tree() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = HashSet::new();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[], &departed);
+            assert!(
+                matches!(plan, CompileCleanScopePlan::WholeTree),
+                "an unobservable diff must widen, not skip; got {plan:?}"
+            );
+        });
+    }
+
     /// Docs-only departure stays a skip — the departed guard fires only outside docs/**.
     #[test]
     fn floor_fast_plan_docs_only_departure_still_skips() {
