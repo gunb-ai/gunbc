@@ -166,14 +166,32 @@ fn seed_emit_rust_reachable(closure: RealizedEmitterClosure) -> Bool {
   )
 }
 
-fn v2_emitter_producer_admissible(
+data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint refused: realized_closure contains v1.compiler.emit_rust (structural construction wall, calm-badger-682 ruling 2026-07-29)"
+
+type EmitterProducerMintAdmission
+  = ProducerMintAdmitted
+  | ProducerMintRefused { cause: Symbol }
+
+data emitter_producer_mint_admission_note: String = "🟢 Canonical admission fold over EmitterProducer (review 44579 predicate-dissolution): emitter_producer_mint_admission is the ONLY total match classifying producer×realized_closure admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled Bool admissibility predicates."
+
+fn emitter_producer_mint_admission(
   producer: EmitterProducer,
   closure: RealizedEmitterClosure
-) -> Bool {
+) -> EmitterProducerMintAdmission {
   match producer {
-    V1SeedEmitter => true
-    V2EmitterInterpreted => !seed_emit_rust_reachable(closure: closure)
-    V2EmitterNative { generation: _ } => !seed_emit_rust_reachable(closure: closure)
+    V1SeedEmitter => ProducerMintAdmitted
+    V2EmitterInterpreted =>
+      if seed_emit_rust_reachable(closure: closure) {
+        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+      } else {
+        ProducerMintAdmitted
+      }
+    V2EmitterNative { generation: _ } =>
+      if seed_emit_rust_reachable(closure: closure) {
+        ProducerMintRefused { cause: ^v2_emitter_in_seed_emit_rust_closure }
+      } else {
+        ProducerMintAdmitted
+      }
   }
 }
 
@@ -195,9 +213,10 @@ fn mint_producer_emission_receipt(
   behavioral_probe_function: String,
   realized_closure: RealizedEmitterClosure
 ) -> Optional<ProducerEmissionReceipt> {
-  if v2_emitter_producer_admissible(producer: producer, closure: realized_closure) {
-    optional_present(
-      value: ProducerEmissionReceipt {
+  match emitter_producer_mint_admission(producer: producer, closure: realized_closure) {
+    ProducerMintAdmitted =>
+      optional_present(
+        value: ProducerEmissionReceipt {
         module_path: module_path,
         module_source_digest: scaffold_digest_for_module_path(module_path: module_path),
         emitter_source_digest: scaffold_digest_for_module_path(
@@ -217,8 +236,7 @@ fn mint_producer_emission_receipt(
         realized_closure: realized_closure
       }
     )
-  } else {
-    optional_absent()
+    ProducerMintRefused { cause: _ } => optional_absent()
   }
 }
 
