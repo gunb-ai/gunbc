@@ -245,6 +245,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "extdeps.tools", decl_name: "resolve", field: WholeDeclaration },
     dissolution: HasTrigger { text: "P1/P2 land the digest-bearing pin and the tool instantiation of gunbc.membership_reconcile — extdeps.tools.resolve gains its ensure arm and the four forked resolvers delete; the pin carrier becomes the authority and the plan registers as a gunbc.plan.Plan row" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "srv1-deploy-serialization-and-false-greens",
+    work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_deploy_srv1_stage", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the deploy stage carries mutual exclusion AND a counted superseded-tip refusal, the healthz fingerprint identifies the served source closure, and job_yaml emits Job.concurrency with a discriminating RED — the three findings this diagnosis names are then facts on their carriers and the doc deletes with this row" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
