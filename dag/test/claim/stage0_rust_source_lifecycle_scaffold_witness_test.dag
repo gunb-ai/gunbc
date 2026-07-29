@@ -35,6 +35,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note,
   RustManifestUnobserved,
+  witness_duplicate_tracked_observation,
   witness_honest_minimal_observation_ok,
   witness_hand_maintained_growth_observation,
   witness_observation_covering_lifecycle_plus_extra
@@ -227,22 +228,7 @@ test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
 }
 
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
-  match rust_source_manifest_state_verdict(
-    observation: RustManifestObserved {
-      repository_revision: "deadbeef",
-      manifest_digest: "abc123",
-      tracked_rust_repo_paths: [
-        "src/v1/stage0/src/cli_run.rs",
-        "src/v1/stage0/src/cli_run.rs",
-        "src/v1/stage0/src/main.rs"
-      ],
-      prior_tracked_rust_repo_paths: [
-        "src/v1/stage0/src/cli_run.rs",
-        "src/v1/stage0/src/main.rs"
-      ],
-      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
-    }
-  ) {
+  match rust_source_manifest_state_verdict(observation: witness_duplicate_tracked_observation()) {
     ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: _ } } => true
     _ => false
   }

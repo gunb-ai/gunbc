@@ -536,6 +536,37 @@ fn witness_honest_minimal_observation_ok() -> RustManifestObserved {
   }
 }
 
+fn first_classified_repo_path(classified: List<String>) -> String {
+  fold_list(
+    xs: classified,
+    init: "",
+    cons: fn(first, path) {
+      if first == "" {
+        path
+      } else {
+        first
+      }
+    }
+  )
+}
+
+fn witness_duplicate_tracked_observation() -> RustManifestObserved {
+  let lifecycle_paths = file_grain_lifecycle_repo_paths()
+  let classified = observed_classified_repo_paths(
+    file_grain_paths: lifecycle_paths,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  )
+  let dup_path = first_classified_repo_path(classified: classified)
+  let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
+  RustManifestObserved {
+    repository_revision: "witness-deadbeef",
+    manifest_digest: "witness-abc123",
+    tracked_rust_repo_paths: tracked_with_dup,
+    prior_tracked_rust_repo_paths: classified,
+    cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+  }
+}
+
 fn declaration_ref_populated(ref: DeclarationRef) -> Bool {
   !(ref.module_path == "") && !(ref.decl_name == "")
 }
