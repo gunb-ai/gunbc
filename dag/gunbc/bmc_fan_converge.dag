@@ -18,6 +18,21 @@ import extdeps.bmc.types {
   FanPidIndependentEntries,
 }
 import extdeps.bmc.openbmc_fan_control {
+  OpenBmcCollectionMany,
+  OpenBmcCollectionOne,
+  OpenBmcCollectionZero,
+  OpenBmcFanConfigDesired,
+  OpenBmcFanConfigObservation,
+  OpenBmcFanConfigObservationRefused,
+  OpenBmcFanConfigObserved,
+  OpenBmcSelectionMany,
+  OpenBmcSelectionOne,
+  OpenBmcSelectionZero,
+  OpenBmcSensorServicesObserved,
+  OpenBmcSensorServicesRefused,
+  OpenBmcSensorValueAbsent,
+  OpenBmcSensorValueObserved,
+  OpenBmcSensorValueRefused,
   openbmc_copy_file_preserving_metadata,
   openbmc_disk_usage_kib,
   openbmc_fan_config_observe,
@@ -273,41 +288,21 @@ fn bmc_fan_curve_outputs(curve: BmcFanCurve) -> List<Int> {
   curve.steps |> map(step => percent_count(step.duty))
 }
 
-fn bmc_fan_policy_projection_json(
+fn bmc_fan_policy_projection_request(
   curve: BmcFanCurve,
   projection: BmcFanPolicyProjectionCapability,
-) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(
-      key: "readings",
-      value: json_array(
-        elements: bmc_fan_curve_readings(curve: curve) |> map(n => json_int(n: n)),
-      ),
-    ),
-    json_kv(
-      key: "outputs",
-      value: json_array(
-        elements: bmc_fan_curve_outputs(curve: curve) |> map(n => json_int(n: n)),
-      ),
-    ),
-    json_kv(key: "minimum", value: json_int(n: percent_count(curve.minimum_duty))),
-    json_kv(key: "sensor_failsafe", value: json_int(n: percent_count(curve.sensor_unavailable_duty))),
-    json_kv(key: "zone_failsafe_duty", value: json_int(n: percent_count(curve.zone_failsafe_duty))),
-    json_kv(key: "positive_hysteresis", value: json_int(n: curve.positive_hysteresis_degrees_celsius)),
-    json_kv(key: "negative_hysteresis", value: json_int(n: curve.negative_hysteresis_degrees_celsius)),
-    json_kv(
-      key: "fan_pid_entry",
-      value: json_string(s: projection.aggregate_fan_pid_entry as String),
-    ),
-    json_kv(
-      key: "fan_inputs",
-      value: json_array(
-        elements: projection.required_tach_inputs |> map(
-          input => json_string(s: input as String),
-        ),
-      ),
-    ),
-  ]))
+) -> OpenBmcFanConfigDesired {
+  OpenBmcFanConfigDesired {
+    readings: bmc_fan_curve_readings(curve: curve),
+    outputs: bmc_fan_curve_outputs(curve: curve),
+    minimum_duty: percent_count(curve.minimum_duty),
+    sensor_failsafe_duty: percent_count(curve.sensor_unavailable_duty),
+    zone_failsafe_duty: percent_count(curve.zone_failsafe_duty),
+    positive_hysteresis: curve.positive_hysteresis_degrees_celsius,
+    negative_hysteresis: curve.negative_hysteresis_degrees_celsius,
+    fan_controller_name: projection.aggregate_fan_pid_entry,
+    fan_inputs: projection.required_tach_inputs,
+  }
 }
 
 fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
@@ -1451,7 +1446,7 @@ fn bmc_fan_wait_for_failsafe_clear(
 fn bmc_fan_restart_and_verify_controller(
   session: PasswordSshSession,
   plan: BmcFanPolicyApplyPlan,
-  desired_json: String?,
+  desired: OpenBmcFanConfigDesired?,
 ) -> BmcFanTypedMutationResult {
   let restarted = openbmc_systemd_restart(
     session: session,
@@ -1477,12 +1472,12 @@ fn bmc_fan_restart_and_verify_controller(
           reason: concat("fan controller is not active after restart: ", active.stderr),
         )
       } else {
-        match desired_json {
+        match desired {
           Present { value: desired } => {
             let verified = openbmc_fan_config_verify(
               session: session,
               config_path: plan.config_path,
-              desired_json: desired,
+              desired: desired,
             )
             if !verified.success {
               bmc_fan_mutation_refused(
@@ -1535,7 +1530,7 @@ fn bmc_fan_restore_previous_locked(
       let restarted = bmc_fan_restart_and_verify_controller(
         session: session,
         plan: plan,
-        desired_json: none,
+        desired: none,
       )
       match restarted {
         BmcFanTypedMutationApplied { rollback: _ } =>
@@ -1656,7 +1651,7 @@ fn bmc_fan_prepare_backup(
 fn bmc_fan_apply_from_local_files(
   session: PasswordSshSession,
   plan: BmcFanPolicyApplyPlan,
-  desired_json: String,
+  desired: OpenBmcFanConfigDesired,
   local_stage_path: NonEmptyStr,
   local_version_path: NonEmptyStr,
 ) -> BmcFanTypedMutationResult {
@@ -1699,7 +1694,7 @@ fn bmc_fan_apply_from_local_files(
           let restarted = bmc_fan_restart_and_verify_controller(
             session: session,
             plan: plan,
-            desired_json: Present { value: desired_json },
+            desired: Present { value: desired },
           )
           match restarted {
             BmcFanTypedMutationApplied { rollback: _ } =>
@@ -1764,7 +1759,7 @@ fn bmc_fan_apply_locked(
                 path: input_path as String,
                 content: current.stdout,
               )
-              let desired_json = bmc_fan_policy_projection_json(
+              let desired = bmc_fan_policy_projection_request(
                 curve: plan.desired_curve,
                 projection: plan.projection,
               )
@@ -1775,7 +1770,7 @@ fn bmc_fan_apply_locked(
               } else {
                 let projected = openbmc_fan_config_project_local(
                   input_path: input_path,
-                  desired_json: desired_json,
+                  desired: desired,
                 )
                 if !projected.success {
                   bmc_fan_mutation_refused(
@@ -1802,7 +1797,7 @@ fn bmc_fan_apply_locked(
                     bmc_fan_apply_from_local_files(
                       session: session,
                       plan: plan,
-                      desired_json: desired_json,
+                      desired: desired,
                       local_stage_path: stage_path,
                       local_version_path: version_path,
                     )
