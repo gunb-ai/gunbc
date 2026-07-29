@@ -48,12 +48,14 @@ import std.content_hash {
 import std.measure {
   Celsius,
   RevolutionsPerMinute,
+  Second,
   byte_size,
   celsius,
   celsius_count,
   percent,
   percent_count,
   rpm,
+  second,
 }
 import std.nat { Nat }
 import std.state_durability {
@@ -76,7 +78,7 @@ type BmcFanConvergenceReceipt {
   zone_control_path: NonEmptyStr
   zone_failsafe_active: Bool
   monitoring_sample_count: Nat
-  monitoring_duration_seconds: Nat
+  monitoring_duration: Second
   temp_soc_minimum: Celsius
   temp_soc_maximum: Celsius
   temp_soc_final: Celsius
@@ -97,7 +99,7 @@ type BmcFanRebootPersistenceReceipt {
   bmc_returned: Bool
   bmc_down_observed_at: EpochMs
   bmc_returned_at: EpochMs
-  observed_outage_seconds: Nat
+  observed_outage: Second
   host_power_before: RedfishPowerState
   host_power_after: RedfishPowerState
   host_os_ssh_reachable_throughout: Bool
@@ -187,8 +189,8 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis_degrees_celsius: 1,
-  negative_hysteresis_degrees_celsius: 2,
+  positive_hysteresis: celsius(count: 1),
+  negative_hysteresis: celsius(count: 2),
 }
 
 data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
@@ -238,10 +240,10 @@ fn bmc_fan_curve_content_hash(curve: BmcFanCurve) -> ContentHash {
               ),
               right: content_hash_combine(
                 left: content_hash_atom(
-                  value: to_string(curve.positive_hysteresis_degrees_celsius) as NonEmptyStr,
+                  value: to_string(celsius_count(curve.positive_hysteresis)) as NonEmptyStr,
                 ),
                 right: content_hash_atom(
-                  value: to_string(curve.negative_hysteresis_degrees_celsius) as NonEmptyStr,
+                  value: to_string(celsius_count(curve.negative_hysteresis)) as NonEmptyStr,
                 ),
               ),
             ),
@@ -316,7 +318,7 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
-  monitoring_duration_seconds: 360,
+  monitoring_duration: second(count: 360),
   temp_soc_minimum: celsius(72),
   temp_soc_maximum: celsius(77),
   temp_soc_final: celsius(73),
@@ -364,7 +366,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   bmc_returned: true,
   bmc_down_observed_at: 1785193789000,
   bmc_returned_at: 1785193946000,
-  observed_outage_seconds: 157,
+  observed_outage: second(count: 157),
   host_power_before: On,
   host_power_after: On,
   host_os_ssh_reachable_throughout: true,

@@ -283,9 +283,17 @@ fn linux_mount_target_contains_directory(
     starts_with(s: directory as String, prefix: "/")
   } else {
     target == directory
-      || starts_with(
-        s: directory as String,
-        prefix: concat(target as String, "/"),
+      || (
+        starts_with(
+          s: directory as String,
+          prefix: target as String,
+        )
+        && directory.length() > target.length()
+        && substring(
+          s: directory as String,
+          start: target.length(),
+          end: target.length() + 1,
+        ) == "/"
       )
   }
 }
@@ -353,17 +361,21 @@ fn linux_mount_option_value_rec(
   options: List<String>,
   name: NonEmptyStr,
 ) -> NonEmptyStr? {
-  let prefix = concat(name as String, "=")
   if options.length() == 0 {
     none
   } else {
     let option = options.first()
-    if starts_with(s: option, prefix: prefix)
-      && option.length() > prefix.length() {
+    if starts_with(s: option, prefix: name as String)
+      && option.length() > name.length() + 1
+      && substring(
+        s: option,
+        start: name.length(),
+        end: name.length() + 1,
+      ) == "=" {
       Present {
         value: substring(
           s: option,
-          start: prefix.length(),
+          start: name.length() + 1,
           end: option.length(),
         ) as NonEmptyStr,
       }
@@ -392,7 +404,7 @@ fn linux_overlay_observation_from_rows(
   ) {
     Absent => LinuxOverlayRefused { cause: LinuxOverlayRootMountMissing }
     Present { value: root } =>
-      if root.mount.filesystem != LinuxOverlayFs {
+      if !(root.mount.filesystem == LinuxOverlayFs) {
         LinuxOverlayRefused { cause: LinuxOverlayRootIsNotOverlay }
       } else {
         match linux_mount_option_value(row: root, name: "lowerdir") {

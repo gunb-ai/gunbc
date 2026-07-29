@@ -110,8 +110,8 @@ test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
     minimum_duty: percent(30),
     sensor_unavailable_duty: percent(100),
     zone_failsafe_duty: percent(100),
-    positive_hysteresis_degrees_celsius: 1,
-    negative_hysteresis_degrees_celsius: 1,
+    positive_hysteresis: celsius(count: 1),
+    negative_hysteresis: celsius(count: 1),
   }
   match validate_bmc_fan_curve(curve: falling) {
     BmcFanCurveInvalid {
@@ -131,8 +131,8 @@ test fn realization_projection_hash_moves_with_curve_definition() -> Bool {
     minimum_duty: srv4_bmc_fan_observed_curve.minimum_duty,
     sensor_unavailable_duty: srv4_bmc_fan_observed_curve.sensor_unavailable_duty,
     zone_failsafe_duty: srv4_bmc_fan_observed_curve.zone_failsafe_duty,
-    positive_hysteresis_degrees_celsius: srv4_bmc_fan_observed_curve.positive_hysteresis_degrees_celsius,
-    negative_hysteresis_degrees_celsius: srv4_bmc_fan_observed_curve.negative_hysteresis_degrees_celsius,
+    positive_hysteresis: srv4_bmc_fan_observed_curve.positive_hysteresis,
+    negative_hysteresis: srv4_bmc_fan_observed_curve.negative_hysteresis,
   }
   let changed_hash = bmc_fan_curve_content_hash(curve: changed)
   let observed_hash = bmc_fan_curve_content_hash(

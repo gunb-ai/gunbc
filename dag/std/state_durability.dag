@@ -144,28 +144,27 @@ type StateDurabilityTimeline {
 fn state_durability_perturbation_started_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = timeline.before_readback_at
-    + positive_millisecond_count(
-        m: timeline.before_to_perturbation_start,
-      )
+  let instant = timeline.before_readback_at + positive_millisecond_count(
+    m: timeline.before_to_perturbation_start,
+  )
   instant
 }
 
 fn state_durability_perturbation_completed_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_started_at(timeline: timeline)
-    + positive_millisecond_count(m: timeline.perturbation_duration)
+  let instant = state_durability_perturbation_started_at(timeline: timeline) + positive_millisecond_count(
+    m: timeline.perturbation_duration,
+  )
   instant
 }
 
 fn state_durability_after_readback_at(
   timeline: StateDurabilityTimeline,
 ) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_completed_at(timeline: timeline)
-    + positive_millisecond_count(
-        m: timeline.completion_to_after_readback,
-      )
+  let instant = state_durability_perturbation_completed_at(timeline: timeline) + positive_millisecond_count(
+    m: timeline.completion_to_after_readback,
+  )
   instant
 }
 
