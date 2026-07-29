@@ -1,0 +1,583 @@
+module test.claim.claim_indexed_evidence_witness
+
+import std.types { Bool, NonEmptyStr, RunKey }
+import std.algebra { Empty }
+import std.occurrence_binding {
+  ContainmentPath,
+  BindingOccurrence,
+  BindingCandidate,
+  OccurrenceBinding,
+}
+import std.claim_evidence {
+  RecordedFactId,
+  RecordedFact,
+  ClaimReadinessPolicy,
+  ClaimReadinessBlocking,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceChallenges,
+  EvidenceLink,
+  claim_evidence_grounding_authorities,
+  claim_assessment_from_links,
+  claim_information_state,
+  claim_readiness_assessment,
+  claim_readiness_is_ready,
+  evidence_inference_links,
+  evidence_inference_insufficiencies,
+}
+import extdeps.external_authority { extdeps_external_authority_anchor }
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.llm.cli_lifecycle {
+  ProviderInstance,
+  ProviderInstanceFieldUnobserved,
+  CodexCliProvider,
+  ProviderCredentialsRecordedUnverified,
+  ProviderRefreshFailed,
+  ProviderAuthenticated,
+  codex_cli_auth_external_authority,
+}
+import extdeps.languages.dag.syntax { dag_syntax_spec }
+import gunbc.provider_readiness_claim_evidence {
+  ProviderReadinessEvidenceLink,
+  ProviderReadinessObservation,
+  ProviderLoginCredentialRecorded,
+  ProviderLiveModelResponseReceived,
+  ProviderLiveRefreshRefused,
+  provider_credential_recorded_claim,
+  provider_ready_claim,
+  provider_login_status_inference,
+  provider_live_request_failed_inference,
+  provider_live_request_succeeded_inference,
+  provider_readiness_evidence_admission_policy,
+}
+import gunbc.readback_independence {
+  ReadBackProbe,
+  ProbeMayEstablish,
+}
+import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
+import gunbc.os_install_deduction {
+  KvmOperatorAttestation,
+  LoginPrompt,
+  CompleteForUnattended,
+}
+import gunbc.os_install_claim_evidence {
+  os_install_boot_suggestion_claim,
+  os_install_completed_claim,
+  os_install_kvm_attestation_inference,
+}
+import gunbc.source_integration_claim_evidence {
+  SourceBindingFact,
+  source_binding_captured_claim,
+  source_binding_admissible_claim,
+  source_binding_capture_inference,
+}
+import product.placement_supply { HostIdentity }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn provider_evidence_fixture() -> ProviderInstance {
+  ProviderInstance {
+    kind: CodexCliProvider,
+    host: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    executable: "codex",
+    observed_version: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    state_directory: ProviderInstanceFieldUnobserved {
+      reason: "dedicated CODEX_HOME fixture",
+    },
+    credential_storage_method: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+    service_identity: ProviderInstanceFieldUnobserved {
+      reason: "claim-evidence fixture",
+    },
+  }
+}
+
+data provider_evidence_bound: RunKey = "provider-attempt-1"
+data provider_other_evidence_bound: RunKey = "provider-attempt-2"
+
+data source_binding_fixture_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium {
+    carried: "module claim.evidence.source\nfn foo() -> Bool { true }\nfn caller() -> Bool { foo() }",
+    fidelity: Lossless,
+  },
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^source_binding_fixture_artifact,
+    file_path: "dag/test/claim/source_binding_fixture.dag",
+  },
+  compilation_unit: ^source_binding_fixture_compilation_unit,
+  source_root: DagTree,
+}
+
+data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId> = OccurrenceBinding {
+  occurrence: BindingOccurrence {
+    containment: ContainmentPath {
+      ancestors: Empty,
+      terminal: std.occurrence_identity.OccurrenceId { value: 2 },
+    },
+  },
+  candidate: BindingCandidate {
+    containment: ContainmentPath {
+      ancestors: Empty,
+      terminal: std.occurrence_identity.OccurrenceId { value: 1 },
+    },
+  },
+}
+
+fn provider_login_status_fact(
+  id: RecordedFactId,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderReadinessObservation {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      result: ProviderLoginCredentialRecorded {
+        response: "Logged in using ChatGPT",
+      },
+    },
+  }
+}
+
+fn provider_live_request_failed_fact(
+  id: RecordedFactId,
+  reason: NonEmptyStr,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderReadinessObservation {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      result: ProviderLiveRefreshRefused { reason: reason },
+    },
+  }
+}
+
+fn provider_live_request_succeeded_fact(
+  id: RecordedFactId,
+) -> RecordedFact<ProviderReadinessObservation> {
+  RecordedFact {
+    id: id,
+    value: ProviderReadinessObservation {
+      provider: provider_evidence_fixture(),
+      bound: provider_evidence_bound,
+      result: ProviderLiveModelResponseReceived {
+        response: "provider returned a model response",
+      },
+    },
+  }
+}
+
+test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
+  let provider = provider_evidence_fixture()
+  let login = provider_login_status_inference(
+    observed_fact: provider_login_status_fact(id: "provider-login-status-fact"),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let failed = provider_live_request_failed_inference(
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-fact",
+      reason: "invalid refresh token",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let links = append(
+    evidence_inference_links(inference: login),
+    items: evidence_inference_links(inference: failed),
+  )
+  let credential_claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let credential_assessment = claim_assessment_from_links(
+    claim: credential_claim,
+    links: links,
+  )
+  let ready_assessment = claim_assessment_from_links(
+    claim: ready_claim,
+    links: links,
+  )
+  let credential_state = claim_information_state(
+    assessment: credential_assessment,
+  )
+  let ready_state = claim_information_state(
+    assessment: ready_assessment,
+  )
+  let readiness = claim_readiness_assessment(
+    policy: ClaimReadinessPolicy {
+      first_required: ready_claim,
+      remaining_required: [],
+      evidence_admission: provider_readiness_evidence_admission_policy(),
+    },
+    links: links,
+  )
+  credential_state.support
+    && !credential_state.challenge
+    && !ready_state.support
+    && ready_state.challenge
+    && !claim_readiness_is_ready(assessment: readiness)
+}
+
+test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool {
+  let provider = provider_evidence_fixture()
+  let login_claiming_authenticated = RecordedFact {
+    id: "provider-login-status-cannot-be-live-success",
+    value: ProviderReadinessObservation {
+      provider: provider,
+      bound: provider_evidence_bound,
+      result: ProviderLoginCredentialRecorded {
+        response: "Logged in using ChatGPT",
+      },
+    },
+  }
+  let inference = provider_live_request_succeeded_inference(
+    observed_fact: login_claiming_authenticated,
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  evidence_inference_links(inference: inference).length() == 0
+    && evidence_inference_insufficiencies(inference: inference).length() == 1
+}
+
+test fn witness_refresh_refusal_cannot_support_provider_authentication() -> Bool {
+  let provider = provider_evidence_fixture()
+  let inference = provider_live_request_succeeded_inference(
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-refresh-refusal-cannot-authenticate",
+      reason: "invalid refresh token",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  evidence_inference_links(inference: inference).length() == 0
+    && evidence_inference_insufficiencies(inference: inference).length() == 1
+}
+
+test fn witness_evidence_from_one_attempt_cannot_support_another_attempt() -> Bool {
+  let provider = provider_evidence_fixture()
+  let inference = provider_live_request_succeeded_inference(
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-attempt-one",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let other_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_other_evidence_bound,
+  )
+  let other_state = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: other_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  !other_state.support && !other_state.challenge
+}
+
+test fn witness_support_challenge_both_and_neither_remain_distinct() -> Bool {
+  let provider = provider_evidence_fixture()
+  let failed = provider_live_request_failed_inference(
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-both",
+      reason: "refresh refused",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let succeeded = provider_live_request_succeeded_inference(
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-succeeded-both",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let credential_claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let links = append(
+    evidence_inference_links(inference: failed),
+    items: evidence_inference_links(inference: succeeded),
+  )
+  let both = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: ready_claim,
+      links: links,
+    ),
+  )
+  let neither = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: credential_claim,
+      links: links,
+    ),
+  )
+  both.support
+    && both.challenge
+    && !neither.support
+    && !neither.challenge
+}
+
+test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool {
+  let provider = provider_evidence_fixture()
+  let failed = provider_live_request_failed_inference(
+    observed_fact: provider_live_request_failed_fact(
+      id: "provider-live-request-failed-split",
+      reason: "refresh refused",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let succeeded = provider_live_request_succeeded_inference(
+    observed_fact: provider_live_request_succeeded_fact(
+      id: "provider-live-request-succeeded-split",
+    ),
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let ready_claim = provider_ready_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let readiness = claim_readiness_assessment(
+    policy: ClaimReadinessPolicy {
+      first_required: ready_claim,
+      remaining_required: [],
+      evidence_admission: provider_readiness_evidence_admission_policy(),
+    },
+    links: append(
+      evidence_inference_links(inference: succeeded),
+      items: evidence_inference_links(inference: failed),
+    ),
+  )
+  !claim_readiness_is_ready(assessment: readiness)
+    && readiness.length() == 1
+    && all(readiness, row =>
+      match row {
+        ClaimReadinessBlocking { claim } => claim == ready_claim
+        _ => false
+      }
+    )
+}
+
+test fn witness_empty_readiness_assessment_is_never_ready() -> Bool {
+  !claim_readiness_is_ready(assessment: [])
+}
+
+test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
+  let provider = provider_evidence_fixture()
+  let required = provider_ready_claim(
+    provider: provider,
+    bound: provider_other_evidence_bound,
+  )
+  let forged: ProviderReadinessEvidenceLink = EvidenceLink {
+    fact: provider_live_request_succeeded_fact(
+      id: "forged-provider-support-link",
+    ),
+    direction: EvidenceSupports,
+    inference_rule: "provider-live-request-succeeded",
+    authority: extdeps_external_authority_anchor,
+    provenance: EvidenceProvenance {
+      entity: "unrecognized-provider-output",
+      activity: "unrecognized-provider-operation",
+      agent: "unrecognized-provider-agent",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: required,
+      basis: "caller-authored cross-attempt claim",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderAuthenticated,
+      losses: ["the response was not independently classified"],
+    },
+    probe_independence: ReadBackProbe {
+      label: "ensure provider then claim success",
+      subject: "provider authentication",
+      effect_on_subject: ProbeMayEstablish {
+        mechanism: "the operation refreshes credentials before reporting",
+      },
+    },
+  }
+  let readiness = claim_readiness_assessment(
+    policy: ClaimReadinessPolicy {
+      first_required: required,
+      remaining_required: [],
+      evidence_admission: provider_readiness_evidence_admission_policy(),
+    },
+    links: [forged],
+  )
+  !claim_readiness_is_ready(assessment: readiness)
+}
+
+test fn witness_self_establishing_positive_is_insufficient_but_negative_survives() -> Bool {
+  let provider = provider_evidence_fixture()
+  let claim = provider_credential_recorded_claim(
+    provider: provider,
+    bound: provider_evidence_bound,
+  )
+  let fact = RecordedFact {
+    id: "self-establishing-provider-probe",
+    value: ProviderCredentialsRecordedUnverified,
+  }
+  let probe = ReadBackProbe {
+    label: "ensure credentials then report status",
+    subject: "credential material is recorded",
+    effect_on_subject: ProbeMayEstablish {
+      mechanism: "the query installs or refreshes credentials before reporting",
+    },
+  }
+  let support = infer_probe_evidence(
+    fact: fact,
+    direction: EvidenceSupports,
+    inference_rule: "self-establishing-provider-probe",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "self-establishing-provider-output",
+      activity: "ensure-then-read",
+      agent: "fixture-provider-cli",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "same fixture attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [],
+    },
+    probe: probe,
+  )
+  let challenge = infer_probe_evidence(
+    fact: fact,
+    direction: EvidenceChallenges,
+    inference_rule: "self-establishing-provider-probe",
+    authority: codex_cli_auth_external_authority,
+    provenance: EvidenceProvenance {
+      entity: "self-establishing-provider-output",
+      activity: "ensure-then-read",
+      agent: "fixture-provider-cli",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "same fixture attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: ProviderCredentialsRecordedUnverified,
+      losses: [],
+    },
+    probe: probe,
+  )
+  evidence_inference_links(inference: support).length() == 0
+    && evidence_inference_insufficiencies(inference: support).length() == 1
+    && evidence_inference_links(inference: challenge).length() == 1
+    && evidence_inference_insufficiencies(inference: challenge).length() == 0
+}
+
+test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
+  let target = "claim-evidence-host" as HostIdentity
+  let bound = "os-install-attempt-1" as RunKey
+  let attestation = KvmOperatorAttestation {
+    target: target,
+    observed_screen: LoginPrompt,
+    observed_at: "2026-07-28T18:00:00Z",
+    attested_by: "operator",
+  }
+  let inference = os_install_kvm_attestation_inference(
+    fact_id: "kvm-login-prompt-fact",
+    attestation: attestation,
+    preflight: CompleteForUnattended,
+    bound: bound,
+  )
+  let boot_claim = os_install_boot_suggestion_claim(
+    target: target,
+    preflight: CompleteForUnattended,
+    bound: bound,
+  )
+  let installed_claim = os_install_completed_claim(
+    target: target,
+    preflight: CompleteForUnattended,
+    bound: bound,
+  )
+  let boot = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: boot_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  let installed = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: installed_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  boot.support
+    && !boot.challenge
+    && !installed.support
+    && !installed.challenge
+}
+
+test fn witness_source_capture_does_not_invent_admission() -> Bool {
+  let bound = "source-attempt-1" as RunKey
+  let fact = SourceBindingFact {
+    bound: bound,
+    source_read: source_binding_fixture_read,
+    binding: source_binding_fixture_binding,
+  }
+  let inference = source_binding_capture_inference(
+    fact_id: "source-binding-capture-fact",
+    fact: fact,
+  )
+  let captured_claim = source_binding_captured_claim(
+    fact: fact,
+  )
+  let admissible_claim = source_binding_admissible_claim(
+    fact: fact,
+  )
+  let captured = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: captured_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  let admissible = claim_information_state(
+    assessment: claim_assessment_from_links(
+      claim: admissible_claim,
+      links: evidence_inference_links(inference: inference),
+    ),
+  )
+  captured.support
+    && !captured.challenge
+    && !admissible.support
+    && !admissible.challenge
+    && all(
+      evidence_inference_links(inference: inference),
+      link =>
+        link.freshness.maximum_conclusion == captured_claim
+          && link.freshness.maximum_conclusion.bound == bound
+          && link.authority == dag_syntax_spec,
+    )
+}
+
+test fn witness_claim_evidence_roles_are_externally_grounded() -> Bool {
+  claim_evidence_grounding_authorities.length() == 3
+}
