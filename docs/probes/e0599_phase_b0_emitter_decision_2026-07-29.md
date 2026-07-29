@@ -53,7 +53,18 @@ and every site classifies:
 | `Unresolved` | **0** | **0** | — |
 | **TOTAL** | **78** | **600** | 100% |
 
-Measured at the merged head (`914da873`), after four PRs landed mid-review. **The brief's
+Measured after four PRs landed mid-review, `914da873` being the merge that brought them
+in. Two shas matter and they name different things, so the receipt carries both rather
+than blurring them into one:
+
+- `measured_corpus_sha` = **`210696d72e1`** (#7406) — the last commit touching `src/`, i.e.
+  the seed emitter and the AST it runs over. This is what the numbers are *about*.
+- `base_sha` = **`0126077aa50`** — the commit the measurement *ran at*.
+
+Everything between them (the producer tag, the tuple-projection predicate, the routing
+controls, the doc-graph bind) is census tooling and docs, so
+`git diff --name-only 914da873..HEAD -- src/` is **empty** and re-running at any later
+doc-only head reproduces these numbers. **The brief's
 acceptance figures — 79 sites / 590 occurrences — were met exactly at the sha the brief
 was written against**, and the corpus has since moved; §3.1 reports both and attributes
 every unit of the difference. Zero unresolved, no default or "other" bucket absorbing

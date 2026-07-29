@@ -11,6 +11,8 @@ witness	dag/test/claim/e0599_emitter_decision_census_witness_test.dag (22 green;
 classification_field_contract	7 fields; the joiner REFUSES on any count mismatch (proven by perturbation: authority emitting 8 -> located refusal naming the key, exit 1)
 routing_control	tuple projection must reach LoweringUnidentified; reverting e0599_receiver_is_field_access to its permissive form reds exactly the two tuple-projection controls and nothing else
 base_sha	0126077aa502627d6590171322fce279e76575e2
+measured_corpus_sha	210696d72e1a5278c15ced4a2b2de4e66e24a3d1
+measured_corpus_note	base_sha is the commit the measurement RAN at; measured_corpus_sha is the last commit touching src/ - the emitter and the AST it runs over. Commits between them are census tooling and docs only, so re-running at any later doc-only head reproduces these numbers.
 gunbc_sha256	55a06adfe09c628f4b575316774727ece316449489353a2652013ce730847206
 cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
 rustc	rustc 1.93.0 (254b59607 2026-01-19)
