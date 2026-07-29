@@ -30,8 +30,15 @@ The escape clause therefore fires:
 > If implementation cannot name the missing fact without inventing it: return for a
 > new ruling before claiming census movement.
 
-**The `−590` is withdrawn as a P-fn claim. The covered subset under the proposed
-carrier is 0.**
+**The `−590` is withdrawn as a P-fn claim.** Stated to its measured scope:
+
+* **555 of 590 diagnostics (94.1%) inspected — 0 inhabitants for the proposed carrier.**
+* **35 diagnostics (5.9%) unresolved** — 14 behind a typed parse refusal, 21 in files
+  outside the probe roster. No disposition is claimed for them.
+
+The withdrawal does not depend on the residue: a carrier needs *some* inhabitant to be
+worth landing, and none was found in 94.1% of the population. But the residue is
+carried as **unknown**, not as confirmation — see §3.
 
 ---
 
@@ -217,14 +224,23 @@ and it takes 100%:
 
 | disposition | sites | diagnostics | basis |
 |---|---:|---:|---|
-| evidence-present | 0 | 0 | no `clone`/`is_empty`/`iter` projection step exists in any site-bearing source |
+| evidence-present | 0 | 0 | no `clone`/`is_empty`/`iter` projection step exists in any **inspected** source |
 | wrapper-retained | 0 | 0 | **not the deficit** — these bodies lower; `body_lower_wrapper_retained_shell` is not reached for them |
-| ambiguous | 0 | 0 | the operand is absent, not undecidable |
-| **no-modeled-operation (emitter-synthesized)** | **79** | **555 measured + 35 unmeasured/refused** | the reported methods are inserted by emitter lowering templates |
+| ambiguous | 0 | 0 | of the inspected sites, none is undecidable — the operand is simply absent |
+| **no-modeled-operation (emitter-synthesized)** | **71** | **555** | inspected: the reported methods are inserted by emitter lowering templates |
+| **unresolved — not inspected** | **8** | **35** | 1 site / 14 diagnostics in `std/node.dag` (**refused**); 7 sites / 21 diagnostics in three off-roster files. **No disposition is claimed for these.** |
+| TOTAL | 79 | 590 | |
 
-`distinct_sites` are `(file, line, method, receiver)` positions; `diagnostics` is the
+`sites` are distinct `(file, line, method, receiver)` positions; `diagnostics` is the
 raw R1+R2+R3 count, which exceeds sites×modules because one position can be reported at
 several columns.
+
+**The unresolved row is deliberately its own disposition, not folded into the one above
+it.** Classifying an uninspected site as "no modeled operation" would substitute
+⊤-as-ignorance for an answer — the absorbing fallback DESIGN §5 forbids, and precisely
+the error this audit charges against the plan. 94.1% of the population is measured; the
+remaining 5.9% is *unknown*, and unknown is carried as its own typed state through to
+the verdict below.
 
 ### 3.1 Both readings of "modeled operation" fail, for the same reason
 
