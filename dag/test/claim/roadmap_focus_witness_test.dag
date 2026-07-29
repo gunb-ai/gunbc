@@ -14,6 +14,8 @@ import gunbc.roadmap_focus {
   focus_visible_nodes,
   focus_visible_edges,
   focus_hidden_node_count,
+  focus_lane_nodes,
+  focus_prerequisite_ids,
   focus_is_active,
   focus_notice,
 }
@@ -26,19 +28,20 @@ data focus_witness_note: String = "Focus is a VIEW, so the property that matters
 fn all_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
 
 fn visible() -> List<RoadmapNode> {
-  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes())
+  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
 }
 
 test fn focus_partitions_rather_than_deletes() -> Bool {
   count(visible()) + focus_hidden_node_count(
     focus: roadmap_focus_selection,
     nodes: all_nodes(),
+    edges: active_roadmap_edges(),
   ) == count(all_nodes())
 }
 
 test fn clearing_focus_restores_every_node() -> Bool {
-  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes())) == count(all_nodes())
-    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes()) == 0
+  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges())) == count(all_nodes())
+    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == 0
 }
 
 test fn focus_actually_narrows_the_page() -> Bool {
@@ -61,16 +64,40 @@ test fn every_visible_edge_has_both_endpoints_visible() -> Bool {
 }
 
 test fn focus_notice_states_the_derived_hidden_count() -> Bool {
-  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes())
+  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
   string_contains(
     s: notice,
     pattern: to_string(focus_hidden_node_count(
       focus: roadmap_focus_selection,
       nodes: all_nodes(),
+      edges: active_roadmap_edges(),
     )),
   ) && string_contains(s: notice, pattern: "Focused view")
 }
 
 test fn unfocused_projection_emits_no_notice() -> Bool {
-  focus_notice(focus: NoFocus, nodes: all_nodes()) == ""
+  focus_notice(focus: NoFocus, nodes: all_nodes(), edges: active_roadmap_edges()) == ""
+}
+
+data focus_closure_witness_note: String = "THE CLAIM THAT WOULD HAVE CAUGHT THE ORIGINAL BUG. The first focus shipped owner-membership as the whole visibility rule, and the page it produced rendered pderive-source-slot-binding as ready while its prerequisite namespace-canonical-binding — a node in a lane the focus hid — was nowhere on it. Nothing was red; the page simply lied by omission, and the failure mode is worse for a dispatched agent than for a person: a worker reads a ready-looking node, starts, and stalls on work the roadmap never mentioned.\n\nThis is the structural version of that check, not a spot-fix for that one node: EVERY prerequisite of EVERY visible node must itself be visible. It holds no matter which lane is focused or which edges are added later, and it fails the moment a filter shows work whose blockers it hides."
+
+test fn no_visible_node_has_a_hidden_prerequisite() -> Bool {
+  let vis = visible()
+  all(
+    active_roadmap_edges() |> filter(e =>
+      any(vis, n => (n.node as String) == (e.child as String))),
+    e => any(vis, n => (n.node as String) == (e.parent as String)),
+  )
+}
+
+test fn prerequisites_are_pulled_in_and_named_as_such() -> Bool {
+  let pulled = focus_prerequisite_ids(
+    focus: roadmap_focus_selection,
+    nodes: all_nodes(),
+    edges: active_roadmap_edges(),
+  )
+  let lane = focus_lane_nodes(focus: roadmap_focus_selection, nodes: all_nodes())
+  count(pulled) > 0
+    && count(visible()) == count(lane) + count(pulled)
+    && all(pulled, p => !any(lane, l => (l.node as String) == p))
 }
