@@ -87,7 +87,7 @@ fn admit_pin(pin: ToolPin, observed_identity: ContentHash, age_days: Int) -> Pin
         cause: PinStaleBeyondWindow { channel: c, age_days: a, window_days: w }
       }
     PinFresh =>
-      if (pin.expected_identity as String) == (observed_identity as String) {
+      if pin.expected_identity == observed_identity {
         PinAdmitted { pin: pin }
       } else {
         PinRefused {
@@ -104,8 +104,7 @@ fn admit_pin(pin: ToolPin, observed_identity: ContentHash, age_days: Int) -> Pin
 data pin_value_eq_note: String = "The bundle member P2 hands to gunbc.membership_reconcile as value_eq. Identity-vs-content split per that spine's authority note: key_of is the TOOL NAME (stable identity), so a version or digest change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the tool down and reinstall it. value_eq is therefore presence-plus-content over the pinned version AND the expected identity together: a same-name drift in either field must re-upsert."
 
 fn pin_value_eq(a: ToolPin, b: ToolPin) -> Bool {
-  ((a.version as String) == (b.version as String))
-    && ((a.expected_identity as String) == (b.expected_identity as String))
+  (a.version == b.version) && (a.expected_identity == b.expected_identity)
 }
 
 fn pin_key_of(pin: ToolPin) -> NonEmptyStr {
