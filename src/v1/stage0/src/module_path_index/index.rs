@@ -4,10 +4,7 @@ use std::rc::Rc;
 
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
-use crate::v1_std_core::{
-    build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
-    node_name_span, SourceSpan,
-};
+use crate::v1_std_core::{build_newline_index, diagnostic_to_message, node_name_span, SourceSpan};
 
 /// One parse-derived module⇄path row for manifest emission (host binding authority).
 #[derive(Debug, Clone, PartialEq)]
@@ -45,18 +42,14 @@ pub fn parse_module_binding(
     let tokens = tokenize(content.to_string(), filename.to_string());
     let source_index = build_newline_index(filename.to_string(), content.to_string());
     let mut indices = HashMap::new();
-    indices.insert(filename.to_string(), source_index.clone());
+    indices.insert(filename.to_string(), source_index);
     let source_indices = Rc::new(indices);
     let result = parse(tokens, source_indices);
     if let Some(err) = result.error.as_ref() {
         if module_declaration_line_present(content) {
-            let span = diagnostic_to_span(err.diagnostic.clone());
-            let line_col = byte_to_line_col(source_index, span.start);
             return Err(format!(
-                "parse error in {}:{}:{}: {}",
+                "parse error in {}: {}",
                 path.display(),
-                line_col.line,
-                line_col.col,
                 diagnostic_to_message(err.diagnostic.clone())
             ));
         }

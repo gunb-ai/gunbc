@@ -1050,7 +1050,7 @@ fn git_tree_entry_local_pointer(
   if parts.mode == "160000" {
     none
   } else {
-    let expected = if parts.mode == "040000" {
+    let expected = if parts.mode == "40000" {
       TreeObj
     } else {
       BlobObj
@@ -2434,6 +2434,8 @@ fn git_model_update_ref_exact(
       )
   }
 }
+
+data git_repository_decode_boundary_note: NonEmptyStr = "GitRepositoryState is a raw bounded observation, not an admission token. git_decode_repository establishes unique stored and unavailable identities, disjoint present/unavailable sets, admitted content-address observations, unique ref names, object-format consistency, and local object-reference closure before lookup, projection, or exact-ref transition proceeds. Promisor absence remains an explicit partial observation; unexpected absence and corruption refuse. GitHashObjectCallerAssertion can record an assertion but can never admit an object. GitHashObjectCliExecuted records the independently executed hash-object boundary used by the wet fixture; it is evidence of that execution, not an in-model cryptographic reimplementation."
 
 type GitR0UnsupportedBoundary
   = GitAttributesTransformExecution
