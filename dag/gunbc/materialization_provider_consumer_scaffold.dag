@@ -1,0 +1,21 @@
+module gunbc.materialization_provider_consumer_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data materialization_provider_consumer_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run.materialization_provider_consumer",
+    decl_name: "serve_resolved_graph_v1_disk_probe",
+    field: WholeDeclaration
+  }
+}
+
+data materialization_provider_consumer_dissolve_trigger: String = "🟡 dissolve-on: the v1 interpreter bridge in src/v1/stage0/src/cli_run/materialization_provider_consumer.rs (thin host consumer over std.materialization_provider via run_in_context_with_args). DISSOLVES WHEN witness-realization lands a typed host-effect transport for provider_serve lookups (docs/plans/witness-realization-plan.md) OR cli_run hollowing-plan area 2.6 retires the resolved_graph cross-process hand path — not indefinite interim debt."
+
+data materialization_provider_consumer_receipt_plan_anchor: String = "dag/gunbc/plans/cli_run_hollowing_plan.dag#2.6-typed-module-cache-memo"
+
+data materialization_provider_consumer_roadmap_lane_anchor: String = "ROADMAP.md §7 Seed interim / gunbc.plans.cli_run_hollowing_plan area 2.6 (typed module cache / memo subsumes resolved_graph_cache integration)"
+
+data materialization_provider_consumer_witness_entry: String = "dag/test/claim/materialization_provider_consumer_hand_rust_witness_test.dag"

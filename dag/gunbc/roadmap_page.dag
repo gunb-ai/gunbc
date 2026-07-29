@@ -708,6 +708,19 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
   roadmap_page_impl(doc: doc, merged: merged, main_prefix: [])
 }
 
+data roadmap_page_focus_parameter_note: String = "roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a claim about which lanes are currently shown. witness_ticket_rows_render_structured asserts the row markup — disclosure mark, brief class, displaced-cost label, carrier href — and it happened to pick a node from a lane the focus later hid, so it went red having found nothing wrong with the rendering at all. Passing an unfocused document keeps that claim measuring markup. roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view."
+
+fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
+  roadmap_page_impl(
+    doc: doc,
+    merged: authored_merged_prs(),
+    main_prefix: [
+      dashboard_instance_banner(),
+      finish_line_progress_markup(),
+    ],
+  )
+}
+
 fn roadmap_page_for_authority() -> Fragment {
   roadmap_page_impl(
     doc: roadmap_authority(),
