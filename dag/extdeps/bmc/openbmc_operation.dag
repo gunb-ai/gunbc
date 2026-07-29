@@ -17,6 +17,8 @@ data openbmc_busctl_authority: ExternalAuthority = ExternalAuthority {
   },
 }
 
+data extdeps_external_authority_anchor: ExternalAuthority = openbmc_busctl_authority
+
 type OpenBmcOperation
   = OpenBmcReadFile { path: NonEmptyStr }
   | OpenBmcResolvePath { path: NonEmptyStr }
