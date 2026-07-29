@@ -33,22 +33,22 @@ data materialization_provider_targets: List<ProviderContractTarget> = [
     cache: parse_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.reconcile_in_process", decl_name: "parse_cache_facts"),
     consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
-    reason: "cli_run MultiEntryIndex.parse_cache keys on file path, not content — the standing cache-impurity witness (reconcile_in_process Phase 2c); parse_module_request keys on source content + compiler identity. The host seam is hollowing-plan area 2.6 (typed module cache / memo)",
-    dissolve_on: "parse lookups route through provider_serve with parse_module_request and the path-keyed map retires"
+    reason: "cli_run MultiEntryIndex.parse_cache keys on file path, not content — the standing cache-impurity witness (reconcile_in_process Phase 2c); ParseModuleRequest keys on source content + compiler identity. The host seam is hollowing-plan area 2.6 (typed module cache / memo)",
+    dissolve_on: "parse lookups route through provider_serve with ParseModuleRequest and the path-keyed map retires"
   },
   ProviderContractTarget {
     cache: typed_module_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.reconcile_in_process", decl_name: "typed_module_cache_facts"),
     consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
-    reason: "cli_run typed-module memo already keys on the typed_module_key facts this contract's typecheck_module_request models; the carrier is still an exposed in-process map (hollowing-plan area 2.6)",
-    dissolve_on: "typecheck lookups route through provider_serve with typecheck_module_request and the map carrier retires"
+    reason: "cli_run typed-module memo already keys on the typed_module_key facts this contract's TypecheckModuleRequest derives; the carrier is still an exposed in-process map (hollowing-plan area 2.6)",
+    dissolve_on: "typecheck lookups route through provider_serve with TypecheckModuleRequest and the map carrier retires"
   },
   ProviderContractTarget {
     cache: resolved_graph_cache_id,
     cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
     consumer_seam: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger"),
     reason: "the FIRST NAMED CONSUMER TARGET: the disk-hit refuse arm (artifacts carry graph+source_indices without the compile-clean diagnostic union) is this contract's ProviderRefusedIncomplete, hand-rolled — the consumer_seam bind IS that arm's own dissolve trigger, not a restatement",
-    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, resolve_closure_request's required_outputs are satisfiable, and the hand refuse arm deletes"
+    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, ResolveClosureRequest's derived required outputs are satisfiable, and the hand refuse arm deletes"
   },
   ProviderContractTarget {
     cache: compile_stage_memo_id,

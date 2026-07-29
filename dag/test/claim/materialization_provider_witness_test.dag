@@ -16,8 +16,10 @@ import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
   ProviderProbe, ProbeAbsent, ProbeFound,
-  request_key, provider_serve, provider_admit, artifact_completeness,
-  compiler_identity_input, parse_module_request, typecheck_module_request, resolve_closure_request,
+  ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
+  request_key, request_kind, request_required_outputs,
+  provider_serve, provider_admit, artifact_completeness, admission_fold,
+  compiler_identity_input,
   output_parse_tree, output_typed_module_interface,
   output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
   output_list_contains,
@@ -26,7 +28,7 @@ import std.materialization_provider {
   lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
   lookup_refused_incomplete_missing, lookup_is_refused_identity_unshareable,
   lookup_is_refused_identity_grade_unsupported,
-  admission_is_admitted, admission_evicted_keys, admission_store,
+  admission_is_admitted, admission_evicted_keys,
   admission_is_budget_exhausted, admission_refused_incomplete_missing,
   admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
   admission_is_refused_wrong_artifact_write, admission_is_refused_wrong_content_write,
@@ -43,7 +45,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), refused identity grades (blocker 3 — NormalizedIdentical/ExtensionallyIdentical are typed refusals in this slice, not silent structural serves), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against resolve_closure_request). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
+data materialization_provider_witness_note: String = "Model-scoped witnesses for the std.materialization_provider contract (parent mandate 6B + rework blockers, PR 7385): every outcome arm exercised by execution on BOTH doors. RED directions covered: wrong-content refusal (poisoned payload must refuse, never hit/admit), declared-input miss (a changed declared input keys apart, and a stale artifact a sloppy backend returns anyway refuses as wrong-artifact — on serve AND on admit), kind-mismatch refusal on both doors (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact), refused identity grades (blocker 3 — NormalizedIdentical/ExtensionallyIdentical are typed refusals in this slice, not silent structural serves), and admission-weakening (blocker 1 — provider_admit derives required outputs from the request; the v1-shape incomplete artifact cannot be admitted against ResolveClosureRequest). Post-44175 the request is a coproduct, so the witnesses construct request VARIANTS and read kind/outputs through the derivations — an under-specified obligation roster is unrepresentable, which is why no witness can even express the weakened-roster attack any more; the chained-eviction witness folds the first admission instead of projecting a store from its refusal arms (the deleted admission_store). The v1-shape incomplete artifact (graph+source_indices, no compile-clean diagnostic union) is the modeled form of extdeps.realization.resolved_graph's live disk-hit refuse arm — the contract's first named consumer target."
 
 fn witness_compiler() -> DeclaredInput {
   compiler_identity_input(digest: content_hash_atom(value: "compiler-identity-1"))
@@ -58,26 +60,26 @@ fn witness_import_a_changed() -> DeclaredInput {
 }
 
 fn witness_typecheck_request() -> ArtifactRequest {
-  typecheck_module_request(
+  TypecheckModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     direct_import_interfaces: [witness_import_a()],
     compiler: witness_compiler()
-  )
+  }
 }
 
 fn witness_typecheck_request_changed_input() -> ArtifactRequest {
-  typecheck_module_request(
+  TypecheckModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     direct_import_interfaces: [witness_import_a_changed()],
     compiler: witness_compiler()
-  )
+  }
 }
 
 fn witness_closure_request() -> ArtifactRequest {
-  resolve_closure_request(
+  ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-1"),
     compiler: witness_compiler()
-  )
+  }
 }
 
 fn witness_complete_closure_artifact() -> MaterializedArtifact {
@@ -136,13 +138,13 @@ fn witness_empty_store(budget_count: Int) -> ArtifactStore {
 }
 
 test fn request_kinds_ground_on_cache_identity_rows() -> Bool {
-  let parse_req = parse_module_request(
+  let parse_req = ParseModuleRequest {
     source_digest: content_hash_atom(value: "module-source-1"),
     compiler: witness_compiler()
-  )
-  (parse_req.kind == parse_source_artifact_kind)
-    && (witness_typecheck_request().kind == typed_module_artifact_kind)
-    && (witness_closure_request().kind == resolved_graph_artifact_kind)
+  }
+  (request_kind(req: parse_req) == parse_source_artifact_kind)
+    && (request_kind(req: witness_typecheck_request()) == typed_module_artifact_kind)
+    && (request_kind(req: witness_closure_request()) == resolved_graph_artifact_kind)
 }
 
 test fn request_key_is_deterministic() -> Bool {
@@ -154,14 +156,14 @@ test fn declared_input_identity_is_in_the_key() -> Bool {
 }
 
 test fn request_kind_is_in_the_key() -> Bool {
-  let parse_req = parse_module_request(
+  let parse_req = ParseModuleRequest {
     source_digest: content_hash_atom(value: "shared-subject"),
     compiler: witness_compiler()
-  )
-  let closure_req = resolve_closure_request(
+  }
+  let closure_req = ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "shared-subject"),
     compiler: witness_compiler()
-  )
+  }
   (request_key(req: parse_req) == request_key(req: closure_req)) == false
 }
 
@@ -273,10 +275,10 @@ test fn admission_within_budget_is_admitted_without_eviction() -> Bool {
 test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
   let store0 = witness_empty_store(budget_count: 150)
   let first_artifact = witness_complete_closure_artifact()
-  let second_request = resolve_closure_request(
+  let second_request = ResolveClosureRequest {
     closure_digest: content_hash_atom(value: "closure-2"),
     compiler: witness_compiler()
-  )
+  }
   let second_artifact = MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: second_request),
@@ -291,17 +293,30 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
     observed_digest: witness_closure_digest(),
     identity: StructurallyIdentical
   )
-  let second_admit = provider_admit(
-    store: admission_store(a: first_admit, fallback: store0),
-    req: second_request,
-    artifact: second_artifact,
-    observed_digest: content_hash_atom(value: "closure-payload-2"),
-    identity: StructurallyIdentical
+  admission_fold(
+    a: first_admit,
+    admitted: fn(warmed, first_evicted) {
+      let second_admit = provider_admit(
+        store: warmed,
+        req: second_request,
+        artifact: second_artifact,
+        observed_digest: content_hash_atom(value: "closure-payload-2"),
+        identity: StructurallyIdentical
+      )
+      let evicted = admission_evicted_keys(a: second_admit)
+      admission_is_admitted(a: second_admit)
+        && (first_evicted.count() == 0)
+        && (evicted.count() == 1)
+        && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_artifact.request_key)))
+    },
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    identity_unshareable_write: c => false,
+    identity_grade_unsupported_write: g => false,
+    budget_exhausted: (n, b) => false
   )
-  let evicted = admission_evicted_keys(a: second_admit)
-  admission_is_admitted(a: second_admit)
-    && (evicted.count() == 1)
-    && (evicted |> fold(init: false, f: (acc, k) => acc || (k == first_artifact.request_key)))
 }
 
 test fn admission_of_oversized_artifact_is_budget_exhausted() -> Bool {
@@ -387,7 +402,7 @@ test fn red_admission_unsupported_identity_grade_is_refused() -> Bool {
 
 test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
   completeness_is_complete(c: artifact_completeness(
-    required: witness_closure_request().required_outputs,
+    required: request_required_outputs(req: witness_closure_request()),
     carried: witness_complete_closure_artifact().carried_outputs
   ))
 }
