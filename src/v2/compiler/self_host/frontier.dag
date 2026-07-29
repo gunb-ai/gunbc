@@ -1130,7 +1130,13 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true }
+  SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false }
 ]
 
 data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistration> = [
