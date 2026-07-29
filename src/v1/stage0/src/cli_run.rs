@@ -2777,6 +2777,248 @@ pub fn regen_floor_skip_label_for_ci() -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Affected-set SELECTION-CONTROL skip — the selection mechanism applied to itself.
+//
+// `floor_skip_discovery_witness` is the per-PR control suite for affected-set selection:
+// the skip / refuse / divergence arms, the declared-live-tree pin, and the node-frontier
+// precision cases. It ran UNCONDITIONALLY on every PR — 9m02s measured (run 30482171871,
+// job 90679506428, step "Affected-set selection control") against the 80s local basis
+// declared in `gunbc.ci_workflow` `gunbc_ci_selection_control_step_note` — because it is a
+// Rust bin rather than a `.dag` witness and therefore sat outside the very affected-set
+// corpus its own subject matter governs.
+//
+// The suite's verdict is a function of exactly one input set: every `src/v1/**` source (the
+// selection implementation in this file, the witness bin, and the committed stage0 outputs
+// the release binary is built from), the suite's declared `.dag` entries plus their
+// transitive `import` closure through `[src/v2, dag]`, and the Cargo/toolchain build
+// config. A PR touching none of those provably cannot change the suite's verdict.
+//
+// NOT circular. The skip decision is a coarse path / import-closure intersection — the same
+// authority SHAPE `regen_floor_skip_label_for_ci` uses — and never the node-frontier
+// selector the suite exists to verify. A broken selector therefore cannot suppress its own
+// control.
+//
+// Fail-closed on every arm: diff-observation failure, empty diff, departed non-docs path,
+// closure-computation failure, and any intersection all RUN the suite.
+//
+// RESIDUAL, stated rather than elided, and mirroring the regen precedent's accepted trade
+// exactly: the suite builds its resolve index over the WHOLE of `[src/v2, dag]`, so an
+// unrelated file that breaks index construction is outside this import closure. The
+// mitigation is regen's: the CI shell gates the skip to pull_request events, so push-to-main
+// runs the suite unconditionally and a wrong closure surfaces as a red main within one
+// merge (the one-merge acceptance window, the discovery-flip shape).
+// ---------------------------------------------------------------------------
+
+pub const SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL: &str = "selection_control_not_affected_skip";
+pub const RUN_SELECTION_CONTROL_LABEL: &str = "run_selection_control";
+
+// The suite's declared `.dag` surface, one named const per entry. These are the SINGLE
+// authority: `floor_skip_discovery_witness` builds its rosters from them, and the closure
+// below decides whether a diff can affect them. Declaring them here rather than in the bin
+// is what keeps the two from forking — a fixture added to the suite with its own private
+// path literal would be invisible to the skip decision, which is precisely the silent
+// under-run this whole mechanism exists to prevent.
+pub const SELECTION_CONTROL_REALIZATION_SCHEDULE_REL: &str = "dag/std/realization_schedule.dag";
+pub const SELECTION_CONTROL_DOC_REACHABILITY_REL: &str =
+    "dag/test/claim/doc_reachability_witness_test.dag";
+pub const SELECTION_CONTROL_BUDGET_ROSTER_REL: &str =
+    "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag";
+pub const SELECTION_CONTROL_FALSIFIER_CONTROL_REL: &str =
+    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
+pub const SELECTION_CONTROL_SHARED_HELPER_REL: &str =
+    "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
+pub const SELECTION_CONTROL_LIVE_TREE_DECLARED_REL: &str =
+    "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
+pub const SELECTION_CONTROL_NODE_PRECISE_REL: &str =
+    "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+pub const SELECTION_CONTROL_FLOOR_RUNNER_REL: &str =
+    "src/v2/workflow/affected_set_floor_runner.dag";
+pub const SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL: &str =
+    "src/v2/workflow/affected_set_floor_runner_test.dag";
+pub const SELECTION_CONTROL_CI_FLOOR_PLAN_REL: &str = "src/v2/workflow/ci_floor_plan.dag";
+
+pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
+    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
+    SELECTION_CONTROL_DOC_REACHABILITY_REL,
+    SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
+    SELECTION_CONTROL_SHARED_HELPER_REL,
+    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
+    SELECTION_CONTROL_NODE_PRECISE_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
+    SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
+];
+
+/// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
+/// Single authority for the same reason as the entry consts above.
+pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
+    vec![workspace.join("src/v2"), workspace.join("dag")]
+}
+
+/// Module-path -> every candidate file, over the suite's roots.
+///
+/// Deliberately unlike `regen_build_module_index`, which REFUSES on a duplicate module
+/// path: this keeps all candidates so the closure below is a superset. For a SKIP closure a
+/// superset is the fail-closed direction (more paths in the closure = more PRs run the
+/// suite), whereas regen's error arm is the correct one for regen, whose emit must be
+/// single-valued.
+fn selection_control_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+        std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                index.entry(module_path).or_default().push(path);
+            }
+        }
+    }
+    Ok(index)
+}
+
+/// Every workspace-relative `.dag` path whose content can change the selection-control
+/// suite's verdict: the declared entries plus their transitive `import` closure through
+/// `[src/v2, dag]`, sorted.
+///
+/// 🟡 dissolve-on: the import walk here duplicates the shape of `regen_input_sources`'s
+/// walk. They are NOT unified yet because regen's closure is guarded by a byte-identical
+/// oracle (`regen_stage0 --verify`) that this change is not in a position to re-verify, and
+/// the two differ in duplicate policy (refuse vs. superset) and entry selection (whole-root
+/// walk vs. declared list). DISSOLVES WHEN the walk is lifted to one parameterized helper
+/// (duplicate policy + entry source as arguments) and regen's byte oracle re-greens on it.
+pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
+    let roots = selection_control_source_roots(workspace);
+    let index = selection_control_module_index(&roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in SELECTION_CONTROL_DECLARED_ENTRIES {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared selection-control entry {rel}: {e}"))?;
+        seen.insert(normalize_repo_path(rel));
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+/// Does a diff-changed path belong to the selection-control input surface?
+fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    // src/v1/** = the selection implementation (this file's discovery / affected-set /
+    // node-frontier paths), the witness bin itself, and every committed stage0 output the
+    // release binary is built from.
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    // Cargo/toolchain build config: the witness binary is built from these (whole-file
+    // matches, no substring), same fail-closed arm as regen's.
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    dag_closure.contains(&p)
+}
+
+/// CI label for the affected-set selection-control step's skip arm.
+/// `selection_control_not_affected_skip` iff the merge-base diff touches no input of the
+/// control suite; `run_selection_control` on any intersection, empty diff, departed
+/// non-docs path, or observation/closure failure (fail-closed). This computes the label
+/// only; the CI shell gates the skip to pull_request events, so push-to-main runs the suite
+/// unconditionally as the cold control.
+pub fn selection_control_skip_label_for_ci() -> String {
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!(
+                "selection-control skip: diff observation failed ({msg}) — run the control suite"
+            );
+            return RUN_SELECTION_CONTROL_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!(
+            "selection-control skip: empty diff — run the control suite (fail-closed cold control)"
+        );
+        return RUN_SELECTION_CONTROL_LABEL.to_string();
+    }
+    // Departed (deleted / renamed-from) non-docs paths: the closure is computed from the
+    // CURRENT tree, so a deleted `.dag` file that WAS in the suite's closure is invisible to
+    // it. Same guard shape as regen's and compile-clean's departed arms: run, never skip.
+    if let Some(gone) = departed_paths
+        .iter()
+        .find(|p| !normalize_repo_path(p).starts_with("docs/"))
+    {
+        eprintln!(
+            "selection-control skip: departed non-docs path in diff ({}) — run the control suite (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
+        return RUN_SELECTION_CONTROL_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match selection_control_input_sources(&workspace) {
+        Ok(sources) => sources.into_iter().collect(),
+        Err(msg) => {
+            eprintln!(
+                "selection-control skip: input-closure computation failed ({msg}) — run the control suite"
+            );
+            return RUN_SELECTION_CONTROL_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| selection_control_path_affects_suite(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "selection-control skip: diff intersects the control suite's inputs (e.g. {}) — run the control suite",
+                normalize_repo_path(example)
+            );
+            RUN_SELECTION_CONTROL_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
+                changed_paths.len()
+            );
+            SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string()
+        }
+    }
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
     // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
