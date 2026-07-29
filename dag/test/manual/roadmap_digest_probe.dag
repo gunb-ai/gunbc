@@ -1,0 +1,17 @@
+module test.manual.roadmap_digest_probe
+
+import std.types { String }
+import v2.std.optional { Present, Absent }
+import gunbc.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap_model { node_criteria_digest }
+
+fn main(id: String) -> String {
+  match declared_roadmap_nodes() |> filter(node => node.node == id) |> first {
+    Present { value: node } =>
+      match node_criteria_digest(rn: node) {
+        Present { value: digest } => digest as String
+        Absent => "criteria-missing"
+      }
+    Absent => "node-missing"
+  }
+}
