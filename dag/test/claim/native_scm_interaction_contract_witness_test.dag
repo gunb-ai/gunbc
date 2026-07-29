@@ -6,6 +6,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
   NativeScmScenario,
   NativeScmReceipt,
+  NativeScmProjectionRepaired,
+  NativeScmProjectionRepairBlockedByInternalWork,
+  NativeScmOperationalReady,
+  NativeScmInternalWorkPending,
+  NativeScmLifecyclePending,
   TwoIndependentChangesLand,
   StaleTargetAutoResync,
   DuplicateSubmissionAppliesOnce,
@@ -203,19 +208,49 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
 
 test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
   let r = receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
-  let repaired = native_scm_record_repaired_projection(
+  let outcome = native_scm_record_repaired_projection(
     receipt: r,
     projection: fixture_compatibility_projection(),
   )
   primary_label(receipt: r) == "Landed"
-    && primary_label(receipt: repaired) == "Landed"
     && count(r.projections.realizations) == 0
-    && count(repaired.projections.realizations) == 1
-    && repaired.projections.realizations
-      |> any(row =>
-        row.realization == "git-r0"
-          && row.target == "refs/heads/main"
-      )
+    && match outcome {
+      NativeScmProjectionRepaired { receipt: repaired } =>
+        primary_label(receipt: repaired) == "Landed"
+          && count(repaired.projections.realizations) == 1
+          && repaired.projections.realizations
+            |> any(row =>
+              row.realization == "git-r0"
+                && row.target == "refs/heads/main"
+            )
+          && match repaired.operational {
+            NativeScmOperationalReady => true
+            _ => false
+          }
+      _ => false
+    }
+}
+
+test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
+  let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
+  let outcome = native_scm_record_repaired_projection(
+    receipt: r,
+    projection: fixture_compatibility_projection(),
+  )
+  match outcome {
+    NativeScmProjectionRepairBlockedByInternalWork { receipt: unchanged } =>
+      primary_label(receipt: unchanged) == "InProgress"
+        && count(unchanged.projections.realizations) == 0
+        && match unchanged.operational {
+          NativeScmInternalWorkPending => true
+          _ => false
+        }
+        && match unchanged.check {
+          NativeScmLifecyclePending => true
+          _ => false
+        }
+    _ => false
+  }
 }
 
 test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {

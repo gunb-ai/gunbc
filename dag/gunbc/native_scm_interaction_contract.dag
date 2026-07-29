@@ -7,7 +7,7 @@ import gunbc.scm_compatibility_shape {
   compatibility_projection_upsert,
 }
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -22,6 +22,12 @@ type NativeScmLifecycle
   = NativeScmLifecyclePending
   | NativeScmLifecycleReady
   | NativeScmLifecycleRefused { reason: String }
+
+type NativeScmOperationalState
+  = NativeScmOperationalReady
+  | NativeScmProjectionRepairPending
+  | NativeScmInternalWorkPending
+  | NativeScmOperationalRefused { reason: String }
 
 type NativeScmProjection {
   workspace: Optional<String>
@@ -64,11 +70,26 @@ type NativeScmReceipt {
   review: NativeScmLifecycle
   access: NativeScmLifecycle
   check: NativeScmLifecycle
-  operational: NativeScmLifecycle
+  operational: NativeScmOperationalState
   projections: NativeScmProjection
   primary: NativeScmPrimaryOutcome
   receipt_details: Optional<String>
 }
+
+type NativeScmProjectionRepairOutcome
+  = NativeScmProjectionRepaired {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairNotPending {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairBlockedByInternalWork {
+      receipt: NativeScmReceipt
+    }
+  | NativeScmProjectionRepairAlreadyRefused {
+      receipt: NativeScmReceipt
+      reason: String
+    }
 
 type NativeScmSubmissionLedger {
   applied: List<String>
@@ -306,19 +327,19 @@ fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
   }
 }
 
-fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
+fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmOperationalState {
   match scenario {
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecyclePending
-    ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    TwoIndependentChangesLand => NativeScmLifecycleReady
-    StaleTargetAutoResync => NativeScmLifecycleReady
-    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
-    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
-    EvidenceGatheredInternally => NativeScmLifecycleReady
-    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
-    VisibilityAuthorizedDetails => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjectionRepairPending
+    ToolModelProofDeficitRoutesInternally => NativeScmInternalWorkPending
+    TwoIndependentChangesLand => NativeScmOperationalReady
+    StaleTargetAutoResync => NativeScmOperationalReady
+    DuplicateSubmissionAppliesOnce => NativeScmOperationalReady
+    RenameReferenceUniqueMeaning => NativeScmOperationalReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmOperationalReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmOperationalReady
+    EvidenceGatheredInternally => NativeScmOperationalReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmOperationalReady
+    VisibilityAuthorizedDetails => NativeScmOperationalReady
   }
 }
 
@@ -479,21 +500,40 @@ fn native_scm_attach_projection(
 fn native_scm_record_repaired_projection(
   receipt: NativeScmReceipt,
   projection: CompatibilityProjectionReceipt,
-) -> NativeScmReceipt {
-  let attached = native_scm_attach_projection(
-    receipt: receipt,
-    projection: projection,
-  )
-  NativeScmReceipt {
-    identity: attached.identity,
-    transition: attached.transition,
-    review: attached.review,
-    access: attached.access,
-    check: attached.check,
-    operational: NativeScmLifecycleReady,
-    projections: attached.projections,
-    primary: attached.primary,
-    receipt_details: attached.receipt_details,
+) -> NativeScmProjectionRepairOutcome {
+  match receipt.operational {
+    NativeScmProjectionRepairPending => {
+      let attached = native_scm_attach_projection(
+        receipt: receipt,
+        projection: projection,
+      )
+      NativeScmProjectionRepaired {
+        receipt: NativeScmReceipt {
+          identity: attached.identity,
+          transition: attached.transition,
+          review: attached.review,
+          access: attached.access,
+          check: attached.check,
+          operational: NativeScmOperationalReady,
+          projections: attached.projections,
+          primary: attached.primary,
+          receipt_details: attached.receipt_details,
+        },
+      }
+    }
+    NativeScmInternalWorkPending =>
+      NativeScmProjectionRepairBlockedByInternalWork {
+        receipt: receipt,
+      }
+    NativeScmOperationalReady =>
+      NativeScmProjectionRepairNotPending {
+        receipt: receipt,
+      }
+    NativeScmOperationalRefused { reason } =>
+      NativeScmProjectionRepairAlreadyRefused {
+        receipt: receipt,
+        reason: reason,
+      }
   }
 }
 
