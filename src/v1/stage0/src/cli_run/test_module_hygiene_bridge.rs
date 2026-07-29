@@ -644,6 +644,22 @@ fn formerly_test_holds() -> Bool {
     }
 
     #[test]
+    fn orphan_collect_refuses_unparsable_test_dag() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("garbage_unparsable_test.dag");
+        std::fs::write(&file, "this is not valid dag {{{{").unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        let err =
+            check_orphan_helpers_or_err(&[root]).expect_err("unparsable *_test.dag must refuse");
+        assert!(
+            err.contains("parse failed") || err.contains("garbage_unparsable_test.dag"),
+            "must locate the parse failure: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn file_grain_expand_enumerates_test_decls() {
         let dir = tmp_dir();
         std::fs::create_dir_all(&dir).unwrap();

@@ -13,6 +13,7 @@ import gunbc.test_module_hygiene_scaffold {
   test_module_hygiene_orphan_gate_test_discriminator_plain_data_not_enrollment,
   test_module_hygiene_orphan_gate_test_discriminator_dead_plain_data,
   test_module_hygiene_orphan_gate_test_discriminator_plain_data_chain,
+  test_module_hygiene_orphan_gate_test_discriminator_unparsable_refuse,
   test_module_hygiene_authority_entry,
   test_module_hygiene_equivalence_witness_entry,
   test_module_hygiene_bridge_transport_entry,
@@ -154,6 +155,19 @@ test fn test_module_hygiene_equivalence_plain_data_chain_holds() -> Bool {
 
 test fn test_module_hygiene_equivalence_orphan_plant_holds() -> Bool {
   orphans_are(module: fixture_orphan_plant, expected: ["dark_unreachable_check"])
+}
+
+data test_module_hygiene_unparsable_refuse_bridge_note: String = "Parse failure on a *_test.dag must refuse via check_orphan_helpers_or_err — executing receipt: cli_run.rs test_module_hygiene_bridge_equivalence_tests::orphan_collect_refuses_unparsable_test_dag (re-homed from deleted test_module_hygiene.rs)."
+
+test fn test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds() -> Bool {
+  string_contains(
+    s: test_module_hygiene_orphan_gate_test_discriminator_unparsable_refuse,
+    pattern: "orphan_collect_refuses_unparsable_test_dag"
+  )
+    && string_contains(
+      s: test_module_hygiene_unparsable_refuse_bridge_note,
+      pattern: "orphan_collect_refuses_unparsable_test_dag"
+    )
 }
 
 data test_module_hygiene_red_plain_data_control_note: String = "RED control: if plain data were wrongly treated as enrollment, fixture_plain_data_not_enrollment would go green with zero orphans — keep the refuse countable."
