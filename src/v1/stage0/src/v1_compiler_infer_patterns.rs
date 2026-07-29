@@ -447,6 +447,7 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
+    let mut saw_optional = n.return_cardinality.clone() == Cardinality::CardOptional;
     loop {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
@@ -462,16 +463,35 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
             {
                 match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
+                        if n.return_cardinality.clone() == Cardinality::CardOptional {
+                            saw_optional = true;
+                        }
                         let __tco_0 = target.clone();
                         n = __tco_0;
                         continue;
                     }
                     _ => {
-                        break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                        break Rc::new(PatternSubject::PatternResolved {
+                            node: if saw_optional
+                                && n.return_cardinality.clone() != Cardinality::CardOptional
+                            {
+                                with_optional_cardinality(n.clone())
+                            } else {
+                                n.clone()
+                            },
+                        });
                     }
                 }
             } else {
-                break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                break Rc::new(PatternSubject::PatternResolved {
+                    node: if saw_optional
+                        && n.return_cardinality.clone() != Cardinality::CardOptional
+                    {
+                        with_optional_cardinality(n.clone())
+                    } else {
+                        n.clone()
+                    },
+                });
             }
         }
     }
