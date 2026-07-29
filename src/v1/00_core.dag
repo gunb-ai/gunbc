@@ -1495,8 +1495,8 @@ fn with_required_cardinality(n: Node) -> Node {
 }
 
 fn preserve_outer_optional_cardinality(outer: Node, inner: Node) -> Node {
-  let joined = join_optional_cardinality(left: outer.return_cardinality, right: inner.return_cardinality)
-  if joined == CardOptional && inner.return_cardinality != CardOptional { with_optional_cardinality(n: inner) } else { inner }
+  let needs_restore = outer.return_cardinality == CardOptional && inner.return_cardinality != CardOptional
+  if needs_restore { with_optional_cardinality(n: inner) } else { inner }
 }
 
 fn join_optional_cardinality(left: Cardinality, right: Cardinality) -> Cardinality {
