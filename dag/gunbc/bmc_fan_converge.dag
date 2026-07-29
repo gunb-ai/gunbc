@@ -140,7 +140,9 @@ import gunbc.fleet_intent {
 import gunbc.tools.bmc_onboard { onboarding_secret_ref }
 import std.bmc { OpenBmc }
 import std.measure {
+  ByteSize,
   byte_size,
+  byte_size_count,
   celsius,
   celsius_count,
   percent,
@@ -279,7 +281,7 @@ type BmcFanObservedPartsResult
       zone_failsafe_active: Bool,
       writable: Bool,
       upper_override_present: Bool,
-      available_bytes: Int,
+      available_bytes: ByteSize,
       observed_at: NonEmptyStr,
       overlay: LinuxOverlayObservation,
       config: OpenBmcFanConfigObservation,
@@ -826,7 +828,7 @@ fn bmc_fan_observe_typed_parts(
                           zone_failsafe_active: zone_failsafe_active,
                           writable: writable.success,
                           upper_override_present: upper_override.success,
-                          available_bytes: available_bytes,
+                          available_bytes: byte_size(available_bytes),
                           observed_at: trim(timestamp.stdout) as NonEmptyStr,
                           overlay: overlay,
                           config: config_observation,
@@ -936,7 +938,7 @@ fn bmc_fan_build_live_observation(
   zone_failsafe_active: Bool,
   writable: Bool,
   upper_override_present: Bool,
-  available_bytes: Int,
+  available_bytes: ByteSize,
   observed_at: NonEmptyStr,
   overlay: LinuxOverlayObservation,
   config: OpenBmcFanConfigObservation,
@@ -953,7 +955,7 @@ fn bmc_fan_build_live_observation(
   let service_active = "active"
   let zone_path = zone_control_path as String
   let zone_failsafe = if zone_failsafe_active { "true" } else { "false" }
-  let available_raw = to_string(available_bytes)
+  let available_raw = to_string(byte_size_count(available_bytes))
   if firmware == "" {
     BmcFanLiveObservationRefused {
       reason: "BMC fan observer omitted firmware",
@@ -1036,7 +1038,7 @@ fn bmc_fan_build_live_observation(
                               overlay: overlay,
                               writable: writable,
                               upper_override_present: upper_override_present,
-                              available_bytes: byte_size(available),
+                              available_bytes: available_bytes,
                               observed_at: observed_at,
                             },
                             zone_control_path: zone_path as NonEmptyStr,
@@ -2117,16 +2119,6 @@ fn bmc_fan_rollback_after_failed_readback(
           reason,
         ),
       )
-    _ =>
-      exit_failure(
-        reason: join(
-          [
-            "BMC fan convergence failed independent readback; rollback produced a non-refusal effect outcome requiring receipt persistence: ",
-            reason,
-          ],
-          "",
-        ),
-      )
     BmcFanNoEffectRefused {
       reason: rollback_reason,
       rollback: rollback_receipt,
@@ -2144,6 +2136,16 @@ fn bmc_fan_rollback_after_failed_readback(
               rollback: rollback_receipt,
             ),
           ),
+        ),
+      )
+    _ =>
+      exit_failure(
+        reason: join(
+          [
+            "BMC fan convergence failed independent readback; rollback produced a non-refusal effect outcome requiring receipt persistence: ",
+            reason,
+          ],
+          "",
         ),
       )
   }

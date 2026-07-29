@@ -282,7 +282,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "extdeps.bmc.openbmc_fan_control", decl_name: "openbmc_execute"),
       decl_ref(module_path: "extdeps.ssh.password_session", decl_name: "password_ssh_session_copy_file"),
       decl_ref(module_path: "extdeps.bmc.openbmc_fan_control", decl_name: "openbmc_fan_config_project_local"),
-      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_parse_live_observation"),
+      decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_build_live_observation"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_apply_typed"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_rollback_typed"),
       decl_ref(module_path: "gunbc.bmc_fan_converge", decl_name: "bmc_fan_run"),
