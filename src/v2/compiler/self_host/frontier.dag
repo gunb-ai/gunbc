@@ -11,7 +11,6 @@ import v2.compiler.self_host.emitter_producer_provenance {
   ProducerEmissionReceipt,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
-  producer_emission_canonical_receipt_for_oracle_row,
   producer_emission_oracle_row_03_normalize,
   producer_emission_oracle_row_body_producer,
   producer_emission_oracle_row_07_target_carriers,
@@ -241,20 +240,21 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, 2026-07-29): EmitterProduced is reachable only via ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored producer claim. Structural refusal: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. witness_seed_emit_rust_poison_structural_refusal_reds is the primary discriminating RED."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, 2026-07-29; review 44362): EmitterProduced is reachable only via producer_emission_canonical_receipt_for_oracle_row (BuildGreen) — never from BuildRefused quarantine receipts or hand-authored producer claims. Structural refusal: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure. witness_seed_emit_rust_poison_structural_refusal_reds is the primary discriminating RED."
 
-fn emitter_produced_row_from_oracle(
+fn quarantine_seed_retained_row_from_oracle(
   oracle_row: ProducerEmissionOracleRow,
-  tractability_rank: Int
+  closure_reads: Int,
+  pre_flip_blocker: FrontierBlockerClass
 ) -> CompilerModuleFrontierRow {
-  CompilerModuleFrontierRow {
+  execution_measured_seed_retained_row(
     module_path: oracle_row.module_path,
-    disposition: EmitterProduced {
-      provenance: producer_emission_oracle_row_frontier_receipt(row: oracle_row)
-    },
-    measured_probe: oracle_row.measured_probe,
-    tractability_rank: tractability_rank
-  }
+    closure_reads: closure_reads,
+    measured_blocker: pre_flip_blocker,
+    located_stage: measured_stage_for_blocker(blocker: pre_flip_blocker),
+    located_reason: ^cssl_harness_assemble_red,
+    migration_trigger: ^migrate_when_cssl_assemble_wet_receipt_greens
+  )
 }
 
 fn knowledge_attributed_blocker_class_seed_retained_row(
@@ -300,9 +300,10 @@ data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measu
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_body_producer,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
+  closure_reads: 36,
+  pre_flip_blocker: NameResolutionGap
 )
 
 data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -323,9 +324,10 @@ data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = executio
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_03_normalize: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_03_normalize,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 37, pre_flip_blocker: EmitSurfaceGap)
+  closure_reads: 37,
+  pre_flip_blocker: EmitSurfaceGap
 )
 
 data compiler_frontier_row_03_resolve: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -382,14 +384,16 @@ data compiler_frontier_row_06_translate: CompilerModuleFrontierRow = execution_m
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_07_target_carriers: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_07_target_carriers,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: EmitSurfaceGap)
+  closure_reads: 36,
+  pre_flip_blocker: EmitSurfaceGap
 )
 
-data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_discovery_enumeration: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_discovery_enumeration,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 12, pre_flip_blocker: EmitSurfaceGap)
+  closure_reads: 12,
+  pre_flip_blocker: EmitSurfaceGap
 )
 
 data compiler_frontier_row_emit_host: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -446,9 +450,10 @@ data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow =
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_parse_engine_hooks,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 2, pre_flip_blocker: EmitSurfaceGap)
+  closure_reads: 2,
+  pre_flip_blocker: EmitSurfaceGap
 )
 
 data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -485,9 +490,10 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = executi
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = emitter_produced_row_from_oracle(
+data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = quarantine_seed_retained_row_from_oracle(
   oracle_row: producer_emission_oracle_row_use_site_verdict,
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 9, pre_flip_blocker: EmitSurfaceGap)
+  closure_reads: 9,
+  pre_flip_blocker: EmitSurfaceGap
 )
 
 data compiler_frontier_roster: List<CompilerModuleFrontierRow> = [
@@ -610,7 +616,7 @@ fn compiler_frontier_producer_qualified_baselines_holds() -> Bool {
 
 fn compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds() -> Bool {
   producer_emission_oracle_row_count() == seed_emitter_behavioral_quarantine_baseline
-    && compiler_frontier_emitter_produced_count() == producer_emission_oracle_row_count()
+    && compiler_frontier_emitter_produced_count() == emitter_produced_baseline
     && seed_emitter_behavioral_green_count() == seed_emitter_behavioral_green_baseline
 }
 

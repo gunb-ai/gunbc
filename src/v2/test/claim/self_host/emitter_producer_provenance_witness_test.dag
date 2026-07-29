@@ -1,6 +1,7 @@
 module v2.test.claim.self_host.emitter_producer_provenance_witness_test
 
 import v2.compiler.self_host.emitter_producer_provenance {
+  emitter_produced_baseline,
   fabricated_v1_seed_producer_receipt,
   fabricated_v2_interpreted_producer_receipt,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
@@ -24,6 +25,15 @@ import v2.compiler.self_host.emitter_producer_provenance {
   v2_emitter_production_routed_count
 }
 import v2.compiler.self_host.frontier {
+  CompilerModuleFrontierRow,
+  EmitterProduced,
+  SeedRetained,
+  compiler_frontier_row_03_body_producer,
+  compiler_frontier_row_03_normalize,
+  compiler_frontier_row_07_target_carriers,
+  compiler_frontier_row_discovery_enumeration,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_row_use_site_verdict,
   compiler_frontier_census_holds,
   compiler_frontier_emitter_produced_oracle_backed_holds,
   compiler_frontier_emitter_produced_oracle_enrolled_holds,
@@ -44,7 +54,7 @@ import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): EmitterProduced enrollment binds minted BuildRefused quarantine receipts; authorization (BuildGreen) is a stricter gate that stays false until wet execution greens. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
+data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until authorization (BuildGreen) greens. EmitterProduced count baseline is zero (review 44362). PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
 
 test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
   producer_emission_oracle_rows_all_enrolled_holds()
@@ -54,10 +64,26 @@ test fn witness_live_roster_emitter_produced_oracle_enrolled_holds() -> Bool {
   compiler_frontier_emitter_produced_oracle_enrolled_holds()
 }
 
-data witness_quarantine_does_not_authorize_green_red_note: String = "Review 44350 RED: assemble-red quarantine probes must not authorize EmitterProduced via fabricated BuildGreen while enrolled on falsifier_self_host_wet_known_red_entries."
+data witness_quarantine_does_not_authorize_green_red_note: String = "Review 44350/44362 RED: assemble-red quarantine probes must not authorize EmitterProduced via fabricated BuildGreen while enrolled on falsifier_self_host_wet_known_red_entries; frontier disposition stays SeedRetained until authorization greens."
 
 test fn witness_quarantine_does_not_authorize_green_reds() -> Bool {
   !compiler_frontier_emitter_produced_oracle_backed_holds()
+}
+
+fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
+  match row.disposition {
+    EmitterProduced { provenance: _ } => false
+    SeedRetained { reason: _, migration_trigger: _ } => true
+  }
+}
+
+test fn witness_quarantine_oracle_modules_seed_retained_holds() -> Bool {
+  frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_03_body_producer)
+    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_03_normalize)
+    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_07_target_carriers)
+    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_discovery_enumeration)
+    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_parse_engine_hooks)
+    && frontier_row_is_quarantine_seed_retained(row: compiler_frontier_row_use_site_verdict)
 }
 
 test fn witness_producer_qualified_baselines_holds() -> Bool {
@@ -65,7 +91,7 @@ test fn witness_producer_qualified_baselines_holds() -> Bool {
     && producer_qualified_baselines_holds()
     && (producer_emission_oracle_row_count() == seed_emitter_behavioral_quarantine_baseline)
     && (seed_emitter_behavioral_quarantine_count() == seed_emitter_behavioral_quarantine_baseline)
-    && (compiler_frontier_emitter_produced_count() == producer_emission_oracle_row_count())
+    && (compiler_frontier_emitter_produced_count() == emitter_produced_baseline)
     && (seed_emitter_behavioral_green_count() == seed_emitter_behavioral_green_baseline)
     && (v2_interpreted_emitter_behavioral_green_count() == 0)
     && (v2_native_emitter_behavioral_green_count() == 0)
