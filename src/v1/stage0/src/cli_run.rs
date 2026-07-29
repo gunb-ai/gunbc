@@ -18837,10 +18837,34 @@ mod module_grain_affected_equivalence_tests {
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
+        // Stream each row as it is decided. This harness resolves every entry's closure
+        // twice (once per side) and takes tens of minutes on a cold process, and it used
+        // to print nothing until the end — so a timeout was indistinguishable from a
+        // hang, and neither told you which entry was slow or which way it decided.
+        eprintln!(
+            "[module-grain] commit {sha}: {} touched, {} entries",
+            touched.len(),
+            entries.len()
+        );
         let mut rows = Vec::new();
-        for entry in entries {
+        for (i, entry) in entries.iter().enumerate() {
+            let t0 = Instant::now();
             let rust_decision = rust_entry_affected(&index, entry, &touched);
+            let t_rust = t0.elapsed();
+            let t1 = Instant::now();
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
+            eprintln!(
+                "[module-grain] {}/{} {entry}: rust={rust_decision} ({:?}) dag={dag_decision} ({:?}){}",
+                i + 1,
+                entries.len(),
+                t_rust,
+                t1.elapsed(),
+                if rust_decision == dag_decision {
+                    ""
+                } else {
+                    "  <<< DIVERGED"
+                }
+            );
             rows.push((entry.to_string(), rust_decision, dag_decision));
         }
         EquivalenceReceipt {
