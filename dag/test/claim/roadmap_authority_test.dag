@@ -1,12 +1,27 @@
 module test.claim.roadmap_authority
 
+import std.types { ContentHash }
 import gunbc.roadmap_authority {
+  declared_roadmap_nodes,
+  declared_roadmap_edges,
   active_roadmap_nodes,
   active_roadmap_edges,
+  roadmap_acceptance_receipts,
+  accepted_roadmap_node_ids,
   roadmap_authority,
   authored_merged_prs,
   observation_scoped_run_seed_growth_justification,
   caret_parse_smoke_seed_growth_justification,
+}
+import gunbc.v1_deletion_plan {
+  V1FinishLine,
+  CompilerFixedPoint,
+  InterpreterDeleted,
+  ProductsV1Free,
+  ZeroHandMaintainedRust,
+  v1_exit_finish_lines,
+  v1_finish_line_key,
+  v1_finish_lines_accepted_count,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
@@ -14,6 +29,12 @@ import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  node_accepted,
+  receipt_matches_node,
+  node_criteria_digest,
+  roadmap_parent_ids,
+  is_top_level,
   Pointer,
   IntricacyLow,
   IntricacyMedium,
@@ -37,7 +58,9 @@ import gunbc.roadmap_status {
   Unsigned,
   SignedOff,
   RedControlExecuted,
+  RedControlNotRun,
   HandbackDelivered,
+  HandbackNotDelivered,
   line_ticket,
   item_is_done,
   signoff_is_present,
@@ -48,8 +71,65 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
-fn edges() -> List<RoadmapEdge> { active_roadmap_edges() }
+fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
+fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
+fn active_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
+fn active_edges() -> List<RoadmapEdge> { active_roadmap_edges() }
+
+fn tnid(s: String) -> RoadmapNodeId { s }
+fn tchash(s: String) -> ContentHash { s }
+
+fn digest_or_zero(rn: RoadmapNode) -> ContentHash {
+  match node_criteria_digest(rn: rn) {
+    Present { value } => value
+    Absent => tchash(s: "0000000000000000")
+  }
+}
+
+fn declared_node(id: String) -> List<RoadmapNode> {
+  nodes() |> filter(n => n.node == id)
+}
+
+fn receipt_fixture(node: String, digest: ContentHash) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: tnid(s: node),
+    criteria_digest: digest,
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+fn evidenceless_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlNotRun,
+    handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
+
+fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: rn.node,
+    criteria_digest: digest_or_zero(rn: rn),
+    red_control: RedControlExecuted {
+      witness_module: "test.fixture",
+      witness_fn: "fixture_red_control",
+      executed_on: "2026-07-28",
+    },
+    handback: HandbackNotDelivered,
+    accepted_by: "operator",
+    accepted_on: "2026-07-28",
+  }
+}
 
 fn id_exists(id: RoadmapNodeId) -> Bool {
   nodes() |> any(n => n.node == id)
@@ -147,11 +227,12 @@ fn red_ticket(done: Bool) -> RoadmapItem {
   }
 }
 
-test fn witness_active_graph_has_justified_size() -> Bool {
+test fn witness_declared_graph_has_justified_size() -> Bool {
   count(nodes()) > 0 && count(edges()) > 0
+    && count(active_nodes()) > 0 && count(active_edges()) > 0
 }
 
-test fn witness_active_node_ids_are_unique() -> Bool {
+test fn witness_declared_node_ids_are_unique() -> Bool {
   all(nodes(), n => id_count(id: n.node) == 1)
 }
 
@@ -159,13 +240,93 @@ test fn witness_every_edge_endpoint_exists() -> Bool {
   all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
 }
 
-test fn witness_active_graph_is_mechanically_acyclic() -> Bool {
+test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
   all(edges(), e => !(e.parent == e.child))
     && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
 }
 
-test fn witness_every_active_row_is_complete_unsigned_ticket() -> Bool {
+test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
   all(nodes(), n => active_node_admissible(n: n))
+}
+
+test fn witness_active_set_is_declared_minus_accepted() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  count(accepted) == 2
+    && (accepted |> any(a => a == "namespace-occurrence-transport"))
+    && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+    && count(active_nodes()) == count(nodes()) - count(accepted)
+    && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
+    && all(accepted, a => id_exists(id: a))
+}
+
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+  let receipts = roadmap_acceptance_receipts()
+  count(receipts) > 0
+    && all(receipts, r => count(receipts |> filter(x => x.node == r.node)) == 1)
+    && all(receipts, r => id_exists(id: r.node))
+    && all(receipts, r => all(declared_node(id: r.node as String), n => receipt_matches_node(r: r, rn: n)))
+}
+
+test fn witness_accepted_parents_precede_dependents() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  all(accepted, a => all(roadmap_parent_ids(edges: edges(), node: a), p => accepted |> any(x => x == p)))
+}
+
+test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(
+      receipts: [receipt_fixture(node: "namespace-occurrence-transport", digest: tchash(s: "0000000000000000"))],
+      rn: n,
+    ))
+}
+
+test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
+  let rs = roadmap_acceptance_receipts() |> filter(r => r.node == "namespace-occurrence-transport")
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(rs) == 1
+    && count(victims) == 1
+    && all(victims, n => node_accepted(receipts: rs, rn: n))
+    && all(victims, n => !node_accepted(receipts: concat(rs, rs), rn: n))
+}
+
+test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
+  let victims = declared_node(id: "namespace-occurrence-transport")
+  count(victims) == 1
+    && all(victims, n => !node_accepted(receipts: [evidenceless_receipt_fixture(rn: n)], rn: n))
+    && all(victims, n => !node_accepted(receipts: [undelivered_receipt_fixture(rn: n)], rn: n))
+}
+
+test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
+  let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
+  all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
+}
+
+test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
+  let act = active_edges()
+  !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
+    && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
+    && is_top_level(edges: act, node: "namespace-canonical-binding")
+    && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
+    && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
+    && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+}
+
+fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
+  let matches = v1_exit_finish_lines()
+    |> filter(s => v1_finish_line_key(l: s.line) == v1_finish_line_key(l: l))
+  count(matches) == 1 && all(matches, s => s.node == node && id_exists(id: s.node))
+}
+
+test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
+  let specs = v1_exit_finish_lines()
+  count(specs) == 4
+    && all(specs, s => id_exists(id: s.node))
+    && exit_line_bound_to(l: CompilerFixedPoint, node: "v1-emitter-fixed-point")
+    && exit_line_bound_to(l: InterpreterDeleted, node: "v1-interpreter-delete")
+    && exit_line_bound_to(l: ProductsV1Free, node: "v1-products-v1-free")
+    && exit_line_bound_to(l: ZeroHandMaintainedRust, node: "v1-zero-hand-maintained-rust")
+    && v1_finish_lines_accepted_count(accepted: accepted_roadmap_node_ids()) == 0
 }
 
 test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
@@ -252,9 +413,9 @@ test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
   let j = observation_scoped_run_seed_growth_justification()
   j.owning_dissolution_lane == "v1-hand-queue-drain"
     && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
-    && string_contains(s: j.reason, pattern: "interpreter entry seam")
-    && string_contains(s: j.trigger, pattern: "typed host-effect transport")
-    && string_contains(s: j.trigger, pattern: "hollow cli_run.rs Chunk F")
+    && string_contains(s: j.reason, pattern: "where the old runner starts a program")
+    && string_contains(s: j.trigger, pattern: "described operation")
+    && string_contains(s: j.trigger, pattern: "hollow out")
     && id_exists(id: "observation-scoped-run-seed-growth-justification")
     && node_has_carrier_path(path: "dag/gunbc/plans/cli_run_hollowing_plan.dag")
 }
@@ -271,32 +432,39 @@ test fn witness_caret_parse_smoke_seed_frontier_is_countable_owned_and_triggered
     && j.owning_dissolution_lane == "v1-zero-hand-maintained-rust"
     && j.current_boundary == "src/v1/stage0/tests/caret_parse_smoke.rs"
     && string_contains(s: j.reason, pattern: "predates")
-    && string_contains(s: j.reason, pattern: "add no capability")
-    && string_contains(s: j.trigger, pattern: "emitted test")
-    && string_contains(s: j.trigger, pattern: "delete the Rust test")
+    && string_contains(s: j.reason, pattern: "no new behaviour")
+    && string_contains(s: j.trigger, pattern: "regenerate this test")
+    && string_contains(s: j.trigger, pattern: "delete it")
     && edge_exists(
       child: "v1-zero-hand-maintained-rust",
       parent: "caret-parse-smoke-seed-growth-justification",
     )
 }
 
-test fn witness_interpreter_delete_and_repository_zero_hand_rust_fan_in_is_explicit() -> Bool {
-  edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
+test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
+  edge_exists(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-emitter-fixed-point")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier")
     && edge_exists(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger")
     && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover")
-    && edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
+    && !edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
     && edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
-    && edge_exists(child: "v1-interpreter-delete", parent: "v1-test-migration")
-    && edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
-    && edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
-    && edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
-    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-test-migration")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement")
+    && !edge_exists(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-interpreter-delete")
+    && edge_exists(child: "v1-products-v1-free", parent: "v1-hand-queue-drain")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free")
+    && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete")
     && edge_exists(
       child: "v1-zero-hand-maintained-rust",
       parent: "caret-parse-smoke-seed-growth-justification",
     )
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement")
 }
 
 test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
@@ -353,6 +521,9 @@ test fn witness_projection_is_active_only() -> Bool {
     )
   )
   string_contains(s: out, pattern: "## Active deliverables — dependency order")
+    && string_contains(s: out, pattern: "Build and run every product without the old code present")
+    && !string_contains(s: out, pattern: "Keep track of exactly which name is which")
+    && !string_contains(s: out, pattern: "Stop the compiler from mixing up one type with another")
     && !string_contains(s: out, pattern: "**superseded →**")
     && !string_contains(s: out, pattern: "awaiting sign-off")
     && !string_contains(s: out, pattern: "Operator TODO")
