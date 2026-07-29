@@ -1,32 +1,35 @@
 module v2.compiler.self_host.parity_receipts_local
 
-import v2.compiler.self_host.parity_window { ParityWindowReceipt }
+import v2.compiler.self_host.parity_window { ParityWindowReceipt, ParityObservation, WindowObserved }
 import v2.std.collection { List }
 import v2.std.text { String }
 
-data parity_receipts_local_note: String = "Operator-sourced parity receipts (ruling 2026-07-22: verify locally, then flip — the receipt SOURCE is relaxed from falsifier nightlies to observed local runs; the window law itself is unchanged). Observations: srv1 hermetic 4-run probe of emit_on_demand_family_crate_pr_native_agreement_holds against a durable root (GUNBC_NATIVE_CACHE_ROOT), key 8f21f541808ddb22 — run 1 cold-built then warmed, runs 2..4 fully warm, all 4 PASS (interpreted == native per member: meet, join, complement). Runs 2..4 are the three consecutive green windows for the two families whose native execution the logic family crate carries. When falsifier-authored receipts land, they supersede this module (dissolve-on: parity rows derived from falsifier run observations)."
+data parity_receipts_local_note: String = "Operator-sourced parity observations (ruling 2026-07-22: verify locally, then flip — the receipt SOURCE is relaxed from falsifier nightlies to observed local runs; the window observation law itself is unchanged). Observations: srv1 hermetic 4-run probe of emit_on_demand_family_crate_pr_native_agreement_holds against a durable root (GUNBC_NATIVE_CACHE_ROOT), key 8f21f541808ddb22 — run 1 cold-built then warmed, runs 2..4 fully warm, all 4 PASS (interpreted == native per member: meet, join, complement). Cadence order is explicit in the rows (cadence_sequence = the probe run number, never accidental list order — operator rework ruling 2026-07-28). Under the 2026-07-28 demotion (parity_window_note) these rows no longer license a flip — no pre-flip streak does; they are the seed observation history the post-flip monitor folds for the two families whose native execution the logic family crate carries. When falsifier-authored observations land, they supersede this module (dissolve-on: parity rows derived from falsifier run observations)."
 
-fn local_green(family: String, window: String) -> ParityWindowReceipt {
-  ParityWindowReceipt {
-    family: family,
-    cadence_window_id: window,
-    agreement_green: true,
-    warm_compile_skipped: true
+fn local_green(family: String, window: String, sequence: Int) -> ParityObservation {
+  WindowObserved {
+    receipt: ParityWindowReceipt {
+      family: family,
+      cadence_window_id: window,
+      agreement_green: true,
+      warm_compile_skipped: true
+    },
+    cadence_sequence: sequence
   }
 }
 
-fn local_receipts_for(family: String) -> List<ParityWindowReceipt> {
+fn local_observations_for(family: String) -> List<ParityObservation> {
   [
-    local_green(family: family, window: "srv1-probe-run2"),
-    local_green(family: family, window: "srv1-probe-run3"),
-    local_green(family: family, window: "srv1-probe-run4")
+    local_green(family: family, window: "srv1-probe-run2", sequence: 2),
+    local_green(family: family, window: "srv1-probe-run3", sequence: 3),
+    local_green(family: family, window: "srv1-probe-run4", sequence: 4)
   ]
 }
 
-fn meet_join_local_receipts() -> List<ParityWindowReceipt> {
-  local_receipts_for(family: "meet_join")
+fn meet_join_local_observations() -> List<ParityObservation> {
+  local_observations_for(family: "meet_join")
 }
 
-fn complement_local_receipts() -> List<ParityWindowReceipt> {
-  local_receipts_for(family: "complement")
+fn complement_local_observations() -> List<ParityObservation> {
+  local_observations_for(family: "complement")
 }
