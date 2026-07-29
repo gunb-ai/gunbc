@@ -20416,7 +20416,7 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence, OccurrenceId }\n");
+    out.push_str("import v2.std.node { MintedOccurrence }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -20474,12 +20474,30 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
+/// The `OccurrenceId` construction is FULLY QUALIFIED deliberately, and the name is
+/// correspondingly absent from this manifest's `v2.std.node` import list.
+///
+/// `v2.std.node.OccurrenceId` is a compatibility alias of `std.occurrence_identity.OccurrenceId`
+/// (#7352). Both modules sit in this overlay's compiled pool, so a BARE `OccurrenceId` in a
+/// record-literal position resolves to two candidates and the indexer refuses:
+/// "ambiguous reference 'OccurrenceId' ... qualify by containment path, alias, or rename".
+/// A bare reference in a TYPE position still resolves (v2/std/provenance.dag, v2/std/dependents.dag) —
+/// only construction sites need the qualification, which is why this reads as an inconsistency.
+///
+/// #7352 applied exactly this qualification to the one COMMITTED construction site
+/// (src/v2/test/claim/manual/bind_demand_driven_eval_test.dag) and missed this generator.
+/// The gap stayed invisible because this file is generated: whole-tree compile-clean never
+/// sees it, and its only executing consumer is the module-binding supply gate, which moved
+/// off per-PR CI onto the falsifier cadence — where it then failed for four days.
+///
+/// Dissolve-on: the `node_occurrence_id_v2_facade_dissolve_on` migration deletes the
+/// `v2.std.node` alias; the second candidate disappears and the qualification is free to drop.
 fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
     let start = span.start.max(0);
     let end = span.end.max(start);
     let occurrence_id = start.max(1);
     format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: v2.std.node.OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
     )
 }
 
