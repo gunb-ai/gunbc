@@ -172,15 +172,40 @@ it is non-determinism at the substrate boundary and would breach
 - **Execution is always exact.** Every run resolves a specific version with a
   specific content digest. There is no "latest" at execution time, ever.
 - **Selection carries a policy.** A pin is either authored directly
-  (`ExactPin`) or resolved from a moving reference and *recorded*
-  (`TrackedChannel { channel, resolved_to, resolved_at }` — `latest`, a release
-  channel, a semver range). Re-resolution is an explicit action producing a
-  reviewable diff, exactly as `Cargo.lock` and `flake.lock` behave.
-- **Staleness is observable and counted, never silent.** A tracked pin past its
-  declared refresh window yields a typed diagnostic that reds. It does not
-  float forward on its own, and it does not sit quietly at a three-year-old
-  version. This is the §5 discipline applied to the pin itself: the failure
-  refuses and is countable, so it ranks for fixing.
+  (`ExactPin`) or resolved from a moving reference (`TrackedChannel` —
+  `latest`, a release channel, a semver range). Re-resolution is an explicit
+  action producing a reviewable diff, exactly as `Cargo.lock` and `flake.lock`
+  behave.
+- **Staleness is observable and counted, never silent.** A tracked pin whose
+  currency cannot be established is refused. It does not float forward on its
+  own, and it does not sit quietly at a three-year-old version.
+
+### `TrackedChannel` refuses today — the fail-open review 44242 found
+
+The first shape of this model stored **no** resolution evidence on
+`TrackedChannel` and took `age_days` as a **caller-supplied parameter**. That
+made the freshness verdict entirely the caller's to assert: passing `0` forever
+admitted a permanently stale pin, while this document claimed the resolution
+was "recorded". Review 44242 called it correctly. It is DESIGN §5's precise
+tell — a check satisfiable by editing the caller while the model lies — and the
+earlier decision to drop the resolution date as an "unread field" was the wrong
+correction. The right one is to make the fold **read** it.
+
+Grounding it needs two things the tree does not have: a carried resolution date,
+and calendar day arithmetic to derive an age from it. `v2.std.datetime` models
+`CalendarDate` but has **no** day-difference, epoch-day, or days-between
+function, and has **zero constructors in use anywhere in the corpus** — so
+deriving an age in P1 would mean both becoming that type's first consumer and
+forking calendar arithmetic into `extdeps/`, a §3 fork of a std concern.
+
+So P1 does not offer a verdict it cannot ground. The fabricable parameter is
+deleted outright, and a `TrackedChannel` pin is `PinFreshnessUnderivable` —
+never fresh, therefore never admitted, even when its observed digest matches
+exactly. `ExactPin` is unaffected and fully usable, which is what P3 needs (the
+Rust toolchain is an exact pin). Dissolve-on: `v2.std.datetime` gains day
+arithmetic and `TrackedChannel` carries `resolved_on: CalendarDate`, at which
+point the arm becomes a real fresh/stale decision derived from stored evidence
+and an observed date.
 
 So "allow a latest tag" is satisfied without conceding hermeticity: `latest` is
 admissible as a *selection policy*, never as a runtime lookup. The recorded

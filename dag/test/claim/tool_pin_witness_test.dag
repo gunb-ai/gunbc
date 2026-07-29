@@ -10,14 +10,14 @@ import extdeps.tools.pin {
   TrackedChannel,
   PinFreshness,
   PinFresh,
-  PinStale,
+  PinFreshnessUnderivable,
   PinAdmission,
   PinAdmitted,
   PinRefused,
   PinRefusalCause,
   ConstraintIsNotIdentity,
   PinAbsent,
-  PinStaleBeyondWindow,
+  FreshnessEvidenceUnavailable,
   ObservedIdentityMismatch,
   pin_freshness,
   admit_legacy_cli_tool,
@@ -49,60 +49,50 @@ data tracked_pin: ToolPin = ToolPin {
   },
 }
 
-data freshness_family_note: String = "Freshness family: an authored pin has no upstream drift for a window to bound, so it is never stale; a tracked pin is fresh inside its window. RED CONTROL is tracked_pin_past_window_is_stale — one day past the window must flip to PinStale carrying the channel, the age, and the window. If the window were ignored, a 'latest' pin would sit unnoticed at a years-old version forever, which is the freeze the refresh axis exists to prevent; the control fails if staleness is never raised."
+data freshness_family_note: String = "Freshness family, REWRITTEN after review 44242 found a fail-open in the original shape. The first version took a caller-supplied age_days, so a caller passing 0 forever kept a stale pin permanently fresh — a verdict with no evidence behind it. P1 now refuses to answer what it cannot ground: an ExactPin is fresh by construction (authored, no upstream drift to bound), and a TrackedChannel is UNDERIVABLE because no resolution date is carried and v2.std.datetime has no day arithmetic to derive an age with. RED CONTROL is tracked_pin_freshness_is_underivable_not_fresh — it fails if a tracked pin ever reports PinFresh, which is precisely the fail-open that was shipped and is now unwritable: there is no parameter left through which a caller can assert currency."
 
-test fn exact_pin_is_never_stale() -> Bool {
-  match pin_freshness(pin: authored_pin, age_days: 4000) {
+test fn exact_pin_is_fresh_by_construction() -> Bool {
+  match pin_freshness(pin: authored_pin) {
     PinFresh => true
-    PinStale { channel: _, age_days: _, window_days: _ } => false
+    PinFreshnessUnderivable { channel: _ } => false
   }
 }
 
-test fn tracked_pin_inside_window_is_fresh() -> Bool {
-  match pin_freshness(pin: tracked_pin, age_days: 29) {
-    PinFresh => true
-    PinStale { channel: _, age_days: _, window_days: _ } => false
-  }
-}
-
-test fn tracked_pin_past_window_is_stale() -> Bool {
-  match pin_freshness(pin: tracked_pin, age_days: 31) {
-    PinStale { channel: c, age_days: a, window_days: w } =>
-      ((c as String) == "latest") && (a == 31) && (w == 30)
+test fn tracked_pin_freshness_is_underivable_not_fresh() -> Bool {
+  match pin_freshness(pin: tracked_pin) {
+    PinFreshnessUnderivable { channel: c } => (c as String) == "latest"
     PinFresh => false
   }
 }
 
-data admission_family_note: String = "Admission family: a pin is admitted only when it is BOTH fresh and identity-matched. RED CONTROL mismatched_identity_refuses covers the case a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where identity comparison refuses. RED CONTROL stale_pin_refuses_even_when_identity_matches pins the ORDER: staleness is decided before identity, so a stale pin whose binary coincidentally matches is still refused and the refresh signal cannot be greened by a lucky digest."
+data admission_family_note: String = "Admission family: admitted only when freshness is derivable AND identity matches. RED CONTROL mismatched_identity_refuses covers what a location-based resolver cannot see at all — it finds 'a cargo' at the declared version and proceeds, where identity comparison refuses. RED CONTROL tracked_pin_refuses_even_when_identity_matches pins the ORDER and is the direct regression control for the reviewed fail-open: a tracked pin whose observed digest matches EXACTLY is still refused, so a coincidental match can never stand in for evidence of currency."
 
 test fn matching_identity_admits() -> Bool {
-  match admit_pin(pin: authored_pin, observed_identity: cargo_identity, age_days: 0) {
+  match admit_pin(pin: authored_pin, observed_identity: cargo_identity) {
     PinAdmitted { pin: p } => (p.tool_name as String) == "cargo"
     PinRefused { tool_name: _, cause: _ } => false
   }
 }
 
 test fn mismatched_identity_refuses() -> Bool {
-  match admit_pin(pin: authored_pin, observed_identity: other_identity, age_days: 0) {
+  match admit_pin(pin: authored_pin, observed_identity: other_identity) {
     PinRefused { tool_name: n, cause: c } =>
       ((n as String) == "cargo") && match c {
         ObservedIdentityMismatch { expected: e, observed: o } =>
-          ((e as String) == (cargo_identity as String))
-            && ((o as String) == (other_identity as String))
+          (e == cargo_identity) && (o == other_identity)
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
-        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+        FreshnessEvidenceUnavailable { channel: _ } => false
       }
     PinAdmitted { pin: _ } => false
   }
 }
 
-test fn stale_pin_refuses_even_when_identity_matches() -> Bool {
-  match admit_pin(pin: tracked_pin, observed_identity: cargo_identity, age_days: 400) {
+test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
+  match admit_pin(pin: tracked_pin, observed_identity: cargo_identity) {
     PinRefused { tool_name: n, cause: c } =>
       ((n as String) == "jq") && match c {
-        PinStaleBeyondWindow { channel: ch, age_days: a, window_days: w } =>
-          ((ch as String) == "latest") && (a == 400) && (w == 30)
+        FreshnessEvidenceUnavailable { channel: ch } => (ch as String) == "latest"
         ObservedIdentityMismatch { expected: _, observed: _ } => false
         ConstraintIsNotIdentity { constraint: _ } => false
         PinAbsent => false
@@ -131,7 +121,7 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
       ((n as String) == "curl") && match c {
         ConstraintIsNotIdentity { constraint: k } => (k as String) == ">= 7.68"
         PinAbsent => false
-        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+        FreshnessEvidenceUnavailable { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
       }
     PinAdmitted { pin: _ } => false
@@ -144,7 +134,7 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
       ((n as String) == "jq") && match c {
         PinAbsent => true
         ConstraintIsNotIdentity { constraint: _ } => false
-        PinStaleBeyondWindow { channel: _, age_days: _, window_days: _ } => false
+        FreshnessEvidenceUnavailable { channel: _ } => false
         ObservedIdentityMismatch { expected: _, observed: _ } => false
       }
     PinAdmitted { pin: _ } => false
