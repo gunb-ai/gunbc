@@ -25096,22 +25096,33 @@ mod reference_edge_producer_tests {
             "producer emitted no layer facts at all — the corpus read is broken, so an \
              empty violation set below would be vacuous"
         );
-        let fabricated = ungrounded(&facts);
+        let (fabricated, unreadable) = ungrounded(&facts);
+        assert!(
+            unreadable.is_empty(),
+            "every flagged std file must be readable at the workspace root — an unreadable \
+             path means the oracle is broken, not that an edge is grounded: {unreadable:?}"
+        );
         assert!(
             fabricated.is_empty(),
             "cross-layer std edges must be grounded in the file's own text; fabricated: {fabricated:?}"
         );
 
-        // RED control: the same predicate must FIRE on a fact naming a module that the
-        // (real, readable) file provably never mentions. Without this, the assertion
-        // above would pass just as happily on a broken predicate.
+        // RED control: the predicate must FIRE on a fact naming a module the (real,
+        // readable) file provably never mentions. Asserting `unreadable` is empty here
+        // too is what keeps the control honest — otherwise a path-anchoring bug would
+        // satisfy it for the wrong reason.
         let planted = vec![LayerImportFactRaw {
             layer: "LayerPrefixStd",
             path: "dag/std/measure.dag".to_string(),
             import_module: "extdeps.units.no_such_module_mentioned_anywhere".to_string(),
         }];
+        let (planted_ungrounded, planted_unreadable) = ungrounded(&planted);
+        assert!(
+            planted_unreadable.is_empty(),
+            "RED control's own fixture path must be readable, else it fires for the wrong reason"
+        );
         assert_eq!(
-            ungrounded(&planted).len(),
+            planted_ungrounded.len(),
             1,
             "predicate must flag an edge whose module never appears in the file text"
         );
