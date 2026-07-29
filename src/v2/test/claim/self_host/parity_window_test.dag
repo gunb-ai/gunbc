@@ -133,6 +133,57 @@ test fn witness_latch_names_first_red_window() -> Bool {
   }
 }
 
+fn latched_revert_names(v: ParityMonitorVerdict, expected_window: String) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: w } => w == expected_window
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+test fn witness_latch_survives_mixed_family_observation() -> Bool {
+  latched_revert_names(
+    v: parity_monitor_verdict(
+      family: "add",
+      observations: [
+        green_obs(id: "w1", seq: 1),
+        red_obs(id: "w2", seq: 2),
+        observed(family: "other_family", id: "w3", seq: 3, green: true, warm: true)
+      ]
+    ),
+    expected_window: "w2"
+  )
+}
+
+test fn witness_latch_survives_cadence_violation() -> Bool {
+  latched_revert_names(
+    v: parity_monitor_verdict(
+      family: "add",
+      observations: [
+        green_obs(id: "w1", seq: 1),
+        red_obs(id: "w2", seq: 2),
+        green_obs(id: "w3", seq: 2)
+      ]
+    ),
+    expected_window: "w2"
+  )
+}
+
+test fn witness_ack_from_other_family_does_not_clear_latch() -> Bool {
+  latched_revert_names(
+    v: parity_monitor_verdict(
+      family: "add",
+      observations: [
+        red_obs(id: "w1", seq: 1),
+        RevertAcknowledged { family: "other_family", ack_id: "foreign-ack", cadence_sequence: 2 },
+        green_obs(id: "w3", seq: 3)
+      ]
+    ),
+    expected_window: "w1"
+  )
+}
+
 test fn witness_cold_divergence_demands_revert() -> Bool {
   verdict_is_revert_required(
     v: parity_monitor_verdict(

@@ -63,6 +63,22 @@ fn verdict_is_refused(v: ParityMonitorVerdict) -> Bool {
   }
 }
 
+fn verdict_is_latched_revert(v: ParityMonitorVerdict) -> Bool {
+  match v {
+    ParityHolding { family: _, consecutive_green: _ } => false
+    ParityRevertRequired { family: _, red_window_id: _ } => true
+    ParityUnobserved { family: _ } => false
+    ParityEvidenceRefused { family: _, cause: _ } => false
+  }
+}
+
+fn observation_is_revert_ack(o: ParityObservation) -> Bool {
+  match o {
+    WindowObserved { receipt: _, cadence_sequence: _ } => false
+    RevertAcknowledged { family: _, ack_id: _, cadence_sequence: _ } => true
+  }
+}
+
 fn cadence_admits(cursor: ParityCadenceCursor, s: Int) -> Bool {
   match cursor {
     NoCadenceYet => true
@@ -114,6 +130,18 @@ fn parity_monitor_step(
 ) -> ParityFoldState {
   if verdict_is_refused(v: state.verdict) {
     state
+  } else if verdict_is_latched_revert(v: state.verdict) {
+    let ack_s = observation_sequence(o: o)
+    if observation_is_revert_ack(o: o)
+      && (observation_family(o: o) == family)
+      && cadence_admits(cursor: state.cursor, s: ack_s) {
+      ParityFoldState {
+        verdict: ParityUnobserved { family: family },
+        cursor: CadenceAt { value: ack_s }
+      }
+    } else {
+      state
+    }
   } else {
     let s = observation_sequence(o: o)
     if cadence_admits(cursor: state.cursor, s: s) {
