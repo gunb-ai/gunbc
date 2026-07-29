@@ -1,6 +1,6 @@
 module extdeps.git.object_store
 
-import std.types { ContentHash, NonEmptyStr, Bytes }
+import std.types { ContentHash, NonEmptyStr, Bytes, Map }
 import std.integer { UInt8, NonNegativeInt }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
@@ -380,12 +380,21 @@ type GitCanonicalHashInputOutcome
   = GitCanonicalHashInputReady { bytes: Bytes }
   | GitCanonicalHashInputRefused { cause: GitCanonicalHashInputRefusal }
 
+type GitHashObjectObservationProducer
+  = GitHashObjectCliExecuted {
+      attempt: NonEmptyStr,
+      exit_code: NonNegativeInt,
+      stdout_oid: GitObjectId,
+    }
+  | GitHashObjectCallerAssertion
+
 type GitContentAddressReceipt
   = GitHashObjectObserved {
       git_version: NonEmptyStr,
       object_format: GitObjectFormat,
       canonical_input: Bytes,
       observed_oid: GitObjectId,
+      producer: GitHashObjectObservationProducer,
     }
   | GitHashObjectObservationUnavailable {
       cause: GitCanonicalHashInputRefusal,
@@ -402,11 +411,45 @@ type GitUnavailableObject
   | GitUnexpectedObjectMissing { oid: GitObjectId }
   | GitCorruptObject { oid: GitObjectId, reason: NonEmptyStr }
 
+type GitUnavailableObjectFold<R> {
+  promisor: fn(GitObjectId, NonEmptyStr) -> R
+  unexpected_missing: fn(GitObjectId) -> R
+  corrupt: fn(GitObjectId, NonEmptyStr) -> R
+}
+
+fn git_unavailable_object_fold<R>(
+  unavailable: GitUnavailableObject,
+  fold: GitUnavailableObjectFold<R>,
+) -> R {
+  match unavailable {
+    GitPromisorObjectUnavailable { oid, promisor } =>
+      fold.promisor(oid, promisor)
+    GitUnexpectedObjectMissing { oid } =>
+      fold.unexpected_missing(oid)
+    GitCorruptObject { oid, reason } =>
+      fold.corrupt(oid, reason)
+  }
+}
+
+fn git_unavailable_object_oid(
+  unavailable: GitUnavailableObject,
+) -> GitObjectId {
+  git_unavailable_object_fold(
+    unavailable: unavailable,
+    fold: GitUnavailableObjectFold {
+      promisor: fn(oid, _) { oid },
+      unexpected_missing: fn(oid) { oid },
+      corrupt: fn(oid, _) { oid },
+    },
+  )
+}
+
 type ObjectLookupResult
   = ObjectFound { stored: StoredObject }
   | ObjectPromisorUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
   | ObjectUnexpectedlyMissing { oid: GitObjectId }
   | ObjectCorrupt { oid: GitObjectId, reason: NonEmptyStr }
+  | ObjectRepositoryInvalid { cause: GitRepositoryDecodeRefusal }
 
 type GitRefName = NonEmptyStr where brand("GitRefName")
 
@@ -456,6 +499,44 @@ type GitRepositoryState {
   index: List<GitIndexEntry>
   worktree: List<GitWorktreeEntry>
 }
+
+type GitRepositoryPointerOrigin
+  = GitStoredObjectPointer { owner: GitObjectId }
+  | GitDirectRefPointer { name: GitRefName }
+  | GitIndexPointer { path: GitPath, stage: GitIndexStage }
+
+type GitRepositoryDecodeRefusal
+  = GitRepositoryDuplicateStoredObject { oid: GitObjectId }
+  | GitRepositoryDuplicateUnavailableObject { oid: GitObjectId }
+  | GitRepositoryPresentAndUnavailableObject { oid: GitObjectId }
+  | GitRepositoryStoredObjectUnadmitted { oid: GitObjectId }
+  | GitRepositoryObjectFormatMismatch {
+      oid: GitObjectId,
+      repository_format: GitObjectFormat,
+    }
+  | GitRepositoryPointerUnexpectedlyMissing {
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
+    }
+  | GitRepositoryPointerCorrupt {
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
+      reason: NonEmptyStr,
+    }
+  | GitRepositoryPointerKindMismatch {
+      origin: GitRepositoryPointerOrigin,
+      target: GitObjectId,
+      expected: ObjectType,
+      observed: ObjectType,
+    }
+  | GitRepositoryDuplicateRef {
+      name: GitRefName,
+      count: NonNegativeInt,
+    }
+
+type GitRepositoryDecodeOutcome
+  = GitRepositoryDecoded { repository: GitRepositoryState }
+  | GitRepositoryDecodeRefused { cause: GitRepositoryDecodeRefusal }
 
 fn store_object_kind(object: StoreObject) -> ObjectType {
   store_object_fold(
@@ -823,18 +904,471 @@ fn git_stored_object_receipt_valid(
       object_format,
       canonical_input,
       observed_oid,
+      producer,
     } =>
       match git_store_object_canonical_hash_input(object: stored.object) {
         GitCanonicalHashInputRefused { cause: _ } => false
         GitCanonicalHashInputReady { bytes } =>
-          stored.oid == observed_oid
-            && canonical_input == bytes
-            && object_format == git_object_id_format(oid: observed_oid)
-            && git_object_id_format(oid: observed_oid) == repository_format
-            && git_store_object_references_format(
-              object: stored.object,
-              format: repository_format,
+          match producer {
+            GitHashObjectCallerAssertion => false
+            GitHashObjectCliExecuted {
+              attempt: _,
+              exit_code,
+              stdout_oid,
+            } =>
+              exit_code == 0
+                && stdout_oid == observed_oid
+                && stored.oid == observed_oid
+                && canonical_input == bytes
+                && object_format == git_object_id_format(oid: observed_oid)
+                && git_object_id_format(oid: observed_oid) == repository_format
+                && git_store_object_references_format(
+                  object: stored.object,
+                  format: repository_format,
+                )
+          }
+      }
+  }
+}
+
+type GitStoredObjectIndexOutcome
+  = GitStoredObjectIndexReady {
+      index: Map<GitObjectId, StoredObject>,
+    }
+  | GitStoredObjectIndexDuplicate { oid: GitObjectId }
+
+fn git_stored_object_index_step(
+  state: GitStoredObjectIndexOutcome,
+  stored: StoredObject,
+) -> GitStoredObjectIndexOutcome {
+  match state {
+    GitStoredObjectIndexDuplicate { oid } =>
+      GitStoredObjectIndexDuplicate { oid: oid }
+    GitStoredObjectIndexReady { index } =>
+      if map_contains_key(index, stored.oid) {
+        GitStoredObjectIndexDuplicate { oid: stored.oid }
+      } else {
+        GitStoredObjectIndexReady {
+          index: map_insert(index, stored.oid, stored),
+        }
+      }
+  }
+}
+
+fn git_stored_object_index(
+  objects: List<StoredObject>,
+) -> GitStoredObjectIndexOutcome {
+  fold(
+    objects,
+    init: GitStoredObjectIndexReady { index: empty_map() },
+    f: git_stored_object_index_step,
+  )
+}
+
+type GitUnavailableObjectIndexOutcome
+  = GitUnavailableObjectIndexReady {
+      index: Map<GitObjectId, GitUnavailableObject>,
+    }
+  | GitUnavailableObjectIndexDuplicate { oid: GitObjectId }
+
+fn git_unavailable_object_index_step(
+  state: GitUnavailableObjectIndexOutcome,
+  unavailable: GitUnavailableObject,
+) -> GitUnavailableObjectIndexOutcome {
+  match state {
+    GitUnavailableObjectIndexDuplicate { oid } =>
+      GitUnavailableObjectIndexDuplicate { oid: oid }
+    GitUnavailableObjectIndexReady { index } =>
+      let oid = git_unavailable_object_oid(unavailable: unavailable)
+      if map_contains_key(index, oid) {
+        GitUnavailableObjectIndexDuplicate { oid: oid }
+      } else {
+        GitUnavailableObjectIndexReady {
+          index: map_insert(index, oid, unavailable),
+        }
+      }
+  }
+}
+
+fn git_unavailable_object_index(
+  unavailable: List<GitUnavailableObject>,
+) -> GitUnavailableObjectIndexOutcome {
+  fold(
+    unavailable,
+    init: GitUnavailableObjectIndexReady { index: empty_map() },
+    f: git_unavailable_object_index_step,
+  )
+}
+
+type GitRefNameIndexOutcome
+  = GitRefNamesUnique { names: Map<GitRefName, Bool> }
+  | GitRefNameDuplicate {
+      name: GitRefName,
+      count: NonNegativeInt,
+    }
+
+fn git_ref_name_index_step(
+  state: GitRefNameIndexOutcome,
+  record: GitRefRecord,
+) -> GitRefNameIndexOutcome {
+  match state {
+    GitRefNameDuplicate { name, count } =>
+      GitRefNameDuplicate { name: name, count: count }
+    GitRefNamesUnique { names } =>
+      if map_contains_key(names, record.name) {
+        GitRefNameDuplicate { name: record.name, count: 2 }
+      } else {
+        GitRefNamesUnique {
+          names: map_insert(names, record.name, true),
+        }
+      }
+  }
+}
+
+fn git_ref_name_index(
+  refs: List<GitRefRecord>,
+) -> GitRefNameIndexOutcome {
+  fold(
+    refs,
+    init: GitRefNamesUnique { names: empty_map() },
+    f: git_ref_name_index_step,
+  )
+}
+
+type GitObjectKindExpectation
+  = GitAnyObjectKind
+  | GitExpectedObjectKind { kind: ObjectType }
+
+type GitRepositoryPointer {
+  origin: GitRepositoryPointerOrigin
+  target: GitObjectId
+  expected: GitObjectKindExpectation
+}
+
+fn git_tree_entry_local_pointer(
+  owner: GitObjectId,
+  entry: TreeEntry,
+) -> GitRepositoryPointer? {
+  let parts = git_tree_entry_canonical_parts(entry: entry)
+  if parts.mode == "160000" {
+    Absent
+  } else {
+    let expected = if parts.mode == "040000" {
+      TreeObj
+    } else {
+      BlobObj
+    }
+    Present {
+      value: GitRepositoryPointer {
+        origin: GitStoredObjectPointer { owner: owner },
+        target: parts.oid,
+        expected: GitExpectedObjectKind { kind: expected },
+      }
+    }
+  }
+}
+
+fn git_stored_object_local_pointers(
+  stored: StoredObject,
+) -> List<GitRepositoryPointer> {
+  store_object_fold(
+    object: stored.object,
+    fold: StoreObjectFold {
+      blob: fn(_) { [] },
+      tree: fn(tree) {
+        tree.entries
+          |> flat_map(entry =>
+            match git_tree_entry_local_pointer(
+              owner: stored.oid,
+              entry: entry,
+            ) {
+              Present { value } => [value]
+              Absent => []
+            }
+          )
+      },
+      commit: fn(commit) {
+        append(
+          [
+            GitRepositoryPointer {
+              origin: GitStoredObjectPointer { owner: stored.oid },
+              target: commit.tree,
+              expected: GitExpectedObjectKind { kind: TreeObj },
+            },
+          ],
+          items: commit.parents |> map(parent =>
+            GitRepositoryPointer {
+              origin: GitStoredObjectPointer { owner: stored.oid },
+              target: parent,
+              expected: GitExpectedObjectKind { kind: CommitObj },
+            }
+          ),
+        )
+      },
+      tag: fn(tag) {
+        [
+          GitRepositoryPointer {
+            origin: GitStoredObjectPointer { owner: stored.oid },
+            target: tag.target,
+            expected: GitExpectedObjectKind { kind: tag.target_type },
+          },
+        ]
+      },
+    },
+  )
+}
+
+fn git_ref_local_pointers(
+  refs: List<GitRefRecord>,
+) -> List<GitRepositoryPointer> {
+  refs |> flat_map(record =>
+    match record.target {
+      SymbolicTarget { ref_name: _ } => []
+      DirectTarget { oid } =>
+        [
+          GitRepositoryPointer {
+            origin: GitDirectRefPointer { name: record.name },
+            target: oid,
+            expected:
+              if starts_with(
+                s: record.name as String,
+                prefix: "refs/heads/",
+              ) {
+                GitExpectedObjectKind { kind: CommitObj }
+              } else {
+                GitAnyObjectKind
+              },
+          },
+        ]
+    }
+  )
+}
+
+fn git_index_local_pointers(
+  index: List<GitIndexEntry>,
+) -> List<GitRepositoryPointer> {
+  index |> flat_map(entry =>
+    match entry.mode {
+      GitlinkMode => []
+      GitSubtreeMode =>
+        [
+          GitRepositoryPointer {
+            origin: GitIndexPointer {
+              path: entry.path,
+              stage: entry.stage,
+            },
+            target: entry.oid,
+            expected: GitExpectedObjectKind { kind: TreeObj },
+          },
+        ]
+      _ =>
+        [
+          GitRepositoryPointer {
+            origin: GitIndexPointer {
+              path: entry.path,
+              stage: entry.stage,
+            },
+            target: entry.oid,
+            expected: GitExpectedObjectKind { kind: BlobObj },
+          },
+        ]
+    }
+  )
+}
+
+fn git_repository_local_pointers(
+  repo: GitRepositoryState,
+) -> List<GitRepositoryPointer> {
+  concat(
+    repo.objects
+      |> flat_map(stored =>
+        git_stored_object_local_pointers(stored: stored)
+      ),
+    concat(
+      git_ref_local_pointers(refs: repo.refs),
+      git_index_local_pointers(index: repo.index),
+    ),
+  )
+}
+
+type GitRepositoryPointerCheck
+  = GitRepositoryPointersValid
+  | GitRepositoryPointerInvalid { cause: GitRepositoryDecodeRefusal }
+
+fn git_repository_pointer_check_step(
+  stored: Map<GitObjectId, StoredObject>,
+  unavailable: Map<GitObjectId, GitUnavailableObject>,
+  repository_format: GitObjectFormat,
+  state: GitRepositoryPointerCheck,
+  pointer: GitRepositoryPointer,
+) -> GitRepositoryPointerCheck {
+  match state {
+    GitRepositoryPointerInvalid { cause } =>
+      GitRepositoryPointerInvalid { cause: cause }
+    GitRepositoryPointersValid =>
+      if !(git_object_id_format(oid: pointer.target) == repository_format) {
+        GitRepositoryPointerInvalid {
+          cause: GitRepositoryObjectFormatMismatch {
+            oid: pointer.target,
+            repository_format: repository_format,
+          }
+        }
+      } else {
+        match map_get(stored, pointer.target) {
+          Present { value } =>
+            let observed = store_object_kind(object: value.object)
+            match pointer.expected {
+              GitAnyObjectKind => GitRepositoryPointersValid
+              GitExpectedObjectKind { kind } =>
+                if kind == observed {
+                  GitRepositoryPointersValid
+                } else {
+                  GitRepositoryPointerInvalid {
+                    cause: GitRepositoryPointerKindMismatch {
+                      origin: pointer.origin,
+                      target: pointer.target,
+                      expected: kind,
+                      observed: observed,
+                    }
+                  }
+                }
+            }
+          Absent =>
+            match map_get(unavailable, pointer.target) {
+              Present { value } =>
+                git_unavailable_object_fold(
+                  unavailable: value,
+                  fold: GitUnavailableObjectFold {
+                    promisor: fn(_, _) {
+                      GitRepositoryPointersValid
+                    },
+                    unexpected_missing: fn(_) {
+                      GitRepositoryPointerInvalid {
+                        cause: GitRepositoryPointerUnexpectedlyMissing {
+                          origin: pointer.origin,
+                          target: pointer.target,
+                        }
+                      }
+                    },
+                    corrupt: fn(_, reason) {
+                      GitRepositoryPointerInvalid {
+                        cause: GitRepositoryPointerCorrupt {
+                          origin: pointer.origin,
+                          target: pointer.target,
+                          reason: reason,
+                        }
+                      }
+                    },
+                  },
+                )
+              Absent => GitRepositoryPointerInvalid {
+                cause: GitRepositoryPointerUnexpectedlyMissing {
+                  origin: pointer.origin,
+                  target: pointer.target,
+                }
+              }
+            }
+      }
+  }
+}
+
+fn git_decode_repository(
+  repo: GitRepositoryState,
+) -> GitRepositoryDecodeOutcome {
+  match git_stored_object_index(objects: repo.objects) {
+    GitStoredObjectIndexDuplicate { oid } =>
+      GitRepositoryDecodeRefused {
+        cause: GitRepositoryDuplicateStoredObject { oid: oid }
+      }
+    GitStoredObjectIndexReady { index: stored } =>
+      match git_unavailable_object_index(
+        unavailable: repo.unavailable,
+      ) {
+        GitUnavailableObjectIndexDuplicate { oid } =>
+          GitRepositoryDecodeRefused {
+            cause: GitRepositoryDuplicateUnavailableObject { oid: oid }
+          }
+        GitUnavailableObjectIndexReady { index: unavailable } =>
+          match repo.objects
+            |> filter(object =>
+              map_contains_key(unavailable, object.oid)
             )
+            |> first {
+            Present { value } => GitRepositoryDecodeRefused {
+              cause: GitRepositoryPresentAndUnavailableObject {
+                oid: value.oid,
+              }
+            }
+            Absent =>
+              match repo.objects
+                |> filter(object =>
+                  !git_stored_object_receipt_valid(
+                    stored: object,
+                    repository_format: repo.object_format,
+                  )
+                )
+                |> first {
+                Present { value } => GitRepositoryDecodeRefused {
+                  cause: GitRepositoryStoredObjectUnadmitted {
+                    oid: value.oid,
+                  }
+                }
+                Absent =>
+                  match repo.unavailable
+                    |> filter(unavailable_object =>
+                      !(
+                        git_object_id_format(
+                          oid: git_unavailable_object_oid(
+                            unavailable: unavailable_object,
+                          ),
+                        ) == repo.object_format
+                      )
+                    )
+                    |> first {
+                    Present { value } =>
+                      let oid = git_unavailable_object_oid(
+                        unavailable: value,
+                      )
+                      GitRepositoryDecodeRefused {
+                        cause: GitRepositoryObjectFormatMismatch {
+                          oid: oid,
+                          repository_format: repo.object_format,
+                        }
+                      }
+                    Absent =>
+                      match git_ref_name_index(refs: repo.refs) {
+                        GitRefNameDuplicate { name, count } =>
+                          GitRepositoryDecodeRefused {
+                            cause: GitRepositoryDuplicateRef {
+                              name: name,
+                              count: count,
+                            }
+                          }
+                        GitRefNamesUnique { names: _ } =>
+                          match fold(
+                            git_repository_local_pointers(repo: repo),
+                            init: GitRepositoryPointersValid,
+                            f: fn(state, pointer) {
+                              git_repository_pointer_check_step(
+                                stored: stored,
+                                unavailable: unavailable,
+                                repository_format: repo.object_format,
+                                state: state,
+                                pointer: pointer,
+                              )
+                            },
+                          ) {
+                            GitRepositoryPointerInvalid { cause } =>
+                              GitRepositoryDecodeRefused {
+                                cause: cause
+                              }
+                            GitRepositoryPointersValid =>
+                              GitRepositoryDecoded { repository: repo }
+                          }
+                      }
+                  }
+              }
+          }
       }
   }
 }
