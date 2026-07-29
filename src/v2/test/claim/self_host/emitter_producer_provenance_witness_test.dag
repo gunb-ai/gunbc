@@ -17,6 +17,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_qualified_baselines_holds,
   seed_emitter_behavioral_green_baseline,
   seed_emitter_behavioral_green_count,
+  seed_emitter_behavioral_quarantine_baseline,
+  seed_emitter_behavioral_quarantine_count,
   v2_interpreted_emitter_behavioral_green_count,
   v2_native_emitter_behavioral_green_count,
   v2_emitter_production_routed_count
@@ -24,6 +26,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
 import v2.compiler.self_host.frontier {
   compiler_frontier_census_holds,
   compiler_frontier_emitter_produced_oracle_backed_holds,
+  compiler_frontier_emitter_produced_oracle_enrolled_holds,
   compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds,
   compiler_frontier_emitter_produced_count,
   compiler_frontier_producer_qualified_baselines_holds
@@ -41,21 +44,29 @@ import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): EmitterProduced is reachable only from mint_producer_emission_receipt. PRIMARY RED: V2EmitterInterpreted is unwritable when v1.compiler.emit_rust is in the realized closure (structural refusal, not harness config). SECONDARY RED: 2026-07-20 flip-wave dishonest claim replay."
+data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): EmitterProduced enrollment binds minted BuildRefused quarantine receipts; authorization (BuildGreen) is a stricter gate that stays false until wet execution greens. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
 
 test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
   producer_emission_oracle_rows_all_enrolled_holds()
 }
 
-test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
-  compiler_frontier_emitter_produced_oracle_backed_holds()
+test fn witness_live_roster_emitter_produced_oracle_enrolled_holds() -> Bool {
+  compiler_frontier_emitter_produced_oracle_enrolled_holds()
+}
+
+data witness_quarantine_does_not_authorize_green_red_note: String = "Review 44350 RED: assemble-red quarantine probes must not authorize EmitterProduced via fabricated BuildGreen while enrolled on falsifier_self_host_wet_known_red_entries."
+
+test fn witness_quarantine_does_not_authorize_green_reds() -> Bool {
+  !compiler_frontier_emitter_produced_oracle_backed_holds()
 }
 
 test fn witness_producer_qualified_baselines_holds() -> Bool {
   compiler_frontier_producer_qualified_baselines_holds()
     && producer_qualified_baselines_holds()
-    && (producer_emission_oracle_row_count() == seed_emitter_behavioral_green_baseline)
-    && (compiler_frontier_emitter_produced_count() == seed_emitter_behavioral_green_count())
+    && (producer_emission_oracle_row_count() == seed_emitter_behavioral_quarantine_baseline)
+    && (seed_emitter_behavioral_quarantine_count() == seed_emitter_behavioral_quarantine_baseline)
+    && (compiler_frontier_emitter_produced_count() == producer_emission_oracle_row_count())
+    && (seed_emitter_behavioral_green_count() == seed_emitter_behavioral_green_baseline)
     && (v2_interpreted_emitter_behavioral_green_count() == 0)
     && (v2_native_emitter_behavioral_green_count() == 0)
     && (v2_emitter_production_routed_count() == 0)
@@ -125,16 +136,18 @@ test fn witness_synthetic_oracle_row_not_in_live_registry_reds() -> Bool {
   }
 }
 
-test fn witness_baseline_oracle_row_authorizes_emitter_produced() -> Bool {
+data witness_baseline_oracle_row_quarantine_does_not_authorize_red_note: String = "Review 44350 RED: live oracle row enrolled on assemble-red quarantine must not authorize BuildGreen EmitterProduced until wet execution greens."
+
+test fn witness_baseline_oracle_row_quarantine_does_not_authorize_reds() -> Bool {
   let oracle = producer_emission_oracle_row_body_producer
   match producer_emission_canonical_receipt_for_oracle_row(row: oracle) {
     Present { value: receipt } =>
-      producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: receipt)
-    Absent => false
+      !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: receipt)
+    Absent => true
   }
 }
 
-data witness_fabricated_build_green_same_module_producer_red_note: String = "Reviews 44328/44333 RED: fabricated receipt with wrong probe identity must NOT authorize against a live oracle row whose canonical receipt is minted BuildGreen."
+data witness_fabricated_build_green_same_module_producer_red_note: String = "Reviews 44328/44350 RED: fabricated BuildGreen receipt must NOT authorize against a quarantine-enrolled oracle row."
 
 test fn witness_fabricated_build_green_same_module_producer_reds() -> Bool {
   let oracle = producer_emission_oracle_row_body_producer
