@@ -16,6 +16,7 @@ data child_id: RoadmapNodeId = "host-fed-status-bridge"
 
 fn audit_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_J19302B1RYEQZVMM6TG9" as RoadmapNodeIdentity,
     node: audit_id,
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
     carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
@@ -28,6 +29,7 @@ fn audit_node() -> RoadmapNode {
 
 fn status_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_AJ7G9SDD8FFX86WHFYQB" as RoadmapNodeIdentity,
     node: status_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -39,6 +41,7 @@ fn status_node() -> RoadmapNode {
 }
 fn child_node() -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as RoadmapNodeIdentity,
     node: child_id,
     line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
