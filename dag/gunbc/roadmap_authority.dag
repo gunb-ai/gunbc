@@ -587,7 +587,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     active_large(
       identity: "rn_SG8EVJAQXVGP7V5G8BG8G8YVJQ",
       id: "namespace-import-deletion",
-      owner: "self-host",
+      owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
         headline: "Delete the import lines, and the grammar that allows them",
