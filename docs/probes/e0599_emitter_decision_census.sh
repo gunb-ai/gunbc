@@ -85,14 +85,43 @@ def gunbc_blob(entry, function, blob):
         pathlib.Path(out_path).unlink(missing_ok=True)
 
 
+PREAMBLE = None
+
+
+def load_preamble():
+    """Every static roster in ONE authority call, sectioned.
+
+    Each `gunbc run` pays a full closure compile, so one process per roster was the same
+    recompute-per-read shape DESIGN §6 flags. The rosters are still single-authority reads;
+    they are simply fetched together. Sections come from the authority, so a missing one
+    refuses rather than yielding an empty roster.
+    """
+    blob = gunbc_blob_noarg("dag/tools/e0599_emitter_decision_census.dag",
+                            "e0599_write_probe_preamble_blob")
+    sections, cur = {}, None
+    for line in blob.split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("#"):
+            cur = s[1:]
+            sections[cur] = []
+            continue
+        if cur is None:
+            raise SystemExit("REFUSED: preamble content before any section header: {!r}".format(s))
+        sections[cur].append(s)
+    for need in ("patterns", "roster", "scope", "causes", "producer"):
+        if not sections.get(need):
+            raise SystemExit(
+                "REFUSED: preamble authority returned no {!r} section. An absent roster "
+                "would silently scope the census to nothing.".format(need))
+    return sections
+
+
 def load_message_patterns():
     """The E0599 message shapes, from their single authority — never restated here."""
-    blob = gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
-                            "e0599_write_message_pattern_rows_blob")
     pats = []
-    for line in blob.splitlines():
-        if not line.strip():
-            continue
+    for line in PREAMBLE["patterns"]:
         shape, pattern = line.split("\t", 1)
         pats.append((shape, re.compile(pattern)))
     if not pats:
@@ -102,9 +131,7 @@ def load_message_patterns():
 
 def load_module_roster():
     """The canonical-seven roster, from its single authority — never restated here."""
-    blob = gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
-                            "e0599_write_canonical_seven_module_log_labels_blob")
-    roster = [line.strip() for line in blob.splitlines() if line.strip()]
+    roster = list(PREAMBLE["roster"])
     if len(roster) != 7:
         raise SystemExit(f"REFUSED: roster authority returned {len(roster)} modules, expected 7")
     return roster
@@ -374,6 +401,7 @@ def collect():
     return rows, missing
 
 
+PREAMBLE = load_preamble()
 MESSAGE_PATTERNS = load_message_patterns()
 MODULES = load_module_roster()
 rows, missing = collect()
@@ -397,9 +425,7 @@ for r in rows:
 # (tools.e0599_probe_census e0599_mechanistic_root_families), whose labels derive from the
 # same e0599_root_family_label the family join above uses — so a rename in .dag cannot
 # silently narrow this filter.
-R123 = set(gunbc_blob_noarg("dag/tools/e0599_probe_census.dag",
-                            "e0599_write_mechanistic_root_family_labels_blob").split("\n"))
-R123 = {s for s in (x.strip() for x in R123) if s}
+R123 = set(PREAMBLE["scope"])
 if not R123:
     raise SystemExit("REFUSED: mechanistic root-family scope set is empty — the authority "
                      "returned no labels, and an empty filter would silently scope the "
@@ -501,9 +527,7 @@ unresolved = [r for r in out_rows if r["requirement_cause"] == "Unresolved"]
 # The producer label and its caveat are NOT restated here. They load from their single
 # authority (tools.e0599_emitter_decision_census e0599_measured_producer /
 # e0599_measured_producer_caveat) — a hardcoded label is not provenance evidence.
-_prod = [s for s in (x.strip() for x in gunbc_blob_noarg(
-    "dag/tools/e0599_emitter_decision_census.dag",
-    "e0599_write_producer_blob").split("\n")) if s]
+_prod = list(PREAMBLE["producer"])
 if len(_prod) != 2:
     raise SystemExit("REFUSED: producer authority returned {} lines, expected "
                      "producer + caveat".format(len(_prod)))
@@ -526,9 +550,7 @@ print("requirement_cause\tunique_sites\toccurrences")
 # (tools.e0599_emitter_decision_census e0599_rollup_cause_order), whose labels derive from
 # the same e0599_requirement_cause_label the classification uses — so a new variant cannot
 # be silently omitted from the rollup.
-ROLLUP_CAUSES = [s for s in (x.strip() for x in gunbc_blob_noarg(
-    "dag/tools/e0599_emitter_decision_census.dag",
-    "e0599_write_rollup_cause_labels_blob").split("\n")) if s]
+ROLLUP_CAUSES = list(PREAMBLE["causes"])
 if not ROLLUP_CAUSES:
     raise SystemExit("REFUSED: cause authority returned no rollup labels")
 missing = set(cause_sites) - set(ROLLUP_CAUSES)
