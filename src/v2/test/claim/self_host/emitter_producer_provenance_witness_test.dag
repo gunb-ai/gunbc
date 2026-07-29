@@ -46,7 +46,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_emitter_produced_count,
   compiler_frontier_producer_qualified_baselines_holds,
   compiler_frontier_quarantine_oracle_modules_seed_retained_holds,
-  emitter_produced_tag_without_registry_binding_fails_holds
+  emitter_produced_unauthorized_disposition_unrepresentable_holds
 }
 import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
@@ -105,10 +105,10 @@ test fn witness_hand_forged_emitter_produced_authorization_fails_mint_consistenc
     && hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds()
 }
 
-data witness_emitter_produced_tag_without_registry_red_note: String = "Review 44504 RED: tag-only EmitterProduced requires a minted registry binding — quarantine module path has no registry row at baseline."
+data witness_emitter_produced_unauthorized_disposition_red_note: String = "Review 44570 RED: EmitterProduced disposition requires authorization_binding in the variant — roster rows must be mint-consistent; promotions empty at baseline."
 
-test fn witness_emitter_produced_tag_without_registry_binding_fails_reds() -> Bool {
-  emitter_produced_tag_without_registry_binding_fails_holds()
+test fn witness_emitter_produced_unauthorized_disposition_unrepresentable_reds() -> Bool {
+  emitter_produced_unauthorized_disposition_unrepresentable_holds()
     && compiler_frontier_emitter_produced_authorization_mint_consistent_holds()
 }
 

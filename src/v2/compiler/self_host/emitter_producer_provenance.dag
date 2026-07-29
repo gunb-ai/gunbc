@@ -612,7 +612,7 @@ fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> B
   )
 }
 
-data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487/44504/44509 construction boundary (materialization_provider_identity_derivation_note class): records are freely constructible in .dag — custody theater. SelfHostFrontierDisposition.EmitterProduced is tag-only; authorization lives in emitter_produced_frontier_promotions (frontier.dag), derived to registry bindings via emitter_produced_authorization_registry_from_promotions. Derivation: authorization_token from (module_path, provenance digests, executed wet_execution_digest); census requires promotion row+binding atomicity + mint_consistent per EmitterProduced roster row. Live roster emitter_produced_baseline=0 and promotions empty at baseline."
+data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487/44504/44509/44570: SelfHostFrontierDisposition.EmitterProduced carries authorization_binding in the variant — unauthorized tag-only rows are unrepresentable (review 44570). Mint path: mint_emitter_produced_frontier_promotion. Derivation: authorization_token from (module_path, provenance digests, executed wet_execution_digest); census requires mint_consistent per EmitterProduced roster row. Residual substrate limit: .dag records remain freely constructible if someone authors a forged binding literal — mint_consistent + authorize gates refuse at use. Live roster emitter_produced_baseline=0 and promotions empty at baseline."
 
 fn authorized_emitter_produced_authorization_token(
   module_path: String,
@@ -645,7 +645,7 @@ type EmitterProducedAuthorizationBinding {
   authorization: AuthorizedEmitterProducedDisposition
 }
 
-data emitter_produced_authorization_binding_note: String = "Review 44504/44509: authorization bindings pair with tag-only EmitterProduced frontier rows inside EmitterProducedFrontierPromotion (frontier.dag). The registry is a derived projection — never a parallel hand-edited authority. Dissolve-on: witness-realization appends promotions atomically with roster flips via mint_emitter_produced_frontier_promotion."
+data emitter_produced_authorization_binding_note: String = "Review 44504/44509/44570: authorization_binding lives inside EmitterProduced disposition (frontier.dag). Promotions store minted frontier rows only; the registry is a derived projection — never a parallel hand-edited authority. Dissolve-on: witness-realization appends promotions atomically with roster flips via mint_emitter_produced_frontier_promotion."
 
 fn authorized_emitter_produced_disposition_mint_consistent(
   module_path: String,

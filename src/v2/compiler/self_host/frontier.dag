@@ -267,7 +267,11 @@ fn emitter_produced_authorization_bindings_from_promotions(
     xs: promotions,
     empty: empty_emitter_produced_authorization_bindings(),
     cons: fn(acc, promotion) {
-      list_snoc_item(xs: acc, item: promotion.authorization_binding)
+      match promotion.frontier_row.disposition {
+        EmitterProduced { authorization_binding: binding } =>
+          list_snoc_item(xs: acc, item: binding)
+        SeedRetained { reason: _, migration_trigger: _ } => acc
+      }
     }
   )
 }
@@ -289,10 +293,14 @@ fn emitter_produced_authorization_for_module_in_promotions(
       match found {
         Present { value: authorization } => optional_present(value: authorization)
         Absent =>
-          if promotion.authorization_binding.module_path == module_path {
-            optional_present(value: promotion.authorization_binding.authorization)
-          } else {
-            optional_absent()
+          match promotion.frontier_row.disposition {
+            EmitterProduced { authorization_binding: binding } =>
+              if binding.module_path == module_path {
+                optional_present(value: binding.authorization)
+              } else {
+                optional_absent()
+              }
+            SeedRetained { reason: _, migration_trigger: _ } => optional_absent()
           }
       }
     }
@@ -306,22 +314,36 @@ fn emitter_produced_frontier_promotions_mint_consistent_holds(
     xs: promotions,
     empty: true,
     cons: fn(ok, promotion) {
-      ok && authorized_emitter_produced_disposition_mint_consistent(
-        module_path: promotion.authorization_binding.module_path,
-        authorization: promotion.authorization_binding.authorization
-      )
+      match promotion.frontier_row.disposition {
+        EmitterProduced { authorization_binding: binding } =>
+          ok
+            && authorized_emitter_produced_disposition_mint_consistent(
+              module_path: binding.module_path,
+              authorization: binding.authorization
+            )
+        SeedRetained { reason: _, migration_trigger: _ } => false
+      }
     }
   )
 }
 
-fn emitter_produced_tag_without_registry_binding_fails_holds() -> Bool {
-  match emitter_produced_authorization_for_module_in_promotions(
-    module_path: producer_emission_oracle_row_body_producer.module_path,
-    promotions: emitter_produced_frontier_promotions()
-  ) {
-    Present { value: _ } => false
-    Absent => true
-  }
+fn emitter_produced_unauthorized_disposition_unrepresentable_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        EmitterProduced { authorization_binding: binding } =>
+          binding.module_path == row.module_path
+            && authorized_emitter_produced_disposition_mint_consistent(
+              module_path: row.module_path,
+              authorization: binding.authorization
+            )
+        SeedRetained { reason: _, migration_trigger: _ } => true
+      }
+    }
+  )
+    && (length(xs: emitter_produced_frontier_promotions()) == 0)
 }
 
 fn emitter_produced_frontier_promotions_registry_coherent_holds() -> Bool {
@@ -329,16 +351,15 @@ fn emitter_produced_frontier_promotions_registry_coherent_holds() -> Bool {
     xs: emitter_produced_frontier_promotions(),
     empty: true,
     cons: fn(ok, promotion) {
-      ok
-        && (promotion.authorization_binding.module_path == promotion.frontier_row.module_path)
-        && (match promotion.frontier_row.disposition {
-          EmitterProduced => true
-          SeedRetained { reason: _, migration_trigger: _ } => false
-        })
-        && authorized_emitter_produced_disposition_mint_consistent(
-          module_path: promotion.authorization_binding.module_path,
-          authorization: promotion.authorization_binding.authorization
-        )
+      ok && match promotion.frontier_row.disposition {
+        EmitterProduced { authorization_binding: binding } =>
+          binding.module_path == promotion.frontier_row.module_path
+            && authorized_emitter_produced_disposition_mint_consistent(
+              module_path: binding.module_path,
+              authorization: binding.authorization
+            )
+        SeedRetained { reason: _, migration_trigger: _ } => false
+      }
     }
   )
 }
@@ -360,11 +381,10 @@ fn mint_emitter_produced_frontier_promotion(
         value: EmitterProducedFrontierPromotion {
           frontier_row: CompilerModuleFrontierRow {
             module_path: module_path,
-            disposition: EmitterProduced,
+            disposition: EmitterProduced { authorization_binding: binding },
             measured_probe: measured_probe,
             tractability_rank: tractability_rank
-          },
-          authorization_binding: binding
+          }
         }
       )
     Absent => optional_absent()
@@ -728,7 +748,7 @@ fn count_emitter_produced_rows_with_module_path(
     cons: fn(count, row) {
       if row.module_path == target {
         match row.disposition {
-          EmitterProduced => count + 1
+          EmitterProduced { authorization_binding: _ } => count + 1
           SeedRetained { reason: _, migration_trigger: _ } => count
         }
       } else {
@@ -749,7 +769,7 @@ fn count_seed_retained_rows_with_module_path(
       if row.module_path == target {
         match row.disposition {
           SeedRetained { reason: _, migration_trigger: _ } => count + 1
-          EmitterProduced => count
+          EmitterProduced { authorization_binding: _ } => count
         }
       } else {
         count
@@ -792,7 +812,7 @@ fn count_emitter_produced_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> 
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        EmitterProduced => count + 1
+        EmitterProduced { authorization_binding: _ } => count + 1
         SeedRetained { reason: _, migration_trigger: _ } => count
       }
     }
@@ -805,7 +825,7 @@ fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        EmitterProduced => count
+        EmitterProduced { authorization_binding: _ } => count
         SeedRetained { reason: _, migration_trigger: _ } => count + 1
       }
     }
@@ -874,7 +894,7 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced => true
+        EmitterProduced { authorization_binding: _ } => true
         SeedRetained { reason: _, migration_trigger: _ } =>
           !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
       }
@@ -888,7 +908,7 @@ fn compiler_frontier_emitter_produced_located_reason_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced =>
+        EmitterProduced { authorization_binding: _ } =>
           frontier_blocker_class_matches(
             blocker: row.measured_probe.blocker_class,
             target: SelfEmitReady
@@ -906,18 +926,12 @@ fn compiler_frontier_emitter_produced_oracle_enrolled_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced =>
-          match emitter_produced_authorization_for_module_in_promotions(
-            module_path: row.module_path,
-            promotions: emitter_produced_frontier_promotions()
-          ) {
-            Present { value: authorization } =>
-              producer_emission_oracle_enrolls_row(
-                module_path: row.module_path,
-                receipt: authorized_emitter_produced_provenance(authorization: authorization)
-              )
-            Absent => false
-          }
+        EmitterProduced { authorization_binding: binding } =>
+          binding.module_path == row.module_path
+            && producer_emission_oracle_enrolls_row(
+              module_path: row.module_path,
+              receipt: authorized_emitter_produced_provenance(authorization: binding.authorization)
+            )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
@@ -930,18 +944,12 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced =>
-          match emitter_produced_authorization_for_module_in_promotions(
-            module_path: row.module_path,
-            promotions: emitter_produced_frontier_promotions()
-          ) {
-            Present { value: authorization } =>
-              authorized_emitter_produced_disposition_mint_consistent(
-                module_path: row.module_path,
-                authorization: authorization
-              )
-            Absent => false
-          }
+        EmitterProduced { authorization_binding: binding } =>
+          binding.module_path == row.module_path
+            && authorized_emitter_produced_disposition_mint_consistent(
+              module_path: row.module_path,
+              authorization: binding.authorization
+            )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
@@ -954,9 +962,10 @@ fn compiler_frontier_emitter_produced_registry_count_matches_roster_holds() -> B
 }
 
 fn compiler_frontier_emitter_produced_authorization_mint_consistent_holds() -> Bool {
-  emitter_produced_frontier_promotions_mint_consistent_holds(
-    promotions: emitter_produced_frontier_promotions()
-  )
+  emitter_produced_unauthorized_disposition_unrepresentable_holds()
+    && emitter_produced_frontier_promotions_mint_consistent_holds(
+      promotions: emitter_produced_frontier_promotions()
+    )
     && emitter_produced_frontier_promotions_registry_coherent_holds()
     && compiler_frontier_emitter_produced_oracle_backed_holds()
     && compiler_frontier_emitter_produced_registry_count_matches_roster_holds()
@@ -1085,7 +1094,7 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   if module_path == row.module_path {
     match row.disposition {
       SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
-      EmitterProduced => false
+      EmitterProduced { authorization_binding: _ } => false
     }
   } else {
     false
@@ -1099,7 +1108,7 @@ fn band_a_emit_readiness_module_is_emitter_produced(module_path: String) -> Bool
     cons: fn(matched, row) {
       if row.module_path == module_path {
         match row.disposition {
-          EmitterProduced => true
+          EmitterProduced { authorization_binding: _ } => true
           SeedRetained { reason: _, migration_trigger: _ } => false
         }
       } else {
@@ -1241,7 +1250,7 @@ fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) ->
 
 fn frontier_hand_rows_emitter_produced_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
   match row.disposition {
-    EmitterProduced => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    EmitterProduced { authorization_binding: _ } => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
     SeedRetained { reason: _, migration_trigger: _ } => []
   }
 }
@@ -1316,7 +1325,7 @@ fn emitter_produced_frontier_row_stage0_mod_basename(
   row: CompilerModuleFrontierRow
 ) -> List<String> {
   match row.disposition {
-    EmitterProduced => {
+    EmitterProduced { authorization_binding: _ } => {
       match frontier_row_stage0_mod_basename(index: index, row: row) {
         Accepted { value: b, diagnostics: _ } => [b]
         Rejected { diagnostics: _ } => []
