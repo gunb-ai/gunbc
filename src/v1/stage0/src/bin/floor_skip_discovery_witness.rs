@@ -348,8 +348,11 @@ fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
 // total for the eight scenarios that hit the shared index, ~3m30s for the ~7 that land in the
 // affected closure and pay ~30s each resolving to decide the node frontier, and 11.2s of
 // thread-local teardown at exit. Two of those are addressed in the same change as this line:
-// the teardown (see main) and the step's placement, which is now affected-set scoped by
-// gunbc.ci_workflow's selection-control step so most PRs do not pay any of it. The ~30s
+// the teardown (see main — removed by construction via process::exit, with the 11.2s being the
+// CI-measured cost of the removed path rather than a fresh paired before/after timing, which
+// the suite's runtime put outside the local measurement window) and the step's placement, which
+// is now affected-set scoped by gunbc.ci_workflow's selection-control step so most PRs do not
+// pay any of it — though that scoping is itself a trade, priced in that step's note. The ~30s
 // per-resolve unit is NOT explained — it is 4x the ~7.2s/resolve the floor resolve receipt
 // records, so it is either a genuinely larger closure or a PROCESS_RESOLVE_STORE miss, and it
 // is left as a named measurement rather than a guessed fix.
