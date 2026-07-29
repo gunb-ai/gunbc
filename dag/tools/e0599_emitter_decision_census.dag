@@ -285,7 +285,7 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
     concat("\t", concat(e0599_requirement_cause_label(cause: cause),
     concat("\t", concat(required_trait,
     concat("\t", concat(emitter_authority,
-    concat("\t", concat(external_authority, "\tPERTURBED_EXTRA_FIELD"))))))))))))
+    concat("\t", external_authority)))))))))))
   )
 }
 

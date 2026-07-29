@@ -195,6 +195,18 @@ observations for B1, both grounded:
    `CloneSharedRequirement` sites are that verdict's inhabitants, so B2 joins an existing
    concept rather than minting one.
 
+**Not every `CloneShared` site is the same distance from a fix.** The census records, per
+site, whether the emitter already *has* a move arm gated on an ownership predicate:
+
+| ownership alternative | sites | occurrences | what B2 must do |
+|---|---:|---:|---|
+| `EmitterArmPresent` | 32 | 222 | flip an existing predicate — `moves_by_value` (`:6318`) or `base_is_owned` (`:6435`) already select a bare move; the clone is the else-arm |
+| `NoEmitterArm` | 21 | 137 | **add** an arm — `:6959`/`:7587` clone on both branches, `:7893`/`:8748` is unconditional, and `05_emit_rust.dag` contains **zero** `Rc::try_unwrap`/`make_mut` (the seed runtime `v1_rt.rs` uses that shape, the emitter never emits it) |
+
+So of the 359 ownership-removable occurrences, 222 are gated by a verdict that already
+exists and 137 need new emitter capability. That is a sizing fact B2 should inherit rather
+than rediscover.
+
 The `FieldAccessClone` row makes the ownership seam mechanical: the emitter picks a
 **move** at `:6435` (`base_is_owned`) and this **clone** at `:6438` otherwise, so the copy
 fires exactly when the ownership verdict says not-owned — and that verdict comes from
@@ -203,7 +215,7 @@ fires exactly when the ownership verdict says not-owned — and that verdict com
 
 ## 6. Green by execution, with a discriminating RED
 
-`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **18 green**.
+`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **19 green**.
 
 The three RED controls are the load-bearing half. Perturbing the classifier's fail-closed
 arm into the absorbing default DESIGN §5 forbids (`Absent => CloneSharedRequirement`)
@@ -215,8 +227,17 @@ FAIL e0599_b0_red_unnamed_receiver_shape_refuses
 FAIL e0599_b0_red_empty_receiver_refuses
 ```
 
-Restored, 18/18 green. A zero in the `Unresolved` row is therefore a measurement, not a
+Restored, 19/19 green. A zero in the `Unresolved` row is therefore a measurement, not a
 dead arm.
+
+**Second control — the joiner's field contract.** The classification line carries exactly
+seven fields, and the joiner refuses on any mismatch rather than padding. Perturbing the
+authority to emit an eighth field produces a located refusal naming the offending key and
+exits 1:
+
+```
+REFUSED: cause authority returned 8 fields (expected 7) for key ('clone', '(*__fm)[0]')
+```
 
 ## 7. Corrections to the brief's verified facts (it asked for re-verification)
 
@@ -254,9 +275,21 @@ Against the real impl bounds that under-derives on two of the three:
 | `PartialEq` | `T: PartialEq` | `A: Clone + PartialEq` (`:1716`) | **no** |
 
 Since every emitted `Vec` *is* `im::Vector`, a contract keyed on std `Vec` yields
-`T: Debug` where `T: Clone + Debug` is required. Raised with `vivid-swift-837` as a
-question — the keying may be deliberate for a target whose collection representation is
-std `Vec` — not decided here. P-fn itself cites `im` directly.
+`T: Debug` where `T: Clone + Debug` is required.
+
+**Answered.** Raised with `vivid-swift-837`, which confirmed (2026-07-29) that the std
+keying was *not* intentional — there is no separate production std `Vec` representation —
+and corrected it in **#7399**: the inapplicable std/serde `Vec` authorities are deleted,
+exact `im` 15.1.0 line authorities added, and `Debug`/`PartialEq`/`Serialize`/`Deserialize`
+each modelled with a supplemental `T: Clone`. #7399 is model-only and pending operator
+merge.
+
+**Consequence for this module, recorded as a dissolution trigger:** the local
+`E0599ExternalAuthority` rows here are an *interim* citation. P-fn sequences **after**
+#7399 and must not mint a parallel Vec authority — when #7399 lands, delete
+`e0599_im_vector_inherent_impl` / `_index_impl` / `_clone_impl` and import the
+`derive_contracts` rows instead. That trigger is carried on the module's own note, not
+only here.
 
 ## 9. Scope honoured
 
