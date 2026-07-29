@@ -1,0 +1,243 @@
+module test.claim.scm_compatibility_pijul_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.pijul {
+  PijulUpstreamVersion,
+  PijulChannel,
+  PijulChannelStateIdentity,
+  PijulReadBackObservation,
+  PijulInaccessibleProjection,
+  pijul_upstream_version,
+}
+import test.claim.pijul_upstream_model_witness {
+  pijul_r0_fixture_projection,
+  pijul_r0_fixture_repository,
+  pijul_state_partial,
+  projection_with_channels,
+}
+import gunbc.scm_compatibility.pijul {
+  PijulCompatibilityBindingOutcome,
+  PijulCompatibilityBound,
+  PijulCompatibilityBindingRefused,
+  pijul_compatibility_bind,
+  pijul_compatibility_projection_handler,
+  pijul_compatibility_projection_receipt,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityFidelityPreserved,
+  CompatibilityAdvanceUnavailable,
+  CompatibilityObservationOnly,
+  CompatibilityModeledAdvanceRequired,
+  CompatibilityExactCompareAndAdvance,
+  CompatibilityCapabilitySatisfied,
+  CompatibilityCapabilityRefused,
+  compatibility_projection_from_handler,
+  compatibility_check_advance_requirement,
+}
+import gunbc.native_scm_interaction_contract {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
+  native_scm_primary_label,
+  native_scm_attach_projection,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn pijul_fixture_observation() -> PijulReadBackObservation {
+  PijulReadBackObservation {
+    pijul_version: pijul_upstream_version,
+    projection: pijul_r0_fixture_projection(),
+  }
+}
+
+fn pijul_fixture_binding() -> PijulCompatibilityBindingOutcome {
+  pijul_compatibility_bind(
+    projection: pijul_r0_fixture_projection(),
+    target: "main",
+    read_back: pijul_fixture_observation(),
+  )
+}
+
+test fn witness_pijul_r1_consumes_native_projection_and_readback() -> Bool {
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt } =>
+      receipt.target == "main"
+        && count(receipt.generation.changes) == 3
+        && match pijul_compatibility_projection_receipt(
+          receipt: receipt,
+        ).advance {
+          CompatibilityAdvanceUnavailable { cause: _ } => true
+          _ => false
+        }
+  }
+}
+
+test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt } => {
+      let projection = compatibility_projection_from_handler(
+        handler: pijul_compatibility_projection_handler(),
+        receipt: receipt,
+      )
+      let attached = native_scm_attach_projection(
+        receipt: original,
+        projection: projection,
+      )
+      attached.identity == original.identity
+        && attached.transition == original.transition
+        && attached.primary == original.primary
+        && native_scm_primary_label(primary: attached.primary) == "Landed"
+        && projection.realization == "pijul-r0"
+    }
+  }
+}
+
+test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt } => {
+      let capability = pijul_compatibility_projection_receipt(
+        receipt: receipt,
+      ).advance
+      match compatibility_check_advance_requirement(
+        requirement: CompatibilityObservationOnly,
+        observed: capability,
+      ) {
+        CompatibilityCapabilitySatisfied =>
+          match compatibility_check_advance_requirement(
+            requirement: CompatibilityModeledAdvanceRequired {
+              guarantee: CompatibilityExactCompareAndAdvance,
+            },
+            observed: capability,
+          ) {
+            CompatibilityCapabilityRefused {
+              requirement: _,
+              observed: _,
+            } => true
+            CompatibilityCapabilitySatisfied => false
+          }
+        CompatibilityCapabilityRefused {
+          requirement: _,
+          observed: _,
+        } => false
+      }
+    }
+  }
+}
+
+test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt } => {
+      let profile = pijul_compatibility_projection_receipt(
+        receipt: receipt,
+      ).fidelity
+      match profile.upstream_change_evidence {
+        CompatibilityFidelityPreserved => true
+        _ => false
+      }
+    }
+  }
+}
+
+test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt: expected } =>
+      match pijul_compatibility_bind(
+        projection: pijul_r0_fixture_projection(),
+        target: "main",
+        read_back: PijulReadBackObservation {
+          pijul_version: PijulUpstreamVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            beta: 21,
+          },
+          projection: pijul_r0_fixture_projection(),
+        },
+      ) {
+        PijulCompatibilityBindingRefused { cause: _ } => false
+        PijulCompatibilityBound { receipt: other_observer } => {
+          let expected_projection = compatibility_projection_from_handler(
+            handler: pijul_compatibility_projection_handler(),
+            receipt: expected,
+          )
+          let other_projection = compatibility_projection_from_handler(
+            handler: pijul_compatibility_projection_handler(),
+            receipt: other_observer,
+          )
+          expected_projection.generation_evidence == other_projection.generation_evidence
+            && expected_projection.read_back != other_projection.read_back
+        }
+      }
+  }
+}
+
+test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
+  match pijul_compatibility_bind(
+    projection: pijul_r0_fixture_projection(),
+    target: "main",
+    read_back: PijulReadBackObservation {
+      pijul_version: pijul_upstream_version,
+      projection: PijulInaccessibleProjection {
+        reason: "fixture unavailable",
+      },
+    },
+  ) {
+    PijulCompatibilityBindingRefused { cause: _ } => true
+    PijulCompatibilityBound { receipt: _ } => false
+  }
+}
+
+test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
+  let repository = pijul_r0_fixture_repository()
+  let other_projection = projection_with_channels(
+    projection: pijul_r0_fixture_projection(),
+    channels: repository.channels
+      |> map(channel =>
+        if channel.name == "main" || channel.name == "review" {
+          PijulChannel {
+            name: channel.name,
+            state_identity: PijulChannelStateIdentity {
+              state: pijul_state_partial,
+              changes: channel.state_identity.changes,
+              producer: channel.state_identity.producer,
+            },
+          }
+        } else {
+          channel
+        }
+      ),
+  )
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt: expected } =>
+      match pijul_compatibility_bind(
+        projection: other_projection,
+        target: "main",
+        read_back: PijulReadBackObservation {
+          pijul_version: pijul_upstream_version,
+          projection: other_projection,
+        },
+      ) {
+        PijulCompatibilityBindingRefused { cause: _ } => false
+        PijulCompatibilityBound { receipt: other_state } => {
+          let expected_projection = pijul_compatibility_projection_receipt(
+            receipt: expected,
+          )
+          let other_state_projection = pijul_compatibility_projection_receipt(
+            receipt: other_state,
+          )
+          expected_projection.read_back != other_state_projection.read_back
+            && expected_projection.projection != other_state_projection.projection
+        }
+      }
+  }
+}
