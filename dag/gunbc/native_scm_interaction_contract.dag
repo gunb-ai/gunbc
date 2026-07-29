@@ -1,13 +1,13 @@
 module gunbc.native_scm_interaction_contract
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   compatibility_projection_upsert,
 }
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, the user-facing primary outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed choice is backed by a stored resumable option, the user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -35,10 +35,17 @@ type NativeScmProjection {
   realizations: List<CompatibilityProjectionReceipt>
 }
 
+type NativeScmContinuationOption {
+  choice: NonEmptyStr
+  result_preview: NonEmptyStr
+  resume_token: NonEmptyStr
+}
+
 type NativeScmContinuation {
   proposal: NativeScmProposalIdentity
-  resume_choice: String
-  resume_preview: String
+  first_option: NativeScmContinuationOption
+  second_option: NativeScmContinuationOption
+  additional_options: List<NativeScmContinuationOption>
 }
 
 type NativeScmRefusal {
@@ -54,7 +61,6 @@ type NativeScmPrimaryOutcome
     }
   | ChoiceRequired {
       question: String
-      previews: List<String>
       continuation: NativeScmContinuation
     }
   | InProgress {
@@ -201,26 +207,36 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
     }
     TwoLegitimateMeaningsNeedChoice => ChoiceRequired {
       question: "The call can follow the rename or stay separate. Which meaning should land?",
-      previews: [
-        "follow the rename: keep the new spelling and move the call",
-        "keep a separate name: preserve the old spelling as a distinct meaning",
-      ],
       continuation: NativeScmContinuation {
         proposal: identity,
-        resume_choice: "follow the rename",
-        resume_preview: "follow the rename: keep the new spelling and move the call",
+        first_option: NativeScmContinuationOption {
+          choice: "follow the rename",
+          result_preview: "follow the rename: keep the new spelling and move the call",
+          resume_token: "resume-follow-the-rename",
+        },
+        second_option: NativeScmContinuationOption {
+          choice: "keep a separate name",
+          result_preview: "keep a separate name: preserve the old spelling as a distinct meaning",
+          resume_token: "resume-keep-separate-name",
+        },
+        additional_options: [],
       },
     }
     IncompatibleGoalsNeedAuthorizedDecider => ChoiceRequired {
       question: "Two requested goals cannot both be retained. Which one should the authorized decider keep?",
-      previews: [
-        "retain goal A and drop goal B",
-        "retain goal B and drop goal A",
-      ],
       continuation: NativeScmContinuation {
         proposal: identity,
-        resume_choice: "retain goal A",
-        resume_preview: "retain goal A and drop goal B",
+        first_option: NativeScmContinuationOption {
+          choice: "retain goal A",
+          result_preview: "retain goal A and drop goal B",
+          resume_token: "resume-retain-goal-a",
+        },
+        second_option: NativeScmContinuationOption {
+          choice: "retain goal B",
+          result_preview: "retain goal B and drop goal A",
+          resume_token: "resume-retain-goal-b",
+        },
+        additional_options: [],
       },
     }
     EvidenceGatheredInternally => Landed {
@@ -443,10 +459,38 @@ fn native_scm_applied_count(ledger: NativeScmSubmissionLedger) -> Int {
 fn native_scm_primary_label(primary: NativeScmPrimaryOutcome) -> String {
   match primary {
     Landed { result_preview: _ } => "Landed"
-    ChoiceRequired { question: _, previews: _, continuation: _ } => "ChoiceRequired"
+    ChoiceRequired { question: _, continuation: _ } => "ChoiceRequired"
     InProgress { progress_preview: _ } => "InProgress"
     CouldNotLand { refusal: _ } => "CouldNotLand"
   }
+}
+
+fn native_scm_continuation_options(
+  continuation: NativeScmContinuation,
+) -> List<NativeScmContinuationOption> {
+  append(
+    [
+      continuation.first_option,
+      continuation.second_option,
+    ],
+    items: continuation.additional_options,
+  )
+}
+
+fn native_scm_choice_previews(
+  continuation: NativeScmContinuation,
+) -> List<String> {
+  native_scm_continuation_options(continuation: continuation)
+    |> map(option => option.result_preview)
+}
+
+fn native_scm_continuation_option(
+  continuation: NativeScmContinuation,
+  choice: String,
+) -> Optional<NativeScmContinuationOption> {
+  native_scm_continuation_options(continuation: continuation)
+    |> filter(option => option.choice == choice)
+    |> first
 }
 
 fn native_scm_resolve_choice(
@@ -454,18 +498,22 @@ fn native_scm_resolve_choice(
   choice: String,
 ) -> NativeScmPrimaryOutcome {
   match receipt.primary {
-    ChoiceRequired { question: _, previews: _, continuation } =>
-      if choice == continuation.resume_choice {
-        Landed { result_preview: continuation.resume_preview }
-      } else {
-        CouldNotLand {
-          refusal: NativeScmRefusal {
-            plain_reason: "the answer did not match the stored continuation",
-            responsible_party: "authorized decider",
-            next_action: "select one of the stored previews",
-            refusal_receipt: continuation.proposal.attempt_key,
-          },
-        }
+    ChoiceRequired { question: _, continuation } =>
+      match native_scm_continuation_option(
+        continuation: continuation,
+        choice: choice,
+      ) {
+        Present { value: option } =>
+          Landed { result_preview: option.result_preview }
+        Absent =>
+          CouldNotLand {
+            refusal: NativeScmRefusal {
+              plain_reason: "the answer did not match a stored choice",
+              responsible_party: "authorized decider",
+              next_action: "select one of the displayed choices",
+              refusal_receipt: continuation.proposal.attempt_key,
+            },
+          }
       }
     Landed { result_preview: p } => Landed { result_preview: p }
     InProgress { progress_preview } => InProgress { progress_preview: progress_preview }

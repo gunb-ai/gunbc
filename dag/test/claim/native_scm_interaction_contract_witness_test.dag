@@ -24,6 +24,7 @@ import gunbc.native_scm_interaction_contract {
   VisibilityAuthorizedDetails,
   native_scm_receipt_for,
   native_scm_primary_label,
+  native_scm_choice_previews,
   native_scm_resolve_choice,
   native_scm_record_repaired_projection,
   native_scm_inspect_receipt,
@@ -149,13 +150,19 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
   let r = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
-      ChoiceRequired { question, previews, continuation } =>
+      ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "rename")
-          && count(previews) == 2
-          && continuation.resume_choice == "follow the rename"
+          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && continuation.first_option.choice == "follow the rename"
+          && continuation.second_option.choice == "keep a separate name"
           && match native_scm_resolve_choice(receipt: r, choice: "follow the rename") {
             Landed { result_preview } =>
               string_contains(s: result_preview, pattern: "follow the rename")
+            _ => false
+          }
+          && match native_scm_resolve_choice(receipt: r, choice: "keep a separate name") {
+            Landed { result_preview } =>
+              string_contains(s: result_preview, pattern: "keep a separate name")
             _ => false
           }
       _ => false
@@ -166,13 +173,19 @@ test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
   let r = receipt_for(scenario: IncompatibleGoalsNeedAuthorizedDecider)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
-      ChoiceRequired { question, previews, continuation } =>
+      ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "authorized decider")
-          && count(previews) == 2
-          && continuation.resume_choice == "retain goal A"
+          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && continuation.first_option.choice == "retain goal A"
+          && continuation.second_option.choice == "retain goal B"
           && match native_scm_resolve_choice(receipt: r, choice: "retain goal A") {
             Landed { result_preview } =>
               string_contains(s: result_preview, pattern: "retain goal A")
+            _ => false
+          }
+          && match native_scm_resolve_choice(receipt: r, choice: "retain goal B") {
+            Landed { result_preview } =>
+              string_contains(s: result_preview, pattern: "retain goal B")
             _ => false
           }
       _ => false
