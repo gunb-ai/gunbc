@@ -3,6 +3,7 @@ module gunbc.fleet_bmc_observation
 import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
+  bmc_firmware_semantic_version,
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceObservation,
@@ -37,18 +38,25 @@ import gunbc.fleet_intent {
 }
 import product.placement_supply { HostIdentity }
 import std.bmc { OpenBmc }
-import std.content_hash { content_hash_atom }
+import std.content_hash {
+  content_hash_atom,
+  content_hash_combine,
+  content_hash_tagged,
+}
 import std.measure {
   Celsius,
   RevolutionsPerMinute,
   byte_size,
   celsius,
+  celsius_count,
   percent,
+  percent_count,
   rpm,
 }
 import std.nat { Nat }
 import std.state_durability {
   StatePerturbationGeneration,
+  StateRealizationDefinitionHashes,
   StateRealizationIdentity,
 }
 import std.types { Bool, ContentHash, List, NonEmptyStr, String }
@@ -108,7 +116,7 @@ data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   endpoint: srv3_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: "2.07.00",
+    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   observed_at: "2026-07-27",
 }
@@ -117,7 +125,7 @@ data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   endpoint: srv4_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: "3.22.00",
+    version: bmc_firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   observed_at: "2026-07-27",
 }
@@ -188,13 +196,92 @@ data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FA
 
 data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-data srv4_bmc_fan_realization_content_hash: ContentHash = content_hash_atom(
-  value: "typed-openbmc-fan-config-project-validate-publish-restart-readback-v2",
-)
+fn bmc_fan_curve_step_content_hash(step: BmcFanCurveStep) -> ContentHash {
+  content_hash_combine(
+    left: content_hash_atom(
+      value: to_string(celsius_count(step.at_or_above)) as NonEmptyStr,
+    ),
+    right: content_hash_atom(
+      value: to_string(percent_count(step.duty)) as NonEmptyStr,
+    ),
+  )
+}
+
+fn bmc_fan_curve_content_hash(curve: BmcFanCurve) -> ContentHash {
+  let steps_hash = fold(
+    curve.steps,
+    init: content_hash_atom(value: "bmc-fan-curve-steps"),
+    f: (hash, step) =>
+      content_hash_combine(
+        left: hash,
+        right: bmc_fan_curve_step_content_hash(step: step),
+      ),
+  )
+  content_hash_tagged(
+    tag: "bmc-fan-curve",
+    payload: content_hash_combine(
+      left: content_hash_atom(value: curve.control_sensor),
+      right: content_hash_combine(
+        left: steps_hash,
+        right: content_hash_combine(
+          left: content_hash_atom(
+            value: to_string(percent_count(curve.minimum_duty)) as NonEmptyStr,
+          ),
+          right: content_hash_combine(
+            left: content_hash_atom(
+              value: to_string(percent_count(curve.sensor_unavailable_duty)) as NonEmptyStr,
+            ),
+            right: content_hash_combine(
+              left: content_hash_atom(
+                value: to_string(percent_count(curve.zone_failsafe_duty)) as NonEmptyStr,
+              ),
+              right: content_hash_combine(
+                left: content_hash_atom(
+                  value: to_string(curve.positive_hysteresis_degrees_celsius) as NonEmptyStr,
+                ),
+                right: content_hash_atom(
+                  value: to_string(curve.negative_hysteresis_degrees_celsius) as NonEmptyStr,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn srv4_bmc_fan_realization_definition_hashes(
+  policy: BmcFanPolicyObservation,
+  active_digest: Digest,
+) -> StateRealizationDefinitionHashes {
+  StateRealizationDefinitionHashes {
+    projection: bmc_fan_curve_content_hash(curve: policy.curve),
+    verifier: content_hash_atom(value: active_digest.hex),
+    observer: content_hash_combine(
+      left: content_hash_atom(value: srv4_bmc_fan_observed_controller_zone_path),
+      right: content_hash_atom(value: policy.selected_config_path),
+    ),
+    transport: content_hash_combine(
+      left: content_hash_atom(value: to_string(policy.firmware.version.major) as NonEmptyStr),
+      right: content_hash_combine(
+        left: content_hash_atom(value: to_string(policy.firmware.version.minor) as NonEmptyStr),
+        right: content_hash_atom(value: to_string(policy.firmware.version.patch) as NonEmptyStr),
+      ),
+    ),
+    actuator: content_hash_combine(
+      left: content_hash_atom(value: policy.controller_service),
+      right: content_hash_atom(value: policy.controller_binary),
+    ),
+  }
+}
 
 data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: srv4_bmc_fan_realization_id,
-  content_hash: srv4_bmc_fan_realization_content_hash,
+  definition_hashes: srv4_bmc_fan_realization_definition_hashes(
+    policy: srv4_bmc_fan_converged_policy_observation,
+    active_digest: srv4_bmc_fan_active_config_digest,
+  ),
 }
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(

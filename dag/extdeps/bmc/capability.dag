@@ -2,7 +2,7 @@ module extdeps.bmc.capability
 
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,7 +23,60 @@ type BmcCapability
 
 type BmcFirmwareVersion {
   family: BmcFirmwareFamily
-  version: NonEmptyStr
+  version: BmcFirmwareSemanticVersion
+}
+
+type BmcFirmwareSemanticVersion {
+  major: Nat
+  minor: Nat
+  patch: Nat
+}
+
+type BmcFirmwareVersionParse
+  = BmcFirmwareVersionParsed { version: BmcFirmwareSemanticVersion }
+  | BmcFirmwareVersionRefused { wire: String }
+
+fn bmc_firmware_semantic_version(
+  major: Nat,
+  minor: Nat,
+  patch: Nat,
+) -> BmcFirmwareSemanticVersion {
+  BmcFirmwareSemanticVersion {
+    major: major,
+    minor: minor,
+    patch: patch,
+  }
+}
+
+fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
+  let fields = split(s: wire, delimiter: ".")
+  if fields.length() != 3 {
+    BmcFirmwareVersionRefused { wire: wire }
+  } else {
+    match parse_int(s: fields.first()) {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: major } =>
+        match parse_int(s: fields.skip(n: 1).first()) {
+          Absent => BmcFirmwareVersionRefused { wire: wire }
+          Present { value: minor } =>
+            match parse_int(s: fields.skip(n: 2).first()) {
+              Absent => BmcFirmwareVersionRefused { wire: wire }
+              Present { value: patch } =>
+                if major < 0 || minor < 0 || patch < 0 {
+                  BmcFirmwareVersionRefused { wire: wire }
+                } else {
+                  BmcFirmwareVersionParsed {
+                    version: bmc_firmware_semantic_version(
+                      major: major as Nat,
+                      minor: minor as Nat,
+                      patch: patch as Nat,
+                    ),
+                  }
+                }
+            }
+        }
+    }
+  }
 }
 
 type BmcFirmwareTrack {
@@ -51,10 +104,7 @@ fn bmc_firmware_version_matches_track(
   track: BmcFirmwareTrack
 ) -> Bool {
   firmware.family == track.family
-    && starts_with(
-      s: firmware.version,
-      prefix: concat(to_string(track.major_version), ".")
-    )
+    && firmware.version.major == track.major_version
 }
 
 fn bmc_firmware_observation_matches_intent(
