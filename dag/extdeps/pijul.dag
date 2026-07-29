@@ -1,6 +1,6 @@
 module extdeps.pijul
 
-import std.types { NonEmptyStr, Bytes, Timestamp }
+import std.types { NonEmptyStr, Bytes, Timestamp, Map }
 import std.integer { NonNegativeInt, UInt8 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -394,32 +394,66 @@ fn pijul_hash_present(
   pijul_hash_count(changes: changes, target: target) > 0
 }
 
+type PijulUniqueScan<K> {
+  seen: Map<K, Bool>
+  ordered: List<K>
+  duplicate: K?
+}
+
+fn pijul_unique_scan_step<K>(
+  scan: PijulUniqueScan<K>,
+  item: K,
+) -> PijulUniqueScan<K> {
+  if map_contains_key(scan.seen, item) {
+    PijulUniqueScan {
+      seen: scan.seen,
+      ordered: scan.ordered,
+      duplicate: match scan.duplicate {
+        Present { value } => Present { value: value }
+        Absent => Present { value: item }
+      },
+    }
+  } else {
+    PijulUniqueScan {
+      seen: map_insert(scan.seen, item, true),
+      ordered: list_push(scan.ordered, item),
+      duplicate: scan.duplicate,
+    }
+  }
+}
+
+fn pijul_scan_unique<K>(items: List<K>) -> PijulUniqueScan<K> {
+  fold(
+    items,
+    init: PijulUniqueScan {
+      seen: empty_map(),
+      ordered: [],
+      duplicate: Absent,
+    },
+    f: pijul_unique_scan_step,
+  )
+}
+
 fn pijul_change_sets_equal(
   left: List<PijulChangeHash>,
   right: List<PijulChangeHash>,
 ) -> Bool {
+  let left_scan = pijul_scan_unique(items: left)
+  let right_scan = pijul_scan_unique(items: right)
   count(left) == count(right)
-    && all(left, change => pijul_hash_count(changes: left, target: change) == 1)
-    && all(right, change => pijul_hash_count(changes: right, target: change) == 1)
-    && all(left, change => pijul_hash_present(changes: right, target: change))
-}
-
-fn pijul_add_change_once(
-  changes: List<PijulChangeHash>,
-  change: PijulChangeHash,
-) -> List<PijulChangeHash> {
-  if pijul_hash_present(changes: changes, target: change) {
-    changes
-  } else {
-    append(changes, items: [change])
-  }
+    && left_scan.duplicate == Absent
+    && right_scan.duplicate == Absent
+    && all(
+      left,
+      change => map_contains_key(right_scan.seen, change),
+    )
 }
 
 fn pijul_change_set_union(
   left: List<PijulChangeHash>,
   right: List<PijulChangeHash>,
 ) -> List<PijulChangeHash> {
-  fold(right, init: left, f: pijul_add_change_once)
+  pijul_scan_unique(items: concat(left, right)).ordered
 }
 
 fn pijul_change_known_or_declared_missing(
@@ -462,11 +496,13 @@ type PijulDuplicateChangeIssue {
 fn pijul_duplicate_change(
   changes: List<PijulRecordedChange>,
 ) -> PijulDuplicateChangeIssue? {
-  let hashes = pijul_change_hashes(changes: changes)
-  hashes
-    |> filter(hash => pijul_hash_count(changes: hashes, target: hash) > 1)
-    |> map(hash => PijulDuplicateChangeIssue { change: hash })
-    |> first
+  match pijul_scan_unique(
+    items: pijul_change_hashes(changes: changes),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateChangeIssue { change: value } }
+    Absent => Absent
+  }
 }
 
 type PijulDuplicateChannelIssue {
@@ -476,12 +512,13 @@ type PijulDuplicateChannelIssue {
 fn pijul_duplicate_channel(
   channels: List<PijulChannel>,
 ) -> PijulDuplicateChannelIssue? {
-  channels
-    |> filter(channel =>
-      channels |> filter(other => other.name == channel.name) |> count > 1
-    )
-    |> map(channel => PijulDuplicateChannelIssue { channel: channel.name })
-    |> first
+  match pijul_scan_unique(
+    items: channels |> map(channel => channel.name),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateChannelIssue { channel: value } }
+    Absent => Absent
+  }
 }
 
 type PijulDuplicateChannelMemberIssue {
@@ -492,21 +529,27 @@ type PijulDuplicateChannelMemberIssue {
 fn pijul_duplicate_channel_member(
   channels: List<PijulChannel>,
 ) -> PijulDuplicateChannelMemberIssue? {
-  channels
-    |> flat_map(channel =>
-      channel.state_identity.changes
-        |> filter(change =>
-          pijul_hash_count(
-            changes: channel.state_identity.changes,
-            target: change,
-          ) > 1
-        )
-        |> map(change => PijulDuplicateChannelMemberIssue {
-          channel: channel.name,
-          change: change,
-        })
-    )
-    |> first
+  fold(
+    channels,
+    init: Absent,
+    f: fn(found, channel) {
+      match found {
+        Present { value } => Present { value: value }
+        Absent =>
+          match pijul_scan_unique(
+            items: channel.state_identity.changes,
+          ).duplicate {
+            Present { value } => Present {
+              value: PijulDuplicateChannelMemberIssue {
+                channel: channel.name,
+                change: value,
+              },
+            }
+            Absent => Absent
+          }
+      }
+    },
+  )
 }
 
 type PijulMissingChangeIssue {
@@ -622,12 +665,13 @@ type PijulDuplicateVertexIssue {
 fn pijul_duplicate_vertex(
   pristine: PijulPristineState,
 ) -> PijulDuplicateVertexIssue? {
-  pristine.vertices
-    |> filter(vertex =>
-      pristine.vertices |> filter(other => other.id == vertex.id) |> count > 1
-    )
-    |> map(vertex => PijulDuplicateVertexIssue { vertex: vertex.id })
-    |> first
+  match pijul_scan_unique(
+    items: pristine.vertices |> map(vertex => vertex.id),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateVertexIssue { vertex: value } }
+    Absent => Absent
+  }
 }
 
 type PijulDuplicateTreePathIssue {
@@ -635,12 +679,13 @@ type PijulDuplicateTreePathIssue {
 }
 
 fn pijul_duplicate_tree_path(tree: PijulTree) -> PijulDuplicateTreePathIssue? {
-  tree.entries
-    |> filter(entry =>
-      tree.entries |> filter(other => other.path == entry.path) |> count > 1
-    )
-    |> map(entry => PijulDuplicateTreePathIssue { path: entry.path })
-    |> first
+  match pijul_scan_unique(
+    items: tree.entries |> map(entry => entry.path),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateTreePathIssue { path: value } }
+    Absent => Absent
+  }
 }
 
 type PijulDuplicateTreeInodeIssue {
@@ -648,12 +693,13 @@ type PijulDuplicateTreeInodeIssue {
 }
 
 fn pijul_duplicate_tree_inode(tree: PijulTree) -> PijulDuplicateTreeInodeIssue? {
-  tree.entries
-    |> filter(entry =>
-      tree.entries |> filter(other => other.inode == entry.inode) |> count > 1
-    )
-    |> map(entry => PijulDuplicateTreeInodeIssue { inode: entry.inode })
-    |> first
+  match pijul_scan_unique(
+    items: tree.entries |> map(entry => entry.inode),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateTreeInodeIssue { inode: value } }
+    Absent => Absent
+  }
 }
 
 type PijulDuplicateWorkingCopyPathIssue {
@@ -663,14 +709,13 @@ type PijulDuplicateWorkingCopyPathIssue {
 fn pijul_duplicate_working_copy_path(
   working_copy: PijulWorkingCopy,
 ) -> PijulDuplicateWorkingCopyPathIssue? {
-  working_copy.entries
-    |> filter(entry =>
-      working_copy.entries
-        |> filter(other => other.path == entry.path)
-        |> count > 1
-    )
-    |> map(entry => PijulDuplicateWorkingCopyPathIssue { path: entry.path })
-    |> first
+  match pijul_scan_unique(
+    items: working_copy.entries |> map(entry => entry.path),
+  ).duplicate {
+    Present { value } =>
+      Present { value: PijulDuplicateWorkingCopyPathIssue { path: value } }
+    Absent => Absent
+  }
 }
 
 fn pijul_missing_channel_member_issue(
@@ -1196,31 +1241,21 @@ fn pijul_decode_log_head_plaintext(text: String) -> PijulLogHeadDecodeOutcome {
   }
 }
 
-type PijulDuplicateHashLine {
-  change: PijulChangeHash
-}
-
 fn pijul_decode_hash_only_log(text: String) -> PijulLogHashSetDecodeOutcome {
   let changes = split(s: text, delimiter: "\n")
     |> map(line => trim(s: line))
     |> filter(line => line != "")
     |> map(line => line as PijulChangeHash)
-  let duplicates = changes
-    |> filter(change =>
-      pijul_hash_count(changes: changes, target: change) > 1
-    )
-    |> map(change => PijulDuplicateHashLine { change: change })
+  let unique = pijul_scan_unique(items: changes)
   if count(changes) == 0 {
     PijulLogHashSetDecodeRefused { cause: PijulLogHashSetEmpty }
-  } else if count(duplicates) > 0 {
-    match duplicates.first() {
-      Present { value: duplicate } => PijulLogHashSetDecodeRefused {
-        cause: PijulLogHashSetDuplicate { change: duplicate.change }
-      }
-      Absent => PijulLogHashSetDecodeRefused { cause: PijulLogHashSetEmpty }
-    }
   } else {
-    PijulLogHashSetDecoded { changes: changes }
+    match unique.duplicate {
+      Present { value } => PijulLogHashSetDecodeRefused {
+        cause: PijulLogHashSetDuplicate { change: value }
+      }
+      Absent => PijulLogHashSetDecoded { changes: changes }
+    }
   }
 }
 
@@ -1534,11 +1569,9 @@ fn pijul_plan_delivery(
           cause: PijulDeliveryChangeUnavailable { change: issue.change }
         }
         Absent => {
-          let unique_delivered = fold(
-            delivered,
-            init: [],
-            f: pijul_add_change_once,
-          )
+          let unique_delivered = pijul_scan_unique(
+            items: delivered,
+          ).ordered
           let resulting = pijul_change_set_union(
             left: channel.state_identity.changes,
             right: unique_delivered,
