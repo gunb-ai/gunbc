@@ -476,7 +476,7 @@ fn native_scm_attach_projection(
   }
 }
 
-fn native_scm_repair_projection(
+fn native_scm_record_repaired_projection(
   receipt: NativeScmReceipt,
   projection: CompatibilityProjectionReceipt,
 ) -> NativeScmReceipt {

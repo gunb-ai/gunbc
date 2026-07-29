@@ -148,7 +148,6 @@ fn pijul_compatibility_projection_receipt(
         capture: CompatibilityUpstreamChangeEvidenceCaptured,
         projection: concat("pijul-channel-state:", generation),
         read_back: concat("pijul-readback:", generation),
-        repair: concat("pijul-projection-repair:", generation),
         advance: CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: pijul_compatibility_fidelity(),
       }

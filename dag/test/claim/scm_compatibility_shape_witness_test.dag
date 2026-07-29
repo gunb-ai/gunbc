@@ -36,7 +36,6 @@ fn synthetic_fourth_handler(
         capture: CompatibilityEndpointStateCaptured,
         projection: concat("synthetic-projection:", receipt.generation),
         read_back: concat("synthetic-readback:", receipt.generation),
-        repair: concat("synthetic-repair:", receipt.generation),
         advance: CompatibilityAdvanceUnavailable {
           cause: "synthetic R0 intentionally has no conditional advance",
         },
@@ -101,7 +100,6 @@ fn named_fixture_projection(
     capture: synthetic.capture,
     projection: synthetic.projection,
     read_back: synthetic.read_back,
-    repair: synthetic.repair,
     advance: synthetic.advance,
     fidelity: synthetic.fidelity,
   }

@@ -2,14 +2,13 @@ module gunbc.scm_compatibility_shape
 
 import std.types { Bool, List, NonEmptyStr }
 
-data scm_compatibility_shape_note: NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by all three: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, idempotent repair identity, and an explicit conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, commit, or Applied receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
+data scm_compatibility_shape_note: NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by the landed R0s: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, and an explicit modeled-or-unavailable conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, repair, execution, commit, or Applied receipt. A failed projection may later be replaced idempotently by realization and target only after some external operation supplies a new independently read-back receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
 
 type CompatibilityRealizationHandle = NonEmptyStr where brand("CompatibilityRealizationHandle")
 type CompatibilityTargetHandle = NonEmptyStr where brand("CompatibilityTargetHandle")
 type CompatibilityGenerationEvidenceHandle = NonEmptyStr where brand("CompatibilityGenerationEvidenceHandle")
 type CompatibilityProjectionHandle = NonEmptyStr where brand("CompatibilityProjectionHandle")
 type CompatibilityReadBackHandle = NonEmptyStr where brand("CompatibilityReadBackHandle")
-type CompatibilityRepairHandle = NonEmptyStr where brand("CompatibilityRepairHandle")
 
 type CompatibilityCaptureClass
   = CompatibilityEndpointStateCaptured
@@ -75,14 +74,10 @@ type CompatibilityAdvanceCapability
   = CompatibilityAdvanceModeled {
       guarantee: CompatibilityAdvanceGuarantee,
     }
-  | CompatibilityAdvanceExecutedAndReadBack {
-      guarantee: CompatibilityAdvanceGuarantee,
-    }
   | CompatibilityAdvanceUnavailable { cause: NonEmptyStr }
 
 type CompatibilityAdvanceCapabilityFold<R> {
   modeled: fn(CompatibilityAdvanceGuarantee) -> R
-  executed_and_read_back: fn(CompatibilityAdvanceGuarantee) -> R
   unavailable: fn(NonEmptyStr) -> R
 }
 
@@ -92,8 +87,6 @@ fn compatibility_advance_capability_fold<R>(
 ) -> R {
   match capability {
     CompatibilityAdvanceModeled { guarantee } => fold.modeled(guarantee)
-    CompatibilityAdvanceExecutedAndReadBack { guarantee } =>
-      fold.executed_and_read_back(guarantee)
     CompatibilityAdvanceUnavailable { cause } => fold.unavailable(cause)
   }
 }
@@ -103,14 +96,10 @@ type CompatibilityAdvanceRequirement
   | CompatibilityModeledAdvanceRequired {
       guarantee: CompatibilityAdvanceGuarantee,
     }
-  | CompatibilityExecutedAdvanceRequired {
-      guarantee: CompatibilityAdvanceGuarantee,
-    }
 
 type CompatibilityAdvanceRequirementFold<R> {
   observation_only: fn() -> R
   modeled_required: fn(CompatibilityAdvanceGuarantee) -> R
-  executed_required: fn(CompatibilityAdvanceGuarantee) -> R
 }
 
 fn compatibility_advance_requirement_fold<R>(
@@ -121,8 +110,6 @@ fn compatibility_advance_requirement_fold<R>(
     CompatibilityObservationOnly => fold.observation_only()
     CompatibilityModeledAdvanceRequired { guarantee } =>
       fold.modeled_required(guarantee)
-    CompatibilityExecutedAdvanceRequired { guarantee } =>
-      fold.executed_required(guarantee)
   }
 }
 
@@ -167,50 +154,6 @@ fn compatibility_modeled_requirement_check(
           }
         }
       },
-      executed_and_read_back: fn(actual) {
-        if actual == required {
-          CompatibilityCapabilitySatisfied
-        } else {
-          CompatibilityCapabilityRefused {
-            requirement: original,
-            observed: observed,
-          }
-        }
-      },
-      unavailable: fn(_) {
-        CompatibilityCapabilityRefused {
-          requirement: original,
-          observed: observed,
-        }
-      },
-    },
-  )
-}
-
-fn compatibility_executed_requirement_check(
-  required: CompatibilityAdvanceGuarantee,
-  observed: CompatibilityAdvanceCapability,
-  original: CompatibilityAdvanceRequirement,
-) -> CompatibilityCapabilityCheck {
-  compatibility_advance_capability_fold(
-    capability: observed,
-    fold: CompatibilityAdvanceCapabilityFold {
-      modeled: fn(_) {
-        CompatibilityCapabilityRefused {
-          requirement: original,
-          observed: observed,
-        }
-      },
-      executed_and_read_back: fn(actual) {
-        if actual == required {
-          CompatibilityCapabilitySatisfied
-        } else {
-          CompatibilityCapabilityRefused {
-            requirement: original,
-            observed: observed,
-          }
-        }
-      },
       unavailable: fn(_) {
         CompatibilityCapabilityRefused {
           requirement: original,
@@ -238,13 +181,6 @@ fn compatibility_check_advance_requirement(
           original: requirement,
         )
       },
-      executed_required: fn(required) {
-        compatibility_executed_requirement_check(
-          required: required,
-          observed: observed,
-          original: requirement,
-        )
-      },
     },
   )
 }
@@ -256,7 +192,6 @@ type CompatibilityProjectionReceipt {
   capture: CompatibilityCaptureClass
   projection: CompatibilityProjectionHandle
   read_back: CompatibilityReadBackHandle
-  repair: CompatibilityRepairHandle
   advance: CompatibilityAdvanceCapability
   fidelity: CompatibilityFidelityProfile
 }

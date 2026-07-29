@@ -376,12 +376,12 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Extract the compatibility realization shape from three upstream receipts",
-        boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, capture class, fidelity profile, projection/read-back/repair identity, and explicit conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
+        boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, capture class, fidelity profile, projection/read-back identity, and modeled-or-unavailable conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
         displaced_cost: "Lets the native edit → submit → outcome contract project through plural SCMs without forcing users into Git mechanics or erasing Mercurial/Pijul distinctions into a first-adapter abstraction.",
         first_slice: "Bind each R0 fixture through its native decoder and read-back assessment, replace C0's optional Git projection slot with realization-indexed receipts, and execute one fixed C0 proposal through Git, Mercurial, Pijul, and a synthetic fourth handler.",
-        red_control: "C0 proposal identity, transition, and primary outcome stay unchanged across all realizations; missing required conditional advance refuses; modeled Git advance cannot satisfy executed advance; a read-back mismatch refuses; the fourth handler requires no primary-contract or kernel edit.",
-        out_of_scope: "No semantic candidate space, admission policy, Applied receipt, universal commit/ref/channel type, hosted service, writable Mercurial/Pijul target, or central realization enum.",
-        handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection, idempotent repair receipt, and the exact distinctions deliberately left native."
+        red_control: "C0 proposal identity, transition, and primary outcome stay unchanged across all realizations; missing or differently grounded conditional advance refuses; a read-back mismatch refuses; the fourth handler requires no primary-contract or kernel edit.",
+        out_of_scope: "No semantic candidate space, admission policy, repair capability, executed transition, Applied receipt, universal commit/ref/channel type, hosted service, writable Mercurial/Pijul target, or central realization enum.",
+        handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )
     ),
 

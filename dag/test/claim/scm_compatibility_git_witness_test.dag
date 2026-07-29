@@ -24,9 +24,9 @@ import gunbc.scm_compatibility_shape {
   CompatibilityFidelityDowngraded,
   CompatibilityAdvanceModeled,
   CompatibilityExactCompareAndAdvance,
+  CompatibilityNamedConditionalAdvance,
   CompatibilityObservationOnly,
   CompatibilityModeledAdvanceRequired,
-  CompatibilityExecutedAdvanceRequired,
   CompatibilityCapabilitySatisfied,
   CompatibilityCapabilityRefused,
   compatibility_projection_from_handler,
@@ -91,7 +91,7 @@ test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool {
   }
 }
 
-test fn witness_git_modeled_advance_is_not_executed_advance() -> Bool {
+test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } => {
@@ -111,8 +111,11 @@ test fn witness_git_modeled_advance_is_not_executed_advance() -> Bool {
           ) {
             CompatibilityCapabilitySatisfied =>
               match compatibility_check_advance_requirement(
-                requirement: CompatibilityExecutedAdvanceRequired {
-                  guarantee: CompatibilityExactCompareAndAdvance,
+                requirement: CompatibilityModeledAdvanceRequired {
+                  guarantee: CompatibilityNamedConditionalAdvance {
+                    authority: "fixture-other-authority",
+                    contract: "fixture-other-contract",
+                  },
                 },
                 observed: capability,
               ) {

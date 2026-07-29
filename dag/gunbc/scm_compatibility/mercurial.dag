@@ -209,7 +209,6 @@ fn mercurial_compatibility_projection_receipt(
           "mercurial-readback:",
           receipt.read_back.observed_by,
         ),
-        repair: concat("mercurial-projection-repair:", generation),
         advance: CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: mercurial_compatibility_fidelity(),
       }

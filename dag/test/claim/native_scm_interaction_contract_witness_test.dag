@@ -20,7 +20,7 @@ import gunbc.native_scm_interaction_contract {
   native_scm_receipt_for,
   native_scm_primary_label,
   native_scm_resolve_choice,
-  native_scm_repair_projection,
+  native_scm_record_repaired_projection,
   native_scm_inspect_receipt,
   native_scm_submission_ledger,
   native_scm_apply_once,
@@ -54,7 +54,6 @@ fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
     capture: CompatibilityEndpointStateCaptured,
     projection: "git-projection-fixture",
     read_back: "git-readback-fixture",
-    repair: "git-repair-fixture",
     advance: CompatibilityAdvanceUnavailable {
       cause: "C0 witness does not establish an executing transition",
     },
@@ -206,7 +205,7 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
 
 test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
   let r = receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
-  let repaired = native_scm_repair_projection(
+  let repaired = native_scm_record_repaired_projection(
     receipt: r,
     projection: fixture_compatibility_projection(),
   )

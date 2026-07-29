@@ -404,7 +404,6 @@ fn git_compatibility_projection_receipt(
     capture: CompatibilityEndpointStateCaptured,
     projection: projection,
     read_back: concat("git-readback:", receipt.read_back.git_version),
-    repair: concat("git-projection-repair:", projection),
     advance: CompatibilityAdvanceModeled {
       guarantee: CompatibilityExactCompareAndAdvance,
     },

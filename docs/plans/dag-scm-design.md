@@ -877,7 +877,9 @@ The shared compatibility boundary is expected to need these **roles**, pending t
   grounded serialized/transactional guarantee, or capability unavailable/unknown;
 - project the accepted program and allowed metadata into the upstream representation;
 - independently read back the projected/advanced state;
-- repair an idempotent projection without replaying the semantic transition; and
+- replace a projection receipt idempotently by realization and target after an external retry has
+  produced a new independently read-back receipt; R1 does not model that retry as a repair
+  capability; and
 - preserve or explicitly downgrade upstream-specific history, publication, conflict, path/mode,
   opaque-content, partial-availability, and identity facts.
 
@@ -886,6 +888,10 @@ capability refusal for that target policy, not a fake implementation built from 
 local locks, or “most recent” state. The semantic kernel consumes native proposals, accepted
 states, claims, and receipts; it never consumes a Git commit, Mercurial changeset, or Pijul change
 as though that upstream object were the semantic contract.
+
+The R1 advance carrier is deliberately only `Modeled | Unavailable`, because none of the three R0
+models executes and independently reads back a target advance. Executed advance and repair
+capabilities may be introduced only by the later realization that actually produces those receipts.
 
 The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) remains deliberately
 only a presentation fixture. R1 dissolves its former optional `git` slot and Git-named scenario
@@ -1244,7 +1250,8 @@ does not wait for a native store:
    required conditional-advance capability refuses that target policy; a synthetic fourth adapter
    requires no primary-interaction edit. This slice replaces C0's optional `git` fixture slot and
    Git-named presentation cases with realization-indexed projection receipts without changing
-   primary behavior.
+   primary behavior. It does not predeclare an executed-advance or repair-capability state; those
+   wait for an executing realization.
    R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
    all three R0 models; the proof kernel waits for P−1.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
