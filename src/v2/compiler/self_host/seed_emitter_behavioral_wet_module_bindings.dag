@@ -11,7 +11,7 @@ import v2.std.optional {
 }
 import v2.std.text { String }
 
-data seed_emitter_behavioral_wet_module_bindings_note: String = "Cycle-free leaf for restored SelfHostWetReceiptBinding rows (review 44453): shared by wet_receipt_enrollment (nightly green wet roster) and emitter_producer_provenance (BuildGreen derivation after executed wet receipt greens). A binding is restored only after local wet execution greens and the known-red quarantine entry deletes — never a hand roster shortcut."
+data seed_emitter_behavioral_wet_module_bindings_note: String = "Cycle-free leaf for restored SelfHostWetReceiptBinding rows (review 44453/44455): shared by wet_receipt_enrollment for nightly green wet roster enrollment only. Authorization does NOT derive from this list — BuildGreen requires producer_emission_executed_green_receipts (witness-realization binds content-addressed wet verdict digest). A binding restores after local wet execution greens; it re-enrolls the probe on the green nightly cadence without authorizing EmitterProduced."
 
 type SelfHostWetReceiptBinding {
   module_path: String
@@ -19,7 +19,7 @@ type SelfHostWetReceiptBinding {
   function: String
 }
 
-data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464 (cargo/shim closure refuse on seed-linked assemble — unresolved std_algebra/std_types/std_nat/List and target_carriers type-shape). Green wet roster stays empty (enrollment note: green-only). Phase-0 admission invariant forbids SelfEmitted-with-zero-executing-consumer: the six receipts move to falsifier_self_host_wet_known_red_entries (Wet expect_red quarantine) — still-red is agreement; greening is a counted un-quarantine that restores the green wet binding. Dissolve-on (review 44441/44453): local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget → restore SelfHostWetReceiptBinding here → emitter_producer_provenance authorizes BuildGreen (NOT roster deletion alone). Frontier rows stay SeedRetained until authorization fires; green wet enrollment keys on binding presence, not prior EmitterProduced disposition."
+data falsifier_self_host_wet_module_bindings_revocation_note: String = "2026-07-25: the six SelfEmitted wet bindings were RED on cadence run 30126573464 (cargo/shim closure refuse on seed-linked assemble — unresolved std_algebra/std_types/std_nat/List and target_carriers type-shape). Green wet roster stays empty (enrollment note: green-only). Phase-0 admission invariant forbids SelfEmitted-with-zero-executing-consumer: the six receipts move to falsifier_self_host_wet_known_red_entries (Wet expect_red quarantine) — still-red is agreement; greening is a counted un-quarantine that restores the green wet binding. Dissolve-on (review 44441/44453/44455): local wet receipt greens → restore SelfHostWetReceiptBinding here for nightly re-enrollment → witness-realization binds executed verdict into producer_emission_executed_green_receipts for BuildGreen authorization. Frontier rows stay SeedRetained until that execution-derived path fires."
 
 data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = []
 

@@ -14,10 +14,6 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
 }
-import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
-  SelfHostWetReceiptBinding,
-  find_wet_receipt_binding
-}
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -100,6 +96,17 @@ type ProducerEmissionOracleRow {
   behavioral_probe_entry: String
   behavioral_probe_function: String
 }
+
+type ProducerEmissionExecutedGreenReceipt {
+  module_path: String
+  behavioral_probe_entry: String
+  behavioral_probe_function: String
+  wet_execution_digest: Hash
+}
+
+data producer_emission_executed_green_receipts_note: String = "Execution-grounded authorization authority (review 44455): BuildGreen is reachable only from rows here — each carries a content-addressed wet witness verdict digest minted by witness-realization after claim_executor greens the probe. NOT derivable from SelfHostWetReceiptBinding roster edits or known-red deletion alone. Baseline empty; hand-authored data rows forbidden (same class as deleted seed_emitter_behavioral_wet_green_entries, review 44441). Dissolve-on: witness-realization lane binds executed verdict into this list."
+
+data producer_emission_executed_green_receipts: List<ProducerEmissionExecutedGreenReceipt> = []
 
 data v1_seed_emit_rust_qualified_module: String = "v1.compiler.emit_rust"
 
@@ -225,22 +232,19 @@ fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionO
   producer_emission_oracle_probe_is_enrolled(row: row)
 }
 
-fn producer_emission_oracle_probe_has_restored_wet_binding(row: ProducerEmissionOracleRow) -> Bool {
-  match find_wet_receipt_binding(module_path: row.module_path) {
-    Present { value: b } =>
-      (b.entry == row.behavioral_probe_entry)
-        && (b.function == row.behavioral_probe_function)
-        && !schedule_witness_entry_cited(
-          probe_entry: row.behavioral_probe_entry,
-          probe_function: row.behavioral_probe_function,
-          entries: seed_emitter_behavioral_wet_known_red_entries
-        )
-    Absent => false
-  }
+fn producer_emission_oracle_row_has_executed_green_receipt(row: ProducerEmissionOracleRow) -> Bool {
+  any(
+    xs: producer_emission_executed_green_receipts,
+    predicate: fn(executed) {
+      (executed.module_path == row.module_path)
+        && (executed.behavioral_probe_entry == row.behavioral_probe_entry)
+        && (executed.behavioral_probe_function == row.behavioral_probe_function)
+    }
+  )
 }
 
 fn producer_emission_build_result_for_oracle_row(row: ProducerEmissionOracleRow) -> EmissionBuildResult {
-  if producer_emission_oracle_probe_has_restored_wet_binding(row: row) {
+  if producer_emission_oracle_row_has_executed_green_receipt(row: row) {
     BuildGreen
   } else if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
     BuildRefused { cause: ^cssl_harness_assemble_red }
@@ -278,7 +282,7 @@ fn producer_emission_canonical_receipt_for_oracle_row(
 
 data emitter_produced_baseline: Int = 0
 
-data emitter_produced_baseline_note: String = "Review 44362/44441/44453: frontier EmitterProduced count stays zero until a restored SelfHostWetReceiptBinding authorizes BuildGreen. Promotion order is acyclic: execute wet (known-red) → restore binding → BuildGreen → EmitterProduced. Oracle enrollment (six quarantine rows) and frontier disposition (SeedRetained until authorized) are orthogonal."
+data emitter_produced_baseline_note: String = "Review 44362/44441/44455: frontier EmitterProduced count stays zero until witness-realization binds an executed green receipt into producer_emission_executed_green_receipts (content-addressed wet verdict digest). SelfHostWetReceiptBinding restoration alone does not authorize. Oracle enrollment (six quarantine rows) and frontier disposition (SeedRetained until authorized) are orthogonal."
 
 data producer_emission_oracle_row_body_producer: ProducerEmissionOracleRow = seed_emitter_behavioral_oracle_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
@@ -472,7 +476,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + known-red quarantine citation + transport roster — honest BuildRefused while assemble-red. Authorization requires BuildGreen canonical receipt + transport roster. BuildGreen derives from a restored SelfHostWetReceiptBinding (seed_emitter_behavioral_wet_module_bindings) whose probe identity matches the oracle row and whose known-red quarantine entry has deleted — not from static oracle rows alone and not from roster deletion alone. Promotion order is acyclic (review 44453): execute wet (known-red batch) → restore binding → BuildGreen → EmitterProduced; green wet nightly enrollment keys on binding presence, not prior EmitterProduced disposition."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + known-red quarantine citation + transport roster — honest BuildRefused while assemble-red. Authorization requires BuildGreen canonical receipt + transport roster. BuildGreen derives only from producer_emission_executed_green_receipts (witness-realization binds content-addressed wet verdict digest after claim_executor greens) — NOT from SelfHostWetReceiptBinding roster edits or known-red deletion alone. Green wet nightly enrollment (review 44453) keys on binding presence, disposition-independent; authorization remains execution-grounded."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
@@ -513,46 +517,11 @@ fn producer_emission_oracle_authorizes_row(
   }
 }
 
-fn producer_emission_oracle_row_matches_restored_binding(
-  row: ProducerEmissionOracleRow,
-  binding: SelfHostWetReceiptBinding
-) -> Bool {
-  (binding.module_path == row.module_path)
-    && (binding.entry == row.behavioral_probe_entry)
-    && (binding.function == row.behavioral_probe_function)
-}
-
-fn producer_emission_build_result_with_hypothetical_restored_binding(
-  row: ProducerEmissionOracleRow,
-  binding: SelfHostWetReceiptBinding,
-  probe_still_quarantined: Bool
-) -> EmissionBuildResult {
-  if producer_emission_oracle_row_matches_restored_binding(row: row, binding: binding)
-    && !probe_still_quarantined {
-    BuildGreen
-  } else if probe_still_quarantined {
-    BuildRefused { cause: ^cssl_harness_assemble_red }
-  } else {
-    BuildRefused { cause: ^producer_emission_probe_not_executed_green }
-  }
-}
-
-fn producer_emission_promotion_path_structurally_reachable_holds() -> Bool {
+fn producer_emission_binding_only_does_not_authorize_holds() -> Bool {
   let row = producer_emission_oracle_row_body_producer
-  let binding = SelfHostWetReceiptBinding {
-    module_path: row.module_path,
-    entry: row.behavioral_probe_entry,
-    function: row.behavioral_probe_function
-  }
-  match emission_build_result_axis(
-    result: producer_emission_build_result_with_hypothetical_restored_binding(
-      row: row,
-      binding: binding,
-      probe_still_quarantined: false
-    )
-  ) {
-    EmissionBuildResultGreen => true
-    EmissionBuildResultRefused { cause: _ } => false
+  match emission_build_result_axis(result: producer_emission_build_result_for_oracle_row(row: row)) {
+    EmissionBuildResultGreen => false
+    EmissionBuildResultRefused { cause: _ } => true
   }
 }
 
