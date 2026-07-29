@@ -295,7 +295,7 @@ pub type Celsius = Rc<Measure<(), (), i64>>;
 
 pub type CelsiusDelta = Rc<Measure<(), (), i64>>;
 
-pub type PositiveCelsiusDeltaCount = i64;
+pub type PositiveMeasureCount = i64;
 
 pub type PositiveCelsiusDelta = Rc<Measure<(), (), i64>>;
 
@@ -613,8 +613,6 @@ pub fn millisecond(count: Nat) -> Millisecond {
 pub fn millisecond_count(m: Millisecond) -> Nat {
     measure_count(m.clone())
 }
-
-pub type PositiveMeasureCount = i64;
 
 pub type PositiveMillisecond = Rc<Measure<(), (), i64>>;
 
