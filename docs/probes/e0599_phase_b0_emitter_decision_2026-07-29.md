@@ -331,7 +331,7 @@ FAIL e0599_b0_red_unnamed_receiver_shape_refuses
 FAIL e0599_b0_red_empty_receiver_refuses
 ```
 
-Restored, 22/22 green.
+Restored, 26/26 green.
 
 **What `Unresolved = 0` does and does not claim.** It is measured *given these
 predicates*. A destination perturbation like the one above proves the fail-closed arm
