@@ -197,10 +197,7 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
                 write!(f, "[[bin]] table missing path")
             }
             Self::BinTableCountMismatch { tables, paths } => {
-                write!(
-                    f,
-                    "{tables} [[bin]] tables but {paths} paths parsed"
-                )
+                write!(f, "{tables} [[bin]] tables but {paths} paths parsed")
             }
         }
     }
@@ -31840,8 +31837,8 @@ pub mod census_exclude_derive;
 #[cfg(test)]
 mod stage0_cargo_manifest_tests {
     use super::{
-        stage0_cargo_bin_repo_paths_from_manifest_str, try_stage0_cargo_bin_repo_paths_from_manifest_str,
-        Stage0CargoBinManifestParseRefusal,
+        stage0_cargo_bin_repo_paths_from_manifest_str,
+        try_stage0_cargo_bin_repo_paths_from_manifest_str, Stage0CargoBinManifestParseRefusal,
     };
 
     #[test]
