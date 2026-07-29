@@ -1,11 +1,13 @@
 module extdeps.git.object_store
 
-import std.types { ContentHash, NonEmptyStr }
-import std.measure { ByteSize }
-import std.cache_interface { KeyDerivationClass, CacheWriteSemantics }
+import std.types { ContentHash, NonEmptyStr, Bytes }
+import std.integer { UInt8, NonNegativeInt }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
+import std.cache_interface { ContentAddressedByValue, WriteOnce }
+import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
 import extdeps.object_storage { ObjectContainer }
-import extdeps.object_storage.content_addressed { CasObjectId, CasAddressingConfig }
-import extdeps.git { GitAuthor, ObjectType }
+import extdeps.object_storage.content_addressed { CasAddressingConfig }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -16,58 +18,1837 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data git_object_store_config: CasAddressingConfig = {
-  container: { name: "objects" }
+data git_object_store_config: CasAddressingConfig = CasAddressingConfig {
+  container: ObjectContainer { name: "objects" }
   key_derivation: ContentAddressedByValue
   write_mode: WriteOnce
 }
 
-type ObjectRef = CasObjectId
+data git_ls_tree_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-tree"
+  }
+}
+
+data git_ls_files_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-ls-files"
+  }
+}
+
+data git_update_ref_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-update-ref"
+  }
+}
+
+data git_hash_transition_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/hash-function-transition"
+  }
+}
+
+data git_partial_clone_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/partial-clone"
+  }
+}
+
+type GitTreeEntryNameBeforeSlashValue = Int where range(min: 1, max: 46)
+type GitTreeEntryNameAfterSlashValue = Int where range(min: 48, max: 255)
+
+type GitTreeEntryNameOctet
+  = GitTreeEntryNameOctetBeforeSlash {
+      value: GitTreeEntryNameBeforeSlashValue,
+    }
+  | GitTreeEntryNameOctetAfterSlash {
+      value: GitTreeEntryNameAfterSlashValue,
+    }
+
+type GitTreeEntryName {
+  first: GitTreeEntryNameOctet
+  rest: List<GitTreeEntryNameOctet>
+}
+
+type GitPath {
+  first: GitTreeEntryName
+  rest: List<GitTreeEntryName>
+}
+
+type GitTreeWireName {
+  octets: List<UInt8>
+}
+
+fn git_tree_entry_name_octet_value(
+  octet: GitTreeEntryNameOctet,
+) -> UInt8 {
+  match octet {
+    GitTreeEntryNameOctetBeforeSlash { value } => value
+    GitTreeEntryNameOctetAfterSlash { value } => value
+  }
+}
+
+fn git_tree_entry_name_octets(
+  name: GitTreeEntryName,
+) -> List<UInt8> {
+  append(
+    [git_tree_entry_name_octet_value(octet: name.first)],
+    items: name.rest
+      |> map(octet => git_tree_entry_name_octet_value(octet: octet)),
+  )
+}
+
+fn git_path_octets(path: GitPath) -> List<UInt8> {
+  fold(
+    path.rest,
+    init: git_tree_entry_name_octets(name: path.first),
+    f: fn(octets, component) {
+      append(
+        octets,
+        items: append(
+          [47],
+          items: git_tree_entry_name_octets(name: component),
+        ),
+      )
+    },
+  )
+}
+
+type GitTreeEntryNameDecodeRefusal
+  = GitTreeEntryNameEmpty
+  | GitTreeEntryNameForbiddenOctet { octet: UInt8 }
+
+type GitTreeEntryNameDecodeOutcome
+  = GitTreeEntryNameDecoded { name: GitTreeEntryName }
+  | GitTreeEntryNameDecodeRefused {
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+type GitTreeEntryNameOctetsDecodeOutcome
+  = GitTreeEntryNameOctetsDecoded {
+      octets: List<GitTreeEntryNameOctet>,
+    }
+  | GitTreeEntryNameOctetsDecodeRefused {
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+fn git_decode_tree_entry_name_octet(
+  octet: UInt8,
+) -> GitTreeEntryNameOctet? {
+  if octet >= 1 && octet <= 46 {
+    Present {
+      value: GitTreeEntryNameOctetBeforeSlash { value: octet }
+    }
+  } else if octet >= 48 && octet <= 255 {
+    Present {
+      value: GitTreeEntryNameOctetAfterSlash { value: octet }
+    }
+  } else {
+    none
+  }
+}
+
+fn git_decode_tree_entry_name_octet_step(
+  state: GitTreeEntryNameOctetsDecodeOutcome,
+  octet: UInt8,
+) -> GitTreeEntryNameOctetsDecodeOutcome {
+  match state {
+    GitTreeEntryNameOctetsDecodeRefused { cause } =>
+      GitTreeEntryNameOctetsDecodeRefused { cause: cause }
+    GitTreeEntryNameOctetsDecoded { octets } =>
+      match git_decode_tree_entry_name_octet(octet: octet) {
+        Absent => GitTreeEntryNameOctetsDecodeRefused {
+          cause: GitTreeEntryNameForbiddenOctet { octet: octet }
+        }
+        Present { value } =>
+          GitTreeEntryNameOctetsDecoded {
+            octets: append(octets, items: [value])
+          }
+      }
+  }
+}
+
+fn git_decode_tree_entry_name(
+  wire: GitTreeWireName,
+) -> GitTreeEntryNameDecodeOutcome {
+  match fold(
+    wire.octets,
+    init: GitTreeEntryNameOctetsDecoded { octets: [] },
+    f: git_decode_tree_entry_name_octet_step,
+  ) {
+    GitTreeEntryNameOctetsDecodeRefused { cause } =>
+      GitTreeEntryNameDecodeRefused { cause: cause }
+    GitTreeEntryNameOctetsDecoded { octets } =>
+      match octets.first() {
+        Absent => GitTreeEntryNameDecodeRefused {
+          cause: GitTreeEntryNameEmpty
+        }
+        Present { value: first } =>
+          GitTreeEntryNameDecoded {
+            name: GitTreeEntryName {
+              first: first,
+              rest: octets.skip(n: 1),
+            }
+          }
+      }
+  }
+}
+
+type GitPathDecodeRefusal
+  = GitPathComponentRefused {
+      component_index: NonNegativeInt,
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+type GitPathDecodeOutcome
+  = GitPathDecoded { path: GitPath }
+  | GitPathDecodeRefused { cause: GitPathDecodeRefusal }
+
+type GitPathDecodeState
+  = GitPathDecodeBuilding {
+      components: List<GitTreeEntryName>,
+      current: List<UInt8>,
+    }
+  | GitPathDecodeStopped { cause: GitPathDecodeRefusal }
+
+fn git_path_decode_step(
+  state: GitPathDecodeState,
+  octet: UInt8,
+) -> GitPathDecodeState {
+  match state {
+    GitPathDecodeStopped { cause } => GitPathDecodeStopped { cause: cause }
+    GitPathDecodeBuilding { components, current } =>
+      if octet == 47 {
+        match git_decode_tree_entry_name(
+          wire: GitTreeWireName { octets: current },
+        ) {
+          GitTreeEntryNameDecodeRefused { cause } =>
+            GitPathDecodeStopped {
+              cause: GitPathComponentRefused {
+                component_index: count(components),
+                cause: cause,
+              }
+            }
+          GitTreeEntryNameDecoded { name } =>
+            GitPathDecodeBuilding {
+              components: append(components, items: [name]),
+              current: [],
+            }
+        }
+      } else {
+        GitPathDecodeBuilding {
+          components: components,
+          current: append(current, items: [octet]),
+        }
+      }
+  }
+}
+
+fn git_decode_path_octets(octets: List<UInt8>) -> GitPathDecodeOutcome {
+  match fold(
+    octets,
+    init: GitPathDecodeBuilding {
+      components: [],
+      current: [],
+    },
+    f: git_path_decode_step,
+  ) {
+    GitPathDecodeStopped { cause } => GitPathDecodeRefused { cause: cause }
+    GitPathDecodeBuilding { components, current } =>
+      match git_decode_tree_entry_name(
+        wire: GitTreeWireName { octets: current },
+      ) {
+        GitTreeEntryNameDecodeRefused { cause } =>
+          GitPathDecodeRefused {
+            cause: GitPathComponentRefused {
+              component_index: count(components),
+              cause: cause,
+            }
+          }
+        GitTreeEntryNameDecoded { name } =>
+          let all_components = append(components, items: [name])
+          match all_components.first() {
+            Absent =>
+              GitPathDecodeRefused {
+                cause: GitPathComponentRefused {
+                  component_index: 0,
+                  cause: GitTreeEntryNameEmpty,
+                }
+              }
+            Present { value: first } =>
+              GitPathDecoded {
+                path: GitPath {
+                  first: first,
+                  rest: all_components.skip(n: 1),
+                }
+              }
+          }
+      }
+  }
+}
+
+type GitObjectFormat
+  = GitObjectFormatSha1
+  | GitObjectFormatSha256
+
+type GitSha1Digest = ContentHash where brand("GitSha1Digest")
+type GitSha256Digest = ContentHash where brand("GitSha256Digest")
+
+type GitObjectId
+  = GitSha1ObjectId { digest: GitSha1Digest }
+  | GitSha256ObjectId { digest: GitSha256Digest }
+
+fn git_object_id_format(oid: GitObjectId) -> GitObjectFormat {
+  match oid {
+    GitSha1ObjectId { digest: _ } => GitObjectFormatSha1
+    GitSha256ObjectId { digest: _ } => GitObjectFormatSha256
+  }
+}
+
+fn git_object_id_content_hash(oid: GitObjectId) -> ContentHash {
+  match oid {
+    GitSha1ObjectId { digest } => digest as ContentHash
+    GitSha256ObjectId { digest } => digest as ContentHash
+  }
+}
 
 type Blob {
-  size: ByteSize
   content: Bytes
 }
 
 type TreeEntry
-  = BlobEntry { name: NonEmptyStr, hash: ContentHash }
-  | SubtreeEntry { name: NonEmptyStr, hash: ContentHash }
-  | CommitEntry { name: NonEmptyStr, hash: ContentHash }
+  = RegularBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | ExecutableBlobEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SymlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | SubtreeEntry { name: GitTreeEntryName, oid: GitObjectId }
+  | GitlinkEntry { name: GitTreeEntryName, oid: GitObjectId }
 
 type Tree {
   entries: List<TreeEntry>
 }
 
 type Commit {
-  tree_hash: ContentHash
-  parent_hashes: List<ContentHash>
+  tree: GitObjectId
+  parents: List<GitObjectId>
   author: GitAuthor
   committer: GitAuthor
-  message: NonEmptyStr
+  message: Bytes
+}
+
+type AnnotatedTag {
+  target: GitObjectId
+  target_type: ObjectType
+  name: NonEmptyStr
+  tagger: GitAuthor
+  message: Bytes
 }
 
 type StoreObject
   = ObjectBlob { blob: Blob }
   | ObjectTree { tree: Tree }
   | ObjectCommit { commit: Commit }
+  | ObjectTag { tag: AnnotatedTag }
 
-type ObjectLookupResult
-  = ObjectFound { ref: ObjectRef, object: StoreObject }
-  | ObjectNotFound
+type StoreObjectFold<R> {
+  blob: fn(Blob) -> R
+  tree: fn(Tree) -> R
+  commit: fn(Commit) -> R
+  tag: fn(AnnotatedTag) -> R
+}
 
-type RefTarget
-  = DirectTarget { hash: ContentHash }
-  | SymbolicTarget { ref_name: NonEmptyStr }
-
-type RefResolutionResult
-  = RefResolved { hash: ContentHash }
-  | RefNotFound
-  | SymbolicCycle
-
-fn store_object_kind(object: StoreObject) -> ObjectType {
+fn store_object_fold<R>(
+  object: StoreObject,
+  fold: StoreObjectFold<R>,
+) -> R {
   match object {
-    ObjectBlob { blob: _ } => BlobObj
-    ObjectTree { tree: _ } => TreeObj
-    ObjectCommit { commit: _ } => CommitObj
+    ObjectBlob { blob } => fold.blob(blob)
+    ObjectTree { tree } => fold.tree(tree)
+    ObjectCommit { commit } => fold.commit(commit)
+    ObjectTag { tag } => fold.tag(tag)
   }
 }
+
+type GitCanonicalHashInputRefusal
+  = GitCanonicalHashInputInvalidObjectId { oid: GitObjectId }
+
+type GitCanonicalHashInputOutcome
+  = GitCanonicalHashInputReady { bytes: Bytes }
+  | GitCanonicalHashInputRefused { cause: GitCanonicalHashInputRefusal }
+
+type GitContentAddressReceipt
+  = GitHashObjectObserved {
+      git_version: NonEmptyStr,
+      object_format: GitObjectFormat,
+      canonical_input: Bytes,
+      observed_oid: GitObjectId,
+    }
+  | GitHashObjectObservationUnavailable {
+      cause: GitCanonicalHashInputRefusal,
+    }
+
+type StoredObject {
+  oid: GitObjectId
+  content_address: GitContentAddressReceipt
+  object: StoreObject
+}
+
+type GitUnavailableObject
+  = GitPromisorObjectUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  | GitUnexpectedObjectMissing { oid: GitObjectId }
+  | GitCorruptObject { oid: GitObjectId, reason: NonEmptyStr }
+
+type ObjectLookupResult
+  = ObjectFound { stored: StoredObject }
+  | ObjectPromisorUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  | ObjectUnexpectedlyMissing { oid: GitObjectId }
+  | ObjectCorrupt { oid: GitObjectId, reason: NonEmptyStr }
+
+type GitRefName = NonEmptyStr where brand("GitRefName")
+
+type RefTarget
+  = DirectTarget { oid: GitObjectId }
+  | SymbolicTarget { ref_name: GitRefName }
+
+type GitRefRecord {
+  name: GitRefName
+  target: RefTarget
+}
+
+type RefResolutionResult
+  = RefResolved { oid: GitObjectId }
+  | RefNotFound { name: GitRefName }
+  | RefNotDirect { name: GitRefName, target: GitRefName }
+  | RefDuplicate { name: GitRefName, count: NonNegativeInt }
+
+type GitRefLookupResult
+  = GitRefLookupMissing { name: GitRefName }
+  | GitRefLookupUnique { record: GitRefRecord }
+  | GitRefLookupDuplicate { name: GitRefName, count: NonNegativeInt }
+
+type GitIndexStage
+  = GitIndexStageNormal
+  | GitIndexStageBase
+  | GitIndexStageOurs
+  | GitIndexStageTheirs
+
+type GitIndexEntry {
+  path: GitPath
+  mode: GitTreeMode
+  oid: GitObjectId
+  stage: GitIndexStage
+}
+
+type GitWorktreeEntry
+  = GitWorktreeRegular { path: GitPath, executable: Bool, content: Bytes }
+  | GitWorktreeSymlink { path: GitPath, target: Bytes }
+  | GitWorktreeGitlink { path: GitPath, checkout: GitObjectId }
+
+type GitRepositoryState {
+  object_format: GitObjectFormat
+  objects: List<StoredObject>
+  unavailable: List<GitUnavailableObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+}
+
+fn store_object_kind(object: StoreObject) -> ObjectType {
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: fn(_) { BlobObj },
+      tree: fn(_) { TreeObj },
+      commit: fn(_) { CommitObj },
+      tag: fn(_) { TagObj },
+    },
+  )
+}
+
+fn git_object_id_raw_size(oid: GitObjectId) -> NonNegativeInt {
+  match oid {
+    GitSha1ObjectId { digest: _ } => 20
+    GitSha256ObjectId { digest: _ } => 32
+  }
+}
+
+fn git_object_type_wire_name(object_type: ObjectType) -> String {
+  match object_type {
+    BlobObj => "blob"
+    TreeObj => "tree"
+    CommitObj => "commit"
+    TagObj => "tag"
+  }
+}
+
+fn git_lower_hex_nibble(cp: Int) -> Int? {
+  if cp >= 48 && cp <= 57 {
+    Present { value: cp - 48 }
+  } else if cp >= 97 && cp <= 102 {
+    Present { value: cp - 87 }
+  } else {
+    none
+  }
+}
+
+fn git_octet_of_int(value: Int) -> UInt8 {
+  value
+}
+
+fn git_decode_lower_hex_octets(text: String) -> List<UInt8>? {
+  if text.length() == 0 {
+    Present { value: [] }
+  } else if text.length() < 2 {
+    none
+  } else {
+    match git_lower_hex_nibble(
+      cp: code_point(substring(s: text, start: 0, end: 1)),
+    ) {
+      Absent => none
+      Present { value: high } =>
+        match git_lower_hex_nibble(
+          cp: code_point(substring(s: text, start: 1, end: 2)),
+        ) {
+          Absent => none
+          Present { value: low } =>
+            match git_decode_lower_hex_octets(
+              text: substring(s: text, start: 2, end: text.length()),
+            ) {
+              Absent => none
+              Present { value: rest } =>
+                Present {
+                  value: append(
+                    [git_octet_of_int(value: high * 16 + low)],
+                    items: rest,
+                  )
+                }
+            }
+        }
+    }
+  }
+}
+
+fn git_object_id_raw_octets(oid: GitObjectId) -> List<UInt8>? {
+  let text = git_object_id_content_hash(oid: oid) as String
+  let expected = git_object_id_raw_size(oid: oid)
+  if text.length() != expected * 2 {
+    none
+  } else {
+    match git_decode_lower_hex_octets(text: text) {
+      Present { value: octets } =>
+        if count(octets) == expected {
+          Present { value: octets }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+type GitTreeEntryCanonicalParts {
+  mode: NonEmptyStr
+  name: GitTreeEntryName
+  oid: GitObjectId
+}
+
+fn git_tree_entry_canonical_parts(
+  entry: TreeEntry,
+) -> GitTreeEntryCanonicalParts {
+  match entry {
+    RegularBlobEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "100644", name: name, oid: oid }
+    ExecutableBlobEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "100755", name: name, oid: oid }
+    SymlinkEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "120000", name: name, oid: oid }
+    SubtreeEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "40000", name: name, oid: oid }
+    GitlinkEntry { name, oid } =>
+      GitTreeEntryCanonicalParts { mode: "160000", name: name, oid: oid }
+  }
+}
+
+fn git_author_wire_line(role: String, author: GitAuthor) -> String {
+  join(
+    [
+      role,
+      " ",
+      author.name,
+      " <",
+      author.email as String,
+      "> ",
+      author.timestamp as String,
+      "\n",
+    ],
+    "",
+  )
+}
+
+fn git_tree_canonical_payload_step(
+  state: GitCanonicalHashInputOutcome,
+  entry: TreeEntry,
+) -> GitCanonicalHashInputOutcome {
+  match state {
+    GitCanonicalHashInputRefused { cause } =>
+      GitCanonicalHashInputRefused { cause: cause }
+    GitCanonicalHashInputReady { bytes } =>
+      let parts = git_tree_entry_canonical_parts(entry: entry)
+      match git_object_id_raw_octets(oid: parts.oid) {
+        Absent => GitCanonicalHashInputRefused {
+          cause: GitCanonicalHashInputInvalidObjectId { oid: parts.oid }
+        }
+        Present { value: raw_oid } =>
+          GitCanonicalHashInputReady {
+            bytes: octets_bytes(
+              o: append(
+                bytes_octets(b: bytes),
+                items: append(
+                  bytes_octets(
+                    b: utf8_encode_bytes(
+                      s: concat(parts.mode as String, " "),
+                    ),
+                  ),
+                  items: append(
+                    git_tree_entry_name_octets(name: parts.name),
+                    items: append([0], items: raw_oid),
+                  ),
+                ),
+              ),
+            )
+          }
+      }
+  }
+}
+
+fn git_store_object_references(object: StoreObject) -> List<GitObjectId> {
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: fn(_) { [] },
+      tree: fn(tree) {
+        tree.entries
+          |> map(entry => git_tree_entry_canonical_parts(entry: entry).oid)
+      },
+      commit: fn(commit) {
+        append([commit.tree], items: commit.parents)
+      },
+      tag: fn(tag) { [tag.target] },
+    },
+  )
+}
+
+fn git_store_object_references_format(
+  object: StoreObject,
+  format: GitObjectFormat,
+) -> Bool {
+  all(
+    git_store_object_references(object: object),
+    oid => git_object_id_format(oid: oid) == format,
+  )
+}
+
+fn git_blob_canonical_payload(
+  blob: Blob,
+) -> GitCanonicalHashInputOutcome {
+  GitCanonicalHashInputReady { bytes: blob.content }
+}
+
+fn git_tree_canonical_payload(
+  tree: Tree,
+) -> GitCanonicalHashInputOutcome {
+  fold(
+    tree.entries,
+    init: GitCanonicalHashInputReady {
+      bytes: octets_bytes(o: []),
+    },
+    f: git_tree_canonical_payload_step,
+  )
+}
+
+fn git_commit_canonical_payload(
+  commit: Commit,
+) -> GitCanonicalHashInputOutcome {
+  let parent_lines = commit.parents
+    |> map(parent => join(
+      [
+        "parent ",
+        git_object_id_content_hash(oid: parent) as String,
+        "\n",
+      ],
+      "",
+    ))
+    |> join(separator: "")
+  let header = join(
+    [
+      "tree ",
+      git_object_id_content_hash(oid: commit.tree) as String,
+      "\n",
+      parent_lines,
+      git_author_wire_line(role: "author", author: commit.author),
+      git_author_wire_line(role: "committer", author: commit.committer),
+      "\n",
+    ],
+    "",
+  )
+  let invalid = append([commit.tree], items: commit.parents)
+    |> filter(
+      oid => match git_object_id_raw_octets(oid: oid) {
+        Present { value: _ } => false
+        Absent => true
+      },
+    )
+    |> first
+  match invalid {
+    Absent =>
+      GitCanonicalHashInputReady {
+        bytes: octets_bytes(
+          o: append(
+            bytes_octets(b: utf8_encode_bytes(s: header)),
+            items: bytes_octets(b: commit.message),
+          ),
+        )
+      }
+    Present { value: oid } => GitCanonicalHashInputRefused {
+      cause: GitCanonicalHashInputInvalidObjectId { oid: oid }
+    }
+  }
+}
+
+fn git_tag_canonical_payload(
+  tag: AnnotatedTag,
+) -> GitCanonicalHashInputOutcome {
+  let header = join(
+    [
+      "object ",
+      git_object_id_content_hash(oid: tag.target) as String,
+      "\n",
+      "type ",
+      git_object_type_wire_name(object_type: tag.target_type),
+      "\n",
+      "tag ",
+      tag.name as String,
+      "\n",
+      git_author_wire_line(role: "tagger", author: tag.tagger),
+      "\n",
+    ],
+    "",
+  )
+  match git_object_id_raw_octets(oid: tag.target) {
+    Present { value: _ } =>
+      GitCanonicalHashInputReady {
+        bytes: octets_bytes(
+          o: append(
+            bytes_octets(b: utf8_encode_bytes(s: header)),
+            items: bytes_octets(b: tag.message),
+          ),
+        )
+      }
+    Absent => GitCanonicalHashInputRefused {
+      cause: GitCanonicalHashInputInvalidObjectId { oid: tag.target }
+    }
+  }
+}
+
+fn git_store_object_canonical_payload(
+  object: StoreObject,
+) -> GitCanonicalHashInputOutcome {
+  store_object_fold(
+    object: object,
+    fold: StoreObjectFold {
+      blob: git_blob_canonical_payload,
+      tree: git_tree_canonical_payload,
+      commit: git_commit_canonical_payload,
+      tag: git_tag_canonical_payload,
+    },
+  )
+}
+
+fn git_store_object_canonical_hash_input(
+  object: StoreObject,
+) -> GitCanonicalHashInputOutcome {
+  match git_store_object_canonical_payload(object: object) {
+    GitCanonicalHashInputRefused { cause } =>
+      GitCanonicalHashInputRefused { cause: cause }
+    GitCanonicalHashInputReady { bytes: payload } =>
+      let payload_octets = bytes_octets(b: payload)
+      let header = join(
+        [
+          git_object_type_wire_name(
+            object_type: store_object_kind(object: object),
+          ),
+          " ",
+          to_string(count(payload_octets)),
+          from_code_point(0),
+        ],
+        "",
+      )
+      GitCanonicalHashInputReady {
+        bytes: octets_bytes(
+          o: append(
+            bytes_octets(b: utf8_encode_bytes(s: header)),
+            items: payload_octets,
+          ),
+        )
+      }
+  }
+}
+
+fn git_store_object_canonical_size(object: StoreObject) -> ByteSize? {
+  match git_store_object_canonical_payload(object: object) {
+    GitCanonicalHashInputReady { bytes } =>
+      Present {
+        value: byte_size(count: count(bytes_octets(b: bytes)))
+      }
+    GitCanonicalHashInputRefused { cause: _ } => none
+  }
+}
+
+fn stored_object_oid(stored: StoredObject) -> GitObjectId {
+  stored.oid
+}
+
+fn git_stored_object_receipt_valid(
+  stored: StoredObject,
+  repository_format: GitObjectFormat,
+) -> Bool {
+  match stored.content_address {
+    GitHashObjectObservationUnavailable { cause: _ } => false
+    GitHashObjectObserved {
+      git_version: _,
+      object_format,
+      canonical_input,
+      observed_oid,
+    } =>
+      match git_store_object_canonical_hash_input(object: stored.object) {
+        GitCanonicalHashInputRefused { cause: _ } => false
+        GitCanonicalHashInputReady { bytes } =>
+          stored.oid == observed_oid
+            && canonical_input == bytes
+            && object_format == git_object_id_format(oid: observed_oid)
+            && git_object_id_format(oid: observed_oid) == repository_format
+            && git_store_object_references_format(
+              object: stored.object,
+              format: repository_format,
+            )
+      }
+  }
+}
+
+fn git_find_stored_object(objects: List<StoredObject>, oid: GitObjectId) -> StoredObject? {
+  objects |> filter(o => stored_object_oid(stored: o) == oid) |> first
+}
+
+fn git_find_unavailable(
+  unavailable: List<GitUnavailableObject>,
+  oid: GitObjectId,
+) -> GitUnavailableObject? {
+  unavailable |> filter(u => match u {
+    GitPromisorObjectUnavailable { oid: found, promisor: _ } => found == oid
+    GitUnexpectedObjectMissing { oid: found } => found == oid
+    GitCorruptObject { oid: found, reason: _ } => found == oid
+  }) |> first
+}
+
+fn git_lookup_object(repo: GitRepositoryState, oid: GitObjectId) -> ObjectLookupResult {
+  match git_find_stored_object(objects: repo.objects, oid: oid) {
+    Present { value: stored } =>
+      if git_stored_object_receipt_valid(
+        stored: stored,
+        repository_format: repo.object_format,
+      ) {
+        ObjectFound { stored: stored }
+      } else {
+        ObjectCorrupt {
+          oid: oid,
+          reason: "content-address observation does not match the decoded object kind or object format",
+        }
+      }
+    Absent => match git_find_unavailable(unavailable: repo.unavailable, oid: oid) {
+      Present { value: unavailable } => match unavailable {
+        GitPromisorObjectUnavailable { oid: missing, promisor } =>
+          ObjectPromisorUnavailable { oid: missing, promisor: promisor }
+        GitUnexpectedObjectMissing { oid: missing } =>
+          ObjectUnexpectedlyMissing { oid: missing }
+        GitCorruptObject { oid: corrupt, reason } =>
+          ObjectCorrupt { oid: corrupt, reason: reason }
+      }
+      Absent => ObjectUnexpectedlyMissing { oid: oid }
+    }
+  }
+}
+
+fn git_lookup_ref(refs: List<GitRefRecord>, name: GitRefName) -> GitRefLookupResult {
+  let matching = refs |> filter(record => record.name == name)
+  let matching_count = count(matching)
+  if matching_count == 0 {
+    GitRefLookupMissing { name: name }
+  } else if matching_count > 1 {
+    GitRefLookupDuplicate { name: name, count: matching_count }
+  } else {
+    match matching.first() {
+      Present { value: record } => GitRefLookupUnique { record: record }
+      Absent => GitRefLookupMissing { name: name }
+    }
+  }
+}
+
+fn git_resolve_direct_ref(repo: GitRepositoryState, name: GitRefName) -> RefResolutionResult {
+  match git_lookup_ref(refs: repo.refs, name: name) {
+    GitRefLookupUnique { record } => match record.target {
+      DirectTarget { oid } => RefResolved { oid: oid }
+      SymbolicTarget { ref_name } => RefNotDirect { name: name, target: ref_name }
+    }
+    GitRefLookupMissing { name: missing } => RefNotFound { name: missing }
+    GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
+      RefDuplicate { name: duplicate, count: duplicate_count }
+  }
+}
+
+type GitTreeWireEntry {
+  mode: NonEmptyStr
+  object_type: NonEmptyStr
+  oid: GitObjectId
+  name: GitTreeWireName
+}
+
+type GitTreeDecodeRefusal
+  = GitTreeModeObjectMismatch {
+      mode: NonEmptyStr,
+      object_type: NonEmptyStr,
+      name: GitTreeWireName,
+    }
+  | GitTreeEntryNameRefused {
+      name: GitTreeWireName,
+      cause: GitTreeEntryNameDecodeRefusal,
+    }
+
+type GitTreeDecodeOutcome
+  = GitTreeDecoded { entries: List<TreeEntry> }
+  | GitTreeDecodeRefused { cause: GitTreeDecodeRefusal }
+
+type GitTreeEntryDecodeOutcome
+  = GitTreeEntryDecoded { entry: TreeEntry }
+  | GitTreeEntryDecodeRefused { cause: GitTreeDecodeRefusal }
+
+type GitTreeMode
+  = GitRegularBlobMode
+  | GitExecutableBlobMode
+  | GitSymlinkMode
+  | GitSubtreeMode
+  | GitlinkMode
+
+type GitTreeModeDecodeOutcome
+  = GitTreeModeDecoded { mode: GitTreeMode }
+  | GitTreeModeRefused
+
+fn git_decode_tree_mode(text: NonEmptyStr) -> GitTreeModeDecodeOutcome {
+  if text == "100644" {
+    GitTreeModeDecoded { mode: GitRegularBlobMode }
+  } else if text == "100755" {
+    GitTreeModeDecoded { mode: GitExecutableBlobMode }
+  } else if text == "120000" {
+    GitTreeModeDecoded { mode: GitSymlinkMode }
+  } else if text == "040000" {
+    GitTreeModeDecoded { mode: GitSubtreeMode }
+  } else if text == "160000" {
+    GitTreeModeDecoded { mode: GitlinkMode }
+  } else {
+    GitTreeModeRefused
+  }
+}
+
+fn git_tree_mode_object_type(mode: GitTreeMode) -> NonEmptyStr {
+  match mode {
+    GitRegularBlobMode => "blob"
+    GitExecutableBlobMode => "blob"
+    GitSymlinkMode => "blob"
+    GitSubtreeMode => "tree"
+    GitlinkMode => "commit"
+  }
+}
+
+fn git_tree_entry_from_mode(
+  mode: GitTreeMode,
+  name: GitTreeEntryName,
+  oid: GitObjectId,
+) -> TreeEntry {
+  match mode {
+    GitRegularBlobMode => RegularBlobEntry { name: name, oid: oid }
+    GitExecutableBlobMode => ExecutableBlobEntry { name: name, oid: oid }
+    GitSymlinkMode => SymlinkEntry { name: name, oid: oid }
+    GitSubtreeMode => SubtreeEntry { name: name, oid: oid }
+    GitlinkMode => GitlinkEntry { name: name, oid: oid }
+  }
+}
+
+fn git_decode_tree_entry(entry: GitTreeWireEntry) -> GitTreeEntryDecodeOutcome {
+  match git_decode_tree_entry_name(wire: entry.name) {
+    GitTreeEntryNameDecodeRefused { cause } =>
+      GitTreeEntryDecodeRefused {
+        cause: GitTreeEntryNameRefused {
+          name: entry.name,
+          cause: cause,
+        }
+      }
+    GitTreeEntryNameDecoded { name } =>
+      match git_decode_tree_mode(text: entry.mode) {
+        GitTreeModeRefused => GitTreeEntryDecodeRefused {
+          cause: GitTreeModeObjectMismatch {
+            mode: entry.mode,
+            object_type: entry.object_type,
+            name: entry.name,
+          }
+        }
+        GitTreeModeDecoded { mode } =>
+          if git_tree_mode_object_type(mode: mode) == entry.object_type {
+            GitTreeEntryDecoded {
+              entry: git_tree_entry_from_mode(
+                mode: mode,
+                name: name,
+                oid: entry.oid,
+              )
+            }
+          } else {
+            GitTreeEntryDecodeRefused {
+              cause: GitTreeModeObjectMismatch {
+                mode: entry.mode,
+                object_type: entry.object_type,
+                name: entry.name,
+              }
+            }
+          }
+      }
+  }
+}
+
+fn git_decode_tree_step(
+  state: GitTreeDecodeOutcome,
+  wire: GitTreeWireEntry,
+) -> GitTreeDecodeOutcome {
+  match state {
+    GitTreeDecodeRefused { cause } => GitTreeDecodeRefused { cause: cause }
+    GitTreeDecoded { entries } => match git_decode_tree_entry(entry: wire) {
+      GitTreeEntryDecoded { entry } =>
+        GitTreeDecoded { entries: append(entries, items: [entry]) }
+      GitTreeEntryDecodeRefused { cause } =>
+        GitTreeDecodeRefused { cause: cause }
+    }
+  }
+}
+
+fn git_decode_tree(entries: List<GitTreeWireEntry>) -> GitTreeDecodeOutcome {
+  fold(entries, init: GitTreeDecoded { entries: [] }, f: git_decode_tree_step)
+}
+
+type GitNulQuartet {
+  first: List<UInt8>
+  second: List<UInt8>
+  third: List<UInt8>
+  fourth: List<UInt8>
+}
+
+type GitNulQuartetPending
+  = GitNulQuartetAwaitFirst
+  | GitNulQuartetAwaitSecond { first: List<UInt8> }
+  | GitNulQuartetAwaitThird {
+      first: List<UInt8>,
+      second: List<UInt8>,
+    }
+  | GitNulQuartetAwaitFourth {
+      first: List<UInt8>,
+      second: List<UInt8>,
+      third: List<UInt8>,
+    }
+
+type GitNulQuartetRefusal
+  = GitNulQuartetMissingTerminator
+  | GitNulQuartetEmptyField
+  | GitNulQuartetIncompleteRecord { field_count: NonNegativeInt }
+
+type GitNulQuartetFoldState
+  = GitNulQuartetAccumulating {
+      pending: GitNulQuartetPending,
+      rows: List<GitNulQuartet>,
+      field_count: NonNegativeInt,
+    }
+  | GitNulQuartetFoldRefused { cause: GitNulQuartetRefusal }
+
+type GitNulQuartetDecodeOutcome
+  = GitNulQuartetsDecoded { rows: List<GitNulQuartet> }
+  | GitNulQuartetsRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_quartet_step(
+  state: GitNulQuartetFoldState,
+  field: List<UInt8>,
+) -> GitNulQuartetFoldState {
+  match state {
+    GitNulQuartetFoldRefused { cause } =>
+      GitNulQuartetFoldRefused { cause: cause }
+    GitNulQuartetAccumulating { pending, rows, field_count } =>
+      if count(field) == 0 {
+        GitNulQuartetFoldRefused { cause: GitNulQuartetEmptyField }
+      } else {
+        match pending {
+          GitNulQuartetAwaitFirst => GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitSecond { first: field },
+            rows: rows,
+            field_count: field_count + 1,
+          }
+          GitNulQuartetAwaitSecond { first } => GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitThird {
+              first: first,
+              second: field,
+            },
+            rows: rows,
+            field_count: field_count + 1,
+          }
+          GitNulQuartetAwaitThird { first, second } =>
+            GitNulQuartetAccumulating {
+              pending: GitNulQuartetAwaitFourth {
+                first: first,
+                second: second,
+                third: field,
+              },
+              rows: rows,
+              field_count: field_count + 1,
+            }
+          GitNulQuartetAwaitFourth { first, second, third } =>
+            GitNulQuartetAccumulating {
+              pending: GitNulQuartetAwaitFirst,
+              rows: append(rows, items: [
+                GitNulQuartet {
+                  first: first,
+                  second: second,
+                  third: third,
+                  fourth: field,
+                },
+              ]),
+              field_count: field_count + 1,
+            }
+        }
+      }
+  }
+}
+
+type GitNulFieldFoldState
+  = GitNulFieldsAccumulating {
+      current: List<UInt8>,
+      fields: List<List<UInt8>>,
+      terminated: Bool,
+    }
+  | GitNulFieldsRefused { cause: GitNulQuartetRefusal }
+
+fn git_nul_field_octet_step(
+  state: GitNulFieldFoldState,
+  octet: UInt8,
+) -> GitNulFieldFoldState {
+  match state {
+    GitNulFieldsRefused { cause } => GitNulFieldsRefused { cause: cause }
+    GitNulFieldsAccumulating { current, fields, terminated: _ } =>
+      if octet == 0 {
+        if count(current) == 0 {
+          GitNulFieldsRefused { cause: GitNulQuartetEmptyField }
+        } else {
+          GitNulFieldsAccumulating {
+            current: [],
+            fields: append(fields, items: [current]),
+            terminated: true,
+          }
+        }
+      } else {
+        GitNulFieldsAccumulating {
+          current: append(current, items: [octet]),
+          fields: fields,
+          terminated: false,
+        }
+      }
+  }
+}
+
+fn git_decode_nul_quartets(payload: Bytes) -> GitNulQuartetDecodeOutcome {
+  match fold(
+    bytes_octets(b: payload),
+    init: GitNulFieldsAccumulating {
+      current: [],
+      fields: [],
+      terminated: false,
+    },
+    f: git_nul_field_octet_step,
+  ) {
+    GitNulFieldsRefused { cause } =>
+      GitNulQuartetsRefused { cause: cause }
+    GitNulFieldsAccumulating { current: _, fields, terminated } =>
+      if !terminated {
+        GitNulQuartetsRefused { cause: GitNulQuartetMissingTerminator }
+      } else {
+        match fold(
+          fields,
+          init: GitNulQuartetAccumulating {
+            pending: GitNulQuartetAwaitFirst,
+            rows: [],
+            field_count: 0,
+          },
+          f: git_nul_quartet_step,
+        ) {
+          GitNulQuartetFoldRefused { cause } =>
+            GitNulQuartetsRefused { cause: cause }
+          GitNulQuartetAccumulating { pending, rows, field_count } =>
+            match pending {
+              GitNulQuartetAwaitFirst => GitNulQuartetsDecoded { rows: rows }
+              _ => GitNulQuartetsRefused {
+                cause: GitNulQuartetIncompleteRecord {
+                  field_count: field_count,
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+type GitObjectIdTextRefusal
+  = GitObjectIdTextWrongLength {
+      format: GitObjectFormat,
+      observed: NonNegativeInt,
+    }
+  | GitObjectIdTextNonHexadecimal
+  | GitObjectIdTextNonCanonicalUppercase
+
+type GitObjectIdTextDecodeOutcome
+  = GitObjectIdTextDecoded { oid: GitObjectId }
+  | GitObjectIdTextRefused { cause: GitObjectIdTextRefusal }
+
+fn git_hex_code_point(cp: Int) -> Bool {
+  (cp >= 48 && cp <= 57)
+    || (cp >= 65 && cp <= 70)
+    || (cp >= 97 && cp <= 102)
+}
+
+fn git_decode_object_id_text(
+  format: GitObjectFormat,
+  text: String,
+) -> GitObjectIdTextDecodeOutcome {
+  let expected_length = match format {
+    GitObjectFormatSha1 => 40
+    GitObjectFormatSha256 => 64
+  }
+  if text.length() != expected_length {
+    GitObjectIdTextRefused {
+      cause: GitObjectIdTextWrongLength {
+        format: format,
+        observed: text.length(),
+      }
+    }
+  } else if !all(chars(s: text), cp => git_hex_code_point(cp: cp)) {
+    GitObjectIdTextRefused { cause: GitObjectIdTextNonHexadecimal }
+  } else if any(chars(s: text), cp => cp >= 65 && cp <= 70) {
+    GitObjectIdTextRefused { cause: GitObjectIdTextNonCanonicalUppercase }
+  } else {
+    match format {
+      GitObjectFormatSha1 => GitObjectIdTextDecoded {
+        oid: GitSha1ObjectId { digest: text as GitSha1Digest }
+      }
+      GitObjectFormatSha256 => GitObjectIdTextDecoded {
+        oid: GitSha256ObjectId { digest: text as GitSha256Digest }
+      }
+    }
+  }
+}
+
+type GitLsTreeZRefusal
+  = GitLsTreeZFramingRefused { cause: GitNulQuartetRefusal }
+  | GitLsTreeZHeaderNonAscii { field: NonEmptyStr }
+  | GitLsTreeZObjectIdRefused { cause: GitObjectIdTextRefusal }
+  | GitLsTreeZEntryRefused { cause: GitTreeDecodeRefusal }
+
+type GitLsTreeZDecodeOutcome
+  = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
+  | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
+
+fn git_ascii_field_text(octets: List<UInt8>) -> NonEmptyStr? {
+  if all(octets, octet => octet > 0 && octet < 128) {
+    Present {
+      value: join(
+        octets |> map(octet => from_code_point(octet)),
+        "",
+      ) as NonEmptyStr,
+    }
+  } else {
+    none
+  }
+}
+
+fn git_ls_tree_z_row_step(
+  state: GitLsTreeZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
+  match state {
+    GitLsTreeZRefused { cause } => GitLsTreeZRefused { cause: cause }
+    GitLsTreeZDecoded { entries } =>
+      match git_ascii_field_text(octets: row.first) {
+        Absent => GitLsTreeZRefused {
+          cause: GitLsTreeZHeaderNonAscii { field: "mode" }
+        }
+        Present { value: mode } =>
+          match git_ascii_field_text(octets: row.second) {
+            Absent => GitLsTreeZRefused {
+              cause: GitLsTreeZHeaderNonAscii { field: "object-type" }
+            }
+            Present { value: object_type } =>
+              match git_ascii_field_text(octets: row.third) {
+                Absent => GitLsTreeZRefused {
+                  cause: GitLsTreeZHeaderNonAscii { field: "object-id" }
+                }
+                Present { value: object_id_text } =>
+                  match git_decode_object_id_text(
+                    format: format,
+                    text: object_id_text as String,
+                  ) {
+                    GitObjectIdTextRefused { cause } =>
+                      GitLsTreeZRefused {
+                        cause: GitLsTreeZObjectIdRefused { cause: cause }
+                      }
+                    GitObjectIdTextDecoded { oid } =>
+                      let wire = GitTreeWireEntry {
+                        mode: mode,
+                        object_type: object_type,
+                        oid: oid,
+                        name: GitTreeWireName { octets: row.fourth },
+                      }
+                      match git_decode_tree_entry(entry: wire) {
+                        GitTreeEntryDecodeRefused { cause } =>
+                          GitLsTreeZRefused {
+                            cause: GitLsTreeZEntryRefused { cause: cause }
+                          }
+                        GitTreeEntryDecoded { entry: _ } =>
+                          GitLsTreeZDecoded {
+                            entries: append(entries, items: [wire])
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn git_decode_ls_tree_z(
+  payload: Bytes,
+  format: GitObjectFormat,
+) -> GitLsTreeZDecodeOutcome {
+  match git_decode_nul_quartets(payload: payload) {
+    GitNulQuartetsRefused { cause } =>
+      GitLsTreeZRefused {
+        cause: GitLsTreeZFramingRefused { cause: cause }
+      }
+    GitNulQuartetsDecoded { rows } =>
+      fold(
+        rows,
+        init: GitLsTreeZDecoded { entries: [] },
+        f: (state, row) => git_ls_tree_z_row_step(
+          state: state,
+          row: row,
+          format: format,
+        ),
+      )
+  }
+}
+
+type GitIndexStageDecodeOutcome
+  = GitIndexStageDecoded { stage: GitIndexStage }
+  | GitIndexStageRefused { text: NonEmptyStr }
+
+fn git_decode_index_stage(text: NonEmptyStr) -> GitIndexStageDecodeOutcome {
+  if text == "0" {
+    GitIndexStageDecoded { stage: GitIndexStageNormal }
+  } else if text == "1" {
+    GitIndexStageDecoded { stage: GitIndexStageBase }
+  } else if text == "2" {
+    GitIndexStageDecoded { stage: GitIndexStageOurs }
+  } else if text == "3" {
+    GitIndexStageDecoded { stage: GitIndexStageTheirs }
+  } else {
+    GitIndexStageRefused { text: text }
+  }
+}
+
+type GitLsFilesStageZRefusal
+  = GitLsFilesStageZFramingRefused { cause: GitNulQuartetRefusal }
+  | GitLsFilesStageZHeaderNonAscii { field: NonEmptyStr }
+  | GitLsFilesStageZModeRefused { mode: NonEmptyStr }
+  | GitLsFilesStageZObjectIdRefused { cause: GitObjectIdTextRefusal }
+  | GitLsFilesStageZStageRefused { stage: NonEmptyStr }
+  | GitLsFilesStageZPathRefused { cause: GitPathDecodeRefusal }
+
+type GitLsFilesStageZDecodeOutcome
+  = GitLsFilesStageZDecoded { entries: List<GitIndexEntry> }
+  | GitLsFilesStageZRefused { cause: GitLsFilesStageZRefusal }
+
+fn git_ls_files_stage_z_row_step(
+  state: GitLsFilesStageZDecodeOutcome,
+  row: GitNulQuartet,
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
+  match state {
+    GitLsFilesStageZRefused { cause } =>
+      GitLsFilesStageZRefused { cause: cause }
+    GitLsFilesStageZDecoded { entries } =>
+      match git_ascii_field_text(octets: row.first) {
+        Absent => GitLsFilesStageZRefused {
+          cause: GitLsFilesStageZHeaderNonAscii { field: "mode" }
+        }
+        Present { value: mode_text } =>
+          match git_decode_tree_mode(text: mode_text) {
+            GitTreeModeRefused => GitLsFilesStageZRefused {
+              cause: GitLsFilesStageZModeRefused { mode: mode_text }
+            }
+            GitTreeModeDecoded { mode } =>
+              match git_ascii_field_text(octets: row.second) {
+                Absent => GitLsFilesStageZRefused {
+                  cause: GitLsFilesStageZHeaderNonAscii {
+                    field: "object-id"
+                  }
+                }
+                Present { value: object_id_text } =>
+                  match git_decode_object_id_text(
+                    format: format,
+                    text: object_id_text as String,
+                  ) {
+                    GitObjectIdTextRefused { cause } =>
+                      GitLsFilesStageZRefused {
+                        cause: GitLsFilesStageZObjectIdRefused { cause: cause }
+                      }
+                    GitObjectIdTextDecoded { oid } =>
+                      match git_ascii_field_text(octets: row.third) {
+                        Absent => GitLsFilesStageZRefused {
+                          cause: GitLsFilesStageZHeaderNonAscii {
+                            field: "stage"
+                          }
+                        }
+                        Present { value: stage_text } =>
+                          match git_decode_index_stage(text: stage_text) {
+                            GitIndexStageRefused { text } =>
+                              GitLsFilesStageZRefused {
+                                cause: GitLsFilesStageZStageRefused {
+                                  stage: text
+                                }
+                              }
+                            GitIndexStageDecoded { stage } =>
+                              match git_decode_path_octets(
+                                octets: row.fourth,
+                              ) {
+                                GitPathDecodeRefused { cause } =>
+                                  GitLsFilesStageZRefused {
+                                    cause: GitLsFilesStageZPathRefused {
+                                      cause: cause
+                                    }
+                                  }
+                                GitPathDecoded { path } =>
+                                  GitLsFilesStageZDecoded {
+                                    entries: append(
+                                      entries,
+                                      items: [
+                                        GitIndexEntry {
+                                          path: path,
+                                          mode: mode,
+                                          oid: oid,
+                                          stage: stage,
+                                        },
+                                      ],
+                                    )
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn git_decode_ls_files_stage_z(
+  payload: Bytes,
+  format: GitObjectFormat,
+) -> GitLsFilesStageZDecodeOutcome {
+  match git_decode_nul_quartets(payload: payload) {
+    GitNulQuartetsRefused { cause } =>
+      GitLsFilesStageZRefused {
+        cause: GitLsFilesStageZFramingRefused { cause: cause }
+      }
+    GitNulQuartetsDecoded { rows } =>
+      fold(
+        rows,
+        init: GitLsFilesStageZDecoded { entries: [] },
+        f: (state, row) => git_ls_files_stage_z_row_step(
+          state: state,
+          row: row,
+          format: format,
+        ),
+      )
+  }
+}
+
+fn git_project_tree_entry(entry: TreeEntry) -> GitTreeWireEntry {
+  match entry {
+    RegularBlobEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "100644",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    ExecutableBlobEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "100755",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    SymlinkEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "120000",
+        object_type: "blob",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    SubtreeEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "040000",
+        object_type: "tree",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+    GitlinkEntry { name, oid } =>
+      GitTreeWireEntry {
+        mode: "160000",
+        object_type: "commit",
+        oid: oid,
+        name: GitTreeWireName {
+          octets: git_tree_entry_name_octets(name: name)
+        },
+      }
+  }
+}
+
+fn git_project_tree(tree: Tree) -> List<GitTreeWireEntry> {
+  tree.entries |> map(entry => git_project_tree_entry(entry: entry))
+}
+
+type GitR0Projection {
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree_entries: List<GitTreeWireEntry>
+  tags: List<StoredObject>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
+}
+
+type GitProjectionOutcome
+  = GitProjected { projection: GitR0Projection }
+  | GitProjectionRefused { cause: ObjectLookupResult }
+
+fn git_tag_objects(objects: List<StoredObject>) -> List<StoredObject> {
+  objects |> filter(o => store_object_kind(object: o.object) == TagObj)
+}
+
+fn git_project_repository(repo: GitRepositoryState, tree_oid: GitObjectId) -> GitProjectionOutcome {
+  match repo.objects
+    |> filter(stored => !git_stored_object_receipt_valid(
+      stored: stored,
+      repository_format: repo.object_format,
+    ))
+    |> first {
+    Present { value: corrupt } => GitProjectionRefused {
+      cause: ObjectCorrupt {
+        oid: stored_object_oid(stored: corrupt),
+        reason: "stored object lacks a matching Git content-address observation",
+      }
+    }
+    Absent => match git_lookup_object(repo: repo, oid: tree_oid) {
+      ObjectFound { stored } => match stored.object {
+        ObjectTree { tree } => GitProjected {
+          projection: GitR0Projection {
+            object_format: repo.object_format,
+            tree_oid: tree_oid,
+            tree_entries: git_project_tree(tree: tree),
+            tags: git_tag_objects(objects: repo.objects),
+            refs: repo.refs,
+            index: repo.index,
+            worktree: repo.worktree,
+            unavailable: repo.unavailable,
+          }
+        }
+        _ => GitProjectionRefused { cause: ObjectFound { stored: stored } }
+      }
+      other => GitProjectionRefused { cause: other }
+    }
+  }
+}
+
+type GitR0ReadBackObservation {
+  git_version: NonEmptyStr
+  object_format: GitObjectFormat
+  tree_oid: GitObjectId
+  tree_entries: List<GitTreeWireEntry>
+  tag_oids: List<GitObjectId>
+  refs: List<GitRefRecord>
+  index: List<GitIndexEntry>
+  worktree: List<GitWorktreeEntry>
+  unavailable: List<GitUnavailableObject>
+}
+
+type GitReadBackMismatchAxis
+  = GitReadBackObjectFormatMismatch
+  | GitReadBackTreeIdentityMismatch
+  | GitReadBackTreeEntriesMismatch
+  | GitReadBackTagsMismatch
+  | GitReadBackRefsMismatch
+  | GitReadBackIndexMismatch
+  | GitReadBackWorktreeMismatch
+  | GitReadBackAvailabilityMismatch
+
+type GitReadBackOutcome
+  = GitReadBackVerified { observation: GitR0ReadBackObservation }
+  | GitReadBackMismatch { axis: GitReadBackMismatchAxis }
+
+fn git_projection_tag_oids(projection: GitR0Projection) -> List<GitObjectId> {
+  projection.tags |> map(tag => stored_object_oid(stored: tag))
+}
+
+fn git_verify_independent_read_back(
+  projection: GitR0Projection,
+  observation: GitR0ReadBackObservation,
+) -> GitReadBackOutcome {
+  if !(projection.object_format == observation.object_format) {
+    GitReadBackMismatch { axis: GitReadBackObjectFormatMismatch }
+  } else if !(projection.tree_oid == observation.tree_oid) {
+    GitReadBackMismatch { axis: GitReadBackTreeIdentityMismatch }
+  } else if !(projection.tree_entries == observation.tree_entries) {
+    GitReadBackMismatch { axis: GitReadBackTreeEntriesMismatch }
+  } else if !(git_projection_tag_oids(projection: projection) == observation.tag_oids) {
+    GitReadBackMismatch { axis: GitReadBackTagsMismatch }
+  } else if !(projection.refs == observation.refs) {
+    GitReadBackMismatch { axis: GitReadBackRefsMismatch }
+  } else if !(projection.index == observation.index) {
+    GitReadBackMismatch { axis: GitReadBackIndexMismatch }
+  } else if !(projection.worktree == observation.worktree) {
+    GitReadBackMismatch { axis: GitReadBackWorktreeMismatch }
+  } else if !(projection.unavailable == observation.unavailable) {
+    GitReadBackMismatch { axis: GitReadBackAvailabilityMismatch }
+  } else {
+    GitReadBackVerified { observation: observation }
+  }
+}
+
+type GitModeledRefTransition {
+  requested_name: GitRefName
+  advanced_name: GitRefName
+  expected_old: GitObjectId
+  new: GitObjectId
+}
+
+type GitUpdateRefOutcome
+  = GitRefTransitionModeled {
+      repository: GitRepositoryState,
+      transition: GitModeledRefTransition,
+    }
+  | GitRefAdvanceStale {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      expected_old: GitObjectId,
+      observed: GitObjectId,
+    }
+  | GitRefAdvanceMissing { repository: GitRepositoryState, name: GitRefName }
+  | GitRefAdvanceDuplicate {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      count: NonNegativeInt,
+    }
+  | GitRefAdvanceSymbolicCycle {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      chain: List<GitRefName>,
+    }
+  | GitRefAdvanceFormatMismatch {
+      repository: GitRepositoryState,
+      repository_format: GitObjectFormat,
+      oid: GitObjectId,
+    }
+  | GitRefAdvanceTargetUnavailable {
+      repository: GitRepositoryState,
+      oid: GitObjectId,
+      lookup: ObjectLookupResult,
+    }
+  | GitRefAdvanceTargetKindRefused {
+      repository: GitRepositoryState,
+      name: GitRefName,
+      oid: GitObjectId,
+      object_type: ObjectType,
+    }
+
+data git_modeled_ref_transition_boundary_note: NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
+
+fn git_replace_direct_ref(
+  refs: List<GitRefRecord>,
+  name: GitRefName,
+  new_oid: GitObjectId,
+) -> List<GitRefRecord> {
+  refs |> map(record =>
+    if record.name == name {
+      GitRefRecord { name: record.name, target: DirectTarget { oid: new_oid } }
+    } else {
+      record
+    }
+  )
+}
+
+fn git_model_update_ref_exact_dereferenced(
+  repo: GitRepositoryState,
+  requested_name: GitRefName,
+  current_name: GitRefName,
+  visited: List<GitRefName>,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+  new_object_type: ObjectType,
+) -> GitUpdateRefOutcome {
+  if visited |> any(name => name == current_name) {
+    GitRefAdvanceSymbolicCycle {
+      repository: repo,
+      name: current_name,
+      chain: append(visited, items: [current_name]),
+    }
+  } else {
+    match git_lookup_ref(refs: repo.refs, name: current_name) {
+      GitRefLookupMissing { name: missing } =>
+        GitRefAdvanceMissing { repository: repo, name: missing }
+      GitRefLookupDuplicate { name: duplicate, count: duplicate_count } =>
+        GitRefAdvanceDuplicate {
+          repository: repo,
+          name: duplicate,
+          count: duplicate_count,
+        }
+      GitRefLookupUnique { record } => match record.target {
+        SymbolicTarget { ref_name } =>
+          git_model_update_ref_exact_dereferenced(
+            repo: repo,
+            requested_name: requested_name,
+            current_name: ref_name,
+            visited: append(visited, items: [current_name]),
+            new_oid: new_oid,
+            expected_old: expected_old,
+            new_object_type: new_object_type,
+          )
+        DirectTarget { oid: observed } =>
+          if starts_with(s: current_name as String, prefix: "refs/heads/")
+            && !(new_object_type == CommitObj) {
+            GitRefAdvanceTargetKindRefused {
+              repository: repo,
+              name: current_name,
+              oid: new_oid,
+              object_type: new_object_type,
+            }
+          } else if !(observed == expected_old) {
+            GitRefAdvanceStale {
+              repository: repo,
+              name: current_name,
+              expected_old: expected_old,
+              observed: observed,
+            }
+          } else {
+            let updated = GitRepositoryState {
+              object_format: repo.object_format,
+              objects: repo.objects,
+              unavailable: repo.unavailable,
+              refs: git_replace_direct_ref(
+                refs: repo.refs,
+                name: current_name,
+                new_oid: new_oid,
+              ),
+              index: repo.index,
+              worktree: repo.worktree,
+            }
+            GitRefTransitionModeled {
+              repository: updated,
+              transition: GitModeledRefTransition {
+                requested_name: requested_name,
+                advanced_name: current_name,
+                expected_old: expected_old,
+                new: new_oid,
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn git_model_update_ref_exact(
+  repo: GitRepositoryState,
+  name: GitRefName,
+  new_oid: GitObjectId,
+  expected_old: GitObjectId,
+) -> GitUpdateRefOutcome {
+  if !(git_object_id_format(oid: new_oid) == repo.object_format) {
+    GitRefAdvanceFormatMismatch {
+      repository: repo,
+      repository_format: repo.object_format,
+      oid: new_oid,
+    }
+  } else if !(git_object_id_format(oid: expected_old) == repo.object_format) {
+    GitRefAdvanceFormatMismatch {
+      repository: repo,
+      repository_format: repo.object_format,
+      oid: expected_old,
+    }
+  } else {
+    match git_lookup_object(repo: repo, oid: new_oid) {
+      ObjectFound { stored: new_object } =>
+        git_model_update_ref_exact_dereferenced(
+          repo: repo,
+          requested_name: name,
+          current_name: name,
+          visited: [],
+          new_oid: new_oid,
+          expected_old: expected_old,
+          new_object_type: store_object_kind(object: new_object.object),
+        )
+      unavailable => GitRefAdvanceTargetUnavailable {
+        repository: repo,
+        oid: new_oid,
+        lookup: unavailable,
+      }
+    }
+  }
+}
+
+type GitR0UnsupportedBoundary
+  = GitAttributesTransformExecution
+  | GitCleanSmudgeFilterExecution
+  | GitPackDeltaTransport
+  | GitShallowFetchNegotiation
+  | GitMultiRefTransactionExecution
+
+data git_r0_unsupported_boundary: List<GitR0UnsupportedBoundary> = [
+  GitAttributesTransformExecution,
+  GitCleanSmudgeFilterExecution,
+  GitPackDeltaTransport,
+  GitShallowFetchNegotiation,
+  GitMultiRefTransactionExecution,
+]

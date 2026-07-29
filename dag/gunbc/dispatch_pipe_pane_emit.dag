@@ -1,0 +1,48 @@
+module gunbc.dispatch_pipe_pane_emit
+
+import std.types { String, NonEmptyStr }
+import extdeps.tmux { TmuxPipeCommand }
+import v2.extdeps.languages.bash_build { bash_build_command_from_lits }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node }
+
+data dispatch_event_pipe_emit_note: String = "review 44063. tmux pipe-pane's input contract IS one shell-command string, so the SEAM is permanent — but the payload is no longer hand-assembled. dispatch_event_pipe_intent builds the command as a bash AST (one command, five literal words) and dispatch_event_pipe_emission renders it through the signed v2.workflow.bash_command_fold_serialize backend, which is the same grammar the ingest side reads forward (DESIGN 4, one grammar read in both directions). This module exists BECAUSE the payload construction has to sit on a realization edge: v2.lens.realization_vocabulary_containment confines the bash-AST vocabulary to realization_edge_path_prefixes, and dag/gunbc/roadmap_dispatch_actuator.dag is a workflow module, not an emitter. The split is the containment rule working as designed, not an exception to it — the precedent is dag/gunbc/live_deploy/emit. Quoting is now the grammar's job, not the caller's: the lit-word production single-quotes every word and escapes an embedded quote, so extdeps.exec.command.shell_quote is no longer applied at this site. Verified by execution that the emitted spelling is behaviourally identical for this payload — a quoted command name still resolves the exec builtin (quoting suppresses alias and reserved-word recognition, not builtin lookup)."
+
+fn dispatch_event_pipe_intent(tee_program: String, events_path: String) -> Node {
+  bash_build_command_from_lits(lits: [
+    "exec",
+    tee_program,
+    "-a",
+    "--",
+    events_path,
+  ])
+}
+
+type PipePaneEmission
+  = PipeEmitted { command: TmuxPipeCommand }
+  | PipeEmitRefused { detail: String }
+
+data dispatch_event_pipe_emit_refusal_note: String = "review 44113. The first version of this module answered a serializer Rejected with a TmuxPipeCommand carrying a non-executable poison marker. That was wrong in the way DESIGN 5 names precisely: a refusal that still produces a valid effect request is a widen wearing a refusal's clothes — the actuator could not tell it apart from a successful serialization, so an un-emittable intent still reached tmux as a command, and the serializer's own diagnostics were discarded on the way. The emission is now a typed sum. A refusal carries its located detail and has NO arm that yields a command, so dispatching one is unwritable rather than merely unlikely; the spawn plan above refuses whole and the belt surfaces it as SpawnFailed at the step that could not be built."
+
+fn dispatch_event_pipe_emission(
+  tee_program: String,
+  events_path: String,
+) -> PipePaneEmission {
+  match bash_fold_serialize_node(
+    stmt: dispatch_event_pipe_intent(
+      tee_program: tee_program,
+      events_path: events_path,
+    ),
+  ) {
+    Accepted { value: text, diagnostics: _ } =>
+      PipeEmitted { command: TmuxPipeCommand { body: text as NonEmptyStr } }
+    Rejected { diagnostics: _ } =>
+      PipeEmitRefused {
+        detail: join([
+          "tmux pipe-pane payload did not serialize through the bash backend for events path ",
+          events_path,
+        ], ""),
+      }
+  }
+}
