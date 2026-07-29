@@ -7,7 +7,7 @@ import v2.compiler.self_host.frontier_probe_types {
   ProbeStageEmit,
   SelfEmitReady
 }
-import v2.std.algebra { any, length, fold_list }
+import v2.std.algebra { any, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -197,10 +197,10 @@ fn gate_a_oracle_probe_receipt_matches(
 }
 
 fn gate_a_oracle_row_for_module(module_path: String) -> List<GateASelfEmitOracleRow> {
-  fold_list(
-    xs: gate_a_self_emit_oracle_rows,
-    empty: [],
-    cons: fn(acc, row) {
+  fold(
+    gate_a_self_emit_oracle_rows,
+    init: [],
+    f: fn(acc, row) {
       if row.module_path == module_path {
         concat(acc, [row])
       } else {
@@ -228,10 +228,10 @@ fn gate_a_oracle_row_is_enrolled_backed(row: GateASelfEmitOracleRow) -> Bool {
 }
 
 fn gate_a_self_emit_oracle_rows_all_enrolled_holds() -> Bool {
-  fold_list(
-    xs: gate_a_self_emit_oracle_rows,
-    empty: true,
-    cons: fn(ok, row) { ok && gate_a_oracle_row_is_enrolled_backed(row: row) }
+  fold(
+    gate_a_self_emit_oracle_rows,
+    init: true,
+    f: fn(ok, row) { ok && gate_a_oracle_row_is_enrolled_backed(row: row) }
   )
 }
 
@@ -244,10 +244,10 @@ fn gate_a_flip_wave_module_has_oracle_row(module_path: String) -> Bool {
 }
 
 fn gate_a_flip_wave_reverted_modules_lack_oracle_holds() -> Bool {
-  fold_list(
-    xs: gate_a_flip_wave_reverted_module_paths,
-    empty: true,
-    cons: fn(ok, path) { ok && !gate_a_flip_wave_module_has_oracle_row(module_path: path) }
+  fold(
+    gate_a_flip_wave_reverted_module_paths,
+    init: true,
+    f: fn(ok, path) { ok && !gate_a_flip_wave_module_has_oracle_row(module_path: path) }
   )
 }
 

@@ -21,7 +21,7 @@ import v2.compiler.self_host.gate_a_oracle {
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_entries
 }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -58,10 +58,10 @@ test fn witness_flip_wave_dishonest_self_emit_reds() -> Bool {
 }
 
 test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
-  fold_list(
-    xs: gate_a_flip_wave_reverted_module_paths,
-    empty: true,
-    cons: fn(ok, path) {
+  fold(
+    gate_a_flip_wave_reverted_module_paths,
+    init: true,
+    f: fn(ok, path) {
       ok && !gate_a_oracle_authorizes_self_emit(
         module_path: path,
         receipt: gate_a_fabricated_self_emit_ready_receipt(module_path: path)
