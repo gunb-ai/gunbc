@@ -26,7 +26,6 @@ import std.state_durability {
   StatePerturbationGeneration,
   StateRealizationIdentity,
   SynchronizedCommit,
-  durability_commit_barrier_is_synchronized,
 }
 import std.types { Bool, List, NonEmptyStr }
 
@@ -188,11 +187,12 @@ fn bmc_fan_policy_projection_topology_matches(
 fn bmc_fan_policy_projection_durability_commit_ready(
   capability: BmcFanPolicyProjectionCapability,
 ) -> Bool {
-  durability_commit_barrier_is_synchronized(
-    barrier: bmc_fan_policy_projection_durability_capability(
-      capability: capability,
-    ).commit_barrier,
-  )
+  match bmc_fan_policy_projection_durability_capability(
+    capability: capability,
+  ).commit_barrier {
+    SynchronizedCommit => true
+    NoDurabilityCommitBarrier => false
+  }
 }
 
 data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."

@@ -6,18 +6,22 @@ import extdeps.bmc.capability {
   BmcFirmwareTrackRequired,
 }
 import extdeps.bmc.types {
-  BmcFanAcousticPolicy,
   BmcFanCurve,
   BmcFanCurveStep,
-  BmcFanThermalGuard,
-  bmc_fan_curve_effectively_reaches_full_duty_before,
-  bmc_fan_curve_reaches_emergency_full_duty,
-  bmc_fan_curve_stays_within_quiet_duty,
 }
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
 import std.bmc { OpenBmc }
-import std.measure { celsius, celsius_count, celsius_delta, percent }
+import std.measure {
+  Celsius,
+  Percent,
+  celsius,
+  celsius_count,
+  celsius_delta,
+  celsius_delta_count,
+  percent,
+  percent_count,
+}
 import std.state_durability {
   ControlPlaneRestartBoundary,
   DurableAcross,
@@ -26,7 +30,88 @@ import std.state_durability {
   StateDurabilityIntent,
   state_durability_boundary_requirements,
 }
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
+
+type BmcFanAcousticPolicy {
+  quiet_through_temperature: Celsius
+  quiet_duty_ceiling: Percent
+  emergency_full_duty_at_or_below: Celsius
+}
+
+type BmcFanThermalGuard {
+  processor_rollback_temperature: Celsius
+  component_rollback_temperature: Celsius
+  required_component_sensors: List<NonEmptyStr>
+}
+
+fn bmc_intent_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+  fold(
+    curve.steps,
+    init: curve.minimum_duty,
+    f: (selected, step) =>
+      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+        step.duty
+      } else {
+        selected
+      },
+  )
+}
+
+fn bmc_fan_curve_stays_within_quiet_duty(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: true,
+    f: (ok, step) =>
+      ok
+        && (
+          celsius_count(step.at_or_above) > celsius_count(policy.quiet_through_temperature)
+            || percent_count(step.duty) <= percent_count(policy.quiet_duty_ceiling)
+        ),
+  )
+    && percent_count(
+      bmc_intent_fan_curve_duty_at(
+        curve: curve,
+        reading: policy.quiet_through_temperature,
+      ),
+    ) <= percent_count(policy.quiet_duty_ceiling)
+}
+
+fn bmc_fan_curve_reaches_emergency_full_duty(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
+        ),
+  )
+}
+
+fn bmc_fan_curve_effectively_reaches_full_duty_before(
+  curve: BmcFanCurve,
+  temperature: Celsius,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && (
+              celsius_count(step.at_or_above) + celsius_delta_count(curve.positive_hysteresis)
+            ) < celsius_count(temperature)
+        ),
+  )
+}
 
 type BmcFanPolicyIntent {
   durability: StateDurabilityIntent

@@ -479,4 +479,19 @@ fn linux_overlay_observation_is_flash_backed(
     )
 }
 
+fn linux_file_publication_has_synchronized_commit(
+  protocol: LinuxFilePublicationProtocol,
+) -> Bool {
+  protocol.stage_in_target_directory
+    && protocol.staged_content_validated
+    && match protocol.replacement {
+      RenameReplaceWithinTargetDirectory =>
+        match protocol.synchronization {
+          SyncAllFilesystemsAfterReplacement => true
+          NoExplicitFilesystemSynchronization => false
+        }
+      ReplacementAtomicityUnspecified => false
+    }
+}
+
 data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
