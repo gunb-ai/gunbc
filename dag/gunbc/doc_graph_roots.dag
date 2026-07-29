@@ -103,6 +103,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "e0599_phase_b0_emitter_decision_2026-07-29",
+    work: DeclarationRef { module_path: "tools.e0599_emitter_decision_census", decl_name: "e0599_emitter_decision_census_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "B1 lands the sharing model on the materialization axis and the lowering rows in tools.e0599_emitter_decision_census migrate to it, at which point this audit's section 5 folds into the successor plan and its measurements stay as the receipt; OR the V2-emitter recentering of CompilerFixedPoint retires the V1SeedEmitter producer this census measures, at which point the histogram becomes historical and only the bootstrap-adapter-queue enumeration survives" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
     work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
