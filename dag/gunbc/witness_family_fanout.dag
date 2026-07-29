@@ -3,7 +3,7 @@ module gunbc.witness_family_fanout
 import std.types { String, Int, List }
 import v2.std.node { Symbol }
 
-data witness_family_fanout_doc: String = "Witness-family fan-out partition (v1_deletion_plan witness_family_fanout). Lane 4 (wise-fox-351): meet_join + variant_construct + classical_not_ingested emit-on-demand native witnesses on the #6879 kernel. Dissolve-on: every enrolled lane ACCEPT witness green + ci_floor_cutover routes native."
+data witness_family_fanout_doc: String = "Witness-family fan-out partition (gunbc.roadmap_authority v1-verification-ledger lane; the brick ledger that named it is retired to git history). Lane 4 (wise-fox-351): meet_join + variant_construct + classical_not_ingested emit-on-demand native witnesses on the #6879 kernel. Dissolve-on: every enrolled lane ACCEPT witness green + ci_floor_cutover routes native."
 
 type WitnessFamilyKind
   = EmitHostExecutionFamily

@@ -5,11 +5,14 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
+import std.types { ContentHash }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   Pointer,
   RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  node_accepted,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -342,7 +345,7 @@ fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFie
   )
 }
 
-fn active_roadmap_nodes() -> List<RoadmapNode> {
+fn declared_roadmap_nodes() -> List<RoadmapNode> {
   [
     active(
       id: "namespace-occurrence-transport",
@@ -752,12 +755,26 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
         headline: "Delete the v1 interpreter",
-        boundary: "Delete the interpreter only after the role frontier, materialization kernel, quarantine, namespace retirement, and P-derive compiler receipt are green.",
+        boundary: "Delete the interpreter and all now-unreachable glue once the link-grain quarantine holds; the claim is zero linked or runtime interpreter consumers, not the end of src/v1 or hand-maintained Rust.",
         displaced_cost: "Removes the pay-every-run semantic fork and advances the substrate as compiler authority.",
         first_slice: "Delete the interpreter and all now-unreachable glue in one atomic change.",
         red_control: "Products, floor, cold/warm parity, and the no-consumer census all execute without the deleted module.",
         out_of_scope: "This is not the terminal deletion of all src/v1 or all emitted Rust.",
         handback: "Return deletion diff plus complete execution and reachability receipts."
+      )
+    ),
+    active(
+      id: "v1-products-v1-free",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Build and run every product without src/v1",
+        boundary: "After interpreter deletion and the hand-queue drain, the remaining products build and run with src/v1 absent from their build path; a typed terminal-kernel pin with a reason is the only admissible residue.",
+        displaced_cost: "Separates product independence from interpreter deletion so neither claim waits on the other's unrelated residue.",
+        first_slice: "Build one product binary from a tree with src/v1 excluded and run its required execution matrix.",
+        red_control: "A product binary that still links or reads any src/v1 file without a typed retained-kernel disposition fails the build census.",
+        out_of_scope: "No repository-wide zero-hand-Rust claim and no deletion of emitted realizations.",
+        handback: "Return the src/v1-free build receipts, product execution matrix, and typed retained-kernel pin roster."
       )
     ),
     active_small(
@@ -968,7 +985,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn active_roadmap_edges() -> List<RoadmapEdge> {
+fn declared_roadmap_edges() -> List<RoadmapEdge> {
   [
     edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
@@ -991,6 +1008,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
 
+    edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
     edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
     edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
@@ -998,14 +1016,14 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
-    edge(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
-    edge(child: "v1-interpreter-delete", parent: "v1-test-migration"),
-    edge(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision"),
-    edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
-    edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
-    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
@@ -1023,10 +1041,73 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
   ]
 }
 
+fn chash(s: String) -> ContentHash { s }
+
+fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+  [
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "namespace-occurrence-transport"),
+      criteria_digest: chash(s: "710e50f74230f30a"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.namespace_occurrence_transport_test",
+        witness_fn: "namespace_occurrence_equal_text_mints_distinct_ids_holds",
+        executed_on: "2026-07-28",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/occurrence_identity.dag",
+        further_artifacts: [
+          "dag/test/claim/namespace_occurrence_transport_test.dag",
+          "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-28",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "pderive-typesafe-nullary-reflection"),
+      criteria_digest: chash(s: "a0dd3010bdfdf8c7"),
+      red_control: RedControlExecuted {
+        witness_module: "v2.test.manual.coproduct_reflection_conformance",
+        witness_fn: "witness_nullary_reflection_rejects_requested_a_with_context_b",
+        executed_on: "2026-07-28",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "src/v2/std/node_query.dag",
+        further_artifacts: [
+          "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+          "src/v1/stage0/src/coproduct_reflection.rs",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-28",
+    },
+  ]
+}
+
+fn accepted_roadmap_nodes() -> List<RoadmapNode> {
+  let receipts = roadmap_acceptance_receipts()
+  declared_roadmap_nodes() |> filter(n => node_accepted(receipts: receipts, rn: n))
+}
+
+fn accepted_roadmap_node_ids() -> List<RoadmapNodeId> {
+  accepted_roadmap_nodes() |> map(n => n.node)
+}
+
+fn active_roadmap_nodes() -> List<RoadmapNode> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+}
+
+fn active_roadmap_edges() -> List<RoadmapEdge> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_edges() |> filter(e =>
+    !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+}
+
 fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. It carries no accepted or superseded history and no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
     ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM/source-intent design](docs/plans/dag-scm-design.md) · [SCM product strategy](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
@@ -1036,7 +1117,7 @@ fn active_section() -> RoadmapSection {
   RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: [
-      section_prose(content: "The graph has eight chains: namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      section_prose(content: "The graph has eight chains: namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
         nodes: active_roadmap_nodes(),

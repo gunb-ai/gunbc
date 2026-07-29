@@ -1,7 +1,13 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr }
-import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
+import std.types { NonEmptyStr, ContentHash }
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import gunbc.roadmap_status {
+  RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
+  TicketFields, line_ticket,
+  RedControlEvidence, HandbackEvidence,
+  red_control_evidence_satisfied, handback_evidence_satisfied,
+}
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 
@@ -96,4 +102,58 @@ fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) ->
 
 fn node_closed(rn: RoadmapNode) -> Bool {
   signoff_accepts(s: rn.signoff)
+}
+
+data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fact, never row deletion (operator verdict 2026-07-28): before this carrier, accepting a node meant removing its only representation from the active graph, after which a dependent's prerequisite had no acceptance fact to join against and every count was a hand-reconstructed snapshot. A RoadmapAcceptanceReceipt names the node, carries the executed red-control and delivered handback evidence (reusing the #7380 evidence carriers — a receipt without an executed witness or a delivered artifact is unwritable), and pins criteria_digest = roadmap_criteria_digest over the row's own declared brief/red_control/handback. The digest closes the criteria-drift half fail-closed: editing a node's acceptance criteria changes the derived digest, the stored receipt stops matching, and the node returns to the active set while the validity witness reds — an acceptance can never silently survive a criteria rewrite. Merged pull requests never accept: node_accepted consults only receipt rows, and implementation evidence stays review input. REMAINING GAP, counted not implied (same shape as signoff_evidence_note): the witness named inside RedControlExecuted is not mechanically joined to the prose red_control it discharges — any executed witness name satisfies the evidence arm. OWNER: roadmap-runtime; DISSOLVE-ON: TicketFields.red_control becoming a typed reference to its discharging witness, at which point receipt_matches_node derives the join instead of trusting the named pair."
+
+type RoadmapAcceptanceReceipt {
+  node: RoadmapNodeId
+  criteria_digest: ContentHash
+  red_control: RedControlEvidence
+  handback: HandbackEvidence
+  accepted_by: NonEmptyStr
+  accepted_on: NonEmptyStr
+}
+
+fn roadmap_criteria_digest(t: TicketFields) -> ContentHash {
+  content_hash_tagged(
+    tag: "roadmap-acceptance-criteria-v1",
+    payload: content_hash_combine(
+      left: content_hash_combine(
+        left: content_hash_atom(value: t.brief as NonEmptyStr),
+        right: content_hash_atom(value: t.red_control as NonEmptyStr),
+      ),
+      right: content_hash_atom(value: t.handback as NonEmptyStr),
+    ),
+  )
+}
+
+fn node_criteria_digest(rn: RoadmapNode) -> ContentHash? {
+  match line_ticket(item: rn.line) {
+    Present { value } => Present { value: roadmap_criteria_digest(t: value) }
+    Absent => Absent
+  }
+}
+
+fn receipt_evidence_complete(r: RoadmapAcceptanceReceipt) -> Bool {
+  red_control_evidence_satisfied(e: r.red_control)
+    && handback_evidence_satisfied(e: r.handback)
+}
+
+fn receipt_matches_node(r: RoadmapAcceptanceReceipt, rn: RoadmapNode) -> Bool {
+  r.node == rn.node
+    && receipt_evidence_complete(r: r)
+    && match node_criteria_digest(rn: rn) {
+      Present { value } => value == r.criteria_digest
+      Absent => false
+    }
+}
+
+fn receipts_for_node(receipts: List<RoadmapAcceptanceReceipt>, id: RoadmapNodeId) -> List<RoadmapAcceptanceReceipt> {
+  receipts |> filter(r => r.node == id)
+}
+
+fn node_accepted(receipts: List<RoadmapAcceptanceReceipt>, rn: RoadmapNode) -> Bool {
+  let rs = receipts_for_node(receipts: receipts, id: rn.node)
+  count(rs) == 1 && all(rs, r => receipt_matches_node(r: r, rn: rn))
 }

@@ -73,16 +73,20 @@ test fn witness_authority_differs_from_empty() -> Bool {
   !(authority_page_html() == empty_doc_html())
 }
 
-test fn witness_authority_shows_three_gate_progress() -> Bool {
+test fn witness_authority_shows_finish_line_progress() -> Bool {
   let authority = authority_page_html()
   let empty = empty_doc_html()
-  string_contains(s: authority, pattern: "class=\"three-gate-progress\"")
-    && string_contains(s: authority, pattern: "v1-delete bar: three gates")
-    && !string_contains(s: empty, pattern: "class=\"three-gate-progress\"")
-    && string_contains(s: authority, pattern: "Gate 1 — the emitter re-emits itself")
-    && string_contains(s: authority, pattern: "Gate 3 — verification ledger green by execution")
-    && !string_contains(s: authority, pattern: "Cutover and delete")
-    && !string_contains(s: authority, pattern: "std_dup-gated modules")
+  string_contains(s: authority, pattern: "class=\"finish-line-progress\"")
+    && string_contains(s: authority, pattern: "v1 exit: four finish lines")
+    && string_contains(s: authority, pattern: "46 declared · 2 accepted · 44 active")
+    && string_contains(s: authority, pattern: "Compiler fixed point")
+    && string_contains(s: authority, pattern: "Interpreter deleted")
+    && string_contains(s: authority, pattern: "Products v1-free")
+    && string_contains(s: authority, pattern: "Zero hand-maintained Rust")
+    && string_contains(s: authority, pattern: "v1-products-v1-free")
+    && !string_contains(s: authority, pattern: "finish-line-accepted")
+    && !string_contains(s: authority, pattern: "class=\"three-gate-progress\"")
+    && !string_contains(s: empty, pattern: "class=\"finish-line-progress\"")
 }
 
 fn depth_chain_html(fuel: Int) -> String {

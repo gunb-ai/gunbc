@@ -22,7 +22,10 @@ import gunbc.roadmap_status {
 }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_authority {
+  roadmap_authority, authored_merged_prs,
+  declared_roadmap_nodes, active_roadmap_nodes, accepted_roadmap_node_ids,
+}
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier, doc_all_nodes, doc_all_edges }
 import gunbc.roadmap_component {
   roadmap_dispatch_asset_path, sound_toggle_class, theme_toggle_class,
@@ -35,134 +38,42 @@ import gunbc.roadmap_component {
   workflow_lamp_label_data_attribute,
 }
 import gunbc.client_observation_state { client_observation_state_key }
-import gunbc.v1_deletion_plan {
-  v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
-  PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
-  BrickState, Placed, InFlight, Gated,
-  BrickRole, BarBrick, SeedShrink,
+import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_accepted }
+
+fn roadmap_page_max_depth() -> Int { 12 }
+
+data finish_line_stylesheet_debt_note: String = "DECLARED SCAFFOLD, counted not silent (2026-07-28): this section's markup is the finish-line projection, but gunbc.roadmap_style still carries the retired three-gate/brick rules (.three-gate-progress, .gate-row, .gate-bar, .bar-fill, ul.bricks, li.brick, .brick-state) and carries no rule for the .finish-line-* classes emitted here — so the section ships structurally correct and visually unstyled, and those rules are unreferenced. The styling pass was deliberately NOT bundled: test.claim.design_register_lift_parity_witness pins roadmap_css_lift_parity_digest, and every re-pin on that row is derived BY EXECUTION from the emitted stylesheet (never chosen), which this change's authoring environment cannot produce. Landing a hand-guessed digest would be the fabricated-output failure DESIGN §5 forbids, and landing a moved stylesheet against a stale pin would knowingly red the corpus. DISSOLVE-ON: one styling pass in an environment that can build the seed — delete the seven gate/brick rules, add the .finish-line-* rules on the same tokened/typed grain (the width_brick_state and radius_5/height_bar dimension tokens lose their last consumers with them), then re-pin roadmap_css_lift_parity_digest from the executed emission with the derivation receipt, exactly as every prior re-pin note on that row records."
+
+fn finish_line_state_class(accepted: Bool) -> String {
+  if accepted { "accepted" } else { "active" }
 }
 
-fn roadmap_page_max_depth() -> Int { 8 }
-
-fn tg_gate_index(g: PlanGate) -> Int {
-  match g {
-    GateEmitterFixedPoint => 0
-    GateHonestFrontier => 1
-    GateLedgerGreen => 2
-    GateDeletion => 3
-  }
-}
-
-fn tg_gate_eq(a: PlanGate, b: PlanGate) -> Bool { tg_gate_index(g: a) == tg_gate_index(g: b) }
-
-fn tg_brick_is_placed(bs: BrickState) -> Bool {
-  match bs {
-    Placed => true
-    InFlight => false
-    Gated => false
-  }
-}
-
-fn tg_brick_is_remaining(bs: BrickState) -> Bool {
-  match bs {
-    Placed => false
-    InFlight => true
-    Gated => true
-  }
-}
-
-fn tg_brick_state_class(bs: BrickState) -> String {
-  match bs {
-    Placed => "placed"
-    InFlight => "inflight"
-    Gated => "gated"
-  }
-}
-
-fn tg_brick_state_label(bs: BrickState) -> String {
-  match bs {
-    Placed => "done"
-    InFlight => "in flight"
-    Gated => "gated"
-  }
-}
-
-fn tg_is_bar_brick(m: PlanMilestone) -> Bool {
-  match m.role {
-    BarBrick => true
-    SeedShrink => false
-  }
-}
-
-fn tg_gate_bricks(g: PlanGate) -> List<PlanMilestone> {
-  filter(v1_deletion_milestones, m => tg_gate_eq(a: m.gate, b: g) && tg_is_bar_brick(m: m))
-}
-
-fn tg_gate_total(g: PlanGate) -> Int { count(tg_gate_bricks(g: g)) }
-
-fn tg_gate_placed(g: PlanGate) -> Int {
-  count(filter(tg_gate_bricks(g: g), m => tg_brick_is_placed(bs: m.brick_state)))
-}
-
-fn tg_gate_percent(placed: Int, total: Int) -> Int {
-  if total == 0 { 0 } else { placed * 100 / total }
-}
-
-fn tg_gate_count_label(placed: Int, total: Int) -> String {
-  concat(to_string(placed), concat(" / ", to_string(total)))
-}
-
-fn tg_bar_fill(pct: Int) -> Fragment {
-  Element {
-    tag: "div",
-    attributes: [
-      attr(name: "class", value: "bar-fill" ),
-      attr(name: "style", value: concat("width: ", concat(to_string(pct), "%")) ),
-    ],
-    children: [],
-  }
-}
-
-fn tg_brick_li(m: PlanMilestone) -> Fragment {
-  el_class("li", concat("brick brick-", tg_brick_state_class(bs: m.brick_state)), [
-    el_class("span", "brick-state", [ txt(tg_brick_state_label(bs: m.brick_state)) ]),
-    el_class("span", "brick-title", [ txt(m.title) ]),
+fn finish_line_row(spec: V1FinishLineSpec, accepted_ids: List<RoadmapNodeId>) -> Fragment {
+  let accepted = v1_finish_line_accepted(spec: spec, accepted: accepted_ids)
+  el_class("li", concat("finish-line finish-line-", finish_line_state_class(accepted: accepted)), [
+    el_class("span", "finish-line-state", [ txt(finish_line_state_class(accepted: accepted)) ]),
+    el_class("span", "finish-line-name", [ txt(spec.name) ]),
+    el_class("span", "finish-line-node", [ txt(spec.node as String) ]),
+    el_class("span", "finish-line-claim", [ txt(spec.claim) ]),
   ])
 }
 
-fn tg_gate_remaining_ul(g: PlanGate) -> Fragment {
-  el_class("ul", "bricks",
-    map(filter(tg_gate_bricks(g: g), m => tg_brick_is_remaining(bs: m.brick_state)), m => tg_brick_li(m: m)))
+fn roadmap_counts_label() -> String {
+  join([
+    to_string(count(declared_roadmap_nodes())), " declared · ",
+    to_string(count(accepted_roadmap_node_ids())), " accepted · ",
+    to_string(count(active_roadmap_nodes())), " active",
+  ], "")
 }
 
-fn tg_gate_progress_row(spec: PlanGateSpec) -> Fragment {
-  let total = tg_gate_total(g: spec.gate)
-  let placed = tg_gate_placed(g: spec.gate)
-  el_class("section", "gate-row", [
-    el_class("div", "gate-head", [
-      el_class("span", "gate-name", [ txt(spec.name) ]),
-      el_class("span", "gate-count", [ txt(tg_gate_count_label(placed: placed, total: total)) ]),
-    ]),
-    el_class("div", "gate-bar", [ tg_bar_fill(pct: tg_gate_percent(placed: placed, total: total)) ]),
-    tg_gate_remaining_ul(g: spec.gate),
+fn finish_line_progress_markup() -> Fragment {
+  let accepted_ids = accepted_roadmap_node_ids()
+  el_class("section", "finish-line-progress", [
+    el("h2", [ txt("v1 exit: four finish lines") ]),
+    el_class("p", "finish-line-counts", [ txt(roadmap_counts_label()) ]),
+    el_class("ul", "finish-lines",
+      map(v1_exit_finish_lines(), s => finish_line_row(spec: s, accepted_ids: accepted_ids))),
   ])
-}
-
-fn tg_is_bar_gate(g: PlanGate) -> Bool {
-  match g {
-    GateEmitterFixedPoint => true
-    GateHonestFrontier => true
-    GateLedgerGreen => true
-    GateDeletion => false
-  }
-}
-
-fn three_gate_progress_markup() -> Fragment {
-  el_class("section", "three-gate-progress",
-    concat(
-      [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
-      map(filter(v1_deletion_gates, spec => tg_is_bar_gate(g: spec.gate)),
-          spec => tg_gate_progress_row(spec: spec))))
 }
 
 data sound_toggle_placement_note: String = "The mute lives in the HEADER, pushed to the far edge by margin-left auto, because it is a property of the whole surface rather than of any row — a per-row mute would be a second control on every line, which is exactly what the exemplar's scope forbids. It renders with an empty label: the text is painted by the client program from the persisted preference on load, so the markup never ships a claim about the sound state that a different browser's storage would contradict. With no JS the control is a blank button that does nothing, which is honest — there is no sound to mute either."
@@ -756,7 +667,7 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
 }
 
 fn roadmap_page_for_authority() -> Fragment {
-  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ finish_line_progress_markup() ])
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
@@ -764,5 +675,5 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Frag
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ finish_line_progress_markup() ])
 }

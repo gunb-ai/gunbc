@@ -13,7 +13,7 @@ import gunbc.roadmap_model {
 
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, item_is_done, item_superseded_by, signoff_accepts, signoff_by }
 
-fn roadmap_max_depth() -> Int { 8 }
+fn roadmap_max_depth() -> Int { 12 }
 
 fn node_is_superseded(rn: RoadmapNode) -> Bool {
   !(item_superseded_by(item: rn.line) == "")

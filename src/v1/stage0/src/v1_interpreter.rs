@@ -8086,8 +8086,8 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
-/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.v1_deletion_plan
-/// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.roadmap_authority
+/// v1-materialization-kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists workspace under workspace_dir and
 /// skips build when `.native_ready` is present. workspace_dir is the pre-composed
