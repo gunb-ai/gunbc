@@ -494,13 +494,6 @@ fn collect_orphan_outcome(modules: List<ModuleSurface>) -> CollectOrphanOutcome 
   )
 }
 
-fn collect_orphan_records(modules: List<ModuleSurface>) -> List<OrphanRecord> {
-  match collect_orphan_outcome(modules: modules) {
-    CollectRefused { reason: _ } => []
-    CollectOrphans { records: records } => records
-  }
-}
-
 fn format_orphan_refusal(orphans: List<OrphanRecord>) -> String {
   let header = concat(
     "test-module orphan-helper hygiene (DESIGN §5/§6 enroll-or-refuse): ",

@@ -79,17 +79,10 @@ fn refs_from_body(
 fn test_decl_names_from_content(content: &str) -> Result<Vec<String>, String> {
     let roots = super::default_source_roots();
     let ctx = resolve_hygiene_ctx(&roots)?;
-    let args = [(
-        Some("content".to_string()),
-        Value::Str(content.to_string()),
-    )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "enumerate_entry_test_names",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
+    let args = [(Some("content".to_string()), Value::Str(content.to_string()))];
+    let result =
+        v1_interpreter::run_in_context_with_args(&ctx, "enumerate_entry_test_names", &args, false)
+            .map_err(|e| format!("enumerate_entry_test_names: {e}"))?;
     let Value::List(items) = result else {
         return Err(format!(
             "enumerate_entry_test_names returned `{}`, expected List",
