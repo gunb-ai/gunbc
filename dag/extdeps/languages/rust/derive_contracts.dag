@@ -8,11 +8,39 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "doc.rust-lang.org/1.93.0/std/vec/struct.Vec.html#trait-implementations"
+    locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1701"
   }
 }
 
-data rust_1_93_vec_trait_implementations_authority: ExternalAuthority = extdeps_external_authority_anchor
+data im_15_1_0_vector_debug_impl_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data im_15_1_0_vector_clone_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1686"
+  }
+}
+
+data im_15_1_0_vector_partial_eq_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/vector/mod.rs#1716"
+  }
+}
+
+data im_15_1_0_vector_deserialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#235"
+  }
+}
+
+data im_15_1_0_vector_serialize_impl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.rs/crate/im/15.1.0/source/src/ser.rs#244"
+  }
+}
 
 data rust_1_93_btree_set_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -25,27 +53,6 @@ data rust_1_93_hash_set_trait_implementations_authority: ExternalAuthority = Ext
   uri: Uri {
     scheme: Https
     locator: "doc.rust-lang.org/1.93.0/std/collections/struct.HashSet.html#trait-implementations"
-  }
-}
-
-data serde_1_0_228_vec_serialize_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/serde/1.0.228/serde/ser/trait.Serialize.html#impl-Serialize-for-Vec%3CT%3E"
-  }
-}
-
-data serde_1_0_228_vec_deserialize_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/serde/1.0.228/serde/trait.Deserialize.html#impl-Deserialize%3C'de%3E-for-Vec%3CT%3E"
-  }
-}
-
-data im_15_1_0_vector_trait_implementations_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.rs/im/15.1.0/im/struct.Vector.html#trait-implementations"
   }
 }
 
