@@ -55,6 +55,54 @@ type EmissionQualification
   | BehavioralEquivalent
   | ProductionRouted
 
+data emission_qualification_eq_note: String = "Canonical equality surface for EmissionQualification (reviews 44328/44481 predicate-dissolution): one total match over the substrate coproduct — membership and list-equality queries consume emission_qualification_eq, not hand-rolled has_* predicates."
+
+fn emission_qualification_eq(
+  left: EmissionQualification,
+  right: EmissionQualification
+) -> Bool {
+  match left {
+    SourceProduced =>
+      match right {
+        SourceProduced => true
+        CargoGreen => false
+        BehavioralEquivalent => false
+        ProductionRouted => false
+      }
+    CargoGreen =>
+      match right {
+        SourceProduced => false
+        CargoGreen => true
+        BehavioralEquivalent => false
+        ProductionRouted => false
+      }
+    BehavioralEquivalent =>
+      match right {
+        SourceProduced => false
+        CargoGreen => false
+        BehavioralEquivalent => true
+        ProductionRouted => false
+      }
+    ProductionRouted =>
+      match right {
+        SourceProduced => false
+        CargoGreen => false
+        BehavioralEquivalent => false
+        ProductionRouted => true
+      }
+  }
+}
+
+fn emission_qualifications_list_contains(
+  xs: List<EmissionQualification>,
+  wanted: EmissionQualification
+) -> Bool {
+  any(
+    xs: xs,
+    predicate: fn(q) { emission_qualification_eq(left: q, right: wanted) }
+  )
+}
+
 type EmissionBuildResult
   = BuildGreen
   | BuildRefused { cause: Symbol }
@@ -454,16 +502,7 @@ fn qualifications_list_eq(
         ok && any(
           xs: right,
           predicate: fn(right_q) {
-            match left_q {
-              SourceProduced =>
-                match right_q { SourceProduced => true _ => false }
-              CargoGreen =>
-                match right_q { CargoGreen => true _ => false }
-              BehavioralEquivalent =>
-                match right_q { BehavioralEquivalent => true _ => false }
-              ProductionRouted =>
-                match right_q { ProductionRouted => true _ => false }
-            }
+            emission_qualification_eq(left: left_q, right: right_q)
           }
         )
       }
@@ -739,27 +778,6 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
   }
 }
 
-fn row_has_qualification(
-  qualifications: List<EmissionQualification>,
-  target: EmissionQualification
-) -> Bool {
-  any(
-    xs: qualifications,
-    predicate: fn(q) {
-      match target {
-        SourceProduced =>
-          match q { SourceProduced => true _ => false }
-        CargoGreen =>
-          match q { CargoGreen => true _ => false }
-        BehavioralEquivalent =>
-          match q { BehavioralEquivalent => true _ => false }
-        ProductionRouted =>
-          match q { ProductionRouted => true _ => false }
-      }
-    }
-  )
-}
-
 type ProducerQualifiedCountAxis
   = ProducerCountSeedBehavioralGreen
   | ProducerCountV2InterpretedBehavioralGreen
@@ -812,32 +830,32 @@ fn producer_qualified_count_axis_for_receipt(
     EmissionBuildResultGreen =>
     match emitter_producer_axis(producer: receipt.producer) {
       EmitterProducerV1Seed =>
-        if row_has_qualification(
-          qualifications: receipt.qualifications,
-          target: BehavioralEquivalent
+        if emission_qualifications_list_contains(
+          xs: receipt.qualifications,
+          wanted: BehavioralEquivalent
         ) {
           optional_present(value: ProducerCountSeedBehavioralGreen)
         } else {
           optional_absent()
         }
       EmitterProducerV2Interpreted =>
-        if row_has_qualification(
-          qualifications: receipt.qualifications,
-          target: BehavioralEquivalent
+        if emission_qualifications_list_contains(
+          xs: receipt.qualifications,
+          wanted: BehavioralEquivalent
         ) {
           optional_present(value: ProducerCountV2InterpretedBehavioralGreen)
         } else {
           optional_absent()
         }
       EmitterProducerV2Native { generation: _ } =>
-        if row_has_qualification(
-          qualifications: receipt.qualifications,
-          target: BehavioralEquivalent
+        if emission_qualifications_list_contains(
+          xs: receipt.qualifications,
+          wanted: BehavioralEquivalent
         ) {
           optional_present(value: ProducerCountV2NativeBehavioralGreen)
-        } else if row_has_qualification(
-          qualifications: receipt.qualifications,
-          target: ProductionRouted
+        } else if emission_qualifications_list_contains(
+          xs: receipt.qualifications,
+          wanted: ProductionRouted
         ) {
           optional_present(value: ProducerCountV2ProductionRouted)
         } else {
