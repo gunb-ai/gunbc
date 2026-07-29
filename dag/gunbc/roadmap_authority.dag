@@ -5,11 +5,14 @@ import gunbc.roadmap_document {
   RoadmapSection,
   project_roadmap_to_markdown,
 }
+import std.types { ContentHash }
 import gunbc.roadmap_model {
   RoadmapNode,
   RoadmapEdge,
   Pointer,
   RoadmapNodeId,
+  RoadmapAcceptanceReceipt,
+  node_accepted,
   Intricacy,
   IntricacyLow,
   IntricacyMedium,
@@ -290,41 +293,41 @@ type SeedGrowthJustification {
 
 fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification {
   SeedGrowthJustification {
-    reason: "The scoped observation consumer must cross the current interpreter entry seam to bind the runtime-selected declaration identity, capture and replay deferred stderr, and project exactly one terminal outcome while the typed observation policy remains in .dag.",
+    reason: "Showing progress while a command runs has to reach the point where the old runner starts a program. It needs to know which piece of code was chosen, hold back error output until it can be shown in the right order, and report exactly one ending — and the rules for all of that live in the substrate, not in Rust.",
     owning_dissolution_lane: nid(s: "v1-hand-queue-drain"),
-    trigger: "Extract the scoped-run observation seam into typed host-effect transport, then hollow cli_run.rs Chunk F so generated workflow orchestration consumes the .dag projection; delete the interpreter-facing Rust bridge at that cut.",
+    trigger: "Move this reach-through into a described operation, then hollow out the corresponding part of the command-line tool so generated code does the work; the hand-written bridge is deleted at that point.",
     current_boundary: "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs",
   }
 }
 
 fn caret_parse_smoke_seed_growth_justification() -> SeedGrowthJustification {
   SeedGrowthJustification {
-    reason: "The caret parser smoke test predates the later occurrence-transport ParseContext field expansion. Compiler-required None initializers in its existing context literal preserve compilation and add no capability; the inherited hand-maintained Rust file still needs one counted dissolution obligation.",
+    reason: "This old hand-written parser test predates a later change that added fields to a structure it builds. It was updated only enough to keep compiling — no new behaviour — but it is still a hand-written Rust file, so it needs to be counted rather than forgotten.",
     owning_dissolution_lane: nid(s: "v1-zero-hand-maintained-rust"),
-    trigger: "Migrate the caret smoke behavior to an emitted test whose cited .dag model is the authority, or delete the Rust test once equivalent discriminating .dag coverage is enrolled; then retire this row under v1-zero-hand-maintained-rust.",
+    trigger: "Either regenerate this test from a description, or delete it once equivalent coverage exists that would still catch the same bug; then remove this row.",
     current_boundary: "src/v1/stage0/tests/caret_parse_smoke.rs",
   }
 }
 
 fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   fields(
-    headline: "Justify the bounded scoped-run observation seed bridge",
+    headline: "Account for the five hand-written files that progress output still needs",
     boundary: concat(
-      "The admitted growth is restricted to exactly these five files: ",
+      "Showing progress while a command runs still relies on hand-written code, in exactly these five files and no others: ",
       j.current_boundary,
     ),
-    displaced_cost: concat("Reason: ", j.reason),
+    displaced_cost: concat("Why it is needed: ", j.reason),
     first_slice: concat(
-      "Route the bridge's deletion obligation to ",
-      concat(j.owning_dissolution_lane as String, " without admitting another seed file."),
+      "Hand the job of deleting these files to ",
+      concat(j.owning_dissolution_lane as String, ", without adding a sixth file."),
     ),
     red_control: concat(
-      "Any interpreter-facing bridge growth outside the five-file boundary, or growth without this trigger, refuses acceptance: ",
+      "Any new hand-written code for this outside those five files, or without this plan, is refused. The plan: ",
       j.trigger,
     ),
-    out_of_scope: "No general seed-growth ledger, observation feature expansion, or implementation-status record.",
+    out_of_scope: "Not a general list of hand-written files, not new progress features, and not a status report.",
     handback: concat(
-      "Return the five-file boundary receipt and carry this exact dissolution trigger into ",
+      "Show that the five files are still the only ones, and carry this exact plan into ",
       j.owning_dissolution_lane as String,
     ),
   )
@@ -332,29 +335,29 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 
 fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   fields(
-    headline: "Migrate or delete the retained caret parser smoke test",
+    headline: "Regenerate or delete one leftover hand-written parser test",
     boundary: concat(
-      "The seed-retained boundary is exactly ",
-      concat(j.current_boundary, "; this row admits no new test capability or additional hand-Rust file."),
+      "Exactly one hand-written file is kept for now: ",
+      concat(j.current_boundary, ". This adds no new test behaviour and no second hand-written file."),
     ),
-    displaced_cost: concat("Reason: ", j.reason),
-    first_slice: concat("Execute the owning lane's migration trigger: ", j.trigger),
+    displaced_cost: concat("Why it is still here: ", j.reason),
+    first_slice: concat("Do what the owning item's plan says: ", j.trigger),
     red_control: concat(
-      "If the file remains hand-maintained without exactly one row owned by ",
+      "If the file stays hand-written without exactly one item owned by ",
       concat(
         j.owning_dissolution_lane as String,
-        ", or the retained boundary grows beyond the named file, the frontier refuses acceptance.",
+        " tracking it, or if a second file joins it, this is refused.",
       ),
     ),
-    out_of_scope: "No caret-test, parser/compiler, or unrelated seed-file changes; no parallel prose ledger.",
+    out_of_scope: "No changes to what the test checks, to the parser, or to other hand-written files; no separate written-down list.",
     handback: concat(
-      "Return the emitted-or-deleted file receipt and equivalent discriminating .dag coverage when behavior migrates, then retire this row from ",
+      "Show the file regenerated or deleted, with equivalent coverage in place if its behaviour moved, then remove this row from ",
       j.owning_dissolution_lane as String,
     ),
   )
 }
 
-fn active_roadmap_nodes() -> List<RoadmapNode> {
+fn declared_roadmap_nodes() -> List<RoadmapNode> {
   [
     active_sized(
       id: "2-scm-git-upstream-model",
@@ -363,13 +366,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(
-        headline: "Complete the Git upstream fidelity model before adapter extraction",
-        boundary: "Model Git as Git in extdeps: blob/tree/commit/tag objects, tree-entry modes, raw paths, worktree/index state, refs and symbolic refs, object/hash format, unavailable objects, and exact-old-object update-ref. The bounded fixture decodes, projects, and independently reads back without declaring a common SCM interface.",
-        displaced_cost: "Prevents an incomplete first realization from erasing executable bits, symlinks, gitlinks, tags, paths, availability, or hash-format facts and then cementing those omissions into every later adapter.",
-        first_slice: "Complete the existing Git object-store authority and execute one bounded repository round-trip plus stale expected-OID refusal.",
-        red_control: "Ordinary and executable blobs, symlinks, gitlinks, and annotated tags remain distinct; stale expected OID refuses without mutation; unavailable objects never decode as empty; no shared SCM carrier or vendor switch lands.",
-        out_of_scope: "No semantic integration kernel, forge transport, product hosting, inferred rename identity, universal branch/ref abstraction, or common compatibility carrier.",
-        handback: "Return cited upstream types, bounded decode/project/read-back receipts, conditional-advance receipt, unsupported fidelity inventory, and the tempting common fields deliberately not extracted."
+        headline: "Write down how Git really stores things",
+        boundary: "Describe Git on its own terms: files, folders, commits, tags, file permissions, symlinks, links to other repositories, and how it names and finds them. Prove it by reading a small repository and writing it back unchanged.",
+        displaced_cost: "If we invent a one-size-fits-all model first, it quietly drops things like executable permissions and symlinks — and every tool built on top inherits the loss.",
+        first_slice: "Finish the storage description, then read one small repository and write it back unchanged.",
+        red_control: "A plain file, an executable file, a symlink, a link to another repository, and a tag all stay distinguishable; writing against an out-of-date starting point refuses instead of overwriting; a missing object never reads as empty.",
+        out_of_scope: "No shared source-control interface, no hosting or server work, and no guessing that a renamed file is the same file.",
+        handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
       )
     ),
     active_sized(
@@ -379,13 +382,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(
-        headline: "Preserve Mercurial identity, history, and publication distinctions",
-        boundary: "Model Mercurial from its own authorities in extdeps: portable changeset identity versus clone-local revision, file revisions and manifests, parents/heads, bookmarks, named and topological branches, tags, phases, repository availability, subrepositories, and optional evolution metadata. No Git vocabulary or common adapter appears.",
-        displaced_cost: "Prevents bookmark from becoming ref, named branch from becoming pointer, local revision from becoming portable identity, or phase from becoming one visibility bit.",
-        first_slice: "Land cited Mercurial types and one bounded state/change fixture that captures, projects, and independently reads back while leaving ungrounded write capability unavailable.",
-        red_control: "Clone-local revision may change while changeset identity does not; public/draft/secret remain distinct; bookmark, named branch, and head cannot collapse; absent transaction evidence stays unavailable.",
-        out_of_scope: "No Mercurial runner, hosted-product promise, generic SCM carrier, semantic merge authority, inferred exact-parent CAS, or emulation through timestamps or local locks.",
-        handback: "Return cited upstream roles, bounded read-back receipt, explicit unavailable capabilities, preservation/loss inventory, and distinctions that constrain later extraction."
+        headline: "Write down how Mercurial really works, in its own words",
+        boundary: "Describe Mercurial from its own documentation: its permanent change IDs versus the numbers local to one copy, its branches, bookmarks, tags, and its draft/published states. Use no Git vocabulary.",
+        displaced_cost: "Mercurial's ideas are not Git's. Renaming them into Git words loses the differences, and a later shared design would be built on a mistranslation.",
+        first_slice: "Write the description and read one small repository back out, leaving anything we cannot safely write marked unavailable.",
+        red_control: "A copy-local revision number can change while the permanent change ID does not; draft, published, and hidden stay three different things; a bookmark, a named branch, and a branch tip cannot collapse into one idea.",
+        out_of_scope: "No Mercurial support in the product, no shared source-control interface, and no faking missing facts from timestamps.",
+        handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
       )
     ),
     active_sized(
@@ -395,13 +398,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(
-        headline: "Preserve Pijul changes, dependencies, graph state, and channels",
-        boundary: "Model Pijul from its own authorities in extdeps: recorded change identity, dependencies and context, pristine/tree/working-copy state, graph conflict facts, channel state as a set of channel-independent changes, version/state identity, partial availability, and apply/project distinctions. No commit/ref analogy or common adapter appears.",
-        displaced_cost: "Prevents a snapshot/ref abstraction from erasing change identity independent of channels, dependency-sensitive application, set-valued channel state, or conflicts retained in the graph.",
-        first_slice: "Land cited Pijul types and one bounded change/dependency/channel fixture that captures, projects, and independently reads back; permute delivery and refuse missing dependencies.",
-        red_control: "A channel cannot become one commit head; one change keeps identity across channels; a missing dependency never applies as empty; graph conflicts remain facts, not semantic proof; no Git alias or shared carrier lands.",
-        out_of_scope: "No Pijul runner, hosted-product promise, adoption of its conflict semantics as Daglang safety, inferred exact-parent CAS, generic SCM carrier, or proof-kernel edit.",
-        handback: "Return cited upstream roles, round-trip and dependency/order receipts, explicit unavailable capabilities, and distinctions that constrain later extraction."
+        headline: "Write down how Pijul really works, in its own words",
+        boundary: "Describe Pijul from its own documentation: individual changes that carry their own identity, what each change depends on, and how a channel is a set of changes rather than a pointer to the newest one.",
+        displaced_cost: "Pijul does not have a 'latest commit'. Modelling it as if it does erases the thing that makes it different, and a third viewpoint is what stops us from mistaking Git's habits for universal truth.",
+        first_slice: "Write the description, then apply a small set of changes, read them back, and try them in a different order.",
+        red_control: "A channel cannot be reduced to one newest commit; one change keeps the same identity in two channels; applying a change whose prerequisites are missing refuses instead of applying an empty change.",
+        out_of_scope: "No Pijul support in the product, no adopting its conflict rules as ours, and no shared source-control interface.",
+        handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
       )
     ),
     active_sized(
@@ -411,13 +414,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       intricacy: IntricacyHigh,
       volume: VolumeMedium,
       t: fields(
-        headline: "Model claim-indexed evidence once for readiness, deduction, and integration",
-        boundary: "Model recorded facts, scoped claims, support/challenge evidence links with maximum conclusions, four information states, assessments, and readiness/admission policy once. The first discriminating consumers are Codex provider readiness, os_install_deduction, and source-intent integration.",
-        displaced_cost: "Removes false readiness, repeated local evidence taxonomies, and unsafe Boolean folds that promote one weak observation into a broad capability claim.",
-        first_slice: "DFS Grounding, ObservationVerdict, readback independence, provider readiness, and OS-install deduction; then execute login/live-request and self-establishing-probe cases through one shared carrier and three consumers.",
-        red_control: "Login status plus failed live refresh supports CredentialRecorded but not ProviderReady; a positive self-establishing probe is insufficient while its negative may inform; conflicting and absent evidence remain both and neither, never last-writer truth.",
-        out_of_scope: "No SCM solver, process-progress Observation overload, provider-local replacement enum, truthy fact bag, or claim that provenance alone proves a proposition.",
-        handback: "Return the shared carrier, three consumer receipts, discriminating support/challenge/both/neither cases, and any named substrate gap."
+        headline: "Say once what counts as evidence for a claim",
+        boundary: "One shared way to record a fact, state a claim, and link evidence that supports or contradicts it — including how much a piece of evidence can prove on its own. Three existing features adopt it.",
+        displaced_cost: "Right now each feature invents its own yes/no test, so a weak signal gets promoted into a confident claim. 'We stored a login' starts meaning 'the login works'.",
+        first_slice: "Reuse what already exists for this, then run it through the three features that need it and check they agree.",
+        red_control: "A stored login plus a failed live request supports 'we have a credential' but not 'the service is ready'; contradictory evidence stays contradictory and missing evidence stays missing, rather than the newest answer winning.",
+        out_of_scope: "No source-control solver, no per-feature copy of the idea, and no treating 'we recorded this' as proof that it is true.",
+        handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )
     ),
 
@@ -426,13 +429,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Carry exact typed declaration and reference occurrences",
-        boundary: "Transport the compact declaration Node and exact reference ContainmentPath needed to identify one authored occurrence; this is identity transport, not binding policy.",
-        displaced_cost: "Removes erased names and reconstructed identity from the compiler boundary.",
-        first_slice: "Thread one ordinary type occurrence and its declaration path through inference without snapshotting a parallel identity.",
-        red_control: "Two authored occurrences with the same leaf name remain distinct; a missing or synthetic path refuses.",
-        out_of_scope: "No nearest-name lookup, global-unique fallback, or consumer-specific resolution rule.",
-        handback: "Return the typed transport plus an executed same-leaf/different-path discriminator."
+        headline: "Keep track of exactly which name is which",
+        boundary: "When the compiler sees a name, carry along exactly where it was written and exactly which declaration it came from. Carrying that information, not yet deciding what it means.",
+        displaced_cost: "The compiler currently throws away where a name came from and then tries to reconstruct it, so two different things with the same short name can be confused.",
+        first_slice: "Carry one ordinary type name and its declaration's location through the compiler without keeping a second copy of that information.",
+        red_control: "Two things written in different places that happen to share a short name stay distinguishable; a missing or made-up location refuses instead of being guessed.",
+        out_of_scope: "No nearest-match lookup, no falling back to 'there is only one of these anywhere', and no rules specific to one part of the compiler.",
+        handback: "The working mechanism plus a test that two same-named things in different places really do stay apart."
       )
     ),
     active_large(
@@ -440,13 +443,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Bind every occurrence through one canonical fold",
-        boundary: "Enumerate admissible candidates from the occurrence's containment chain and call occurrence_binding_from_candidates exactly once.",
-        displaced_cost: "Deletes competing lookup policies that silently select different declarations.",
-        first_slice: "Bind ordinary type, value, and callee occurrences from full containment paths.",
-        red_control: "Zero candidates is Unbound and two distinct on-chain candidates is Ambiguous; neither selects a declaration.",
-        out_of_scope: "No policy switch, direct-import retry, or bare-name pool.",
-        handback: "Return the executed unique, unbound, ambiguous, and duplicate-identical-path matrix."
+        headline: "Have exactly one rule decide what every name refers to",
+        boundary: "Work out the candidates by looking outward from where the name was written, then call one shared decision function once. Not several mechanisms racing to answer.",
+        displaced_cost: "Several lookup mechanisms exist today and they can disagree about the same name, which is how a program silently ends up meaning something other than what was written.",
+        first_slice: "Route type names, value names, and function calls through the one decision function.",
+        red_control: "No candidates means unresolved and two equally good candidates means ambiguous — neither quietly picks one.",
+        out_of_scope: "No configuration switch between old and new behaviour, no retrying with a different rule when the first answer is unwelcome.",
+        handback: "Worked examples of the unique, unresolved, ambiguous, and duplicate cases, all actually run."
       )
     ),
     active(
@@ -454,13 +457,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Make compiler consumers project only OccurrenceBound",
-        boundary: "Inference, call lookup, and arity checks consume a Bound declaration after the canonical fold; refusal arms never fabricate a continuation.",
-        displaced_cost: "Removes downstream selection retries and conflicting declaration interpretations.",
-        first_slice: "Move one production inference consumer to the Bound-only projection.",
-        red_control: "Unbound and Ambiguous inputs stop before type or call inference.",
-        out_of_scope: "No compatibility arm for legacy SymbolIndex lookup.",
-        handback: "Return the consumer receipt and the refusal that proves no legacy fallback ran."
+        headline: "Make the rest of the compiler use only that one answer",
+        boundary: "Type checking, call lookup, and argument-count checks all read the single decided answer. When the answer is 'unresolved' or 'ambiguous', they stop rather than carrying on with a guess.",
+        displaced_cost: "While parts of the compiler still do their own lookup, the one shared rule is advisory rather than authoritative.",
+        first_slice: "Move one real type-checking consumer over to the single answer.",
+        red_control: "Unresolved and ambiguous names stop the compiler before type checking or call lookup runs.",
+        out_of_scope: "No compatibility path that quietly falls back to the old lookup.",
+        handback: "The migrated consumer plus proof the old path did not run."
       )
     ),
     active_small(
@@ -468,13 +471,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Complete v2 namespace and import consumers",
-        boundary: "Every v2 compiler import and qualified-reference consumer reads the canonical OccurrenceBound projection before legacy choice mechanisms retire.",
-        displaced_cost: "Prevents a partial namespace migration from stranding v2 imports on a second declaration authority.",
-        first_slice: "Move the remaining v2 import-resolution family onto the canonical occurrence binding.",
-        red_control: "A v2 import consumer that bypasses OccurrenceBound reds the consumer census.",
-        out_of_scope: "No new import precedence or compatibility lookup policy.",
-        handback: "Return the complete v2/import consumer census and executed ambiguous-import refusal."
+        headline: "Do the same for imports",
+        boundary: "Every place the newer compiler resolves an import or a dotted name reads the single decided answer, before the old mechanisms are deleted.",
+        displaced_cost: "If imports are left behind, they become a second source of truth about what a name means — exactly the problem this whole chain exists to remove.",
+        first_slice: "Move the remaining import resolution over.",
+        red_control: "An import that bypasses the single answer is flagged by the inventory.",
+        out_of_scope: "No new precedence rules and no compatibility lookup.",
+        handback: "The complete inventory of import consumers plus a run showing an ambiguous import refuses."
       )
     ),
     active_small(
@@ -482,13 +485,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "namespace",
       path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
       t: fields(
-        headline: "Retire parallel namespace choice authorities",
-        boundary: "Delete the declaration-choice roles of string bindings, parent walks, global-bare pools, direct-import retries, and LexicalLookup after all ordinary consumers use the canonical fold.",
-        displaced_cost: "One declaration occurrence can no longer receive divergent answers from parallel mechanisms.",
-        first_slice: "Census every remaining declaration-selecting consumer and retire one complete family.",
-        red_control: "The census refuses any unclassified declaration-choice call site and reaches zero before closure.",
-        out_of_scope: "Containment storage that does not choose a declaration remains.",
-        handback: "Return the zero-residue census and compiler behavior receipt."
+        headline: "Delete every other way of deciding what a name means",
+        boundary: "Once all ordinary consumers use the one rule, remove the older mechanisms: name-string matching, walking up the parent chain, the global pool of bare names, and the import retry.",
+        displaced_cost: "Leaving them in place means one name can still get different answers from different code paths.",
+        first_slice: "Inventory every remaining place that decides what a name refers to, and remove one complete family.",
+        red_control: "The inventory refuses anything it cannot classify and must reach zero before this closes.",
+        out_of_scope: "Code that merely stores where things are written, without choosing meanings, stays.",
+        handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
     ),
 
@@ -497,13 +500,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Make nullary coproduct reflection type-safe",
-        boundary: "Reflection derives inhabitants from the actual coproduct type; an erased Symbol plus unconstrained return type cannot select a different type.",
-        displaced_cost: "Closes the wrong-type escape that makes reflected derive contracts unsound.",
-        first_slice: "Replace the erased nullary-inhabitant bridge with a type-carrying projection and migrate its first caller.",
-        red_control: "Reflecting Gate while requesting Behavior is unrepresentable or refuses.",
-        out_of_scope: "No derive-specific policy belongs in the reflection primitive.",
-        handback: "Return direct and wrong-type executed controls."
+        headline: "Stop the compiler from mixing up one type with another",
+        boundary: "When the compiler asks 'what are the possible values of this type?', the answer comes from that actual type. Asking about one type and receiving another should be impossible to express.",
+        displaced_cost: "The old mechanism passed a bare name and an unconstrained answer type, so it could hand back the values of a completely different type and nothing would notice.",
+        first_slice: "Replace the loose lookup with one that carries the type, and move its first caller across.",
+        red_control: "Asking about one type while requesting another either cannot be written down or refuses outright.",
+        out_of_scope: "No rules specific to one feature baked into this general mechanism.",
+        handback: "Both the working case and the mismatched-type case, actually run."
       )
     ),
     active(
@@ -511,13 +514,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Model the target-static supplemental derive-bound contract",
-        boundary: "Each selected target representation declares derive-specific required traits by representation-parameter slot; missing and explicit-empty contracts remain distinct.",
-        displaced_cost: "Replaces inferred or fabricated generic bounds with one target-model authority.",
-        first_slice: "Round-trip one multi-slot representation's contracts through the target bundle.",
-        red_control: "Missing, malformed, duplicate, wrong-slot, and wrong-trait rows refuse; explicit empty survives.",
-        out_of_scope: "No source declaration binding or emitter edit in the model slice.",
-        handback: "Return lossless round-trip and refusal receipts."
+        headline: "Write down which extra type requirements each generated shape needs",
+        boundary: "For each shape we generate Rust for, record which extra requirements each of its type slots needs. 'No requirements' and 'we never said' stay different answers.",
+        displaced_cost: "The generator currently guesses these, so generated Rust fails to compile in ways that look like a dozen unrelated bugs.",
+        first_slice: "Record and read back the requirements for one shape with several type slots.",
+        red_control: "Missing, malformed, duplicated, wrong-slot, and wrong-requirement entries all refuse; a deliberate 'none' survives.",
+        out_of_scope: "No generator changes and no linking to source code in this step — just the record.",
+        handback: "Proof the record survives a write/read round trip unchanged, plus the refusals."
       )
     ),
     active_large(
@@ -525,13 +528,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Bind exact source declarations to representation slots",
-        boundary: "Map the selected representation's static slots to exact source declaration Nodes after namespace binding, without storing source declarations in the target contract.",
-        displaced_cost: "Prevents slot order or leaf-name coincidence from attaching a bound to the wrong generic.",
-        first_slice: "Bind one nested generic source declaration list to one selected target representation.",
-        red_control: "Swapped, missing, duplicate, or non-Bound source declarations refuse.",
-        out_of_scope: "No target contract may acquire source-specific identity.",
-        handback: "Return exact-node/slot correspondence plus a swap discriminator."
+        headline: "Attach those requirements to the right type, not just the right position",
+        boundary: "Connect each recorded slot to the exact declaration it belongs to, using the name resolution work above.",
+        displaced_cost: "Matching by position or by short name attaches a requirement to the wrong type whenever two types share a name or the order shifts.",
+        first_slice: "Connect one nested generic declaration to its slots.",
+        red_control: "Swapped, missing, duplicated, or unresolved declarations refuse.",
+        out_of_scope: "The requirement record must not start carrying source-code identity itself.",
+        handback: "The exact declaration-to-slot mapping plus a swap test that catches a mismatch."
       )
     ),
     active_large(
@@ -539,13 +542,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Emit supplemental bounds through the one Rust emitter",
-        boundary: "The Rust realization consumes the bound contract and exact slot binding through the existing emitter fold.",
-        displaced_cost: "Deletes per-shape derive patches and hand-maintained template exceptions.",
-        first_slice: "Emit one previously failing nested generic declaration through the shared derive path.",
-        red_control: "Removing or swapping one required contract changes the emitted bound or refuses, never silently cargo-greens.",
-        out_of_scope: "No new Rust template authority.",
-        handback: "Return emitted source and cargo execution for the discriminating fixture."
+        headline: "Generate those requirements from one place in the generator",
+        boundary: "The Rust generator reads the record and the mapping through its existing path, rather than needing a special case per shape.",
+        displaced_cost: "Every shape currently needing its own hand-written patch is a shape someone has to fix again next time.",
+        first_slice: "Generate one previously failing nested generic declaration through the shared path.",
+        red_control: "Removing or swapping one requirement changes the generated output or refuses — it never silently compiles anyway.",
+        out_of_scope: "No second Rust-generation path.",
+        handback: "The generated source plus a real compile of the discriminating example."
       )
     ),
     active_small(
@@ -553,13 +556,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Measure compiler-error movement after P-derive",
-        boundary: "Re-run the fixed deep-module corpus and classify the error histogram after the one emitter consumes the contract.",
-        displaced_cost: "Prevents a locally green fixture from masquerading as progress on the self-host frontier.",
-        first_slice: "Measure the exact before/after corpus without changing unrelated emit behavior.",
-        red_control: "The named generic-bound class must fall and no replacement class may be hidden by a first-error-only report.",
-        out_of_scope: "No acceptance based only on typecheck or golden text.",
-        handback: "Return full histograms, emitted builds, and any newly exposed class."
+        headline: "Count the compiler errors before and after, to prove it helped",
+        boundary: "Re-run the same set of modules and compare the error counts and kinds.",
+        displaced_cost: "A fix that makes one example compile can leave the real number untouched; without the count we would not know.",
+        first_slice: "Measure the same modules before and after, changing nothing else.",
+        red_control: "The named error kind must actually drop, and a report that only shows the first error may not hide a new kind appearing.",
+        out_of_scope: "No claiming success from a clean type check or a matching text file alone.",
+        handback: "Full before/after counts, real builds, and any newly exposed problem."
       )
     ),
 
@@ -574,13 +577,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
       t: fields(
-        headline: "Run scoped gunbc commands through the TTY/pipe observation consumer",
-        boundary: "gunbc run emits Begin and one terminal Outcome through the density-aware terminal projection while preserving pipe-safe append semantics.",
-        displaced_cost: "Removes raw progress printing and makes interactive state truthful.",
-        first_slice: "Wire one entry-scoped run without changing the evaluated entry graph.",
-        red_control: "PTY overwrite, pipe append, terminal refusal, and missing attention basis discriminate independently.",
-        out_of_scope: "No generic raw-print cleanup before a real scoped consumer executes.",
-        handback: "Return the PTY/pipe byte matrix and real gunbc run receipt."
+        headline: "Show honest progress while a command runs",
+        boundary: "Running a command announces that it started and reports exactly one ending. In a terminal it updates in place; piped to a file it appends plain lines.",
+        displaced_cost: "Progress is printed raw today, so a terminal shows a mess and a log file shows something different again.",
+        first_slice: "Wire up one real command without changing what it computes.",
+        red_control: "Terminal overwriting, piped appending, a refusal, and a missing reason are each checked separately.",
+        out_of_scope: "No tidying up stray print statements before one real consumer works.",
+        handback: "The exact bytes produced in both terminal and piped modes, from a real run."
       )
     ),
     active_large(
@@ -588,13 +591,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
       t: fields(
-        headline: "Project CI work into semantic event groups",
-        boundary: "CI rows use stable subjects and Begin/Outcome events; grouping is derived from subject containment, not log adjacency.",
-        displaced_cost: "Makes the operator view one logical unit instead of an unstructured line stream.",
-        first_slice: "Group one production floor family with its member outcomes.",
-        red_control: "Reordering event arrival preserves grouping while a mismatched subject does not join.",
-        out_of_scope: "No stored display group or mutable progress percentage.",
-        handback: "Return the grouping receipt over production-shaped events."
+        headline: "Group the build output into things a person recognises",
+        boundary: "Each piece of work announces a stable name and its start and end. Grouping comes from those names, not from which lines happen to be next to each other.",
+        displaced_cost: "The build log is an undifferentiated stream, so finding which part failed means reading all of it.",
+        first_slice: "Group one real family of build work with its results.",
+        red_control: "Shuffling the order events arrive keeps the grouping correct, and a mismatched name does not join the wrong group.",
+        out_of_scope: "No stored display state and no fake percentage bar.",
+        handback: "The grouping working on real build output."
       )
     ),
     active(
@@ -602,13 +605,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
       t: fields(
-        headline: "Collapse green groups, watchdog orphaned begins, restate failures",
-        boundary: "Presentation collapses completed green groups, keeps failures persistent, and synthesizes no success for a Begin lacking a terminal Outcome.",
-        displaced_cost: "Cuts status noise while making stalls and failures impossible to scroll away.",
-        first_slice: "Apply collapse, watchdog, and final restatement to one CI group.",
-        red_control: "An orphaned Begin times out visibly and a refused child keeps its group expanded and red.",
-        out_of_scope: "No inference of completion from process exit or absent output.",
-        handback: "Return green-collapse, orphan-watchdog, and refusal-restatement receipts."
+        headline: "Hide what passed, keep what failed, and never claim success we did not see",
+        boundary: "Finished-and-passing groups collapse, failures stay visible, and work that started but never reported an ending is shown as stalled rather than assumed fine.",
+        displaced_cost: "Cuts the noise so failures cannot scroll away, and a hung step stops looking like a successful one.",
+        first_slice: "Apply all three behaviours to one group.",
+        red_control: "Work that never finishes visibly times out, and a failed child keeps its group open and red.",
+        out_of_scope: "No guessing that something succeeded because the process exited or went quiet.",
+        handback: "All three behaviours demonstrated."
       )
     ),
     active_small(
@@ -616,13 +619,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-observation",
       path: "docs/plans/progress-observation-design.md",
       t: fields(
-        headline: "Retire raw progress-print producers",
-        boundary: "Census production print sites after scoped run and CI consumers exist; each site migrates to an ObservationEvent or is classified as terminal user output.",
-        displaced_cost: "Eliminates duplicate status channels and formatting policy embedded in callers.",
-        first_slice: "Classify the complete production raw-print census and migrate one family.",
-        red_control: "A newly introduced unclassified progress print reds the census.",
-        out_of_scope: "Program stdout/stderr that is the requested result remains outside progress observation.",
-        handback: "Return the classified zero-residue progress census."
+        headline: "Remove the old raw progress printing",
+        boundary: "Once the above work, inventory every place that prints progress directly and either move it over or mark it as real program output.",
+        displaced_cost: "Two competing status channels means neither can be trusted, and formatting decisions stay scattered across the codebase.",
+        first_slice: "Classify every remaining print site and migrate one family.",
+        red_control: "A newly added unclassified progress print is flagged.",
+        out_of_scope: "A program's actual output — the thing you asked for — is not progress and stays as it is.",
+        handback: "The inventory at zero unclassified."
       )
     ),
 
@@ -631,13 +634,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
       t: fields(
-        headline: "Preflight the complete live CI placement roster",
-        boundary: "Join all 48 enrolled rows by stable identity and refuse missing, duplicate, or unmeasured placement facts.",
-        displaced_cost: "Prevents a partial roster from producing a confident placement decision.",
-        first_slice: "Derive the total roster and its host qualification inputs in one execution.",
-        red_control: "Dropping or duplicating one row refuses the preflight.",
-        out_of_scope: "No hand-maintained count may become the roster authority.",
-        handback: "Return the derived totality and per-row identity receipt."
+        headline: "Get the full list of build jobs before deciding where they run",
+        boundary: "Assemble all 48 jobs by stable identity and refuse if any is missing, duplicated, or has never been measured.",
+        displaced_cost: "Deciding placement from a partial list produces a confident answer to the wrong question.",
+        first_slice: "Derive the full list and its inputs in one run.",
+        red_control: "Dropping or duplicating one job refuses the whole check.",
+        out_of_scope: "No hand-typed count standing in for the real list.",
+        handback: "The derived list with each job's identity."
       )
     ),
     active(
@@ -645,13 +648,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
       t: fields(
-        headline: "Qualify both fleet hosts with warm execution receipts",
-        boundary: "Each placement class earns eligibility from measured warm cost and resource receipts on both candidate hosts.",
-        displaced_cost: "Replaces assumed host equivalence with observed qualification.",
-        first_slice: "Run the same bounded roster packet on both hosts.",
-        red_control: "A missing, stale, or over-budget host receipt leaves that host unqualified.",
-        out_of_scope: "No extrapolation from one host or cold-only timing.",
-        handback: "Return the two-host warm qualification packet."
+        headline: "Measure both machines instead of assuming they are alike",
+        boundary: "Each kind of job earns the right to run on a machine by being measured there, warmed up, with its time and resource use recorded.",
+        displaced_cost: "Assuming the two machines are interchangeable is how work lands on the one that cannot do it well.",
+        first_slice: "Run the same set of jobs on both machines.",
+        red_control: "A missing, stale, or over-budget measurement leaves that machine unqualified.",
+        out_of_scope: "No guessing one machine's numbers from the other, and no cold-start-only timings.",
+        handback: "The measurements from both machines."
       )
     ),
     active(
@@ -659,13 +662,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
       t: fields(
-        headline: "Shadow the proposed placement against the live path",
-        boundary: "Run proposed and current decisions over the same roster and require semantic equality before authority flips.",
-        displaced_cost: "Exposes selection or scheduling divergence before it changes CI behavior.",
-        first_slice: "Shadow one full live packet without controlling execution.",
-        red_control: "Any row, host, or tier disagreement is a located refusal.",
-        out_of_scope: "Shadow output cannot route jobs.",
-        handback: "Return total per-row equality and any explained divergence."
+        headline: "Run the new placement alongside the old one and compare",
+        boundary: "Both make a decision for the same jobs; they must agree before the new one takes over. The new one does not control anything yet.",
+        displaced_cost: "Finds disagreements while they are harmless instead of after they have moved real work.",
+        first_slice: "Shadow one full real run.",
+        red_control: "Any disagreement on a job, machine, or tier is reported with its location.",
+        out_of_scope: "The shadow decision cannot route anything.",
+        handback: "Agreement on every job, or an explanation for each difference."
       )
     ),
     active_large(
@@ -673,13 +676,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "ci-placement",
       path: "docs/plans/ci-two-tier-placement-redesign.md",
       t: fields(
-        headline: "Flip CI placement authority atomically",
-        boundary: "One change makes the qualified model the sole placement projection and removes the shadow/legacy selector together.",
-        displaced_cost: "Ends the dual-decision window and makes placement receipts authoritative.",
-        first_slice: "Flip the complete 48-row roster after equality and both-host qualification.",
-        red_control: "A mixed legacy/model decision surface is rejected by the authority census.",
-        out_of_scope: "No partial-row or host-by-host flip.",
-        handback: "Return the post-flip live receipt and zero dual-authority census."
+        headline: "Switch over in one step and delete the old path",
+        boundary: "A single change makes the new placement the only one and removes the shadow and the old selector together.",
+        displaced_cost: "Ends the period where two things decide placement and nobody is sure which one acted.",
+        first_slice: "Switch all 48 jobs once both machines are qualified and the two agree.",
+        red_control: "A half-old, half-new decision surface is rejected.",
+        out_of_scope: "No job-by-job or machine-by-machine switch.",
+        handback: "A real run afterwards showing only one decision-maker left."
       )
     ),
 
@@ -688,13 +691,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/v2-self-hosting.md",
       t: fields(
-        headline: "Retire the hand-Rust test-module hygiene producer",
-        boundary: "Move the hygiene decision into .dag with behavioral equivalence, then delete the seed producer rather than preserving two authorities.",
-        displaced_cost: "Shrinks the v1 test/tooling surface and removes a dual implementation.",
-        first_slice: "Execute the .dag hygiene fold over the existing discriminating corpus.",
-        red_control: "A malformed test module changes both old and new verdicts before the old producer is removed.",
-        out_of_scope: "No census ratchet satisfied by cementing Rust into templates.",
-        handback: "Return equivalence, producer deletion readiness, and frontier update."
+        headline: "Move one hand-written test check into the substrate and delete the original",
+        boundary: "Re-express the check, prove it behaves identically, then delete the hand-written version rather than keeping both.",
+        displaced_cost: "Keeping both means two things to fix whenever the rule changes, and they will drift.",
+        first_slice: "Run the new version over the existing examples.",
+        red_control: "A malformed test changes both the old and new verdict before the old one is removed.",
+        out_of_scope: "No satisfying the count by baking Rust into templates.",
+        handback: "Proof of identical behaviour and the deletion."
       )
     ),
     active_large(
@@ -702,13 +705,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Reach the behavioral emitter fixed point",
-        boundary: "The v2 emitter re-emits and rebuilds itself for two generations with behavioral equivalence on the discriminating corpus.",
-        displaced_cost: "Establishes the executable replacement required before any v1 cutover.",
-        first_slice: "Close the remaining emitter import and representation gaps while keeping cargo and witnesses green.",
-        red_control: "A second-generation behavioral divergence or seed-only emitter dependency blocks the gate.",
-        out_of_scope: "Byte identity with the Rust seed is not required.",
-        handback: "Return two-generation behavioral, build, and corpus receipts."
+        headline: "Get the new compiler to rebuild itself, twice, and still work",
+        boundary: "The new compiler generates its own source, that source is built, and the result generates the same behaviour again. Behaviour has to match; the bytes do not.",
+        displaced_cost: "This is the whole point of the project: until the new compiler can build itself, there is nothing to replace the old one with.",
+        first_slice: "Close the remaining generation gaps while keeping the build and tests passing.",
+        red_control: "A behaviour difference on the second round, or a dependency on the old compiler, blocks this.",
+        out_of_scope: "Matching the old compiler byte for byte is deliberately not the goal — it would force us to reproduce its mistakes.",
+        handback: "Two rounds of generation with behaviour, build, and test results."
       )
     ),
     active(
@@ -716,13 +719,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Close the honest typed self-host frontier",
-        boundary: "Every compiler module and live interpreter consumer is SelfEmitted or SeedRetained with a reason and migration trigger; no execution receipt is orphaned.",
-        displaced_cost: "Turns hidden seed and interpreter dependence into finite typed deletion obligations.",
-        first_slice: "Re-derive the complete frontier and close one remaining retained-role family.",
-        red_control: "An unregistered seed module, interpreter consumer, or orphaned receipt reds the frontier.",
-        out_of_scope: "No claim that all modules must self-emit when a typed retained kernel is necessary.",
-        handback: "Return the complete frontier, trigger census, and migrated-family receipt."
+        headline: "Keep an honest list of what still depends on the old compiler",
+        boundary: "Every module is either generated by the new compiler or explicitly kept on the old one with a reason and a plan to move.",
+        displaced_cost: "Turns a vague sense of 'mostly done' into a finite, countable list someone can work through.",
+        first_slice: "Rebuild the list and close out one remaining family.",
+        red_control: "An unlisted module, an unlisted dependency, or a listed test that never actually runs makes the list red.",
+        out_of_scope: "Not claiming everything must be generated — some parts legitimately stay.",
+        handback: "The complete list, the reasons, and one family migrated."
       )
     ),
     active_large(
@@ -730,13 +733,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "docs/plans/witness-realization-plan.md",
       t: fields(
-        headline: "Make native materialization the shared execution kernel",
-        boundary: "Witness and compiler execution consult one content-keyed materialization provider with bounded storage and typed miss/refusal behavior.",
-        displaced_cost: "Replaces pay-every-run interpretation and one-off caches with shared artifacts.",
-        first_slice: "Serve one native witness family through a durable budgeted provider.",
-        red_control: "Wrong content, missing artifact, and exhausted budget refuse rather than fall back silently to interpretation.",
-        out_of_scope: "No existence-keyed cache or unbounded store.",
-        handback: "Return cold miss, warm hit, integrity, and eviction receipts."
+        headline: "Compute things once and reuse the result",
+        boundary: "Tests and the compiler share one store keyed by what went into the result, with a size limit and a clear answer when something is missing.",
+        displaced_cost: "Everything is currently recomputed from scratch on every run, and the one-off caches that exist do not help each other.",
+        first_slice: "Serve one family of tests from the shared store.",
+        red_control: "Wrong content, a missing entry, and a full store each refuse rather than quietly falling back to recomputing.",
+        out_of_scope: "No cache keyed on 'does a file exist', and no store that grows without limit.",
+        handback: "Cold-start, warm-reuse, corruption, and eviction all demonstrated."
       )
     ),
     active_large(
@@ -744,13 +747,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Execute the proactive v1-versus-v2 verification ledger",
-        boundary: "Run whole-corpus cold parity, compile-clean parity, regen fixed point, and per-family receipts; elapsed time is never evidence.",
-        displaced_cost: "Replaces soak-based confidence with enumerated discriminating execution.",
-        first_slice: "Execute the cold whole-corpus comparison on the fixed-point emitter artifact.",
-        red_control: "Any unexplained divergence, skipped family, or unexecuted enrolled receipt keeps the ledger red.",
-        out_of_scope: "No calendar soak or fixture-only substitute.",
-        handback: "Return the enumerated green ledger with located divergence accounting."
+        headline: "Prove old and new agree, by running them, not by waiting",
+        boundary: "Run the whole test suite cold on both, compare compile results, check the self-rebuild, and record each family's outcome.",
+        displaced_cost: "Confidence that comes from 'it has been fine for a while' is not evidence; this replaces it with runs someone chose to do.",
+        first_slice: "Run the cold whole-suite comparison.",
+        red_control: "Any unexplained difference, skipped family, or listed-but-never-run check keeps this red.",
+        out_of_scope: "No substituting elapsed time or a sample for the real thing.",
+        handback: "The full list of runs, green, with every difference accounted for."
       )
     ),
     active_large(
@@ -758,13 +761,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Cut the CI floor over to v2-emitted execution",
-        boundary: "The live CI floor runs the v2-emitted path with proactive cold parity against v1 before v1 is quarantined.",
-        displaced_cost: "Moves the mandatory execution consumer off the interpreter instead of proving an unused replacement.",
-        first_slice: "Run the complete floor on v2 emission in shadow, then flip the one execution selector.",
-        red_control: "A CI-only divergence, fallback to the interpreter, or mixed selector blocks cutover.",
-        out_of_scope: "No deletion or quarantine in the cutover change.",
-        handback: "Return shadow parity, atomic flip, and zero-fallback receipts."
+        headline: "Switch the build over to the new compiler",
+        boundary: "The real build runs on the new path, with cold comparisons against the old one first.",
+        displaced_cost: "Moves the thing that actually has to work every day, instead of proving a replacement nobody uses.",
+        first_slice: "Run the whole build on the new path in parallel, then flip one switch.",
+        red_control: "A difference that only appears in the build, a fall back to the old path, or a half-switched state blocks this.",
+        out_of_scope: "Nothing is deleted in this step.",
+        handback: "The parallel comparison, the switch, and proof nothing fell back."
       )
     ),
     active_large(
@@ -772,13 +775,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Drain the hand-maintained v1 product queue",
-        boundary: "Migrate the remaining hand-maintained product/compiler files required for products to build without src/v1; typed terminal-kernel pins require explicit reasons.",
-        displaced_cost: "Makes the quarantine products-build claim writable rather than hiding a hand-Rust dependency.",
-        first_slice: "Drain the next complete hand-maintained producer family through emission and execution.",
-        red_control: "A product-reachable hand-maintained v1 file without a typed retained-kernel disposition blocks quarantine.",
-        out_of_scope: "No template cementing to satisfy a census.",
-        handback: "Return the reduced queue, emitted replacement receipts, and typed retained pins."
+        headline: "Work through the remaining hand-written files the products need",
+        boundary: "Move the hand-written files the shipping tools still depend on. Anything that genuinely has to stay gets an explicit reason.",
+        displaced_cost: "The main command-line tool is itself one of these files, so 'the products still build' is not something we can honestly claim until this is done.",
+        first_slice: "Move the next complete family and run it.",
+        red_control: "A file the products reach that has no stated reason to remain blocks progress.",
+        out_of_scope: "No hitting the number by baking Rust into templates.",
+        handback: "The shorter queue, the replacements running, and the reasons for whatever stays."
       )
     ),
     active(
@@ -786,13 +789,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Prove v1 test behavior is carried before deletion",
-        boundary: "Every v1 Rust test module removed by terminal deletion has discriminating floor-witness coverage against the frozen baseline.",
-        displaced_cost: "Prevents delete-guard silence from being mistaken for behavioral coverage.",
-        first_slice: "Bind one remaining v1 test module to its native-routed discriminating witnesses.",
-        red_control: "Any baseline test module with zero discriminating witness bindings keeps deletion red.",
-        out_of_scope: "No one-for-one transliteration of Rust test implementation.",
-        handback: "Return the per-module coverage receipt and zero-unbound baseline census."
+        headline: "Make sure deleting the old tests loses no coverage",
+        boundary: "Every old test file removed has equivalent coverage that would actually catch the bug it was written for.",
+        displaced_cost: "A guard that stays quiet is not the same as coverage; without this, deletion silently drops real protection.",
+        first_slice: "Match one old test file to the checks that cover it now.",
+        red_control: "Any old test file with nothing covering it keeps deletion blocked.",
+        out_of_scope: "No line-by-line rewriting of the old tests.",
+        handback: "The per-file coverage mapping with nothing unmatched."
       )
     ),
     active_small(
@@ -800,13 +803,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "operator",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Decide and discriminate the seed-honesty gate",
-        boundary: "Record whether diverse double-compiling gates terminal deletion and first make the seed-honesty witness capable of a failing control.",
-        displaced_cost: "Prevents a trivially green evidence atom from authorizing deletion.",
-        first_slice: "Land the discriminating RED, then record the operator gate decision.",
-        red_control: "Supplying the same evidence atom as both claim and check cannot pass.",
-        out_of_scope: "No DDC implementation before the operator decides it gates deletion.",
-        handback: "Return the live RED and typed gating or non-gating decision."
+        headline: "Decide whether the trust-the-compiler check has to happen first",
+        boundary: "A decision: does independently rebuilding with a different compiler have to happen before deletion? And first, make that check capable of failing.",
+        displaced_cost: "The check currently passes no matter what, because it compares a thing to itself — so any confidence from it is imaginary.",
+        first_slice: "Make the check able to fail, then take the decision.",
+        red_control: "Feeding the same thing in as both the claim and the check cannot pass.",
+        out_of_scope: "No building the full independent rebuild before the decision is made.",
+        handback: "A check that can fail, plus the decision recorded either way."
       )
     ),
     active(
@@ -814,13 +817,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Build and run products with the v1 interpreter omitted",
-        boundary: "The deletion rehearsal omits the interpreter at link grain and runs required products and the floor cold and warm.",
-        displaced_cost: "Proves source-inaccessible code is also absent from the artifact.",
-        first_slice: "Produce one quarantine artifact and run the required execution matrix.",
-        red_control: "Any linked or runtime interpreter consumer breaks the quarantine build or census.",
-        out_of_scope: "A feature flag that still links the interpreter is not quarantine.",
-        handback: "Return artifact inspection, product runs, floor receipts, and zero-consumer census."
+        headline: "Build the products with the old runner left out entirely",
+        boundary: "A rehearsal: build without the old runner included at all, and run the products and the build both cold and warm.",
+        displaced_cost: "Proves nothing still reaches for it, which is the thing that actually makes deletion safe.",
+        first_slice: "Produce one such build and run everything that has to work.",
+        red_control: "Anything that still links to or calls the old runner breaks this build.",
+        out_of_scope: "A switch that still includes the runner in the build does not count.",
+        handback: "The build contents, the product runs, the build results, and proof nothing depends on it."
       )
     ),
     active_large(
@@ -828,13 +831,27 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Delete the v1 interpreter",
-        boundary: "Delete the interpreter only after the role frontier, materialization kernel, quarantine, namespace retirement, and P-derive compiler receipt are green.",
-        displaced_cost: "Removes the pay-every-run semantic fork and advances the substrate as compiler authority.",
-        first_slice: "Delete the interpreter and all now-unreachable glue in one atomic change.",
-        red_control: "Products, floor, cold/warm parity, and the no-consumer census all execute without the deleted module.",
-        out_of_scope: "This is not the terminal deletion of all src/v1 or all emitted Rust.",
-        handback: "Return deletion diff plus complete execution and reachability receipts."
+        headline: "Delete the old runner",
+        boundary: "Delete it and everything now unreachable, in one change, once the rehearsal above holds. This is about the runner only — not the rest of the old code, and not hand-written Rust generally.",
+        displaced_cost: "Removes the second, slower way of running everything, and with it the possibility of the two disagreeing.",
+        first_slice: "Delete it and the code that only existed for it.",
+        red_control: "The products, the build, cold and warm runs, and the no-dependants check all pass without it.",
+        out_of_scope: "This is not the deletion of all the old code or all generated Rust.",
+        handback: "The deletion plus everything re-run afterwards."
+      )
+    ),
+    active(
+      id: "v1-products-v1-free",
+      owner: "self-host",
+      path: "dag/gunbc/v1_deletion_plan.dag",
+      t: fields(
+        headline: "Build and run every product without the old code present",
+        boundary: "With the old runner gone and the hand-written queue worked through, the products build and run with the old directory absent. Anything that must stay gets an explicit reason.",
+        displaced_cost: "Separates 'the products no longer need the old code' from 'the old runner is gone', so neither claim waits on the other's leftovers.",
+        first_slice: "Build one product from a tree with the old directory removed and run it.",
+        red_control: "A product that still reads or links anything from the old directory, without a stated reason, fails the check.",
+        out_of_scope: "Not the repository-wide hand-written-Rust goal, and no deleting generated code.",
+        handback: "The builds, the product runs, and the list of anything deliberately kept."
       )
     ),
     active_small(
@@ -848,13 +865,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Reduce repository-wide hand-maintained Rust to zero",
-        boundary: "After interpreter deletion, every tracked Rust source in the repository, including src/v1, stage0, and dag/tools, is emitted from cited .dag models or deleted; hand maintenance is a transitional frontier, never a terminus.",
-        displaced_cost: "Removes the permanent tax and authority fork of maintaining bootstrap behavior separately from its substrate model.",
-        first_slice: "Derive the live hand-maintained src/v1 and stage0 roster, then emit or delete the next complete retained family.",
-        red_control: "Any tracked hand-maintained Rust file anywhere in the repository, including dag/tools, lacking an emitted authority and migration trigger blocks acceptance; any newly added hand-maintained Rust reopens the roster.",
-        out_of_scope: "Do not delete emitted Rust realizations or claim ownership of rustc, the Rust standard library, the operating system, or other cited external trust.",
-        handback: "Return the repository-wide zero hand-maintained roster including dag/tools, generated-authority bindings, and cold product, floor, and regeneration receipts."
+        headline: "Get hand-written Rust in this repository down to zero",
+        boundary: "Every Rust file we track is either generated from a description or deleted. Hand-maintaining Rust is a stage we are passing through, not where we stop.",
+        displaced_cost: "Every hand-written file is a permanent tax: the behaviour and its description have to be kept in step by hand, forever.",
+        first_slice: "Derive the live list of hand-written files, then generate or delete the next family.",
+        red_control: "Any tracked hand-written Rust file without a generated source and a plan blocks this; a newly added one reopens the list.",
+        out_of_scope: "Not deleting generated Rust, and not claiming ownership of the Rust compiler, its standard library, or the operating system.",
+        handback: "The list at zero, the generated sources, and cold build and run results."
       )
     ),
 
@@ -863,13 +880,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
       t: fields(
-        headline: "Represent remaining shell invocations as typed intent",
-        boundary: "Callers construct typed operations and arguments; no caller supplies an opaque command body as business intent.",
-        displaced_cost: "Removes shell syntax from policy and operation call sites.",
-        first_slice: "Migrate one currently retained invocation family onto an existing extdeps operation shape.",
-        red_control: "Invalid arguments or unavailable operation handlers refuse before shell emission.",
-        out_of_scope: "Irreducible shell leaf syntax remains in the Bash realization.",
-        handback: "Return typed intent, execution equivalence, and deleted raw construction site."
+        headline: "Describe what a command should do, instead of writing shell text",
+        boundary: "Callers say which operation and which arguments; nobody hands over an opaque string of shell as the instruction.",
+        displaced_cost: "Shell syntax embedded in decision-making code cannot be checked before it runs, and cannot be reused anywhere else.",
+        first_slice: "Move one family of existing calls onto a described operation.",
+        red_control: "Bad arguments or an unavailable operation refuse before any shell is produced.",
+        out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer.",
+        handback: "The described version, proof it does the same thing, and the deleted string-building."
       )
     ),
     active_large(
@@ -877,13 +894,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
       t: fields(
-        headline: "Lower EffectPlan to Bash through one realization",
-        boundary: "The selected shell handler serializes typed EffectPlan nodes through the shared Bash grammar and preserves effects, ordering, capture, and refusal.",
-        displaced_cost: "Deletes per-workflow shell emitters and concat-built transport programs.",
-        first_slice: "Lower one multi-step typed plan with capture or retry through the shared realization.",
-        red_control: "Unsupported fidelity refuses; reordering or dropping one effect changes the execution oracle.",
-        out_of_scope: "No parallel ShellProgram sidecar or second serializer.",
-        handback: "Return emitted program, execution receipt, and fidelity refusal."
+        headline: "Turn a described plan into shell through one translator",
+        boundary: "One place turns a described plan into a shell script, preserving order, captured output, and failure behaviour.",
+        displaced_cost: "Deletes the per-workflow shell writers and the scripts assembled by gluing strings together.",
+        first_slice: "Translate one multi-step plan that captures output or retries.",
+        red_control: "Anything the translator cannot faithfully express refuses; reordering or dropping a step changes the result.",
+        out_of_scope: "No second translator alongside it.",
+        handback: "The generated script, a real run, and a refusal."
       )
     ),
     active(
@@ -891,13 +908,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
       t: fields(
-        headline: "Migrate CI and commit gates onto typed shell plans",
-        boundary: "Gate policy selects typed operations and the Bash handler realizes them; inline workflow shell stops being a second authority.",
-        displaced_cost: "Makes gate behavior testable before rendering and reusable outside GitHub Actions.",
-        first_slice: "Move one active gate family end to end through EffectPlan-to-Bash.",
-        red_control: "Changing the typed plan changes the generated workflow and a malformed plan refuses regeneration.",
-        out_of_scope: "No zero-shell mandate for foreign executor boundaries.",
-        handback: "Return typed gate execution and generated-artifact fixed-point receipts."
+        headline: "Move the build and commit checks onto described plans",
+        boundary: "The checks choose described operations and the translator produces the shell; the shell pasted into workflow files stops being a separate source of truth.",
+        displaced_cost: "Lets us test what a check does before it runs, and use it outside of GitHub Actions.",
+        first_slice: "Move one live check end to end.",
+        red_control: "Changing the plan changes the generated workflow file, and a malformed plan refuses to generate.",
+        out_of_scope: "No demand that foreign systems accept anything other than shell.",
+        handback: "The check running, and the generated file matching what the plan says."
       )
     ),
     active_small(
@@ -905,13 +922,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "shell",
       path: "docs/plans/shell-to-dag-residual-census-and-arc-completion.md",
       t: fields(
-        headline: "Close the production shell-intent residue census",
-        boundary: "Every remaining raw or computed shell construction is an irreducible realization leaf or a typed, owned migration row.",
-        displaced_cost: "Stops unmarked shell workarounds from recreating opaque policy.",
-        first_slice: "Re-run the construction-site census and migrate the next owned family.",
-        red_control: "A new unclassified production construction site reds the census.",
-        out_of_scope: "Prose, frozen fixtures, absence witnesses, and literal shell leaf tokens are classified, not blindly deleted.",
-        handback: "Return hit-by-hit zero unowned construction sites."
+        headline: "Account for every remaining piece of hand-written shell",
+        boundary: "Each one is either genuinely irreducible or an owned item with a plan.",
+        displaced_cost: "Stops unmarked shell workarounds from quietly recreating the opaque behaviour we just removed.",
+        first_slice: "Re-run the inventory and migrate the next owned family.",
+        red_control: "A newly added unaccounted-for site is flagged.",
+        out_of_scope: "Prose, frozen examples, and genuine shell fragments are classified rather than deleted.",
+        handback: "The inventory with nothing unowned."
       )
     ),
 
@@ -920,13 +937,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Join roadmap node, branch, pull request, attempt, and lease by typed identity",
-        boundary: "Runtime state attaches through one typed relation over node, branch, pull request, attempt, session, and lease identities; titles and timing never establish identity.",
-        displaced_cost: "Removes lossy string joins and contradictory dashboard lamps.",
-        first_slice: "Join one real attempt from node through branch and pull request to its session lease.",
-        red_control: "Missing, duplicate, expired, or mismatched identities and leases remain separate and refuse a confident join.",
-        out_of_scope: "Runtime facts do not enter roadmap authority.",
-        handback: "Return the node-to-lease join matrix with mismatch and expiry controls."
+        headline: "Connect a roadmap item to its branch, pull request, and working session properly",
+        boundary: "One typed relationship links the item, branch, pull request, attempt, and session. Matching by title or by what happened most recently is not allowed.",
+        displaced_cost: "The dashboard currently guesses these connections from strings, so it shows lights that contradict each other.",
+        first_slice: "Connect one real attempt all the way through.",
+        red_control: "Missing, duplicated, expired, or mismatched links stay unconnected rather than being confidently guessed.",
+        out_of_scope: "Live status never gets written back into the roadmap itself.",
+        handback: "The connection working, plus the mismatch and expiry cases."
       )
     ),
     active(
@@ -934,13 +951,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Model Ready as an explicit operator scheduling override",
-        boundary: "Only after every dependency edge is accepted and the typed identity join succeeds may a scoped operator decision promote an otherwise queued eligible node into scheduling.",
-        displaced_cost: "Prevents mutable UI state or implementation evidence from silently unblocking work while preserving dependency refusals.",
-        first_slice: "Apply a scheduling override to one queued fixture whose dependencies are already accepted, without changing acceptance facts.",
-        red_control: "An unaccepted parent, missing or mismatched join, dependency refusal, absent, stale, wrong-node, or revoked override leaves the node blocked.",
-        out_of_scope: "Ready never overrides dependency acceptance, the identity join, or any refusal; merged code and green CI are not overrides.",
-        handback: "Return accepted-dependency scheduling and the dependency, join, and override refusal matrix."
+        headline: "Let a person start something early, deliberately and visibly",
+        boundary: "Once everything an item depends on is accepted and the connections above hold, a person may explicitly move a queued item into the running set.",
+        displaced_cost: "Stops a click in the interface from quietly unblocking work, while still leaving room for a deliberate human decision.",
+        first_slice: "Apply an override to one queued item whose dependencies are already accepted.",
+        red_control: "An unaccepted dependency, a broken connection, or a stale, wrong, or withdrawn override leaves the item blocked.",
+        out_of_scope: "An override never bypasses a dependency or a refusal; merged code and a green build are not overrides.",
+        handback: "The override working plus every refusal case."
       )
     ),
     active(
@@ -948,13 +965,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Dispatch only from the typed runtime join",
-        boundary: "The actuator consumes a spawnable active node whose dependencies are accepted, an optional scheduling override, and an idempotent attempt identity from the typed join.",
-        displaced_cost: "Prevents duplicate workers, dispatch from parked rows, and title-based routing.",
-        first_slice: "Dispatch one eligible fixture and re-submit the same attempt idempotently.",
-        red_control: "Unaccepted-parent, queued-without-override, parked, blocked, duplicate, and identity-mismatched nodes refuse dispatch.",
-        out_of_scope: "The authority graph stores no session, attempt, or pull-request state.",
-        handback: "Return accepted/idempotent dispatch and refusal matrix."
+        headline: "Only start work from those verified connections",
+        boundary: "Starting work requires an item whose dependencies are accepted, an optional explicit override, and an attempt ID that makes a repeated request harmless.",
+        displaced_cost: "Prevents two workers starting on the same thing, and prevents work starting from a shelved item.",
+        first_slice: "Start one eligible item and submit the same request twice.",
+        red_control: "Unaccepted dependencies, no override, shelved, blocked, duplicate, and mismatched items all refuse to start.",
+        out_of_scope: "The roadmap itself stores no session or attempt state.",
+        handback: "The start working, the repeat being harmless, and the refusals."
       )
     ),
     active_small(
@@ -962,13 +979,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "roadmap-runtime",
       path: "docs/plans/roadmap-workspace-ux-plan.md",
       t: fields(
-        headline: "Read back lifecycle facts without inferring readiness",
-        boundary: "The served workspace independently observes session presence, provider/tool readiness, attempt outcome, and pull-request linkage after dispatch.",
-        displaced_cost: "Replaces optimistic accepted-equals-running and session-equals-ready projections.",
-        first_slice: "Poll one dispatched attempt and render independent four-state facts.",
-        red_control: "An accepted POST with no observed session never renders running, ready, or complete.",
-        out_of_scope: "Readback cannot mutate authority or acceptance.",
-        handback: "Return the observed lifecycle matrix and stale-state repaint control."
+        headline: "Check what actually happened rather than assuming it worked",
+        boundary: "After starting work, separately observe whether a session exists, whether its tools are ready, how the attempt ended, and whether a pull request appeared.",
+        displaced_cost: "The dashboard currently treats 'we sent the request' as 'it is running', so it shows work that does not exist.",
+        first_slice: "Watch one started attempt and show the four facts independently.",
+        red_control: "An accepted request with no observed session never displays as running or finished.",
+        out_of_scope: "Observation never changes the roadmap.",
+        handback: "The four observations plus a stale-state refresh."
       )
     ),
 
@@ -977,13 +994,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/host-converge-inventory.md",
       t: fields(
-        headline: "Declare the owned host and BMC state frontier",
-        boundary: "Every state dependency is Derived, OwnedMember, or ForeignWithContract; unclassified state refuses.",
-        displaced_cost: "Shrinks the host permutations that workflows must reason about.",
-        first_slice: "Classify one complete host-touching workflow and its BMC boundary.",
-        red_control: "An undeclared file, service, credential, or device dependency refuses before mutation.",
-        out_of_scope: "No observe-everything inventory.",
-        handback: "Return the classified frontier and one unclassified-state refusal."
+        headline: "Write down which parts of our machines we actually manage",
+        boundary: "Every file, service, credential, and device is either derived by us, owned by us, or someone else's with an agreed contract. Anything unclassified refuses.",
+        displaced_cost: "Shrinks the number of possible machine states our automation has to cope with.",
+        first_slice: "Classify one complete machine-touching workflow.",
+        red_control: "An undeclared file, service, credential, or device refuses before anything is changed.",
+        out_of_scope: "No inventory of everything on the machine for its own sake.",
+        handback: "The classification plus one refusal on something unclassified."
       )
     ),
     active_large(
@@ -991,13 +1008,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/runbooks/bmc-redfish-operator-access.md",
       t: fields(
-        headline: "Converge the fleet BMC firmware and thermal policy",
-        boundary: "Observe firmware, board, controller, fan topology, thermal limits, and policy; plan/apply/read back with rollback on unsafe or mismatched state.",
-        displaced_cost: "Replaces one-off fan tuning with a reproducible safety-checked lifecycle.",
-        first_slice: "Converge the supported host and refuse unsupported firmware before mutation.",
-        red_control: "Wrong firmware, board, topology, sensor, failsafe, or readback triggers refusal or rollback.",
-        out_of_scope: "No firmware update without approved image, digest, recovery, and return proof.",
-        handback: "Return apply, no-op, rollback, reboot-persistence, and unsupported-host receipts."
+        headline: "Manage the server firmware and cooling settings safely and repeatably",
+        boundary: "Read the current firmware, board, fans, and temperature limits; plan a change, apply it, read it back, and roll back if anything looks wrong.",
+        displaced_cost: "Replaces one-off manual fan tuning with something repeatable that checks itself.",
+        first_slice: "Bring the supported machine into line, refusing unsupported firmware before touching anything.",
+        red_control: "Wrong firmware, wrong board, unexpected fans or sensors, a missing safety fallback, or a failed read-back triggers a refusal or a rollback.",
+        out_of_scope: "No firmware updates without an approved image, a checksum, a recovery path, and proof it came back.",
+        handback: "Applying, doing nothing, rolling back, surviving a reboot, and refusing an unsupported machine — all demonstrated."
       )
     ),
     active_large(
@@ -1005,13 +1022,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/host-effect-orchestration.md",
       t: fields(
-        headline: "Run one host converge hunk closed-loop",
-        boundary: "Typed desired state is observed, diffed, applied, independently read back, and only then marked converged.",
-        displaced_cost: "Turns inert infrastructure declarations into changeable, re-runnable control.",
-        first_slice: "Close one narrow service or host knob end to end.",
-        red_control: "Apply success without independent readback remains NotConverged.",
-        out_of_scope: "No broad host subsumption before one narrow loop proves the spine.",
-        handback: "Return apply, no-op, retract, and failed-readback receipts."
+        headline: "Change one machine setting and check it really changed",
+        boundary: "State the desired setting, observe the current one, compare, apply, then independently read it back before calling it done.",
+        displaced_cost: "Turns configuration that is merely written down into configuration that is actually applied and re-checkable.",
+        first_slice: "Close the loop on one narrow setting.",
+        red_control: "Applying successfully but failing to read the change back is still 'not done'.",
+        out_of_scope: "No broad machine takeover before one narrow loop works.",
+        handback: "Applying, doing nothing when already correct, undoing, and a failed read-back."
       )
     ),
     active(
@@ -1019,13 +1036,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/gunbc-served-dashboard-design.md",
       t: fields(
-        headline: "Re-ground dashboard instance apply on the live_deploy membership",
-        boundary: "One membership spine serves every dashboard instance: gunbc.membership_reconcile keyed by member identity with a per-instance (key_of, key_eq, value_eq, ownership_of) bundle, gunbc.ownership admitting teardown, and the typed host-effect route carrying mutation; HostDashboardInstance parameterizes the deployment spec instead of a second apply fold owning its own preflight, ownership, readback, and refusal vocabulary.",
-        displaced_cost: "Deletes a forked deploy engine for the same three artifacts the live_deploy membership already owns, which today carries no ownership concept and reaches the host outside the typed effect path.",
-        first_slice: "Parameterize the srv1 deployment spec by HostDashboardInstance and converge the lab instance through the existing membership plan.",
-        red_control: "A non-owned member removal refuses teardown through R5, and a second apply fold reaching the host outside the membership plan is detectable rather than merely absent.",
-        out_of_scope: "Instance identity, capability realizations, and dispatch admission are consumed unchanged; this is consolidation onto the existing spine, not a new deploy model.",
-        handback: "Return one membership plan serving production and lab, a live lab convergence receipt through it, and the deleted second apply fold."
+        headline: "Deploy every copy of the dashboard through the one deployment mechanism",
+        boundary: "Deploying a dashboard uses the same mechanism as everything else we deploy: work out what should be there, compare it to what is, and change only the difference. Which machine it goes to becomes a parameter, not a second copy of the logic.",
+        displaced_cost: "There are currently two deployment engines for the same three files. The second one does not know what it owns, and reaches the machine outside the checked path — so it can tear down something that was never ours.",
+        first_slice: "Make the existing deployment description take the machine as a parameter, and deploy the test copy through it.",
+        red_control: "Removing something we do not own refuses instead of deleting it, and a second path reaching the machine is detectable rather than merely believed absent.",
+        out_of_scope: "Nothing changes about how a dashboard is identified, what it can do, or who may start work on it — this only merges the two deployment paths into one.",
+        handback: "One deployment description serving both the real and test copies, a live deployment through it, and the second engine deleted."
       )
     ),
     active(
@@ -1033,13 +1050,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
       t: fields(
-        headline: "Schedule anti-entropy and owned-subtree hygiene",
-        boundary: "A periodic consumer re-observes every enrolled member and detects unowned state inside owned subtrees.",
-        displaced_cost: "Finds leaked configuration and stale processes before the next deploy incident.",
-        first_slice: "Enroll one converged workflow in periodic observation and residue detection.",
-        red_control: "A removed member, stale process, or foreign file inside an owned subtree creates a located divergence.",
-        out_of_scope: "Foreign state outside declared ownership is not deleted.",
-        handback: "Return cadence execution and three divergence controls."
+        headline: "Keep re-checking, and notice things we did not put there",
+        boundary: "Something runs periodically, re-observes everything we manage, and spots unmanaged state inside the areas we own.",
+        displaced_cost: "Finds configuration drift and stale processes before the next deployment turns them into an incident.",
+        first_slice: "Put one settled workflow on a schedule with drift detection.",
+        red_control: "A removed item, a stale process, or a foreign file inside an area we own each produce a located report.",
+        out_of_scope: "Things outside what we declared we own are not deleted.",
+        handback: "The schedule running plus the three drift cases."
       )
     ),
     active(
@@ -1047,13 +1064,13 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       owner: "fleet",
       path: "docs/plans/fleet-acceptance-criteria.md",
       t: fields(
-        headline: "Qualify fleet control by live apply and periodic receipts",
-        boundary: "Fleet work closes only when the live actuator, independent readback, safe re-run, retract path, and periodic consumer all execute.",
-        displaced_cost: "Prevents modeled algebra or a one-time apply from being mistaken for operable infrastructure.",
-        first_slice: "Promote one closed-loop converge item from live apply to periodic enforcement.",
-        red_control: "Missing readback, unsafe re-run, failed retract, or missed cadence blocks qualification.",
-        out_of_scope: "No acceptance from fixture-only evidence.",
-        handback: "Return the T4/T5 receipt packet and operator-checkable fleet state."
+        headline: "Only call the machines 'managed' once all of it has really run",
+        boundary: "This closes when applying for real, reading back, re-running safely, undoing, and the periodic check have all actually happened.",
+        displaced_cost: "Stops a tidy model or a single successful run from being mistaken for infrastructure you can rely on.",
+        first_slice: "Take one settled item from a live apply through to the periodic check.",
+        red_control: "A missing read-back, an unsafe re-run, a failed undo, or a missed schedule blocks this.",
+        out_of_scope: "No accepting this on made-up examples.",
+        handback: "The full set of receipts and a machine state someone can go and verify."
       )
     ),
 
@@ -1132,7 +1149,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn active_roadmap_edges() -> List<RoadmapEdge> {
+fn declared_roadmap_edges() -> List<RoadmapEdge> {
   [
     edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
@@ -1155,6 +1172,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "placement-shadow-equality", parent: "placement-two-host-warm-qualification"),
     edge(child: "placement-atomic-authority-flip", parent: "placement-shadow-equality"),
 
+    edge(child: "v1-emitter-fixed-point", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
     edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),
     edge(child: "v1-verification-ledger", parent: "v1-emitter-fixed-point"),
@@ -1162,14 +1180,14 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-ci-floor-cutover", parent: "v1-honest-frontier"),
     edge(child: "v1-ci-floor-cutover", parent: "v1-verification-ledger"),
     edge(child: "v1-interpreter-quarantine", parent: "v1-ci-floor-cutover"),
-    edge(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain"),
     edge(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine"),
-    edge(child: "v1-interpreter-delete", parent: "v1-test-migration"),
-    edge(child: "v1-interpreter-delete", parent: "v1-seed-honesty-decision"),
-    edge(child: "v1-interpreter-delete", parent: "namespace-legacy-choice-retirement"),
-    edge(child: "v1-interpreter-delete", parent: "pderive-error-movement-receipt"),
-    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-interpreter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
+    edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
@@ -1193,10 +1211,75 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
   ]
 }
 
+data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
+
+fn chash(s: String) -> ContentHash { s }
+
+fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
+  [
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "namespace-occurrence-transport"),
+      criteria_digest: chash(s: "d76cf14b12dbf4bf"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.namespace_occurrence_transport_test",
+        witness_fn: "namespace_occurrence_equal_text_mints_distinct_ids_holds",
+        executed_on: "2026-07-28",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/std/occurrence_identity.dag",
+        further_artifacts: [
+          "dag/test/claim/namespace_occurrence_transport_test.dag",
+          "src/v1/tests/claim/pattern_binder_declaration_node_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-28",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "pderive-typesafe-nullary-reflection"),
+      criteria_digest: chash(s: "dac83172a613e659"),
+      red_control: RedControlExecuted {
+        witness_module: "v2.test.manual.coproduct_reflection_conformance",
+        witness_fn: "witness_nullary_reflection_rejects_requested_a_with_context_b",
+        executed_on: "2026-07-28",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "src/v2/std/node_query.dag",
+        further_artifacts: [
+          "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+          "src/v1/stage0/src/coproduct_reflection.rs",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-28",
+    },
+  ]
+}
+
+fn accepted_roadmap_nodes() -> List<RoadmapNode> {
+  let receipts = roadmap_acceptance_receipts()
+  declared_roadmap_nodes() |> filter(n => node_accepted(receipts: receipts, rn: n))
+}
+
+fn accepted_roadmap_node_ids() -> List<RoadmapNodeId> {
+  accepted_roadmap_nodes() |> map(n => n.node)
+}
+
+fn active_roadmap_nodes() -> List<RoadmapNode> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
+}
+
+fn active_roadmap_edges() -> List<RoadmapEdge> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_edges() |> filter(e =>
+    !(accepted |> any(a => a == e.child)) && !(accepted |> any(a => a == e.parent)))
+}
+
 fn preamble() -> List<MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — Roadmap" }] },
-    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. It carries no accepted or superseded history and no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
+    ParagraphBlock { inlines: [TextInline { text: "`DESIGN.md` is the authority for why. This file projects the remaining committed deliverables and their dependency order from `dag/gunbc/roadmap_authority.dag`. The authority declares every node and records a typed acceptance receipt per accepted node; the active set is derived as declared minus validly accepted, so acceptance never deletes a row and this projection stays active-only. It carries no mutable pull-request, CI, session, or attempt state. Implementation evidence does not equal acceptance; a merged but unaccepted deliverable remains active." }] },
     ParagraphBlock { inlines: [TextInline { text: "Indented rows depend on the row above them. Some deliverables have additional cross-chain prerequisites represented by `RoadmapEdge` in the authority. Every active row requires explicit manual acceptance. Automatic admission from this refreshed authority is future work; the existing manual dispatch path remains live and outside this model slice. Ready may schedule only after every dependency is accepted; it never overrides a dependency or refusal. Parked plans remain reachable through the documentation graph but are not active roadmap rows." }] },
     ParagraphBlock { inlines: [TextInline { text: "Parked context (non-dispatchable): [compiler algorithm survey](docs/plans/compiler-algorithm-survey-2026-07-04.md) · [SCM product strategy and post-prerequisite lanes](docs/plans/dag-scm-product-strategy.md) · [dispatch maintain CC](docs/plans/dispatch-maintain-cc.md) · [eval bind proposal](docs/plans/eval-bind-node-eval-propose.md) · [interpreter memory chronicle](docs/plans/interpreter-memory-chronicle.md) · [node/subtree visibility grants](docs/plans/node-subtree-visibility-grants.md) · [non-fold residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) · [post-engine roadmap](docs/plans/post-engine-pr-roadmap.md) · [post-zero regen placement](docs/plans/post-zero-regen-gate-placement.md) · [syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) · [regen 31/32 reconciliation](docs/plans/regen-divergence-31-vs-32-reconciliation.md) · [regen divergence ratchet](docs/plans/regen-divergence-ratchet-shape.md) · [roadmap spawner](docs/plans/roadmap-spawner.md) · [seed honesty discharge](docs/plans/seed-honesty-discharge-design.md) · [space lens minimal project](docs/plans/space-lens-minimal-project.md)." }] },
   ]
@@ -1206,7 +1289,7 @@ fn active_section() -> RoadmapSection {
   RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: [
-      section_prose(content: "The graph has ten lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three SCM R0 models, the P−1 evidence carrier, and the toolchain pin model are independent roots; compatibility extraction and later SCM/product lanes remain parked. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      section_prose(content: "The graph has ten lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three SCM R0 models, the P−1 evidence carrier, and the toolchain pin model are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
         nodes: active_roadmap_nodes(),
