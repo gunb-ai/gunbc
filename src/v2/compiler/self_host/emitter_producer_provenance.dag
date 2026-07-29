@@ -640,11 +640,48 @@ fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> B
   )
 }
 
-data authorized_emitter_produced_disposition_note: String = "Review 44485 construction wall: EmitterProduced is reachable ONLY through mint_authorized_emitter_produced_disposition, which calls producer_emission_oracle_authorizes_row before wrapping. Live compiler_frontier_roster has zero EmitterProduced rows at baseline; census compiler_frontier_emitter_produced_oracle_backed_holds re-checks authorization on every roster row. Dissolve-on: witness-realization populates roster exclusively via mint."
+data authorized_emitter_produced_disposition_note: String = "Reviews 44485/44487 construction wall (materialization_provider_identity_derivation_note class): a brand or bare record is freely constructible in .dag — custody theater. The enforceable move is DERIVATION: authorization_token is computed from (module_path, provenance digests, executed wet_execution_digest) and census compiler_frontier_emitter_produced_authorization_mint_consistent_holds requires token==derivation AND producer_emission_oracle_authorizes_row. mint_authorized_emitter_produced_disposition is the sole writer of consistent tokens today; live roster emitter_produced_baseline=0. Dissolve-on: witness-realization populates roster exclusively via mint."
+
+fn authorized_emitter_produced_authorization_token(
+  module_path: String,
+  provenance: ProducerEmissionReceipt,
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^authorized_emitter_produced_disposition),
+    b: combine_hash(
+      a: content_hash_atom(value: module_path),
+      b: combine_hash(
+        a: provenance.module_source_digest,
+        b: combine_hash(
+          a: provenance.emitted_source_digest,
+          b: executed_verdict.wet_execution_digest
+        )
+      )
+    )
+  )
+}
 
 type AuthorizedEmitterProducedDisposition {
+  authorization_token: Hash
   provenance: ProducerEmissionReceipt
   executed_verdict: ProducerEmissionExecutedGreenReceipt
+}
+
+fn authorized_emitter_produced_disposition_mint_consistent(
+  module_path: String,
+  authorization: AuthorizedEmitterProducedDisposition
+) -> Bool {
+  authorized_emitter_produced_authorization_token(
+    module_path: module_path,
+    provenance: authorization.provenance,
+    executed_verdict: authorization.executed_verdict
+  ) == authorization.authorization_token
+    && producer_emission_oracle_authorizes_row(
+      module_path: module_path,
+      receipt: authorization.provenance,
+      executed: authorization.executed_verdict
+    )
 }
 
 fn authorized_emitter_produced_provenance(
@@ -671,6 +708,11 @@ fn mint_authorized_emitter_produced_disposition(
   ) {
     optional_present(
       value: AuthorizedEmitterProducedDisposition {
+        authorization_token: authorized_emitter_produced_authorization_token(
+          module_path: module_path,
+          provenance: provenance,
+          executed_verdict: executed_verdict
+        ),
         provenance: provenance,
         executed_verdict: executed_verdict
       }
@@ -816,6 +858,50 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     Absent => true
     Present { value: _ } => false
   }
+}
+
+fn hand_forged_emitter_produced_authorization_fails_mint_consistency_holds() -> Bool {
+  let row = producer_emission_oracle_row_body_producer
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: row.module_path)
+  let executed = ProducerEmissionExecutedGreenReceipt {
+    module_path: row.module_path,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
+  }
+  let forged = AuthorizedEmitterProducedDisposition {
+    authorization_token: content_hash_atom(value: "hand_forged_emitter_produced_authorization"),
+    provenance: fabricated,
+    executed_verdict: executed
+  }
+  !authorized_emitter_produced_disposition_mint_consistent(
+    module_path: row.module_path,
+    authorization: forged
+  )
+}
+
+fn hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds() -> Bool {
+  let row = producer_emission_oracle_row_body_producer
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: row.module_path)
+  let executed = ProducerEmissionExecutedGreenReceipt {
+    module_path: row.module_path,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
+  }
+  let forged = AuthorizedEmitterProducedDisposition {
+    authorization_token: authorized_emitter_produced_authorization_token(
+      module_path: row.module_path,
+      provenance: fabricated,
+      executed_verdict: executed
+    ),
+    provenance: fabricated,
+    executed_verdict: executed
+  }
+  !authorized_emitter_produced_disposition_mint_consistent(
+    module_path: row.module_path,
+    authorization: forged
+  )
 }
 
 fn mint_authorized_emitter_produced_disposition_refused_at_baseline_holds() -> Bool {

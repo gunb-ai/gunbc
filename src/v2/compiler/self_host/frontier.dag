@@ -10,6 +10,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   EmitterProducer,
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
+  authorized_emitter_produced_disposition_mint_consistent,
   authorized_emitter_produced_executed_verdict,
   authorized_emitter_produced_provenance,
   producer_emission_oracle_authorizes_row,
