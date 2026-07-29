@@ -40,20 +40,14 @@ import gunbc.fleet_intent {
 }
 import product.placement_supply { HostIdentity }
 import std.bmc { OpenBmc }
-import std.content_hash {
-  content_hash_atom,
-  content_hash_combine,
-  content_hash_tagged,
-}
 import std.measure {
   Celsius,
   RevolutionsPerMinute,
   Second,
   byte_size,
   celsius,
-  celsius_count,
+  celsius_delta,
   percent,
-  percent_count,
   rpm,
   second,
 }
@@ -61,7 +55,7 @@ import std.nat { Nat }
 import std.state_durability {
   StatePerturbationGeneration,
 }
-import std.types { Bool, ContentHash, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -99,7 +93,6 @@ type BmcFanRebootPersistenceReceipt {
   bmc_returned: Bool
   bmc_down_observed_at: EpochMs
   bmc_returned_at: EpochMs
-  observed_outage: Second
   host_power_before: RedfishPowerState
   host_power_after: RedfishPowerState
   host_os_ssh_reachable_throughout: Bool
@@ -189,8 +182,8 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis: celsius(count: 1),
-  negative_hysteresis: celsius(count: 2),
+  positive_hysteresis: celsius_delta(count: 1),
+  negative_hysteresis: celsius_delta(count: 2),
 }
 
 data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
@@ -198,61 +191,6 @@ data srv4_bmc_fan_observed_controller_service: NonEmptyStr = "phosphor-pid-contr
 data srv4_bmc_fan_observed_controller_zone_path: NonEmptyStr = "/xyz/openbmc_project/settings/fanctrl/zone0"
 data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
-
-fn bmc_fan_curve_step_content_hash(step: BmcFanCurveStep) -> ContentHash {
-  content_hash_combine(
-    left: content_hash_atom(
-      value: to_string(celsius_count(step.at_or_above)) as NonEmptyStr,
-    ),
-    right: content_hash_atom(
-      value: to_string(percent_count(step.duty)) as NonEmptyStr,
-    ),
-  )
-}
-
-fn bmc_fan_curve_content_hash(curve: BmcFanCurve) -> ContentHash {
-  let steps_hash = fold(
-    curve.steps,
-    init: content_hash_atom(value: "bmc-fan-curve-steps"),
-    f: (hash, step) =>
-      content_hash_combine(
-        left: hash,
-        right: bmc_fan_curve_step_content_hash(step: step),
-      ),
-  )
-  content_hash_tagged(
-    tag: "bmc-fan-curve",
-    payload: content_hash_combine(
-      left: content_hash_atom(value: curve.control_sensor),
-      right: content_hash_combine(
-        left: steps_hash,
-        right: content_hash_combine(
-          left: content_hash_atom(
-            value: to_string(percent_count(curve.minimum_duty)) as NonEmptyStr,
-          ),
-          right: content_hash_combine(
-            left: content_hash_atom(
-              value: to_string(percent_count(curve.sensor_unavailable_duty)) as NonEmptyStr,
-            ),
-            right: content_hash_combine(
-              left: content_hash_atom(
-                value: to_string(percent_count(curve.zone_failsafe_duty)) as NonEmptyStr,
-              ),
-              right: content_hash_combine(
-                left: content_hash_atom(
-                  value: to_string(celsius_count(curve.positive_hysteresis)) as NonEmptyStr,
-                ),
-                right: content_hash_atom(
-                  value: to_string(celsius_count(curve.negative_hysteresis)) as NonEmptyStr,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  )
-}
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
   hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
@@ -366,7 +304,6 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   bmc_returned: true,
   bmc_down_observed_at: 1785193789000,
   bmc_returned_at: 1785193946000,
-  observed_outage: second(count: 157),
   host_power_before: On,
   host_power_after: On,
   host_os_ssh_reachable_throughout: true,

@@ -9,6 +9,7 @@ import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
   Celsius,
+  CelsiusDelta,
   HardwareThreadCount,
   Percent,
   RevolutionsPerMinute,
@@ -147,8 +148,8 @@ type BmcFanCurve {
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
   zone_failsafe_duty: Percent
-  positive_hysteresis: Celsius
-  negative_hysteresis: Celsius
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
 }
 
 type ValidatedBmcFanCurve {
