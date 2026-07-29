@@ -12,6 +12,32 @@ recommendation.
 
 ---
 
+## 0. What producer this measures — read first
+
+**Everything below characterizes the V1 *seed* emitter** (`src/v1/05_emit_rust.dag`,
+executed through `gunbc`) and what it synthesizes when emitting v2 modules.
+
+Per the operator design ruling of 2026-07-29, **`CompilerFixedPoint` recenters on the V2
+emitter**: the v1 stage0 runtime may temporarily *execute* the v2 emitter as `.dag`, but
+the v1 emitter stops *deciding* the generated Rust — emitter authority exits v1 first,
+interpreter execution later.
+
+So, stated plainly so this census cannot be misread later:
+
+* these 79 sites and 590 occurrences are **diagnostic comparison only**;
+* they are **not `CompilerFixedPoint` progress**;
+* they are **not a v2 sizing authority**. The v2 emitter is a *different producer*, built
+  from target-model rows consumed by the shared translate/serialize path, so no row here
+  transfers to it by assumption — some may, some are artifacts of seed lowering templates
+  v2 does not have.
+
+What it *is* load-bearing for: seed-emitter changes are becoming a finite **bootstrap
+adapter queue** rather than open-ended improvement, and this census is what makes that
+queue enumerable — it names which seed lowering decisions exist and exactly where each one
+is made.
+
+---
+
 ## 1. The result
 
 Phase A proved the Clone requirement does not originate in a `.dag` body. B0 asks the
@@ -107,7 +133,8 @@ a filename heuristic — `v2.compiler.translate` lives in `06_translate.dag`).
 
 rustc's primary span highlights the failing method segment exactly, so the receiver is the
 balanced postfix expression ending at the preceding `.`. Across all 590 occurrences the
-whole population reduces to **seven** distinct receiver shapes, each one a literal the
+whole population reduces to **six inhabited** receiver shapes (of seven declared rows —
+`FreeMonoidCatchallBind` is declared and explicitly uninhabited), each one a literal the
 emitter concatenates:
 
 | lowering operation | emitter authority | sites | occurrences | cause |
@@ -236,8 +263,33 @@ FAIL e0599_b0_red_unnamed_receiver_shape_refuses
 FAIL e0599_b0_red_empty_receiver_refuses
 ```
 
-Restored, 19/19 green. A zero in the `Unresolved` row is therefore a measurement, not a
-dead arm.
+Restored, 22/22 green.
+
+**What `Unresolved = 0` does and does not claim.** It is measured *given these
+predicates*. A destination perturbation like the one above proves the fail-closed arm
+**can** fire; it cannot prove that every unclassifiable input **reaches** it, because a
+permissive predicate upstream means some shapes never arrive. That gap was real and was
+found in review: `e0599_receiver_is_field_access` accepted any dotted receiver, so
+`pair.0` would have classified as `FieldAccessClone` instead of refusing.
+
+It matters because the shapes genuinely differ on the axis this census reports: named
+field access is gated by `base_is_owned` (`:6435`) and so is `EmitterArmPresent`, while
+tuple projection at `:6421`/`:6422`/`:6412` applies `clone_value` **unconditionally** and
+is `NoEmitterArm`. Measured, **zero** tuple projections exist in the population — the
+complete dotted-receiver set is `left.carried` and `right.carried`, 4 occurrences each,
+one site — so **no number moved**. But latent is not absent: the predicate would have
+mis-attributed the moment one appeared, and nothing would have said so.
+
+Fixed, and pinned by a **routing** control rather than a destination one:
+
+```
+FAIL e0599_b0_red_routing_tuple_projection_first_refuses
+FAIL e0599_b0_red_routing_tuple_projection_second_refuses
+```
+
+— which is what reverting the predicate to its permissive form produces, and nothing else
+reds. So the census's frontier is now asserted by execution in both directions: the arm
+fires, and unclassifiable shapes route to it.
 
 **Second control — the joiner's field contract.** The classification line carries exactly
 seven fields, and the joiner refuses on any mismatch rather than padding. Perturbing the

@@ -332,6 +332,8 @@ for key, occs in sorted(SITES.items()):
 unresolved = [r for r in out_rows if r["requirement_cause"] == "Unresolved"]
 
 print("# section=b0_scope")
+print("measured_producer\tV1SeedEmitter")
+print("measured_producer_caveat\tDIAGNOSTIC COMPARISON ONLY - not CompilerFixedPoint progress and not a v2 sizing authority; CompilerFixedPoint recenters on the V2 emitter, a different producer (operator ruling 2026-07-29)")
 print(f"modules_measured\t{','.join(MODULES)}")
 print(f"E0599_all_families_diagnostics\t{len(rows)}")
 print(f"R1R2R3_diagnostics\t{len(scoped)}")
