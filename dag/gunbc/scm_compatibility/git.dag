@@ -1,0 +1,220 @@
+module gunbc.scm_compatibility.git
+
+import std.types { List, NonEmptyStr }
+import extdeps.git.object_store {
+  GitObjectId,
+  GitRefName,
+  GitRepositoryState,
+  GitR0Projection,
+  GitR0ReadBackObservation,
+  GitModeledRefTransition,
+  GitR0UnsupportedBoundary,
+  GitProjectionOutcome,
+  GitProjected,
+  GitReadBackOutcome,
+  GitReadBackVerified,
+  GitUpdateRefOutcome,
+  GitRefTransitionModeled,
+  git_project_repository,
+  git_verify_independent_read_back,
+  git_model_update_ref_exact,
+  git_object_id_content_hash,
+  git_r0_unsupported_boundary,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityProjectionHandler,
+  CompatibilityFidelityProfile,
+  CompatibilityFidelityFact,
+  CompatibilityEndpointStateCaptured,
+  CompatibilityEndpointState,
+  CompatibilityUpstreamChangeEvidence,
+  CompatibilityNativeProposalContract,
+  CompatibilityHistory,
+  CompatibilityPublication,
+  CompatibilityConflictFacts,
+  CompatibilityPathAndMode,
+  CompatibilityAvailability,
+  CompatibilityNativeIdentity,
+  CompatibilityFidelityPreserved,
+  CompatibilityFidelityDowngraded,
+  CompatibilityFidelityUnavailable,
+  CompatibilityAdvanceModeled,
+  CompatibilityExactCompareAndAdvance,
+  compatibility_fidelity_profile,
+}
+
+data git_compatibility_binding_note: NonEmptyStr = "The Git R1 handler consumes Git's own decoded projection, independent read-back, and exact-old-OID transition model. GitObjectId, GitRefName, tree/index/worktree facts, and unsupported-boundary rows remain in GitCompatibilityReceipt; the common projection contains no Git object, ref, commit, or branch type. CompatibilityAdvanceModeled is deliberately weaker than P3's executed-and-read-back transition receipt."
+
+type GitCompatibilityReceipt {
+  target: GitRefName
+  generation: GitObjectId
+  projection: GitR0Projection
+  read_back: GitR0ReadBackObservation
+  advance: GitModeledRefTransition
+  unsupported: List<GitR0UnsupportedBoundary>
+}
+
+type GitCompatibilityRefusal
+  = GitCompatibilityProjectionRejected { outcome: GitProjectionOutcome }
+  | GitCompatibilityReadBackRejected { outcome: GitReadBackOutcome }
+  | GitCompatibilityAdvanceRejected { outcome: GitUpdateRefOutcome }
+
+type GitCompatibilityBindingOutcome
+  = GitCompatibilityBound { receipt: GitCompatibilityReceipt }
+  | GitCompatibilityBindingRefused { cause: GitCompatibilityRefusal }
+
+type GitCompatibilityBindingOutcomeFold<R> {
+  bound: fn(GitCompatibilityReceipt) -> R
+  refused: fn(GitCompatibilityRefusal) -> R
+}
+
+fn git_compatibility_binding_outcome_fold<R>(
+  outcome: GitCompatibilityBindingOutcome,
+  fold: GitCompatibilityBindingOutcomeFold<R>,
+) -> R {
+  match outcome {
+    GitCompatibilityBound { receipt } => fold.bound(receipt)
+    GitCompatibilityBindingRefused { cause } => fold.refused(cause)
+  }
+}
+
+fn git_compatibility_bind(
+  repository: GitRepositoryState,
+  tree: GitObjectId,
+  read_back: GitR0ReadBackObservation,
+  target: GitRefName,
+  expected_generation: GitObjectId,
+  proposed_generation: GitObjectId,
+) -> GitCompatibilityBindingOutcome {
+  match git_project_repository(
+    repo: repository,
+    tree_oid: tree,
+  ) {
+    GitProjected { projection } =>
+      match git_verify_independent_read_back(
+        projection: projection,
+        observation: read_back,
+      ) {
+        GitReadBackVerified { observation } =>
+          match git_model_update_ref_exact(
+            repo: repository,
+            name: target,
+            new_oid: proposed_generation,
+            expected_old: expected_generation,
+          ) {
+            GitRefTransitionModeled {
+              repository: _,
+              transition,
+            } =>
+              GitCompatibilityBound {
+                receipt: GitCompatibilityReceipt {
+                  target: target,
+                  generation: expected_generation,
+                  projection: projection,
+                  read_back: observation,
+                  advance: transition,
+                  unsupported: git_r0_unsupported_boundary,
+                },
+              }
+            rejected =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceRejected {
+                  outcome: rejected,
+                },
+              }
+          }
+        rejected =>
+          GitCompatibilityBindingRefused {
+            cause: GitCompatibilityReadBackRejected {
+              outcome: rejected,
+            },
+          }
+      }
+    rejected =>
+      GitCompatibilityBindingRefused {
+        cause: GitCompatibilityProjectionRejected {
+          outcome: rejected,
+        },
+      }
+  }
+}
+
+fn git_compatibility_fidelity() -> CompatibilityFidelityProfile {
+  compatibility_fidelity_profile(
+    first: CompatibilityFidelityFact {
+      axis: CompatibilityEndpointState,
+      disposition: CompatibilityFidelityPreserved,
+    },
+    remaining: [
+      CompatibilityFidelityFact {
+        axis: CompatibilityUpstreamChangeEvidence,
+        disposition: CompatibilityFidelityDowngraded {
+          cause: "an exact Git endpoint and history do not recover an authored source operation",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeProposalContract,
+        disposition: CompatibilityFidelityUnavailable {
+          cause: "ordinary Git import carries no native reads/frame/ensures proposal contract",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityHistory,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPublication,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityConflictFacts,
+        disposition: CompatibilityFidelityUnavailable {
+          cause: "R0 does not promote Git conflict presentation into semantic evidence",
+        },
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityPathAndMode,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityAvailability,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      CompatibilityFidelityFact {
+        axis: CompatibilityNativeIdentity,
+        disposition: CompatibilityFidelityPreserved,
+      },
+    ],
+  )
+}
+
+fn git_compatibility_projection_receipt(
+  receipt: GitCompatibilityReceipt,
+) -> CompatibilityProjectionReceipt {
+  let generation = git_object_id_content_hash(oid: receipt.generation) as NonEmptyStr
+  let projection = git_object_id_content_hash(
+    oid: receipt.projection.tree_oid,
+  ) as NonEmptyStr
+  CompatibilityProjectionReceipt {
+    realization: "git-r0",
+    target: receipt.target as NonEmptyStr,
+    generation_evidence: generation,
+    capture: CompatibilityEndpointStateCaptured,
+    projection: projection,
+    read_back: concat("git-readback:", receipt.read_back.git_version),
+    repair: concat("git-projection-repair:", projection),
+    advance: CompatibilityAdvanceModeled {
+      guarantee: CompatibilityExactCompareAndAdvance,
+    },
+    fidelity: git_compatibility_fidelity(),
+  }
+}
+
+fn git_compatibility_projection_handler() -> CompatibilityProjectionHandler<GitCompatibilityReceipt> {
+  CompatibilityProjectionHandler {
+    project: fn(receipt) {
+      git_compatibility_projection_receipt(receipt: receipt)
+    },
+  }
+}
