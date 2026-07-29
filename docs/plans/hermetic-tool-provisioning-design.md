@@ -250,7 +250,31 @@ consumers.
 - **P5 — declare the floor.** Tier 2/3 rows with asserted versions and a
   startup check, so the ambient set is small, named, and observable.
 
-## 7. Non-goals
+## 7. Discovered by execution: the `none` spelling blocks corpus ingest
+
+Found while witnessing P1's `admit_legacy_cli_tool`, and recorded rather than
+worked around. The `Absent` match arm does **not** match a field written with
+the `none` literal — a `none`-valued optional evaluates to `Value::Null` and
+the match fails with `non-exhaustive pattern match on: null` — while a field
+written `Absent` matches normally.
+
+This is a live instance of the documented `Value::Null` open thread ("the
+overloaded `None`/`Absent`/miss sentinel"), surfaced by a new consumer. It is
+load-bearing for this lane because the corpus overwhelmingly uses `none`:
+roughly **568 `: none,` fields against 98 `: Absent,`** in `dag/`, and *every*
+shipped `CliTool` row with no version (`jq`, `grep`, `sed`, `sha256sum`,
+`sleep`) uses `none`.
+
+Consequence, stated plainly: P1's ingest fn is correct on the model and its
+witness is green, but that witness exercises the `Absent` spelling only — it
+does **not** demonstrate coverage of the real roster. Ingesting the actual
+`CliTool` rows is a **P2 blocker** gated on the `Value::Null` carrier split
+(`docs/plans/value-null-split.md`) or an equivalent grounding of the two
+spellings onto one representation. The limit is declared on the carrier
+(`legacy_ingest_none_spelling_blocker_note`) so it is counted rather than
+assumed discharged.
+
+## 8. Non-goals
 
 - Dictating a developer's interactive environment. Mechanical paths only.
 - A content-addressed toolchain root shared across worktrees (ruled out above).

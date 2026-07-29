@@ -119,7 +119,7 @@ data legacy_ranged_tool: CliTool = CliTool {
 
 data legacy_unversioned_tool: CliTool = CliTool {
   name: "jq",
-  min_version: none,
+  min_version: Absent,
   installable_via: [SourceApt { package: "jq" }],
 }
 

@@ -1063,7 +1063,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
       path: "docs/plans/hermetic-tool-provisioning-design.md",
       t: fields(
         headline: "Ensure tools through one membership reconcile",
-        boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; the five independent PATH resolvers collapse onto it and are deleted.",
+        boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
         first_slice: "Instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it.",
         red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses.",
