@@ -1,7 +1,7 @@
 use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -212,6 +212,8 @@ pub enum Stage0CargoBinManifestParseRefusal {
     BinTableMissingPath,
     BinTableCountMismatch { tables: usize, paths: usize },
     BinTablePathUnquoted,
+    BinTableTomlParse,
+    BinTablePathEscapesPackageRoot,
 }
 
 impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
@@ -225,6 +227,12 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
             }
             Self::BinTablePathUnquoted => {
                 write!(f, "[[bin]] path value must be a quoted TOML string")
+            }
+            Self::BinTableTomlParse => {
+                write!(f, "Cargo.toml [[bin]] extraction requires valid TOML")
+            }
+            Self::BinTablePathEscapesPackageRoot => {
+                write!(f, "[[bin]] path escapes stage0 package root after normalization")
             }
         }
     }
@@ -253,106 +261,91 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str(
     )
 }
 
-fn toml_line_without_comment(trimmed: &str) -> &str {
-    if let Some(idx) = trimmed.find(" #") {
-        trimmed[..idx].trim_end()
-    } else {
-        trimmed
-    }
-}
-
-pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
     content: &str,
     package_root: &str,
 ) -> Result<Vec<String>, Stage0CargoBinManifestParseRefusal> {
-    let mut paths = Vec::new();
-    let mut in_bin = false;
-    let mut current_bin_has_path = false;
-    let mut bin_section_count = 0usize;
+    let doc: toml::Table = toml::from_str(content)
+        .map_err(|_| Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+    let bins = match doc.get("bin") {
+        None => return Ok(Vec::new()),
+        Some(toml::Value::Array(bins)) => bins,
+        Some(_) => return Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse),
+    };
 
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let line_body = toml_line_without_comment(trimmed);
-        if line_body == "[[bin]]" {
-            if in_bin && !current_bin_has_path {
-                return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
-            }
-            in_bin = true;
-            current_bin_has_path = false;
-            bin_section_count += 1;
-            continue;
-        }
-        if line_body.starts_with("[[") {
-            if in_bin && !current_bin_has_path {
-                return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
-            }
-            in_bin = false;
-            current_bin_has_path = false;
-            continue;
-        }
-        if in_bin {
-            match parse_bin_table_path_line(line_body)? {
-                Some(path_val) => {
-                    paths.push(format!("{package_root}{path_val}"));
-                    current_bin_has_path = true;
-                }
-                None => {}
-            }
-        }
-    }
-    if in_bin && !current_bin_has_path {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTableMissingPath);
-    }
-    if bin_section_count != paths.len() {
-        return Err(Stage0CargoBinManifestParseRefusal::BinTableCountMismatch {
-            tables: bin_section_count,
-            paths: paths.len(),
-        });
+    let mut paths = Vec::with_capacity(bins.len());
+    for bin in bins {
+        let table = bin
+            .as_table()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)?;
+        let path_val = table
+            .get("path")
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTableMissingPath)?;
+        let path_str = path_val
+            .as_str()
+            .ok_or(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)?;
+        paths.push(join_repo_path_under_package_root(
+            package_root,
+            path_str,
+        )?);
     }
     Ok(paths)
+}
+
+fn normalize_path_under_root(root: &Path, rel: &Path) -> Result<PathBuf, Stage0CargoBinManifestParseRefusal> {
+    if rel.is_absolute() {
+        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
+    }
+    let mut normalized = PathBuf::new();
+    for component in root.join(rel).components() {
+        match component {
+            Component::Prefix(_) | Component::RootDir => {
+                return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
+            }
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
+                }
+            }
+            Component::CurDir => {}
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    Ok(normalized)
+}
+
+fn join_repo_path_under_package_root(
+    package_root: &str,
+    path_val: &str,
+) -> Result<String, Stage0CargoBinManifestParseRefusal> {
+    let root = Path::new(package_root);
+    let rel = Path::new(path_val);
+    let normalized = normalize_path_under_root(root, rel)?;
+    if !normalized.starts_with(root) {
+        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
+    }
+    if !normalized
+        .components()
+        .all(|c| matches!(c, Component::Normal(_)))
+    {
+        return Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot);
+    }
+    Ok(normalized.to_string_lossy().replace('\\', "/"))
+}
+
+fn repo_path_is_normalized_under_package_root(repo_path: &str, package_root: &str) -> bool {
+    let path = Path::new(repo_path);
+    let root = Path::new(package_root);
+    path.starts_with(root)
+        && path
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
 }
 
 fn stage0_cargo_bin_repo_paths_from_manifest_str(content: &str) -> Vec<String> {
     try_stage0_cargo_bin_repo_paths_from_manifest_str(content).unwrap_or_else(|refusal| {
         panic!("stage0_cargo_bin_repo_paths_from_manifest: {refusal}");
     })
-}
-
-fn parse_toml_quoted_value(raw: &str) -> Option<String> {
-    let raw = raw.trim();
-    if raw.starts_with('"') {
-        let rest = &raw[1..];
-        let end = rest.find('"')?;
-        Some(rest[..end].to_string())
-    } else if raw.starts_with('\'') {
-        let rest = &raw[1..];
-        let end = rest.find('\'')?;
-        Some(rest[..end].to_string())
-    } else {
-        None
-    }
-}
-
-fn parse_bin_table_path_line(
-    trimmed: &str,
-) -> Result<Option<String>, Stage0CargoBinManifestParseRefusal> {
-    let eq = match trimmed.find('=') {
-        Some(eq) => eq,
-        None => return Ok(None),
-    };
-    let key = trimmed[..eq].trim();
-    if key != "path" {
-        return Ok(None);
-    }
-    let value = trimmed[eq + 1..].trim();
-    match parse_toml_quoted_value(value) {
-        Some(path) => Ok(Some(path)),
-        None if value.is_empty() => Ok(None),
-        None => Err(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted),
-    }
 }
 
 /// Tracked `.rs` paths from `git ls-files` at the workspace root (host execution surface).
@@ -392,7 +385,7 @@ pub fn stage0_cargo_bin_manifest_all_under_package_root_holds() -> bool {
     let package_root = stage0_package_root();
     stage0_cargo_bin_repo_paths_from_manifest()
         .iter()
-        .all(|p| p.starts_with(package_root))
+        .all(|p| repo_path_is_normalized_under_package_root(p, package_root))
 }
 
 pub fn git_tracked_rust_repo_path_count() -> i64 {
@@ -32033,5 +32026,39 @@ path = "examples/demo.rs"
 "#;
         let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
         assert_eq!(paths, vec!["src/v1/stage0/src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn rejects_path_traversal_outside_package_root() {
+        let fragment = "[[bin]]\nname = \"escape\"\npath = \"../../outside.rs\"\n";
+        assert_eq!(
+            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+                fragment,
+                stage0_package_root()
+            ),
+            Err(Stage0CargoBinManifestParseRefusal::BinTablePathEscapesPackageRoot)
+        );
+    }
+
+    #[test]
+    fn parses_escaped_quote_in_bin_path() {
+        let fragment = r#"[[bin]]
+name = "demo"
+path = "src/bin/a\"b.rs"
+"#;
+        let paths = stage0_cargo_bin_repo_paths_from_manifest_str(fragment);
+        assert_eq!(paths, vec!["src/v1/stage0/src/bin/a\"b.rs".to_string()]);
+    }
+
+    #[test]
+    fn rejects_invalid_toml() {
+        let fragment = "[[bin]]\npath = \"unclosed\n";
+        assert_eq!(
+            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+                fragment,
+                stage0_package_root()
+            ),
+            Err(Stage0CargoBinManifestParseRefusal::BinTableTomlParse)
+        );
     }
 }
