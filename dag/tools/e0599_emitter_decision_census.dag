@@ -4,9 +4,11 @@ import std.types { Bool, Int, String, list_length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import v2.std.optional { Optional, Present, Absent }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.rust.derive_contracts { im_15_1_0_vector_clone_impl_authority }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
-data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on (two, independent): (1) B1 lands the sharing model on the materialization axis, at which point this module's rows migrate to it and the census becomes a projection of that authority; (2) the E0599ExternalAuthority rows below are an INTERIM local citation and dissolve into extdeps.languages.rust.derive_contracts the moment #7399 merges — vivid-swift-837 confirmed (2026-07-29) that the std::Vec keying this census flagged was a real authority mismatch, not a deliberate lane, and #7399 adds exact im 15.1.0 line authorities there. P-fn sequences AFTER #7399 and must not mint a parallel Vec authority: when it lands, delete e0599_im_vector_inherent_impl / _index_impl / _clone_impl and import the derive_contracts rows instead."
+data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on (two, independent): (1) B1 lands the sharing model on the materialization axis, at which point this module's rows migrate to it and the census becomes a projection of that authority; (2) PARTIALLY FIRED 2026-07-29 when #7399 merged: the Clone-impl row now cites extdeps.languages.rust.derive_contracts im_15_1_0_vector_clone_impl_authority through cited_upstream instead of restating its locator. The inherent-impl (mod.rs:180, carrying is_empty and iter) and Index-impl (mod.rs:1838) rows STAY local and carry cited_upstream Absent, because derive_contracts is scoped to DERIVE traits and has no row for either; their narrowed trigger is an extdeps home for non-derive im impl citations, which does not exist yet. This is a declared residue, not an oversight — vivid-swift-837 confirmed (2026-07-29) that the std::Vec keying this census flagged was a real authority mismatch, not a deliberate lane, and #7399 adds exact im 15.1.0 line authorities there. P-fn sequences AFTER #7399 and must not mint a parallel Vec authority: when it lands, delete e0599_im_vector_inherent_impl / _index_impl / _clone_impl and import the derive_contracts rows instead."
 
 type E0599RequirementCause
   = TargetApiRequirement
@@ -31,6 +33,7 @@ type E0599ExternalAuthority {
   impl_site: String,
   impl_bound: String,
   member_site: String,
+  cited_upstream: Optional<ExternalAuthority>,
 }
 
 type E0599LoweringRow {
@@ -51,6 +54,7 @@ data e0599_im_vector_inherent_impl: E0599ExternalAuthority = E0599ExternalAuthor
   impl_site: "src/vector/mod.rs:180",
   impl_bound: "impl<A: Clone> Vector<A>",
   member_site: "is_empty src/vector/mod.rs:315 | iter src/vector/mod.rs:383",
+  cited_upstream: Absent,
 }
 
 data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -59,6 +63,7 @@ data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority
   impl_site: "src/vector/mod.rs:1838",
   impl_bound: "impl<A: Clone> Index<usize> for Vector<A>",
   member_site: "index src/vector/mod.rs:1841",
+  cited_upstream: Absent,
 }
 
 data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -67,6 +72,7 @@ data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority
   impl_site: "src/vector/mod.rs:1686",
   impl_bound: "impl<A: Clone> Clone for Vector<A>",
   member_site: "clone src/vector/mod.rs:1688",
+  cited_upstream: Present { value: im_15_1_0_vector_clone_impl_authority },
 }
 
 data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
@@ -75,6 +81,7 @@ data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
   impl_site: "core::clone::Clone",
   impl_bound: "trait Clone: Sized",
   member_site: "fn clone(&self) -> Self",
+  cited_upstream: Absent,
 }
 
 data e0599_lowering_rows: List<E0599LoweringRow> = [
@@ -170,11 +177,28 @@ fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
     && !string_contains(s: receiver_expr, pattern: "[")
 }
 
+fn e0599_receiver_last_segment(receiver_expr: String) -> String {
+  match receiver_expr |> split(delimiter: ".") |> last {
+    Present { value: seg } => seg
+    Absent => ""
+  }
+}
+
+fn e0599_receiver_is_tuple_projection(receiver_expr: String) -> Bool {
+  let seg = e0599_receiver_last_segment(receiver_expr: receiver_expr)
+  string_contains(s: receiver_expr, pattern: ".")
+    && (starts_with(seg, prefix: "0") || starts_with(seg, prefix: "1") || starts_with(seg, prefix: "2")
+      || starts_with(seg, prefix: "3") || starts_with(seg, prefix: "4") || starts_with(seg, prefix: "5")
+      || starts_with(seg, prefix: "6") || starts_with(seg, prefix: "7") || starts_with(seg, prefix: "8")
+      || starts_with(seg, prefix: "9"))
+}
+
 fn e0599_receiver_is_field_access(receiver_expr: String) -> Bool {
   string_contains(s: receiver_expr, pattern: ".")
     && !string_contains(s: receiver_expr, pattern: "(")
     && !string_contains(s: receiver_expr, pattern: "[")
     && !string_contains(s: receiver_expr, pattern: "*")
+    && !e0599_receiver_is_tuple_projection(receiver_expr: receiver_expr)
 }
 
 fn e0599_lowering_operation_for(method: String, receiver_expr: String) -> E0599LoweringOperation {

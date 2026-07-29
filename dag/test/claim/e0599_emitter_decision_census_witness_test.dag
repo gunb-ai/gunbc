@@ -22,7 +22,7 @@ import tools.e0599_emitter_decision_census {
   e0599_row_for_operation,
 }
 
-data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
+data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 (ROUTING, added 2026-07-29 on warm-dove-316 / calm-badger-682 review) — a tuple projection is a structurally distinct emitter shape from a named field access (:6421/:6422/:6412 apply clone_value UNCONDITIONALLY, while named field access at :6438 is gated by base_is_owned at :6435, so they differ on the ownership axis). These controls perturb the ROUTING rather than the destination: the absorbing-default control below proves the fail-closed arm CAN fire, but only a routing control proves an unclassifiable shape REACHES it. RED family 4 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
 
 test fn e0599_b0_lowering_rows_cover_every_measured_operation() -> Bool {
   e0599_lowering_row_count() == 7
@@ -83,6 +83,19 @@ test fn e0599_b0_red_out_of_scope_method_refuses() -> Bool {
 
 test fn e0599_b0_red_unnamed_receiver_shape_refuses() -> Bool {
   e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "shape_no_lowering_row_names[0](x)")) == "Unresolved"
+}
+
+test fn e0599_b0_red_routing_tuple_projection_first_refuses() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "pair.0")) == "LoweringUnidentified"
+    && e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "pair.0")) == "Unresolved"
+}
+
+test fn e0599_b0_red_routing_tuple_projection_second_refuses() -> Bool {
+  e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "pair.1")) == "Unresolved"
+}
+
+test fn e0599_b0_routing_named_field_still_classifies() -> Bool {
+  e0599_lowering_operation_label(operation: e0599_lowering_operation_for(method: "clone", receiver_expr: "left.carried")) == "FieldAccessClone"
 }
 
 test fn e0599_b0_red_empty_receiver_refuses() -> Bool {
