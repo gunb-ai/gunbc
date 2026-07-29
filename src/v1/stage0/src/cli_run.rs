@@ -13317,6 +13317,8 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
+// Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
 // The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in

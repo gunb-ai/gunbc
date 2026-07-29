@@ -244,7 +244,7 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485): EmitterProduced carries AuthorizedEmitterProducedDisposition minted only via mint_authorized_emitter_produced_disposition (calls producer_emission_oracle_authorizes_row). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485/44487): EmitterProduced carries AuthorizedEmitterProducedDisposition with derivation-checked authorization_token (mint_consistent requires token==derivation AND oracle authorize). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0."
 
 fn quarantine_seed_retained_row_from_oracle(
   oracle_row: ProducerEmissionOracleRow,
@@ -722,15 +722,18 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
     cons: fn(ok, row) {
       ok && match row.disposition {
         EmitterProduced { authorization: authorization } =>
-          producer_emission_oracle_authorizes_row(
+          authorized_emitter_produced_disposition_mint_consistent(
             module_path: row.module_path,
-            receipt: authorized_emitter_produced_provenance(authorization: authorization),
-            executed: authorized_emitter_produced_executed_verdict(authorization: authorization)
+            authorization: authorization
           )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
   )
+}
+
+fn compiler_frontier_emitter_produced_authorization_mint_consistent_holds() -> Bool {
+  compiler_frontier_emitter_produced_oracle_backed_holds()
 }
 
 fn compiler_frontier_roster_probe_paths_match_holds() -> Bool {
@@ -1298,6 +1301,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_producer_qualified_baselines_holds()
     && compiler_frontier_emitter_produced_oracle_enrolled_holds()
     && compiler_frontier_emitter_produced_oracle_backed_holds()
+    && compiler_frontier_emitter_produced_authorization_mint_consistent_holds()
     && compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()

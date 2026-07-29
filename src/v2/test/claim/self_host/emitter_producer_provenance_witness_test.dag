@@ -8,6 +8,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   emitter_produced_baseline,
   fabricated_v1_seed_producer_receipt,
   fabricated_v2_interpreted_producer_receipt,
+  hand_forged_emitter_produced_authorization_fails_mint_consistency_holds,
+  hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds,
   mint_authorized_emitter_produced_disposition_refused_at_baseline_holds,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
   producer_emission_canonical_receipt_for_executed_verdict,
@@ -99,6 +101,15 @@ test fn witness_oracle_authorization_promotion_path_holds() -> Bool {
     && producer_emission_binding_only_does_not_authorize_holds()
     && producer_emission_oracle_authorization_requires_executed_verdict_holds()
     && mint_authorized_emitter_produced_disposition_refused_at_baseline_holds()
+    && hand_forged_emitter_produced_authorization_fails_mint_consistency_holds()
+    && hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds()
+}
+
+data witness_hand_forged_emitter_produced_authorization_red_note: String = "Review 44487 RED: hand-constructed AuthorizedEmitterProducedDisposition (wrong or derivable-matching token) must fail authorized_emitter_produced_disposition_mint_consistent — derivation+authorize, not record opacity."
+
+test fn witness_hand_forged_emitter_produced_authorization_fails_mint_consistency_reds() -> Bool {
+  hand_forged_emitter_produced_authorization_fails_mint_consistency_holds()
+    && hand_forged_matching_token_unauthorized_still_fails_mint_consistency_holds()
 }
 
 data witness_restored_binding_without_executed_receipt_red_note: String = "Review 44455/44460 RED: roster edits and static oracle derivation cannot mint BuildGreen — authorization requires witness-realization mint with admissible wet_execution_digest."
