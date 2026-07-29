@@ -1,10 +1,12 @@
 module test.claim.bmc_firmware_thermal_witness
 
 import extdeps.bmc.capability {
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   HistoricalEvidenceSnapshot,
-  bmc_firmware_observation_matches_intent,
+  bmc_firmware_observation_intent_verdict,
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceUnsupported,
@@ -142,14 +144,25 @@ test fn current_firmware_observations_make_srv3_drift_and_srv4_converged() -> Bo
     && srv3_bmc_firmware_observation.firmware.version.minor == 7
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
-    && !bmc_firmware_observation_matches_intent(
+    && match bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv3_bmc_firmware_observation
-    )
-    && bmc_firmware_observation_matches_intent(
+      observation: srv3_bmc_firmware_observation,
+    ) {
+      BmcFirmwareIntentMismatch {
+        required: required,
+        observed: observed,
+      } =>
+        required.major_version == 3
+          && observed.version.major == 2
+      BmcFirmwareIntentSatisfied => false
+    }
+    && match bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv4_bmc_firmware_observation
-    )
+      observation: srv4_bmc_firmware_observation,
+    ) {
+      BmcFirmwareIntentSatisfied => true
+      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+    }
 }
 
 test fn both_update_services_are_observed_but_neither_exposes_a_backup_bmc_image() -> Bool {
