@@ -290,6 +290,29 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.head_ref || github.ref_name }}
+      - name: Refuse a binary/source revision skew (the release binary is built from the PR merge ref; this job checked out the branch head)
+        run: |
+          BUILT_FROM="${{ github.sha }}"
+          git fetch --quiet origin "$BUILT_FROM" 2>/dev/null || git fetch --quiet origin "${{ github.ref }}" 2>/dev/null || true
+          if ! git rev-parse --verify --quiet "$BUILT_FROM" >/dev/null; then
+            echo "heal refused: cannot resolve the revision the release binary was built from" >&2
+            echo "  wanted: $BUILT_FROM (github.sha — the ref the build job compiled)" >&2
+            echo "  without it this job cannot establish that its binary and its tree agree." >&2
+            exit 1
+          fi
+          SEED_AHEAD=$(git rev-list HEAD.."$BUILT_FROM" -- src/v1 | head -20)
+          if [ -n "$SEED_AHEAD" ]; then
+            echo "heal refused: binary/source revision skew" >&2
+            echo "  the release binary was built from $BUILT_FROM;" >&2
+            echo "  this job checked out the BRANCH HEAD, which lacks these seed (src/v1) commits:" >&2
+            echo "$SEED_AHEAD" | sed 's/^/    /' >&2
+            echo "  a seed commit can add a Rust->.dag call this tree does not contain, so regenerating" >&2
+            echo "  with that binary would project artifacts from a compiler this tree disagrees with." >&2
+            echo "  remedy: bring this branch up to the revision above, then re-run." >&2
+            exit 1
+          fi
+          echo "heal preflight: binary revision $BUILT_FROM carries no seed commits missing from this tree"
+        timeout-minutes: 5
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:

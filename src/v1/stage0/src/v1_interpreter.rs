@@ -701,7 +701,6 @@ pub enum InterpError {
     NoSuchFunction {
         name: String,
     },
-    NoMainFunction,
     NoSuchVariable {
         name: String,
     },
@@ -763,7 +762,6 @@ impl fmt::Display for InterpError {
             InterpError::CallContractMismatch { callee, detail } => {
                 write!(f, "call contract mismatch calling '{}': {}", callee, detail)
             }
-            InterpError::NoMainFunction => write!(f, "no main function found"),
             InterpError::NoSuchVariable { name } => write!(f, "undefined variable: {}", name),
             InterpError::NoSuchField { type_name, field } => {
                 write!(f, "no field '{}' on type '{}'", field, type_name)
@@ -1701,7 +1699,9 @@ pub fn run_in_context(
     with_active_ctx(ctx, || {
         let item_node = ctx
             .lookup_fn(entry_fn)
-            .ok_or_else(|| InterpError::NoMainFunction)?
+            .ok_or_else(|| InterpError::NoSuchFunction {
+                name: entry_fn.to_string(),
+            })?
             .clone();
 
         let env = if eager_data_env {
@@ -1723,7 +1723,9 @@ pub fn run_in_context_with_args(
     with_active_ctx(ctx, || {
         let item_node = ctx
             .lookup_fn(entry_fn)
-            .ok_or(InterpError::NoMainFunction)?
+            .ok_or_else(|| InterpError::NoSuchFunction {
+                name: entry_fn.to_string(),
+            })?
             .clone();
         let env = if eager_data_env {
             build_initial_env(ctx)?
