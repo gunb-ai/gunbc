@@ -294,58 +294,47 @@ jobs:
         run: |
           BUILT_FROM="${{ github.sha }}"
           BASE_REF="${{ github.base_ref }}"
-          GENERATED_ARTIFACTS=".github/workflows/ci.yml .github/workflows/falsifier.yml .gitignore ROADMAP.md DESIGN.md .githooks/pre-push .githooks/pre-commit dag/gunbc/stage0_crate_layout_generated.dag src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs dag/gunbc/stage0_crate_partition_generated.dag .github/live-deploy-srv1-apply.sh .github/live-deploy-srv1-retract.sh docs/plans/idea-machine.md docs/plans/algebraic-rewrite-optimization.md docs/plans/dag-v2-defork-audit.md docs/plans/v2-self-hosting.md docs/plans/m5-fixture-store-consolidation.md docs/plans/model-realization-fork.md docs/plans/value-null-split.md docs/plans/ci-merge-freshness.md docs/plans/seed-debt-bundle-item-2.md docs/plans/axiom-syllogism-lens.md docs/plans/invert-hand-maintained.md docs/plans/fail-closed-lockdown.md docs/plans/format-model-reconciliation.md docs/plans/regime2-shared-emission-fold.md docs/plans/shell-emission-model.md docs/plans/construction-justification-rule.md docs/plans/emission-ingestion-inverse.md docs/plans/testgen-oracle.md docs/plans/disposition-carrier.md docs/plans/fold-ergonomics.md docs/plans/m4-universal-hermetic-corpus.md docs/plans/wiring-liveness-preflight.md docs/plans/interpreter-kernel-d.md docs/plans/inert-layer-lens.md docs/plans/compile-clean-forcecheck.md docs/plans/expressibility-frontier.md docs/plans/p1-where-clause-lowering.md docs/plans/intent-linearity-design-draft.md docs/plans/solve-higher-order-design.md docs/plans/language-target-self-host-frontier.md docs/plans/self-applying-lenses.md docs/plans/budget-tree.md docs/plans/cardinality-refinement.md docs/plans/compute-envelope-model.md docs/plans/input-envelope-roadmap.md docs/plans/ci-selection-vs-scheduling.md docs/plans/ci-process-end-to-end.md docs/plans/ci-oom-reclassification.md docs/plans/bounded-input-cost-envelope-scheduling.md docs/plans/ci-humming.md docs/plans/edge-b-rust-dag-provenance-brief.md docs/plans/resolver-type-name-collision-wall.md docs/plans/realization-measurement-loop.md docs/plans/host-effect-orchestration.md docs/plans/ci-floor-fractal-gantt.md docs/plans/resolver-pathology-profile-receipt.md docs/plans/representation-minimization.md docs/plans/reference-grounding-migration.md docs/plans/typescript-gap-census.md docs/plans/cli-run-hollowing-plan.md docs/plans/fleet-acceptance-criteria.md docs/plans/structural-quadratic-wall-coverage-audit.md docs/plans/ci-performance-tanking-evidence.md"
-          git fetch --quiet origin "$BUILT_FROM" 2>/dev/null || git fetch --quiet origin "${{ github.ref }}" 2>/dev/null || true
+          if git fetch --quiet origin "$BUILT_FROM" 2>/dev/null || git fetch --quiet origin "${{ github.ref }}" 2>/dev/null; then :; else :; fi
           if ! git rev-parse --verify --quiet "$BUILT_FROM" >/dev/null; then
-            echo "heal refused: cannot resolve the revision the release binary was built from" >&2
-            echo "  wanted: $BUILT_FROM (github.sha — the ref the build job compiled)" >&2
-            echo "  without it this job cannot establish that its binary and its tree agree." >&2
-            exit 1
+          echo "heal refused: cannot resolve the revision the release binary was built from" >&2
+          echo "  wanted: $BUILT_FROM (github.sha — the ref the build job compiled)" >&2
+          echo "  without it this job cannot establish that its binary and its tree agree." >&2
+          exit 1
           fi
-          seed_ahead() { git rev-list HEAD.."$BUILT_FROM" -- src/v1 | head -20; }
-          SEED_AHEAD=$(seed_ahead)
+          SEED_AHEAD="$(git rev-list HEAD.."$BUILT_FROM" -- src/v1)"
           if [ -n "$SEED_AHEAD" ]; then
-            echo "heal: binary/source revision skew — the branch head lacks these seed (src/v1) commits:" >&2
-            echo "$SEED_AHEAD" | sed 's/^/    /' >&2
-            echo "heal: applying the remedy automatically (merging origin/$BASE_REF into this branch)" >&2
-            git config user.name "gunbc-ci-auto-heal"
-            git config user.email "gunbc-ci-auto-heal@users.noreply.github.com"
-            git fetch --quiet origin "$BASE_REF" || true
-            if git merge --no-edit "origin/$BASE_REF"; then
-              if [ -n "$(seed_ahead)" ]; then
-                echo "heal refused: still skewed after merging origin/$BASE_REF" >&2
-                echo "  the base moved again during this run; the next run will re-attempt." >&2
-                exit 1
-              fi
-              echo "heal: remedy applied — tree now carries the binary's seed revision" >&2
-            else
-              CONFLICTS=$(git diff --name-only --diff-filter=U)
-              AUTHORED=""
-              for c in $CONFLICTS; do
-                case " $GENERATED_ARTIFACTS " in
-                  *" $c "*) ;;
-                  *) AUTHORED="$AUTHORED $c" ;;
-                esac
-              done
-              if [ -n "$AUTHORED" ]; then
-                echo "heal refused: binary/source revision skew, and the remedy CONFLICTS in authored files" >&2
-                echo "  conflicting paths:" >&2
-                echo "$CONFLICTS" | sed 's/^/    /' >&2
-                echo "  authored (not generated, so not auto-resolvable):" >&2
-                for a in $AUTHORED; do echo "    $a" >&2; done
-                git merge --abort || true
-                echo "  a semantic conflict is the author's to resolve; this job will not guess." >&2
-                exit 1
-              fi
-              echo "heal: conflicts are confined to registered generated artifacts; regeneration is authoritative" >&2
-              for c in $CONFLICTS; do echo "    $c" >&2; git checkout --ours -- "$c" 2>/dev/null || true; git add "$c"; done
-              git commit --no-verify --no-edit >/dev/null
-              if [ -n "$(seed_ahead)" ]; then
-                echo "heal refused: still skewed after merging origin/$BASE_REF" >&2
-                exit 1
-              fi
-              echo "heal: remedy applied — tree now carries the binary's seed revision" >&2
-            fi
+          echo "heal: binary/source revision skew — the branch head lacks these seed (src/v1) commits:" >&2
+          echo "$SEED_AHEAD" | head -20 | sed 's/^/    /' >&2
+          echo "heal: applying the remedy automatically (merging origin/$BASE_REF into this branch)" >&2
+          git config user.name gunbc-ci-auto-heal
+          git config user.email gunbc-ci-auto-heal@users.noreply.github.com
+          if git fetch --quiet origin "$BASE_REF" 2>/dev/null; then :; else :; fi
+          if ! git merge --no-edit "origin/$BASE_REF"; then
+          CONFLICTS="$(git diff --name-only --diff-filter=U)"
+          AUTHORED_CONFLICTS="$(git diff --name-only --diff-filter=U -- . ':(exclude).github/workflows/ci.yml' ':(exclude).github/workflows/falsifier.yml' ':(exclude).gitignore' ':(exclude)ROADMAP.md' ':(exclude)DESIGN.md' ':(exclude).githooks/pre-push' ':(exclude).githooks/pre-commit' ':(exclude)dag/gunbc/stage0_crate_layout_generated.dag' ':(exclude)src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs' ':(exclude)dag/gunbc/stage0_crate_partition_generated.dag' ':(exclude).github/live-deploy-srv1-apply.sh' ':(exclude).github/live-deploy-srv1-retract.sh' ':(exclude)docs/plans/idea-machine.md' ':(exclude)docs/plans/algebraic-rewrite-optimization.md' ':(exclude)docs/plans/dag-v2-defork-audit.md' ':(exclude)docs/plans/v2-self-hosting.md' ':(exclude)docs/plans/m5-fixture-store-consolidation.md' ':(exclude)docs/plans/model-realization-fork.md' ':(exclude)docs/plans/value-null-split.md' ':(exclude)docs/plans/ci-merge-freshness.md' ':(exclude)docs/plans/seed-debt-bundle-item-2.md' ':(exclude)docs/plans/axiom-syllogism-lens.md' ':(exclude)docs/plans/invert-hand-maintained.md' ':(exclude)docs/plans/fail-closed-lockdown.md' ':(exclude)docs/plans/format-model-reconciliation.md' ':(exclude)docs/plans/regime2-shared-emission-fold.md' ':(exclude)docs/plans/shell-emission-model.md' ':(exclude)docs/plans/construction-justification-rule.md' ':(exclude)docs/plans/emission-ingestion-inverse.md' ':(exclude)docs/plans/testgen-oracle.md' ':(exclude)docs/plans/disposition-carrier.md' ':(exclude)docs/plans/fold-ergonomics.md' ':(exclude)docs/plans/m4-universal-hermetic-corpus.md' ':(exclude)docs/plans/wiring-liveness-preflight.md' ':(exclude)docs/plans/interpreter-kernel-d.md' ':(exclude)docs/plans/inert-layer-lens.md' ':(exclude)docs/plans/compile-clean-forcecheck.md' ':(exclude)docs/plans/expressibility-frontier.md' ':(exclude)docs/plans/p1-where-clause-lowering.md' ':(exclude)docs/plans/intent-linearity-design-draft.md' ':(exclude)docs/plans/solve-higher-order-design.md' ':(exclude)docs/plans/language-target-self-host-frontier.md' ':(exclude)docs/plans/self-applying-lenses.md' ':(exclude)docs/plans/budget-tree.md' ':(exclude)docs/plans/cardinality-refinement.md' ':(exclude)docs/plans/compute-envelope-model.md' ':(exclude)docs/plans/input-envelope-roadmap.md' ':(exclude)docs/plans/ci-selection-vs-scheduling.md' ':(exclude)docs/plans/ci-process-end-to-end.md' ':(exclude)docs/plans/ci-oom-reclassification.md' ':(exclude)docs/plans/bounded-input-cost-envelope-scheduling.md' ':(exclude)docs/plans/ci-humming.md' ':(exclude)docs/plans/edge-b-rust-dag-provenance-brief.md' ':(exclude)docs/plans/resolver-type-name-collision-wall.md' ':(exclude)docs/plans/realization-measurement-loop.md' ':(exclude)docs/plans/host-effect-orchestration.md' ':(exclude)docs/plans/ci-floor-fractal-gantt.md' ':(exclude)docs/plans/resolver-pathology-profile-receipt.md' ':(exclude)docs/plans/representation-minimization.md' ':(exclude)docs/plans/reference-grounding-migration.md' ':(exclude)docs/plans/typescript-gap-census.md' ':(exclude)docs/plans/cli-run-hollowing-plan.md' ':(exclude)docs/plans/fleet-acceptance-criteria.md' ':(exclude)docs/plans/structural-quadratic-wall-coverage-audit.md' ':(exclude)docs/plans/ci-performance-tanking-evidence.md')"
+          if [ -n "$AUTHORED_CONFLICTS" ]; then
+          echo "heal refused: binary/source revision skew, and the remedy CONFLICTS in authored files" >&2
+          echo "  conflicting paths:" >&2
+          echo "$CONFLICTS" | head -20 | sed 's/^/    /' >&2
+          echo "  authored (not a registered generated artifact, so not auto-resolvable):" >&2
+          echo "$AUTHORED_CONFLICTS" | head -20 | sed 's/^/    /' >&2
+          echo "  a semantic conflict is the author's to resolve; this job will not guess." >&2
+          git merge --abort
+          exit 1
+          fi
+          echo "heal: conflicts are confined to registered generated artifacts; regeneration is authoritative" >&2
+          echo "$CONFLICTS" | head -20 | sed 's/^/    /' >&2
+          git diff --name-only --diff-filter=U -z | xargs -0 git checkout --ours --
+          git diff --name-only --diff-filter=U -z | xargs -0 git add
+          git commit --no-verify --no-edit >/dev/null
+          fi
+          SEED_AHEAD_AFTER="$(git rev-list HEAD.."$BUILT_FROM" -- src/v1)"
+          if [ -n "$SEED_AHEAD_AFTER" ]; then
+          echo "heal refused: still skewed after merging origin/$BASE_REF" >&2
+          echo "  the base moved again during this run; the next run will re-attempt." >&2
+          exit 1
+          fi
+          echo "heal: remedy applied — tree now carries the binary's seed revision" >&2
           fi
           echo "heal preflight: binary revision $BUILT_FROM carries no seed commits missing from this tree"
         timeout-minutes: 5
