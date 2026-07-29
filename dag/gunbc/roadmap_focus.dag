@@ -66,6 +66,47 @@ fn focus_is_active(focus: RoadmapFocus) -> Bool {
   }
 }
 
+data focus_carrier_retention_note: String = "HIDING A NODE MUST NOT ORPHAN ITS DOCUMENT. Discovered by execution, not foreseen: focusing the page dropped 10 carrier links, and doc_graph_orphan_count went non-zero because ROADMAP.md is itself a node in the doc graph — for several plans it is the ONLY thing linking them. So the projection is not a pure view after all; it is load-bearing for another invariant, and a filter that ignores that quietly disconnects work from its documentation while looking like a display preference.\n\nThe notice therefore carries the hidden lanes' carrier documents as links. That is not a workaround for the lens: it is what the notice should have said in the first place. A reader told '32 deliverables are hidden' can do nothing with that; a reader given the hidden lanes' plans can go read them. Hiding becomes navigable rather than merely disclosed, and the doc graph stays connected because the links are genuinely still on the page."
+
+fn focus_hidden_nodes(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+) -> List<RoadmapNode> {
+  nodes |> filter(n => !focus_admits_node(focus: focus, n: n))
+}
+
+fn append_distinct(acc: List<String>, p: String) -> List<String> {
+  if any(acc, existing => existing == p) { acc } else { append(acc, [p]) }
+}
+
+fn focus_hidden_carrier_paths(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+) -> List<String> {
+  fold(
+    focus_hidden_nodes(focus: focus, nodes: nodes),
+    init: [],
+    f: fn(acc, n) {
+      fold(n.carriers, init: acc, f: fn(inner, p) {
+        append_distinct(acc: inner, p: p.path)
+      })
+    },
+  )
+}
+
+fn focus_hidden_carrier_links(
+  focus: RoadmapFocus,
+  nodes: List<RoadmapNode>,
+) -> String {
+  join(
+    map(
+      focus_hidden_carrier_paths(focus: focus, nodes: nodes),
+      p => join(["[", p, "](", p, ")"], ""),
+    ),
+    " · ",
+  )
+}
+
 fn focus_notice(focus: RoadmapFocus, nodes: List<RoadmapNode>) -> String {
   match focus {
     NoFocus => ""
@@ -75,7 +116,9 @@ fn focus_notice(focus: RoadmapFocus, nodes: List<RoadmapNode>) -> String {
         label,
         ".** ",
         to_string(focus_hidden_node_count(focus: focus, nodes: nodes)),
-        " active deliverable(s) in other lanes are declared in the authority and hidden here. Clear `roadmap_focus_selection` in `dag/gunbc/roadmap_authority.dag` to restore the full page; nothing is deleted or parked by focusing.",
+        " active deliverable(s) in other lanes are declared in the authority and hidden here; nothing is deleted or parked by focusing. Clear `roadmap_focus_selection` in `dag/gunbc/roadmap_authority.dag` to restore the full page. Hidden lanes remain readable through their carriers: ",
+        focus_hidden_carrier_links(focus: focus, nodes: nodes),
+        ".",
       ], "")
   }
 }
