@@ -8,6 +8,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   MeasuredNewlyUnclassified,
   RustManifestMeasured,
   RustManifestUnmeasured,
+  UnmeasuredTrackedManifest,
   behavioral_oracle_carrier_ref,
   classified_residue_disjoint_holds,
   derived_cargo_bin_paths_disjoint_from_residue_holds,
@@ -57,9 +58,10 @@ test fn scaffold_manifest_state_defaults_unmeasured() -> Bool {
   }
 }
 
-test fn scaffold_manifest_state_default_verdict_ok() -> Bool {
+test fn scaffold_manifest_state_default_verdict_refuses_unmeasured() -> Bool {
   match rust_source_manifest_state_verdict(state: rust_source_manifest_state) {
-    ManifestStateScaffoldOk => true
+    ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: _ } } => true
+    ManifestStateScaffoldOk => false
     ManifestStateScaffoldRefused { cause: _ } => false
   }
 }

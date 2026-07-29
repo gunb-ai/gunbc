@@ -1565,6 +1565,65 @@ pub(crate) fn string_list_data_from_module_source(
     panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
 }
 
+/// Project a `String` data literal out of a `.dag` module's SOURCE TEXT via the real front-end.
+pub(crate) fn string_data_from_module_source(
+    module_rel_path: &str,
+    content: &str,
+    data_name: &str,
+) -> String {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+
+    let filename = module_rel_path.to_string();
+    let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
+    let source_index =
+        crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.clone(), source_index);
+    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "lens string reader: parse error in {module_rel_path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .unwrap_or_else(|| panic!("lens string reader: {module_rel_path} parsed to no module"));
+    for item in module.children.iter() {
+        if item.name != data_name
+            || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
+        {
+            continue;
+        }
+        let body = item.body.as_ref().unwrap_or_else(|| {
+            panic!("lens string reader: `data {data_name}` in {module_rel_path} has no value body")
+        });
+        match body.expr_data.as_ref() {
+            ExprData::ExprLiteral { value } => match value.as_ref() {
+                LiteralValue::LitStr { value } => return value.clone(),
+                _ => panic!(
+                    "lens string reader: `data {data_name}` in {module_rel_path} is not a \
+                     string literal"
+                ),
+            },
+            _ => panic!(
+                "lens string reader: `data {data_name}` in {module_rel_path} is not a \
+                 `String` literal"
+            ),
+        }
+    }
+    panic!("lens string reader: no `data {data_name}` def in {module_rel_path}")
+}
+
+/// Read a `String` data row from a live `.dag` lens authority on disk.
+pub fn lens_string_data(module_rel_path: &str, data_name: &str) -> String {
+    let path = workspace_root().join(module_rel_path);
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("lens string reader: failed to read {}: {e}", path.display()));
+    string_data_from_module_source(module_rel_path, &content, data_name)
+}
+
 /// Read a `List<String>` data table from a live `.dag` lens authority on disk.
 pub fn lens_string_list_data(
     module_rel_path: &str,

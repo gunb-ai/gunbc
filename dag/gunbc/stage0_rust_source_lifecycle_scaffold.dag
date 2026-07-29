@@ -41,7 +41,8 @@ type RustSourceManifestStateVerdict
   | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
 
 type RustSourceManifestStateRefusal
-  = MeasuredNewlyUnclassified { count: Int }
+  = UnmeasuredTrackedManifest { awaiting: String }
+  | MeasuredNewlyUnclassified { count: Int }
   | MeasuredStaleLifecycleRows { count: Int }
   | MeasuredDuplicateExactPaths { count: Int }
   | MeasuredHandMaintainedGrew { prior: Int, current: Int }
@@ -60,7 +61,8 @@ data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolv
 
 fn rust_source_manifest_state_verdict(state: RustSourceManifestState) -> RustSourceManifestStateVerdict {
   match state {
-    RustManifestUnmeasured { awaiting: _ } => ManifestStateScaffoldOk
+    RustManifestUnmeasured { awaiting: awaiting } =>
+      ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: awaiting } }
     RustManifestMeasured {
       tracked_count: _,
       classified_file_grain_count: _,
@@ -419,6 +421,14 @@ fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
   )
 }
 
+fn manifest_state_verdict_scaffold_holds() -> Bool {
+  match rust_source_manifest_state_verdict(state: rust_source_manifest_state) {
+    ManifestStateScaffoldOk => true
+    ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: _ } } => true
+    ManifestStateScaffoldRefused { cause: _ } => false
+  }
+}
+
 fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
   generated_repo_paths_cover_authority_holds()
     && generated_authority_subset_of_derived_holds()
@@ -432,10 +442,7 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
     && duplicate_exact_paths_zero_holds()
     && rust_source_lifecycle_residue_rows_well_formed()
     && rust_source_lifecycle_residue_paths_unique()
-    && match rust_source_manifest_state_verdict(state: rust_source_manifest_state) {
-      ManifestStateScaffoldOk => true
-      ManifestStateScaffoldRefused { cause: _ } => false
-    }
+    && manifest_state_verdict_scaffold_holds()
 }
 
 data rust_source_lifecycle_partition_contradiction_note: String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."
