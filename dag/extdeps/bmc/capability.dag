@@ -95,6 +95,13 @@ type BmcFirmwareObservation {
   observed_at: EpochMs
 }
 
+type BmcFirmwareIntentObservationVerdict
+  = BmcFirmwareIntentSatisfied
+  | BmcFirmwareIntentMismatch {
+      required: BmcFirmwareTrack,
+      observed: BmcFirmwareVersion,
+    }
+
 type BmcEvidenceTemporalScope
   = HistoricalEvidenceSnapshot
   | CurrentEvidenceUnclaimed
@@ -112,17 +119,24 @@ fn bmc_firmware_version_matches_track(
     && firmware.version.major == track.major_version
 }
 
-fn bmc_firmware_observation_matches_intent(
+fn bmc_firmware_observation_intent_verdict(
   intent: BmcFirmwareIntent,
   observation: BmcFirmwareObservation
-) -> Bool {
+) -> BmcFirmwareIntentObservationVerdict {
   match intent {
-    BmcFirmwareUnpinned => true
-    BmcFirmwareTrackRequired { track: t } =>
-      bmc_firmware_version_matches_track(
+    BmcFirmwareUnpinned => BmcFirmwareIntentSatisfied
+    BmcFirmwareTrackRequired { track: required } =>
+      if bmc_firmware_version_matches_track(
         firmware: observation.firmware,
-        track: t
-      )
+        track: required
+      ) {
+        BmcFirmwareIntentSatisfied
+      } else {
+        BmcFirmwareIntentMismatch {
+          required: required,
+          observed: observation.firmware,
+        }
+      }
   }
 }
 

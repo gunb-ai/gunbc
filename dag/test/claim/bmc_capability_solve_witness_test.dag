@@ -2,10 +2,15 @@ module test.claim.bmc_capability_solve
 
 import extdeps.bmc.capability {
   BmcFirmwareCapabilityRow,
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
+  BmcFirmwareObservation,
+  BmcFirmwareTrackRequired,
   BmcFirmwareTrack,
   BmcFirmwareVersion,
   BmcFirmwareVersionParsed,
   BmcFirmwareVersionRefused,
+  CurrentEvidenceUnclaimed,
   CapabilityAccountManagement,
   CapabilityBiosAttributeConfig,
   CapabilityBootSourceOverride,
@@ -14,6 +19,7 @@ import extdeps.bmc.capability {
   CapabilityPowerControl,
   CapabilityVirtualMedia,
   catalog_has_vm_capable_firmware,
+  bmc_firmware_observation_intent_verdict,
   bmc_firmware_semantic_version,
   bmc_firmware_version_from_wire,
   bmc_firmware_version_matches_track,
@@ -34,7 +40,7 @@ import gunbc.os_install_mechanism {
   srv3_firmware_catalog,
   srv3_install_mechanism,
 }
-import std.bmc { OpenBmc }
+import std.bmc { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -58,6 +64,51 @@ test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
         BmcFirmwareVersionRefused { wire: _ } => false
       }
     BmcFirmwareVersionParsed { version: _ } => false
+  }
+}
+
+test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
+  let observation = BmcFirmwareObservation {
+    endpoint: BmcEndpoint {
+      host: "192.0.2.1",
+      protocol: Redfish,
+    },
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: bmc_firmware_semantic_version(
+        major: 3,
+        minor: 22,
+        patch: 0,
+      ),
+    },
+    evidence_scope: CurrentEvidenceUnclaimed,
+    observed_at: 1,
+  }
+  match bmc_firmware_observation_intent_verdict(
+    intent: BmcFirmwareTrackRequired {
+      track: BmcFirmwareTrack {
+        family: OpenBmc,
+        major_version: 3,
+      },
+    },
+    observation: observation,
+  ) {
+    BmcFirmwareIntentSatisfied =>
+      match bmc_firmware_observation_intent_verdict(
+        intent: BmcFirmwareTrackRequired {
+          track: BmcFirmwareTrack {
+            family: OpenBmc,
+            major_version: 2,
+          },
+        },
+        observation: observation,
+      ) {
+        BmcFirmwareIntentMismatch { required: required, observed: observed } =>
+          required.major_version == 2
+            && observed.version.major == 3
+        BmcFirmwareIntentSatisfied => false
+      }
+    BmcFirmwareIntentMismatch { required: _, observed: _ } => false
   }
 }
 

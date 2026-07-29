@@ -237,11 +237,11 @@ type Celsius = Measure<Temperature, One, Int>
 
 type CelsiusDelta = Measure<TemperatureDifference, One, Int>
 
-type PositiveCelsiusDeltaCount =
-  Int where range(min: 1), brand("PositiveCelsiusDeltaCount")
+type PositiveMeasureCount =
+  Int where range(min: 1), brand("PositiveMeasureCount")
 
 type PositiveCelsiusDelta =
-  Measure<TemperatureDifference, One, PositiveCelsiusDeltaCount>
+  Measure<TemperatureDifference, One, PositiveMeasureCount>
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
@@ -278,14 +278,14 @@ fn celsius_delta_count(delta: CelsiusDelta) -> Int {
 }
 
 fn positive_celsius_delta(
-  count: PositiveCelsiusDeltaCount,
+  count: PositiveMeasureCount,
 ) -> PositiveCelsiusDelta {
   PositiveCelsiusDelta { count: count }
 }
 
 fn positive_celsius_delta_count(
   delta: PositiveCelsiusDelta,
-) -> PositiveCelsiusDeltaCount {
+) -> PositiveMeasureCount {
   measure_count(delta)
 }
 
@@ -465,9 +465,6 @@ fn millisecond(count: Nat) -> Millisecond {
 fn millisecond_count(m: Millisecond) -> Nat {
   measure_count(m)
 }
-
-type PositiveMeasureCount =
-  Int where range(min: 1), brand("PositiveMeasureCount")
 
 type PositiveMillisecond = Measure<Time, Milli, PositiveMeasureCount>
 
