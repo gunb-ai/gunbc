@@ -20,6 +20,9 @@ import extdeps.llm.cli_lifecycle {
 import extdeps.llm.cli { claude_cli_external_authority_anchor }
 import gunbc.worker_lifecycle {
   WorkerObservation,
+  WorkerProcessUnobserved,
+  WorkerProcessExited,
+  worker_process_evidence_label,
   ProviderEvidenceUnobserved,
   provider_evidence_label,
   WorkerPhase,
@@ -67,6 +70,10 @@ test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
 test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
   let observation = WorkerObservation {
     configured_provider: fixture_instance(),
+    process: WorkerProcessExited {
+      exit_code: 0,
+      last_command: "env",
+    },
     provider_instance: ProviderEvidenceUnobserved {
       reason: "fixture process tree unobserved" as NonEmptyStr,
     },
@@ -79,6 +86,7 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
     },
   }
   provider_readiness_label(readiness: observation.provider_readiness) == "authenticated"
+    && worker_process_evidence_label(evidence: observation.process) == "process exited"
     && tool_execution_readiness_label(readiness: observation.tool_readiness) == "sandbox unavailable"
     && worker_phase_label(phase: observation.phase) == "phase unobserved"
 }
@@ -86,6 +94,9 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
 test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
   let observation = WorkerObservation {
     configured_provider: fixture_instance(),
+    process: WorkerProcessUnobserved {
+      reason: "session-only fixture" as NonEmptyStr,
+    },
     provider_instance: ProviderEvidenceUnobserved {
       reason: "fixture process tree unobserved" as NonEmptyStr,
     },
@@ -111,4 +122,12 @@ test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
     && worker_terminal_outcome_label(outcome: failed_outcome) == "failed"
     && terminal_outcome_evidence_label(
       evidence: TerminalOutcomeObserved { outcome: failed_outcome }) == "observed"
+}
+
+test fn provider_lifecycle_keystone_holds() -> Bool {
+  claude_lifecycle_consumes_cli_authority()
+    && recorded_credentials_do_not_imply_refreshable_authentication()
+    && model_access_and_sandbox_readiness_are_independent()
+    && session_presence_cannot_promote_setup_to_execution()
+    && terminal_evidence_accepts_only_terminal_outcomes()
 }

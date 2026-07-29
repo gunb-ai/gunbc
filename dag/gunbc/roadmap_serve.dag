@@ -24,7 +24,14 @@ import extdeps.http.server {
   parse_http_method_label,
 }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import extdeps.languages.json.emit { serialize_json }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_object,
+  json_kv,
+  json_string,
+  json_int,
+  json_array,
+}
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
@@ -40,16 +47,33 @@ import gunbc.roadmap_static_site {
 import gunbc.roadmap_belt_actuate {
   BeltDispatchResult,
   DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
-  belt_dispatch_node,
+  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
-  belt_observe, belt_sessions_observed_json, belt_sessions_http_status,
+  belt_observe, belt_observe_for_instance,
+  belt_sessions_observe_for_instance,
+  belt_sessions_observed_json, belt_sessions_http_status,
   BeltAttempts, AttemptsObserved, AttemptsRefused,
-  belt_attempts_observe, belt_attempts_observed_json, belt_attempts_http_status,
-  BeltStopResult, belt_stop_node, belt_stop_result_json_value, belt_stop_http_status,
+  belt_attempts_observe, belt_attempts_observe_for_instance,
+  belt_attempts_observed_json, belt_attempts_http_status,
+  belt_workflow_attempts_observe_for_instance,
+  belt_workflow_attempts_observed_json,
+  belt_workflow_attempts_http_status,
+  BeltStopResult, belt_stop_node, belt_stop_node_for_instance,
+  belt_stop_result_json_value, belt_stop_http_status,
+}
+import gunbc.roadmap_dashboard_instance {
+  dashboard_instance_health_schema,
+  HostDashboardInstance,
+  srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
+  srv2_preview_dashboard_instance,
+  dashboard_actuation_posture_label,
+  dashboard_provision_transport_label,
+  dashboard_instance_provision_plan_rows,
 }
 
 data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
@@ -71,6 +95,7 @@ type RoadmapServeHandler
   | RoadmapMdHandler
   | DispatchJsonHandler
   | HealthzHandler
+  | DashboardInstanceHandler
   | BeltDispatchHandler
   | DispatchAssetHandler
   | SandboxPageHandler
@@ -78,6 +103,7 @@ type RoadmapServeHandler
   | SandboxEchoHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
+  | WorkflowJsonHandler
   | BeltStopHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
@@ -99,13 +125,16 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/instance.json", handler: DashboardInstanceHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sessions.json", handler: SessionsJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/attempts.json", handler: AttemptsJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/workflow.json", handler: WorkflowJsonHandler },
     RoadmapServeRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     RoadmapServeRouteSpec { method: GET, raw: "/sandbox", handler: SandboxPageHandler },
     RoadmapServeRouteSpec { method: GET, raw: sandbox_asset_path, handler: SandboxAssetHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/sandbox/echo", handler: SandboxEchoHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
   ]
 }
@@ -181,6 +210,7 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
   match r {
     DispatchSpawned { node_id: _, session_name: _ } => 200
     DispatchAlreadyLive { node_id: _, session_name: _ } => 200
+    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
     DispatchNodeNotFound { node_id: _ } => 404
     DispatchNodeAlreadyDone { node_id: _ } => 409
     DispatchObserveRefused { node_id: _, reason: _ } => 503
@@ -198,7 +228,10 @@ fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
 
 data serve_dispatch_param_note: String = "The node_id param is bound by the route template, so an empty value is unreachable by construction (match_path_template refuses empty segments); the empty-check below is the typed backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN 5: an unreachable arm refuses, never fabricates)."
 
-fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+fn serve_dispatch_handler_response_for_instance(
+  instance: HostDashboardInstance,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
@@ -207,8 +240,56 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
       body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    belt_dispatch_response(r: belt_dispatch_node(node_id: node_id))
+    belt_dispatch_response(
+      r: belt_dispatch_node_for_instance(instance: instance, node_id: node_id),
+    )
   }
+}
+
+fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  serve_dispatch_handler_response_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    params: params,
+  )
+}
+
+fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
+  let plan = dashboard_instance_provision_plan_rows(instance: instance)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
+    json_kv(key: "instance_id", value: json_string(s: instance.instance_id as String)),
+    json_kv(key: "host_identity", value: json_string(s: instance.host_identity as String)),
+    json_kv(
+      key: "actuation",
+      value: json_string(s: dashboard_actuation_posture_label(posture: instance.actuation)),
+    ),
+    json_kv(key: "repo_root", value: json_string(s: instance.repo_root as String)),
+    json_kv(
+      key: "dispatch_worktree_root",
+      value: json_string(s: instance.dispatch_worktree_root as String),
+    ),
+    json_kv(
+      key: "dispatch_attempt_state_root",
+      value: json_string(s: instance.dispatch_attempt_state_root as String),
+    ),
+    json_kv(key: "listen_port", value: json_int(n: instance.listen_port)),
+    json_kv(key: "serve_function", value: json_string(s: instance.serve_function as String)),
+    json_kv(key: "dispatch_base_ref", value: json_string(s: instance.dispatch_base_ref as String)),
+    json_kv(
+      key: "provision_transport",
+      value: json_string(s: dashboard_provision_transport_label(
+        transport: instance.provision_transport,
+      )),
+    ),
+    json_kv(
+      key: "desired_provision_plan",
+      value: json_array(elements: plan |> map(row => json_object(members: [
+        json_kv(key: "kind", value: json_string(s: row.kind as String)),
+        json_kv(key: "target", value: json_string(s: row.target)),
+        json_kv(key: "detail", value: json_string(s: row.detail)),
+      ]))),
+    ),
+  ]))
 }
 
 data sandbox_echo_note: String = "The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param — the query survives in request.path; match_path_template strips it only for routing) and maps it to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a 400 that names the valid label set, never a fabricated arm."
@@ -236,34 +317,63 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
 
 data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a future body-reading POST handler would have silently seen the empty string — a latent widen). No handler consumes request.body today; when one does, the plumbing is already honest, and ServeHttpRequest gains its executing consumer here instead of sitting inert in extdeps."
 
-fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBinding>, request: ServeHttpRequest) -> ServeHttpResponse {
+fn roadmap_serve_invoke_for_instance(
+  instance: HostDashboardInstance,
+  handler: RoadmapServeHandler,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest,
+) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_page_response(page: roadmap_daily_workspace_page_for_authority())
     RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body())
-    BeltDispatchHandler => serve_dispatch_handler_response(params: params)
+    DashboardInstanceHandler =>
+      serve_text_response(
+        status: 200,
+        content_type: application_json_utf8,
+        body: dashboard_instance_json(instance: instance),
+      )
+    BeltDispatchHandler =>
+      serve_dispatch_handler_response_for_instance(instance: instance, params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     SandboxPageHandler => serve_page_response(page: sandbox_page())
     SandboxAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: sandbox_client_js_source())
     SandboxEchoHandler => sandbox_echo_response(request: request)
-    SessionsJsonHandler => serve_sessions_response()
-    AttemptsJsonHandler => serve_attempts_response()
-    BeltStopHandler => serve_stop_handler_response(params: params)
+    SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
+    AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
+    WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
+    BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
   }
 }
 
-fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+fn roadmap_serve_invoke(
+  handler: RoadmapServeHandler,
+  params: List<PathParamBinding>,
+  request: ServeHttpRequest,
+) -> ServeHttpResponse {
+  roadmap_serve_invoke_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    handler: handler,
+    params: params,
+    request: request,
+  )
+}
+
+fn serve_stop_handler_response_for_instance(
+  instance: HostDashboardInstance,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
       status: 400,
       content_type: text_plain_utf8,
-      body: "stop requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+      body: "cleanup requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
     )
   } else {
-    let r = belt_stop_node(node_id: node_id)
+    let r = belt_stop_node_for_instance(instance: instance, node_id: node_id)
     serve_text_response(
       status: belt_stop_http_status(r: r),
       content_type: application_json_utf8,
@@ -271,22 +381,60 @@ fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpRespo
   }
 }
 
-fn serve_attempts_response() -> ServeHttpResponse {
-  let a = belt_attempts_observe()
+fn serve_stop_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  serve_stop_handler_response_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    params: params,
+  )
+}
+
+fn serve_attempts_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  let a = belt_attempts_observe_for_instance(instance: instance)
   serve_text_response(
     status: belt_attempts_http_status(a: a),
     content_type: application_json_utf8,
     body: belt_attempts_observed_json(a: a))
 }
 
-data serve_sessions_note: String = "U2: the live-session observation as a wire route (GET /sessions.json), so the client marks live rows without the page render losing purity (the healthz digest is over the pure body; live state arrives by fetch exactly as dispatch answers do). ONE observation feeds both the status and the body — observing twice could disagree between them. Refusal serves 503 with the typed reason: an unknowable session set is loud at the client, never an empty panel."
+fn serve_attempts_response() -> ServeHttpResponse {
+  serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
+}
 
-fn serve_sessions_response() -> ServeHttpResponse {
-  let o = belt_observe()
+data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, a bounded jq projection of complete Codex attempt evidence, retained process exit, and the node's declared validation contract. The exact projector executable is an ensured platform capability. It validates each raw JSON value while omitting unbounded command payloads from the synchronous interpreted handler; projector absence or malformed input remains an explicit per-attempt refusal. The observed facts reconcile by fold against the shared desired obligation roster and expose desired/observed/remaining counts plus distinct observed-failure, observed-refusal, and unsafe-plan-refusal counts; they never upgrade provider completion into verification, publication, review, or goal audit. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
+
+fn serve_workflow_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  let observed = belt_workflow_attempts_observe_for_instance(
+    instance: instance,
+  )
+  serve_text_response(
+    status: belt_workflow_attempts_http_status(observed: observed),
+    content_type: application_json_utf8,
+    body: belt_workflow_attempts_observed_json(observed: observed),
+  )
+}
+
+fn serve_workflow_response() -> ServeHttpResponse {
+  serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+data serve_sessions_note: String = "GET /sessions.json performs one session-container observation and one independently adjudicated pane/process observation. Session-list refusal serves 503 because container presence is unknowable. Pane refusal stays in each known session as process unobserved and cleanup unavailable; it cannot erase session presence. The same combined observation feeds both status and body so the route never races two reads."
+
+fn serve_sessions_response_for_instance(
+  instance: HostDashboardInstance,
+) -> ServeHttpResponse {
+  let o = belt_sessions_observe_for_instance(instance: instance)
   serve_text_response(
     status: belt_sessions_http_status(o: o),
     content_type: application_json_utf8,
     body: belt_sessions_observed_json(o: o))
+}
+
+fn serve_sessions_response() -> ServeHttpResponse {
+  serve_sessions_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
 fn http_method_label_join(methods: List<HttpMethod>) -> String {
@@ -301,9 +449,19 @@ fn http_method_label_join(methods: List<HttpMethod>) -> String {
   }), ", ")
 }
 
-fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>, request: ServeHttpRequest) -> ServeHttpResponse {
+fn roadmap_serve_selection_response_for_instance(
+  instance: HostDashboardInstance,
+  sel: RouteSelection<RoadmapServeHandler>,
+  request: ServeHttpRequest,
+) -> ServeHttpResponse {
   match sel {
-    SelectedDynamic { handler: h, params: ps } => roadmap_serve_invoke(handler: h, params: ps, request: request)
+    SelectedDynamic { handler: h, params: ps } =>
+      roadmap_serve_invoke_for_instance(
+        instance: instance,
+        handler: h,
+        params: ps,
+        request: request,
+      )
     SelectedStatic { route: r } =>
       ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
     MethodNotAllowed { allowed: ms } =>
@@ -317,7 +475,23 @@ fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>, re
   }
 }
 
-fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
+fn roadmap_serve_selection_response(
+  sel: RouteSelection<RoadmapServeHandler>,
+  request: ServeHttpRequest,
+) -> ServeHttpResponse {
+  roadmap_serve_selection_response_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    sel: sel,
+    request: request,
+  )
+}
+
+fn roadmap_serve_respond_for_instance(
+  instance: HostDashboardInstance,
+  method_label: String,
+  path: String,
+  body: String,
+) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
       serve_text_response(
@@ -339,7 +513,8 @@ fn roadmap_serve_respond(method_label: String, path: String, body: String) -> Se
             ], ""),
           )
         RoadmapServeTable { table: t } =>
-          roadmap_serve_selection_response(
+          roadmap_serve_selection_response_for_instance(
+            instance: instance,
             sel: serve_select_route(table: t, method: m, path: path),
             request: ServeHttpRequest { method: m, path: path, body: body },
           )
@@ -347,6 +522,38 @@ fn roadmap_serve_respond(method_label: String, path: String, body: String) -> Se
   }
 }
 
+fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
+  roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    method_label: method_label,
+    path: path,
+    body: body,
+  )
+}
+
 fn roadmap_serve_handle(method: String, path: String, body: String) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond(method_label: method, path: path, body: body))
+  serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: srv1_live_dashboard_instance(),
+    method_label: method,
+    path: path,
+    body: body,
+  ))
+}
+
+fn roadmap_serve_handle_srv1_lab(method: String, path: String, body: String) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: srv1_lab_dashboard_instance(),
+    method_label: method,
+    path: path,
+    body: body,
+  ))
+}
+
+fn roadmap_serve_handle_srv2_preview(method: String, path: String, body: String) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_respond_for_instance(
+    instance: srv2_preview_dashboard_instance(),
+    method_label: method,
+    path: path,
+    body: body,
+  ))
 }

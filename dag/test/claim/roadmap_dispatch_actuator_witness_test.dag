@@ -11,6 +11,7 @@ import gunbc.roadmap_model {
   SectionElement, Group, SectionGroup,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template }
 import std.upsert_decision {
@@ -24,7 +25,13 @@ import std.upsert_decision {
 }
 import extdeps.git { shape_git_worktree_add_argv }
 import extdeps.tmux { shape_tmux_new_session_argv }
-import extdeps.llm.cli { shape_claude_invoke_argv }
+import extdeps.llm.cli {
+  shape_claude_invoke_argv,
+  shape_codex_exec_argv,
+  CodexExecSpec,
+  CodexWorkspaceWrite,
+  CodexApprovalNever,
+}
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
@@ -32,8 +39,19 @@ import gunbc.roadmap_dispatch_actuator {
   fill_dispatch_brief,
   dispatch_brief_fields,
   filled_dispatch_brief_for_node,
+  dispatch_cli_provider,
+  CodexCliProvider,
+  dispatch_reasoning_effort_for_intricacy,
   claude_effort_for_intricacy,
   claude_spawn_argv,
+  codex_spawn_argv,
+  dispatch_codex_home,
+  dispatch_codex_exec_spec,
+  dispatch_spawn_commands_for_provider,
+  dispatch_spawn_commands_for_instance,
+  DispatchSpawnCommands,
+  DispatchSpawnReady,
+  DispatchSpawnRefused,
   git_worktree_add_argv,
   tmux_spawn_argv,
   tmux_kill_session_argv,
@@ -54,7 +72,23 @@ import gunbc.roadmap_dispatch_actuator {
   SessionNameObserved,
   SessionObserved,
   SpawnSession,
+  TmuxAttemptPanesParse,
+  AttemptPanesParsed,
+  AttemptPanesParseRefused,
+  parse_tmux_attempt_panes_output,
+  dispatch_current_attempt_events_projection_argv_for_instance,
 }
+import extdeps.llm.cli {
+  ReasoningHigh,
+  ReasoningMedium,
+  reasoning_effort_label,
+}
+import gunbc.dispatch_pipe_pane_emit {
+  PipeEmitted,
+  PipeEmitRefused,
+  dispatch_event_pipe_emission,
+}
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -67,6 +101,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -102,12 +137,18 @@ test fn witness_brief_fill_includes_node_metadata() -> Bool {
 }
 
 test fn witness_claude_effort_high_for_high_intricacy() -> Bool {
-  claude_effort_for_intricacy(i: IntricacyHigh) == "high"
+  reasoning_effort_label(effort: claude_effort_for_intricacy(i: IntricacyHigh)) == "high"
+    && reasoning_effort_label(
+      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyHigh),
+    ) == "high"
+    && reasoning_effort_label(
+      effort: dispatch_reasoning_effort_for_intricacy(i: IntricacyLow),
+    ) == "medium"
 }
 
 test fn witness_claude_argv_uses_dangerous_skip_permissions() -> Bool {
   let argv = claude_spawn_argv(
-    effort: "high",
+    effort: ReasoningHigh,
     session_uuid: "uuid-1",
     node_id: nid(s: "node-1"),
     brief: "brief body",
@@ -130,7 +171,7 @@ test fn witness_git_worktree_argv_is_execfile_safe() -> Bool {
 
 test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   let claude = claude_spawn_argv(
-    effort: "medium",
+    effort: ReasoningMedium,
     session_uuid: "uuid-2",
     node_id: nid(s: "node-2"),
     brief: "brief",
@@ -143,6 +184,187 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
   cmd.program == "tmux"
     && starts_with(s: join(cmd.args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-node-2")
     && string_contains(s: join(cmd.args, separator: "\0"), pattern: "CLAUDE_CODE_NO_FLICKER=1")
+}
+
+test fn witness_codex_provider_is_selected_explicitly() -> Bool {
+  dispatch_cli_provider == CodexCliProvider
+}
+
+test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "codex-fingerprint"))
+  scope.expected_process_fingerprint == ("node" as NonEmptyStr)
+}
+
+test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
+  let argv = codex_spawn_argv(
+    effort: ReasoningHigh,
+    worktree_path: "/opt/gunbc/dispatch-worktrees/codex-node",
+    brief: "brief body",
+  )
+  let wire = join(argv, separator: "\0")
+  starts_with(s: wire, prefix: concat("env\0CODEX_HOME=", dispatch_codex_home))
+    && string_contains(s: wire, pattern: "\0codex\0--ask-for-approval\0never\0exec")
+    && string_contains(s: wire, pattern: "\0--sandbox\0workspace-write")
+    && string_contains(s: wire, pattern: "\0--json")
+    && string_contains(s: wire, pattern: "\0-C\0/opt/gunbc/dispatch-worktrees/codex-node")
+    && string_contains(s: wire, pattern: "model_reasoning_effort=\"high\"")
+    && string_contains(s: wire, pattern: "brief body")
+    && !string_contains(s: wire, pattern: "--dangerously-bypass-approvals-and-sandbox")
+    && !string_contains(s: wire, pattern: "--ephemeral")
+}
+
+fn codex_tmux_command_shape_holds(cmds: DispatchSpawnCommands) -> Bool {
+  let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
+  let provider_wire = join(cmds.provider_start.args, separator: "\0")
+  cmds.tmux_spawn.program == "/usr/bin/tmux"
+    && string_contains(s: create_wire, pattern: "\0/usr/bin/sh")
+    && !string_contains(s: create_wire, pattern: "\0codex\0")
+    && string_contains(
+      s: provider_wire,
+      pattern: "\0/usr/bin/codex\0--ask-for-approval\0never\0exec",
+    )
+    && !string_contains(s: provider_wire, pattern: "\0claude\0")
+}
+
+test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
+  let node = sized_derivable(id: "codex-selected", prs: [1], title: "Codex selected")
+  match dispatch_spawn_commands_for_provider(
+    node: node,
+    session_uuid: "uuid-unused-by-codex",
+    attempt_key: "feedfacefeedface",
+    provider: CodexCliProvider,
+  ) {
+    DispatchSpawnRefused { step: _, detail: _ } => false
+    DispatchSpawnReady { commands: cmds } =>
+      codex_tmux_command_shape_holds(cmds: cmds)
+  }
+}
+
+fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands) -> Bool {
+  let git_wire = join(commands.worktree_add.args, separator: "\0")
+  let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
+  let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
+  let tmux_wire = join(commands.tmux_spawn.args, separator: "\0")
+  let pipe_wire = join(commands.tmux_event_pipe.args, separator: "\0")
+  let provider_wire = join(commands.provider_start.args, separator: "\0")
+  string_contains(
+    s: git_wire,
+    pattern: "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts/ts-dispatch-provider-events-afeedfacefeedface",
+    )
+    && string_contains(s: git_wire, pattern: "\0origin/main")
+    && commands.attempt_state_prepare.program == "/usr/bin/install"
+    && string_contains(
+      s: state_wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-afeedfacefeedface",
+    )
+    && commands.attempt_current_pointer.program == "/usr/bin/ln"
+    && string_contains(
+      s: pointer_wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/ts-dispatch-provider-events-current",
+    )
+    && starts_with(
+      s: tmux_wire,
+      prefix: "-L\0srv1-lab-codex-feedback-v0\0new-session\0-d\0-s\0gunbc-dispatch-ts-dispatch-provider-events",
+    )
+    && string_contains(
+      s: pipe_wire,
+      pattern: "provider-events.jsonl",
+    )
+    && string_contains(
+      s: provider_wire,
+      pattern: "\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0/usr/bin/codex\0",
+    )
+}
+
+test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dispatch_spawn_commands_for_instance(
+    instance: lab,
+    node: sized_derivable(
+      id: "ts-dispatch-provider-events",
+      prs: [],
+      title: "Provider execution facts",
+    ),
+    session_uuid: "00000000-0000-4000-8000-000000000001",
+    attempt_key: "feedfacefeedface",
+    provider: CodexCliProvider,
+  ) {
+    DispatchSpawnRefused { step: _, detail: _ } => false
+    DispatchSpawnReady { commands } =>
+      lab_instance_command_shape_holds(commands: commands)
+  }
+}
+
+test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
+  match parse_tmux_attempt_panes_output(
+    output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
+  ) {
+    AttemptPanesParsed { panes } =>
+      count(panes) == 2
+        && !panes.first().dead
+        && panes.skip(n: 1).first().dead
+        && panes.skip(n: 1).first().exit_code == Present { value: 7 }
+    AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
+  }
+}
+
+test fn witness_tmux_attempt_panes_malformed_row_refuses() -> Bool {
+  match parse_tmux_attempt_panes_output(
+    output: "gunbc-dispatch-a\t1\tbogus\tnode\n",
+  ) {
+    AttemptPanesParsed { panes: _ } => false
+    AttemptPanesParseRefused { line_number, raw, reason } =>
+      line_number == 1
+        && string_contains(s: raw, pattern: "bogus")
+        && string_contains(s: reason, pattern: "dead/status")
+  }
+}
+
+data event_pipe_emission_witness_note: String = "review 44063. The claim is no longer 'the caller remembered to quote' — quoting is the lit-word production's job now, so the exact emitted spelling is the oracle: every word single-quoted, and an embedded quote closed/escaped/reopened as '\\''. The metacharacter fixture stays because it is what a spelling regression would smuggle: a $(...) inside the events path must be inert text in the payload, never a command substitution. The poison RED holds the serializer-refusal arm dead in corpus."
+
+fn emitted_pipe_body_matches(body: String) -> Bool {
+  body == "'exec' '/usr/bin/tee' '-a' '--' '/tmp/a'\\'';$(touch nope)'"
+}
+
+test fn witness_event_pipe_emits_grammar_quoted_command() -> Bool {
+  match dispatch_event_pipe_emission(
+    tee_program: "/usr/bin/tee",
+    events_path: "/tmp/a';$(touch nope)",
+  ) {
+    PipeEmitRefused { detail: _ } => false
+    PipeEmitted { command } =>
+      emitted_pipe_body_matches(body: command.body as String)
+  }
+}
+
+test fn witness_provider_projection_is_exact_bounded_capability() -> Bool {
+  let cmd = dispatch_current_attempt_events_projection_argv_for_instance(
+    instance: srv1_lab_dashboard_instance(),
+    node_id: nid(s: "projection-node"),
+  )
+  let wire = join(cmd.args, separator: "\0")
+  cmd.program == "/usr/bin/jq"
+    && starts_with(s: wire, prefix: "--raw-input\0--compact-output\0fromjson |")
+    && string_contains(s: wire, pattern: "[0:128]")
+    && string_contains(s: wire, pattern: ".[0:4096]")
+    && string_contains(
+      s: wire,
+      pattern: "\0/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempt-state/projection-node-current/provider-events.jsonl",
+    )
+    && !string_contains(s: wire, pattern: "aggregated_output")
+}
+
+test fn codex_provider_v0_argv_keystone_holds() -> Bool {
+  witness_codex_provider_is_selected_explicitly()
+    && witness_codex_npm_launcher_fingerprint_is_live_receipt()
+    && witness_codex_argv_is_unattended_but_sandboxed()
+    && witness_selected_provider_shapes_codex_tmux_command()
+    && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
+    && witness_tmux_attempt_panes_parse_alive_and_exit()
+    && witness_tmux_attempt_panes_malformed_row_refuses()
+    && witness_event_pipe_emits_grammar_quoted_command()
+    && witness_provider_projection_is_exact_bounded_capability()
+    && witness_host_exec_argv_shapes_bound_to_extdeps()
 }
 
 test fn witness_stop_argv_targets_session() -> Bool {
@@ -175,12 +397,12 @@ test fn witness_ready_node_permitted_without_live_session() -> Bool {
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
   match classify_dispatch_request(node: node, ready: ready, tmux_entries: [], attempt_key: "feedfacefeedface") {
-    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, claude_effort: e } =>
+    DispatchPermitted { session_name: s, worktree_path: w, branch_name: b, brief: br, reasoning_effort: e } =>
       s == "gunbc-dispatch-ready-node"
         && string_contains(s: w, pattern: "ready-node-afeedfacefeedface")
         && b == "dispatch/ready-node-afeedfacefeedface"
         && string_contains(s: br, pattern: "Ready")
-        && e == "high"
+        && reasoning_effort_label(effort: e) == "high"
     _ => false
   }
 }
@@ -276,7 +498,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let claude_args_dangerous = shape_claude_invoke_argv(
     session_id: "uuid-bound",
     node_id: "bound-node",
-    effort: "high",
+    effort: ReasoningHigh,
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
@@ -285,21 +507,36 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let claude_args_default = shape_claude_invoke_argv(
     session_id: "uuid-bound",
     node_id: "bound-node",
-    effort: "high",
+    effort: ReasoningHigh,
     settings_json: "{}",
     append_system_prompt: "brief",
     start_prompt: "go",
     permission_args: [],
   )
+  let codex_args = shape_codex_exec_argv(
+    codex_home: "/home/u/.codex-dispatch",
+    cwd: "/opt/gunbc/dispatch-worktrees/bound-node",
+    prompt: "brief",
+    reasoning_effort: ReasoningHigh,
+    spec: CodexExecSpec {
+      sandbox: CodexWorkspaceWrite,
+      approval: CodexApprovalNever,
+      json_events: true,
+      persist_session: true,
+    },
+  )
   bound_worktree.args == worktree_args
     && starts_with(s: join(tmux_args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-bound-node")
     && string_contains(s: join(claude_args_dangerous, separator: "\0"), pattern: "--dangerously-skip-permissions")
     && !string_contains(s: join(claude_args_default, separator: "\0"), pattern: "--dangerously-skip-permissions")
+    && string_contains(s: join(codex_args, separator: "\0"), pattern: "\0codex\0--ask-for-approval\0never\0exec")
+    && string_contains(s: join(codex_args, separator: "\0"), pattern: "\0--sandbox\0workspace-write\0--color\0never\0--json")
+    && !string_contains(s: join(codex_args, separator: "\0"), pattern: "--ephemeral")
 }
 
 test fn witness_claude_invoke_permission_args_are_gunbc_policy() -> Bool {
   let argv = claude_spawn_argv(
-    effort: "high",
+    effort: ReasoningHigh,
     session_uuid: "uuid-policy",
     node_id: nid(s: "node-policy"),
     brief: "brief",
@@ -357,4 +594,3 @@ test fn witness_legacy_brief_still_stubs_with_title() -> Bool {
   string_contains(s: brief, pattern: "Brief Title")
     && !string_contains(s: brief, pattern: "the real displaced cost")
 }
-

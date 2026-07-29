@@ -47,6 +47,35 @@ pub struct SymbolInterner {
     calls: u64,
 }
 
+#[cfg(test)]
+mod selected_identity_path_tests {
+    use super::{ExecutionMode, InterpContext};
+    use crate::v1_compiler_compile::SourceFile;
+    use im::HashMap;
+    use std::rc::Rc;
+
+    #[test]
+    fn selected_function_identity_refuses_suffix_collision_on_actual_node() {
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/common.dag".to_string(),
+                    content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
+                },
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        let mut index = HashMap::new();
+        index.insert("one".to_string(), "src/common.dag".to_string());
+        index.insert("two".to_string(), "common.dag".to_string());
+        assert_eq!(ctx.selected_function_identity("check", &index), None);
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct InternStats {
     pub calls: u64,
@@ -1260,6 +1289,7 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1318,6 +1348,42 @@ pub struct InterpContext {
     // Without this arm the refusal fires only after the overrun is fully spent (707s on a
     // 600s budget; 21–34min receipts in the original finding).
     witness_wall_deadline: std::cell::Cell<Option<(Instant, u64)>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectedFunctionIdentity {
+    pub module_path: String,
+    pub decl_name: String,
+    pub bare_name_ambiguous: bool,
+}
+
+fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>) -> Option<String> {
+    let normalize = |path: &str| {
+        path.replace('\\', "/")
+            .split("/./")
+            .collect::<Vec<_>>()
+            .join("/")
+            .trim_start_matches("./")
+            .to_string()
+    };
+    let file = normalize(file);
+    let exact: Vec<_> = module_path_index
+        .iter()
+        .filter(|(_, path)| normalize(path) == file)
+        .map(|(module, _)| module.clone())
+        .collect();
+    if exact.len() == 1 {
+        return exact.into_iter().next();
+    }
+    if !exact.is_empty() {
+        return None;
+    }
+    let suffix: Vec<_> = module_path_index
+        .iter()
+        .filter(|(_, path)| file.ends_with(&normalize(path)))
+        .map(|(module, _)| module.clone())
+        .collect();
+    (suffix.len() == 1).then(|| suffix.into_iter().next().expect("one suffix"))
 }
 
 impl InterpContext {
@@ -1408,15 +1474,18 @@ impl InterpContext {
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
+        let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
             let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
+                    *bare_name_counts.entry(name.clone()).or_default() += 1;
                     fn_nodes.insert(name.clone(), item.clone());
                     if !module_path.is_empty() {
-                        fn_nodes.insert(format!("{}.{}", module_path, name), item.clone());
+                        let qualified = format!("{}.{}", module_path, name);
+                        fn_nodes.insert(qualified.clone(), item.clone());
                     }
                 }
                 // Service-item detection is node-local: the item node carries the
@@ -1446,11 +1515,16 @@ impl InterpContext {
                 }
             }
         }
+        let ambiguous_bare_function_names = bare_name_counts
+            .into_iter()
+            .filter_map(|(name, count)| (count > 1).then_some(name))
+            .collect();
         InterpContext {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
+            ambiguous_bare_function_names,
             service_ops,
             execution_mode,
             fixture_store,
@@ -1578,6 +1652,25 @@ impl InterpContext {
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
+    }
+
+    /// Report identity from the exact fn_nodes entry used by lookup_fn. The
+    /// module path comes from the existing collision-checked module index; this
+    /// accessor does not select, resolve, traverse the graph, or alter lookup.
+    pub fn selected_function_identity(
+        &self,
+        name: &str,
+        module_path_index: &HashMap<String, String>,
+    ) -> Option<SelectedFunctionIdentity> {
+        let node = self.lookup_fn(name)?;
+        let file = node.span.file.as_str();
+        let module_path = selected_module_path(file, module_path_index)?;
+        Some(SelectedFunctionIdentity {
+            module_path,
+            decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
+            bare_name_ambiguous: !name.contains('.')
+                && self.ambiguous_bare_function_names.contains(name),
+        })
     }
 }
 
@@ -3120,7 +3213,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     if is_v4_std_node_query_bridge_call(ctx, &func_name) {
         return match func_name.as_str() {
             "coproduct_nullary_inhabitants" => {
-                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, &args)
+                crate::coproduct_reflection::eval_coproduct_nullary_inhabitants(ctx, node, &args)
             }
             _ => unreachable!("node_query bridge fn set mismatch"),
         };
@@ -8090,18 +8183,29 @@ fn eval_emit_host_run_transport_builtin(
 /// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
 /// content-addressed emit_host transport persists workspace under workspace_dir and
-/// skips build when `.native_ready` is present. workspace_dir is the pre-composed
-/// path (native_cache_workspace_root(cache_root, key)); callers must not pass the
-/// cache parent alone. Workspace reuse is keyed by the caller's content-derived
-/// path (emit_on_demand_key closure_digest); a different closure MUST land in a
-/// different workspace dir — file set is assumed a pure function of that digest
-/// (benign-by-identity on partial writes before `.native_ready`). `.native_ready`
+/// skips build when `.native_ready` is present. workspace_dir carries the caller's
+/// computation and input-realization segments; this boundary derives the actual
+/// resolved build-context identity and appends it before consulting the marker
+/// (the effective path modeled by
+/// extdeps.realization.emit_on_demand_host.native_cache_resolved_build_context_workspace_root).
+/// A different closure, materialized input, build argv, resolved compiler,
+/// admitted subprocess environment, or Cargo configuration MUST therefore land
+/// in a different workspace (benign-by-identity on partial writes before
+/// `.native_ready`). `.native_ready`
 /// is written only after a successful run (not after build alone): the P3 kernel's
 /// warm boundary is build+run proof, so a transient run failure must not skip
 /// rebuild on retry. Registered in 04_method.dag as
 /// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
 /// this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
+/// HAND-RUST GATE explicit deferral: this is bounded growth in the existing seed
+/// file, not a census-shrink receipt and not a new Rust authority. Its lane is
+/// ROADMAP "Make native materialization the shared execution kernel",
+/// docs/plans/witness-realization-plan.md P3/P6, with the concrete deletion row
+/// dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel. Delete these
+/// observation/apply helpers when the self-emitted transport consumes the modeled
+/// ResolvedBuildContext and the dispatcher-change, environment-change, and
+/// cold/warm agreement witnesses remain green without them.
 /// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
 /// precedent): the root is WHERE the cache lives, never WHAT identifies an
 /// artifact — the content-hash path component stays the key. Opt-in; only the
@@ -8272,7 +8376,18 @@ fn eval_emit_host_run_transport_cached_builtin(
     }
 
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
-    let workspace = std::path::PathBuf::from(&workspace_dir);
+    let realization_workspace = std::path::PathBuf::from(&workspace_dir);
+    std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+    emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
+    let build_environment = emit_host_constructed_build_environment();
+    let resolved_build_context_identity = emit_host_resolved_build_context_identity(
+        &build_argvs,
+        &realization_workspace,
+        &build_environment,
+    )?;
+    let workspace = realization_workspace.join(resolved_build_context_identity);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
@@ -8282,6 +8397,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         &workspace_files,
         &build_argvs,
         &run_argv,
+        &build_environment,
         ctx,
     )
 }
@@ -8299,8 +8415,9 @@ fn resolve_host_tool_program(name: &str) -> String {
     }
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
-            if !dir.is_empty() && std::path::Path::new(dir).join(name).is_file() {
-                return name.to_string();
+            let candidate = std::path::Path::new(dir).join(name);
+            if !dir.is_empty() && candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
             }
         }
     }
@@ -8319,15 +8436,295 @@ fn resolve_host_tool_program(name: &str) -> String {
     name.to_string()
 }
 
+#[derive(Clone)]
+struct EmitHostBuildEnvironment {
+    entries: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    digest: String,
+}
+
+/// Construct the complete environment admitted to build and run subprocesses.
+/// Commands use env_clear() and receive exactly these rows, so an undeclared
+/// ambient variable cannot affect an artifact outside the realization identity.
+fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
+    use std::os::unix::ffi::OsStrExt;
+
+    fn admitted(name: &str) -> bool {
+        const EXACT: &[&str] = &[
+            "PATH",
+            "HOME",
+            "TMPDIR",
+            "CC",
+            "CXX",
+            "AR",
+            "LD_LIBRARY_PATH",
+            "LIBRARY_PATH",
+            "CPATH",
+            "PKG_CONFIG_PATH",
+            "SDKROOT",
+            "MACOSX_DEPLOYMENT_TARGET",
+        ];
+        const PREFIXES: &[&str] = &[
+            "CARGO_",
+            "RUST",
+            "CC_",
+            "CXX_",
+            "AR_",
+            "CFLAGS",
+            "CXXFLAGS",
+            "CPPFLAGS",
+            "LDFLAGS",
+            "PKG_CONFIG_",
+            "GO",
+            "NODE_",
+            "NPM_",
+            "PYTHON",
+        ];
+        if matches!(
+            name,
+            "CARGO_TARGET_DIR" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER"
+        ) {
+            return false;
+        }
+        EXACT.contains(&name) || PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    }
+
+    let mut entries: Vec<_> = std::env::vars_os()
+        .filter(|(name, _)| name.to_str().map(admitted).unwrap_or(false))
+        .collect();
+    entries.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
+
+    let mut digest =
+        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v1".to_string());
+    for (name, value) in &entries {
+        digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(name.as_bytes()));
+        digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(value.as_bytes()));
+    }
+    EmitHostBuildEnvironment { entries, digest }
+}
+
+fn emit_host_apply_build_environment(
+    command: &mut std::process::Command,
+    environment: &EmitHostBuildEnvironment,
+) {
+    command.env_clear();
+    command.envs(environment.entries.iter().cloned());
+}
+
+/// Seed mirror of std.artifact_store.artifact_realization_digest. The `.dag`
+/// function is the authority for the ordered/tagged shape; this helper disappears
+/// with the enclosing witness-realization HAND-RUST boundary.
+fn emit_host_artifact_realization_digest(inputs: &[(&str, String)]) -> String {
+    let mut digest = v1_rt::atom_identity_hash("artifact_store.realization".to_string());
+    for (identity, content_digest) in inputs {
+        let tagged = v1_rt::hash_combine(
+            v1_rt::atom_identity_hash((*identity).to_string()),
+            content_digest.clone(),
+        );
+        digest = v1_rt::hash_combine(digest, tagged);
+    }
+    digest
+}
+
+fn emit_host_cargo_configuration_digest(
+    environment: &EmitHostBuildEnvironment,
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    fn environment_path(
+        environment: &EmitHostBuildEnvironment,
+        name: &str,
+    ) -> Option<std::path::PathBuf> {
+        environment
+            .entries
+            .iter()
+            .find(|(key, _)| key.to_str() == Some(name))
+            .map(|(_, value)| std::path::PathBuf::from(value))
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(cargo_home) = environment_path(environment, "CARGO_HOME") {
+        candidates.push(cargo_home.join("config"));
+        candidates.push(cargo_home.join("config.toml"));
+    } else if let Some(home) = environment_path(environment, "HOME") {
+        candidates.push(home.join(".cargo/config"));
+        candidates.push(home.join(".cargo/config.toml"));
+    }
+    for ancestor in probe_workspace.ancestors() {
+        candidates.push(ancestor.join(".cargo/config"));
+        candidates.push(ancestor.join(".cargo/config.toml"));
+    }
+
+    let mut digest = v1_rt::atom_identity_hash("emit-host-cargo-configuration-v1".to_string());
+    for path in candidates {
+        match std::fs::read(&path) {
+            Ok(content) => {
+                digest = v1_rt::hash_combine(
+                    digest,
+                    v1_rt::atom_identity_hash(path.to_string_lossy().into_owned()),
+                );
+                digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(&content));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
+                        path.display()
+                    ),
+                })
+            }
+        }
+    }
+    Ok(digest)
+}
+
+/// Observe the host tools which will realize a cached build. This is deliberately
+/// inside the existing wet host-transport boundary: the `.dag` substrate owns the
+/// effective path shape, while only the host can resolve PATH/rustup shims and read
+/// executable bytes. Failure to resolve, read, or execute a version probe refuses
+/// the cached realization; substituting a nominal label would recreate srv2-05.
+///
+/// Cargo is a driver, not the compiler identity. Its observation is therefore
+/// paired with the rustc selected by the same process environment. The transport
+/// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
+/// intentionally not part of this identity.
+fn emit_host_resolved_build_context_identity(
+    build_argvs: &[Vec<String>],
+    probe_workspace: &std::path::Path,
+    environment: &EmitHostBuildEnvironment,
+) -> InterpResult<String> {
+    fn observe_tool(
+        requested: &str,
+        version_args: &[&str],
+        probe_workspace: &std::path::Path,
+        environment: &EmitHostBuildEnvironment,
+    ) -> InterpResult<String> {
+        let resolved = resolve_host_tool_program(requested);
+        let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: resolve build tool {requested:?} \
+                     ({resolved:?}) failed: {e}"
+            ),
+        })?;
+        let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
+                canonical.display()
+            ),
+        })?;
+        let mut command = std::process::Command::new(&resolved);
+        command.args(version_args).current_dir(probe_workspace);
+        emit_host_apply_build_environment(&mut command, environment);
+        let output = command.output().map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
+            ),
+        })?;
+        if !output.status.success() {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: version probe for {requested:?} \
+                     exited {}: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            });
+        }
+
+        let logical_name = std::path::Path::new(requested)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(requested);
+        let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
+        for field in [
+            v1_rt::atom_identity_hash(logical_name.to_string()),
+            v1_rt::bytes_identity_hash(&executable),
+            v1_rt::bytes_identity_hash(&output.stdout),
+            v1_rt::bytes_identity_hash(&output.stderr),
+        ] {
+            digest = v1_rt::hash_combine(digest, field);
+        }
+        Ok(digest)
+    }
+
+    let mut toolchain_identity =
+        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string());
+    let cargo_configuration_identity =
+        emit_host_cargo_configuration_digest(environment, probe_workspace)?;
+    for argv in build_argvs {
+        let requested = argv.first().ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: empty build argv".to_string(),
+        })?;
+        let requested_name = std::path::Path::new(requested)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(requested);
+        let version_args: &[&str] = if requested_name == "cargo" {
+            &["-Vv"]
+        } else {
+            &["--version"]
+        };
+        toolchain_identity = v1_rt::hash_combine(
+            toolchain_identity,
+            observe_tool(requested, version_args, probe_workspace, environment)?,
+        );
+
+        if requested_name == "cargo" {
+            let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+            toolchain_identity = v1_rt::hash_combine(
+                toolchain_identity,
+                observe_tool(&rustc, &["-vV"], probe_workspace, environment)?,
+            );
+        }
+    }
+    Ok(emit_host_artifact_realization_digest(&[
+        ("resolved-build-toolchain", toolchain_identity),
+        ("constructed-build-environment", environment.digest.clone()),
+        ("cargo-configuration", cargo_configuration_identity),
+    ]))
+}
+
+fn emit_host_materialize_workspace_files(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+) -> InterpResult<()> {
+    use std::path::Component;
+
+    for (rel, text) in files {
+        let p = std::path::Path::new(rel);
+        if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+            return Err(InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
+                ),
+            });
+        }
+        let full = workspace.join(p);
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: mkdir {} failed: {e}",
+                    parent.display()
+                ),
+            })?;
+        }
+        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: write {} failed: {e}",
+                full.display()
+            ),
+        })?;
+    }
+    Ok(())
+}
+
 fn emit_host_run_transport_cached_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    build_environment: &EmitHostBuildEnvironment,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    use std::path::Component;
-
     let ready_marker = workspace.join(".native_ready");
     // Cold control (falsifier cadence): widen-only — ignoring the ready marker can
     // only force a FULL cold rebuild, never skip work (the compile-clean cold-control
@@ -8389,47 +8786,20 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(resolve_host_tool_program(&argv[0]))
-            .args(&argv[1..])
-            .current_dir(workspace)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
-            .output()
-            .map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: spawn {:?} failed: {e}",
-                    argv[0]
-                ),
-            })
+        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0]));
+        command.args(&argv[1..]).current_dir(workspace);
+        emit_host_apply_build_environment(&mut command, build_environment);
+        command.env("CARGO_TARGET_DIR", &target_dir);
+        command.output().map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: spawn {:?} failed: {e}",
+                argv[0]
+            ),
+        })
     };
 
     if !compile_skipped {
-        for (rel, text) in files {
-            let p = std::path::Path::new(rel);
-            if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
-                    ),
-                });
-            }
-            let full = workspace.join(p);
-            if let Some(parent) = full.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: mkdir {} failed: {e}",
-                        parent.display()
-                    ),
-                })?;
-            }
-            std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: write {} failed: {e}",
-                    full.display()
-                ),
-            })?;
-        }
+        emit_host_materialize_workspace_files(workspace, files)?;
 
         let mut build_log: Vec<Value> = Vec::new();
         for argv in build_argvs {

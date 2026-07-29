@@ -1,0 +1,689 @@
+module test.manual.git_upstream_model_execution
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.gunbc
+import extdeps.git.object_store {
+  GitSha1Digest,
+  GitObjectId,
+  GitSha1ObjectId,
+  GitObjectFormatSha1,
+  GitRepositoryState,
+  GitTreeWireEntry,
+  GitRefRecord,
+  DirectTarget,
+  SymbolicTarget,
+  GitWorktreeRegular,
+  GitWorktreeSymlink,
+  GitR0ReadBackObservation,
+  GitReadBackOutcome,
+  GitReadBackVerified,
+  GitLsTreeZDecoded,
+  GitLsTreeZRefused,
+  GitLsFilesStageZDecoded,
+  GitLsFilesStageZRefused,
+  GitProjected,
+  GitProjectionRefused,
+  GitRefTransitionModeled,
+  git_object_id_content_hash,
+  git_decode_ls_tree_z,
+  git_decode_ls_files_stage_z,
+  git_model_update_ref_exact,
+  git_project_repository,
+  git_verify_independent_read_back,
+}
+import gunbc.output_policy { ExpectSuccess, ExpectFailure }
+import test.claim.git_upstream_model_witness {
+  sha1_blob_regular,
+  sha1_blob_executable,
+  sha1_blob_symlink,
+  sha1_empty_blob,
+  sha1_empty_tree,
+  sha1_subtree,
+  sha1_gitlink,
+  sha1_root_tree,
+  sha1_parent_commit,
+  sha1_next_commit,
+  sha1_tag,
+  sha256_object,
+  path_regular,
+  path_executable,
+  path_symlink,
+  path_subtree,
+  path_subtree_member,
+  path_gitlink,
+  path_non_ascii,
+  fixture_repository,
+}
+import std.bytes { utf8_encode_bytes }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data git_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Git R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp, Filesystem.Write, shell.Mkdir, shell.Test, shell.Remove, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. Real Git hashes SHA-1 and SHA-256 blobs, writes the tree, commits and annotated tag, validates five tree modes plus a non-ASCII path, checks the index/worktree, runs fsck, performs exact-old-OID compare-and-swap through symbolic HEAD while retaining its target, proves stale and nonexistent-object updates refuse, and independently reads the ref/tag/tree state back. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/git_upstream_model_execution_test.dag --function witness_git_cli_fixture_hashes_projects_and_independently_reads_back."
+
+type GitR0LiveFixtureOutcome
+  = GitR0LiveFixtureObserved {
+      outcome: GitReadBackOutcome,
+      observed_tree_entries: List<GitTreeWireEntry>,
+    }
+  | GitR0LiveFixtureExecutionRefused { diagnostic: String }
+
+fn observed_sha1_oid(stdout: String) -> GitObjectId {
+  GitSha1ObjectId { digest: trim(s: stdout) as GitSha1Digest }
+}
+
+fn complete_fixture_repository() -> GitRepositoryState {
+  let repo = fixture_repository()
+  GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: [],
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+}
+
+fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
+  let fixture = shell.Mktemp.Dir()
+  if !fixture.success {
+    GitR0LiveFixtureExecutionRefused { diagnostic: "fixture-mktemp-refused" }
+  } else {
+    let sha256_fixture = shell.Mktemp.Dir()
+    if !sha256_fixture.success {
+      let cleaned = shell.Remove.RecursiveForce(path: fixture.path)
+      if cleaned.success {
+        GitR0LiveFixtureExecutionRefused {
+          diagnostic: "sha256-mktemp-refused",
+        }
+      } else {
+        GitR0LiveFixtureExecutionRefused { diagnostic: "cleanup-refused" }
+      }
+    } else {
+      let raw_name = concat(from_code_point(255), ".dag")
+      let readme_path = concat(fixture.path, "/readme")
+      let run_path = concat(fixture.path, "/run")
+      let raw_path = concat(fixture.path, concat("/", raw_name))
+      let src_path = concat(fixture.path, "/src")
+      let src_keep_path = concat(src_path, "/keep")
+      let sha256_source_path = concat(sha256_fixture.path, "/source")
+
+      let initialized = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["init", "-q", "--object-format=sha1", "."],
+        expect: ExpectSuccess,
+      )
+      let readme_written = Filesystem.Write(path: readme_path, content: "source")
+      let run_written = Filesystem.Write(path: run_path, content: "run")
+      let raw_written = Filesystem.Write(path: raw_path, content: "source")
+      let src_created = shell.Mkdir.Parents(path: src_path)
+      let src_keep_written = Filesystem.Write(path: src_keep_path, content: "")
+      let run_executable = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/bin/chmod",
+        args: ["+x", "run"],
+        expect: ExpectSuccess,
+      )
+      let link_created = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/bin/ln",
+        args: ["-s", "readme", "link"],
+        expect: ExpectSuccess,
+      )
+      let added = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["add", "--", "readme", "run", "link", "src/keep", raw_name],
+        expect: ExpectSuccess,
+      )
+      let regular_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", ":readme"],
+        expect: ExpectSuccess,
+      )
+      let executable_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", ":run"],
+        expect: ExpectSuccess,
+      )
+      let symlink_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", ":link"],
+        expect: ExpectSuccess,
+      )
+      let empty_tree = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["hash-object", "-t", "tree", "-w", "/dev/null"],
+        expect: ExpectSuccess,
+      )
+      let gitlink_commit = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/env",
+        args: [
+          "GIT_AUTHOR_DATE=@946684800 +0000",
+          "GIT_COMMITTER_DATE=@946684800 +0000",
+          "git",
+          "-c",
+          "user.name=A. U. Thor",
+          "-c",
+          "user.email=author@example.invalid",
+          "commit-tree",
+          trim(s: empty_tree.stdout),
+          "-m",
+          "gitlink",
+        ],
+        expect: ExpectSuccess,
+      )
+      let gitlink_indexed = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "update-index",
+          "--add",
+          "--cacheinfo",
+          "160000",
+          trim(s: gitlink_commit.stdout),
+          "vendor",
+        ],
+        expect: ExpectSuccess,
+      )
+      let root_tree = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["write-tree"],
+        expect: ExpectSuccess,
+      )
+      let empty_blob_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", ":src/keep"],
+        expect: ExpectSuccess,
+      )
+      let subtree_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", concat(trim(s: root_tree.stdout), ":src")],
+        expect: ExpectSuccess,
+      )
+      let parent_commit = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/env",
+        args: [
+          "GIT_AUTHOR_DATE=@946684800 +0000",
+          "GIT_COMMITTER_DATE=@946684800 +0000",
+          "git",
+          "-c",
+          "user.name=A. U. Thor",
+          "-c",
+          "user.email=author@example.invalid",
+          "commit-tree",
+          trim(s: root_tree.stdout),
+          "-m",
+          "parent",
+        ],
+        expect: ExpectSuccess,
+      )
+      let next_commit = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/env",
+        args: [
+          "GIT_AUTHOR_DATE=@946684800 +0000",
+          "GIT_COMMITTER_DATE=@946684800 +0000",
+          "git",
+          "-c",
+          "user.name=A. U. Thor",
+          "-c",
+          "user.email=author@example.invalid",
+          "commit-tree",
+          trim(s: root_tree.stdout),
+          "-p",
+          trim(s: parent_commit.stdout),
+          "-m",
+          "next",
+        ],
+        expect: ExpectSuccess,
+      )
+      let main_seeded = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["update-ref", "refs/heads/main", trim(s: parent_commit.stdout)],
+        expect: ExpectSuccess,
+      )
+      let head_symbolic = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["symbolic-ref", "HEAD", "refs/heads/main"],
+        expect: ExpectSuccess,
+      )
+      let tag_created = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/env",
+        args: [
+          "GIT_AUTHOR_DATE=@946684800 +0000",
+          "GIT_COMMITTER_DATE=@946684800 +0000",
+          "git",
+          "-c",
+          "user.name=A. U. Thor",
+          "-c",
+          "user.email=author@example.invalid",
+          "tag",
+          "-a",
+          "v0",
+          trim(s: parent_commit.stdout),
+          "-m",
+          "bounded annotated tag",
+        ],
+        expect: ExpectSuccess,
+      )
+
+      let sha256_initialized = gunbc.WitnessBin.Run(
+        workdir: sha256_fixture.path,
+        bin_path: "git",
+        args: ["init", "-q", "--bare", "--object-format=sha256", "."],
+        expect: ExpectSuccess,
+      )
+      let sha256_source_written = Filesystem.Write(
+        path: sha256_source_path,
+        content: "source",
+      )
+      let sha256_blob = gunbc.WitnessBin.Run(
+        workdir: sha256_fixture.path,
+        bin_path: "git",
+        args: ["--git-dir=.", "hash-object", "-w", "source"],
+        expect: ExpectSuccess,
+      )
+      let sha256_format = gunbc.WitnessBin.Run(
+        workdir: sha256_fixture.path,
+        bin_path: "git",
+        args: ["--git-dir=.", "rev-parse", "--show-object-format"],
+        expect: ExpectSuccess,
+      )
+
+      let head_advanced = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "update-ref",
+          "HEAD",
+          trim(s: next_commit.stdout),
+          trim(s: parent_commit.stdout),
+        ],
+        expect: ExpectSuccess,
+      )
+      let stale_refused = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "update-ref",
+          "refs/heads/main",
+          trim(s: parent_commit.stdout),
+          trim(s: parent_commit.stdout),
+        ],
+        expect: ExpectFailure,
+      )
+      let missing_target_refused = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "update-ref",
+          "refs/heads/nonexistent",
+          "cccccccccccccccccccccccccccccccccccccccc",
+        ],
+        expect: ExpectFailure,
+      )
+      let fsck = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["fsck", "--strict", "--no-dangling"],
+        expect: ExpectSuccess,
+      )
+
+      let main_read_back = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", "refs/heads/main"],
+        expect: ExpectSuccess,
+      )
+      let head_read_back = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["symbolic-ref", "HEAD"],
+        expect: ExpectSuccess,
+      )
+      let tag_oid = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["rev-parse", "refs/tags/v0"],
+        expect: ExpectSuccess,
+      )
+      let tag_type = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["cat-file", "-t", "refs/tags/v0"],
+        expect: ExpectSuccess,
+      )
+      let git_version = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: ["--version"],
+        expect: ExpectSuccess,
+      )
+      let tree_wire = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "-c",
+          "core.quotePath=false",
+          "ls-tree",
+          "-z",
+          "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
+          trim(s: root_tree.stdout),
+        ],
+        expect: ExpectSuccess,
+      )
+      let modes = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "ls-tree",
+          "--format=%(objectmode)",
+          trim(s: root_tree.stdout),
+        ],
+        expect: ExpectSuccess,
+      )
+      let paths = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "-c",
+          "core.quotePath=false",
+          "ls-tree",
+          "--format=%(path)",
+          trim(s: root_tree.stdout),
+        ],
+        expect: ExpectSuccess,
+      )
+      let index = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "git",
+        args: [
+          "ls-files",
+          "-z",
+          "--format=%(objectmode)%x00%(objectname)%x00%(stage)%x00%(path)",
+        ],
+        expect: ExpectSuccess,
+      )
+      let link_target = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/readlink",
+        args: ["link"],
+        expect: ExpectSuccess,
+      )
+      let link_is_symlink = gunbc.WitnessBin.Run(
+        workdir: fixture.path,
+        bin_path: "/usr/bin/test",
+        args: ["-L", "link"],
+        expect: ExpectSuccess,
+      )
+      let executable_is_executable = shell.Test.IsExecutable(path: run_path)
+      let readme_read_back = Filesystem.Read(path: readme_path)
+      let run_read_back = Filesystem.Read(path: run_path)
+      let raw_read_back = Filesystem.Read(path: raw_path)
+      let src_keep_read_back = Filesystem.Read(path: src_keep_path)
+
+      let cleaned_fixture = shell.Remove.RecursiveForce(path: fixture.path)
+      let cleaned_sha256 = shell.Remove.RecursiveForce(path: sha256_fixture.path)
+
+      let all_operations_succeeded = initialized.success
+          && readme_written.success
+          && run_written.success
+          && raw_written.success
+          && src_created.success
+          && src_keep_written.success
+          && run_executable.success
+          && link_created.success
+          && added.success
+          && regular_oid.success
+          && executable_oid.success
+          && symlink_oid.success
+          && empty_tree.success
+          && gitlink_commit.success
+          && gitlink_indexed.success
+          && root_tree.success
+          && empty_blob_oid.success
+          && subtree_oid.success
+          && parent_commit.success
+          && next_commit.success
+          && main_seeded.success
+          && head_symbolic.success
+          && tag_created.success
+          && sha256_initialized.success
+          && sha256_source_written.success
+          && sha256_blob.success
+          && sha256_format.success
+          && head_advanced.success
+          && !stale_refused.success
+          && !missing_target_refused.success
+          && fsck.success
+          && main_read_back.success
+          && head_read_back.success
+          && tag_oid.success
+          && tag_type.success
+          && git_version.success
+          && tree_wire.success
+          && modes.success
+          && paths.success
+          && index.success
+          && link_target.success
+          && link_is_symlink.success
+          && executable_is_executable.executable
+          && readme_read_back.success
+          && run_read_back.success
+          && raw_read_back.success
+          && src_keep_read_back.success
+          && cleaned_fixture.success
+          && cleaned_sha256.success
+
+      let content_addresses_grounded = trim(s: regular_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_regular) as String)
+          && trim(s: executable_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_executable) as String)
+          && trim(s: symlink_oid.stdout) == (git_object_id_content_hash(oid: sha1_blob_symlink) as String)
+          && trim(s: empty_blob_oid.stdout) == (git_object_id_content_hash(oid: sha1_empty_blob) as String)
+          && trim(s: empty_tree.stdout) == (git_object_id_content_hash(oid: sha1_empty_tree) as String)
+          && trim(s: subtree_oid.stdout) == (git_object_id_content_hash(oid: sha1_subtree) as String)
+          && trim(s: gitlink_commit.stdout) == (git_object_id_content_hash(oid: sha1_gitlink) as String)
+          && trim(s: root_tree.stdout) == (git_object_id_content_hash(oid: sha1_root_tree) as String)
+          && trim(s: parent_commit.stdout) == (git_object_id_content_hash(oid: sha1_parent_commit) as String)
+          && trim(s: next_commit.stdout) == (git_object_id_content_hash(oid: sha1_next_commit) as String)
+          && trim(s: tag_oid.stdout) == (git_object_id_content_hash(oid: sha1_tag) as String)
+          && trim(s: sha256_blob.stdout) == (git_object_id_content_hash(oid: sha256_object) as String)
+          && trim(s: sha256_format.stdout) == "sha256"
+
+      let tree_modes_grounded = count(split(s: trim(s: modes.stdout), delimiter: "\n")) == 6
+          && string_contains(s: modes.stdout, pattern: "100644")
+          && string_contains(s: modes.stdout, pattern: "100755")
+          && string_contains(s: modes.stdout, pattern: "120000")
+          && string_contains(s: modes.stdout, pattern: "040000")
+          && string_contains(s: modes.stdout, pattern: "160000")
+
+      let read_back_grounded = trim(s: main_read_back.stdout) == trim(s: next_commit.stdout)
+          && trim(s: head_read_back.stdout) == "refs/heads/main"
+          && trim(s: tag_type.stdout) == "tag"
+          && string_contains(s: git_version.stdout, pattern: "git version ")
+          && string_contains(s: paths.stdout, pattern: raw_name)
+          && trim(s: link_target.stdout) == "readme"
+          && readme_read_back.content == "source"
+          && run_read_back.content == "run"
+          && raw_read_back.content == "source"
+          && src_keep_read_back.content == ""
+
+      if all_operations_succeeded
+        && content_addresses_grounded
+        && tree_modes_grounded
+        && read_back_grounded {
+        match git_decode_ls_tree_z(
+          payload: utf8_encode_bytes(s: tree_wire.stdout),
+          format: GitObjectFormatSha1,
+        ) {
+          GitLsTreeZRefused { cause: _ } =>
+            GitR0LiveFixtureExecutionRefused {
+              diagnostic: "git-ls-tree-z-decode-refused",
+            }
+          GitLsTreeZDecoded { entries: observed_tree_entries } =>
+            match git_decode_ls_files_stage_z(
+              payload: utf8_encode_bytes(s: index.stdout),
+              format: GitObjectFormatSha1,
+            ) {
+              GitLsFilesStageZRefused { cause: _ } =>
+                GitR0LiveFixtureExecutionRefused {
+                  diagnostic: "git-ls-files-stage-z-decode-refused",
+                }
+              GitLsFilesStageZDecoded { entries: observed_index_entries } =>
+                match git_model_update_ref_exact(
+                  repo: complete_fixture_repository(),
+                  name: "HEAD",
+                  new_oid: sha1_next_commit,
+                  expected_old: sha1_parent_commit,
+                ) {
+                  GitRefTransitionModeled { repository, transition: _ } =>
+                    match git_project_repository(
+                      repo: repository,
+                      tree_oid: sha1_root_tree,
+                    ) {
+                      GitProjectionRefused { cause: _ } =>
+                        GitR0LiveFixtureExecutionRefused {
+                          diagnostic: "modeled-projection-refused",
+                        }
+                      GitProjected { projection } =>
+                        let observed_main = observed_sha1_oid(
+                          stdout: main_read_back.stdout,
+                        )
+                        let observation = GitR0ReadBackObservation {
+                          git_version: trim(s: git_version.stdout),
+                          object_format: GitObjectFormatSha1,
+                          tree_oid: observed_sha1_oid(stdout: root_tree.stdout),
+                          tree_entries: observed_tree_entries,
+                          tag_oids: [observed_sha1_oid(stdout: tag_oid.stdout)],
+                          refs: [
+                            GitRefRecord {
+                              name: "refs/heads/main",
+                              target: DirectTarget { oid: observed_main },
+                            },
+                            GitRefRecord {
+                              name: "HEAD",
+                              target: SymbolicTarget {
+                                ref_name: trim(s: head_read_back.stdout)
+                              },
+                            },
+                          ],
+                          index: observed_index_entries,
+                          worktree: [
+                            GitWorktreeRegular {
+                              path: path_regular,
+                              executable: false,
+                              content: utf8_encode_bytes(
+                                s: readme_read_back.content,
+                              ),
+                            },
+                            GitWorktreeRegular {
+                              path: path_executable,
+                              executable: executable_is_executable.executable,
+                              content: utf8_encode_bytes(
+                                s: run_read_back.content,
+                              ),
+                            },
+                            GitWorktreeRegular {
+                              path: path_non_ascii,
+                              executable: false,
+                              content: utf8_encode_bytes(
+                                s: raw_read_back.content,
+                              ),
+                            },
+                            GitWorktreeRegular {
+                              path: path_subtree_member,
+                              executable: false,
+                              content: utf8_encode_bytes(
+                                s: src_keep_read_back.content,
+                              ),
+                            },
+                            GitWorktreeSymlink {
+                              path: path_symlink,
+                              target: utf8_encode_bytes(
+                                s: trim(s: link_target.stdout),
+                              ),
+                            },
+                          ],
+                          unavailable: [],
+                        }
+                        GitR0LiveFixtureObserved {
+                          outcome: git_verify_independent_read_back(
+                            projection: projection,
+                            observation: observation,
+                          ),
+                          observed_tree_entries: observed_tree_entries,
+                        }
+                    }
+                  _ => GitR0LiveFixtureExecutionRefused {
+                    diagnostic: "modeled-ref-transition-refused",
+                  }
+                }
+              }
+            }
+      } else {
+        GitR0LiveFixtureExecutionRefused {
+          diagnostic: join(
+            [
+              concat("all=", to_string(all_operations_succeeded)),
+              concat("content=", to_string(content_addresses_grounded)),
+              concat("modes_ok=", to_string(tree_modes_grounded)),
+              concat("readback=", to_string(read_back_grounded)),
+              concat("add=", to_string(added.success)),
+              concat("gitlink=", to_string(gitlink_indexed.success)),
+              concat("gitlink_err=", gitlink_indexed.stderr),
+              concat("tree=", to_string(root_tree.success)),
+              concat("tree_err=", root_tree.stderr),
+              concat("parent=", to_string(parent_commit.success)),
+              concat("parent_err=", parent_commit.stderr),
+              concat("next=", to_string(next_commit.success)),
+              concat("next_err=", next_commit.stderr),
+              concat("tag=", to_string(tag_created.success)),
+              concat("tag_err=", tag_created.stderr),
+              concat("sha256=", to_string(sha256_blob.success)),
+              concat("sha256_err=", sha256_blob.stderr),
+              concat("advance=", to_string(head_advanced.success)),
+              concat("advance_err=", head_advanced.stderr),
+              concat("stale_success=", to_string(stale_refused.success)),
+              concat("missing_success=", to_string(missing_target_refused.success)),
+              concat("fsck=", to_string(fsck.success)),
+              concat("fsck_err=", fsck.stderr),
+              concat("modes=", modes.stdout),
+              concat("index=", index.stdout),
+              concat("paths=", paths.stdout),
+            ],
+            "|",
+          ),
+        }
+      }
+    }
+  }
+}
+
+test fn witness_git_cli_fixture_hashes_projects_and_independently_reads_back() -> Bool {
+  match git_r0_typed_execution_read_back() {
+    GitR0LiveFixtureObserved {
+      outcome: GitReadBackVerified { observation },
+      observed_tree_entries: _,
+    } =>
+      observation.tree_oid == sha1_root_tree
+        && observation.tag_oids == [sha1_tag]
+        && count(observation.tree_entries) == 6
+        && count(observation.index) == 6
+        && count(observation.worktree) == 5
+    _ => false
+  }
+}
