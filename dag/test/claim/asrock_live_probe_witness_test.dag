@@ -31,7 +31,7 @@ test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
       init: false,
       f: (acc, row) =>
         acc || (row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr)
-          && row.verdict == ProbeAbsent)
+          && row.verdict == extdeps.boards.asrock_rack.ProbeAbsent)
     )
 }
 

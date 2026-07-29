@@ -254,6 +254,14 @@ data roster_registry: List<RosterRegistration> = [
       reason: "the hand-drawn stage0 crate split: per-crate module membership is hand-listed (stage0_std_primitive_modules and siblings) while the true relation is the module import closure — enrolled 2026-07-23 off two drift incidents this class caused silently (std_currency absent from std-core after #6977 added the measure→currency edge, so v1-stage0-std-core stopped building standalone; the partition allow-block lacked the monolith's recursion_limit so v1-stage0-extdeps-languages failed on serde json_internal). Nothing in CI builds the partition crate libs, so the drift had zero signal (sheet row ts-group-partition-drift)",
       dissolve_on: "the emitted-crate-partition thread derives the crate layout ByDerivation from the module graph (docs/plans/emitted-crate-partition-design.md), at which point the hand lists delete; interim backstop = an executing per-crate cargo-check consumer in the CI build job"
     }
+  },
+  RosterRegistration {
+    roster: roster_decl(module_path: "gunbc.materialization_provider_targets", decl_name: "materialization_provider_targets"),
+    unit_kind: "ad-hoc cache consumer target (CacheInterfaceId) of the std.materialization_provider contract",
+    membership: DeclaredFrontier {
+      reason: "each row names an existing cited cache row that today answers lookups through an ad-hoc carrier and later consumes the contract's typed provider_serve/provider_admit outcomes; per-row reason and dissolve_on live in the ProviderContractTarget rows (parent mandate 6B, model-only — targets declared, no consumer flips)",
+      dissolve_on: "consumer flips route each cache's lookups through std.materialization_provider; rows retire per flip and the roster deletes when empty"
+    }
   }
 ]
 
