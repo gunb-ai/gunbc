@@ -1,0 +1,107 @@
+module extdeps.pin
+
+import std.types { NonEmptyStr, String, Bool, ContentHash }
+import std.integer { PositiveInt }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity, VersionConstraint }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "reproducible-builds.org/docs/definition/"
+  }
+}
+
+data pin_citation_note: String = "Cites the Reproducible Builds definition, whose stated relevant attributes of a build environment include 'dependencies and their versions' — which is exactly what this module models: a dependency named by an exact version identity plus the expected content identity of the artifact, so a build's inputs are recreatable rather than whatever the host happened to have. The authority is deliberately LANGUAGE-AGNOSTIC and SUBJECT-AGNOSTIC. Cargo.lock and flake.lock are named in pin_selection_note as PRECEDENTS for the discipline, which is the honest role for them: instances of the practice, not the authority over it. Precedent for a concept-level anchor in extdeps: extdeps.version cites en.wikipedia.org/wiki/Software_versioning rather than any one ecosystem's version scheme. Not en.wikipedia.org/wiki/Lock_file — that page is file locking for mutual exclusion, a homonym, not dependency pinning."
+
+data pin_dimension_note: String = "PINNING IS A DIMENSION, NOT A PROPERTY OF CLI TOOLS (operator, 2026-07-29). The first version of this model was a ToolPin record keyed by tool_name: NonEmptyStr, which was wrong three ways and the operator caught it by reading the shape. (1) It referred to a tool by NAME STRING while extdeps.tools already passes the modeled row by value everywhere else — resolve(tool: CliTool), ResolvedTool { tool: CliTool }, NotFound { tool: CliTool } — so ToolPin was the single site in that namespace joining to a modeled type through string equality, the anemic-leaf failure of DESIGN section 2 with tool identity then living in two places. (2) It fixed the GRAIN at CLI tools, when the corpus already contains other pinnable subjects that are not CliTool at all: extdeps.cache.sccache SccacheBinaryRelease, extdeps/docker and extdeps/container/docker_ce images, apt packages, GitHub releases. A type per pinnable thing is the same mistake as ten hand-rolled integer types before Compose<Int, MachineWidth<N>> — N types where there is one axis. (3) Naming the type after its first consumer is how the grain got fixed too narrow, and the general shape was available from the start. So Pin is parameterized by its SUBJECT, following the Vendor<Domain> precedent (dag/extdeps/vendor.dag): the subject is a type argument, the pin is one concept at every breadth. Pin<CliTool>, Pin<SccacheBinaryRelease>, Pin<ContainerImage> are instantiations, not siblings."
+
+data pin_authority_note: String = "The single authority for pinned dependency identity. A pinned dependency is an exact version identity plus the expected content identity of the artifact — never a location, never a range. Both fields are REQUIRED, so a digest-less or range-only pin is unwritable rather than validated (DESIGN section 5 construction, not a post-check). This module mints NO new digest concept: expected_identity is the same std.types.ContentHash that extdeps.realization.emit_on_demand_host's ResolvedBuildContext.toolchain_identity already carries for the OBSERVED side (#7388, which digests logical name + executable bytes + version-probe output). Pin declares expected and #7388 observes actual, so this is one identity concept with two ends rather than a second authority. It is NOT yet a reconcile: toolchain_identity is a whole-build AGGREGATE, not a per-subject identity, so no consumer may compare a Pin against it. The prerequisite that has to land first is stated in full at pin_observed_grain_prerequisite_note below."
+
+data pin_observed_grain_prerequisite_note: String = "review 44388, carried forward from the ToolPin shape: the expected and observed sides are NOT yet at the same grain, and the reconcile may not be written until they are. expected_identity above is PER SUBJECT. ResolvedBuildContext.toolchain_identity (src/v1/stage0/src/v1_interpreter.rs:8649-8677) is NOT per subject — it is seeded from a constant and hash_combined over EVERY argv in build_argvs, plus a second observe_tool call for rustc whenever the argv is cargo. It is an aggregate over the whole build command set, so it moves when an unrelated tool in the same build moves and cannot say WHICH dependency drifted; comparing one Pin against it would be a grain mismatch wearing the shape of a reconcile. The per-subject observed value already exists — it is exactly observe_tool's per-argv return, computed and then folded away unnamed — so the fix is to NAME it and re-express toolchain_identity as the derived fold over those rows, never to mint a second per-subject digest beside observe_tool (that would be the section 3 fork this lane exists to remove). BLOCKING prerequisite for the membership_reconcile instantiation. dissolve-on: feature:per-subject-observed-identity-surfaced."
+
+data pin_selection_note: String = "The refresh axis, which keeps a pin from being a freeze. Execution ALWAYS resolves an exact identity — there is no moving reference at run time, because resolving 'latest' at execution is nondeterminism at the substrate boundary (v2.std.determinism) and would make two runs of one spec disagree. How the exact identity was CHOSEN is the separable fact: ExactPin is authored directly; TrackedChannel records that the identity was resolved FROM a moving reference (a release channel, 'latest', a semver range), with a declared refresh window. It does NOT record the resolution DATE: no such field exists on the carrier today, and an earlier version of this sentence claimed one did — an absent fact described as modeled, which is the section 5 specification-without-execution trap (review 44422). The missing date is exactly what makes the refresh window undecidable today; it is tracked at pin_tracked_freshness_evidence_dissolve_on. Re-resolution is an explicit action producing a reviewable diff — the Cargo.lock / flake.lock shape. That is the INTENT of this axis; nothing here reports a pin current."
+
+data pin_refresh_window_positivity_note: String = "review 44397, and the fix is honest about how far it reaches. The finding was right that an unrestricted Int admits zero and negative refresh windows as writable substrate states. The field is therefore std.integer.PositiveInt (Nat where gt_zero), which puts the bound on the SINGLE EXISTING AUTHORITY for it — PositiveInt is already consumed by std.approximate_field, so no new bound, refinement, or validator is minted here (consume-never-fork). What this does NOT yet do is make the state unwritable, and saying otherwise would be the exact section 5 trap of editing a declaration while the realization still lies. MEASURED, not assumed: constructing TrackedChannel { channel: \"latest\", refresh_window_days: 0 } against this carrier compiles and runs clean today — the where-refinement on PositiveInt is carried in the type but not enforced by the current typechecker, and dag/std/integer.dag:28 is its only declaration site. So this is a declaration of INTENT at the correct authority, not a construction wall, and it is recorded as such rather than counted as closed. dissolve-on: feature:where-refinement-enforced — when the typechecker enforces where-clauses, this field becomes unwritable at non-positive values with no edit here, and that is precisely why the bound belongs on PositiveInt rather than on a local check: the wall arrives from the single authority. Until then a consumer must still refuse a non-positive window at its own boundary, typed and located."
+
+data pin_refresh_window_measure_dissolve_on: String = "feature:pin-refresh-window-measure — DISSOLVE-ON: a calendar-day carrier exists to consume (dag/std/measure.dag stops at Minute today: Nanosecond, Microsecond, Millisecond, Second, Minute — there is no Day, and a calendar day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); then refresh_window_days becomes that carrier and this row deletes. Consume-never-fork: do NOT mint a Day wrapper here in extdeps — that would be the section 3 fork this lane exists to remove (same discipline as std.measure amortization_months_dissolve_on, whose own note ends 'do not mint a third month wrapper'). Tracked rather than prose so the flat scalar is countable while it stands. Independent of the POSITIVITY bound above: grounding the unit does not settle the bound, and settling the bound does not ground the unit."
+
+data pin_tracked_freshness_evidence_dissolve_on: String = "feature:pin-tracked-freshness-evidence — DISSOLVE-ON: v2.std.datetime gains day arithmetic (it has no day-difference, epoch-day, or days-between fn today, and zero CalendarDate constructors in use anywhere in the corpus) AND TrackedChannel carries resolved_on: CalendarDate; then pin_currency_gap gains a genuine positive arm derived from stored evidence plus an observed date, refresh_window_days becomes load-bearing, and TrackedChannel becomes eligible for integrity admission. Until both land, pin_currency_gap always names a gap and every TrackedChannel pin refuses admission — see integrity_versus_currency_note."
+
+type PinSelection
+  = ExactPin
+  | TrackedChannel {
+      channel: NonEmptyStr
+      refresh_window_days: PositiveInt
+    }
+
+type Pin<Subject> {
+  subject: Subject
+  version: VersionIdentity
+  expected_identity: ContentHash
+  selection: PinSelection
+}
+
+data integrity_versus_currency_note: String = "Two questions were once fused under the word 'fresh', and separating them is load-bearing (review 44274). INTEGRITY asks: is the artifact in front of us the one this pin declares? That is decidable NOW — compare the observed digest to expected_identity — and it is what admission establishes. CURRENCY asks: is the declared version still the one we should be running? That is NOT decidable here for EITHER variant, and an earlier shape fabricated a positive answer for one of them: ExactPin returned PinFresh unconditionally. Authorship proves reproducibility, not currency — an exact pin authored three years ago is exactly as reproducible and exactly as rotten, and reporting it fresh forever is the 'pinned and never updated' failure this lane's refresh axis exists to prevent (operator's framing when the axis was requested: 'some way to avoid pinning and never updating'). So no arm anywhere returns a positive currency verdict: pin_currency_gap is TOTAL and always names a gap, and the word 'fresh' does not appear in this module. A consumer that needs currency reads that gap and refuses; it cannot be handed a green it did not earn."
+
+type CurrencyGap
+  = AuthoredPinHasNoReviewDate
+  | TrackedPinHasNoResolutionDate { channel: NonEmptyStr }
+
+fn pin_currency_gap<Subject>(pin: Pin<Subject>) -> CurrencyGap {
+  match pin.selection {
+    ExactPin => AuthoredPinHasNoReviewDate
+    TrackedChannel { channel: c, refresh_window_days: _ } =>
+      TrackedPinHasNoResolutionDate { channel: c }
+  }
+}
+
+data pin_refusal_cause_note: String = "Every cause is SUBJECT-AGNOSTIC, which is why they live on the generic carrier rather than beside any one instantiation. ConstraintIsNotIdentity and PinAbsent are the two ingest deficits — a range is not an identity, and no version stated at all is a DIFFERENT deficit from a stated range, so collapsing them would be a state-space conflation. TrackedResolutionUnrecorded and ObservedIdentityMismatch are the two admission refusals. All four name their deficit and are countable, so a migration frontier burns down visibly instead of being silently assumed complete."
+
+type PinRefusalCause
+  = ConstraintIsNotIdentity { constraint: VersionConstraint }
+  | PinAbsent
+  | TrackedResolutionUnrecorded { channel: NonEmptyStr }
+  | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
+
+data pin_admission_subject_note: String = "PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string."
+
+type PinAdmission<Subject>
+  = PinIntegrityAdmitted { pin: Pin<Subject> }
+  | PinRefused { subject: Subject, cause: PinRefusalCause }
+
+data pin_integrity_admission_note: String = "Establishes INTEGRITY ONLY, and is named so it cannot be misread as currency (review 44274). PinIntegrityAdmitted asserts exactly one thing: the observed artifact is the one this pin declares. It asserts NOTHING about whether the declared version is still the right one — that is pin_currency_gap, which is total and always names a gap, so currency can never be silently inherited from an integrity pass. A TrackedChannel pin refuses integrity admission outright (review 44242): its expected_identity was resolved from a moving reference and no record of that resolution is carried, so there is no evidence the stored digest corresponds to any decision anyone made. ExactPin proceeds to the digest comparison, which is the real, decidable check. Both arms refuse rather than widen; neither substitutes a superset, silently re-resolves, nor proceeds on mismatch."
+
+fn admit_pin_integrity<Subject>(
+  pin: Pin<Subject>,
+  observed_identity: ContentHash,
+) -> PinAdmission<Subject> {
+  match pin.selection {
+    TrackedChannel { channel: c, refresh_window_days: _ } =>
+      PinRefused {
+        subject: pin.subject,
+        cause: TrackedResolutionUnrecorded { channel: c }
+      }
+    ExactPin =>
+      if pin.expected_identity == observed_identity {
+        PinIntegrityAdmitted { pin: pin }
+      } else {
+        PinRefused {
+          subject: pin.subject,
+          cause: ObservedIdentityMismatch {
+            expected: pin.expected_identity,
+            observed: observed_identity
+          }
+        }
+      }
+  }
+}
+
+data pin_value_eq_note: String = "The bundle member the reconcile hands to gunbc.membership_reconcile as value_eq, and the reason it does NOT compare the subject. Identity-vs-content split per that spine's authority note: the SUBJECT is the stable identity and therefore the key_of, so a version, digest, or selection change is a Modified hunk and re-upserts — an ensure that reinstalls in place — rather than a Removed plus Added pair that would tear the dependency down and reinstall it. value_eq is therefore presence-plus-content over every field that changes what gets installed or when it is re-resolved: the pinned version, the expected identity, AND the selection policy. Comparing the subject here would be redundant with the key and would make every hunk a no-op. Selection is content, not metadata: flipping ExactPin to TrackedChannel, or widening a refresh window, changes the ensure behaviour with no version or digest movement, so omitting it would emit no hunk for a real drift (review 44329). Selection is compared with the substrate's structural equality on the coproduct rather than a hand-written per-variant predicate — the closed vocabulary already decides it, so a predicate would be a second representation of a decision the substrate makes (review 44341). key_of is NOT declared here: projecting an identity out of a Subject is subject-specific, so it belongs with each instantiation, not on the generic carrier."
+
+fn pin_value_eq<Subject>(a: Pin<Subject>, b: Pin<Subject>) -> Bool {
+  (a.version == b.version)
+    && (a.expected_identity == b.expected_identity)
+    && (a.selection == b.selection)
+}
