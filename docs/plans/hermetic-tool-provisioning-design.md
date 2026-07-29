@@ -111,10 +111,37 @@ The relationship is complementary, and it fixes this lane's seam:
 
 So the pin does **not** mint a second toolchain-identity concept (which would be
 exactly the §3 fork this lane exists to remove). `ToolPin` declares the
-*expected* `ContentHash`; `resolved_build_context_identity` already computes the
-*observed* one; ensure is the reconcile between them, which is precisely
-`membership_reconcile`'s `value_eq`. P1 therefore reuses `ContentHash` and
+*expected* `ContentHash` per tool, and P1 reuses `ContentHash` and
 `observe_tool`'s digest discipline rather than defining its own.
+
+**The grains do not yet meet, and P2 is gated on closing that (`review 44388`).**
+The earlier draft of this section claimed `resolved_build_context_identity`
+already supplies the observed side and that ensure is simply `value_eq` between
+the two. That was wrong, and the code says so: `toolchain_identity`
+(`src/v1/stage0/src/v1_interpreter.rs:8649-8677`) is seeded from a constant and
+then `hash_combine`d over **every** argv in `build_argvs`, plus a second
+`observe_tool` call for `rustc` whenever the argv is `cargo`. It is an
+*aggregate over the whole build command set*, so comparing one `ToolPin`'s
+`expected_identity` against it is a category error — the aggregate changes when
+an unrelated tool in the same build changes, and it cannot say *which* tool
+drifted.
+
+The per-tool observed value nonetheless already exists: it is exactly
+`observe_tool(requested, version_args, ..)`'s return, computed per argv and then
+folded away without ever being named. So the missing piece is a *naming*, not a
+new probe — and naming it is the §3-correct move, because minting a second
+per-tool digest beside `observe_tool` would be the fork this lane removes.
+
+P2 therefore carries a prerequisite, before any reconcile is written:
+
+> Surface `observe_tool`'s per-argv result as a named per-tool observed identity,
+> and re-express `toolchain_identity` as the *derived* fold over those rows
+> rather than the authority. Only then is `ToolPin.expected_identity` comparable
+> to an observed value at the same grain, and only then does
+> `membership_reconcile`'s `value_eq` mean what this lane needs it to mean.
+
+Until that lands, treat #7388 as the *aggregate cache-key* consumer it is, not
+as the observed half of this lane's ensure.
 
 Two census entries #7388 adds rather than removes:
 

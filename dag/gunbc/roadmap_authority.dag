@@ -1096,8 +1096,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Ensure tools through one membership reconcile",
         boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
-        first_slice: "Instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it.",
-        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses.",
+        first_slice: "Surface observe_tool's per-argv result as a named per-tool observed identity and re-express toolchain_identity as the derived fold over those rows; only then instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. The reconcile cannot be written before that naming: toolchain_identity is an aggregate over every build argv, so comparing one per-tool pin against it is a grain mismatch, not a reconcile (review 44388).",
+        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile attempted against the aggregate toolchain_identity rather than a per-tool observed identity refuses as a grain mismatch.",
         out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
         handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
       )
