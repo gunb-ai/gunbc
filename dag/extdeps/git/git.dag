@@ -15,6 +15,34 @@ data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data git_rev_list_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-rev-list"
+  }
+}
+
+data git_merge_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-merge"
+  }
+}
+
+data git_checkout_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-checkout"
+  }
+}
+
+data git_pathspec_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitglossary"
+  }
+}
+
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
@@ -300,6 +328,79 @@ fn shape_git_branch_show_current_argv() -> List<String> {
   ["git", "branch", "--show-current"]
 }
 
+data git_pathspec_exclude_note: String = "PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split). gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec selected, and git requires at least one positive pathspec beside it for there to be a set to subtract from (hence the leading `.` that shape_git_diff_unmerged_excluding_argv emits). This module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow fact — and passing it as a parameter is what keeps this row from becoming the layer inversion §3 names (an argv carrying a literal it should receive as an argument)."
+
+fn git_pathspec_exclude(path: String) -> String {
+  concat(":(exclude)", path)
+}
+
+data git_argv_program_note: String = "Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step."
+
+fn git_argv_of_args(args: List<String>) -> List<String> {
+  concat(["git"], args)
+}
+
+fn shape_git_diff_unmerged_args() -> List<String> {
+  ["diff", "--name-only", "--diff-filter=U"]
+}
+
+fn shape_git_diff_unmerged_argv() -> List<String> {
+  git_argv_of_args(args: shape_git_diff_unmerged_args())
+}
+
+fn shape_git_diff_unmerged_nul_argv() -> List<String> {
+  git_argv_of_args(args: concat(shape_git_diff_unmerged_args(), ["-z"]))
+}
+
+fn shape_git_diff_unmerged_excluding_args(excluded: List<String>) -> List<String> {
+  concat(
+    concat(shape_git_diff_unmerged_args(), ["--", "."]),
+    map(excluded, p => git_pathspec_exclude(path: p))
+  )
+}
+
+fn shape_git_diff_unmerged_excluding_argv(excluded: List<String>) -> List<String> {
+  git_argv_of_args(args: shape_git_diff_unmerged_excluding_args(excluded: excluded))
+}
+
+fn shape_git_rev_list_ahead_path_limited_args(target: String, path: String) -> List<String> {
+  ["rev-list", concat("HEAD..", target), "--", path]
+}
+
+fn shape_git_rev_list_ahead_path_limited_argv(target: String, path: String) -> List<String> {
+  git_argv_of_args(
+    args: shape_git_rev_list_ahead_path_limited_args(target: target, path: path)
+  )
+}
+
+fn shape_git_merge_no_edit_argv(ref: String) -> List<String> {
+  ["git", "merge", "--no-edit", ref]
+}
+
+fn shape_git_merge_abort_argv() -> List<String> {
+  ["git", "merge", "--abort"]
+}
+
+fn shape_git_checkout_ours_argv() -> List<String> {
+  ["git", "checkout", "--ours", "--"]
+}
+
+fn shape_git_add_argv() -> List<String> {
+  ["git", "add"]
+}
+
+fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
+  ["git", "commit", "--no-verify", "--no-edit"]
+}
+
+fn shape_git_config_argv(key: String, value: String) -> List<String> {
+  ["git", "config", key, value]
+}
+
+fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
+  ["git", "rev-parse", "--verify", "--quiet", target]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
@@ -455,6 +556,67 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "Invalid date expression or not a git repository"
+    }
+  }
+
+  operation RevListAheadPathLimited {
+    input { target: GitRef, path: FilePath }
+    output { commits: List<CommitSha> from "stdout_lines" }
+    readonly
+    transport shell { argv: ["git", "rev-list", "HEAD..{target}", "--", "{path}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameOnlyUnmerged {
+    input {}
+    output {
+      paths: List<FilePath> from "stdout_lines"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-only", "--diff-filter=U"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation MergeNoEdit {
+    input { ref: GitRef }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "merge", "--no-edit", "{ref}"] }
+    exit {
+      0 => Unit
+      1 => String "Merge stopped with conflicts; the index carries unmerged entries"
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation MergeAbort {
+    input {}
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["git", "merge", "--abort"] }
+    exit {
+      0 => Unit
+      128 => String "No merge in progress to abort"
+    }
+  }
+
+  operation CheckoutOurs {
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["git", "checkout", "--ours", "--", "{path}"] }
+    exit {
+      0 => Unit
+      1 => String "Path has no stage-2 (ours) entry to check out"
+      128 => String "Not a git repository"
     }
   }
 
