@@ -1,0 +1,8 @@
+module v2.workflow.zz_probe_tmp
+
+import gunbc.ci_spec { gunbc_ci_spec }
+import v2.workflow.ci_release_build_emit { gunbc_ci_run_script }
+
+fn main() -> String {
+  gunbc_ci_run_script(spec: gunbc_ci_spec)
+}
