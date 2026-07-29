@@ -23,6 +23,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   lifecycle_row_well_formed,
   lifecycle_row_well_formed_query_scaffold,
   list_paths_all_unique,
+  manifest_state_verdict_scaffold_holds,
   partition_crate_paths_complete_holds,
   path_occurrence_count,
   residue_row,
@@ -30,6 +31,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   rust_source_manifest_state_verdict,
   rust_source_manifest_state_verdict_query_scaffold,
   stage0_cargo_bin_manifest_authority_ref,
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
   stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
   stage0_rust_source_lifecycle_scaffold_note
 }
@@ -74,8 +76,13 @@ test fn scaffold_manifest_state_default_verdict_refuses_unmeasured() -> Bool {
   }
 }
 
-test fn scaffold_mechanical_checks_holds() -> Bool {
-  stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
+test fn scaffold_join_mechanical_checks_holds() -> Bool {
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
+}
+
+test fn scaffold_mechanical_checks_red_while_manifest_unmeasured() -> Bool {
+  !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
+    && !manifest_state_verdict_scaffold_holds()
 }
 
 test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {

@@ -443,12 +443,11 @@ fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
 fn manifest_state_verdict_scaffold_holds() -> Bool {
   match rust_source_manifest_state_verdict(state: rust_source_manifest_state) {
     ManifestStateScaffoldOk => true
-    ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: _ } } => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }
 }
 
-fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
+fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
   generated_repo_paths_cover_authority_holds()
     && generated_authority_subset_of_derived_holds()
     && partition_crate_paths_complete_holds()
@@ -461,6 +460,10 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
     && duplicate_exact_paths_zero_holds()
     && rust_source_lifecycle_residue_rows_well_formed()
     && rust_source_lifecycle_residue_paths_unique()
+}
+
+fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
     && manifest_state_verdict_scaffold_holds()
 }
 
