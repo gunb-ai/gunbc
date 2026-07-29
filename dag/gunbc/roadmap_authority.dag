@@ -720,7 +720,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "Relabel the existing rows as made by the old generator, and replace the single count with separate counts per generator in the same change.",
         red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. All six existing rows are recorded as made by the old generator, because that is what made them. Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
         out_of_scope: "Nothing changes which generator makes it here, and no check gets loosened to keep a number looking good.",
-        handback: "The relabelled list, the retired count, and the result of the run with the old generator taken away."
+        handback: "The relabelled list, the retired count, and a demonstration that recording a result as made by the new generator, with no receipt from the run that made it, is refused outright rather than accepted and corrected later."
       )
     ),
     active_large(
@@ -760,9 +760,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "The generator, and only the generator: it writes and builds a native version of itself, that native version writes and builds another, and the second one needs nothing from the old compiler. The other parts of the compiler are still produced the old way at this point.",
         displaced_cost: "This is the moment the new generator stops being something we produce and becomes something that produces itself.",
         first_slice: "Work through what the first native build actually needs to compile, in that order — not in order of total error count from the old generator.",
-        red_control: "A behaviour difference on the second round blocks this, every difference gets located and named, and matching bytes is never accepted as proof.",
+        red_control: "A behaviour difference on the second round blocks this, every difference gets located and named, and matching bytes is never accepted as proof. Separately, the second build has to be shown never to have reached the old compiler — run it with the old one taken away, or produce the receipt showing it was never called — because behaving the same says nothing about what it leaned on to get there.",
         out_of_scope: "Matching the old generator byte for byte is explicitly not wanted and must not be chased. Nothing here covers the rest of the compiler rebuilding itself — that is the step after this one.",
-        handback: "Both builds, the tests that tell them apart, and a named list of any differences found."
+        handback: "Both builds, the tests that tell them apart, a named list of any differences found, and the run with the old compiler taken away — or the receipt proving it was never called — for the second build."
       )
     ),
     active_large(
