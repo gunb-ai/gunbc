@@ -4,6 +4,7 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
   ManifestStateScaffoldOk,
   ManifestStateScaffoldRefused,
   MeasuredClaimsUnclassified,
+  MeasuredCountInconsistent,
   MeasuredHandMaintainedGrew,
   MeasuredNewlyUnclassified,
   RustManifestMeasured,
@@ -181,6 +182,25 @@ test fn scaffold_unmeasured_cannot_claim_zero_unclassified_red_control() -> Bool
     }
   ) {
     ManifestStateScaffoldRefused { cause: MeasuredClaimsUnclassified { count: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_measured_ratchet_red_control_inconsistent_counts_reds() -> Bool {
+  match rust_source_manifest_state_verdict(
+    state: RustManifestMeasured {
+      tracked_count: 0,
+      classified_file_grain_count: 1,
+      unclassified_count: 0,
+      newly_unclassified: 0,
+      stale_lifecycle_rows: 0,
+      duplicate_exact_paths: 0,
+      hand_maintained_count: 0,
+      hand_maintained_prior_count: 0
+    }
+  ) {
+    ManifestStateScaffoldRefused { cause: MeasuredCountInconsistent { tracked: _, classified: _, unclassified: _ } } =>
+      true
     _ => false
   }
 }

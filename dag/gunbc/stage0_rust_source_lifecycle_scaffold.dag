@@ -47,6 +47,7 @@ type RustSourceManifestStateRefusal
   | MeasuredDuplicateExactPaths { count: Int }
   | MeasuredHandMaintainedGrew { prior: Int, current: Int }
   | MeasuredClaimsUnclassified { count: Int }
+  | MeasuredCountInconsistent { tracked: Int, classified: Int, unclassified: Int }
 
 data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -59,13 +60,21 @@ data rust_source_manifest_state_verdict_query_scaffold: Disposition = Scaffold {
 
 data rust_source_manifest_state_verdict_dissolve_trigger: String = "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold query fold over RustSourceManifestState; DISSOLVES WHEN PR #7393 ZeroHandMaintainedRust V1FinishLine lands (ROADMAP.md hand-maintained-Rust-to-zero lane, authority dag/gunbc/v1_deletion_plan.dag) and manifest ratchet enforcement moves to the finish-line acceptance graph"
 
+fn rust_source_manifest_state_measured_counts_consistent(
+  tracked_count: Int,
+  classified_file_grain_count: Int,
+  unclassified_count: Int
+) -> Bool {
+  tracked_count == classified_file_grain_count + unclassified_count
+}
+
 fn rust_source_manifest_state_verdict(state: RustSourceManifestState) -> RustSourceManifestStateVerdict {
   match state {
     RustManifestUnmeasured { awaiting: awaiting } =>
       ManifestStateScaffoldRefused { cause: UnmeasuredTrackedManifest { awaiting: awaiting } }
     RustManifestMeasured {
-      tracked_count: _,
-      classified_file_grain_count: _,
+      tracked_count: tracked_count,
+      classified_file_grain_count: classified_file_grain_count,
       unclassified_count: unclassified_count,
       newly_unclassified: newly_unclassified,
       stale_lifecycle_rows: stale_lifecycle_rows,
@@ -73,7 +82,19 @@ fn rust_source_manifest_state_verdict(state: RustSourceManifestState) -> RustSou
       hand_maintained_count: hand_maintained_count,
       hand_maintained_prior_count: hand_maintained_prior_count
     } =>
-      if newly_unclassified != 0 {
+      if !rust_source_manifest_state_measured_counts_consistent(
+        tracked_count: tracked_count,
+        classified_file_grain_count: classified_file_grain_count,
+        unclassified_count: unclassified_count
+      ) {
+        ManifestStateScaffoldRefused {
+          cause: MeasuredCountInconsistent {
+            tracked: tracked_count,
+            classified: classified_file_grain_count,
+            unclassified: unclassified_count
+          }
+        }
+      } else if newly_unclassified != 0 {
         ManifestStateScaffoldRefused { cause: MeasuredNewlyUnclassified { count: newly_unclassified } }
       } else if stale_lifecycle_rows != 0 {
         ManifestStateScaffoldRefused { cause: MeasuredStaleLifecycleRows { count: stale_lifecycle_rows } }
