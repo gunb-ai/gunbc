@@ -166,12 +166,16 @@ instantiation**, never an edit to `extdeps.pin` — and if it ever requires one,
 that is the signal the dimension was modelled too narrowly.
 
 **Proven by a second consumer, not asserted.** A generic type earns nothing by
-existing. `SccacheBinaryRelease` is deliberately unlike `CliTool` — no name field,
-its own bare-string version, and *two* digests — and it instantiates `Pin`,
-`pin_value_eq` and `admit_pin_integrity` with zero edits to `extdeps.pin`
-(`pin_composes_over_a_structurally_different_subject`, green by execution).
+existing. `OciDescriptor` (`extdeps/container/oci/descriptor.dag`) is deliberately
+unlike `CliTool` — no name field, **no version field at all**, carrying a
+`mediaType` and `size` instead — and it instantiates `Pin`, `pin_value_eq` and
+`admit_pin_integrity` with zero edits to `extdeps.pin`
+(`pin_composes_over_a_structurally_different_subject`, green by execution). That
+the subject has no version while the *pin* carries one is the point rather than a
+gap: the version is the pin's own declared fact, so the dimension supplies it for
+subjects that have none.
 
-Two corrections recorded with it:
+Three corrections recorded with it:
 
 - **A claimed fork that is not one.** When proposing this revision I told the
   operator that `CliTool.min_version` and the pin's `version` were one concept
@@ -182,11 +186,31 @@ Two corrections recorded with it:
   pin ought to satisfy its subject's constraint — deferred behind
   `feature:version-constraint-satisfaction` because `extdeps.version` has no
   satisfaction fn and writing one in `extdeps/tools` would fork version semantics.
-- **A grain question the second subject exposed.** One `SccacheBinaryRelease`
-  carries two digests because one release publishes two artifacts, while
-  `Pin.expected_identity` is one hash. For multi-artifact subjects the pin subject
-  is really the *artifact* (release × platform), not the release. Recorded as
-  `feature:pin-artifact-grain` rather than settled as a side effect of a witness.
+- **The first second-consumer proof was itself unsound** (`review 44662`). It used
+  `Pin<SccacheBinaryRelease>`, which failed on both axes this lane polices. *Grain:*
+  one release carries two architecture-specific digests while `Pin` carries one
+  `expected_identity`, so either artifact's digest could be associated with the
+  undifferentiated release. I had recorded that as a tracked `dissolve-on` and
+  treated the deferral as sufficient — wrong, and the reason is specific to what a
+  proof is. A trigger-only deferral is a legitimate way to carry a known gap on a
+  *production* row; a row whose entire job is to prove the dimension composes
+  cannot rest on an ambiguous instantiation, because it then demonstrates ambiguity
+  rather than composition. *Parallel authority:* it re-minted the aarch64 hex and
+  the release version already owned by `extdeps/cache/sccache.dag`, so two copies
+  of one fact could drift — the consume-never-fork violation this lane exists to
+  remove, committed inside the witness meant to demonstrate the lane. Fixed by
+  choosing a sound subject rather than defending the unsound one: a descriptor
+  describes exactly one blob, so the grain question cannot arise, and it carries
+  `digest: ContentHash` natively so `expected_identity` is **derived** from the
+  subject rather than copied.
+- **Multi-artifact grain, kept as a finding.** For subjects that publish several
+  artifacts the pin subject is the *artifact* (release × platform), not the release.
+  That observation stands on the corpus rather than on the witness, and it is why
+  sccache was *rejected* as the proof subject. Recorded as
+  `feature:pin-artifact-grain`. Related and unfixed, belonging to no lane here:
+  `extdeps.crypto.hash.Digest` and `std.types.ContentHash` are two digest concepts
+  in one corpus — the sccache route would have needed a conversion between them,
+  which is exactly where that fork would have been laundered into this witness.
 
 Two census entries #7388 adds rather than removes:
 
