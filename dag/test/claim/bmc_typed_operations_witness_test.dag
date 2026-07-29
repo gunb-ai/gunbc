@@ -1,51 +1,113 @@
 module test.claim.bmc_typed_operations_witness
 
 import extdeps.bmc.openbmc_fan_control {
-  openbmc_fan_config_observation_filter,
-  openbmc_fan_config_projection_filter,
-  openbmc_fan_config_verify_filter,
-  openbmc_object_mapper_service_filter,
-  openbmc_sensor_numeric_value_filter,
-}
-import extdeps.ssh.password_session {
-  password_ssh_render_remote_argv,
+  OpenBmcCollectionMany,
+  OpenBmcCollectionOne,
+  OpenBmcCollectionZero,
+  OpenBmcCriticalLow,
+  OpenBmcFanConfigScalar,
+  OpenBmcReadingAt,
+  OpenBmcSensorServicesObserved,
+  OpenBmcSensorValueObserved,
+  OpenBmcTachAtOrAboveThreshold,
+  OpenBmcTachBelowThreshold,
+  OpenBmcTachThresholdUnstated,
+  OpenBmcWarningLowThreshold,
+  openbmc_object_mapper_services_rec,
+  openbmc_operation_argv,
+  openbmc_tach_health_from_floor,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn remote_argv_is_serialized_once_at_the_ssh_boundary() -> Bool {
-  password_ssh_render_remote_argv(
-    argv: ["jq", "-r", "(.data | round)", "/tmp/config.json"],
-  ) == "'jq' '-r' '(.data | round)' '/tmp/config.json'"
+test fn closed_operation_interpreter_binds_query_arguments_as_argv() -> Bool {
+  openbmc_operation_argv(
+    operation: OpenBmcFanConfigScalar {
+      config_path: "/usr/share/swampd/config.json",
+      query: OpenBmcReadingAt { index: 3 },
+    },
+  ) == [
+    "jq",
+    "-er",
+    "--argjson",
+    "index",
+    "3",
+    "[.zones[].pids[] | select(.name == \"TEMP_SOC\" and .type == \"stepwise\")][0].pid.reading | to_entries | sort_by(.key | tonumber) | .[$index].value | floor",
+    "/usr/share/swampd/config.json",
+  ]
 }
 
-test fn remote_argv_quoting_preserves_an_embedded_apostrophe_as_data() -> Bool {
-  password_ssh_render_remote_argv(
-    argv: ["printf", "%s", "operator's value"],
-  ) == "'printf' '%s' 'operator'\\''s value'"
+test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
+  match openbmc_object_mapper_services_rec(
+    content: "{\"data\":[{}]}",
+    index: 0,
+    count: 0,
+    built: [],
+  ) {
+    OpenBmcSensorServicesObserved { services: OpenBmcCollectionZero } => true
+    _ => false
+  }
 }
 
-test fn fixed_openbmc_filters_keep_policy_out_of_shell_program_construction() -> Bool {
-  string_contains(
-    s: openbmc_fan_config_projection_filter,
-    pattern: "$desired",
-  )
-    && string_contains(
-      s: openbmc_fan_config_projection_filter,
-      pattern: "TEMP_SOC",
-    )
-    && string_contains(
-      s: openbmc_fan_config_verify_filter,
-      pattern: "$desired",
-    )
-    && string_contains(
-      s: openbmc_fan_config_observation_filter,
-      pattern: "@tsv",
-    )
+test fn object_mapper_one_cardinality_is_preserved() -> Bool {
+  match openbmc_object_mapper_services_rec(
+    content: "{\"data\":[{\"xyz.openbmc_project.Hwmon-1\":{}}]}",
+    index: 0,
+    count: 1,
+    built: [],
+  ) {
+    OpenBmcSensorServicesObserved {
+      services: OpenBmcCollectionOne { value: service },
+    } => service == "xyz.openbmc_project.Hwmon-1"
+    _ => false
+  }
 }
 
-test fn typed_busctl_json_projections_are_fixed_extdeps_facts() -> Bool {
-  openbmc_object_mapper_service_filter == ".data[0] | keys[0]"
-    && openbmc_sensor_numeric_value_filter == ".data | if type == \"number\" then round else null end"
+test fn duplicate_object_mapper_matches_remain_many() -> Bool {
+  match openbmc_object_mapper_services_rec(
+    content: "{\"data\":[{\"xyz.openbmc_project.Hwmon-1\":{},\"xyz.openbmc_project.Hwmon-2\":{}}]}",
+    index: 0,
+    count: 2,
+    built: [],
+  ) {
+    OpenBmcSensorServicesObserved {
+      services: OpenBmcCollectionMany { values },
+    } => values.length() == 2
+    _ => false
+  }
+}
+
+test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
+  match openbmc_tach_health_from_floor(
+    sensor: "FAN4",
+    reading: OpenBmcSensorValueObserved { value: 899 },
+    floor: OpenBmcSensorValueObserved { value: 900 },
+    source: OpenBmcWarningLowThreshold,
+  ) {
+    OpenBmcTachBelowThreshold {
+      sensor,
+      reading_rpm,
+      minimum_rpm,
+      source: _,
+    } => sensor == "FAN4" && reading_rpm == 899 && minimum_rpm == 900
+    _ => false
+  }
+}
+
+test fn tach_at_controller_threshold_is_healthy() -> Bool {
+  match openbmc_tach_health_from_floor(
+    sensor: "FAN4",
+    reading: OpenBmcSensorValueObserved { value: 900 },
+    floor: OpenBmcSensorValueObserved { value: 900 },
+    source: OpenBmcWarningLowThreshold,
+  ) {
+    OpenBmcTachAtOrAboveThreshold {
+      sensor,
+      reading_rpm,
+      minimum_rpm,
+      source: _,
+    } => sensor == "FAN4" && reading_rpm == 900 && minimum_rpm == 900
+    _ => false
+  }
 }

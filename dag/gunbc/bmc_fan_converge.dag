@@ -287,10 +287,29 @@ type BmcFanRollbackReceipt
     }
 
 type BmcFanTypedMutationResult
-  = BmcFanTypedMutationApplied {
+  = BmcFanAppliedAndVerified {
       rollback: BmcFanRollbackReceipt,
     }
-  | BmcFanTypedMutationRefused {
+  | BmcFanAppliedWithCleanupDebt {
+      cleanup_debt: String,
+      rollback: BmcFanRollbackReceipt,
+    }
+  | BmcFanRestoredAndVerified {
+      rollback: BmcFanRollbackReceipt,
+    }
+  | BmcFanRestoredWithCleanupDebt {
+      cleanup_debt: String,
+      rollback: BmcFanRollbackReceipt,
+    }
+  | BmcFanApplyFailedAndRestored {
+      reason: String,
+      rollback: BmcFanRollbackReceipt,
+    }
+  | BmcFanApplyFailedAndRestoreFailed {
+      reason: String,
+      rollback: BmcFanRollbackReceipt,
+    }
+  | BmcFanNoEffectRefused {
       reason: String,
       rollback: BmcFanRollbackReceipt,
     }
@@ -500,11 +519,21 @@ fn bmc_fan_build_curve_steps_rec(
   built: List<BmcFanCurveStep>,
 ) -> ParsedCurveSteps {
   if readings.length() == 0 {
-    if outputs.length() == 0 && built.length() > 0 && previous_output == Present { value: 100 } {
-      CurveStepsParsed { steps: built }
+    if outputs.length() == 0 && built.length() > 0 {
+      match previous_output {
+        Present { value: 100 } => CurveStepsParsed { steps: built }
+        Present { value: _ } =>
+          CurveStepsParseRefused {
+            reason: "fan curve lacks terminal full duty",
+          }
+        Absent =>
+          CurveStepsParseRefused {
+            reason: "fan curve has no terminal duty",
+          }
+      }
     } else {
       CurveStepsParseRefused {
-        reason: "fan curve readings/outputs differ, are empty, or lack terminal full duty",
+        reason: "fan curve readings/outputs differ or are empty",
       }
     }
   } else if outputs.length() == 0 {
@@ -622,10 +651,10 @@ fn bmc_fan_observe_sensor_line(
       match services {
         OpenBmcCollectionZero => "absent"
         OpenBmcCollectionMany { values: _ } => "absent"
-        OpenBmcCollectionOne { value: service } =>
+        OpenBmcCollectionOne { value: selected_service } =>
           match openbmc_sensor_value(
             session: session,
-            service: service,
+            service: selected_service,
             sensor_path: sensor_path,
           ) {
             OpenBmcSensorValueObserved { value: observed } => to_string(observed)
@@ -1084,19 +1113,23 @@ fn bmc_fan_tach_health_for_sensor(
   if health.length() == 0 {
     none
   } else {
-    let candidate = health.first()
-    let candidate_sensor = match candidate {
-      OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
-      OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-      OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-    }
-    if candidate_sensor == sensor {
-      Present { value: candidate }
-    } else {
-      bmc_fan_tach_health_for_sensor(
-        health: health.skip(n: 1),
-        sensor: sensor,
-      )
+    match health.first() {
+      Absent => none
+      Present { value: candidate } => {
+        let candidate_sensor = match candidate {
+          OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
+          OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+          OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+        }
+        if candidate_sensor == sensor {
+          Present { value: candidate }
+        } else {
+          bmc_fan_tach_health_for_sensor(
+            health: health.skip(n: 1),
+            sensor: sensor,
+          )
+        }
+      }
     }
   }
 }
@@ -1311,14 +1344,14 @@ fn bmc_fan_remote_config_stage_path(
 }
 
 fn bmc_fan_mutation_refused(reason: String) -> BmcFanTypedMutationResult {
-  BmcFanTypedMutationRefused {
+  BmcFanNoEffectRefused {
     reason: reason,
     rollback: BmcFanRollbackNotAttempted,
   }
 }
 
 fn bmc_fan_mutation_applied() -> BmcFanTypedMutationResult {
-  BmcFanTypedMutationApplied {
+  BmcFanAppliedAndVerified {
     rollback: BmcFanRollbackNotAttempted,
   }
 }
@@ -1326,7 +1359,7 @@ fn bmc_fan_mutation_applied() -> BmcFanTypedMutationResult {
 fn bmc_fan_previous_config_restored(
   plan: BmcFanPolicyApplyPlan,
 ) -> BmcFanTypedMutationResult {
-  BmcFanTypedMutationApplied {
+  BmcFanRestoredAndVerified {
     rollback: BmcFanPreviousConfigRestored {
       config_path: plan.config_path,
       backup_path: bmc_fan_remote_backup_path(),
@@ -1339,9 +1372,22 @@ fn bmc_fan_refused_with_rollback(
   reason: String,
   rollback: BmcFanRollbackReceipt,
 ) -> BmcFanTypedMutationResult {
-  BmcFanTypedMutationRefused {
-    reason: reason,
-    rollback: rollback,
+  match rollback {
+    BmcFanRollbackNotAttempted =>
+      BmcFanNoEffectRefused { reason: reason, rollback: rollback }
+    BmcFanPreviousConfigRestored {
+      config_path: _,
+      backup_path: _,
+      firmware: _,
+    } =>
+      BmcFanApplyFailedAndRestored { reason: reason, rollback: rollback }
+    BmcFanRollbackAttemptFailed {
+      config_path: _,
+      backup_path: _,
+      firmware: _,
+      reason: _,
+    } =>
+      BmcFanApplyFailedAndRestoreFailed { reason: reason, rollback: rollback }
   }
 }
 
@@ -1349,8 +1395,50 @@ fn bmc_fan_mutation_succeeded(
   result: BmcFanTypedMutationResult,
 ) -> Bool {
   match result {
-    BmcFanTypedMutationApplied { rollback: _ } => true
-    BmcFanTypedMutationRefused { reason: _, rollback: _ } => false
+    BmcFanAppliedAndVerified { rollback: _ } => true
+    BmcFanAppliedWithCleanupDebt { cleanup_debt: _, rollback: _ } => true
+    BmcFanRestoredAndVerified { rollback: _ } => true
+    BmcFanRestoredWithCleanupDebt { cleanup_debt: _, rollback: _ } => true
+    BmcFanApplyFailedAndRestored { reason: _, rollback: _ } => false
+    BmcFanApplyFailedAndRestoreFailed { reason: _, rollback: _ } => false
+    BmcFanNoEffectRefused { reason: _, rollback: _ } => false
+  }
+}
+
+fn bmc_fan_record_cleanup_debt(
+  result: BmcFanTypedMutationResult,
+  cleanup_debt: String,
+) -> BmcFanTypedMutationResult {
+  match result {
+    BmcFanAppliedAndVerified { rollback } =>
+      BmcFanAppliedWithCleanupDebt {
+        cleanup_debt: cleanup_debt,
+        rollback: rollback,
+      }
+    BmcFanRestoredAndVerified { rollback } =>
+      BmcFanRestoredWithCleanupDebt {
+        cleanup_debt: cleanup_debt,
+        rollback: rollback,
+      }
+    BmcFanAppliedWithCleanupDebt { cleanup_debt: prior, rollback } =>
+      BmcFanAppliedWithCleanupDebt {
+        cleanup_debt: join([prior, "; ", cleanup_debt], ""),
+        rollback: rollback,
+      }
+    BmcFanRestoredWithCleanupDebt { cleanup_debt: prior, rollback } =>
+      BmcFanRestoredWithCleanupDebt {
+        cleanup_debt: join([prior, "; ", cleanup_debt], ""),
+        rollback: rollback,
+      }
+    BmcFanApplyFailedAndRestored { reason, rollback } =>
+      BmcFanRestoredWithCleanupDebt {
+        cleanup_debt: join([reason, "; ", cleanup_debt], ""),
+        rollback: rollback,
+      }
+    BmcFanApplyFailedAndRestoreFailed { reason, rollback } =>
+      BmcFanApplyFailedAndRestoreFailed { reason: reason, rollback: rollback }
+    BmcFanNoEffectRefused { reason, rollback } =>
+      BmcFanNoEffectRefused { reason: reason, rollback: rollback }
   }
 }
 
@@ -1562,13 +1650,17 @@ fn bmc_fan_restore_previous_locked(
         desired: none,
       )
       match restarted {
-        BmcFanTypedMutationApplied { rollback: _ } =>
+        BmcFanAppliedAndVerified { rollback: _ } =>
           bmc_fan_previous_config_restored(plan: plan)
-        BmcFanTypedMutationRefused {
+        BmcFanNoEffectRefused {
           reason: reason,
           rollback: _,
         } =>
           bmc_fan_mutation_refused(reason: reason)
+        _ =>
+          bmc_fan_mutation_refused(
+            reason: "controller restart returned an impossible transaction outcome",
+          )
       }
     }
   }
@@ -1584,12 +1676,12 @@ fn bmc_fan_failure_with_restore(
     plan: plan,
   )
   match restored {
-    BmcFanTypedMutationApplied { rollback: rollback } =>
+    BmcFanRestoredAndVerified { rollback: rollback } =>
       bmc_fan_refused_with_rollback(
         reason: reason,
         rollback: rollback,
       )
-    BmcFanTypedMutationRefused {
+    BmcFanNoEffectRefused {
       reason: restore_reason,
       rollback: _,
     } =>
@@ -1600,6 +1692,16 @@ fn bmc_fan_failure_with_restore(
           backup_path: bmc_fan_remote_backup_path(),
           firmware: plan.observed.firmware,
           reason: restore_reason,
+        },
+      )
+    _ =>
+      bmc_fan_refused_with_rollback(
+        reason: reason,
+        rollback: BmcFanRollbackAttemptFailed {
+          config_path: plan.config_path,
+          backup_path: bmc_fan_remote_backup_path(),
+          firmware: plan.observed.firmware,
+          reason: "restore returned an impossible transaction outcome",
         },
       )
   }
@@ -1710,7 +1812,7 @@ fn bmc_fan_apply_from_local_files(
         destination_path: plan.config_path,
       )
       match published {
-        BmcFanTypedMutationRefused {
+        BmcFanNoEffectRefused {
           reason: reason,
           rollback: _,
         } =>
@@ -1719,16 +1821,16 @@ fn bmc_fan_apply_from_local_files(
             plan: plan,
             reason: reason,
           )
-        BmcFanTypedMutationApplied { rollback: _ } => {
+        BmcFanAppliedAndVerified { rollback: _ } => {
           let restarted = bmc_fan_restart_and_verify_controller(
             session: session,
             plan: plan,
             desired: Present { value: desired },
           )
           match restarted {
-            BmcFanTypedMutationApplied { rollback: _ } =>
+            BmcFanAppliedAndVerified { rollback: _ } =>
               bmc_fan_mutation_applied()
-            BmcFanTypedMutationRefused {
+            BmcFanNoEffectRefused {
               reason: reason,
               rollback: _,
             } =>
@@ -1737,8 +1839,20 @@ fn bmc_fan_apply_from_local_files(
                 plan: plan,
                 reason: reason,
               )
+            _ =>
+              bmc_fan_failure_with_restore(
+                session: session,
+                plan: plan,
+                reason: "controller verification returned an impossible transaction outcome",
+              )
           }
         }
+        _ =>
+          bmc_fan_failure_with_restore(
+            session: session,
+            plan: plan,
+            reason: "publication returned an impossible transaction outcome",
+          )
       }
     }
   }
@@ -1835,8 +1949,9 @@ fn bmc_fan_apply_locked(
               }
               let cleaned = shell.Remove.RecursiveForce(path: temp.path)
               if !cleaned.success && bmc_fan_mutation_succeeded(result: result) {
-                bmc_fan_mutation_refused(
-                  reason: "fan policy applied but local staging cleanup failed",
+                bmc_fan_record_cleanup_debt(
+                  result: result,
+                  cleanup_debt: "local staging cleanup failed",
                 )
               } else {
                 result
@@ -1873,8 +1988,9 @@ fn bmc_fan_apply_typed(
     )
     if bmc_fan_mutation_succeeded(result: result)
       && (!stage_cleanup.success || !lock_cleanup.success) {
-      bmc_fan_mutation_refused(
-        reason: "fan policy applied but typed remote transaction cleanup failed",
+      bmc_fan_record_cleanup_debt(
+        result: result,
+        cleanup_debt: "typed remote transaction cleanup failed",
       )
     } else {
       result
@@ -1940,8 +2056,9 @@ fn bmc_fan_rollback_typed(
     )
     if bmc_fan_mutation_succeeded(result: restored)
       && (!stage_cleanup.success || !lock_cleanup.success) {
-      bmc_fan_mutation_refused(
-        reason: "fan rollback completed but typed remote transaction cleanup failed",
+      bmc_fan_record_cleanup_debt(
+        result: restored,
+        cleanup_debt: "typed remote rollback cleanup failed",
       )
     } else {
       restored
@@ -2059,14 +2176,24 @@ fn bmc_fan_rollback_after_failed_readback(
     plan: plan,
   )
   match rollback {
-    BmcFanTypedMutationApplied { rollback: _ } =>
+    BmcFanRestoredAndVerified { rollback: _ } =>
       exit_failure(
         reason: concat(
           "BMC fan convergence failed independent readback and restored the previous config: ",
           reason,
         ),
       )
-    BmcFanTypedMutationRefused {
+    _ =>
+      exit_failure(
+        reason: join(
+          [
+            "BMC fan convergence failed independent readback; rollback produced a non-refusal effect outcome requiring receipt persistence: ",
+            reason,
+          ],
+          "",
+        ),
+      )
+    BmcFanNoEffectRefused {
       reason: rollback_reason,
       rollback: rollback_receipt,
     } =>
@@ -2186,7 +2313,7 @@ fn bmc_fan_rollback_previous_with_credential(
             plan: plan,
           )
           match rollback {
-            BmcFanTypedMutationRefused {
+            BmcFanNoEffectRefused {
               reason: reason,
               rollback: rollback_receipt,
             } =>
@@ -2199,7 +2326,7 @@ fn bmc_fan_rollback_previous_with_credential(
                   ),
                 ),
               )
-            BmcFanTypedMutationApplied { rollback: _ } =>
+            BmcFanRestoredAndVerified { rollback: _ } =>
               match bmc_fan_observe_with_credential(
                 target: target,
                 credential: credential,
@@ -2222,6 +2349,10 @@ fn bmc_fan_rollback_previous_with_credential(
                       )
                   }
               }
+            _ =>
+              exit_failure(
+                reason: "BMC fan rollback produced a cleanup-debt or impossible effect outcome; the typed receipt must be retained",
+              )
           }
         }
       }
@@ -2296,7 +2427,7 @@ fn bmc_fan_converge_with_credential(
               plan: plan,
             )
             match apply_run {
-              BmcFanTypedMutationRefused {
+              BmcFanNoEffectRefused {
                 reason: reason,
                 rollback: rollback_receipt,
               } =>
@@ -2309,7 +2440,7 @@ fn bmc_fan_converge_with_credential(
                     ),
                   ),
                 )
-              BmcFanTypedMutationApplied { rollback: _ } =>
+              BmcFanAppliedAndVerified { rollback: _ } =>
               match bmc_fan_observe_with_credential(
                 target: target,
                 credential: credential,
@@ -2363,8 +2494,12 @@ fn bmc_fan_converge_with_credential(
                         reason: "post-apply classification remained drifted",
                       )
                   }
+                }
               }
-            }
+              _ =>
+                exit_failure(
+                  reason: "BMC fan apply produced a cleanup-debt or non-primary effect outcome; the typed receipt must be retained",
+                )
             }
           }
           }

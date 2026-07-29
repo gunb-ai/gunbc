@@ -813,12 +813,12 @@ fn openbmc_tach_health(
               reason: "ObjectMapper service binding is ambiguous",
             },
           }
-        OpenBmcCollectionOne { value: service } =>
+        OpenBmcCollectionOne { value: selected_service } =>
           openbmc_tach_health_for_binding(
             session: session,
             sensor: sensor,
             sensor_path: sensor_path,
-            service: service,
+            service: selected_service,
           )
       }
   }
