@@ -1,0 +1,120 @@
+module v1.compiler.infer_occurrence_binding
+
+import std.types { String }
+import std.occurrence_binding {
+  OccurrenceBound,
+  OccurrenceUnbound,
+  OccurrenceAmbiguous,
+  AmbiguousBindingCandidates,
+}
+import std.occurrence_binding_resolve {
+  module_path_binding_decide,
+}
+
+import v1.compiler.infer_env { GlobalBareCandidate }
+
+data infer_occurrence_binding_canonical_decide_note: String = "v1 production adapter: global_bare chain and func parent-closure cardinality route through std.occurrence_binding_resolve.module_path_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate enumeration stays in infer_env/infer_sigs; cardinality never re-implements 0/1/many."
+
+type ModulePathBindingProjection
+  = ModulePathBindingHit { owner: String }
+  | ModulePathBindingMiss
+  | ModulePathBindingAmbiguous { owners: List<String> }
+
+fn project_module_path_binding_decide(
+  env_module_path: String,
+  owners: List<String>
+) -> ModulePathBindingProjection {
+  match module_path_binding_decide(
+    env_module_path: env_module_path,
+    owners: owners,
+  ) {
+    OccurrenceBound {
+      binding: binding,
+    } =>
+      ModulePathBindingHit {
+        owner: binding.candidate.containment.terminal,
+      }
+    OccurrenceUnbound { occurrence: _ } => ModulePathBindingMiss
+    OccurrenceAmbiguous {
+      occurrence: _,
+      candidates: AmbiguousBindingCandidates {
+        first: first,
+        second: second,
+        rest: rest,
+      },
+    } =>
+      ModulePathBindingAmbiguous {
+        owners: concat(
+          [first.containment.terminal],
+          [second.containment.terminal],
+          fold(
+            rest,
+            init: [],
+            f: (acc, candidate) =>
+              list_push(acc, candidate.containment.terminal),
+          ),
+        ),
+      }
+  }
+}
+
+fn global_bare_chain_owner_from_decide(
+  env_module_path: String,
+  chain: List<GlobalBareCandidate>
+) -> GlobalBareCandidate? {
+  match project_module_path_binding_decide(
+    env_module_path: env_module_path,
+    owners: chain |> map(c => c.module_path),
+  ) {
+    ModulePathBindingHit { owner: owner } =>
+      chain
+        |> filter(c => c.module_path == owner)
+        |> first
+    ModulePathBindingMiss => Absent
+    ModulePathBindingAmbiguous { owners: _ } => Absent
+  }
+}
+
+fn global_bare_chain_ambiguity_labels_from_decide(
+  env_module_path: String,
+  chain: List<GlobalBareCandidate>,
+  name: String
+) -> List<String> {
+  match project_module_path_binding_decide(
+    env_module_path: env_module_path,
+    owners: chain |> map(c => c.module_path),
+  ) {
+    ModulePathBindingAmbiguous { owners: owners } =>
+      owners |> map(owner => concat(owner, ".", name))
+    _ => []
+  }
+}
+
+fn func_parent_closure_ambiguity_labels_from_decide(
+  env_module_path: String,
+  owners: List<String>,
+  name: String
+) -> List<String> {
+  match project_module_path_binding_decide(
+    env_module_path: env_module_path,
+    owners: owners,
+  ) {
+    ModulePathBindingAmbiguous { owners: ambiguous_owners } =>
+      ambiguous_owners |> map(owner => concat(owner, ".", name))
+    _ => []
+  }
+}
+
+fn func_parent_closure_owner_count_from_decide(
+  env_module_path: String,
+  owners: List<String>
+) -> Int {
+  match project_module_path_binding_decide(
+    env_module_path: env_module_path,
+    owners: owners,
+  ) {
+    ModulePathBindingHit { owner: _ } => 1
+    ModulePathBindingMiss => 0
+    ModulePathBindingAmbiguous { owners: _ } => 2
+  }
+}

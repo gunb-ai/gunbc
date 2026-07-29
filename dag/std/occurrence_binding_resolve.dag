@@ -1,0 +1,311 @@
+module std.occurrence_binding_resolve
+
+import std.algebra { FreeMonoid, Empty, Cons }
+import std.types { String, Bool }
+import std.occurrence_binding {
+  ContainmentPath,
+  BindingOccurrence,
+  BindingCandidate,
+  OccurrenceBindingResult,
+  occurrence_binding_from_candidates,
+}
+import std.occurrence_identity {
+  OccurrenceId,
+  OccurrenceContainmentPath,
+  OccurrenceTransport,
+  OccurrenceCategory,
+  OccurrenceIndexEntry,
+  DeclarationOccurrence,
+  ReferenceOccurrence,
+  TypeOccurrence,
+  LexicalValueOccurrence,
+  CallableOccurrence,
+  ConstructorOccurrence,
+  FieldOccurrence,
+  MethodOccurrence,
+  NamespaceSegmentOccurrence,
+  occurrence_containment_paths_equal,
+}
+
+data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through occurrence_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
+
+data occurrence_binding_resolve_module_path_scaffold_note: String = "STAGED ADOPTION: module-path keyed candidate producers (global_bare chain, func parent closure) bridge owner module paths into BindingCandidate<String> containment paths until every production reference site threads exact OccurrenceContainmentPath identity from OccurrenceTransport. Cardinality still folds only through occurrence_binding_decide."
+
+data occurrence_binding_resolve_module_path_scaffold_dissolve_on: String = "DISSOLVE-ON: type, value, and callee production consumers enumerate BindingCandidate<OccurrenceId> from OccurrenceTransport by execution; then delete module-path scaffold producers and both scaffold rows."
+
+fn occurrence_binding_decide<N>(
+  occurrence: BindingOccurrence<N>,
+  candidates: FreeMonoid<BindingCandidate<N>>
+) -> OccurrenceBindingResult<N> {
+  occurrence_binding_from_candidates(
+    occurrence: occurrence,
+    candidates: candidates,
+  )
+}
+
+fn occurrence_containment_to_binding_path(
+  path: OccurrenceContainmentPath
+) -> ContainmentPath<OccurrenceId> {
+  ContainmentPath {
+    ancestors: path.ancestors,
+    terminal: path.terminal,
+  }
+}
+
+fn binding_occurrence_from_reference(
+  reference: ReferenceOccurrence
+) -> BindingOccurrence<OccurrenceId> {
+  BindingOccurrence {
+    containment: occurrence_containment_to_binding_path(
+      path: reference.containment,
+    ),
+  }
+}
+
+fn binding_candidate_from_declaration(
+  declaration: DeclarationOccurrence
+) -> BindingCandidate<OccurrenceId> {
+  BindingCandidate {
+    containment: occurrence_containment_to_binding_path(
+      path: declaration.containment,
+    ),
+  }
+}
+
+fn free_monoid_append<T>(
+  acc: FreeMonoid<T>,
+  item: T
+) -> FreeMonoid<T> {
+  match acc {
+    Empty => Cons { head: item, tail: Empty }
+    Cons { head: head, tail: tail } =>
+      Cons {
+        head: head,
+        tail: free_monoid_append(acc: tail, item: item),
+      }
+  }
+}
+
+fn list_to_free_monoid<T>(items: List<T>) -> FreeMonoid<T> {
+  fold(
+    items,
+    init: Empty,
+    f: (acc, item) => free_monoid_append(acc: acc, item: item),
+  )
+}
+
+fn occurrence_category_admissible(
+  reference: OccurrenceCategory,
+  declaration: OccurrenceCategory
+) -> Bool {
+  match reference {
+    TypeOccurrence =>
+      match declaration {
+        TypeOccurrence => true
+        _ => false
+      }
+    LexicalValueOccurrence =>
+      match declaration {
+        LexicalValueOccurrence => true
+        CallableOccurrence => true
+        ConstructorOccurrence => true
+        _ => false
+      }
+    CallableOccurrence =>
+      match declaration {
+        CallableOccurrence => true
+        _ => false
+      }
+    ConstructorOccurrence =>
+      match declaration {
+        ConstructorOccurrence => true
+        _ => false
+      }
+    FieldOccurrence =>
+      match declaration {
+        FieldOccurrence => true
+        _ => false
+      }
+    MethodOccurrence =>
+      match declaration {
+        MethodOccurrence => true
+        _ => false
+      }
+    NamespaceSegmentOccurrence =>
+      match declaration {
+        NamespaceSegmentOccurrence => true
+        _ => false
+      }
+  }
+}
+
+fn occurrence_index_entry_for_declaration(
+  transport: OccurrenceTransport,
+  declaration: DeclarationOccurrence
+) -> OccurrenceIndexEntry? {
+  transport.index.entries
+    |> filter(entry =>
+      entry.projection.occurrence.value == declaration.occurrence.value
+    )
+    |> first
+}
+
+fn occurrence_containment_path_contains_ancestor(
+  ancestors: FreeMonoid<OccurrenceId>,
+  target: OccurrenceId
+) -> Bool {
+  match ancestors {
+    Empty => false
+    Cons { head: head, tail: tail } =>
+      if head.value == target.value {
+        true
+      } else {
+        occurrence_containment_path_contains_ancestor(
+          ancestors: tail,
+          target: target,
+        )
+      }
+  }
+}
+
+fn occurrence_containment_path_is_prefix_of(
+  prefix: OccurrenceContainmentPath,
+  path: OccurrenceContainmentPath
+) -> Bool {
+  if occurrence_containment_paths_equal(left: prefix, right: path) {
+    true
+  } else if prefix.terminal.value == path.terminal.value {
+    occurrence_containment_ancestors_are_prefix_of(
+      prefix_ancestors: prefix.ancestors,
+      path_ancestors: path.ancestors,
+    )
+  } else {
+    occurrence_containment_path_contains_ancestor(
+      ancestors: path.ancestors,
+      target: prefix.terminal,
+    )
+  }
+}
+
+fn occurrence_containment_ancestors_are_prefix_of(
+  prefix_ancestors: FreeMonoid<OccurrenceId>,
+  path_ancestors: FreeMonoid<OccurrenceId>
+) -> Bool {
+  match prefix_ancestors {
+    Empty => true
+    Cons { head: prefix_head, tail: prefix_tail } =>
+      match path_ancestors {
+        Empty => false
+        Cons { head: path_head, tail: path_tail } =>
+          if prefix_head.value == path_head.value {
+            occurrence_containment_ancestors_are_prefix_of(
+              prefix_ancestors: prefix_tail,
+              path_ancestors: path_tail,
+            )
+          } else {
+            false
+          }
+      }
+  }
+}
+
+fn declaration_exposed_on_reference_chain(
+  declaration: DeclarationOccurrence,
+  reference: ReferenceOccurrence
+) -> Bool {
+  occurrence_containment_path_is_prefix_of(
+    prefix: declaration.containment,
+    path: reference.containment,
+  )
+}
+
+fn declaration_matches_reference_segment(
+  transport: OccurrenceTransport,
+  declaration: DeclarationOccurrence,
+  reference: ReferenceOccurrence,
+  segment: String
+) -> Bool {
+  match occurrence_index_entry_for_declaration(
+    transport: transport,
+    declaration: declaration,
+  ) {
+    Present { value: entry } =>
+      entry.projection.authored_name == segment
+        && occurrence_category_admissible(
+          reference: reference.category,
+          declaration: declaration.category,
+        )
+        && declaration_exposed_on_reference_chain(
+          declaration: declaration,
+          reference: reference,
+        )
+    Absent => false
+  }
+}
+
+fn binding_candidates_for_reference(
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence,
+  segment: String
+) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
+  let matching = transport.declarations
+    |> filter(declaration =>
+      declaration_matches_reference_segment(
+        transport: transport,
+        declaration: declaration,
+        reference: reference,
+        segment: segment,
+      )
+    )
+  list_to_free_monoid(
+    items: matching
+      |> map(declaration =>
+        binding_candidate_from_declaration(declaration: declaration)
+      ),
+  )
+}
+
+fn resolve_reference_occurrence_binding(
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence,
+  segment: String
+) -> OccurrenceBindingResult<OccurrenceId> {
+  occurrence_binding_decide(
+    occurrence: binding_occurrence_from_reference(reference: reference),
+    candidates: binding_candidates_for_reference(
+      transport: transport,
+      reference: reference,
+      segment: segment,
+    ),
+  )
+}
+
+fn module_path_binding_occurrence(module_path: String) -> BindingOccurrence<String> {
+  BindingOccurrence {
+    containment: ContainmentPath {
+      ancestors: Empty,
+      terminal: module_path,
+    },
+  }
+}
+
+fn module_path_binding_candidate(owner: String) -> BindingCandidate<String> {
+  BindingCandidate {
+    containment: ContainmentPath {
+      ancestors: Empty,
+      terminal: owner,
+    },
+  }
+}
+
+fn module_path_binding_decide(
+  env_module_path: String,
+  owners: List<String>
+) -> OccurrenceBindingResult<String> {
+  occurrence_binding_decide(
+    occurrence: module_path_binding_occurrence(module_path: env_module_path),
+    candidates: list_to_free_monoid(
+      items: owners |> map(owner => module_path_binding_candidate(owner: owner)),
+    ),
+  )
+}
