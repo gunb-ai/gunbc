@@ -60,6 +60,10 @@ data nfr_reason_provider_terminal_absorb: String = "terminal-state absorption ov
 
 data nfr_dissolve_provider_terminal_absorb: String = "ProviderExecutionState and WorkerProcessEvidence carry a DERIVED terminality projection from inhabitance (dag/std/algebra, DESIGN §3/§4 — the same move as derived equality), so these folds match on the partition rather than on the variant list, the shared arm becomes a named case instead of a wildcard, and the rows delete."
 
+data nfr_reason_verification_producer_absent: String = "NOT terminal-state absorption, which is why this row carries its own reason rather than the shared provider one it first landed under: verification_segment has no terminal arm to absorb into, because Verify has no authoritative receipt producer yet. Every arm — including ProviderCompleted — answers WorkflowSegmentPending, so the match selects only the operator-facing detail string and decides no behaviour. Enumerating the remaining provider variants would clone a Pending arm per variant. The Pending-on-agent-success arm is the deliberate DESIGN §5 refusal to fabricate a verification fact from provider evidence, and it is load-bearing until the producer exists."
+
+data nfr_dissolve_verification_producer_absent: String = "the Verify receipt producer lands: the WorkItemExecutionContract's ModeledValidationCommand runs in the attempt worktree against one immutable candidate revision and persists a receipt, at which point this function folds over that receipt instead of over provider state, its arms carry distinct WorkflowSegmentStates, and the row deletes. It does NOT dissolve on the derived-terminality projection that clears its four siblings — a terminality partition over ProviderExecutionState leaves every arm answering Pending."
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_dispatch_actuator.dag::live_session_row_with_process" },
@@ -83,8 +87,8 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/roadmap_workflow_progress.dag::verification_segment" },
-    reason: nfr_reason_provider_terminal_absorb,
-    trigger: TriggerProse { text: nfr_dissolve_provider_terminal_absorb },
+    reason: nfr_reason_verification_producer_absent,
+    trigger: TriggerProse { text: nfr_dissolve_verification_producer_absent },
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger" },
