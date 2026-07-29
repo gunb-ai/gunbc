@@ -1487,11 +1487,20 @@ type PijulDeliveryOutcome
     }
   | PijulDeliveryRefused { cause: PijulDeliveryRefusal }
 
-fn pijul_find_change(
+fn pijul_recorded_change_index(
   changes: List<PijulRecordedChange>,
-  hash: PijulChangeHash,
-) -> PijulRecordedChange? {
-  changes |> filter(change => pijul_change_hash(change: change) == hash) |> first
+) -> Map<PijulChangeHash, PijulRecordedChange> {
+  fold(
+    changes,
+    init: empty_map(),
+    f: fn(index, change) {
+      map_insert(
+        index,
+        pijul_change_hash(change: change),
+        change,
+      )
+    },
+  )
 }
 
 type PijulDeliveryDependencyIssue {
@@ -1504,27 +1513,18 @@ type PijulDeliveryUnavailableIssue {
 }
 
 fn pijul_delivery_dependency_issue(
-  repository: PijulDecodedRepository,
-  delivered: List<PijulChangeHash>,
+  available: Map<PijulChangeHash, PijulRecordedChange>,
   resulting: List<PijulChangeHash>,
 ) -> PijulDeliveryDependencyIssue? {
-  delivered
+  let resulting_index = pijul_scan_unique(items: resulting).seen
+  resulting
     |> flat_map(hash =>
-      match pijul_find_change(changes: repository.state.changes, hash: hash) {
+      match map_get(available, hash) {
         Present { value: change } =>
           change.dependencies
             |> filter(dependency =>
-              !pijul_hash_present(
-                  changes: resulting,
-                  target: dependency.change,
-                )
-                || match pijul_find_change(
-                  changes: repository.state.changes,
-                  hash: dependency.change,
-                ) {
-                  Present { value: _ } => false
-                  Absent => true
-                }
+              !map_contains_key(resulting_index, dependency.change)
+                || !map_contains_key(available, dependency.change)
             )
             |> map(dependency => PijulDeliveryDependencyIssue {
               change: hash,
@@ -1533,6 +1533,16 @@ fn pijul_delivery_dependency_issue(
         Absent => []
       }
     )
+    |> first
+}
+
+fn pijul_delivery_unavailable_issue(
+  available: Map<PijulChangeHash, PijulRecordedChange>,
+  changes: List<PijulChangeHash>,
+) -> PijulDeliveryUnavailableIssue? {
+  changes
+    |> filter(change => !map_contains_key(available, change))
+    |> map(change => PijulDeliveryUnavailableIssue { change: change })
     |> first
 }
 
@@ -1553,18 +1563,13 @@ fn pijul_plan_delivery(
       cause: PijulDeliveryTargetMissing { channel: channel_name }
     }
     Present { value: channel } =>
-      match delivered
-        |> filter(hash =>
-          match pijul_find_change(
-            changes: repository.state.changes,
-            hash: hash,
-          ) {
-            Present { value: _ } => false
-            Absent => true
-          }
-        )
-        |> map(hash => PijulDeliveryUnavailableIssue { change: hash })
-        |> first {
+      let available = pijul_recorded_change_index(
+        changes: repository.state.changes,
+      )
+      match pijul_delivery_unavailable_issue(
+        available: available,
+        changes: delivered,
+      ) {
         Present { value: issue } => PijulDeliveryRefused {
           cause: PijulDeliveryChangeUnavailable { change: issue.change }
         }
@@ -1577,8 +1582,7 @@ fn pijul_plan_delivery(
             right: unique_delivered,
           )
           match pijul_delivery_dependency_issue(
-            repository: repository,
-            delivered: unique_delivered,
+            available: available,
             resulting: resulting,
           ) {
             Present { value: issue } => PijulDeliveryRefused {
@@ -1587,10 +1591,21 @@ fn pijul_plan_delivery(
                 dependency: issue.dependency,
               }
             }
-            Absent => PijulDeliveryAdmissible {
-              channel: channel_name,
-              resulting_changes: resulting,
-            }
+            Absent =>
+              match pijul_delivery_unavailable_issue(
+                available: available,
+                changes: resulting,
+              ) {
+                Present { value: issue } => PijulDeliveryRefused {
+                  cause: PijulDeliveryChangeUnavailable {
+                    change: issue.change,
+                  }
+                }
+                Absent => PijulDeliveryAdmissible {
+                  channel: channel_name,
+                  resulting_changes: resulting,
+                }
+              }
           }
         }
       }

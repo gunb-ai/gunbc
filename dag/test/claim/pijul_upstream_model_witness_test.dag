@@ -854,6 +854,66 @@ test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> 
   }
 }
 
+test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() -> Bool {
+  let base = fixture_repository()
+  let existing = PijulRecordedChange {
+    identity: fixture_identity(hash: pijul_change_left),
+    dependencies: [
+      PijulDependency {
+        change: pijul_change_missing,
+        kind: PijulStructuralDependency,
+      },
+    ],
+    actions: [],
+    authors: ["Fixture Author"],
+    message: "existing channel member depends on unavailable history",
+    recorded_at: "provenance-only-transitive-gap",
+  }
+  let partial_channel = PijulChannel {
+    name: "partial-transitive",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_partial,
+      changes: [
+        pijul_change_root,
+        pijul_change_left,
+        pijul_change_missing,
+      ],
+      producer: PijulLogStateObserved { pijul_version: "fixture" },
+    },
+  }
+  let projection = PijulPartialProjection {
+    candidate: PijulRepositoryState {
+      changes: append(
+        base.changes
+          |> filter(change =>
+            !(change.identity.hash == pijul_change_left)
+          ),
+        items: [existing],
+      ),
+      pristine: base.pristine,
+      tree: base.tree,
+      working_copy: base.working_copy,
+      channels: append(base.channels, items: [partial_channel]),
+      current_channel: base.current_channel,
+    },
+    missing_changes: [pijul_change_missing],
+    missing_vertices: [pijul_vertex_missing],
+    missing_paths: [pijul_path_missing],
+  }
+  match pijul_plan_delivery(
+    projection: projection,
+    channel_name: "partial-transitive",
+    delivered: [pijul_change_right],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryMissingDependency { change, dependency },
+    } =>
+      change == pijul_change_left
+        && dependency == pijul_change_missing
+    _ => false
+  }
+}
+
 test fn witness_pijul_duplicate_channel_member_refuses_capture() -> Bool {
   let base = fixture_projection()
   let duplicate = PijulChannel {
