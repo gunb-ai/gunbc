@@ -836,9 +836,9 @@ fn bmc_fan_parse_curve(config: OpenBmcFanConfigObservation) -> ParsedFanCurve {
       if percent_count(controller.minimum_duty) > 100
         || percent_count(controller.sensor_failsafe_duty) > 100
         || percent_count(controller.zone_failsafe_duty) > 100
-        {
+      {
         FanCurveParseRefused {
-          reason: "fan curve duty or hysteresis is outside its admissible range",
+          reason: "fan curve duty is outside its admissible range",
         }
       } else {
         match bmc_fan_build_curve_steps(
