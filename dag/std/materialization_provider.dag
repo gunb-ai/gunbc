@@ -41,11 +41,66 @@ type DeclaredInput {
   digest: ContentHash
 }
 
-type ArtifactRequest {
-  kind: ArtifactKindId
-  subject_digest: ContentHash
-  declared_inputs: List<DeclaredInput>
-  required_outputs: List<ArtifactOutputId>
+data materialization_provider_request_construction_note: String = "The request is a COPRODUCT, not a freely-filled record (codex review 44175, DESIGN section 5 correctness-by-construction): a record carrying both the kind discriminator and a caller-supplied required_outputs list left the illegal state WRITABLE — a resolve request with an empty output roster would let provider_admit accept an artifact lacking the compile-clean diagnostic union, and helper constructors that merely offer the right shape do not forbid the wrong one. Here the caller can only name a request FAMILY; kind, declared inputs, and required outputs are all DERIVED from the variant through request_fold, so an under-specified obligation roster cannot be expressed at all. A new family is a new variant, and the fold's totality makes every derivation a type error until it is answered."
+
+type ArtifactRequest
+  = ParseModuleRequest { source_digest: ContentHash, compiler: DeclaredInput }
+  | TypecheckModuleRequest {
+      source_digest: ContentHash,
+      direct_import_interfaces: List<DeclaredInput>,
+      compiler: DeclaredInput
+    }
+  | ResolveClosureRequest { closure_digest: ContentHash, compiler: DeclaredInput }
+
+fn request_fold<T>(
+  req: ArtifactRequest,
+  parse_module: fn(ContentHash, DeclaredInput) -> T,
+  typecheck_module: fn(ContentHash, List<DeclaredInput>, DeclaredInput) -> T,
+  resolve_closure: fn(ContentHash, DeclaredInput) -> T
+) -> T {
+  match req {
+    ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
+    TypecheckModuleRequest { source_digest: sd, direct_import_interfaces: ii, compiler: c } =>
+      typecheck_module(sd, ii, c)
+    ResolveClosureRequest { closure_digest: cd, compiler: c } => resolve_closure(cd, c)
+  }
+}
+
+fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => parse_source_artifact_kind,
+    typecheck_module: (sd, ii, c) => typed_module_artifact_kind,
+    resolve_closure: (cd, c) => resolved_graph_artifact_kind
+  )
+}
+
+fn request_subject_digest(req: ArtifactRequest) -> ContentHash {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => sd,
+    typecheck_module: (sd, ii, c) => sd,
+    resolve_closure: (cd, c) => cd
+  )
+}
+
+fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [c],
+    typecheck_module: (sd, ii, c) => concat(ii, [c]),
+    resolve_closure: (cd, c) => [c]
+  )
+}
+
+fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [output_parse_tree, output_parse_diagnostics],
+    typecheck_module: (sd, ii, c) => [output_typed_module_interface, output_typecheck_diagnostics],
+    resolve_closure: (cd, c) =>
+      [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union]
+  )
 }
 
 fn declared_input_digest(input: DeclaredInput) -> ContentHash {
@@ -63,10 +118,10 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
   content_hash_tagged(
     tag: "materialization_provider.request",
     payload: content_hash_combine(
-      left: content_hash_atom(value: req.kind),
+      left: content_hash_atom(value: request_kind(req: req)),
       right: content_hash_combine(
-        left: req.subject_digest,
-        right: declared_inputs_digest(inputs: req.declared_inputs)
+        left: request_subject_digest(req: req),
+        right: declared_inputs_digest(inputs: request_declared_inputs(req: req))
       )
     )
   )
@@ -112,14 +167,15 @@ fn request_artifact_binding(
   observed_digest: ContentHash
 ) -> RequestArtifactBinding {
   let key = request_key(req: req)
-  if (artifact.kind == req.kind) == false {
-    BindingKindMismatch { requested: req.kind, found: artifact.kind }
+  let kind = request_kind(req: req)
+  if (artifact.kind == kind) == false {
+    BindingKindMismatch { requested: kind, found: artifact.kind }
   } else if (artifact.request_key == key) == false {
     BindingWrongArtifact { key: key, found_key: artifact.request_key }
   } else if (observed_digest == artifact.content_digest) == false {
     BindingWrongContent { recorded: artifact.content_digest, observed: observed_digest }
   } else {
-    match artifact_completeness(required: req.required_outputs, carried: artifact.carried_outputs) {
+    match artifact_completeness(required: request_required_outputs(req: req), carried: artifact.carried_outputs) {
       ArtifactComplete => BindingOk
       ArtifactMissingOutputs { missing: m } => BindingIncomplete { missing: m }
     }
@@ -227,41 +283,10 @@ fn provider_admit(
   }
 }
 
-data materialization_provider_request_constructor_note: String = "Constructor rows fix each request family's declared-input shape and required-output roster by construction (the canonical-order duty): parse = source content + compiler identity, requiring the parse tree AND its diagnostics; typecheck = source content + direct-import interface digests + compiler identity (the typed_module_key facts, cited in extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics; resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the compile-clean diagnostic union. A request family this module does not yet name lands as a new constructor row against the same contract — never a new outcome vocabulary."
+data materialization_provider_request_family_note: String = "Each variant fixes its family's declared-input shape and required-output roster BY CONSTRUCTION, and the derivations above are the only readers: parse = source content + compiler identity, requiring the parse tree AND its diagnostics; typecheck = source content + direct-import interface digests + compiler identity (the typed_module_key facts, cited in extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics; resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the compile-clean diagnostic union. Declared-input ORDER is fixed by request_declared_inputs, so the canonical-order duty request_key depends on is discharged by the fold rather than owed to the caller. Separate constructor functions were DELETED with the record shape (codex review 44175): a helper beside a freely-constructible record is an offer, not a wall, and a second way to spell a request is the redundancy section 2 forbids. A request family this module does not yet name lands as a new VARIANT — every derivation then fails to compile until it is answered — never a new outcome vocabulary."
 
 fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
   DeclaredInput { ref: "compiler_binary_identity", digest: digest }
-}
-
-fn parse_module_request(source_digest: ContentHash, compiler: DeclaredInput) -> ArtifactRequest {
-  ArtifactRequest {
-    kind: parse_source_artifact_kind,
-    subject_digest: source_digest,
-    declared_inputs: [compiler],
-    required_outputs: [output_parse_tree, output_parse_diagnostics]
-  }
-}
-
-fn typecheck_module_request(
-  source_digest: ContentHash,
-  direct_import_interfaces: List<DeclaredInput>,
-  compiler: DeclaredInput
-) -> ArtifactRequest {
-  ArtifactRequest {
-    kind: typed_module_artifact_kind,
-    subject_digest: source_digest,
-    declared_inputs: concat(direct_import_interfaces, [compiler]),
-    required_outputs: [output_typed_module_interface, output_typecheck_diagnostics]
-  }
-}
-
-fn resolve_closure_request(closure_digest: ContentHash, compiler: DeclaredInput) -> ArtifactRequest {
-  ArtifactRequest {
-    kind: resolved_graph_artifact_kind,
-    subject_digest: closure_digest,
-    declared_inputs: [compiler],
-    required_outputs: [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union]
-  }
 }
 
 data materialization_provider_reader_predicate_contract: Disposition = Terminal {
@@ -454,20 +479,6 @@ fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
     identity_unshareable_write: c => no_evicted_keys,
     identity_grade_unsupported_write: g => no_evicted_keys,
     budget_exhausted: (n, b) => no_evicted_keys
-  )
-}
-
-fn admission_store(a: ProviderAdmission, fallback: ArtifactStore) -> ArtifactStore {
-  admission_fold(
-    a: a,
-    admitted: (s, e) => s,
-    kind_mismatch_write: (r, f) => fallback,
-    wrong_artifact_write: (k, fk) => fallback,
-    wrong_content_write: (r, o) => fallback,
-    incomplete_write: m => fallback,
-    identity_unshareable_write: c => fallback,
-    identity_grade_unsupported_write: g => fallback,
-    budget_exhausted: (n, b) => fallback
   )
 }
 
