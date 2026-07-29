@@ -14,7 +14,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
   schedule_witness_entry_cited,
   seed_emitter_behavioral_wet_known_red_entries
 }
-import v2.std.algebra { any, fold_list, length }
+import v2.std.algebra { any, fold_list, freemonoid_empty, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
@@ -645,9 +645,7 @@ type EmitterProducedAuthorizationBinding {
   authorization: AuthorizedEmitterProducedDisposition
 }
 
-type EmitterProducedAuthorizationRegistry = List<EmitterProducedAuthorizationBinding>
-
-data emitter_produced_authorization_registry: EmitterProducedAuthorizationRegistry = []
+data emitter_produced_authorization_registry: List<EmitterProducedAuthorizationBinding> = freemonoid_empty<EmitterProducedAuthorizationBinding>()
 
 data emitter_produced_authorization_registry_note: String = "Review 44504: authorization registry paired with tag-only EmitterProduced frontier rows. A row tagged EmitterProduced without a registry binding fails census — the disposition API cannot carry a forged authorization record. Dissolve-on: witness-realization adds registry bindings atomically with roster flips via mint_emitter_produced_authorization_registry_binding."
 
@@ -705,11 +703,12 @@ fn mint_authorized_emitter_produced_disposition(
   }
 }
 
-fn emitter_produced_authorization_for_module(
-  module_path: String
+fn emitter_produced_authorization_for_module_in_registry(
+  module_path: String,
+  registry: List<EmitterProducedAuthorizationBinding>
 ) -> Optional<AuthorizedEmitterProducedDisposition> {
   fold_list(
-    xs: emitter_produced_authorization_registry,
+    xs: registry,
     empty: optional_absent(),
     cons: fn(found, binding) {
       match found {
@@ -722,6 +721,15 @@ fn emitter_produced_authorization_for_module(
           }
       }
     }
+  )
+}
+
+fn emitter_produced_authorization_for_module(
+  module_path: String
+) -> Optional<AuthorizedEmitterProducedDisposition> {
+  emitter_produced_authorization_for_module_in_registry(
+    module_path: module_path,
+    registry: emitter_produced_authorization_registry
   )
 }
 
@@ -750,9 +758,11 @@ fn emitter_produced_authorization_registry_length() -> Int {
   length(xs: emitter_produced_authorization_registry)
 }
 
-fn emitter_produced_authorization_registry_mint_consistent_holds() -> Bool {
+fn emitter_produced_authorization_registry_mint_consistent_in_registry(
+  registry: List<EmitterProducedAuthorizationBinding>
+) -> Bool {
   fold_list(
-    xs: emitter_produced_authorization_registry,
+    xs: registry,
     empty: true,
     cons: fn(ok, binding) {
       ok && authorized_emitter_produced_disposition_mint_consistent(
@@ -760,6 +770,12 @@ fn emitter_produced_authorization_registry_mint_consistent_holds() -> Bool {
         authorization: binding.authorization
       )
     }
+  )
+}
+
+fn emitter_produced_authorization_registry_mint_consistent_holds() -> Bool {
+  emitter_produced_authorization_registry_mint_consistent_in_registry(
+    registry: emitter_produced_authorization_registry
   )
 }
 
