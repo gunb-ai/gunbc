@@ -7,10 +7,13 @@ import v2.compiler.self_host.native_routing_frontier {
   routing_frontier_row_for_subject,
   routing_frontier_total_holds,
   routing_row_is_native,
-  family_subject
+  family_subject,
+  NativeRoutingFrontierRow,
+  NativeRouted
 }
 import v2.compiler.self_host.parity_window {
   ParityWindowReceipt,
+  ParityObservation,
   WindowObserved,
   ParityMonitorVerdict,
   ParityHolding,
@@ -24,6 +27,104 @@ import v2.compiler.self_host.parity_receipts_local { meet_join_local_observation
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+fn synthetic_routed_row(
+  observation_family: String,
+  observations: List<ParityObservation>
+) -> NativeRoutingFrontierRow {
+  NativeRoutingFrontierRow {
+    subject: family_subject(
+      module_path: "v2.test.synthetic.routed_admission_probe",
+      decl_name: "routed_admission_subject"
+    ),
+    agreement_entry: "src/v2/test/claim/execution/synthetic_admission_probe.dag",
+    agreement_function: "synthetic_admission_holds",
+    disposition: NativeRouted {
+      observation_family: observation_family,
+      observations: observations
+    }
+  }
+}
+
+fn probe_green(family: String, id: String, seq: Int) -> ParityObservation {
+  WindowObserved {
+    receipt: ParityWindowReceipt {
+      family: family,
+      cadence_window_id: id,
+      agreement_green: true,
+      warm_compile_skipped: true
+    },
+    cadence_sequence: seq
+  }
+}
+
+fn probe_red(family: String, id: String, seq: Int) -> ParityObservation {
+  WindowObserved {
+    receipt: ParityWindowReceipt {
+      family: family,
+      cadence_window_id: id,
+      agreement_green: false,
+      warm_compile_skipped: true
+    },
+    cadence_sequence: seq
+  }
+}
+
+test fn witness_routed_row_with_green_evidence_is_native() -> Bool {
+  routing_row_is_native(
+    row: synthetic_routed_row(
+      observation_family: "probe",
+      observations: [
+        probe_green(family: "probe", id: "p1", seq: 1),
+        probe_green(family: "probe", id: "p2", seq: 2)
+      ]
+    )
+  )
+}
+
+test fn witness_routed_row_with_latched_red_denies_native() -> Bool {
+  let red_then_green = [
+    probe_green(family: "probe", id: "p1", seq: 1),
+    probe_red(family: "probe", id: "p2", seq: 2),
+    probe_green(family: "probe", id: "p3", seq: 3)
+  ]
+  (routing_row_is_native(
+    row: synthetic_routed_row(observation_family: "probe", observations: red_then_green)
+  ) == false)
+    && (routing_row_is_native(
+      row: synthetic_routed_row(
+        observation_family: "probe",
+        observations: [probe_red(family: "probe", id: "p1", seq: 1)]
+      )
+    ) == false)
+}
+
+test fn witness_routed_row_without_evidence_denies_native() -> Bool {
+  routing_row_is_native(
+    row: synthetic_routed_row(observation_family: "probe", observations: [])
+  ) == false
+}
+
+test fn witness_routed_row_with_refused_evidence_denies_native() -> Bool {
+  (routing_row_is_native(
+    row: synthetic_routed_row(
+      observation_family: "probe",
+      observations: [
+        probe_green(family: "probe", id: "p1", seq: 1),
+        probe_green(family: "other_family", id: "p2", seq: 2)
+      ]
+    )
+  ) == false)
+    && (routing_row_is_native(
+      row: synthetic_routed_row(
+        observation_family: "probe",
+        observations: [
+          probe_green(family: "probe", id: "p1", seq: 2),
+          probe_green(family: "probe", id: "p2", seq: 2)
+        ]
+      )
+    ) == false)
+}
 
 fn frontier_verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
   match v {
