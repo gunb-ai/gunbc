@@ -1292,6 +1292,8 @@ const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
+const SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL: &str =
+    "src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
@@ -13315,12 +13317,19 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_witness_admission_source_scan`):
+// Registered planning artifact: `gunbc.cli_run_witness_admission_scaffold` (review 44487
+// checkable deferral receipt). Witness: `dag/test/claim/cli_run_witness_admission_hand_rust_witness_test.dag`.
 // ROADMAP lane `5-dissolve-patches` / module-identity-storage-binding Phase 1 (b)
 // (gunbc.roadmap_authority / ROADMAP.md; docs/plans/module-identity-storage-binding-design.md).
-// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms
-// until the host consumes the `.dag`-authoritative
+// The host Phase 0(b) admission key set is a hand-rolled text scan over enrollment forms in
+// dag/gunbc/ci_layer_roots.dag, src/v2/compiler/self_host/wet_receipt_enrollment.dag, and the
+// cycle-free leaf src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag.
+// The third target is NOT new HAND-RUST surface (review 44441): wet_receipt aliases the leaf as
+// `falsifier_self_host_wet_known_red_entries = seed_emitter_behavioral_wet_known_red_entries`
+// without parseable `seed_emitter_behavioral_wet_known_red_entry(` heads, so the leaf must be
+// scanned until the host consumes the `.dag`-authoritative
 // `v2.workflow.witness_admission.witness_admission_explicit_consumer_manifest` (module-binding
-// supply-carrier pattern). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
+// supply-carrier pattern; that manifest already folds falsifier_self_host_wet_known_red_entries). #7273's U3 file-grain arm (~21 LOC + one unit RED) is NOT a new
 // seed surface — it closes a false-refuse gap under this same interim so empty `f: ""` expands
 // to leaf keys the way `expand_explicit_entries` already does for execution.
 // Not a census shrink: HAND_MAINTAINED `cli_run.rs` LOC grows by the file-grain arm until
@@ -13381,10 +13390,14 @@ fn witness_admission_entry_function_keys_from_source(
             keys.push(key);
         }
     }
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("probe_red(", "entry: String"),
         ("self_host_wet_entry(", "entry: String"),
+        (
+            "seed_emitter_behavioral_wet_known_red_entry(",
+            "entry: String",
+        ),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
         ("SubstrateLongLaneRow {", ""),
@@ -13472,6 +13485,23 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
         for key in witness_admission_entry_function_keys_from_source(
             WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
             &wet,
+        ) {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+        let known_red = std::fs::read_to_string(
+            workspace_root().join(SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL),
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "witness admission: failed to read {}: {e}",
+                SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL
+            )
+        });
+        for key in witness_admission_entry_function_keys_from_source(
+            SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL,
+            &known_red,
         ) {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
@@ -29177,6 +29207,27 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn seed_emitter_behavioral_wet_known_red_entries_parse_as_explicit_consumer_keys() {
+        let synthetic =
+            "module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries\n\n\
+             data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> = [\n\
+               seed_emitter_behavioral_wet_known_red_entry(\n\
+                 entry: \"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag\",\n\
+                 f: \"self_host_body_producer_behavioral_receipt_holds\"\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"dag/test/claim/self_host_body_producer_behavioral_witness_test.dag::self_host_body_producer_behavioral_receipt_holds"
+                    .to_string()
+            ),
+            "re-homed known-red authority rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
