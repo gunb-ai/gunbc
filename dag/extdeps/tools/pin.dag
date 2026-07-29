@@ -1,8 +1,9 @@
 module extdeps.tools.pin
 
-import std.types { NonEmptyStr, String, Bool, Int, ContentHash }
+import std.types { NonEmptyStr, String, Bool, ContentHash }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.integer { PositiveInt }
 import extdeps.version { VersionIdentity, VersionConstraint }
 import extdeps.tools { CliTool }
 
@@ -23,6 +24,8 @@ data tool_pin_selection_note: String = "The refresh axis, which keeps a pin from
 
 data tracked_channel_resolution_date_absent_note: String = "TrackedChannel carries the refresh WINDOW but NOT the resolution DATE, and that is a declared gap rather than a design choice — see pin_currency_gap_note below for why the window is consequently unusable today. An earlier version of this note argued the date was rightly omitted because no fold read it; review 44242 showed that reasoning was backwards. The date is the EVIDENCE, and the correct response to nothing reading it was to make the fold read it, not to drop it. Without the date there is no fact against which currency can be established, which is exactly why every TrackedChannel pin now refuses instead of being decided by a caller-supplied number. refresh_window_days is therefore CARRIED BUT UNREAD today, and retained deliberately rather than dropped: it is the authored refresh POLICY, the half of the decision this PR can legitimately record, and deleting it would discard stated intent and repeat the same mistake in the other direction. Its companion evidence and the arithmetic land together — tracked at tool_pin_tracked_freshness_evidence_dissolve_on, with the flat-scalar unit tracked separately at tool_pin_refresh_window_measure_dissolve_on."
 
+data tool_pin_refresh_window_positivity_note: String = "review 44397, fixed by construction rather than by validation. The field was an unrestricted Int, so a zero or negative refresh window was a writable substrate state that some future consumer would have had to interpret or reject — exactly the post-hoc check DESIGN section 5 says to prefer construction over. It is now std.integer.PositiveInt (Nat where gt_zero), so a non-positive window is UNWRITABLE and no consumer can be handed one. This is consume-never-fork: PositiveInt already exists as the single authority for this bound and is already consumed by std.approximate_field, so no new bound, refinement, or validator is minted here. Note the two residues are independent and only one is closed by this row — positivity is a BOUND on the magnitude and is settled now; the missing calendar-day UNIT is still tracked separately at tool_pin_refresh_window_measure_dissolve_on, and grounding the unit later does not reopen the bound."
+
 data tool_pin_refresh_window_measure_dissolve_on: String = "feature:tool-pin-refresh-window-measure — DISSOLVE-ON: a calendar-day carrier exists to consume (dag/std/measure.dag stops at Minute today: Nanosecond, Microsecond, Millisecond, Second, Minute — there is no Day, and a calendar day is not an SI scale of seconds, so this cannot be satisfied by picking an existing row); then refresh_window_days becomes that carrier and this row deletes. Consume-never-fork: do NOT mint a Day wrapper here in extdeps — that would be the section 3 fork this lane exists to remove (same discipline as std.measure amortization_months_dissolve_on, whose own note ends 'do not mint a third month wrapper'). Tracked rather than prose so the flat scalar is countable while it stands."
 
 data tool_pin_tracked_freshness_evidence_dissolve_on: String = "feature:tool-pin-tracked-freshness-evidence — DISSOLVE-ON: v2.std.datetime gains day arithmetic (it has no day-difference, epoch-day, or days-between fn today, and zero CalendarDate constructors in use anywhere in the corpus) AND TrackedChannel carries resolved_on: CalendarDate; then pin_currency_gap gains a genuine positive arm derived from stored evidence plus an observed date, refresh_window_days becomes load-bearing, and TrackedChannel becomes eligible for integrity admission. Until both land, pin_currency_gap always names a gap and every TrackedChannel pin refuses admission — see integrity_versus_currency_note."
@@ -31,7 +34,7 @@ type PinSelection
   = ExactPin
   | TrackedChannel {
       channel: NonEmptyStr
-      refresh_window_days: Int
+      refresh_window_days: PositiveInt
     }
 
 type ToolPin {
