@@ -25058,25 +25058,34 @@ mod reference_edge_producer_tests {
     fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
         use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
 
-        fn ungrounded(facts: &[LayerImportFactRaw]) -> Vec<String> {
-            let mut out = Vec::new();
+        /// Returns (ungrounded, unreadable) as SEPARATE buckets. Folding an unreadable
+        /// file into the ungrounded one would let every assertion below pass or fail for
+        /// the wrong reason — "I could not read the file" is not "the edge is fabricated"
+        /// (DESIGN §5 state-space conflation). `path` is a repo-relative key, so it must
+        /// be anchored at the workspace root exactly as the producer does when it reads
+        /// the importer; reading it raw only works when cwd happens to be that root,
+        /// which under `cargo test` (cwd = package root) it is not.
+        fn ungrounded(facts: &[LayerImportFactRaw]) -> (Vec<String>, Vec<String>) {
+            let ws = super::workspace_root();
+            let mut ungrounded = Vec::new();
+            let mut unreadable = Vec::new();
             for f in facts.iter().filter(|f| {
                 f.layer == "LayerPrefixStd"
                     && (f.import_module.starts_with("extdeps.")
                         || f.import_module.starts_with("v2.compiler"))
             }) {
-                let Ok(content) = std::fs::read_to_string(&f.path) else {
-                    out.push(format!("{} -> {} (unreadable)", f.path, f.import_module));
+                let Ok(content) = std::fs::read_to_string(ws.join(&f.path)) else {
+                    unreadable.push(f.path.clone());
                     continue;
                 };
                 let imported = extract_import_paths(&content)
                     .iter()
                     .any(|m| m == &f.import_module);
                 if !imported && !content.contains(&f.import_module) {
-                    out.push(format!("{} -> {}", f.path, f.import_module));
+                    ungrounded.push(format!("{} -> {}", f.path, f.import_module));
                 }
             }
-            out
+            (ungrounded, unreadable)
         }
 
         let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
