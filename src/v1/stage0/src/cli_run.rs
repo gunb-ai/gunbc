@@ -211,6 +211,7 @@ fn stage0_package_root() -> &'static str {
 pub enum Stage0CargoBinManifestParseRefusal {
     BinTableMissingPath,
     BinTableCountMismatch { tables: usize, paths: usize },
+    BinTablePathUnquoted,
 }
 
 impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
@@ -221,6 +222,9 @@ impl std::fmt::Display for Stage0CargoBinManifestParseRefusal {
             }
             Self::BinTableCountMismatch { tables, paths } => {
                 write!(f, "{tables} [[bin]] tables but {paths} paths parsed")
+            }
+            Self::BinTablePathUnquoted => {
+                write!(f, "[[bin]] path value must be a quoted TOML string")
             }
         }
     }
@@ -290,9 +294,12 @@ pub fn try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
             continue;
         }
         if in_bin {
-            if let Some(path_val) = parse_bin_table_path_line(line_body) {
-                paths.push(format!("{package_root}{path_val}"));
-                current_bin_has_path = true;
+            match parse_bin_table_path_line(line_body)? {
+                Some(path_val) => {
+                    paths.push(format!("{package_root}{path_val}"));
+                    current_bin_has_path = true;
+                }
+                None => {}
             }
         }
     }
@@ -329,20 +336,23 @@ fn parse_toml_quoted_value(raw: &str) -> Option<String> {
     }
 }
 
-fn parse_bin_table_path_line(trimmed: &str) -> Option<String> {
-    let eq = trimmed.find('=')?;
+fn parse_bin_table_path_line(
+    trimmed: &str,
+) -> Result<Option<String>, Stage0CargoBinManifestParseRefusal> {
+    let eq = match trimmed.find('=') {
+        Some(eq) => eq,
+        None => return Ok(None),
+    };
     let key = trimmed[..eq].trim();
     if key != "path" {
-        return None;
+        return Ok(None);
     }
     let value = trimmed[eq + 1..].trim();
-    parse_toml_quoted_value(value).or_else(|| {
-        if value.is_empty() {
-            None
-        } else {
-            Some(value.to_string())
-        }
-    })
+    match parse_toml_quoted_value(value) {
+        Some(path) => Ok(Some(path)),
+        None if value.is_empty() => Ok(None),
+        None => Err(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted),
+    }
 }
 
 /// Tracked `.rs` paths from `git ls-files` at the workspace root (host execution surface).
@@ -31985,6 +31995,18 @@ path = "src/bin/claim_batch.rs"
                 "src/v1/stage0/src/main.rs".to_string(),
                 "src/v1/stage0/src/bin/claim_batch.rs".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn rejects_unquoted_bin_path() {
+        let fragment = "[[bin]]\nname = \"demo\"\npath = 42\n";
+        assert_eq!(
+            try_stage0_cargo_bin_repo_paths_from_manifest_str_with_package_root(
+                fragment,
+                stage0_package_root()
+            ),
+            Err(Stage0CargoBinManifestParseRefusal::BinTablePathUnquoted)
         );
     }
 
