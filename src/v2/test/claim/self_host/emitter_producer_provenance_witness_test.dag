@@ -16,6 +16,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_binding_only_does_not_authorize_holds,
   producer_emission_executed_verdict_minting_refused_at_baseline_holds,
   producer_emission_oracle_authorization_promotion_path_holds,
+  producer_emission_oracle_authorization_requires_executed_verdict_holds,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
   producer_emission_receipt_from_oracle_row,
@@ -65,7 +66,20 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.content_hash { content_hash_atom }
 
-data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until witness-realization mints via producer_emission_canonical_receipt_for_executed_verdict (review 44460). Static oracle derivation never mints BuildGreen. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
+data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier authorization routes ONLY through producer_emission_canonical_receipt_for_executed_verdict (review 44480). Static oracle derivation never mints BuildGreen. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
+
+fn witness_fabricated_executed_verdict(
+  module_path: String,
+  behavioral_probe_entry: String,
+  behavioral_probe_function: String
+) -> ProducerEmissionExecutedGreenReceipt {
+  ProducerEmissionExecutedGreenReceipt {
+    module_path: module_path,
+    behavioral_probe_entry: behavioral_probe_entry,
+    behavioral_probe_function: behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: behavioral_probe_entry)
+  }
+}
 
 test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
   producer_emission_oracle_rows_all_enrolled_holds()
@@ -82,6 +96,7 @@ test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
 test fn witness_oracle_authorization_promotion_path_holds() -> Bool {
   producer_emission_oracle_authorization_promotion_path_holds()
     && producer_emission_binding_only_does_not_authorize_holds()
+    && producer_emission_oracle_authorization_requires_executed_verdict_holds()
 }
 
 data witness_restored_binding_without_executed_receipt_red_note: String = "Review 44455/44460 RED: roster edits and static oracle derivation cannot mint BuildGreen — authorization requires witness-realization mint with admissible wet_execution_digest."
@@ -119,14 +134,22 @@ test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> B
   match producer_emission_receipt_from_oracle_row(row: oracle) {
     Present { value: receipt } =>
       producer_emission_oracle_enrolls_row(module_path: oracle.module_path, receipt: receipt)
-        && !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: receipt)
+        && !producer_emission_oracle_authorizes_row(
+          module_path: oracle.module_path,
+          receipt: receipt,
+          executed: witness_fabricated_executed_verdict(
+            module_path: oracle.module_path,
+            behavioral_probe_entry: oracle.behavioral_probe_entry,
+            behavioral_probe_function: oracle.behavioral_probe_function
+          )
+        )
     Absent => false
   }
 }
 
 fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
   match row.disposition {
-    EmitterProduced { provenance: _ } => false
+    EmitterProduced { provenance: _, executed_verdict: _ } => false
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }

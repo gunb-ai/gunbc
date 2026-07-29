@@ -55,59 +55,6 @@ type EmissionQualification
   | BehavioralEquivalent
   | ProductionRouted
 
-type EmissionQualificationAxis
-  = EmissionQualificationSourceProduced
-  | EmissionQualificationCargoGreen
-  | EmissionQualificationBehavioralEquivalent
-  | EmissionQualificationProductionRouted
-
-data emission_qualification_axis_note: String = "Canonical query surface for EmissionQualification (reviews 44328/44477 predicate-dissolution): classify through emission_qualification_axis once and match the tag — not a hand-rolled qualification_eq Bool over the coproduct."
-
-fn emission_qualification_axis(qualification: EmissionQualification) -> EmissionQualificationAxis {
-  match qualification {
-    SourceProduced => EmissionQualificationSourceProduced
-    CargoGreen => EmissionQualificationCargoGreen
-    BehavioralEquivalent => EmissionQualificationBehavioralEquivalent
-    ProductionRouted => EmissionQualificationProductionRouted
-  }
-}
-
-fn emission_qualification_axis_eq(
-  left: EmissionQualificationAxis,
-  right: EmissionQualificationAxis
-) -> Bool {
-  match left {
-    EmissionQualificationSourceProduced =>
-      match right {
-        EmissionQualificationSourceProduced => true
-        EmissionQualificationCargoGreen => false
-        EmissionQualificationBehavioralEquivalent => false
-        EmissionQualificationProductionRouted => false
-      }
-    EmissionQualificationCargoGreen =>
-      match right {
-        EmissionQualificationSourceProduced => false
-        EmissionQualificationCargoGreen => true
-        EmissionQualificationBehavioralEquivalent => false
-        EmissionQualificationProductionRouted => false
-      }
-    EmissionQualificationBehavioralEquivalent =>
-      match right {
-        EmissionQualificationSourceProduced => false
-        EmissionQualificationCargoGreen => false
-        EmissionQualificationBehavioralEquivalent => true
-        EmissionQualificationProductionRouted => false
-      }
-    EmissionQualificationProductionRouted =>
-      match right {
-        EmissionQualificationSourceProduced => false
-        EmissionQualificationCargoGreen => false
-        EmissionQualificationBehavioralEquivalent => false
-        EmissionQualificationProductionRouted => true
-      }
-  }
-}
-
 type EmissionBuildResult
   = BuildGreen
   | BuildRefused { cause: Symbol }
@@ -507,10 +454,16 @@ fn qualifications_list_eq(
         ok && any(
           xs: right,
           predicate: fn(right_q) {
-            emission_qualification_axis_eq(
-              left: emission_qualification_axis(qualification: left_q),
-              right: emission_qualification_axis(qualification: right_q)
-            )
+            match left_q {
+              SourceProduced =>
+                match right_q { SourceProduced => true _ => false }
+              CargoGreen =>
+                match right_q { CargoGreen => true _ => false }
+              BehavioralEquivalent =>
+                match right_q { BehavioralEquivalent => true _ => false }
+              ProductionRouted =>
+                match right_q { ProductionRouted => true _ => false }
+            }
           }
         )
       }
@@ -584,7 +537,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393/44435/44441/44453/44455/44460/44465/44468: enrollment binds minted BuildRefused quarantine receipts + transport roster (match Optional coproduct directly). Authorization requires BuildGreen canonical receipt — static oracle derivation always Absent; producer_emission_canonical_receipt_for_executed_verdict unwritable at baseline until witness-realization + frontier_probe_survey. No declarative executed-receipt list. Green wet nightly enrollment keys on binding presence (44453)."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44480: authorization is ONLY via producer_emission_canonical_receipt_for_executed_verdict (row + executed_verdict on EmitterProduced) — never producer_emission_canonical_receipt_for_oracle_row (static enrollment/quarantine only). producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization + frontier_probe_survey. Enrollment binds BuildRefused quarantine receipts + transport roster."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
@@ -609,14 +562,15 @@ fn producer_emission_oracle_enrolls_row(
 
 fn producer_emission_oracle_authorizes_row(
   module_path: String,
-  receipt: ProducerEmissionReceipt
+  receipt: ProducerEmissionReceipt,
+  executed: ProducerEmissionExecutedGreenReceipt
 ) -> Bool {
   match emission_build_result_axis(result: receipt.build_result) {
     EmissionBuildResultGreen =>
       any(
         xs: producer_emission_oracle_row_for_module(module_path: module_path),
         predicate: fn(row) {
-          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+          match producer_emission_canonical_receipt_for_executed_verdict(row: row, executed: executed) {
             Present { value: canonical } =>
               producer_emission_receipt_eq(left: canonical, right: receipt)
                 && match module_behavioral_transport_config_for(module_path: row.module_path) {
@@ -629,6 +583,22 @@ fn producer_emission_oracle_authorizes_row(
       )
     EmissionBuildResultRefused { cause: _ } => false
   }
+}
+
+fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> Bool {
+  let row = producer_emission_oracle_row_body_producer
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: row.module_path)
+  let executed = ProducerEmissionExecutedGreenReceipt {
+    module_path: row.module_path,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
+  }
+  !producer_emission_oracle_authorizes_row(
+    module_path: row.module_path,
+    receipt: fabricated,
+    executed: executed
+  )
 }
 
 fn producer_emission_binding_only_does_not_authorize_holds() -> Bool {
@@ -773,14 +743,19 @@ fn row_has_qualification(
   qualifications: List<EmissionQualification>,
   target: EmissionQualification
 ) -> Bool {
-  let target_axis = emission_qualification_axis(qualification: target)
   any(
     xs: qualifications,
     predicate: fn(q) {
-      emission_qualification_axis_eq(
-        left: emission_qualification_axis(qualification: q),
-        right: target_axis
-      )
+      match target {
+        SourceProduced =>
+          match q { SourceProduced => true _ => false }
+        CargoGreen =>
+          match q { CargoGreen => true _ => false }
+        BehavioralEquivalent =>
+          match q { BehavioralEquivalent => true _ => false }
+        ProductionRouted =>
+          match q { ProductionRouted => true _ => false }
+      }
     }
   )
 }
