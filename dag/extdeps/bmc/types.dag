@@ -17,7 +17,7 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -358,7 +358,7 @@ type RedfishResetType =
 type RedfishManagerResetObservation {
   action_target: NonEmptyStr
   reset_type: RedfishResetType
-  http_status: Nat
+  http_status: HttpStatus
   accepted: Bool
   evidence_scope: BmcEvidenceTemporalScope
   observed_at: EpochMs
