@@ -280,7 +280,7 @@ fn serve_resolved_graph_v1_disk_probe(
   closure_digest: ContentHash,
   compiler_digest: ContentHash,
   content_digest: ContentHash,
-  payload_byte_count: Int
+  payload_bytes: ByteSize
 ) -> ProviderLookup {
   let req = ResolveClosureRequest {
     closure_digest: closure_digest,
@@ -295,7 +295,7 @@ fn serve_resolved_graph_v1_disk_probe(
         request_key: key,
         content_digest: content_digest,
         carried_outputs: [output_resolved_graph, output_source_indices],
-        artifact_bytes: byte_size(count: payload_byte_count)
+        artifact_bytes: payload_bytes
       },
       observed_digest: content_digest
     }

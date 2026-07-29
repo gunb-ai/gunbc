@@ -57,6 +57,14 @@ fn materialization_provider_ctx() -> Result<Rc<InterpContext>, String> {
     })
 }
 
+fn byte_size_value_in_ctx(ctx: &InterpContext, count: u64) -> Result<Value, String> {
+    let count_i64 = i64::try_from(count)
+        .map_err(|_| "payload byte count exceeds i64 range for ByteSize carrier".to_string())?;
+    let args = [(Some("count".to_string()), Value::Int(count_i64))];
+    v1_interpreter::run_in_context_with_args(ctx, "byte_size", &args, false)
+        .map_err(|e| format!("byte_size: {e}"))
+}
+
 fn call_lookup_bool(ctx: &InterpContext, fn_name: &str, lookup: &Value) -> Result<bool, String> {
     let args = [(Some("l".to_string()), lookup.clone())];
     match v1_interpreter::run_in_context_with_args(ctx, fn_name, &args, false) {
@@ -154,6 +162,7 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
     content_digest: &str,
     payload_byte_count: u64,
 ) -> Result<ResolvedGraphProviderOutcome, String> {
+    let payload_bytes = byte_size_value_in_ctx(ctx, payload_byte_count)?;
     let args = [
         (
             Some("closure_digest".to_string()),
@@ -167,12 +176,7 @@ fn serve_resolved_graph_v1_disk_probe_in_ctx(
             Some("content_digest".to_string()),
             Value::Str(content_digest.to_string()),
         ),
-        (
-            Some("payload_byte_count".to_string()),
-            Value::Int(i64::try_from(payload_byte_count).map_err(|_| {
-                "payload_byte_count exceeds i64 range for provider probe".to_string()
-            })?),
-        ),
+        (Some("payload_bytes".to_string()), payload_bytes),
     ];
     let lookup = v1_interpreter::run_in_context_with_args(
         ctx,
