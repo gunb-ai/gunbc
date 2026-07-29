@@ -23,7 +23,7 @@ pub use crate::std_graph::{
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
     seed_adjacency_map,
 };
-pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc};
+pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc};
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
 use crate::std_induction::PolynomialExponent::*;

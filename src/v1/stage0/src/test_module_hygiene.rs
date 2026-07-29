@@ -12,9 +12,8 @@
 //! and the module deletes.
 //! DELETE WHEN dissolved: this module, the `cli_run` naming-walk call site, and the
 //! unit RED plants below — host then reads a modeled enroll-or-refuse lens.
-//! Lane: ROADMAP §1 "**drain the HAND_MAINTAINED queue**"
-//! (`gunbc.roadmap_authority` ticket `5-dissolve-patches`; plan anchor
-//! `dag/gunbc/v1_deletion_plan.dag` `^hand_queue_drain`).
+//! Lane: `gunbc.roadmap_authority` node `v1-hand-queue-drain`
+//! ("Drain the hand-maintained v1 product queue").
 //! Discriminating receipt (HAND-RUST GATE — unit RED plants, not a marker-count rg):
 //!   `zero_enrolled_plain_helpers_refuse_demotion`
 //!   `allowlisted_fixture_library_path_exempts_zero_enrolled_plains`
