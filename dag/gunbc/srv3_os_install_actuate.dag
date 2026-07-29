@@ -1,5 +1,14 @@
 module gunbc.srv3_os_install_actuate
 
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
+import gunbc.srv3_bmc_credential_resolve {
+  BmcCredentialAccessUpsertRequired,
+  BmcCredentialFetchRefused,
+  BmcCredentialMaterialized,
+  BmcCredentialResolution,
+  materialize_bmc_login_password,
+  observe_and_resolve_srv3_bmc_credential,
+}
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
@@ -54,9 +63,11 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
   uses net: std.resources.Network
 {
   let password = match materialize_bmc_login_password(resolution: resolution) {
-    Absent =>
-      return exit_failure(reason: "bmcweb-login: could not materialize BMC password from resolution")
-    Present { value: p } => p
+    BmcCredentialMaterialized { password: password } => password
+    BmcCredentialAccessUpsertRequired { plan: plan } =>
+      return exit_failure(reason: access_token_upsert_required_reason(plan: plan))
+    BmcCredentialFetchRefused { reason: reason } =>
+      return exit_failure(reason: concat("bmcweb-login: credential fetch refused: ", reason as String))
   }
 
   let body_content = srv3_bmcweb_login_body_content_for_resolution(

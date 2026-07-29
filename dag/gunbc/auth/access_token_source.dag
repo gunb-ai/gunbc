@@ -10,7 +10,6 @@ import std.upsert_decision {
   Refuse,
   UpsertClassification,
 }
-import extdeps.shell
 import extdeps.cloud.gcp.gcp
 
 type AccessTokenSource

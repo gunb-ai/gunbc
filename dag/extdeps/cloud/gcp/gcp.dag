@@ -210,7 +210,10 @@ service oauth2.Google {
 service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}
-    output { access_token: Secret from "stdout" }
+    output {
+      access_token: Secret from "stdout"
+      success: Bool from "exit_success"
+    }
     readonly
     transport shell { argv: ["gcloud", "auth", "print-access-token"] }
     exit {
