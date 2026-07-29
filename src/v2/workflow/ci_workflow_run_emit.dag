@@ -13,6 +13,8 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
@@ -28,9 +30,9 @@ data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITH
 
 data ci_native_cache_root_note: String = "Durable native-artifact cache root (extdeps.realization.native_artifact_cache, PerRunnerFilesystem): RUNNER_TOOL_CACHE survives the per-run RUNNER_TEMP wipe on self-hosted runners, so emit-on-demand cargo workspaces warm across runs (compile_skipped receipts). The cached transport rebases only the declared /tmp/gunbc_ scratch prefix onto this root; content-hash path components stay the key, so cross-branch sharing on one runner is benign-by-identity. The rustc-version segment derived after setup-rust-toolchain remains a coarse operator-readable partition; correctness no longer depends on it because extdeps.realization.emit_on_demand_host places the host-observed resolved build-context identity (tools + constructed environment + Cargo configuration) beneath each input realization before .native_ready is consulted. Fail-closed: rustc -V must succeed — a fabricated toolchain-unresolved slug would poison every native-cache write into one shared root (DESIGN 5). Falsifier cold control: GUNBC_CI_NATIVE_CACHE_COLD_CONTROL."
 
-data ci_native_cache_root_toolchain_segment_assign_command: String = "GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-')"
+data ci_native_cache_root_toolchain_segment_assign_command: String = "if ! GUNBC_TOOLCHAIN_SEG=$(rustc -V 2>/dev/null | tr ' ' '-'); then echo \"::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment\"; exit 1; fi"
 
-data ci_native_cache_root_toolchain_segment_missing_command: String = "if [ -z \"$GUNBC_TOOLCHAIN_SEG\" ]; then echo \"::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment\"; exit 1; fi"
+data ci_native_cache_root_toolchain_segment_missing_command: String = "if [ -z \"$GUNBC_TOOLCHAIN_SEG\" ]; then echo \"::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain\"; exit 1; fi"
 
 data ci_native_cache_root_mkdir_command: String = "mkdir -p \"$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG\""
 
@@ -114,13 +116,28 @@ fn ci_native_cache_root_intent() -> Pipeline {
 }
 
 fn ci_native_cache_root_script() -> String {
-  ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
+  concat(
+    concat("# ", concat(ci_native_cache_root_shell_emit_dissolution_trigger, "\n")),
+    ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
+  )
 }
+
+data ci_native_cache_root_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_workflow_run_emit",
+    decl_name: "ci_native_cache_root_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_native_cache_root_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)"
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 
 fn ci_native_cache_segment_script_refuses_fabrication(script: String) -> Bool {
   string_contains(s: script, pattern: "rustc -V") &&
+    string_contains(s: script, pattern: "if ! GUNBC_TOOLCHAIN_SEG=$(rustc -V") &&
     string_contains(s: script, pattern: "exit 1") &&
     !string_contains(s: script, pattern: ci_native_cache_fabricated_segment_literal)
 }

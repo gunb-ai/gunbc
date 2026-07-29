@@ -8,8 +8,11 @@ import v2.workflow.ci_workflow_run_emit {
   ci_native_cache_root_script,
   ci_native_cache_fabricated_segment_literal,
   ci_native_cache_segment_script_refuses_fabrication,
-  ci_isolate_toolchain_script_excludes_segment_derivation
+  ci_isolate_toolchain_script_excludes_segment_derivation,
+  ci_native_cache_root_shell_emit_scaffold,
+  ci_native_cache_root_shell_emit_dissolution_trigger
 }
+import std.disposition { Scaffold }
 import extdeps.github.actions { RunStep, UsesStep }
 import v2.std.collection { list_at_optional }
 import v2.std.optional { Present, Absent }
@@ -73,6 +76,16 @@ test fn witness_emitted_workflows_exclude_fabricated_segment_literal() -> Bool {
       s: expected_falsifier_yml(),
       pattern: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
     )
+}
+
+test fn witness_native_cache_root_emission_carries_dissolve_marker() -> Bool {
+  string_contains(s: ci_native_cache_root_script(), pattern: ci_native_cache_root_shell_emit_dissolution_trigger)
+}
+
+test fn witness_native_cache_root_shell_emit_is_scaffold_holds() -> Bool {
+  match ci_native_cache_root_shell_emit_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
+  }
 }
 
 test fn witness_emitted_workflows_refuse_missing_segment_red_control() -> Bool {
