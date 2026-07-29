@@ -149,10 +149,22 @@ are code the taxonomy was never designed against. Their receivers —
 `Rc<im::HashMap<…>>`, is correctly dropped by the family filter before the classifier sees
 it (it is not `clone`/`is_empty`/`iter`, so it is R6, outside R1/R2/R3 scope).
 
-**What did not move at all:** `TargetApiRequirement` (19 sites / 168 occurrences) and
-`OwnedDeconstructionRequirement` (7 / 63) are **identical across both measurements**. The
-entire delta is inside `CloneSharedRequirement`. The representation-imposed causes are
-exactly as stable as the mechanism analysis says they should be.
+**What did not move — and why that is NOT evidence.** `TargetApiRequirement` (19 sites /
+168 occurrences) and `OwnedDeconstructionRequirement` (7 / 63) are identical across both
+measurements, and the entire delta sits inside `CloneSharedRequirement`. It is tempting to
+read that as the representation-imposed causes being intrinsically stable, which is what
+the mechanism analysis predicts. **That reading is not supported, and the attribution table
+above is what refutes it:** every changed site — all four removed and all three added — is
+a clone-family lowering operation (`DerefCloneWholeValue`, `IdentReferenceClone`) and
+therefore `CloneSharedRequirement`. #7324 rewrote a fold; it did not touch collection
+method usage at all.
+
+So those two counts held still because **nothing that changed could have moved them**.
+The observation is *entailed* by the change set, not independent of it, and it carries no
+evidential weight about intrinsic stability in either direction. Separating the two
+readings needs a landing that actually perturbs vector-method usage. Recorded this way
+because an over-read stability claim is exactly the kind of thing a later sizing decision
+gets built on (caught in review by calm-badger-682).
 
 The per-emitted-file distribution is otherwise unchanged (`algebra` 413, `diagnostic` 112,
 `optional` 18, `node` 14, `fidelity_carriers` 12, `collection` 6, `witness` 6, `staging`
