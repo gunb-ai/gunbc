@@ -2460,9 +2460,14 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
-        return CompileCleanScopePlan::SkipNoAffected {
-            reason: "no touched paths in diff observation".to_string(),
-        };
+        // Mirrors `compile_clean_scope_disposition_probe`'s empty arm (#7412): an
+        // observation that saw nothing is indistinguishable from one that could not
+        // observe, so the whole tree is the only sound baseline. A main-push squash
+        // merge lands here, which is what makes main-push a real cold control.
+        eprintln!(
+            "compile-clean scope: empty touched-path set — whole-tree baseline (diff observed nothing, or could not observe)"
+        );
+        return CompileCleanScopePlan::WholeTree;
     }
 
     match compile_clean_all_touched_paths_docs_universe(touched_paths) {
@@ -28444,6 +28449,24 @@ mod witness_layer_roots_compile_clean_tests {
                     .iter()
                     .any(|p| p.starts_with("src/v2/") && *p != v2_leaf),
                 "a dag/std touch must select affected src/v2 importers"
+            );
+        });
+    }
+
+    /// An empty touched-path set widens to the whole tree rather than skipping. This is
+    /// the arm a main-push squash merge lands on, so a skip here makes main-push report
+    /// green without compiling anything. #7412 fixed the `.dag` model
+    /// (`witness_empty_touched_requires_whole_tree`) but this hot-path mirror kept
+    /// skipping and had NO test, so the model went green while the realization still
+    /// fell open — the fork stayed invisible for exactly that reason.
+    #[test]
+    fn floor_fast_plan_empty_touched_requires_whole_tree() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = HashSet::new();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[], &departed);
+            assert!(
+                matches!(plan, CompileCleanScopePlan::WholeTree),
+                "an unobservable diff must widen, not skip; got {plan:?}"
             );
         });
     }
