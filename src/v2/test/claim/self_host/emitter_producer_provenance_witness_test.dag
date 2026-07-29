@@ -9,6 +9,8 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_flip_wave_reverted_module_paths,
   producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
   producer_emission_oracle_authorizes_row,
+  producer_emission_oracle_enrolls_row,
+  producer_emission_receipt_from_oracle_row,
   producer_emission_oracle_row_00_compile_flip_wave_red,
   producer_emission_oracle_row_body_producer,
   producer_emission_oracle_row_count,
@@ -64,10 +66,20 @@ test fn witness_live_roster_emitter_produced_oracle_enrolled_holds() -> Bool {
   compiler_frontier_emitter_produced_oracle_enrolled_holds()
 }
 
-data witness_quarantine_does_not_authorize_green_red_note: String = "Review 44350/44362 RED: assemble-red quarantine probes must not authorize EmitterProduced via fabricated BuildGreen while enrolled on falsifier_self_host_wet_known_red_entries; frontier disposition stays SeedRetained until authorization greens."
+test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
+  compiler_frontier_emitter_produced_oracle_backed_holds()
+}
 
-test fn witness_quarantine_does_not_authorize_green_reds() -> Bool {
-  !compiler_frontier_emitter_produced_oracle_backed_holds()
+data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen — census must gate backed_holds, not enrollment alone."
+
+test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> Bool {
+  let oracle = producer_emission_oracle_row_body_producer
+  match producer_emission_receipt_from_oracle_row(row: oracle) {
+    Present { value: receipt } =>
+      producer_emission_oracle_enrolls_row(module_path: oracle.module_path, receipt: receipt)
+        && !producer_emission_oracle_authorizes_row(module_path: oracle.module_path, receipt: receipt)
+    Absent => false
+  }
 }
 
 fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
