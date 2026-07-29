@@ -24431,6 +24431,21 @@ mod resolution_divergence_census_tests {
         std::fs::write(&path, content).expect("write dag");
     }
 
+    /// The closed root set for a hermetic fixture corpus.
+    ///
+    /// `dag/std` alone stopped closing at #7268, which grounded std's class-1 unit
+    /// constants and relocated the POSIX exit codes onto `extdeps` rows. DESIGN §3
+    /// deleted the `std <- extdeps` layer direction precisely so a std surface may
+    /// cite the extdeps rows that ground it, so any corpus rooted at `dag/std` must
+    /// carry `dag/extdeps` to resolve.
+    fn fixture_roots(fixture: &std::path::Path) -> Vec<String> {
+        vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+            ws.join("dag/extdeps").to_string_lossy().into_owned(),
+        ]
+    }
+
     fn positive_control_fixture_root() -> std::path::PathBuf {
         super::process_workspace_root()
             .join("target")
@@ -24439,7 +24454,6 @@ mod resolution_divergence_census_tests {
 
     #[test]
     fn resolution_divergence_positive_control_planted_site() {
-        let ws = super::process_workspace_root();
         let fixture = positive_control_fixture_root();
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24479,10 +24493,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let WholeTreeCtx { ctx, .. } =
             whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
         let leaf = ctx
@@ -24570,10 +24581,15 @@ fn caller() -> Bool {
         ))
     }
 
-    fn walk_target_alias_plan_fixture_root() -> std::path::PathBuf {
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-walk-alias-plan-{}", std::process::id()))
+    /// Per-test fixture root. The `tag` is load-bearing: these fixtures are keyed by
+    /// pid, and the harness runs sibling tests concurrently *in one process*, so an
+    /// untagged root is one shared directory that each test wipes on entry and exit.
+    /// That raced — a plan built over one test's corpus observed the other's modules.
+    fn walk_target_alias_plan_fixture_root(tag: &str) -> std::path::PathBuf {
+        super::process_workspace_root().join("target").join(format!(
+            "gunbc-walk-alias-plan-{tag}-{}",
+            std::process::id()
+        ))
     }
 
     /// Two sibling modules each declare `shared_pick`; the leaf imports one *named*
@@ -24584,7 +24600,6 @@ fn caller() -> Bool {
     /// fire `fn_parent_first_hit`: a real §13 silent pick, not a synthetic count.
     #[test]
     fn resolution_divergence_silent_pick_positive_control_fires() {
-        let ws = super::process_workspace_root();
         let fixture = silent_pick_fixture_root("fire");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24633,10 +24648,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert!(
             census.silent_pick_fn_parent_first_hit >= 1,
@@ -24671,7 +24683,6 @@ fn caller() -> Bool {
     /// bare-name-via-parent resolution, only on a genuine >=2-candidate collision.
     #[test]
     fn resolution_divergence_silent_pick_clean_corpus_refusal_none() {
-        let ws = super::process_workspace_root();
         let fixture = silent_pick_fixture_root("clean");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24703,10 +24714,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert_eq!(
             census.silent_pick_fn_parent_first_hit, 0,
@@ -24726,7 +24734,6 @@ fn caller() -> Bool {
     /// under the containment_ambiguous/diverge join — refusal must stay None.
     #[test]
     fn resolution_divergence_silent_pick_benign_global_bare_lcp_filter_control() {
-        let ws = super::process_workspace_root();
         let fixture = silent_pick_fixture_root("benign-gblcp");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24761,10 +24768,7 @@ fn use_pool_dup(x: PoolDup) -> Int {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert!(
             census.silent_pick_global_bare_lcp >= 1,
@@ -24815,8 +24819,7 @@ fn use_pool_dup(x: PoolDup) -> Int {
             WalkTargetAliasPlanClass,
         };
 
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
+        let fixture = walk_target_alias_plan_fixture_root("gblcp");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
             &fixture,
@@ -24850,10 +24853,7 @@ fn use_ambig(x: AmbigType) -> Int {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
         assert!(
             plan.global_bare_lcp_events >= 1,
@@ -24931,8 +24931,7 @@ fn use_ambig(x: AmbigType) -> Int {
             WalkTargetAliasPlanClass,
         };
 
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
+        let fixture = walk_target_alias_plan_fixture_root("fnparent");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
             &fixture,
@@ -24972,10 +24971,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
         assert!(
             plan.fn_parent_first_hit_events >= 1,
