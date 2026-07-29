@@ -15,16 +15,18 @@ import std.trait_derive_shape {
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.rust.derive_contracts {
   RustSupplementalGenericBoundContractCoverageDisposition,
-  im_15_1_0_vector_trait_implementations_authority,
+  im_15_1_0_vector_clone_impl_authority,
+  im_15_1_0_vector_debug_impl_authority,
+  im_15_1_0_vector_deserialize_impl_authority,
+  im_15_1_0_vector_partial_eq_impl_authority,
+  im_15_1_0_vector_serialize_impl_authority,
   rust_1_93_btree_set_trait_implementations_authority,
   rust_1_93_hash_set_trait_implementations_authority,
-  rust_1_93_vec_trait_implementations_authority,
   rust_hash_set_supplemental_generic_bound_contract_coverage_disposition,
   serde_1_0_228_btree_set_deserialize_authority,
   serde_1_0_228_btree_set_serialize_authority,
   serde_1_0_228_hash_set_deserialize_authority,
-  serde_1_0_228_hash_set_serialize_authority,
-  serde_1_0_228_vec_serialize_authority
+  serde_1_0_228_hash_set_serialize_authority
 }
 import v2.std.compilers.target_model {
   TargetCollectionRealization,
@@ -85,7 +87,7 @@ import v2.std.node {
 }
 import v2.std.optional { Absent, Optional, Present }
 
-data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside ReprGroundingDeriveTrait remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
+data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. The production Vec surface is the emitter's im::Vector alias, so its contracts consume exact im 15.1.0 implementation authorities rather than inapplicable std::vec::Vec or serde Vec rows. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside ReprGroundingDeriveTrait remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
 
 data sgb_type_param: Symbol = ^sgb_type_param
 data sgb_left_slot: Symbol = ^sgb_left_slot
@@ -196,17 +198,21 @@ fn sgb_single_parameter_requirements(
   )
 }
 
-fn sgb_single_clone_requirement() -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+fn sgb_single_clone_requirement(
+  authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
   sgb_single_parameter_requirements(
     representation_parameter: ^sgb_left_slot,
     required_trait: ReprDeriveClone,
-    authority: im_15_1_0_vector_trait_implementations_authority
+    authority: authority
   )
 }
 
-fn sgb_deserialize_requirements() -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+fn sgb_deserialize_requirements(
+  clone_authority: ExternalAuthority
+) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
   map_insert(
-    m: sgb_single_clone_requirement(),
+    m: sgb_single_clone_requirement(authority: clone_authority),
     key: ^sgb_right_slot,
     value: sgb_requirement_set(
       required_trait: ReprDeriveOrd,
@@ -230,39 +236,47 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
     m: target_derive_supplemental_generic_bound_contract_authorities_empty(),
     key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDebug),
     value: sgb_contract(
-      authority: im_15_1_0_vector_trait_implementations_authority,
-      requirements: sgb_single_clone_requirement()
+      authority: im_15_1_0_vector_debug_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_debug_impl_authority
+      )
     )
   )
   let partial_eq_contracts = map_insert(
     m: debug_contracts,
     key: target_grounding_derive_trait_key(derive_trait: ReprDerivePartialEq),
     value: sgb_contract(
-      authority: im_15_1_0_vector_trait_implementations_authority,
-      requirements: sgb_single_clone_requirement()
+      authority: im_15_1_0_vector_partial_eq_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_partial_eq_impl_authority
+      )
     )
   )
   let serialize_contracts = map_insert(
     m: partial_eq_contracts,
     key: target_grounding_derive_trait_key(derive_trait: ReprDeriveSerialize),
     value: sgb_contract(
-      authority: im_15_1_0_vector_trait_implementations_authority,
-      requirements: sgb_single_clone_requirement()
+      authority: im_15_1_0_vector_serialize_impl_authority,
+      requirements: sgb_single_clone_requirement(
+        authority: im_15_1_0_vector_serialize_impl_authority
+      )
     )
   )
   let deserialize_contracts = map_insert(
     m: serialize_contracts,
     key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDeserialize),
     value: sgb_contract(
-      authority: im_15_1_0_vector_trait_implementations_authority,
-      requirements: sgb_deserialize_requirements()
+      authority: im_15_1_0_vector_deserialize_impl_authority,
+      requirements: sgb_deserialize_requirements(
+        clone_authority: im_15_1_0_vector_deserialize_impl_authority
+      )
     )
   )
   map_insert(
     m: deserialize_contracts,
     key: target_grounding_derive_trait_key(derive_trait: ReprDeriveClone),
     value: sgb_contract(
-      authority: im_15_1_0_vector_trait_implementations_authority,
+      authority: im_15_1_0_vector_clone_impl_authority,
       requirements: target_derive_supplemental_generic_bound_contract_requirements_empty()
     )
   )
