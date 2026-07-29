@@ -52,6 +52,8 @@ type StateDurabilityBoundaryRequirements {
   additional_unique: List<StateDurabilityBoundary>
 }
 
+data state_durability_boundary_uniqueness_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. Nonemptiness is already unwritable through first + additional_unique. Uniqueness is decidable but remains a typed, reachable, counted refusal because .dag record literals are public and refinements are not construction-enforced; Set is the non-enumerable PointwisePower while durability qualification must enumerate every boundary. This is a corpus-wide language gap also visible in bare proof wrappers such as ValidatedGrammarRoot and ValidatedBmcFanCurve, not a license for a Map-as-set or bitset nickname."
+
 type StateDurabilityBoundaryRequirementBuild {
   ordered: List<StateDurabilityBoundary>
 }
@@ -241,6 +243,10 @@ type StateReadbackPosition
 
 type StateDurabilityRefusal<Target, ReadbackSubject>
   = DurabilityIntentUnspecified
+  | DurabilityRequirementDuplicate {
+      boundary: StateDurabilityBoundary,
+      count: Int,
+    }
   | DurabilityCapabilityMissing
   | DurabilityCapabilityAdmissionMismatch {
       expected_realization: StateRealizationIdentity,
@@ -337,6 +343,65 @@ type StateDurabilityEvidenceCardinality<Target, ReadbackSubject>
       evidence: StateDurabilityEvidence<Target, ReadbackSubject>,
     }
   | MultipleMatchingDurabilityEvidence { count: Int }
+
+type StateDurabilityBoundaryUniquenessFold {
+  seen: List<StateDurabilityBoundary>
+  duplicate: StateDurabilityBoundary?
+  duplicate_count: Int
+}
+
+fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
+  requirements: StateDurabilityBoundaryRequirements,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
+  let boundaries = state_durability_boundary_requirement_list(
+    requirements: requirements,
+  )
+  let folded = fold(
+    boundaries,
+    init: StateDurabilityBoundaryUniquenessFold {
+      seen: [],
+      duplicate: none,
+      duplicate_count: 0,
+    },
+    f: (acc, boundary) =>
+      match acc.duplicate {
+        Present { value: duplicate } =>
+          if boundary == duplicate {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: acc.seen,
+              duplicate: acc.duplicate,
+              duplicate_count: acc.duplicate_count + 1,
+            }
+          } else {
+            acc
+          }
+        Absent =>
+          if any(acc.seen, existing => existing == boundary) {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: acc.seen,
+              duplicate: Present { value: boundary },
+              duplicate_count: 2,
+            }
+          } else {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: append(acc.seen, items: [boundary]),
+              duplicate: none,
+              duplicate_count: 0,
+            }
+          }
+      },
+  )
+  match folded.duplicate {
+    Present { value: boundary } =>
+      Present {
+        value: DurabilityRequirementDuplicate {
+          boundary: boundary,
+          count: folded.duplicate_count,
+        },
+      }
+    Absent => none
+  }
+}
 
 fn state_durability_boundary_eq(
   a: StateDurabilityBoundary,
@@ -741,39 +806,46 @@ fn state_durability_verdict<Target, ReadbackSubject>(
         },
       }
     DurableAcross { boundaries: boundaries } =>
-      match capability {
-          Absent =>
-            StateDurabilityRefused { cause: DurabilityCapabilityMissing }
-          Present { value: realizer } =>
-            if !state_durability_capability_matches_admission(
-              capability: realizer,
-              admission: admission,
-            ) {
-              StateDurabilityRefused {
-                cause: DurabilityCapabilityAdmissionMismatch {
-                  expected_realization: admission.realization,
-                  observed_realization: realizer.realization,
-                  expected_capability_version: admission.capability_version,
-                  observed_capability_version: realizer.capability_version,
-                },
+      match state_durability_boundary_requirements_refusal(
+        requirements: boundaries,
+      ) {
+        Present { value: cause } =>
+          StateDurabilityRefused { cause: cause }
+        Absent =>
+          match capability {
+            Absent =>
+              StateDurabilityRefused { cause: DurabilityCapabilityMissing }
+            Present { value: realizer } =>
+              if !state_durability_capability_matches_admission(
+                capability: realizer,
+                admission: admission,
+              ) {
+                StateDurabilityRefused {
+                  cause: DurabilityCapabilityAdmissionMismatch {
+                    expected_realization: admission.realization,
+                    observed_realization: realizer.realization,
+                    expected_capability_version: admission.capability_version,
+                    observed_capability_version: realizer.capability_version,
+                  },
+                }
+              } else {
+                match realizer.commit_barrier {
+                  NoDurabilityCommitBarrier =>
+                    StateDurabilityRefused {
+                      cause: DurabilityCommitBarrierMissing {
+                        realization: realizer.realization,
+                      },
+                    }
+                  SynchronizedCommit =>
+                    state_durability_boundaries_verdict(
+                      required: boundaries,
+                      admission: admission,
+                      capability: realizer,
+                      evidence: evidence,
+                    )
+                }
               }
-            } else {
-              match realizer.commit_barrier {
-                NoDurabilityCommitBarrier =>
-                  StateDurabilityRefused {
-                    cause: DurabilityCommitBarrierMissing {
-                      realization: realizer.realization,
-                    },
-                  }
-                SynchronizedCommit =>
-                  state_durability_boundaries_verdict(
-                    required: boundaries,
-                    admission: admission,
-                    capability: realizer,
-                    evidence: evidence,
-                  )
-              }
-            }
+          }
       }
   }
 }

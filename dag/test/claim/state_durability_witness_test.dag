@@ -13,6 +13,7 @@ import std.state_durability {
   DurabilityDesiredStateMismatch,
   DurabilityEvidenceAmbiguous,
   DurabilityPerturbationBoundaryMismatch,
+  DurabilityRequirementDuplicate,
   DurabilityReadbackReceiptLinkMismatch,
   LifecycleGracefulRestart,
   SoftwareReplacementBoundary,
@@ -257,6 +258,27 @@ test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> 
   fold(boundaries, init: 0, f: (count, _) => count + 1) == 2
     && any(boundaries, boundary => boundary == fixture_boundary)
     && any(boundaries, boundary => boundary == fixture_wrong_boundary)
+}
+
+test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool {
+  let duplicated = StateDurabilityBoundaryRequirements {
+    first: fixture_boundary,
+    additional_unique: [fixture_boundary, fixture_boundary],
+  }
+  match state_durability_verdict(
+    intent: DurableAcross { boundaries: duplicated },
+    admission: current_admission(),
+    capability: Present { value: current_capability() },
+    evidence: [matching_evidence()],
+  ) {
+    StateDurabilityRefused {
+      cause: DurabilityRequirementDuplicate {
+        boundary: boundary,
+        count: count,
+      },
+    } => boundary == fixture_boundary && count == 3
+    _ => false
+  }
 }
 
 test fn timeline_order_is_derived_from_positive_deltas() -> Bool {
