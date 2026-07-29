@@ -2,11 +2,14 @@ module gunbc.bmc_converge
 
 import extdeps.bmc.capability {
   BmcFirmwareIntent,
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
   BmcFirmwareObservation,
+  BmcFirmwareTrack,
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   BmcFirmwareVersion,
-  bmc_firmware_observation_matches_intent,
+  bmc_firmware_observation_intent_verdict,
   bmc_firmware_version_matches_track,
 }
 import extdeps.bmc.types {
@@ -87,6 +90,22 @@ type BmcFanPolicySuitability
   | FanPolicySuitabilityRefused { reason: String }
 
 data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
+
+fn bmc_firmware_intent_mismatch_reason(
+  required: BmcFirmwareTrack,
+  observed: BmcFirmwareVersion,
+) -> String {
+  concat(
+    "bmc firmware observation does not satisfy declared track: required major ",
+    required.major_version as String,
+    ", observed major ",
+    observed.version.major as String,
+    " minor ",
+    observed.version.minor as String,
+    " patch ",
+    observed.version.patch as String,
+  )
+}
 
 fn bmc_firmware_classification(
   host: HostIdentity,
