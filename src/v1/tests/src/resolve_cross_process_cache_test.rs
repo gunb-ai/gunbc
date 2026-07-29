@@ -35,13 +35,15 @@ impl Drop for CacheEnvGuard {
 }
 
 use v1_compiler::cli_run::{
-    build_multi_entry_index, load_sources_for_entry, make_eval_context, resolve_entry_graph,
-    resolve_entry_with_index, run_claim, ClaimOutcome,
+    build_multi_entry_index, load_sources_for_entry, make_eval_context,
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
+    resolve_entry_graph, resolve_entry_with_index, run_claim,
+    serve_resolved_graph_v1_disk_probe_for_test, ClaimOutcome,
 };
 use v1_compiler::resolved_graph_cache::{
-    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup,
-    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheRejectReason,
-    KeyInputMaterials,
+    build_valid_artifact_bytes, decode_count, derive_subject_digest, lookup, probe,
+    subject_digest_for_closure, write_raw_artifact_for_test, CacheLookupResult, CacheProbeResult,
+    CacheRejectReason, KeyInputMaterials,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
@@ -134,6 +136,13 @@ fn cached_verdict(
     })
 }
 
+fn cached_resolve_err(roots: &[String], entry: &str, cache_dir: &std::path::Path) -> String {
+    with_cache_env(cache_dir, || {
+        let index = build_multi_entry_index(roots);
+        resolve_entry_with_index(&index, entry).expect_err("expected provider refusal")
+    })
+}
+
 #[test]
 fn cross_process_cache_matches_cold_oracle_corpus() {
     let dir = temp_dir("eq");
@@ -163,11 +172,11 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         for entry in *order {
             let _ = cached_verdict(&roots, entry, "witness_a_true", &order_cache);
         }
-        for (entry, f, expected) in witnesses {
-            let got = cached_verdict(&roots, entry, f, &order_cache);
-            assert_eq!(
-                got, expected,
-                "cached verdict for {f} diverged from cold oracle in order {order:?}"
+        for (entry, _f, _expected) in witnesses {
+            let err = cached_resolve_err(&roots, entry, &order_cache);
+            assert!(
+                err.contains("provider refused faithful probe"),
+                "v1 disk artifact reuse must stop the line until union lands (part a): {err}"
             );
         }
     }
@@ -186,6 +195,8 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
     let valid = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+    let decodes_before = decode_count();
     let mut poisoned = valid;
     if let Some(last) = poisoned.last_mut() {
         *last ^= 0xff;
@@ -199,15 +210,66 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
 
     with_cache_env(&cache_dir, || {
         let index = build_multi_entry_index(&roots);
-        let (recomputed, si2) =
-            resolve_entry_with_index(&index, &a).expect("recompute after poison");
-        let ctx = make_eval_context(&recomputed, si2, ExecutionMode::Wet);
+        let err = resolve_entry_with_index(&index, &a).expect_err("poisoned hit must refuse");
+        assert!(
+            err.contains("provider refused faithful probe"),
+            "poisoned hit must refuse before rebuilding: {err}"
+        );
+        assert_eq!(
+            decode_count(),
+            decodes_before,
+            "provider refusal must not decode or rebuild"
+        );
         assert_eq!(
             outcome_tag(&run_claim(&ctx, "witness_a_true")),
             "PASS",
-            "poisoned hit must fall through to fresh resolve"
+            "control resolve remains green"
         );
     });
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn malformed_header_probe_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("malformed-header");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    bytes[0] ^= 0xff;
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn malformed_header_truncated_read_refuses_as_backend_key_malformed() {
+    let dir = temp_dir("truncated-header");
+    let (roots, a, _, _) = write_fixture(&dir);
+    let cache_dir = dir.join("cache");
+    fs::create_dir_all(&cache_dir).expect("cache dir");
+
+    let (graph, si) = resolve_entry_graph(&roots, &a).expect("resolve for digest");
+    let sources = load_sources_for_entry(&roots, &a).expect("sources");
+    let subject = subject_digest_for_closure(&sources);
+    let mut bytes = build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
+    bytes.truncate(7);
+    write_raw_artifact_for_test(&cache_dir, &subject, &bytes).expect("malformed write");
+
+    match probe(&cache_dir, &subject) {
+        CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {}
+        other => panic!("expected BackendKeyMalformed RejectedHit, got {other:?}"),
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -249,6 +311,24 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
 }
 
 #[test]
+fn faithful_probe_refusal_does_not_build_provider_ctx() {
+    reset_materialization_provider_ctx_for_test();
+    let builds_before = materialization_provider_ctx_build_count_for_test();
+
+    let err = serve_resolved_graph_v1_disk_probe_for_test("closure-digest", "compiler-digest")
+        .expect_err("unavailable faithful probe must refuse");
+    assert!(
+        err.contains("provider refused faithful probe"),
+        "refusal should name the faithful-probe gap: {err}"
+    );
+    assert_eq!(
+        materialization_provider_ctx_build_count_for_test(),
+        builds_before,
+        "faithful-probe refusal must not build provider ctx"
+    );
+}
+
+#[test]
 fn concurrent_resolve_write_once_no_torn_read() {
     let dir = temp_dir("race");
     let (roots, a, _, _) = write_fixture(&dir);
@@ -264,24 +344,41 @@ fn concurrent_resolve_write_once_no_torn_read() {
     let t1 = thread::spawn(move || {
         b1.wait();
         let index = build_multi_entry_index(&roots_a);
-        let (graph, si) = resolve_entry_with_index(&index, &entry).expect("resolve t1");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &entry) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => format!("RESOLVEERR({e})"),
+        }
     });
     let roots_b = roots.clone();
     let a_b = a.clone();
     let t2 = thread::spawn(move || {
         b2.wait();
         let index = build_multi_entry_index(&roots_b);
-        let (graph, si) = resolve_entry_with_index(&index, &a_b).expect("resolve t2");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &a_b) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => format!("RESOLVEERR({e})"),
+        }
     });
 
     let v1 = t1.join().expect("t1 join");
     let v2 = t2.join().expect("t2 join");
-    assert_eq!(v1, "PASS", "t1 verdict");
-    assert_eq!(v2, "PASS", "t2 verdict");
+    for (label, verdict) in [("t1", &v1), ("t2", &v2)] {
+        match verdict.as_str() {
+            "PASS" => {}
+            other if other.contains("provider refused faithful probe") => {}
+            other => panic!("{label} unexpected verdict: {other}"),
+        }
+    }
+    assert!(
+        v1 == "PASS" || v2 == "PASS",
+        "at least one concurrent resolve must cold-build: v1={v1} v2={v2}"
+    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
@@ -348,9 +445,13 @@ fn cross_process_child_worker() {
     let verdict_path = std::env::var("GUNBC_RG_CACHE_VERDICT").expect("verdict path");
     let verdict = with_cache_env(std::path::Path::new(&cache), || {
         let index = build_multi_entry_index(&[roots]);
-        let (graph, si) = resolve_entry_with_index(&index, &entry).expect("child resolve");
-        let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
-        outcome_tag(&run_claim(&ctx, "witness_a_true"))
+        match resolve_entry_with_index(&index, &entry) {
+            Ok((graph, si)) => {
+                let ctx = make_eval_context(&graph, si, ExecutionMode::Wet);
+                outcome_tag(&run_claim(&ctx, "witness_a_true"))
+            }
+            Err(e) => e,
+        }
     });
     fs::write(&verdict_path, verdict).expect("write verdict");
 }
@@ -398,8 +499,16 @@ fn two_processes_share_cache_without_torn_read() {
     assert!(s2.success(), "child2 status: {s2:?}");
     let out1 = fs::read_to_string(&verdict1).expect("verdict1");
     let out2 = fs::read_to_string(&verdict2).expect("verdict2");
-    assert_eq!(out1.trim(), "PASS", "child1 verdict");
-    assert_eq!(out2.trim(), "PASS", "child2 verdict");
+    for (label, verdict) in [("child1", out1.trim()), ("child2", out2.trim())] {
+        assert!(
+            verdict == "PASS" || verdict.contains("provider refused faithful probe"),
+            "{label} verdict must either cold-build or refuse faithfully: {verdict}"
+        );
+    }
+    assert!(
+        out1.trim() == "PASS" || out2.trim() == "PASS",
+        "at least one child must cold-build the cache: child1={out1:?} child2={out2:?}"
+    );
 
     let sources = load_sources_for_entry(&roots, &a).expect("sources");
     let subject = subject_digest_for_closure(&sources);
@@ -461,21 +570,17 @@ fn key_is_deterministic_in_its_axes() {
 
 // The ladder's tier ordering at the resolve seam (store fills share — never
 // replaces it): the per-process share serves repeats by reference; the store
-// serves only the process's FIRST touch of a subject, and that hit is installed
-// into the share. Without the install-back, N same-subject resolves each
-// decoded and retained an independent graph — the eval-phase memory runaway
-// this test pins extinct (receipt: eager-ram-612 A/B, 2026-07-10).
+// would serve a process's first touch of a subject and install into the share
+// once the provider can serve a complete artifact (part a). Until then, a v1
+// disk hit is typed provider refusal and stops the line — no cold-resolve widen.
 #[test]
-fn same_subject_resolves_share_one_graph_store_fills_share() {
+fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
     let dir = temp_dir("share");
     let (roots, a, _b, _c) = write_fixture(&dir);
     let cache_dir = dir.join("cache");
     fs::create_dir_all(&cache_dir).expect("cache dir");
 
     with_cache_env(&cache_dir, || {
-        // First process: the first touch BUILDS (store miss), filling store and
-        // share through one seam; the repeat takes the reference. No decode
-        // happens anywhere on the build path.
         let decodes_before = decode_count();
         let index = build_multi_entry_index(&roots);
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("build resolve");
@@ -490,24 +595,16 @@ fn same_subject_resolves_share_one_graph_store_fills_share() {
             "the build path must not decode"
         );
 
-        // Second process (fresh index, same thread): the store serves the first
-        // touch — exactly one decode — and the repeat takes the installed
-        // reference.
         let index2 = build_multi_entry_index(&roots);
-        let (h1, _) = resolve_entry_with_index(&index2, &a).expect("store-hit resolve");
-        let (h2, _) = resolve_entry_with_index(&index2, &a).expect("repeat resolve");
+        let err = resolve_entry_with_index(&index2, &a).expect_err("v1 store hit must refuse");
         assert!(
-            std::rc::Rc::ptr_eq(&h1, &h2),
-            "repeat after a store hit must serve the installed reference, not a second decode"
+            err.contains("provider refused faithful probe"),
+            "fresh index must not cold-resolve through v1 disk hit: {err}"
         );
         assert_eq!(
             decode_count(),
-            decodes_before + 1,
-            "store serves the first touch: exactly one decode per subject per process"
-        );
-        assert!(
-            !std::rc::Rc::ptr_eq(&g1, &h1),
-            "the share is per-process: a fresh index decodes its own reference"
+            decodes_before,
+            "provider refusal must not decode or rebuild"
         );
     });
 }
