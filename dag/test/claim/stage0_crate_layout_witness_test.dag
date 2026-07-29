@@ -4,8 +4,8 @@ import gunbc.stage0_crate_layout_generated { generated_stage0_dirs, generated_st
 import v2.compiler.self_host.frontier {
   hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames,
-  compiler_frontier_self_emitted_count,
-  compiler_frontier_self_emitted_stage0_mod_basenames
+  compiler_frontier_emitter_produced_count,
+  compiler_frontier_emitter_produced_stage0_mod_basenames
 }
 import std.types { Bool, Int }
 
@@ -31,6 +31,6 @@ test fn w_generated_stage0_dirs_match_frontier() -> Bool {
 }
 
 test fn w_self_emitted_derived_count() -> Bool {
-  compiler_frontier_self_emitted_stage0_mod_basenames().length() == compiler_frontier_self_emitted_count()
+  compiler_frontier_emitter_produced_stage0_mod_basenames().length() == compiler_frontier_emitter_produced_count()
 }
 

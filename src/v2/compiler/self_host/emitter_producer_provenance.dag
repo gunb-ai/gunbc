@@ -422,13 +422,22 @@ fn producer_is_v2_native(producer: EmitterProducer) -> Bool {
   }
 }
 
+fn qualification_eq(left: EmissionQualification, right: EmissionQualification) -> Bool {
+  match left {
+    SourceProduced => match right { SourceProduced => true _ => false }
+    CargoGreen => match right { CargoGreen => true _ => false }
+    BehavioralEquivalent => match right { BehavioralEquivalent => true _ => false }
+    ProductionRouted => match right { ProductionRouted => true _ => false }
+  }
+}
+
 fn row_has_qualification(
   qualifications: List<EmissionQualification>,
   target: EmissionQualification
 ) -> Bool {
   any(
     xs: qualifications,
-    predicate: fn(q) { q == target }
+    predicate: fn(q) { qualification_eq(left: q, right: target) }
   )
 }
 

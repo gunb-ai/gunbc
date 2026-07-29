@@ -1,0 +1,146 @@
+module v2.test.claim.self_host.emitter_producer_provenance_witness_test
+
+import v2.compiler.self_host.emitter_producer_provenance {
+  fabricated_v1_seed_producer_receipt,
+  fabricated_v2_interpreted_producer_receipt,
+  mint_v2_interpreted_receipt_with_seed_closure_refuses,
+  producer_emission_flip_wave_reverted_module_paths,
+  producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
+  producer_emission_oracle_authorizes_row,
+  producer_emission_oracle_row_00_compile_flip_wave_red,
+  producer_emission_oracle_row_body_producer,
+  producer_emission_oracle_row_count,
+  producer_emission_oracle_rows_all_enrolled_holds,
+  producer_emission_oracle_rows_match_enrollment_holds,
+  producer_qualified_baselines_holds,
+  seed_emitter_behavioral_green_baseline,
+  seed_emitter_behavioral_green_count,
+  v2_interpreted_emitter_behavioral_green_count,
+  v2_native_emitter_behavioral_green_count,
+  v2_emitter_production_routed_count
+}
+import v2.compiler.self_host.frontier {
+  compiler_frontier_census_holds,
+  compiler_frontier_emitter_produced_oracle_backed_holds,
+  compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds,
+  compiler_frontier_emitter_produced_count,
+  compiler_frontier_producer_qualified_baselines_holds
+}
+import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
+  schedule_witness_entry_cited,
+  schedule_witness_entries_structurally_equal,
+  seed_emitter_behavioral_wet_known_red_entries
+}
+import v2.compiler.self_host.wet_receipt_enrollment {
+  falsifier_self_host_wet_known_red_entries
+}
+import v2.std.algebra { fold }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): EmitterProduced is reachable only from mint_producer_emission_receipt. PRIMARY RED: V2EmitterInterpreted is unwritable when v1.compiler.emit_rust is in the realized closure (structural refusal, not harness config). SECONDARY RED: 2026-07-20 flip-wave dishonest claim replay."
+
+test fn witness_oracle_rows_all_enrolled_holds() -> Bool {
+  producer_emission_oracle_rows_all_enrolled_holds()
+}
+
+test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
+  compiler_frontier_emitter_produced_oracle_backed_holds()
+}
+
+test fn witness_producer_qualified_baselines_holds() -> Bool {
+  compiler_frontier_producer_qualified_baselines_holds()
+    && producer_qualified_baselines_holds()
+    && (producer_emission_oracle_row_count() == seed_emitter_behavioral_green_baseline)
+    && (compiler_frontier_emitter_produced_count() == seed_emitter_behavioral_green_count())
+    && (v2_interpreted_emitter_behavioral_green_count() == 0)
+    && (v2_native_emitter_behavioral_green_count() == 0)
+    && (v2_emitter_production_routed_count() == 0)
+}
+
+test fn witness_emitter_produced_oracle_count_matches_baseline_holds() -> Bool {
+  compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds()
+}
+
+test fn witness_census_includes_producer_backing_holds() -> Bool {
+  compiler_frontier_census_holds()
+}
+
+test fn witness_flip_wave_reverted_modules_lack_oracle_holds() -> Bool {
+  producer_emission_flip_wave_reverted_modules_lack_oracle_holds()
+}
+
+data witness_seed_emit_rust_poison_structural_refusal_note: String = "PRIMARY discriminating RED (calm-badger-682 ruling 2026-07-29): mint_producer_emission_receipt must refuse V2EmitterInterpreted when cssl_harness_realized_closure contains v1.compiler.emit_rust. Harness poison proves the wall fires; the wall is structural in the mint path."
+
+test fn witness_seed_emit_rust_poison_structural_refusal_reds() -> Bool {
+  mint_v2_interpreted_receipt_with_seed_closure_refuses(
+    module_path: "src/v2/compiler/03_body_producer.dag"
+  )
+}
+
+test fn witness_v2_producer_claim_with_seed_closure_unauthorized_reds() -> Bool {
+  let fabricated = fabricated_v2_interpreted_producer_receipt(
+    module_path: "src/v2/compiler/03_body_producer.dag"
+  )
+  !producer_emission_oracle_authorizes_row(
+    module_path: fabricated.module_path,
+    receipt: fabricated
+  )
+}
+
+data witness_flip_wave_secondary_red_note: String = "SECONDARY regression (2026-07-20 flip-wave): dishonest V1SeedEmitter claim for flip-wave module without oracle row must refuse authorization."
+
+test fn witness_flip_wave_dishonest_v1_claim_reds() -> Bool {
+  let path = "src/v2/compiler/00_compile.dag"
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: path)
+  !producer_emission_oracle_authorizes_row(module_path: path, receipt: fabricated)
+}
+
+test fn witness_flip_wave_all_six_dishonest_claims_red() -> Bool {
+  fold(
+    producer_emission_flip_wave_reverted_module_paths,
+    init: true,
+    f: fn(ok, path) {
+      ok && !producer_emission_oracle_authorizes_row(
+        module_path: path,
+        receipt: fabricated_v1_seed_producer_receipt(module_path: path)
+      )
+    }
+  )
+}
+
+test fn witness_synthetic_oracle_row_not_in_live_registry_reds() -> Bool {
+  let red_row = producer_emission_oracle_row_00_compile_flip_wave_red
+  !producer_emission_oracle_authorizes_row(
+    module_path: red_row.module_path,
+    receipt: red_row.receipt
+  )
+}
+
+test fn witness_baseline_oracle_row_authorizes_emitter_produced() -> Bool {
+  producer_emission_oracle_authorizes_row(
+    module_path: producer_emission_oracle_row_body_producer.module_path,
+    receipt: producer_emission_oracle_row_body_producer.receipt
+  )
+}
+
+test fn witness_wet_known_red_entries_is_shared_authority() -> Bool {
+  schedule_witness_entries_structurally_equal(
+    left: seed_emitter_behavioral_wet_known_red_entries,
+    right: falsifier_self_host_wet_known_red_entries
+  )
+}
+
+test fn witness_oracle_rows_bidirectional_enrollment_holds() -> Bool {
+  producer_emission_oracle_rows_match_enrollment_holds()
+}
+
+test fn witness_probe_entries_length_only_parity_would_fail_on_mismatch_red() -> Bool {
+  let mismatched_function = "fabricated_flip_wave_all_holds"
+  let cited = schedule_witness_entry_cited(
+    probe_entry: producer_emission_oracle_row_body_producer.receipt.behavioral_probe_entry,
+    probe_function: mismatched_function,
+    entries: seed_emitter_behavioral_wet_known_red_entries
+  )
+  !cited
+}

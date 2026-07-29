@@ -4,6 +4,9 @@ import v2.compiler.self_host.frontier_probe_types {
   FrontierProbeReceipt,
   SelfEmitReady,
 }
+import v2.compiler.self_host.emitter_producer_provenance {
+  fabricated_v1_seed_producer_receipt
+}
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_03_body_producer,
   compiler_frontier_row_06_translate,
@@ -11,7 +14,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
-  SelfEmitted,
+  EmitterProduced,
   ProbeStageEmit,
   CompilerModuleFrontierRow
 }
@@ -33,10 +36,12 @@ fn sample_seed_retained_row() -> CompilerModuleFrontierRow {
   compiler_frontier_row_06_translate
 }
 
-fn sample_self_emitted_row() -> CompilerModuleFrontierRow {
+fn sample_emitter_produced_row() -> CompilerModuleFrontierRow {
   CompilerModuleFrontierRow {
     module_path: "src/v2/compiler/06_translate.dag",
-    disposition: SelfEmitted,
+    disposition: EmitterProduced {
+      provenance: fabricated_v1_seed_producer_receipt(module_path: "src/v2/compiler/06_translate.dag")
+    },
     measured_probe: FrontierProbeReceipt {
       module_path: "src/v2/compiler/06_translate.dag",
       blocker_class: SelfEmitReady,
@@ -52,7 +57,7 @@ test fn witness_seed_retained_row_enrolls_no_wet_entry() -> Bool {
 }
 
 test fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
+  length(xs: frontier_row_wet_entries_if_enrolled(row: sample_emitter_produced_row())) == 0
 }
 
 test fn witness_parse_engine_hooks_self_emitted_enrolls_no_wet_while_revoked() -> Bool {

@@ -9,7 +9,7 @@ import gunbc.stage0_crate_layout_generated {
 import v2.compiler.self_host.frontier {
   CompilerModuleFrontierRow,
   FrontierQualifiedModuleBinding,
-  SelfEmitted,
+  EmitterProduced,
   SeedRetained,
   compiler_frontier_crate_layout_holds,
   compiler_frontier_qualified_module_dotted_for_path,
@@ -17,8 +17,8 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
-  compiler_frontier_self_emitted_count,
-  compiler_frontier_self_emitted_stage0_mod_basenames_from_index,
+  compiler_frontier_emitter_produced_count,
+  compiler_frontier_emitter_produced_stage0_mod_basenames_from_index,
   emit_hand_maintained_pub_mod_block,
   frontier_row_stage0_mod_basename,
   hand_maintained_pub_mod_basenames,
@@ -58,7 +58,7 @@ fn row_basename_is_registered(row: CompilerModuleFrontierRow) -> Bool {
   match frontier_row_stage0_mod_basename(index: layout_index(), row: row) {
     Accepted { value: b, diagnostics: _ } =>
       string_list_contains(
-        xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
+        xs: compiler_frontier_emitter_produced_stage0_mod_basenames_from_index(index: layout_index()),
         needle: b
       )
     Rejected { diagnostics: _ } => false
@@ -67,21 +67,21 @@ fn row_basename_is_registered(row: CompilerModuleFrontierRow) -> Bool {
 
 fn witness_parse_engine_hooks_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_parse_engine_hooks.disposition {
-    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_parse_engine_hooks)
+    EmitterProduced { provenance: _ } => row_basename_is_registered(row: compiler_frontier_row_parse_engine_hooks)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
 
 fn witness_use_site_verdict_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_use_site_verdict.disposition {
-    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_use_site_verdict)
+    EmitterProduced { provenance: _ } => row_basename_is_registered(row: compiler_frontier_row_use_site_verdict)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
 
 fn witness_discovery_enumeration_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_discovery_enumeration.disposition {
-    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_discovery_enumeration)
+    EmitterProduced { provenance: _ } => row_basename_is_registered(row: compiler_frontier_row_discovery_enumeration)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
@@ -110,7 +110,7 @@ fn witness_generated_dirs_match_frontier_holds() -> Bool {
 
 fn witness_generated_includes_every_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
+    xs: compiler_frontier_emitter_produced_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: generated_pub_mod_basenames, needle: basename)
@@ -144,12 +144,12 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
 }
 
 fn witness_self_emitted_count_matches_derived_basenames_holds() -> Bool {
-  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index())) == compiler_frontier_self_emitted_count()
+  length(xs: compiler_frontier_emitter_produced_stage0_mod_basenames_from_index(index: layout_index())) == compiler_frontier_self_emitted_count()
 }
 
 fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
+    xs: compiler_frontier_emitter_produced_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)

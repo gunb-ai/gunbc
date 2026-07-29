@@ -1,12 +1,12 @@
 module v2.compiler.self_host.wet_receipt_enrollment
 
 import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
-import v2.compiler.self_host.self_emitted_wet_known_red_entries {
-  self_emitted_wet_known_red_entries
+import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
+  seed_emitter_behavioral_wet_known_red_entries
 }
 import v2.compiler.self_host.frontier {
   CompilerModuleFrontierRow,
-  SelfEmitted,
+  EmitterProduced,
   SeedRetained,
   compiler_frontier_roster
 }
@@ -160,7 +160,7 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
 
 data falsifier_self_host_wet_known_red_note: String = "Wet expect_red quarantine for SelfEmitted module behavioral receipts that red on assemble (Phase-0 admission invariant, review #7199 2026-07-25): same mechanism as known_red_probe_entries but Wet-profiled — hermetic would refuse the host effect and lie about the red class. claim_executor expect_red-inverts the batch. Owner: #7199 falsifier lane / self-host assemble. Dissolve-on per row: local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget, the known-red entry deletes, and the SelfHostWetReceiptBinding restores to the green wet roster."
 
-data falsifier_self_host_wet_known_red_entries: List<ScheduleWitnessEntry> = self_emitted_wet_known_red_entries
+data falsifier_self_host_wet_known_red_entries: List<ScheduleWitnessEntry> = seed_emitter_behavioral_wet_known_red_entries
 
 fn falsifier_self_host_wet_known_red_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_known_red_entries) > 0
@@ -200,7 +200,7 @@ fn schedule_entry_from_binding(b: SelfHostWetReceiptBinding) -> ScheduleWitnessE
 
 fn frontier_row_wet_entries_if_enrolled(row: CompilerModuleFrontierRow) -> List<ScheduleWitnessEntry> {
   match row.disposition {
-    SelfEmitted => match find_wet_receipt_binding(module_path: row.module_path) {
+    EmitterProduced { provenance: _ } => match find_wet_receipt_binding(module_path: row.module_path) {
       Present { value: b } => [schedule_entry_from_binding(b: b)]
       Absent => []
     }

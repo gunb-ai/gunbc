@@ -272,11 +272,11 @@ data roster_registry: List<RosterRegistration> = [
     }
   },
   RosterRegistration {
-    roster: roster_decl(module_path: "v2.compiler.self_host.gate_a_oracle", decl_name: "gate_a_self_emit_oracle_rows"),
-    unit_kind: "Gate-A SelfEmitted module path with executed probe receipt",
+    roster: roster_decl(module_path: "v2.compiler.self_host.emitter_producer_provenance", decl_name: "producer_emission_oracle_rows"),
+    unit_kind: "V1SeedEmitter module path with producer emission receipt",
     membership: DeclaredFrontier {
-      reason: "each row binds a SelfEmitted disposition to an executed probe witness citation; no SelfEmitted without oracle evidence (2026-07-20 flip-wave reverted after 0/6 cargo-green)",
-      dissolve_on: "per-module frontier_probe_survey receipts bind and rows graduate to ByDerivation membership"
+      reason: "each row binds an EmitterProduced disposition to a producer emission receipt with enrolled behavioral witness citation; no producer claim without receipt evidence (2026-07-20 flip-wave reverted after 0/6 cargo-green)",
+      dissolve_on: "per-module frontier_probe_survey receipts bind execution-measured digests and rows graduate to ByDerivation membership"
     }
   }
 ]
