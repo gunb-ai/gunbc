@@ -63,7 +63,7 @@ import v2.std.algebra { fold_list }
 import v2.std.optional { Absent, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import v2.std.content_hash { content_hash_atom }
+import std.content_hash { content_hash_atom }
 
 data emitter_producer_provenance_witness_note: String = "Producer/qualification construction wall witnesses (session valiant-crab-382): oracle enrollment binds minted BuildRefused quarantine receipts; frontier disposition stays SeedRetained until witness-realization mints via producer_emission_canonical_receipt_for_executed_verdict (review 44460). Static oracle derivation never mints BuildGreen. PRIMARY RED: V2EmitterInterpreted unwritable when v1.compiler.emit_rust is in closure. SECONDARY RED: flip-wave dishonest claim replay."
 
