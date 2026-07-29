@@ -61,7 +61,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/03_body_producer.dag",
-    shim_lib_rel: "",
+    shim_lib_rel: "dag/tools/self_host_body_producer_shims/lib.rs",
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
@@ -74,10 +74,6 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
         source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_diagnostic.rs"
-      },
-      CuratedSeedLinkedShimWrite {
-        dest_rel: "v2_std_integer.rs",
-        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_integer.rs"
       }
     ],
     driver_rel: "dag/tools/self_host_body_producer_shims/witness_main.rs",
@@ -223,7 +219,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/parse_engine_hooks.dag",
-    shim_lib_rel: "",
+    shim_lib_rel: "dag/tools/self_host_parse_engine_hooks_shims/lib.rs",
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
@@ -269,7 +265,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
   },
   ModuleBehavioralTransportConfig {
     module_path: "src/v2/compiler/use_site_verdict.dag",
-    shim_lib_rel: "",
+    shim_lib_rel: "dag/tools/self_host_use_site_verdict_shims/lib.rs",
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
