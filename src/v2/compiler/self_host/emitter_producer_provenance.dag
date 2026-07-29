@@ -204,6 +204,18 @@ fn seed_emitter_behavioral_oracle_row(
   }
 }
 
+fn producer_emission_oracle_probe_is_known_red_quarantine(row: ProducerEmissionOracleRow) -> Bool {
+  producer_emission_oracle_probe_is_enrolled(row: row)
+}
+
+fn producer_emission_build_result_for_oracle_row(row: ProducerEmissionOracleRow) -> EmissionBuildResult {
+  if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
+    BuildRefused { cause: ^cssl_harness_assemble_red }
+  } else {
+    BuildGreen
+  }
+}
+
 fn producer_emission_receipt_from_oracle_row(
   row: ProducerEmissionOracleRow
 ) -> Optional<ProducerEmissionReceipt> {
@@ -211,7 +223,7 @@ fn producer_emission_receipt_from_oracle_row(
     module_path: row.module_path,
     producer: V1SeedEmitter,
     qualifications: behavioral_equivalent_qualifications,
-    build_result: BuildGreen,
+    build_result: producer_emission_build_result_for_oracle_row(row: row),
     behavioral_probe_entry: row.behavioral_probe_entry,
     behavioral_probe_function: row.behavioral_probe_function,
     realized_closure: cssl_harness_realized_closure
@@ -242,21 +254,9 @@ fn producer_emission_canonical_receipt_for_oracle_row(
 fn producer_emission_oracle_row_frontier_receipt(
   row: ProducerEmissionOracleRow
 ) -> ProducerEmissionReceipt {
-  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+  match producer_emission_receipt_from_oracle_row(row: row) {
     Present { value: receipt } => receipt
-    Absent =>
-      match mint_producer_emission_receipt(
-        module_path: row.module_path,
-        producer: V1SeedEmitter,
-        qualifications: behavioral_equivalent_qualifications,
-        build_result: BuildRefused { cause: ^producer_emission_oracle_unmintable },
-        behavioral_probe_entry: row.behavioral_probe_entry,
-        behavioral_probe_function: row.behavioral_probe_function,
-        realized_closure: cssl_harness_realized_closure
-      ) {
-        Present { value: receipt } => receipt
-        Absent => fabricated_v1_seed_producer_receipt(module_path: row.module_path)
-      }
+    Absent => fabricated_v1_seed_producer_receipt(module_path: row.module_path)
   }
 }
 
@@ -452,7 +452,25 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Construction, not enrollment-only (reviews 44328/44333): authorization requires structural equality against the canonical receipt minted by producer_emission_receipt_from_oracle_row (never a hand-authored data-row receipt), BuildGreen on both sides, AND enrolled wet quarantine citation. Fabricated receipts with scaffold digests or BuildRefused cannot authorize."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + wet quarantine citation + transport roster row — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER: requires executed BuildGreen canonical receipt only. Known-red quarantine probes must not authorize EmitterProduced until local wet execution greens and un-quarantines."
+
+fn producer_emission_oracle_enrolls_row(
+  module_path: String,
+  receipt: ProducerEmissionReceipt
+) -> Bool {
+  any(
+    xs: producer_emission_oracle_row_for_module(module_path: module_path),
+    predicate: fn(row) {
+      match producer_emission_receipt_from_oracle_row(row: row) {
+        Present { value: canonical } =>
+          producer_emission_receipt_eq(left: canonical, right: receipt)
+            && producer_emission_oracle_probe_is_enrolled(row: row)
+            && producer_emission_oracle_row_has_behavioral_transport_config(row: row)
+        Absent => false
+      }
+    }
+  )
+}
 
 fn producer_emission_oracle_authorizes_row(
   module_path: String,
@@ -594,75 +612,124 @@ fn row_has_qualification(
   )
 }
 
-fn producer_emission_row_is_seed_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
-    Present { value: receipt } =>
-      match emitter_producer_axis(producer: receipt.producer) {
-        EmitterProducerV1Seed =>
-          row_has_qualification(
-            qualifications: receipt.qualifications,
-            target: BehavioralEquivalent
-          )
-        EmitterProducerV2Interpreted => false
-        EmitterProducerV2Native { generation: _ } => false
+type ProducerQualifiedCountAxis
+  = ProducerCountSeedBehavioralGreen
+  | ProducerCountV2InterpretedBehavioralGreen
+  | ProducerCountV2NativeBehavioralGreen
+  | ProducerCountV2ProductionRouted
+
+data producer_qualified_count_axis_note: String = "Canonical query surface for producer-qualified census (review 44350 predicate-dissolution): classify once via producer_qualified_count_axis_for_receipt, count via count_oracle_rows_with_qualified_axis — not a family of hand-rolled producer_emission_row_is_* predicates."
+
+fn producer_qualified_count_axis_eq(
+  left: ProducerQualifiedCountAxis,
+  right: ProducerQualifiedCountAxis
+) -> Bool {
+  match left {
+    ProducerCountSeedBehavioralGreen =>
+      match right {
+        ProducerCountSeedBehavioralGreen => true
+        ProducerCountV2InterpretedBehavioralGreen => false
+        ProducerCountV2NativeBehavioralGreen => false
+        ProducerCountV2ProductionRouted => false
       }
-    Absent => false
+    ProducerCountV2InterpretedBehavioralGreen =>
+      match right {
+        ProducerCountSeedBehavioralGreen => false
+        ProducerCountV2InterpretedBehavioralGreen => true
+        ProducerCountV2NativeBehavioralGreen => false
+        ProducerCountV2ProductionRouted => false
+      }
+    ProducerCountV2NativeBehavioralGreen =>
+      match right {
+        ProducerCountSeedBehavioralGreen => false
+        ProducerCountV2InterpretedBehavioralGreen => false
+        ProducerCountV2NativeBehavioralGreen => true
+        ProducerCountV2ProductionRouted => false
+      }
+    ProducerCountV2ProductionRouted =>
+      match right {
+        ProducerCountSeedBehavioralGreen => false
+        ProducerCountV2InterpretedBehavioralGreen => false
+        ProducerCountV2NativeBehavioralGreen => false
+        ProducerCountV2ProductionRouted => true
+      }
   }
 }
 
-fn producer_emission_row_is_v2_interpreted_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
-  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
-    Present { value: receipt } =>
-      match emitter_producer_axis(producer: receipt.producer) {
-        EmitterProducerV1Seed => false
-        EmitterProducerV2Interpreted =>
-          row_has_qualification(
-            qualifications: receipt.qualifications,
-            target: BehavioralEquivalent
-          )
-        EmitterProducerV2Native { generation: _ } => false
-      }
-    Absent => false
+fn producer_qualified_count_axis_for_receipt(
+  receipt: ProducerEmissionReceipt
+) -> Optional<ProducerQualifiedCountAxis> {
+  if !producer_emission_receipt_is_build_green(receipt: receipt) {
+    optional_absent()
+  } else {
+    match emitter_producer_axis(producer: receipt.producer) {
+      EmitterProducerV1Seed =>
+        if row_has_qualification(
+          qualifications: receipt.qualifications,
+          target: BehavioralEquivalent
+        ) {
+          optional_present(value: ProducerCountSeedBehavioralGreen)
+        } else {
+          optional_absent()
+        }
+      EmitterProducerV2Interpreted =>
+        if row_has_qualification(
+          qualifications: receipt.qualifications,
+          target: BehavioralEquivalent
+        ) {
+          optional_present(value: ProducerCountV2InterpretedBehavioralGreen)
+        } else {
+          optional_absent()
+        }
+      EmitterProducerV2Native { generation: _ } =>
+        if row_has_qualification(
+          qualifications: receipt.qualifications,
+          target: BehavioralEquivalent
+        ) {
+          optional_present(value: ProducerCountV2NativeBehavioralGreen)
+        } else if row_has_qualification(
+          qualifications: receipt.qualifications,
+          target: ProductionRouted
+        ) {
+          optional_present(value: ProducerCountV2ProductionRouted)
+        } else {
+          optional_absent()
+        }
+    }
   }
 }
 
-fn producer_emission_row_is_v2_native_behavioral_green(row: ProducerEmissionOracleRow) -> Bool {
+fn producer_qualified_count_axis_for_row(
+  row: ProducerEmissionOracleRow
+) -> Optional<ProducerQualifiedCountAxis> {
   match producer_emission_canonical_receipt_for_oracle_row(row: row) {
     Present { value: receipt } =>
-      match emitter_producer_axis(producer: receipt.producer) {
-        EmitterProducerV1Seed => false
-        EmitterProducerV2Interpreted => false
-        EmitterProducerV2Native { generation: _ } =>
-          row_has_qualification(
-            qualifications: receipt.qualifications,
-            target: BehavioralEquivalent
-          )
-      }
-    Absent => false
+      producer_qualified_count_axis_for_receipt(receipt: receipt)
+    Absent => optional_absent()
   }
 }
 
-fn producer_emission_row_is_v2_production_routed(row: ProducerEmissionOracleRow) -> Bool {
-  match producer_emission_canonical_receipt_for_oracle_row(row: row) {
-    Present { value: receipt } =>
-      match emitter_producer_axis(producer: receipt.producer) {
-        EmitterProducerV1Seed => false
-        EmitterProducerV2Interpreted =>
-          row_has_qualification(
-            qualifications: receipt.qualifications,
-            target: ProductionRouted
-          )
-        EmitterProducerV2Native { generation: _ } =>
-          row_has_qualification(
-            qualifications: receipt.qualifications,
-            target: ProductionRouted
-          )
+fn count_oracle_rows_with_qualified_axis(axis: ProducerQualifiedCountAxis) -> Int {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: 0,
+    cons: fn(count, row) {
+      match producer_qualified_count_axis_for_row(row: row) {
+        Present { value: row_axis } =>
+          if producer_qualified_count_axis_eq(left: row_axis, right: axis) {
+            count + 1
+          } else {
+            count
+          }
+        Absent => count
       }
-    Absent => false
-  }
+    }
+  )
 }
 
-data seed_emitter_behavioral_green_baseline: Int = 6
+data seed_emitter_behavioral_green_baseline: Int = 0
+
+data seed_emitter_behavioral_quarantine_baseline: Int = 6
 
 data v2_interpreted_emitter_behavioral_green_baseline: Int = 0
 
@@ -670,60 +737,38 @@ data v2_native_emitter_behavioral_green_baseline: Int = 0
 
 data v2_emitter_production_routed_baseline: Int = 0
 
-fn seed_emitter_behavioral_green_count() -> Int {
+fn seed_emitter_behavioral_quarantine_count() -> Int {
   fold_list(
     xs: producer_emission_oracle_rows,
     empty: 0,
     cons: fn(count, row) {
-      if producer_emission_row_is_seed_behavioral_green(row: row) {
+      if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
         count + 1
       } else {
         count
       }
     }
   )
+}
+
+fn seed_emitter_behavioral_green_count() -> Int {
+  count_oracle_rows_with_qualified_axis(axis: ProducerCountSeedBehavioralGreen)
 }
 
 fn v2_interpreted_emitter_behavioral_green_count() -> Int {
-  fold_list(
-    xs: producer_emission_oracle_rows,
-    empty: 0,
-    cons: fn(count, row) {
-      if producer_emission_row_is_v2_interpreted_behavioral_green(row: row) {
-        count + 1
-      } else {
-        count
-      }
-    }
-  )
+  count_oracle_rows_with_qualified_axis(axis: ProducerCountV2InterpretedBehavioralGreen)
 }
 
 fn v2_native_emitter_behavioral_green_count() -> Int {
-  fold_list(
-    xs: producer_emission_oracle_rows,
-    empty: 0,
-    cons: fn(count, row) {
-      if producer_emission_row_is_v2_native_behavioral_green(row: row) {
-        count + 1
-      } else {
-        count
-      }
-    }
-  )
+  count_oracle_rows_with_qualified_axis(axis: ProducerCountV2NativeBehavioralGreen)
 }
 
 fn v2_emitter_production_routed_count() -> Int {
-  fold_list(
-    xs: producer_emission_oracle_rows,
-    empty: 0,
-    cons: fn(count, row) {
-      if producer_emission_row_is_v2_production_routed(row: row) {
-        count + 1
-      } else {
-        count
-      }
-    }
-  )
+  count_oracle_rows_with_qualified_axis(axis: ProducerCountV2ProductionRouted)
+}
+
+fn seed_emitter_behavioral_quarantine_baseline_holds() -> Bool {
+  seed_emitter_behavioral_quarantine_count() == seed_emitter_behavioral_quarantine_baseline
 }
 
 fn seed_emitter_behavioral_green_baseline_holds() -> Bool {
@@ -744,6 +789,7 @@ fn v2_emitter_production_routed_baseline_holds() -> Bool {
 
 fn producer_qualified_baselines_holds() -> Bool {
   seed_emitter_behavioral_green_baseline_holds()
+    && seed_emitter_behavioral_quarantine_baseline_holds()
     && v2_interpreted_emitter_behavioral_green_baseline_holds()
     && v2_native_emitter_behavioral_green_baseline_holds()
     && v2_emitter_production_routed_baseline_holds()

@@ -10,6 +10,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
   producer_emission_oracle_authorizes_row,
+  producer_emission_oracle_enrolls_row,
   producer_emission_canonical_receipt_for_oracle_row,
   producer_emission_oracle_row_frontier_receipt,
   producer_emission_oracle_row_03_normalize,
@@ -22,7 +23,9 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_oracle_rows,
   producer_qualified_baselines_holds,
   seed_emitter_behavioral_green_baseline,
-  seed_emitter_behavioral_green_count
+  seed_emitter_behavioral_green_count,
+  seed_emitter_behavioral_quarantine_baseline,
+  seed_emitter_behavioral_quarantine_count
 }
 import v2.compiler.self_host.frontier_probe_types {
   EmitSurfaceGap,
@@ -606,8 +609,9 @@ fn compiler_frontier_producer_qualified_baselines_holds() -> Bool {
 }
 
 fn compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds() -> Bool {
-  producer_emission_oracle_row_count() == seed_emitter_behavioral_green_baseline
-    && compiler_frontier_emitter_produced_count() == seed_emitter_behavioral_green_count()
+  producer_emission_oracle_row_count() == seed_emitter_behavioral_quarantine_baseline
+    && compiler_frontier_emitter_produced_count() == producer_emission_oracle_row_count()
+    && seed_emitter_behavioral_green_count() == seed_emitter_behavioral_green_baseline
 }
 
 fn compiler_frontier_seed_retained_count() -> Int {
@@ -678,6 +682,23 @@ fn compiler_frontier_emitter_produced_located_reason_holds() -> Bool {
             target: SelfEmitReady
           )
             && (row.measured_probe.located_reason == ^measured_probe_self_emit_ready)
+        SeedRetained { reason: _, migration_trigger: _ } => true
+      }
+    }
+  )
+}
+
+fn compiler_frontier_emitter_produced_oracle_enrolled_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && match row.disposition {
+        EmitterProduced { provenance: receipt } =>
+          producer_emission_oracle_enrolls_row(
+            module_path: row.module_path,
+            receipt: receipt
+          )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
     }
@@ -1256,7 +1277,7 @@ fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_paths_unique_holds()
     && compiler_frontier_producer_qualified_baselines_holds()
-    && compiler_frontier_emitter_produced_oracle_backed_holds()
+    && compiler_frontier_emitter_produced_oracle_enrolled_holds()
     && compiler_frontier_emitter_produced_oracle_count_matches_baseline_holds()
     && compiler_frontier_execution_measured_attribution_holds()
     && compiler_frontier_blocker_class_distribution_knowledge_attributed_holds()
