@@ -8,6 +8,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   emitter_produced_baseline,
   fabricated_v1_seed_producer_receipt,
   fabricated_v2_interpreted_producer_receipt,
+  mint_authorized_emitter_produced_disposition_refused_at_baseline_holds,
   mint_v2_interpreted_receipt_with_seed_closure_refuses,
   producer_emission_canonical_receipt_for_executed_verdict,
   producer_emission_canonical_receipt_for_oracle_row,
@@ -97,6 +98,7 @@ test fn witness_oracle_authorization_promotion_path_holds() -> Bool {
   producer_emission_oracle_authorization_promotion_path_holds()
     && producer_emission_binding_only_does_not_authorize_holds()
     && producer_emission_oracle_authorization_requires_executed_verdict_holds()
+    && mint_authorized_emitter_produced_disposition_refused_at_baseline_holds()
 }
 
 data witness_restored_binding_without_executed_receipt_red_note: String = "Review 44455/44460 RED: roster edits and static oracle derivation cannot mint BuildGreen — authorization requires witness-realization mint with admissible wet_execution_digest."
@@ -149,7 +151,7 @@ test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> B
 
 fn frontier_row_is_quarantine_seed_retained(row: CompilerModuleFrontierRow) -> Bool {
   match row.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => false
+    EmitterProduced { authorization: _ } => false
     SeedRetained { reason: _, migration_trigger: _ } => true
   }
 }

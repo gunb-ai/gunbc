@@ -640,6 +640,46 @@ fn producer_emission_oracle_authorization_requires_executed_verdict_holds() -> B
   )
 }
 
+data authorized_emitter_produced_disposition_note: String = "Review 44485 construction wall: EmitterProduced is reachable ONLY through mint_authorized_emitter_produced_disposition, which calls producer_emission_oracle_authorizes_row before wrapping. Live compiler_frontier_roster has zero EmitterProduced rows at baseline; census compiler_frontier_emitter_produced_oracle_backed_holds re-checks authorization on every roster row. Dissolve-on: witness-realization populates roster exclusively via mint."
+
+type AuthorizedEmitterProducedDisposition {
+  provenance: ProducerEmissionReceipt
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+}
+
+fn authorized_emitter_produced_provenance(
+  authorization: AuthorizedEmitterProducedDisposition
+) -> ProducerEmissionReceipt {
+  authorization.provenance
+}
+
+fn authorized_emitter_produced_executed_verdict(
+  authorization: AuthorizedEmitterProducedDisposition
+) -> ProducerEmissionExecutedGreenReceipt {
+  authorization.executed_verdict
+}
+
+fn mint_authorized_emitter_produced_disposition(
+  module_path: String,
+  provenance: ProducerEmissionReceipt,
+  executed_verdict: ProducerEmissionExecutedGreenReceipt
+) -> Optional<AuthorizedEmitterProducedDisposition> {
+  if producer_emission_oracle_authorizes_row(
+    module_path: module_path,
+    receipt: provenance,
+    executed: executed_verdict
+  ) {
+    optional_present(
+      value: AuthorizedEmitterProducedDisposition {
+        provenance: provenance,
+        executed_verdict: executed_verdict
+      }
+    )
+  } else {
+    optional_absent()
+  }
+}
+
 fn producer_emission_binding_only_does_not_authorize_holds() -> Bool {
   let row = producer_emission_oracle_row_body_producer
   match emission_build_result_axis(result: producer_emission_build_result_for_oracle_row(row: row)) {
@@ -772,6 +812,25 @@ fn mint_v2_interpreted_receipt_with_seed_closure_refuses(
     behavioral_probe_entry: "fabricated",
     behavioral_probe_function: "fabricated",
     realized_closure: cssl_harness_realized_closure
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn mint_authorized_emitter_produced_disposition_refused_at_baseline_holds() -> Bool {
+  let row = producer_emission_oracle_row_body_producer
+  let fabricated = fabricated_v1_seed_producer_receipt(module_path: row.module_path)
+  let executed = ProducerEmissionExecutedGreenReceipt {
+    module_path: row.module_path,
+    behavioral_probe_entry: row.behavioral_probe_entry,
+    behavioral_probe_function: row.behavioral_probe_function,
+    wet_execution_digest: content_hash_atom(value: row.behavioral_probe_entry)
+  }
+  match mint_authorized_emitter_produced_disposition(
+    module_path: row.module_path,
+    provenance: fabricated,
+    executed_verdict: executed
   ) {
     Absent => true
     Present { value: _ } => false

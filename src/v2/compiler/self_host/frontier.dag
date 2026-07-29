@@ -6,10 +6,13 @@ import v2.compiler.self_host.frontier_band_a_emit_readiness {
   compiler_frontier_band_a_emit_readiness_roster
 }
 import v2.compiler.self_host.emitter_producer_provenance {
+  AuthorizedEmitterProducedDisposition,
   EmitterProducer,
   ProducerEmissionExecutedGreenReceipt,
   ProducerEmissionOracleRow,
   ProducerEmissionReceipt,
+  authorized_emitter_produced_executed_verdict,
+  authorized_emitter_produced_provenance,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
   producer_emission_oracle_row_03_normalize,
@@ -120,10 +123,7 @@ data compiler_frontier_census_attribution: CompilerFrontierCensusAttribution = E
 data compiler_frontier_probe_kernel_receipt_note: String = "probe_kernel_receipt binds the fail-closed classifier RED control (frontier_classify_unlisted_reason_refuses_holds), not per-module frontier_probe_emit_from_ingest execution. Structural census invariants are compiler_frontier_structural_census_invariants_holds; per-module receipts deferred via CompilerFrontierAttributedDebt dissolution triggers."
 
 type SelfHostFrontierDisposition
-  = EmitterProduced {
-      provenance: ProducerEmissionReceipt,
-      executed_verdict: ProducerEmissionExecutedGreenReceipt
-    }
+  = EmitterProduced { authorization: AuthorizedEmitterProducedDisposition }
   | SeedRetained { reason: Symbol, migration_trigger: Symbol }
 
 type CompilerModuleFrontierRow {
@@ -244,7 +244,7 @@ fn execution_measured_seed_retained_row_from_probe_receipt(
   )
 }
 
-data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480): EmitterProduced carries provenance + executed_verdict; frontier authorization routes ONLY through producer_emission_canonical_receipt_for_executed_verdict — static oracle derivation (producer_emission_canonical_receipt_for_oracle_row) is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Structural refusal: V2Emitter* unwritable when v1.compiler.emit_rust is in closure."
+data execution_measured_emitter_produced_row_note: String = "Construction wall (emitter_producer_provenance, reviews 44362/44480/44485): EmitterProduced carries AuthorizedEmitterProducedDisposition minted only via mint_authorized_emitter_produced_disposition (calls producer_emission_oracle_authorizes_row). Static oracle derivation is enrollment-only. producer_emission_executed_digest_is_execution_measured is false at baseline until witness-realization. Live roster emitter_produced_baseline=0."
 
 fn quarantine_seed_retained_row_from_oracle(
   oracle_row: ProducerEmissionOracleRow,
@@ -590,7 +590,7 @@ fn count_emitter_produced_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> 
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        EmitterProduced { provenance: _, executed_verdict: _ } => count + 1
+        EmitterProduced { authorization: _ } => count + 1
         SeedRetained { reason: _, migration_trigger: _ } => count
       }
     }
@@ -603,7 +603,7 @@ fn count_seed_retained_frontier_rows(xs: List<CompilerModuleFrontierRow>) -> Int
     empty: 0,
     cons: fn(count, row) {
       match row.disposition {
-        EmitterProduced { provenance: _, executed_verdict: _ } => count
+        EmitterProduced { authorization: _ } => count
         SeedRetained { reason: _, migration_trigger: _ } => count + 1
       }
     }
@@ -672,7 +672,7 @@ fn compiler_frontier_roster_located_reason_not_class_projection_holds() -> Bool 
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { provenance: _, executed_verdict: _ } => true
+        EmitterProduced { authorization: _ } => true
         SeedRetained { reason: _, migration_trigger: _ } =>
           !frontier_located_reason_is_class_projection(reason: row.measured_probe.located_reason)
       }
@@ -686,7 +686,7 @@ fn compiler_frontier_emitter_produced_located_reason_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { provenance: _, executed_verdict: _ } =>
+        EmitterProduced { authorization: _ } =>
           frontier_blocker_class_matches(
             blocker: row.measured_probe.blocker_class,
             target: SelfEmitReady
@@ -704,10 +704,10 @@ fn compiler_frontier_emitter_produced_oracle_enrolled_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { provenance: receipt, executed_verdict: _ } =>
+        EmitterProduced { authorization: authorization } =>
           producer_emission_oracle_enrolls_row(
             module_path: row.module_path,
-            receipt: receipt
+            receipt: authorized_emitter_produced_provenance(authorization: authorization)
           )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
@@ -721,11 +721,11 @@ fn compiler_frontier_emitter_produced_oracle_backed_holds() -> Bool {
     empty: true,
     cons: fn(ok, row) {
       ok && match row.disposition {
-        EmitterProduced { provenance: receipt, executed_verdict: executed } =>
+        EmitterProduced { authorization: authorization } =>
           producer_emission_oracle_authorizes_row(
             module_path: row.module_path,
-            receipt: receipt,
-            executed: executed
+            receipt: authorized_emitter_produced_provenance(authorization: authorization),
+            executed: authorized_emitter_produced_executed_verdict(authorization: authorization)
           )
         SeedRetained { reason: _, migration_trigger: _ } => true
       }
@@ -856,7 +856,7 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   if module_path == row.module_path {
     match row.disposition {
       SeedRetained { reason: _, migration_trigger: expected } => trigger == expected
-      EmitterProduced { provenance: _, executed_verdict: _ } => false
+      EmitterProduced { authorization: _ } => false
     }
   } else {
     false
@@ -870,7 +870,7 @@ fn band_a_emit_readiness_module_is_emitter_produced(module_path: String) -> Bool
     cons: fn(matched, row) {
       if row.module_path == module_path {
         match row.disposition {
-          EmitterProduced { provenance: _, executed_verdict: _ } => true
+          EmitterProduced { authorization: _ } => true
           SeedRetained { reason: _, migration_trigger: _ } => false
         }
       } else {
@@ -1012,7 +1012,7 @@ fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) ->
 
 fn frontier_hand_rows_emitter_produced_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
   match row.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    EmitterProduced { authorization: _ } => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
     SeedRetained { reason: _, migration_trigger: _ } => []
   }
 }
@@ -1087,7 +1087,7 @@ fn emitter_produced_frontier_row_stage0_mod_basename(
   row: CompilerModuleFrontierRow
 ) -> List<String> {
   match row.disposition {
-    EmitterProduced { provenance: _, executed_verdict: _ } => {
+    EmitterProduced { authorization: _ } => {
       match frontier_row_stage0_mod_basename(index: index, row: row) {
         Accepted { value: b, diagnostics: _ } => [b]
         Rejected { diagnostics: _ } => []
