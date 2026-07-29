@@ -174,8 +174,7 @@ fn bmc_fan_curve_step_order_refusal(
   match remaining.first() {
     Absent => none
     Present { value: current } =>
-      if celsius_count(current.at_or_above)
-        <= celsius_count(previous.at_or_above) {
+      if celsius_count(current.at_or_above) <= celsius_count(previous.at_or_above) {
         Present {
           value: BmcFanCurveTemperatureNotStrictlyIncreasing {
             previous: previous.at_or_above,
