@@ -3,15 +3,13 @@ module extdeps.realization.artifact_store_fs
 import extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, Bool, Int, List }
+import std.types { ContentHash, String, Bool, List }
 import std.effect_grant {
   Verb, Write, Read,
   NamespacePosition,
   Admitted, EffectOutsideGrant,
 }
 import std.materialization_ladder { Frame }
-import std.disposition { Disposition, Terminal }
-import std.artifact_store { StorePutReceipt }
 import std.artifact_store_scratch_grant {
   artifact_store_scratch_read_admissible,
   artifact_store_scratch_write_admissible,
@@ -24,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data artifact_store_fs_transport_note: String = "P2 host-transport half (witness-realization plan): the filesystem realization of std.artifact_store's persistent tier. The keyed path ENCODES identity - store_root/<content-hash>.artifact - so presence-at-path is a ContentKeyed hit for exactly that identity, which is NOT the #6352 existence-keying (that red keyed on OUTPUT presence while the INPUTS went unhashed; here the path IS the input hash). Layering: this module is one transport handler bound to the pure spec (std.artifact_store, the single authority); a second handler (e.g. remote CAS) binds the same shape. Grant refusals surface as typed ArtifactFs*Refused variants (verb, target, frame) — never widened to miss/false/[] (DESIGN 5). SCOPE (corrected 2026-07-29, operator-flagged on PR 7385): this sentence previously claimed the cited Filesystem service exposed no Delete/List and that SpacePacked enforcement was therefore unrealizable. That was FALSE and had been for a long time - extdeps.filesystem.filesystem_io declares both operations, artifact_fs_delete and artifact_fs_list below realize them, and artifact_store_fs_witness_test exercises the put-list-delete-list round trip green. It is a parallel-ledger note that sat above the functions refuting it and was believed over them (it was then propagated into a second module before being caught). The REAL gap it obscured was narrower: std.artifact_store's evict_until_within_budget computed a StorePutReceipt carrying evicted keys, and nothing passed those keys to artifact_fs_delete - the eviction DECISION was computed and discarded at the host boundary, so the disk tier grew unbounded because no caller invoked the verb, not because the verb was missing. apply_store_evictions below closes that: it applies a receipt's evictions through this transport with every per-key outcome typed and counted, so a grant refusal is a recorded EvictionRefused rather than a silent skip."
+data artifact_store_fs_transport_note: String = "P2 host-transport half (witness-realization plan): the filesystem realization of std.artifact_store's persistent tier. The keyed path ENCODES identity - store_root/<content-hash>.artifact - so presence-at-path is a ContentKeyed hit for exactly that identity, which is NOT the #6352 existence-keying (that red keyed on OUTPUT presence while the INPUTS went unhashed; here the path IS the input hash). Layering: this module is one transport handler bound to the pure spec (std.artifact_store, the single authority); a second handler (e.g. remote CAS) binds the same shape. Grant refusals surface as typed ArtifactFs*Refused variants (verb, target, frame) — never widened to miss/false/[] (DESIGN 5). SCOPE (honest): put/get only - the Filesystem service exposes Write/Read but no Delete/List, so SpacePacked budget enforcement on the persistent tier is unrealizable until those operations are added to the cited service surface; until then the disk tier grows unbounded and the in-process std.artifact_store fold is the only packed tier. That gap is the named next rung, not a silent widen."
 
 fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
   concat(store_root, "/", key, ".artifact")
@@ -110,71 +108,4 @@ func artifact_fs_list(store_root: String) -> ArtifactFsListResult {
       return ArtifactFsListFailed { path: store_root }
     }
   }
-}
-
-data artifact_store_fs_eviction_note: String = "The eviction application half: std.artifact_store DECIDES what to evict (a pure fold returning the evicted keys in its receipt); this function APPLIES that decision to the persistent tier. The split is the section 2 pure-spec/host-effect seam - the store stays a pure fold with no filesystem reach, and every transport handler bound to it (this one; a remote CAS later) applies the same receipt. Per-key outcomes are TYPED AND KEPT, never reduced to a success Bool: a grant refusal becomes EvictionRefused carrying the verb/target/frame the transport reported, so a store whose evictions are being silently denied is COUNTABLE (eviction_refusal_count) rather than appearing to pack correctly while the disk grows. Deliberately NOT fail-fast on the first refusal: siblings continue and each records its own outcome, so one denied key does not hide the disposition of the rest - the stopped-line ledger shape, not an absorbing skip."
-
-type ArtifactEvictionStep
-  = EvictionDeleted { key: ContentHash }
-  | EvictionRefused { key: ContentHash, verb: Verb, target: NamespacePosition, frame: Frame }
-  | EvictionFailed { key: ContentHash, path: String }
-
-func evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
-  match artifact_fs_delete(store_root: store_root, key: key) {
-    ArtifactFsDeleteOk => EvictionDeleted { key: key }
-    ArtifactFsDeleteRefused { verb: v, target: t, frame: f } =>
-      EvictionRefused { key: key, verb: v, target: t, frame: f }
-    ArtifactFsDeleteFailed { path: p } => EvictionFailed { key: key, path: p }
-  }
-}
-
-func apply_store_evictions(store_root: String, receipt: StorePutReceipt) -> List<ArtifactEvictionStep> {
-  receipt.evicted |> map(key => evict_one(store_root: store_root, key: key))
-}
-
-data eviction_step_reader_contract: Disposition = Terminal {
-  reason: "eviction_step_fold is the only match over ArtifactEvictionStep; the predicates and counters below derive from it and contain no match of their own, so a fourth outcome is a type error at exactly one site. Same discipline this module's consumer applies to ProviderLookup / ProviderAdmission (std.materialization_provider reader contract) — a new coproduct does not get an exemption for being small (review 44258). Discriminating corpus: dag/test/claim/artifact_store_fs_witness_test.dag."
-}
-
-fn eviction_step_fold<T>(
-  step: ArtifactEvictionStep,
-  deleted: fn(ContentHash) -> T,
-  refused: fn(ContentHash, Verb, NamespacePosition, Frame) -> T,
-  failed: fn(ContentHash, String) -> T
-) -> T {
-  match step {
-    EvictionDeleted { key: k } => deleted(k)
-    EvictionRefused { key: k, verb: v, target: t, frame: f } => refused(k, v, t, f)
-    EvictionFailed { key: k, path: p } => failed(k, p)
-  }
-}
-
-fn eviction_step_is_deleted(s: ArtifactEvictionStep) -> Bool {
-  eviction_step_fold(
-    step: s,
-    deleted: k => true,
-    refused: (k, v, t, f) => false,
-    failed: (k, p) => false
-  )
-}
-
-fn eviction_step_is_refused(s: ArtifactEvictionStep) -> Bool {
-  eviction_step_fold(
-    step: s,
-    deleted: k => false,
-    refused: (k, v, t, f) => true,
-    failed: (k, p) => false
-  )
-}
-
-fn eviction_deleted_count(steps: List<ArtifactEvictionStep>) -> Int {
-  steps |> filter(s => eviction_step_is_deleted(s: s)) |> count()
-}
-
-fn eviction_refusal_count(steps: List<ArtifactEvictionStep>) -> Int {
-  steps |> filter(s => eviction_step_is_refused(s: s)) |> count()
-}
-
-fn eviction_all_applied(steps: List<ArtifactEvictionStep>) -> Bool {
-  steps |> fold(init: true, f: (acc, s) => acc && eviction_step_is_deleted(s: s))
 }
