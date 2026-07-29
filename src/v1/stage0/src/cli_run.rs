@@ -1292,6 +1292,8 @@ const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
 ];
 const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
     "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
+const SEED_EMITTER_BEHAVIORAL_WET_KNOWN_RED_AUTHORITY_REL: &str =
+    "src/v2/compiler/self_host/seed_emitter_behavioral_wet_known_red_entries.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 const RESOLUTION_DIVERGENCE_CENSUS_ROSTER_EXCLUDED_MODULE_PREFIXES_DATA_NAME: &str =
