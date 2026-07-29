@@ -200,6 +200,31 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
   hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
 )
 
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data srv4_bmc_fan_realization_definition_hashes: StateRealizationDefinitionHashes = StateRealizationDefinitionHashes {
+  projection: content_hash_atom(
+    value: "openbmc-fan-config-projection-asrr-temp-soc-jffs2-v2",
+  ),
+  verifier: content_hash_atom(
+    value: "openbmc-fan-config-verifier-asrr-temp-soc-jffs2-v2",
+  ),
+  observer: content_hash_atom(
+    value: "openbmc-fan-config-observer-asrr-temp-soc-jffs2-v2",
+  ),
+  transport: content_hash_atom(
+    value: "openbmc-fan-config-transport-ssh-jffs2-v2",
+  ),
+  actuator: content_hash_atom(
+    value: "openbmc-fan-config-actuator-publish-restart-v2",
+  ),
+}
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  definition_hashes: srv4_bmc_fan_realization_definition_hashes,
+}
+
 data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
   version: "openbmc-overlay-config-graceful-restart-v2",
   definition_hash: content_hash_atom(
