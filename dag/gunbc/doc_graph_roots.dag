@@ -249,7 +249,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "srv1-deploy-serialization-and-false-greens",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_deploy_srv1_stage", field: WholeDeclaration },
-    dissolution: HasTrigger { text: "the deploy stage carries mutual exclusion AND a counted superseded-tip refusal, the healthz fingerprint identifies the served source closure, and job_yaml emits Job.concurrency with a discriminating RED — the three findings this diagnosis names are then facts on their carriers and the doc deletes with this row" },
+    dissolution: HasTrigger { text: "all FOUR findings this diagnosis names are facts on their carriers: (1) the deploy stage carries mutual exclusion AND a counted superseded-tip refusal, (2) the healthz fingerprint identifies what is deployed rather than five rendered bodies, (3) the refusal path preserves the decl's located diagnosis instead of substituting a render complaint — ansi_text_contains_terminal_control stops flagging LF/TAB as cursor-control, or the refusal-write path reports the render failure as a second fact, and (4) job_yaml emits Job.concurrency with a discriminating RED. Then the doc deletes with this row. Corrected in review (review 44735): the first version of this trigger covered only exclusion, freshness, fingerprinting and concurrency emission, so the doc could have retired while the misattributed-refusal defect stood — one of the three outcomes the operator named as equally important" },
   },
 ]
 
