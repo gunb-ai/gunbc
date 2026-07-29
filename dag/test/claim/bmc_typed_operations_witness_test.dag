@@ -5,6 +5,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
   OpenBmcSensorServicesObserved,
+  OpenBmcSensorValueAbsent,
   OpenBmcSensorValueRefused,
   OpenBmcTachAtOrAboveThreshold,
   OpenBmcTachBelowThreshold,
@@ -13,6 +14,7 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_collection_from_values,
   openbmc_object_mapper_services_rec,
   openbmc_operation_argv,
+  openbmc_sensor_integer_projection_result,
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
 }
@@ -99,6 +101,28 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
   ) {
     OpenBmcSensorValueRefused { reason } =>
       reason == "SSH host identity verification failed"
+    _ => false
+  }
+}
+
+test fn failed_sensor_projection_cannot_become_absent() -> Bool {
+  match openbmc_sensor_integer_projection_result(
+    success: false,
+    value: "",
+    stderr: "malformed OpenBMC JSON",
+  ) {
+    OpenBmcSensorValueRefused { reason } => reason == "malformed OpenBMC JSON"
+    _ => false
+  }
+}
+
+test fn successful_empty_sensor_projection_is_absent() -> Bool {
+  match openbmc_sensor_integer_projection_result(
+    success: true,
+    value: "",
+    stderr: "",
+  ) {
+    OpenBmcSensorValueAbsent => true
     _ => false
   }
 }

@@ -407,7 +407,7 @@ service openbmc.JsonProjection {
     }
     readonly
     transport shell {
-      argv: ["jq", "-er", "if (.data | type) == \"number\" then (.data | round) else empty end"]
+      argv: ["jq", "-r", "if (.data | type) == \"number\" then (.data | round) else empty end"]
       stdin: content
     }
     exit {
@@ -469,6 +469,26 @@ type OpenBmcSensorValueResult
   = OpenBmcSensorValueObserved { value: Int }
   | OpenBmcSensorValueAbsent
   | OpenBmcSensorValueRefused { reason: String }
+
+fn openbmc_sensor_integer_projection_result(
+  success: Bool,
+  value: String,
+  stderr: String,
+) -> OpenBmcSensorValueResult {
+  if !success {
+    OpenBmcSensorValueRefused { reason: stderr }
+  } else if trim(value) == "" {
+    OpenBmcSensorValueAbsent
+  } else {
+    match parse_int(s: trim(value)) {
+      Absent =>
+        OpenBmcSensorValueRefused {
+          reason: "sensor value projection is not an integer",
+        }
+      Present { value: parsed } => OpenBmcSensorValueObserved { value: parsed }
+    }
+  }
+}
 
 type OpenBmcTachThresholdSource
   = OpenBmcWarningLowThreshold
@@ -587,17 +607,11 @@ fn openbmc_sensor_value(
     let extracted = openbmc.JsonProjection.SensorIntegerValue(
       content: remote.stdout,
     )
-    if !extracted.success || trim(extracted.value) == "" {
-      OpenBmcSensorValueAbsent
-    } else {
-      match parse_int(s: trim(extracted.value)) {
-        Absent =>
-          OpenBmcSensorValueRefused {
-            reason: "sensor value projection is not an integer",
-          }
-        Present { value: value } => OpenBmcSensorValueObserved { value: value }
-      }
-    }
+    openbmc_sensor_integer_projection_result(
+      success: extracted.success,
+      value: extracted.value,
+      stderr: extracted.stderr,
+    )
   }
 }
 
@@ -625,14 +639,11 @@ fn openbmc_sensor_threshold_result(
     OpenBmcSensorValueRefused { reason: remote.stderr }
   } else {
     let extracted = openbmc.JsonProjection.SensorIntegerValue(content: remote.stdout)
-    if !extracted.success || trim(extracted.value) == "" {
-      OpenBmcSensorValueAbsent
-    } else {
-      match parse_int(s: trim(extracted.value)) {
-        Absent => OpenBmcSensorValueRefused { reason: "tach threshold is not an integer" }
-        Present { value } => OpenBmcSensorValueObserved { value: value }
-      }
-    }
+    openbmc_sensor_integer_projection_result(
+      success: extracted.success,
+      value: extracted.value,
+      stderr: extracted.stderr,
+    )
   }
 }
 
