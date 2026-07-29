@@ -8594,12 +8594,18 @@ fn emit_host_resolved_build_context_identity(
     probe_workspace: &std::path::Path,
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<String> {
+    #[derive(Debug, Clone)]
+    struct ObservedToolIdentity {
+        tool_name: String,
+        observed_identity: String,
+    }
+
     fn observe_tool(
         requested: &str,
         version_args: &[&str],
         probe_workspace: &std::path::Path,
         environment: &EmitHostBuildEnvironment,
-    ) -> InterpResult<String> {
+    ) -> InterpResult<ObservedToolIdentity> {
         let resolved = resolve_host_tool_program(requested);
         let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
             msg: format!(
@@ -8645,13 +8651,25 @@ fn emit_host_resolved_build_context_identity(
         ] {
             digest = v1_rt::hash_combine(digest, field);
         }
-        Ok(digest)
+        Ok(ObservedToolIdentity {
+            tool_name: logical_name.to_string(),
+            observed_identity: digest,
+        })
     }
 
-    let mut toolchain_identity =
-        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string());
+    fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
+        debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
+        rows.iter().fold(
+            v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
+            |acc, observed_tool_identity| {
+                v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
+            },
+        )
+    }
+
     let cargo_configuration_identity =
         emit_host_cargo_configuration_digest(environment, probe_workspace)?;
+    let mut observed_tool_identities = Vec::new();
     for argv in build_argvs {
         let requested = argv.first().ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_run_transport_cached: empty build argv".to_string(),
@@ -8665,19 +8683,24 @@ fn emit_host_resolved_build_context_identity(
         } else {
             &["--version"]
         };
-        toolchain_identity = v1_rt::hash_combine(
-            toolchain_identity,
-            observe_tool(requested, version_args, probe_workspace, environment)?,
-        );
+        observed_tool_identities.push(observe_tool(
+            requested,
+            version_args,
+            probe_workspace,
+            environment,
+        )?);
 
         if requested_name == "cargo" {
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            toolchain_identity = v1_rt::hash_combine(
-                toolchain_identity,
-                observe_tool(&rustc, &["-vV"], probe_workspace, environment)?,
-            );
+            observed_tool_identities.push(observe_tool(
+                &rustc,
+                &["-vV"],
+                probe_workspace,
+                environment,
+            )?);
         }
     }
+    let toolchain_identity = fold_observed_toolchain_identity(&observed_tool_identities);
     Ok(emit_host_artifact_realization_digest(&[
         ("resolved-build-toolchain", toolchain_identity),
         ("constructed-build-environment", environment.digest.clone()),

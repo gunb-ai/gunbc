@@ -47,6 +47,7 @@ use serde::Serialize;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+pub(crate) mod test_module_hygiene_bridge;
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
@@ -13367,9 +13368,9 @@ fn witness_admission_entry_function_keys_from_source(
         // keys must expand the same way `expand_explicit_entries` does for execution —
         // otherwise deferred leaf rows (entry::leaf) never match the unexpanded
         // consumer key (entry::) and Phase 0(b) falsely refuses (roadmap_belt #7273).
-        if crate::test_module_hygiene::is_file_grain_function(function) {
+        if test_module_hygiene_bridge::is_file_grain_function(function) {
             let path = workspace_root().join(entry);
-            let names = crate::test_module_hygiene::enumerate_entry_test_fns(
+            let names = test_module_hygiene_bridge::enumerate_entry_test_fns(
                 path.to_str().unwrap_or(entry),
             )
             .unwrap_or_else(|e| {
@@ -14028,7 +14029,7 @@ pub fn discover_floor_witness_roster(
     floor_filename_hygiene_refusal_via_producer(source_roots)?;
     // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
     // not a new lens (umbrella-dissolution fence).
-    crate::test_module_hygiene::check_orphan_helpers_or_err(source_roots)?;
+    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     // ONE module-graph facts build serves effect-reach, the inert-lens reach, and the
@@ -16437,7 +16438,7 @@ fn run_discovery_corpus_with_options_inner(
         .map(|r| (r.entry.clone(), r.function.clone()))
         .collect();
     // U3 — empty function = file-grain: enumerate via the same test-decl scan discovery uses.
-    let expanded_explicit = crate::test_module_hygiene::expand_explicit_entries(explicit_entries)?;
+    let expanded_explicit = test_module_hygiene_bridge::expand_explicit_entries(explicit_entries)?;
     for (entry, function) in &expanded_explicit {
         if seen.insert((entry.clone(), function.clone())) {
             rows.push(DiscoveryRow {
@@ -25231,31 +25232,61 @@ mod reference_edge_producer_tests {
     fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
         use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
 
-        /// Groundedness is decided by the parsed import surface (`extract_import_paths`)
-        /// ONLY — never by textual containment of the module name. A `contains` fallback
-        /// is launderable in this corpus and would admit false greens: `.dag` has no
-        /// comments, but it does carry long prose `data ..._note: String = "…"` rows that
-        /// legitimately name module paths (two such notes are added by this very PR), so
-        /// a fabricated edge whose module happens to be mentioned in prose would read as
-        /// grounded. Parsed-imports-only closes that (review 44626).
+        /// `layer_import_facts` has TWO fact provenances by construction: a scan of real
+        /// `import` lines, and — only when the importer roots contain import-less `.dag`
+        /// files — reference-derived edges from `reference_resolution_facts`. So grounding
+        /// is the disjunction, and each arm is checked against the surface that provenance
+        /// actually uses:
         ///
-        /// Consequence, stated rather than hidden: a *reference-derived* cross-layer std
-        /// edge — which the sibling `..._reference_only_violation_control` proves the
-        /// producer does emit — would be reported here. There are none in the corpus
-        /// today (all 9 are real `import` lines), so this is fail-closed and loud by
-        /// choice: if one appears, this reds and the oracle gets extended deliberately,
-        /// rather than being pre-weakened into something that cannot catch a fabrication.
+        /// - **import-backed** — the module appears in the parsed import surface
+        ///   (`extract_import_paths`). This is the strong arm and the common case.
+        /// - **reference-backed** — the module appears in the file's *code* text. The
+        ///   sibling `..._reference_only_violation_control` proves the producer emits such
+        ///   an edge for an import-less std file with a qualified reference, so demanding
+        ///   an `import` for it would encode an invariant the project is actively
+        ///   dissolving (DESIGN's namespace-only lane ends with `import` as a *parse
+        ///   error*, deps derived from `container.member` references). Requiring one here
+        ///   would red on a legitimate reference (review 44710).
         ///
-        /// Returns (ungrounded, unreadable) as SEPARATE buckets. Folding an unreadable
-        /// file into the ungrounded one would let every assertion below pass or fail for
-        /// the wrong reason — "I could not read the file" is not "the edge is fabricated"
-        /// (DESIGN §5 state-space conflation). `path` is a repo-relative key, so it must
-        /// be anchored at the workspace root exactly as the producer does when it reads
-        /// the importer; reading it raw only works when cwd happens to be that root,
-        /// which under `cargo test` (cwd = package root) it is not.
-        fn ungrounded(facts: &[LayerImportFactRaw]) -> (Vec<String>, Vec<String>) {
+        /// The reference arm is *code* containment, not text containment: string literals
+        /// are stripped first. `.dag` has no comment syntax, so a prose
+        /// `data ..._note: String = "…"` row is the only non-code text — and those rows
+        /// legitimately name module paths (this PR adds two), which is exactly the
+        /// laundering vector review 44626 rejected `contains` for. Stripping literals
+        /// keeps that closed while admitting the real reference.
+        ///
+        /// Three SEPARATE buckets out, never folded together (DESIGN §5 state-space
+        /// conflation): "I could not read the file" is not "the edge is fabricated", and
+        /// "grounded by a reference" is not "grounded by an import" — the second
+        /// distinction is what keeps the reference arm from silently becoming the whole
+        /// oracle. `path` is a repo-relative key, so it is anchored at the workspace root
+        /// exactly as the producer anchors it; reading it raw only works when cwd happens
+        /// to be that root, which under `cargo test` (cwd = package root) it is not.
+        fn ungrounded(facts: &[LayerImportFactRaw]) -> (Vec<String>, Vec<String>, Vec<String>) {
+            /// Drops `"…"` string-literal content, keeping everything else. A `\` escapes
+            /// the next character, so `\"` does not close a literal.
+            fn code_text_only(content: &str) -> String {
+                let mut out = String::with_capacity(content.len());
+                let mut in_string = false;
+                let mut escaped = false;
+                for c in content.chars() {
+                    if escaped {
+                        escaped = false;
+                        continue;
+                    }
+                    match c {
+                        '\\' if in_string => escaped = true,
+                        '"' => in_string = !in_string,
+                        _ if in_string => {}
+                        _ => out.push(c),
+                    }
+                }
+                out
+            }
+
             let ws = super::workspace_root();
-            let mut ungrounded = Vec::new();
+            let mut fabricated = Vec::new();
+            let mut reference_backed = Vec::new();
             let mut unreadable = Vec::new();
             for f in facts.iter().filter(|f| {
                 f.layer == "LayerPrefixStd"
@@ -25266,14 +25297,20 @@ mod reference_edge_producer_tests {
                     unreadable.push(f.path.clone());
                     continue;
                 };
-                let imported = extract_import_paths(&content)
+                let edge = format!("{} -> {}", f.path, f.import_module);
+                if extract_import_paths(&content)
                     .iter()
-                    .any(|m| m == &f.import_module);
-                if !imported {
-                    ungrounded.push(format!("{} -> {}", f.path, f.import_module));
+                    .any(|m| m == &f.import_module)
+                {
+                    continue;
+                }
+                if code_text_only(&content).contains(&f.import_module) {
+                    reference_backed.push(edge);
+                } else {
+                    fabricated.push(edge);
                 }
             }
-            (ungrounded, unreadable)
+            (fabricated, reference_backed, unreadable)
         }
 
         let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
@@ -25284,7 +25321,7 @@ mod reference_edge_producer_tests {
             "producer emitted no layer facts at all — the corpus read is broken, so an \
              empty violation set below would be vacuous"
         );
-        let (fabricated, unreadable) = ungrounded(&facts);
+        let (fabricated, reference_backed, unreadable) = ungrounded(&facts);
         assert!(
             unreadable.is_empty(),
             "every flagged std file must be readable at the workspace root — an unreadable \
@@ -25292,54 +25329,130 @@ mod reference_edge_producer_tests {
         );
         assert!(
             fabricated.is_empty(),
-            "every cross-layer std edge must be backed by a real parsed import; \
-             ungrounded: {fabricated:?}"
+            "every cross-layer std edge must be grounded in its own file — a real parsed \
+             import, or a real code reference; fabricated: {fabricated:?}"
+        );
+        // The reference-backed bucket is REPORTED, not asserted empty. Asserting it empty
+        // is the import-only rule this oracle just stopped encoding; leaving it unsplit
+        // would let the weaker arm silently absorb the stronger one. Zero in the corpus
+        // today (all in-corpus cross-layer std edges are real `import` lines), and it is
+        // the import-less std files the namespace lane produces that will land here.
+        eprintln!(
+            "cross-layer std edges: {} import-backed, {} reference-backed{}",
+            facts
+                .iter()
+                .filter(|f| {
+                    f.layer == "LayerPrefixStd"
+                        && (f.import_module.starts_with("extdeps.")
+                            || f.import_module.starts_with("v2.compiler"))
+                })
+                .count()
+                - reference_backed.len(),
+            reference_backed.len(),
+            if reference_backed.is_empty() {
+                String::new()
+            } else {
+                format!(" {reference_backed:?}")
+            }
         );
 
-        // RED controls. Both plant a fact against a REAL, READABLE std file, and each
-        // asserts `unreadable` is empty first — otherwise a path-anchoring bug would
-        // satisfy them for the wrong reason.
-        let red = |import_module: &str| {
+        // RED controls, each planting a fact against a REAL, READABLE file and asserting
+        // `unreadable` is empty first — otherwise a path-anchoring bug would satisfy them
+        // for the wrong reason.
+        let red = |path: &str, import_module: &str| {
             let planted = vec![LayerImportFactRaw {
                 layer: "LayerPrefixStd",
-                path: "dag/std/measure.dag".to_string(),
+                path: path.to_string(),
                 import_module: import_module.to_string(),
             }];
-            let (ung, unread) = ungrounded(&planted);
+            let (fab, refd, unread) = ungrounded(&planted);
             assert!(
                 unread.is_empty(),
                 "RED control fixture must be readable, else it fires for the wrong reason"
             );
-            ung.len()
+            (fab.len(), refd.len())
         };
 
-        // (1) a module the file never mentions at all.
+        // (1) a module the file neither imports nor mentions anywhere.
         assert_eq!(
-            red("extdeps.units.no_such_module_mentioned_anywhere"),
-            1,
-            "predicate must flag an edge with no import backing it"
+            red(
+                "dag/std/measure.dag",
+                "extdeps.units.no_such_module_mentioned_anywhere"
+            ),
+            (1, 0),
+            "an edge with no import and no reference behind it must be flagged fabricated"
         );
 
-        // (2) the laundering case review 44626 named, and the reason `contains` was
-        // rejected: a module named only in prose must still be flagged. `std.measure`
-        // imports extdeps.units.iso8601 but NOT extdeps.units.iec_80000_14 — while its
-        // own text does mention the IEC 80000 authority in prose, so a containment
-        // oracle could be talked into calling this grounded. Parsed imports cannot.
+        // (2) a near-miss sibling: `std.measure` imports `extdeps.units.iec_80000_13`, and
+        // `..._14` does not occur in the file in any form. Guards the arm against matching
+        // on a prefix of a real module name.
         let measure = std::fs::read_to_string(super::workspace_root().join("dag/std/measure.dag"))
             .expect("read measure.dag");
-        let laundered = "extdeps.units.iec_80000_14";
+        let near_miss = "extdeps.units.iec_80000_14";
         assert!(
             !extract_import_paths(&measure)
                 .iter()
-                .any(|m| m == laundered),
-            "control precondition: {laundered} must NOT be imported by std.measure"
+                .any(|m| m == near_miss)
+                && measure.contains("extdeps.units.iec_80000_13"),
+            "control precondition: {near_miss} is not imported, while its sibling _13 is"
         );
         assert_eq!(
-            red(laundered),
-            1,
-            "a module absent from the parsed imports must be flagged even when the \
-             file's prose discusses the same authority — the laundering vector"
+            red("dag/std/measure.dag", near_miss),
+            (1, 0),
+            "a sibling module absent from the file must not be grounded by the prefix of \
+             the one that is present"
         );
+
+        // (3) + (4) the two arms of the reference case, on authored fixtures because the
+        // live corpus has no import-less std file to exercise them. The pair is what makes
+        // the reference arm discriminating rather than a rubber stamp: same shape, same
+        // module name, differing only in whether the occurrence is code or prose.
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-layer-grounding-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        std::fs::create_dir_all(&fixture).expect("mkdir fixture");
+        let referenced = "v2.compiler.tokenize";
+
+        // (3) import-less, module named ONLY inside a prose `String` literal — the
+        // laundering vector review 44626 rejected `contains` for. Must stay fabricated.
+        let prose = fixture.join("prose.dag");
+        std::fs::write(
+            &prose,
+            "module v2.std.prose_plant\n\ndata note: String = \"grounding is decided against \
+             v2.compiler.tokenize, which this file does not reference\"\n",
+        )
+        .expect("write prose fixture");
+        assert_eq!(
+            red(&prose.to_string_lossy(), referenced),
+            (1, 0),
+            "a module named only inside a string literal must stay fabricated — stripping \
+             literals is what keeps prose from laundering an edge"
+        );
+
+        // (4) import-less, same module in a real code position — the legitimate
+        // reference-derived edge the sibling control proves the producer emits. Must be
+        // grounded, and grounded by the REFERENCE arm specifically.
+        let code = fixture.join("code.dag");
+        std::fs::write(
+            &code,
+            "module v2.std.code_plant\n\nfn leak_probe() -> Bool {\n  \
+             v2.compiler.tokenize.eq(a: \"a\", b: \"b\")\n}\n",
+        )
+        .expect("write code fixture");
+        assert!(
+            extract_import_paths(&std::fs::read_to_string(&code).expect("read code fixture"))
+                .is_empty(),
+            "fixture must be import-less, else it exercises the import arm instead"
+        );
+        assert_eq!(
+            red(&code.to_string_lossy(), referenced),
+            (0, 1),
+            "a real qualified reference in an import-less file must ground the edge via the \
+             reference arm — requiring an `import` here is the invariant DESIGN dissolved"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
     }
 }
 
