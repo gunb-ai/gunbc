@@ -9,7 +9,7 @@ import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
   Celsius,
-  CelsiusDelta,
+  PositiveCelsiusDelta,
   HardwareThreadCount,
   Percent,
   RevolutionsPerMinute,
@@ -148,8 +148,8 @@ type BmcFanCurve {
   minimum_duty: Percent
   sensor_unavailable_duty: Percent
   zone_failsafe_duty: Percent
-  positive_hysteresis: CelsiusDelta
-  negative_hysteresis: CelsiusDelta
+  positive_hysteresis: PositiveCelsiusDelta
+  negative_hysteresis: PositiveCelsiusDelta
 }
 
 type ValidatedBmcFanCurve {
@@ -185,34 +185,54 @@ type BmcFanCurveValidation
   = BmcFanCurveValid { curve: ValidatedBmcFanCurve }
   | BmcFanCurveInvalid { cause: BmcFanCurveInvalidCause }
 
+type BmcFanCurveStepOrderFold {
+  previous: BmcFanCurveStep
+  refusal: BmcFanCurveInvalidCause?
+}
+
 fn bmc_fan_curve_step_order_refusal(
   remaining: List<BmcFanCurveStep>,
   previous: BmcFanCurveStep,
 ) -> BmcFanCurveInvalidCause? {
-  match remaining.first() {
-    Absent => none
-    Present { value: current } =>
-      if celsius_count(current.at_or_above) <= celsius_count(previous.at_or_above) {
-        Present {
-          value: BmcFanCurveTemperatureNotStrictlyIncreasing {
-            previous: previous.at_or_above,
-            current: current.at_or_above,
-          },
-        }
-      } else if percent_count(current.duty) < percent_count(previous.duty) {
-        Present {
-          value: BmcFanCurveDutyDecreased {
-            previous: previous.duty,
-            current: current.duty,
-          },
-        }
-      } else {
-        bmc_fan_curve_step_order_refusal(
-          remaining: remaining.skip(n: 1),
-          previous: current,
-        )
-      }
-  }
+  let folded = fold(
+    remaining,
+    init: BmcFanCurveStepOrderFold {
+      previous: previous,
+      refusal: none,
+    },
+    f: (acc, current) =>
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          if celsius_count(current.at_or_above) <= celsius_count(acc.previous.at_or_above) {
+            BmcFanCurveStepOrderFold {
+              previous: acc.previous,
+              refusal: Present {
+                value: BmcFanCurveTemperatureNotStrictlyIncreasing {
+                  previous: acc.previous.at_or_above,
+                  current: current.at_or_above,
+                },
+              },
+            }
+          } else if percent_count(current.duty) < percent_count(acc.previous.duty) {
+            BmcFanCurveStepOrderFold {
+              previous: acc.previous,
+              refusal: Present {
+                value: BmcFanCurveDutyDecreased {
+                  previous: acc.previous.duty,
+                  current: current.duty,
+                },
+              },
+            }
+          } else {
+            BmcFanCurveStepOrderFold {
+              previous: current,
+              refusal: none,
+            }
+          }
+      },
+  )
+  folded.refusal
 }
 
 fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
