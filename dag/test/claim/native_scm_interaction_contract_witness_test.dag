@@ -20,12 +20,21 @@ import gunbc.native_scm_interaction_contract {
   native_scm_receipt_for,
   native_scm_primary_label,
   native_scm_resolve_choice,
-  native_scm_repair_git_projection,
+  native_scm_repair_projection,
   native_scm_inspect_receipt,
   native_scm_submission_ledger,
   native_scm_apply_once,
   native_scm_applied_count,
   native_scm_rekey_receipt,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityFidelityFact,
+  CompatibilityEndpointStateCaptured,
+  CompatibilityEndpointState,
+  CompatibilityFidelityPreserved,
+  CompatibilityAdvanceUnavailable,
+  compatibility_fidelity_profile,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,6 +45,28 @@ fn receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
 
 fn primary_label(receipt: NativeScmReceipt) -> String {
   native_scm_primary_label(primary: receipt.primary)
+}
+
+fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
+  CompatibilityProjectionReceipt {
+    realization: "git-r0",
+    target: "refs/heads/main",
+    generation_evidence: "git-generation-fixture",
+    capture: CompatibilityEndpointStateCaptured,
+    projection: "git-projection-fixture",
+    read_back: "git-readback-fixture",
+    repair: "git-repair-fixture",
+    advance: CompatibilityAdvanceUnavailable {
+      cause: "C0 witness does not establish an executing transition",
+    },
+    fidelity: compatibility_fidelity_profile(
+      first: CompatibilityFidelityFact {
+        axis: CompatibilityEndpointState,
+        disposition: CompatibilityFidelityPreserved,
+      },
+      remaining: [],
+    ),
+  }
 }
 
 test fn witness_two_independent_changes_both_land() -> Bool {
@@ -156,17 +187,19 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
 
 test fn witness_git_export_failure_repairs_without_reinterpretation() -> Bool {
   let r = receipt_for(scenario: GitExportFailureRepairsWithoutReinterpretation)
-  let repaired = native_scm_repair_git_projection(receipt: r, git_ref: "origin/main")
+  let repaired = native_scm_repair_projection(
+    receipt: r,
+    projection: fixture_compatibility_projection(),
+  )
   primary_label(receipt: r) == "Landed"
     && primary_label(receipt: repaired) == "Landed"
-    && match r.projections.git {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match repaired.projections.git {
-      Present { value: git_ref } => git_ref == "origin/main"
-      Absent => false
-    }
+    && count(r.projections.realizations) == 0
+    && count(repaired.projections.realizations) == 1
+    && repaired.projections.realizations
+      |> any(row =>
+        row.realization == "git-r0"
+          && row.target == "refs/heads/main"
+      )
 }
 
 test fn witness_conventional_git_import_without_rebase() -> Bool {

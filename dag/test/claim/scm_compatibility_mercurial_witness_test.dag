@@ -1,0 +1,162 @@
+module test.claim.scm_compatibility_mercurial_witness
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.mercurial {
+  MercurialReadBackObservation,
+  MercurialInaccessibleProjection,
+}
+import test.claim.mercurial_upstream_model_witness {
+  fixture_projection,
+}
+import gunbc.scm_compatibility.mercurial {
+  MercurialCompatibilityBindingOutcome,
+  MercurialCompatibilityBound,
+  MercurialCompatibilityBindingRefused,
+  mercurial_compatibility_bind,
+  mercurial_compatibility_projection_handler,
+  mercurial_compatibility_projection_receipt,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityUpstreamChangeEvidence,
+  CompatibilityFidelityDowngraded,
+  CompatibilityAdvanceUnavailable,
+  CompatibilityObservationOnly,
+  CompatibilityModeledAdvanceRequired,
+  CompatibilityExactCompareAndAdvance,
+  CompatibilityCapabilitySatisfied,
+  CompatibilityCapabilityRefused,
+  compatibility_projection_from_handler,
+  compatibility_check_advance_requirement,
+}
+import gunbc.native_scm_interaction_contract {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
+  native_scm_primary_label,
+  native_scm_attach_projection,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn mercurial_fixture_observation() -> MercurialReadBackObservation {
+  MercurialReadBackObservation {
+    projection: fixture_projection(),
+    observed_by: "mercurial-r1-independent-fixture",
+  }
+}
+
+fn mercurial_fixture_binding() -> MercurialCompatibilityBindingOutcome {
+  mercurial_compatibility_bind(
+    projection: fixture_projection(),
+    target: "default",
+    read_back: mercurial_fixture_observation(),
+  )
+}
+
+test fn witness_mercurial_r1_consumes_native_projection_and_readback() -> Bool {
+  match mercurial_fixture_binding() {
+    MercurialCompatibilityBindingRefused { cause: _ } => false
+    MercurialCompatibilityBound { receipt } =>
+      receipt.target == "default"
+        && count(receipt.portable_history) == 3
+        && count(receipt.target_history) == 3
+        && match mercurial_compatibility_projection_receipt(
+          receipt: receipt,
+        ).advance {
+          CompatibilityAdvanceUnavailable { cause: _ } => true
+          _ => false
+        }
+  }
+}
+
+test fn witness_mercurial_realization_preserves_c0_primary_behavior() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  match mercurial_fixture_binding() {
+    MercurialCompatibilityBindingRefused { cause: _ } => false
+    MercurialCompatibilityBound { receipt } => {
+      let projection = compatibility_projection_from_handler(
+        handler: mercurial_compatibility_projection_handler(),
+        receipt: receipt,
+      )
+      let attached = native_scm_attach_projection(
+        receipt: original,
+        projection: projection,
+      )
+      attached.identity == original.identity
+        && attached.transition == original.transition
+        && attached.primary == original.primary
+        && native_scm_primary_label(primary: attached.primary) == "Landed"
+        && projection.realization == "mercurial-r0"
+    }
+  }
+}
+
+test fn witness_mercurial_missing_advance_refuses_required_capability() -> Bool {
+  match mercurial_fixture_binding() {
+    MercurialCompatibilityBindingRefused { cause: _ } => false
+    MercurialCompatibilityBound { receipt } => {
+      let capability = mercurial_compatibility_projection_receipt(
+        receipt: receipt,
+      ).advance
+      match compatibility_check_advance_requirement(
+        requirement: CompatibilityObservationOnly,
+        observed: capability,
+      ) {
+        CompatibilityCapabilitySatisfied =>
+          match compatibility_check_advance_requirement(
+            requirement: CompatibilityModeledAdvanceRequired {
+              guarantee: CompatibilityExactCompareAndAdvance,
+            },
+            observed: capability,
+          ) {
+            CompatibilityCapabilityRefused {
+              requirement: _,
+              observed: _,
+            } => true
+            CompatibilityCapabilitySatisfied => false
+          }
+        CompatibilityCapabilityRefused {
+          requirement: _,
+          observed: _,
+        } => false
+      }
+    }
+  }
+}
+
+test fn witness_mercurial_history_does_not_claim_authored_operation() -> Bool {
+  match mercurial_fixture_binding() {
+    MercurialCompatibilityBindingRefused { cause: _ } => false
+    MercurialCompatibilityBound { receipt } => {
+      let profile = mercurial_compatibility_projection_receipt(
+        receipt: receipt,
+      ).fidelity
+      profile.remaining
+        |> any(fact =>
+          fact.axis == CompatibilityUpstreamChangeEvidence
+            && match fact.disposition {
+              CompatibilityFidelityDowngraded { cause: _ } => true
+              _ => false
+            }
+        )
+    }
+  }
+}
+
+test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
+  match mercurial_compatibility_bind(
+    projection: fixture_projection(),
+    target: "default",
+    read_back: MercurialReadBackObservation {
+      projection: MercurialInaccessibleProjection {
+        reason: "fixture unavailable",
+      },
+      observed_by: "mercurial-r1-independent-fixture",
+    },
+  ) {
+    MercurialCompatibilityBindingRefused { cause: _ } => true
+    MercurialCompatibilityBound { receipt: _ } => false
+  }
+}

@@ -1,0 +1,124 @@
+module test.claim.scm_compatibility_shape_witness
+
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityProjectionHandler,
+  CompatibilityFidelityFact,
+  CompatibilityEndpointStateCaptured,
+  CompatibilityEndpointState,
+  CompatibilityFidelityPreserved,
+  CompatibilityAdvanceUnavailable,
+  compatibility_fidelity_profile,
+  compatibility_projection_from_handler,
+}
+import gunbc.native_scm_interaction_contract {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
+  native_scm_primary_label,
+  native_scm_attach_projection,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type SyntheticFourthReceipt {
+  target: NonEmptyStr
+  generation: NonEmptyStr
+}
+
+fn synthetic_fourth_handler(
+) -> CompatibilityProjectionHandler<SyntheticFourthReceipt> {
+  CompatibilityProjectionHandler {
+    project: fn(receipt) {
+      CompatibilityProjectionReceipt {
+        realization: "synthetic-fourth-r0",
+        target: receipt.target,
+        generation_evidence: receipt.generation,
+        capture: CompatibilityEndpointStateCaptured,
+        projection: concat("synthetic-projection:", receipt.generation),
+        read_back: concat("synthetic-readback:", receipt.generation),
+        repair: concat("synthetic-repair:", receipt.generation),
+        advance: CompatibilityAdvanceUnavailable {
+          cause: "synthetic R0 intentionally has no conditional advance",
+        },
+        fidelity: compatibility_fidelity_profile(
+          first: CompatibilityFidelityFact {
+            axis: CompatibilityEndpointState,
+            disposition: CompatibilityFidelityPreserved,
+          },
+          remaining: [],
+        ),
+      }
+    },
+  }
+}
+
+fn synthetic_projection(
+  target: NonEmptyStr,
+  generation: NonEmptyStr,
+) -> CompatibilityProjectionReceipt {
+  compatibility_projection_from_handler(
+    handler: synthetic_fourth_handler(),
+    receipt: SyntheticFourthReceipt {
+      target: target,
+      generation: generation,
+    },
+  )
+}
+
+test fn witness_fourth_realization_adds_handler_without_primary_edit() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  let projected = synthetic_projection(
+    target: "main",
+    generation: "synthetic-generation-1",
+  )
+  let attached = native_scm_attach_projection(
+    receipt: original,
+    projection: projected,
+  )
+  attached.identity == original.identity
+    && attached.transition == original.transition
+    && attached.primary == original.primary
+    && native_scm_primary_label(primary: attached.primary) == "Landed"
+    && count(attached.projections.realizations) == 1
+    && attached.projections.realizations
+      |> any(row => row.realization == "synthetic-fourth-r0")
+}
+
+test fn witness_projection_attachment_is_idempotent_per_realization_target() -> Bool {
+  let original = native_scm_receipt_for(
+    scenario: TwoIndependentChangesLand,
+  )
+  let first = native_scm_attach_projection(
+    receipt: original,
+    projection: synthetic_projection(
+      target: "main",
+      generation: "synthetic-generation-1",
+    ),
+  )
+  let replaced = native_scm_attach_projection(
+    receipt: first,
+    projection: synthetic_projection(
+      target: "main",
+      generation: "synthetic-generation-2",
+    ),
+  )
+  let second_target = native_scm_attach_projection(
+    receipt: replaced,
+    projection: synthetic_projection(
+      target: "review",
+      generation: "synthetic-generation-3",
+    ),
+  )
+  count(first.projections.realizations) == 1
+    && count(replaced.projections.realizations) == 1
+    && replaced.projections.realizations
+      |> any(row =>
+        row.target == "main"
+          && row.generation_evidence == "synthetic-generation-2"
+      )
+    && count(second_target.projections.realizations) == 2
+}
