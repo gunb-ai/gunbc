@@ -13688,8 +13688,24 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     if dag_paths.is_empty() {
         return Ok(());
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+    floor_filename_hygiene_refusal_for_dag_paths(source_roots, &dag_paths)
+}
+
+/// Two roles that `source_roots` used to fuse, now separate parameters: `producer_roots`
+/// locates the MACHINERY (the discovery producer whose `.dag` fn decides hygiene), and
+/// `dag_paths` is the SUBJECT (the files being judged). Fusing them meant you could not ask
+/// the hygiene question about one file without also submitting — and resolving — every other
+/// `.dag` in the same roots, so an unrelated corpus file could answer first (review 44641).
+/// Production still passes the same roots for both, which is why the split is a refactor and
+/// not a behaviour change.
+fn floor_filename_hygiene_refusal_for_dag_paths(
+    producer_roots: &[String],
+    dag_paths: &[String],
+) -> Result<(), String> {
+    let dag_paths: Vec<String> = dag_paths.to_vec();
+    let (graph, indices) =
+        resolve_entry_graph_shared(producer_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
+            .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -21410,16 +21426,16 @@ mod construction_justification_hygiene_tests {
 
 #[cfg(test)]
 mod sidecar_placement_hygiene_tests {
-    use super::{discover_floor_witness_roster, scan_wire_contract_decl_names};
+    use super::scan_wire_contract_decl_names;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
     /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
-    /// `discover_floor_witness_roster` normalizes every path it reports through
-    /// `repo_relative_path_normalized`, which fail-closed refuses anything outside the
-    /// workspace root — so a `/tmp` fixture made this test panic on that refusal before
-    /// reaching its actual assertion. The refusal is correct; the fixture location was
-    /// not. `target/` is the convention the other fixture-based tests in this file use.
+    /// Anything on the floor's reporting path normalizes through
+    /// `repo_relative_path_normalized`, which fail-closed refuses paths outside the
+    /// workspace root — a `/tmp` fixture made this module panic on that refusal before
+    /// reaching its assertion. The refusal is correct; the fixture location was not, and
+    /// `target/` is the convention the other fixture-based tests in this file use.
     fn tmp_dir() -> std::path::PathBuf {
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
         super::process_workspace_root().join("target").join(format!(
@@ -21468,24 +21484,28 @@ mod sidecar_placement_hygiene_tests {
              coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
         )
         .expect("write temp file");
-        // The fixture root alone is not a sufficient universe any more:
-        // `discover_floor_witness_roster` resolves its own discovery producer
-        // (`src/v2/workflow/floor_discovery_producer.dag`) through the module-graph
-        // facts pool and fail-closed refuses when no passed root covers it. That
-        // refusal is correct, but it fires FIRST and masked the filename-hygiene
-        // error this test is actually about, so carry the roots that cover the
-        // producer alongside the fixture.
+        // SUBJECT is the fixture file alone; MACHINERY roots locate the discovery producer.
+        // Passing one root list for both (the first fix here) submitted every `.dag` in
+        // `src/v2` + `dag` for judgement too, so an unrelated corpus file could answer first
+        // and mask this assertion — the same live-tree coupling this PR removes from the
+        // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
+        // shared machinery and stays real; only the subject is narrowed.
+        //
+        // This calls the seam `discover_floor_witness_roster` delegates to rather than
+        // `discover_floor_witness_roster` itself, because the whole-corpus scan is that outer
+        // wrapper's only other job — the wiring between them is the single `?` at the
+        // `floor_filename_hygiene_refusal_via_producer(source_roots)?` call site.
         let ws = super::process_workspace_root();
-        let roots = vec![
-            dir.to_string_lossy().into_owned(),
+        let producer_roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
             ws.join("dag").to_string_lossy().into_owned(),
         ];
-        let result = discover_floor_witness_roster(&roots, &[], &[], &[]);
+        let subject = vec![file.to_string_lossy().into_owned()];
+        let result = super::floor_filename_hygiene_refusal_for_dag_paths(&producer_roots, &subject);
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive discover_floor_witness_roster to Err");
+            .expect("misplaced wire-contract decl must drive the hygiene gate to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
