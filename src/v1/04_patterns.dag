@@ -204,16 +204,7 @@ fn pattern_subject_from_node(n: Node) -> PatternSubject {
     PatternLookupBlocked
   } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred != none {
     match n.inferred {
-      Present { value: Resolved { node: target } } =>
-        let outer_optional = n.return_cardinality == CardOptional
-        let inner = pattern_subject_from_node(n: target)
-        match inner {
-          PatternResolved { node: resolved } =>
-            if outer_optional && resolved.return_cardinality != CardOptional {
-              PatternResolved { node: with_optional_cardinality(n: resolved) }
-            } else { inner }
-          _ => inner
-        }
+      Present { value: Resolved { node: target } } => pattern_subject_from_node(n: target)
       _ => PatternResolved { node: n }
     }
   } else {
