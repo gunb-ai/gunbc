@@ -173,7 +173,7 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         for (entry, _f, _expected) in witnesses {
             let err = cached_resolve_err(&roots, entry, &order_cache);
             assert!(
-                err.contains("provider refused incomplete disk hit"),
+                err.contains("provider refused faithful probe"),
                 "v1 disk artifact reuse must stop the line until union lands (part a): {err}"
             );
         }
@@ -298,7 +298,7 @@ fn concurrent_resolve_write_once_no_torn_read() {
     for (label, verdict) in [("t1", &v1), ("t2", &v2)] {
         match verdict.as_str() {
             "PASS" => {}
-            other if other.contains("provider refused incomplete disk hit") => {}
+            other if other.contains("provider refused faithful probe") => {}
             other => panic!("{label} unexpected verdict: {other}"),
         }
     }
@@ -513,7 +513,7 @@ fn same_subject_resolves_share_one_graph_store_refuses_v1_disk_hit() {
         let index2 = build_multi_entry_index(&roots);
         let err = resolve_entry_with_index(&index2, &a).expect_err("v1 store hit must refuse");
         assert!(
-            err.contains("provider refused incomplete disk hit"),
+            err.contains("provider refused faithful probe"),
             "fresh index must not cold-resolve through v1 disk hit: {err}"
         );
         assert_eq!(
