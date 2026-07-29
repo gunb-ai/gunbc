@@ -508,15 +508,17 @@ type SelectionNoOp
   = DocsPolicy
   | Uncovered { declaration: NonEmptyStr }
   | NoDeclsTouched
-  | GeneratedArtifact { drift_gate_authority: NonEmptyStr }
+  | GeneratedArtifactNoOp { drift_gate_authority: NonEmptyStr }
   | DepartedPath { cause: NonEmptyStr }
 
 data observation_selection_no_op_note: String = "A touched file that selected no work is a CLOSED SUM, never a bare nothing. Nothing meaning five different things is the state-space conflation the house splits into named variants, and here the remedies genuinely differ: docs select no executable work and that is correct and quiet; a touched declaration no witness references is a COVERAGE GAP surfaced at review time, so it renders as a visible nudge rather than a comfort; only comments or whitespace intersected is fine and says so; a generated artifact is checked by the drift gate against its authority, not by witnesses, so nothing must never appear beside it; and a departed path is NOT a no-op at all — a deleted module cannot be scoped, so selection widens to baseline and the line says why. Because the sum is closed and the presentation assignment below is total, an unlabelled nothing is UNWRITABLE rather than censused after the fact — construction where a census would have conceded the bad line was writable."
 
-data selection_noop_generated_artifact_mint_note: String = "Mint helper for the SelectionNoOp.GeneratedArtifact arm. The bare constructor name `GeneratedArtifact` collides under whole-tree compile-clean with v2.std.artifact.GeneratedArtifact and gunbc.generated_artifact.GeneratedArtifact — three unrelated carriers that share a noun. Callers outside this module construct via this helper so the variant resolves in the defining module where the name is unambiguous."
+data selection_noop_generated_artifact_mint_note: String = "Mint helper for the SelectionNoOp.GeneratedArtifactNoOp arm. The former bare constructor name `GeneratedArtifact` collided under whole-tree compile-clean with v2.std.artifact.GeneratedArtifact and gunbc.generated_artifact.GeneratedArtifact — three unrelated carriers that share a noun. Naming the disposition rather than relying on defining-module resolution keeps the closed no-op sum unambiguous in every import closure; callers still construct through this helper."
+
+data selection_noop_generated_artifact_rename_scaffold_note: String = "DECLARED SCAFFOLD (review 44094, DESIGN 6). The rename above is a LOCAL disambiguation, not a fix: three unrelated carriers still share the noun GeneratedArtifact — this no-op disposition, v2.std.artifact.GeneratedArtifact (the emitted artifact), and gunbc.generated_artifact.GeneratedArtifact (the committed drift-gated file). Only one of them was renamed, so the collision is dodged at this site and left standing everywhere else, which is exactly the shape DESIGN 3 warns about: a fork gets consolidated later, so deferring is a cost decision, not a clean one. Three same-named types is NOT automatically three authorities — they may be genuinely different concepts that deserve distinct nouns, or two of them may be one concept forked — and deciding which is a modeling question this rename does not answer. DISSOLVES ON: the namespace-only resolution lane landing containment-derived qualified names (docs/plans/namespace-resolution-design.md), at which point a bare same-name is resolved by position and the disambiguating suffix is dead weight; or, sooner, a DFS over the three carriers that either renames each to what it actually IS or proves two of them one concept and merges them. Whichever lands first deletes this row and the NoOp suffix with it."
 
 fn selection_noop_generated_artifact(drift_gate_authority: NonEmptyStr) -> SelectionNoOp {
-  GeneratedArtifact { drift_gate_authority: drift_gate_authority }
+  GeneratedArtifactNoOp { drift_gate_authority: drift_gate_authority }
 }
 
 fn observation_no_op_is_actually_a_widen(n: SelectionNoOp) -> Bool {
@@ -524,7 +526,7 @@ fn observation_no_op_is_actually_a_widen(n: SelectionNoOp) -> Bool {
     DocsPolicy => false
     Uncovered { declaration: _ } => false
     NoDeclsTouched => false
-    GeneratedArtifact { drift_gate_authority: _ } => false
+    GeneratedArtifactNoOp { drift_gate_authority: _ } => false
     DepartedPath { cause: _ } => true
   }
 }
@@ -534,7 +536,7 @@ fn observation_no_op_attention(n: SelectionNoOp) -> AttentionLevel {
     DocsPolicy => Ambient
     Uncovered { declaration: _ } => Notable
     NoDeclsTouched => Ambient
-    GeneratedArtifact { drift_gate_authority: _ } => Ambient
+    GeneratedArtifactNoOp { drift_gate_authority: _ } => Ambient
     DepartedPath { cause: _ } => Notable
   }
 }
@@ -544,7 +546,7 @@ fn observation_no_op_symbol(n: SelectionNoOp) -> SymbolId {
     DocsPolicy => NodeSkipped
     Uncovered { declaration: _ } => StatusWarning
     NoDeclsTouched => NodeSkipped
-    GeneratedArtifact { drift_gate_authority: _ } => StatusInfo
+    GeneratedArtifactNoOp { drift_gate_authority: _ } => StatusInfo
     DepartedPath { cause: _ } => StatusWarning
   }
 }
@@ -554,7 +556,7 @@ fn observation_no_op_explanation(n: SelectionNoOp) -> NonEmptyStr {
     DocsPolicy => "documentation never selects executable work" as NonEmptyStr
     Uncovered { declaration: d } => concat("no witness covers this change: ", d) as NonEmptyStr
     NoDeclsTouched => "only comments or whitespace changed" as NonEmptyStr
-    GeneratedArtifact { drift_gate_authority: a } => concat("generated artifact — checked by drift against ", a) as NonEmptyStr
+    GeneratedArtifactNoOp { drift_gate_authority: a } => concat("generated artifact — checked by drift against ", a) as NonEmptyStr
     DepartedPath { cause: c } => concat("a deleted module cannot be scoped, so selection widened: ", c) as NonEmptyStr
   }
 }

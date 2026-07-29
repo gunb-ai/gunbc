@@ -2,6 +2,7 @@ module gunbc.roadmap_model
 
 import std.types { NonEmptyStr }
 import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
+import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 
@@ -32,6 +33,7 @@ type RoadmapNode {
   line: RoadmapItem
   carriers: List<Pointer>
   sizing: NodeSizing
+  execution: WorkItemExecutionContract
   owner: String
   signoff: Signoff
 }

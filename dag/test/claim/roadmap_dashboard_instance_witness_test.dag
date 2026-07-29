@@ -1,0 +1,477 @@
+module test.claim.roadmap_dashboard_instance_witness
+
+import std.types { Bool, String, FilePath }
+import extdeps.tmux { shape_tmux_ls_argv_for }
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  DashboardObserveOnly,
+  DashboardActuating,
+  DashboardInstanceProvisionOp,
+  DashboardHydrateControllerHistory,
+  DashboardPrepareGitBundle,
+  DashboardStageGitBundle,
+  DashboardEnsureDirectory,
+  DashboardEnsureOwnershipMarker,
+  DashboardEnsureLocalOrigin,
+  DashboardEnsureSourceRepo,
+  DashboardEnsureService,
+  DashboardVerifyProviderRuntime,
+  DashboardVerifyProviderAuth,
+  DashboardVerifyHealth,
+  DashboardInstanceObserved,
+  DashboardInstanceReconcile,
+  DashboardInstanceConverged,
+  DashboardInstanceApply,
+  DashboardInstanceRefused,
+  DashboardInstanceRetractOp,
+  DashboardStopService,
+  DashboardRefuseUnlessAttemptsEmpty,
+  DashboardRemoveSourceRepo,
+  DashboardRemoveLocalOrigin,
+  DashboardPreserveSourceBundle,
+  DashboardInstanceRetract,
+  DashboardInstanceRetractPlan,
+  DashboardInstanceRetractRefused,
+  srv1_live_dashboard_instance,
+  srv1_lab_dashboard_instance,
+  srv2_preview_dashboard_instance,
+  dashboard_feedback_controller_repo,
+  dashboard_instance_provider_state_root,
+  dashboard_instance_provider_executable,
+  dashboard_instance_ownership_marker_path,
+  dashboard_instance_paths_are_owned,
+  dashboard_instances_have_disjoint_owned_paths,
+  dashboard_instance_provision_plan,
+  dashboard_instance_reconcile,
+  dashboard_instance_retract_plan,
+}
+
+test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  dashboard_instance_paths_are_owned(instance: lab)
+    && lab.provision_parent_root == "/home/briansrls/.local/share"
+    && lab.repo_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source"
+    && lab.dispatch_worktree_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/attempts"
+    && lab.local_origin_root == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/origin.git"
+}
+
+test fn dashboard_lab_and_production_owned_paths_are_disjoint() -> Bool {
+  dashboard_instances_have_disjoint_owned_paths(
+    a: srv1_lab_dashboard_instance(),
+    b: srv1_live_dashboard_instance(),
+  )
+}
+
+test fn dashboard_actuation_posture_is_instance_data() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let preview = srv2_preview_dashboard_instance()
+  live.actuation == DashboardActuating
+    && lab.actuation == DashboardActuating
+    && preview.actuation == DashboardObserveOnly
+}
+
+test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let preview = srv2_preview_dashboard_instance()
+  shape_tmux_ls_argv_for(scope: live.tmux_server) == ["ls"]
+    && shape_tmux_ls_argv_for(scope: lab.tmux_server) == [
+      "-L", "srv1-lab-codex-feedback-v0", "ls",
+    ]
+    && shape_tmux_ls_argv_for(scope: preview.tmux_server) == [
+      "-L", "srv2-preview-codex-feedback-v0", "ls",
+    ]
+}
+
+fn plan_binds_instance_paths(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  let source_bound = any(plan, op => match op {
+    DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
+      origin == instance.local_origin_root && repo == instance.repo_root
+    _ => false
+  })
+  let attempts_bound = any(plan, op => match op {
+    DashboardEnsureDirectory { path } => path == instance.dispatch_worktree_root
+    _ => false
+  })
+  let attempt_state_bound = any(plan, op => match op {
+    DashboardEnsureDirectory { path } => path == instance.dispatch_attempt_state_root
+    _ => false
+  })
+  let marker_bound = any(plan, op => match op {
+    DashboardEnsureOwnershipMarker { path, instance_id } =>
+      path == dashboard_instance_ownership_marker_path(instance: instance)
+        && instance_id == instance.instance_id
+    _ => false
+  })
+  let auth_bound = any(plan, op => match op {
+    DashboardVerifyProviderAuth { executable, state_root } =>
+      state_root == dashboard_instance_provider_state_root(instance: instance)
+        && executable == dashboard_instance_provider_executable(instance: instance)
+    _ => false
+  })
+  let runtime_bound = any(plan, op => match op {
+    DashboardVerifyProviderRuntime { executable, state_root } =>
+      state_root == dashboard_instance_provider_state_root(instance: instance)
+        && executable == dashboard_instance_provider_executable(instance: instance)
+    _ => false
+  })
+  let service_bound = any(plan, op => match op {
+    DashboardEnsureService {
+      instance_id,
+      binary,
+      workdir,
+      handler,
+      host,
+      port,
+      tmux_server: _,
+    } =>
+      instance_id == instance.instance_id
+        && binary == instance.serve_binary
+        && workdir == instance.repo_root
+        && handler == instance.serve_function
+        && host == instance.listen_host
+        && port == instance.listen_port
+    _ => false
+  })
+  source_bound
+    && attempts_bound
+    && attempt_state_bound
+    && marker_bound
+    && runtime_bound
+    && auth_bound
+    && service_bound
+}
+
+fn plan_binds_source_ref_translation(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  any(plan, op => match op {
+    DashboardEnsureLocalOrigin {
+      bundle: _,
+      origin,
+      source_ref,
+      publish_ref,
+    } =>
+      origin == instance.local_origin_root
+        && source_ref == "refs/heads/session/codex-provider-feedback-v0"
+        && publish_ref == instance.local_origin_publish_ref
+    _ => false
+  })
+    && any(plan, op => match op {
+      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } =>
+        anchor_ref == instance.dispatch_base_ref
+      _ => false
+    })
+}
+
+test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  count(plan) == 14
+    && plan_binds_instance_paths(plan: plan, instance: lab)
+    && plan_binds_source_ref_translation(plan: plan, instance: lab)
+}
+
+fn lab_observed(
+  production_untouched: Bool,
+  source_anchor_matches: Bool,
+  source_revision_observed: Bool,
+  source_revision_current: Bool,
+  health_current: Bool,
+) -> DashboardInstanceObserved {
+  DashboardInstanceObserved {
+    root_present: true,
+    ownership_marker_present: true,
+    bundle_present: true,
+    origin_present: true,
+    source_present: true,
+    source_revision_observed: source_revision_observed,
+    source_revision_current: source_revision_current,
+    source_revision_detail: if !source_revision_observed {
+      "git rev-parse HEAD refused"
+    } else if source_revision_current {
+      "desired=abc observed=abc"
+    } else {
+      "source revision drift: desired=abc observed=def"
+    },
+    attempts_present: true,
+    attempt_state_present: true,
+    provider_runtime_ready: true,
+    provider_runtime_detail: "codex-cli test",
+    provider_authenticated: true,
+    provider_auth_detail: "Logged in using ChatGPT",
+    service_present: true,
+    health_current: health_current,
+    production_untouched: production_untouched,
+    source_anchor_matches: source_anchor_matches,
+  }
+}
+
+test fn dashboard_reconcile_converges_only_after_independent_readback() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceConverged => true
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_plans_missing_health_without_claiming_convergence() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
+      health_current: false,
+    ),
+  ) {
+    DashboardInstanceApply { plan } => count(plan) > 0
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refuses_production_overlap() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: false,
+      source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: true,
+      health_current: false,
+    ),
+  ) {
+    DashboardInstanceRefused { reason } => reason == "production isolation read-back failed"
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refuses_destructive_source_replacement() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: false,
+      source_revision_observed: true,
+      source_revision_current: false,
+      health_current: false,
+    ),
+  ) {
+    DashboardInstanceRefused { reason } =>
+      reason == "source repo exists at a different anchor; replacement is destructive and must be adjudicated"
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refreshes_owned_clean_stale_revision() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: true,
+      source_revision_current: false,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceApply { plan } => count(plan) > 0
+    _ => false
+  }
+}
+
+test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: lab_observed(
+      production_untouched: true,
+      source_anchor_matches: true,
+      source_revision_observed: false,
+      source_revision_current: false,
+      health_current: true,
+    ),
+  ) {
+    DashboardInstanceRefused { reason } =>
+      string_contains(s: reason as String, pattern: "source revision read-back refused")
+    _ => false
+  }
+}
+
+test fn dashboard_bundle_is_required_for_convergence() -> Bool {
+  let observed = DashboardInstanceObserved {
+    root_present: true,
+    ownership_marker_present: true,
+    bundle_present: false,
+    origin_present: true,
+    source_present: true,
+    source_revision_observed: true,
+    source_revision_current: true,
+    source_revision_detail: "desired=abc observed=abc",
+    attempts_present: true,
+    attempt_state_present: true,
+    provider_runtime_ready: true,
+    provider_runtime_detail: "codex-cli test",
+    provider_authenticated: true,
+    provider_auth_detail: "Logged in using ChatGPT",
+    service_present: true,
+    health_current: true,
+    production_untouched: true,
+    source_anchor_matches: true,
+  }
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: observed,
+  ) {
+    DashboardInstanceApply { plan } => count(plan) > 0
+    _ => false
+  }
+}
+
+test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  any(plan, op => match op {
+    DashboardHydrateControllerHistory {
+      controller_repo,
+      history_remote,
+    } =>
+      controller_repo == dashboard_feedback_controller_repo
+        && history_remote == "origin"
+    _ => false
+  })
+    && any(plan, op => match op {
+    DashboardPrepareGitBundle {
+      controller_repo,
+      anchor_ref,
+    } =>
+      controller_repo == dashboard_feedback_controller_repo
+        && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
+    _ => false
+  })
+    && any(plan, op => match op {
+      DashboardStageGitBundle {
+        controller_repo,
+        staged_bundle,
+      } =>
+        controller_repo == dashboard_feedback_controller_repo
+          && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
+      _ => false
+    })
+}
+
+test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
+  let observed = DashboardInstanceObserved {
+    root_present: true,
+    ownership_marker_present: false,
+    bundle_present: false,
+    origin_present: true,
+    source_present: true,
+    source_revision_observed: false,
+    source_revision_current: false,
+    source_revision_detail: "source repository unavailable",
+    attempts_present: false,
+    attempt_state_present: false,
+    provider_runtime_ready: false,
+    provider_runtime_detail: "provider runtime unavailable",
+    provider_authenticated: false,
+    provider_auth_detail: "provider auth unavailable",
+    service_present: false,
+    health_current: false,
+    production_untouched: true,
+    source_anchor_matches: false,
+  }
+  match dashboard_instance_reconcile(
+    instance: srv1_lab_dashboard_instance(),
+    observed: observed,
+  ) {
+    DashboardInstanceRefused { reason } =>
+      string_contains(s: reason as String, pattern: "ownership marker")
+    _ => false
+  }
+}
+
+fn retract_plan_is_safe(
+  plan: List<DashboardInstanceRetractOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  count(plan) == 5
+    && any(plan, op => match op {
+      DashboardStopService { instance_id, tmux_server: _ } =>
+        instance_id == instance.instance_id
+      _ => false
+    })
+    && any(plan, op => match op {
+      DashboardRefuseUnlessAttemptsEmpty { path } =>
+        path == instance.dispatch_worktree_root
+      _ => false
+    })
+    && any(plan, op => match op {
+      DashboardRemoveSourceRepo { path } => path == instance.repo_root
+      _ => false
+    })
+    && any(plan, op => match op {
+      DashboardRemoveLocalOrigin { path } => path == instance.local_origin_root
+      _ => false
+    })
+    && any(plan, op => match op {
+      DashboardPreserveSourceBundle { path } =>
+        string_contains(s: path as String, pattern: "/inbox/source.bundle")
+      _ => false
+    })
+}
+
+test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  match dashboard_instance_retract_plan(instance: lab) {
+    DashboardInstanceRetractPlan { plan } =>
+      retract_plan_is_safe(plan: plan, instance: lab)
+        && all(plan, op => match op {
+          DashboardRemoveSourceRepo { path } =>
+            path != dashboard_instance_provider_state_root(instance: lab)
+          DashboardRemoveLocalOrigin { path } =>
+            path != dashboard_instance_provider_state_root(instance: lab)
+          _ => true
+        })
+    DashboardInstanceRetractRefused { reason: _ } => false
+  }
+}
+
+test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
+  match dashboard_instance_retract_plan(instance: srv1_live_dashboard_instance()) {
+    DashboardInstanceRetractPlan { plan: _ } => false
+    DashboardInstanceRetractRefused { reason } =>
+      string_contains(s: reason as String, pattern: "not owned")
+  }
+}
+
+test fn dashboard_instance_model_keystone_holds() -> Bool {
+  dashboard_instance_paths_move_as_one_owned_root()
+    && dashboard_lab_and_production_owned_paths_are_disjoint()
+    && dashboard_actuation_posture_is_instance_data()
+    && dashboard_tmux_server_is_namespaced_off_production()
+    && dashboard_provision_plan_consumes_one_instance()
+    && dashboard_reconcile_converges_only_after_independent_readback()
+    && dashboard_reconcile_plans_missing_health_without_claiming_convergence()
+    && dashboard_reconcile_refuses_production_overlap()
+    && dashboard_reconcile_refuses_destructive_source_replacement()
+    && dashboard_reconcile_refreshes_owned_clean_stale_revision()
+    && dashboard_reconcile_refuses_unreadable_source_revision()
+    && dashboard_bundle_is_required_for_convergence()
+    && dashboard_source_capture_has_no_manual_await_step()
+    && dashboard_reconcile_refuses_unmarked_existing_source()
+    && dashboard_retract_preserves_recovery_anchor_and_provider_state()
+    && dashboard_retract_refuses_production_existing_repo()
+}

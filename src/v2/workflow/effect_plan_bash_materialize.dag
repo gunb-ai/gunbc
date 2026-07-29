@@ -33,7 +33,9 @@ import v2.std.operation_argv {
   ArgvMaterialized,
   ArgvRefusalCause,
   BoundOperationInvocation,
-  OperationRef
+  OperationRef,
+  operation_argv_cause_label,
+  operation_argv_ref_label
 }
 import v2.std.optional {
   Absent,
@@ -52,7 +54,9 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
 
-data effect_plan_bash_materialize_authority_note: String = "Model-only Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv. FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, second operation registry, or production consumer is introduced."
+data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf derives argv from its referenced extdeps operation declaration through shell_materialize_operation_argv. FailFast is the Bash grammar's && relation, so source order is preserved and a failing step prevents every later step. No Run.command, raw shell composer, target field in intent, or second operation registry is introduced. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step — so the model-only clause of this note retired; nothing else about the edge changed."
+
+data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
 type EffectPlanBashUnsupportedStep
   = UnsupportedIf
@@ -289,6 +293,71 @@ fn effect_plan_bash_encode(
     FailFast =>
       effect_plan_bash_encode_steps(steps: plan.steps, step_index: 0)
   }
+}
+
+fn effect_plan_bash_unsupported_step_label(
+  kind: EffectPlanBashUnsupportedStep
+) -> String {
+  match kind {
+    UnsupportedIf => "If"
+    UnsupportedFor => "For"
+    UnsupportedWhile => "While"
+    UnsupportedBoundedPoll => "BoundedPoll"
+    UnsupportedRetry => "Retry"
+    UnsupportedLet => "Let"
+    UnsupportedCall => "Call"
+  }
+}
+
+fn effect_plan_bash_failure_policy_label(policy: FailurePolicy) -> String {
+  match policy {
+    Continue => "Continue"
+    FailFast => "FailFast"
+  }
+}
+
+fn effect_plan_bash_cause_label(cause: EffectPlanBashRefusalCause) -> String {
+  match cause {
+    UnsupportedFailurePolicy { policy: policy } =>
+      concat(
+        "UnsupportedFailurePolicy:",
+        effect_plan_bash_failure_policy_label(policy: policy)
+      )
+    UnsupportedEffectPlanStep { kind: kind } =>
+      concat(
+        "UnsupportedEffectPlanStep:",
+        effect_plan_bash_unsupported_step_label(kind: kind)
+      )
+    OperationArgvRefused { cause: argv_cause } =>
+      concat(
+        "OperationArgvRefused:",
+        operation_argv_cause_label(cause: argv_cause)
+      )
+    ArgumentContainsNul { argument_index: argument_index } =>
+      concat("ArgumentContainsNul:", to_string(argument_index))
+    BashGrammarEmissionRefused { diagnostics: _ } =>
+      "BashGrammarEmissionRefused"
+  }
+}
+
+fn effect_plan_bash_operation_label(
+  operation: Optional<OperationRef>
+) -> String {
+  match operation {
+    Present { value: at } => concat(" at ", operation_argv_ref_label(at: at))
+    Absent => ""
+  }
+}
+
+fn effect_plan_bash_refusal_label(refusal: EffectPlanBashRefusal) -> String {
+  let _note = effect_plan_bash_refusal_label_note
+  concat(
+    concat(
+      concat("step ", to_string(refusal.step_index)),
+      effect_plan_bash_operation_label(operation: refusal.operation)
+    ),
+    concat(": ", effect_plan_bash_cause_label(cause: refusal.cause))
+  )
 }
 
 fn effect_plan_bash_materialize(

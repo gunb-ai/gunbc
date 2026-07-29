@@ -1,0 +1,103 @@
+module gunbc.ensure
+
+import std.types { String, Bool, NonEmptyStr }
+import std.upsert_decision {
+  UpsertDecision,
+  Noop,
+  Apply,
+  Refuse,
+}
+import std.realization_reconcile {
+  Reconciliation,
+  ReadObserved,
+  ReadAbsent,
+  Grounds,
+  DoesNotGround,
+  reconcile_grounded,
+}
+
+type EnsurePolicy
+  = EnsureObserveOnly
+  | EnsureMayApply
+
+type EnsureObservation<E>
+  = EnsureObserved { evidence: E }
+  | EnsureAbsent { reason: String }
+  | EnsureInaccessible { reason: String }
+
+type EnsurePlan<P>
+  = EnsurePlanAvailable { plan: P }
+  | EnsurePlanUnavailable { reason: String }
+
+data ensure_algebra_note: String = "Ensure is a convergence modality, never a roster of packages or tools. A caller supplies a typed desired requirement, an observation, its own satisfaction predicate, an authority policy, and an optional typed convergence plan. ensure_decide projects those facts onto the existing std.upsert_decision authority: satisfied -> Noop; known absent/drift + authorized plan -> Apply; observe-only, no-plan, and inaccessible -> Refuse. Effects remain capability-specific adapters. ensure_readback then projects the independent post-apply observation through std.realization_reconcile, so an Apply receipt cannot claim convergence without grounded readback. Fine grain means one requirement/observation/receipt per semantic capability; it does not mean one ensure function per executable."
+
+fn ensure_decide<P, E>(
+  policy: EnsurePolicy,
+  observation: EnsureObservation<E>,
+  observation_satisfies: Bool,
+  mismatch_reason: String,
+  plan: EnsurePlan<P>,
+) -> UpsertDecision<P> {
+  match observation {
+    EnsureInaccessible { reason } =>
+      Refuse { reason: reason as NonEmptyStr }
+    EnsureObserved { evidence: _ } =>
+      if observation_satisfies {
+        Noop
+      } else {
+        match policy {
+          EnsureObserveOnly =>
+            Refuse { reason: mismatch_reason as NonEmptyStr }
+          EnsureMayApply =>
+            match plan {
+              EnsurePlanAvailable { plan: p } => Apply { plan: p }
+              EnsurePlanUnavailable { reason } =>
+                Refuse { reason: reason as NonEmptyStr }
+            }
+        }
+      }
+    EnsureAbsent { reason } =>
+      match policy {
+        EnsureObserveOnly =>
+          Refuse { reason: reason as NonEmptyStr }
+        EnsureMayApply =>
+          match plan {
+            EnsurePlanAvailable { plan: p } => Apply { plan: p }
+            EnsurePlanUnavailable { reason: why } =>
+              Refuse { reason: why as NonEmptyStr }
+          }
+      }
+  }
+}
+
+fn ensure_readback<E>(
+  applied: Bool,
+  observation: EnsureObservation<E>,
+  observation_satisfies: Bool,
+  mismatch_reason: String,
+) -> Reconciliation<Bool, E> {
+  match observation {
+    EnsureObserved { evidence } =>
+      reconcile_grounded(
+        apply_effect: applied,
+        show_read: ReadObserved { value: evidence },
+        grounding: if observation_satisfies {
+          Grounds { evidence: evidence }
+        } else {
+          DoesNotGround { reason: mismatch_reason }
+        },
+      )
+    EnsureAbsent { reason } =>
+      reconcile_grounded(
+        apply_effect: applied,
+        show_read: ReadAbsent { reason: reason },
+        grounding: DoesNotGround { reason: reason },
+      )
+    EnsureInaccessible { reason } =>
+      reconcile_grounded(
+        apply_effect: applied,
+        show_read: ReadAbsent { reason: reason },
+        grounding: DoesNotGround { reason: reason },
+      )
+  }
+}

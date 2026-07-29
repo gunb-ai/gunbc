@@ -46,8 +46,8 @@ import gunbc.ci_materialization {
 import gunbc.ci_workflow { ci_selection_control_script }
 import gunbc.merge_admission_produce {
   merge_admission_merge_base_ref,
-  ci_merge_admission_gate_script,
 }
+import v2.workflow.ci_merge_admission_gate_emit { ci_merge_admission_gate_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
