@@ -5,6 +5,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { length, any, contains }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.compiler.self_host.parity_window { ParityObservation, parity_routing_admitted }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   module_declaration_facts_live,
@@ -19,7 +20,7 @@ data native_routing_frontier_note: String = "Per-family execution-routing fronti
 data native_routing_subject_key_note: String = "Subject re-key (group-of-units ruling 2026-07-22, gunbc.roster_registry): a family's identity is its SUBJECT — a DeclarationRef to the construct/fixture declaration the family exercises — never a bare family: String nickname. Membership is DERIVED: an agreement entry is a member of a family exactly when its dependency closure (import + reference edges, the v2.lens.module_graph authority) reaches the subject's module — native_routing_row_membership_derived below is the ByDerivation predicate gunbc.roster_registry names, witnessed by the equivalence receipt in native_routing_membership_receipt_test (derived membership == the bound agreement entry, per row, plus a RED control: an entry whose closure does not reach the subject is not a member). The parity-window receipts (parity_receipts_local) stay keyed by their falsifier-observation family names; the frontier test binds those receipts to subject-keyed rows explicitly — observation data, not a second row key."
 
 type NativeRoutingDisposition
-  = NativeRouted
+  = NativeRouted { observation_family: String, observations: List<ParityObservation> }
   | InterpretedRetained { reason: String, dissolve_on: String }
 
 type NativeRoutingFrontierRow {
