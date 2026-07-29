@@ -212,6 +212,18 @@ fn count_duplicate_path_excess(paths: List<String>) -> Int {
   )
 }
 
+fn count_observed_manifest_duplicate_excess(
+  tracked_paths: List<String>,
+  prior_tracked_paths: List<String>,
+  cargo_bin_repo_paths: List<String>
+) -> Int {
+  fold_list(
+    xs: [tracked_paths, prior_tracked_paths, cargo_bin_repo_paths],
+    init: 0,
+    cons: fn(sum, paths) { sum + count_duplicate_path_excess(paths: paths) }
+  )
+}
+
 fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
     RustManifestUnobserved { awaiting: awaiting } =>
@@ -245,7 +257,11 @@ fn rust_source_manifest_state_verdict(observation: RustSourceHostObservation) ->
         )
         let unclassified = count_tracked_unclassified(tracked_paths: tracked_paths, classified_paths: classified_paths)
         let stale = count_stale_lifecycle_rows(tracked_paths: tracked_paths, lifecycle_paths: lifecycle_paths)
-        let duplicate_excess = count_duplicate_path_excess(paths: lifecycle_paths)
+        let duplicate_excess = count_observed_manifest_duplicate_excess(
+          tracked_paths: tracked_paths,
+          prior_tracked_paths: prior_tracked_paths,
+          cargo_bin_repo_paths: cargo_bin_repo_paths
+        )
         let hand_current = count_hand_maintained_in_tracked(tracked_paths: tracked_paths)
         let hand_prior = count_hand_maintained_in_prior_tracked(prior_tracked_paths: prior_tracked_paths)
         let untracked_cargo = first_untracked_cargo_path(
@@ -564,20 +580,6 @@ fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
     xs: rust_source_lifecycle_residue_rows,
     init: true,
     cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
-  )
-}
-
-fn path_occurrence_count(paths: List<String>, needle: String) -> Int {
-  fold_list(
-    xs: paths,
-    init: 0,
-    cons: fn(count, path) {
-      if path == needle {
-        count + 1
-      } else {
-        count
-      }
-    }
   )
 }
 
