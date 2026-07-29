@@ -1042,6 +1042,79 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the T4/T5 receipt packet and operator-checkable fleet state."
       )
     ),
+
+    active(
+      id: "toolchain-pin-model",
+      owner: "toolchain",
+      path: "docs/plans/hermetic-tool-provisioning-design.md",
+      t: fields(
+        headline: "Model pinned tool identity and its refresh policy",
+        boundary: "A mechanical tool declares an exact version and content digest; selection is either an authored pin or a recorded resolution of a moving reference, and execution never resolves a moving reference.",
+        displaced_cost: "Removes per-host binary variance from every mechanical path and ends range-only or absent pins.",
+        first_slice: "Extend CliTool with an exact digest-bearing pin and a selection policy, and carry a digest on SourceGitHubRelease.",
+        red_control: "A range-only or digest-less pin refuses; a tracked pin past its declared refresh window reds rather than floating forward.",
+        out_of_scope: "No consumer migrates in this row; the model lands before any resolver reads it.",
+        handback: "Return the pin carrier, the refresh-policy arms, and the refusing controls."
+      )
+    ),
+    active_large(
+      id: "toolchain-single-resolver",
+      owner: "toolchain",
+      path: "docs/plans/hermetic-tool-provisioning-design.md",
+      t: fields(
+        headline: "Ensure tools through one membership reconcile",
+        boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; the five independent PATH resolvers collapse onto it and are deleted.",
+        displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
+        first_slice: "Instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it.",
+        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses.",
+        out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
+        handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
+      )
+    ),
+    active(
+      id: "toolchain-rust-hermetic",
+      owner: "toolchain",
+      path: "docs/plans/hermetic-tool-provisioning-design.md",
+      t: fields(
+        headline: "Provision the pinned Rust toolchain into the repo-local root",
+        boundary: "The toolchain named by rust-toolchain.toml is provisioned into the declared per-worktree root and every mechanical cargo, rustc, and rustfmt invocation resolves through it.",
+        displaced_cost: "Ends the pre-push and regen PATH incidents and covers the largest single block of the census.",
+        first_slice: "Provision into the declared local root and route the pre-push and pre-commit gates through the resolved toolchain.",
+        red_control: "A toolchain whose reported version differs from the pin refuses; existence alone never satisfies readiness.",
+        out_of_scope: "CI floor-gate isolation stays out until the srv3-07/08 rustup extract flake is confirmed resolved.",
+        handback: "Return the provisioned root, the migrated gates, and the version-mismatch control."
+      )
+    ),
+    active_sized(
+      id: "toolchain-residue-zero",
+      owner: "toolchain",
+      path: "docs/plans/hermetic-tool-provisioning-design.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeLarge,
+      t: fields(
+        headline: "Drive bare tool names and host path literals to zero",
+        boundary: "Every mechanical invocation names a resolved tool; bare executable names and absolute host path literals are migrated or classified as declared floor members.",
+        displaced_cost: "Removes non-portable host layout from the corpus and stops the census regrowing.",
+        first_slice: "Migrate the hardcoded home-directory toolchain paths and one bare-name family onto resolved tools.",
+        red_control: "A newly introduced bare tool name or host path literal reds; the construction half makes an argv position reject an unresolved string.",
+        out_of_scope: "Interactive developer environments are never in scope; mechanical paths only.",
+        handback: "Return the migrated sites, the remaining classified residue, and the guarding lens."
+      )
+    ),
+    active_small(
+      id: "toolchain-system-floor",
+      owner: "toolchain",
+      path: "docs/plans/hermetic-tool-provisioning-design.md",
+      t: fields(
+        headline: "Declare and assert the irreducible system floor",
+        boundary: "System-required and bootstrap tools are a short declared set with asserted versions and an ownership that refuses teardown; nothing outside the declared floor is depended on ambiently.",
+        displaced_cost: "Makes the remaining ambient surface small, named, and observable instead of assumed.",
+        first_slice: "Declare the bootstrap and system tiers and assert them at startup.",
+        red_control: "An undeclared ambient dependency reds; a floor member below its asserted version refuses rather than proceeding.",
+        out_of_scope: "No C toolchain is shipped; cc and the linker remain declared system requirements.",
+        handback: "Return the declared floor, the startup assertion, and the undeclared-dependency control."
+      )
+    ),
   ]
 }
 
@@ -1097,6 +1170,11 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-closed-loop-converge", parent: "shell-gate-migration"),
     edge(child: "fleet-anti-entropy-hygiene", parent: "fleet-closed-loop-converge"),
     edge(child: "fleet-receipt-qualified-control", parent: "fleet-anti-entropy-hygiene"),
+
+    edge(child: "toolchain-single-resolver", parent: "toolchain-pin-model"),
+    edge(child: "toolchain-rust-hermetic", parent: "toolchain-single-resolver"),
+    edge(child: "toolchain-residue-zero", parent: "toolchain-rust-hermetic"),
+    edge(child: "toolchain-system-floor", parent: "toolchain-single-resolver"),
   ]
 }
 
@@ -1113,7 +1191,7 @@ fn active_section() -> RoadmapSection {
   RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: [
-      section_prose(content: "The graph has nine lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene. The three SCM R0 models and P−1 evidence carrier are independent roots; compatibility extraction and later SCM/product lanes remain parked. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      section_prose(content: "The graph has ten lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 interpreter deletion · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three SCM R0 models, the P−1 evidence carrier, and the toolchain pin model are independent roots; compatibility extraction and later SCM/product lanes remain parked. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       section_group(
         label: "",
         nodes: active_roadmap_nodes(),

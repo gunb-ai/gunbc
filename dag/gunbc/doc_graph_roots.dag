@@ -227,6 +227,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "v2.std.witness", decl_name: "witness_from_optional", field: WholeDeclaration },
     dissolution: HasTrigger { text: "Stage-4 Gate-1 E0308 burn-down probe receipt lands (design note §3 — measurement only); doc archives or registers as a gunbc.plan.Plan row" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "hermetic-tool-provisioning-design",
+    work: DeclarationRef { module_path: "extdeps.tools", decl_name: "resolve", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "P1/P2 land the digest-bearing pin and the tool instantiation of gunbc.membership_reconcile — extdeps.tools.resolve gains its ensure arm and the four forked resolvers delete; the pin carrier becomes the authority and the plan registers as a gunbc.plan.Plan row" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
