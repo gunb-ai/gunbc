@@ -1,7 +1,7 @@
 module std.materialization_provider
 
 import std.types { Bool, Int, List, String, NonEmptyStr, ContentHash }
-import std.measure { ByteSize, measure_count }
+import std.measure { ByteSize, byte_size, measure_count, measure_add }
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
 import std.cache_identity {
   ArtifactKindId,
@@ -17,6 +17,8 @@ import std.artifact_store { ArtifactStore, store_put }
 import std.disposition { Disposition, Terminal }
 
 data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
+
+data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request COPRODUCT, whose variant fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. The residual trust boundary is therefore exactly ONE thing: that the transport computes its read-back from the stored parts by this same derivation — the ordinary content-address obligation any CAS has. Widening that boundary to a second item is the change this invariant exists to make visible. WHY IT IS STATED RATHER THAN PATCHED (parent ruling, DESIGN section 6 root-cause-do-not-patch-the-sites): four review findings — 44175 caller-supplied required_outputs, 44265 caller-supplied ComputationIdentity, 44278 caller-authored carried_outputs beside a caller-authored content_digest, and artifact_bytes, found by the parent by reading the three together — were ONE defect found four times, each an accepted assertion where a derivation was available. The fourth was the sharpest because it was load-bearing on a wall built for it: provider_admit_bound branches the budget check on the size and hands that same size to store_put as the stored size, so an understated value did not merely walk past ProviderBudgetExhausted once, it corrupted store_bytes_used and therefore every subsequent LRU eviction decision. The symmetric fix was chosen over carrying the size in the probe precisely BECAUSE of this invariant: a probe field would have been honest but would have added a second item to the trust boundary, whereas a fold over the parts makes the roster the preimage of BOTH the digest and the size — one construction, one argument, no new trust."
 
 data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). This slice grounds exactly the StructurallyIdentical corner, because the exact structural content key is the only sharing that key JUSTIFIES — and it DERIVES that grade from the binding it computes rather than accepting one (see the derivation note below, review 44265). Advertising normalized or extensional sharing while executing structural equality would be a fabricated capability, so those grades are not reachable here at all; they arrive by the spine widening the KEY, not by anyone passing a grade."
 
@@ -127,11 +129,12 @@ fn request_key(req: ArtifactRequest) -> ContentHash {
   )
 }
 
-data materialization_provider_payload_binding_note: String = "Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape carried an artifact's completeness as a caller-authored List<ArtifactOutputId> sitting BESIDE a caller-authored content_digest, with no relation between them — so an artifact could list every required output, including the compile-clean diagnostic union, while its bytes contained none of them, and request_artifact_binding would answer BindingOk. That is the specification-without-execution trap section 5 names: the completeness rule was asserted through labels rather than represented. Note that a validation pass cannot close it either — this contract never sees bytes, so a check 'do the bytes contain this output' is not expressible here, and a check that is not expressible is not a wall. The construction fix is to make the label ACCOUNTABLE TO THE DIGEST THE CONTRACT ALREADY VERIFIES: a CarriedOutput is (id, digest) — the part's own content hash — and the artifact's content digest is no longer a field at all but a DERIVATION, carried_outputs_digest, folded over those parts. So the roster is not beside the digest, it IS the digest's preimage. Adding a phantom output label to satisfy completeness necessarily changes the derived digest; dropping a real part changes it too; and the door already compares that derived digest against observed_digest, the read-back the realization computes from the stored bytes. A forged roster therefore lands on BindingWrongContent rather than BindingOk — the forgery is no longer self-consistent, which is exactly what it was before. What this DOES still rest on is the ordinary content-address boundary: observed_digest must be computed from the stored parts by this same derivation, which is the transport's obligation and the same trust boundary any CAS has (it is also why the digest is TAGGED and order-fixed — see the key-order note). It does not rest on the caller being honest, which is the property review 44278 found missing."
+data materialization_provider_payload_binding_note: String = "Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape carried an artifact's completeness as a caller-authored List<ArtifactOutputId> sitting BESIDE a caller-authored content_digest, with no relation between them — so an artifact could list every required output, including the compile-clean diagnostic union, while its bytes contained none of them, and request_artifact_binding would answer BindingOk. That is the specification-without-execution trap section 5 names: the completeness rule was asserted through labels rather than represented. Note that a validation pass cannot close it either — this contract never sees bytes, so a check 'do the bytes contain this output' is not expressible here, and a check that is not expressible is not a wall. The construction fix is to make the label ACCOUNTABLE TO THE DIGEST THE CONTRACT ALREADY VERIFIES: a CarriedOutput is (id, digest) — the part's own content hash — and the artifact's content digest is no longer a field at all but a DERIVATION, carried_outputs_digest, folded over those parts. So the roster is not beside the digest, it IS the digest's preimage. Adding a phantom output label to satisfy completeness necessarily changes the derived digest; dropping a real part changes it too; and the door already compares that derived digest against observed_digest, the read-back the realization computes from the stored bytes. A forged roster therefore lands on BindingWrongContent rather than BindingOk — the forgery is no longer self-consistent, which is exactly what it was before. What this DOES still rest on is the ordinary content-address boundary: observed_digest must be computed from the stored parts by this same derivation, which is the transport's obligation and the same trust boundary any CAS has (it is also why the digest is TAGGED and order-fixed — see the key-order note). It does not rest on the caller being honest, which is the property review 44278 found missing. The SAME construction carries the size: a part declares its own bytes, artifact_bytes is carried_outputs_bytes folded over the parts (grounded on std.measure measure_add, not on raw counts), and MaterializedArtifact has no size field either — so understating the size is not a free move, because the only way to shrink the fold is to shrink or alter the parts, which changes the digest and is caught by the same read-back comparison. That is why the budget wall in provider_admit_bound is now a wall against any caller rather than an honest one; see the derivation invariant at the head of this module for the rule this is the fourth instance of."
 
 type CarriedOutput {
   id: ArtifactOutputId
   digest: ContentHash
+  bytes: ByteSize
 }
 
 fn carried_output_digest(o: CarriedOutput) -> ContentHash {
@@ -152,11 +155,18 @@ type MaterializedArtifact {
   kind: ArtifactKindId
   request_key: ContentHash
   carried_outputs: List<CarriedOutput>
-  artifact_bytes: ByteSize
 }
 
 fn artifact_content_digest(artifact: MaterializedArtifact) -> ContentHash {
   carried_outputs_digest(outputs: artifact.carried_outputs)
+}
+
+fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
+  outputs |> fold(init: byte_size(count: 0), f: (acc, o) => measure_add(a: acc, b: o.bytes))
+}
+
+fn artifact_bytes(artifact: MaterializedArtifact) -> ByteSize {
+  carried_outputs_bytes(outputs: artifact.carried_outputs)
 }
 
 type ArtifactCompleteness
@@ -274,10 +284,11 @@ type ProviderAdmission
   | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
 
 fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
-  if measure_count(m: artifact.artifact_bytes) > measure_count(m: store.budget) {
-    ProviderBudgetExhausted { needed: artifact.artifact_bytes, budget: store.budget }
+  let bytes = artifact_bytes(artifact: artifact)
+  if measure_count(m: bytes) > measure_count(m: store.budget) {
+    ProviderBudgetExhausted { needed: bytes, budget: store.budget }
   } else {
-    let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: artifact.artifact_bytes)
+    let receipt = store_put(store: store, key: artifact.request_key, artifact_bytes: bytes)
     ProviderAdmitted { store: receipt.store, evicted: receipt.evicted }
   }
 }

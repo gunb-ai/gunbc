@@ -81,28 +81,27 @@ fn witness_closure_request() -> ArtifactRequest {
   }
 }
 
-fn witness_part(id: ArtifactOutputId, payload: String) -> CarriedOutput {
-  CarriedOutput { id: id, digest: content_hash_atom(value: payload) }
+fn witness_part(id: ArtifactOutputId, payload: String, bytes: Int) -> CarriedOutput {
+  CarriedOutput { id: id, digest: content_hash_atom(value: payload), bytes: byte_size(count: bytes) }
 }
 
 fn witness_graph_part() -> CarriedOutput {
-  witness_part(id: output_resolved_graph, payload: "closure-graph-1")
+  witness_part(id: output_resolved_graph, payload: "closure-graph-1", bytes: 60)
 }
 
 fn witness_indices_part() -> CarriedOutput {
-  witness_part(id: output_source_indices, payload: "closure-indices-1")
+  witness_part(id: output_source_indices, payload: "closure-indices-1", bytes: 25)
 }
 
 fn witness_union_part() -> CarriedOutput {
-  witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-1")
+  witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-1", bytes: 15)
 }
 
 fn witness_complete_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()],
-    artifact_bytes: byte_size(count: 100)
+    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()]
   }
 }
 
@@ -110,8 +109,7 @@ fn witness_v1_shape_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part()],
-    artifact_bytes: byte_size(count: 100)
+    carried_outputs: [witness_graph_part(), witness_indices_part()]
   }
 }
 
@@ -119,8 +117,7 @@ fn witness_kind_forged_closure_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: parse_source_artifact_kind,
     request_key: request_key(req: witness_closure_request()),
-    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()],
-    artifact_bytes: byte_size(count: 100)
+    carried_outputs: [witness_graph_part(), witness_indices_part(), witness_union_part()]
   }
 }
 
@@ -143,8 +140,7 @@ fn witness_stale_typed_artifact() -> MaterializedArtifact {
   MaterializedArtifact {
     kind: typed_module_artifact_kind,
     request_key: request_key(req: witness_typecheck_request()),
-    carried_outputs: [witness_part(id: output_typed_module_interface, payload: "typed-payload-1")],
-    artifact_bytes: byte_size(count: 10)
+    carried_outputs: [witness_part(id: output_typed_module_interface, payload: "typed-payload-1", bytes: 10)]
   }
 }
 
@@ -271,11 +267,10 @@ test fn admission_over_budget_evicts_least_recent_and_counts_it() -> Bool {
     kind: resolved_graph_artifact_kind,
     request_key: request_key(req: second_request),
     carried_outputs: [
-      witness_part(id: output_resolved_graph, payload: "closure-graph-2"),
-      witness_part(id: output_source_indices, payload: "closure-indices-2"),
-      witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-2")
-    ],
-    artifact_bytes: byte_size(count: 100)
+      witness_part(id: output_resolved_graph, payload: "closure-graph-2", bytes: 60),
+      witness_part(id: output_source_indices, payload: "closure-indices-2", bytes: 25),
+      witness_part(id: output_compile_clean_diagnostic_union, payload: "closure-diagnostics-2", bytes: 15)
+    ]
   }
   let first_admit = provider_admit(
     store: store0,
