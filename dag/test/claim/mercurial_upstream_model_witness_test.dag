@@ -11,9 +11,14 @@ import extdeps.mercurial {
   MercurialPath,
   MercurialNotCopied,
   MercurialCopiedFrom,
+  MercurialNoParents,
+  MercurialOneParent,
+  MercurialTwoParents,
   MercurialFileRevision,
   MercurialManifestWire,
   MercurialManifestWireEntry,
+  MercurialBranchRemainsOpen,
+  MercurialClosesBranch,
   MercurialChangeset,
   MercurialLocalRevisionEntry,
   MercurialHead,
@@ -31,6 +36,7 @@ import extdeps.mercurial {
   MercurialRepositoryRequirements,
   MercurialRepositoryProjectionContents,
   MercurialRepositoryProjection,
+  MercurialCompleteProjection,
   MercurialPartialProjection,
   MercurialInaccessibleProjection,
   MercurialRepositoryContents,
@@ -43,6 +49,11 @@ import extdeps.mercurial {
   MercurialDuplicatePhase,
   MercurialPhaseMonotonicityViolation,
   MercurialChangesetPresentAndDeclaredMissing,
+  MercurialDuplicateChangesetParent,
+  MercurialDuplicateFileRevisionParent,
+  MercurialChangesetAncestryCycle,
+  MercurialFileRevisionAncestryCycle,
+  MercurialHeadSetMismatch,
   MercurialRegularFile,
   MercurialExecutableFile,
   MercurialSymlink,
@@ -129,13 +140,13 @@ fn fixture_file_revisions() -> List<MercurialFileRevision> {
   [
     MercurialFileRevision {
       node: hg_file_regular,
-      parents: [],
+      parents: MercurialNoParents,
       copy: MercurialNotCopied,
       content: octets_bytes(o: [109, 97, 105, 110]),
     },
     MercurialFileRevision {
       node: hg_file_executable,
-      parents: [hg_file_regular],
+      parents: MercurialOneParent { parent: hg_file_regular },
       copy: MercurialCopiedFrom {
         path: hg_path_regular,
         file_revision: hg_file_regular,
@@ -144,7 +155,7 @@ fn fixture_file_revisions() -> List<MercurialFileRevision> {
     },
     MercurialFileRevision {
       node: hg_file_symlink,
-      parents: [],
+      parents: MercurialNoParents,
       copy: MercurialNotCopied,
       content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
     },
@@ -179,8 +190,9 @@ fn fixture_changesets() -> List<MercurialChangeset> {
     MercurialChangeset {
       node: hg_c0,
       manifest: hg_manifest,
-      parents: [],
+      parents: MercurialNoParents,
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-0",
       description: "root",
@@ -188,8 +200,9 @@ fn fixture_changesets() -> List<MercurialChangeset> {
     MercurialChangeset {
       node: hg_c1,
       manifest: hg_manifest,
-      parents: [hg_c0],
+      parents: MercurialOneParent { parent: hg_c0 },
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-1",
       description: "left",
@@ -197,8 +210,9 @@ fn fixture_changesets() -> List<MercurialChangeset> {
     MercurialChangeset {
       node: hg_c2,
       manifest: hg_manifest,
-      parents: [hg_c0],
+      parents: MercurialOneParent { parent: hg_c0 },
       branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
       user: "author@example.invalid",
       authored_at: "provenance-only-2",
       description: "right",
@@ -424,6 +438,31 @@ fn projection_with_changesets(
         changesets: changesets,
         local_revisions: contents.local_revisions,
         heads: contents.heads,
+        bookmarks: contents.bookmarks,
+        tags: contents.tags,
+        phases: contents.phases,
+        publishing: contents.publishing,
+        subrepositories: contents.subrepositories,
+        evolution: contents.evolution,
+      }
+    },
+  )
+}
+
+fn projection_with_heads(
+  projection: MercurialRepositoryProjection,
+  heads: List<MercurialHead>,
+) -> MercurialRepositoryProjection {
+  mercurial_projection_map_contents(
+    projection: projection,
+    map_contents: fn(contents) {
+      MercurialRepositoryProjectionContents {
+        requirements: contents.requirements,
+        file_revisions: contents.file_revisions,
+        manifests: contents.manifests,
+        changesets: contents.changesets,
+        local_revisions: contents.local_revisions,
+        heads: heads,
         bookmarks: contents.bookmarks,
         tags: contents.tags,
         phases: contents.phases,
@@ -726,7 +765,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   let projection_contents = fixture_projection_contents()
   let broken = MercurialFileRevision {
     node: hg_file_executable,
-    parents: [hg_file_regular],
+    parents: MercurialOneParent { parent: hg_file_regular },
     copy: MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_undeclared,
@@ -761,7 +800,7 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
   let projection_contents = fixture_projection_contents()
   let partial = MercurialFileRevision {
     node: hg_file_executable,
-    parents: [hg_file_regular],
+    parents: MercurialOneParent { parent: hg_file_regular },
     copy: MercurialCopiedFrom {
       path: hg_path_regular,
       file_revision: hg_file_missing,
@@ -998,8 +1037,9 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
   let broken = MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
-    parents: [hg_missing_c],
+    parents: MercurialOneParent { parent: hg_missing_c },
     branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
     user: "author@example.invalid",
     authored_at: "provenance-only-2",
     description: "right",
@@ -1015,6 +1055,357 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
     MercurialDecodeRefused { cause: _ } => true
     MercurialDecoded { repository: _ } => false
     MercurialRepositoryUnavailable { reason: _ } => false
+  }
+}
+
+test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
+  let projection_contents = fixture_projection_contents()
+  let duplicate_parent = MercurialChangeset {
+    node: hg_c2,
+    manifest: hg_manifest,
+    parents: MercurialTwoParents { first: hg_c0, second: hg_c0 },
+    branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
+    user: "author@example.invalid",
+    authored_at: "provenance-only-2",
+    description: "right",
+  }
+  let invalid = projection_with_changesets(
+    projection: fixture_projection(),
+    changesets: append(
+      projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
+      items: [duplicate_parent],
+    ),
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialDuplicateChangesetParent { changeset, parent },
+    } => changeset == hg_c2 && parent == hg_c0
+    _ => false
+  }
+}
+
+test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
+  let projection_contents = fixture_projection_contents()
+  let self_parent = MercurialChangeset {
+    node: hg_c2,
+    manifest: hg_manifest,
+    parents: MercurialOneParent { parent: hg_c2 },
+    branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
+    user: "author@example.invalid",
+    authored_at: "provenance-only-2",
+    description: "right",
+  }
+  let invalid = projection_with_changesets(
+    projection: fixture_projection(),
+    changesets: append(
+      projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
+      items: [self_parent],
+    ),
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialChangesetAncestryCycle { changeset },
+    } => changeset == hg_c2
+    _ => false
+  }
+}
+
+test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
+  let cycle_left = MercurialChangeset {
+    node: hg_c1,
+    manifest: hg_manifest,
+    parents: MercurialOneParent { parent: hg_c2 },
+    branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
+    user: "author@example.invalid",
+    authored_at: "provenance-only-1",
+    description: "left",
+  }
+  let cycle_right = MercurialChangeset {
+    node: hg_c2,
+    manifest: hg_manifest,
+    parents: MercurialOneParent { parent: hg_c1 },
+    branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
+    user: "author@example.invalid",
+    authored_at: "provenance-only-2",
+    description: "right",
+  }
+  let invalid = projection_with_changesets(
+    projection: fixture_projection(),
+    changesets: [
+      MercurialChangeset {
+        node: hg_c0,
+        manifest: hg_manifest,
+        parents: MercurialNoParents,
+        branch: "default",
+        branch_closure: MercurialBranchRemainsOpen,
+        user: "author@example.invalid",
+        authored_at: "provenance-only-0",
+        description: "root",
+      },
+      cycle_left,
+      cycle_right,
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialChangesetAncestryCycle { changeset },
+    } => changeset == hg_c1 || changeset == hg_c2
+    _ => false
+  }
+}
+
+test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
+  let cycle_regular = MercurialFileRevision {
+    node: hg_file_regular,
+    parents: MercurialOneParent { parent: hg_file_executable },
+    copy: MercurialNotCopied,
+    content: octets_bytes(o: [109, 97, 105, 110]),
+  }
+  let cycle_executable = MercurialFileRevision {
+    node: hg_file_executable,
+    parents: MercurialOneParent { parent: hg_file_regular },
+    copy: MercurialCopiedFrom {
+      path: hg_path_regular,
+      file_revision: hg_file_regular,
+    },
+    content: octets_bytes(o: [114, 117, 110]),
+  }
+  let invalid = projection_with_file_revisions(
+    projection: fixture_projection(),
+    file_revisions: [
+      cycle_regular,
+      cycle_executable,
+      MercurialFileRevision {
+        node: hg_file_symlink,
+        parents: MercurialNoParents,
+        copy: MercurialNotCopied,
+        content: octets_bytes(o: [46, 46, 47, 109, 97, 105, 110]),
+      },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialFileRevisionAncestryCycle { file_revision },
+    } =>
+      file_revision == hg_file_regular || file_revision == hg_file_executable
+    _ => false
+  }
+}
+
+test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
+  let duplicate_parent = MercurialFileRevision {
+    node: hg_file_executable,
+    parents: MercurialTwoParents {
+      first: hg_file_regular,
+      second: hg_file_regular,
+    },
+    copy: MercurialCopiedFrom {
+      path: hg_path_regular,
+      file_revision: hg_file_regular,
+    },
+    content: octets_bytes(o: [114, 117, 110]),
+  }
+  let invalid = projection_with_file_revisions(
+    projection: fixture_projection(),
+    file_revisions: append(
+      fixture_file_revisions()
+        |> filter(file_revision =>
+          !(file_revision.node == hg_file_executable)
+        ),
+      items: [duplicate_parent],
+    ),
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialDuplicateFileRevisionParent {
+        file_revision,
+        parent,
+      },
+    } =>
+      file_revision == hg_file_executable
+        && parent == hg_file_regular
+    _ => false
+  }
+}
+
+test fn witness_mercurial_observed_non_head_refuses() -> Bool {
+  let invalid = projection_with_heads(
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
+    heads: [MercurialHead { changeset: hg_c0 }],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialHeadSetMismatch { observed, derived },
+    } =>
+      observed == [hg_c0]
+        && derived == [hg_c1, hg_c2]
+    _ => false
+  }
+}
+
+test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_children() -> Bool {
+  let changesets = [
+    MercurialChangeset {
+      node: hg_c0,
+      manifest: hg_manifest,
+      parents: MercurialNoParents,
+      branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
+      user: "author@example.invalid",
+      authored_at: "provenance-only-0",
+      description: "default root",
+    },
+    MercurialChangeset {
+      node: hg_c1,
+      manifest: hg_manifest,
+      parents: MercurialOneParent { parent: hg_c0 },
+      branch: "feature",
+      branch_closure: MercurialBranchRemainsOpen,
+      user: "author@example.invalid",
+      authored_at: "provenance-only-1",
+      description: "feature bridge",
+    },
+    MercurialChangeset {
+      node: hg_c2,
+      manifest: hg_manifest,
+      parents: MercurialOneParent { parent: hg_c1 },
+      branch: "default",
+      branch_closure: MercurialBranchRemainsOpen,
+      user: "author@example.invalid",
+      authored_at: "provenance-only-2",
+      description: "default descendant",
+    },
+  ]
+  let with_changesets = projection_with_changesets(
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
+    changesets: changesets,
+  )
+  let complete = projection_with_heads(
+    projection: with_changesets,
+    heads: [
+      MercurialHead { changeset: hg_c1 },
+      MercurialHead { changeset: hg_c2 },
+    ],
+  )
+  match mercurial_decode_projection(projection: complete) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+fn fixture_projection_with_closed_right_head() -> MercurialRepositoryProjection {
+  let closed = fixture_changesets() |> map(changeset =>
+    if changeset.node == hg_c2 {
+      MercurialChangeset {
+        node: changeset.node,
+        manifest: changeset.manifest,
+        parents: changeset.parents,
+        branch: changeset.branch,
+        branch_closure: MercurialClosesBranch,
+        user: changeset.user,
+        authored_at: changeset.authored_at,
+        description: changeset.description,
+      }
+    } else {
+      changeset
+    }
+  )
+  projection_with_changesets(
+    projection: MercurialCompleteProjection {
+      contents: fixture_projection_contents(),
+    },
+    changesets: closed,
+  )
+}
+
+test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bool {
+  let complete = projection_with_heads(
+    projection: fixture_projection_with_closed_right_head(),
+    heads: [MercurialHead { changeset: hg_c1 }],
+  )
+  match mercurial_decode_projection(projection: complete) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Bool {
+  let invalid = projection_with_heads(
+    projection: fixture_projection_with_closed_right_head(),
+    heads: [
+      MercurialHead { changeset: hg_c1 },
+      MercurialHead { changeset: hg_c2 },
+    ],
+  )
+  match mercurial_decode_projection(projection: invalid) {
+    MercurialDecodeRefused {
+      cause: MercurialHeadSetMismatch { observed, derived },
+    } =>
+      observed == [hg_c1, hg_c2]
+        && derived == [hg_c1]
+    _ => false
+  }
+}
+
+test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
+  let with_missing_head = projection_with_heads(
+    projection: fixture_projection(),
+    heads: [MercurialHead { changeset: hg_missing_c }],
+  )
+  let partial = match with_missing_head {
+    MercurialPartialProjection {
+      contents,
+      missing_changesets: _,
+      missing_manifests,
+      missing_file_revisions,
+    } => MercurialPartialProjection {
+      contents: contents,
+      missing_changesets: [hg_missing_c],
+      missing_manifests: missing_manifests,
+      missing_file_revisions: missing_file_revisions,
+    }
+    other => other
+  }
+  match mercurial_decode_projection(projection: partial) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
+  let projection_contents = fixture_projection_contents()
+  let merge = MercurialChangeset {
+    node: hg_c2,
+    manifest: hg_manifest,
+    parents: MercurialTwoParents { first: hg_c0, second: hg_c1 },
+    branch: "default",
+    branch_closure: MercurialBranchRemainsOpen,
+    user: "author@example.invalid",
+    authored_at: "provenance-only-2",
+    description: "merge",
+  }
+  let with_merge = projection_with_changesets(
+    projection: fixture_projection(),
+    changesets: append(
+      projection_contents.changesets |> filter(c => !(c.node == hg_c2)),
+      items: [merge],
+    ),
+  )
+  let with_head = projection_with_heads(
+    projection: with_merge,
+    heads: [MercurialHead { changeset: hg_c2 }],
+  )
+  match mercurial_decode_projection(projection: with_head) {
+    MercurialDecoded { repository: _ } => true
+    _ => false
   }
 }
 
@@ -1043,6 +1434,5 @@ test fn witness_mercurial_r0_write_capability_stays_unavailable() -> Bool {
   match mercurial_r0_conditional_advance {
     MercurialConditionalAdvanceUnavailable { reason } =>
       string_contains(s: reason, pattern: "no executing transaction transport")
-    _ => false
   }
 }

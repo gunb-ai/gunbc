@@ -12,7 +12,8 @@ import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
   ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider,
   StoreHit, StoreMiss, store_get,
-  StorePutReceipt, store_put, store_bytes_used,
+  StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
+  store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
 }
 import extdeps.realization.emit_on_demand_host {
   ResolvedBuildContext,
@@ -73,16 +74,21 @@ test fn store_construction_reads_eviction_holds() -> Bool {
 test fn store_hit_and_stale_never_served_holds() -> Bool {
   let k1 = key_of(toolchain: "1.93.0")
   let k2 = key_of(toolchain: "1.94.0")
-  let put1 = store_put(store: test_store(), key: k1, artifact_bytes: byte_size(count: 40))
-  let hit = match store_get(store: put1.store, key: k1) {
-    StoreHit { store: _, row: r } => r.key == k1
-    StoreMiss { store: _ } => false
-  }
-  let mutated_input_misses = match store_get(store: put1.store, key: k2) {
-    StoreHit { store: _, row: _ } => false
-    StoreMiss { store: _ } => true
-  }
-  hit && mutated_input_misses && (k1 == k2) == false
+  store_put_fold(
+    outcome: store_put(store: test_store(), key: k1, artifact_bytes: byte_size(count: 40)),
+    did_not_fit: (a, b) => false,
+    admitted: fn(put1_store, evicted) {
+      let hit = match store_get(store: put1_store, key: k1) {
+        StoreHit { store: _, row: r } => r.key == k1
+        StoreMiss { store: _ } => false
+      }
+      let mutated_input_misses = match store_get(store: put1_store, key: k2) {
+        StoreHit { store: _, row: _ } => false
+        StoreMiss { store: _ } => true
+      }
+      hit && mutated_input_misses && (k1 == k2) == false
+    }
+  )
 }
 
 test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
@@ -151,23 +157,84 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
   let ka = key_of(toolchain: "a")
   let kb = key_of(toolchain: "b")
   let kc = key_of(toolchain: "c")
-  let s1 = store_put(store: test_store(), key: ka, artifact_bytes: byte_size(count: 40)).store
-  let s2 = store_put(store: s1, key: kb, artifact_bytes: byte_size(count: 40)).store
+  store_put_fold(
+    outcome: store_put(store: test_store(), key: ka, artifact_bytes: byte_size(count: 40)),
+    did_not_fit: (a, b) => false,
+    admitted: fn(s1, e1) {
+  store_put_fold(
+    outcome: store_put(store: s1, key: kb, artifact_bytes: byte_size(count: 40)),
+    did_not_fit: (a, b) => false,
+    admitted: fn(s2, e2) {
   let touched = match store_get(store: s2, key: ka) {
     StoreHit { store: s, row: _ } => s
     StoreMiss { store: s } => s
   }
-  let receipt = store_put(store: touched, key: kc, artifact_bytes: byte_size(count: 40))
-  let evicted_is_least_recent = receipt.evicted == [kb]
-  let within_budget = store_bytes_used(store: receipt.store) <= measure_count(m: receipt.store.budget)
-  let survivors_hit = match store_get(store: receipt.store, key: ka) {
-    StoreHit { store: _, row: _ } => true
-    StoreMiss { store: _ } => false
-  }
-  evicted_is_least_recent && within_budget && survivors_hit
+  store_put_fold(
+    outcome: store_put(store: touched, key: kc, artifact_bytes: byte_size(count: 40)),
+    admitted: fn(packed, evicted) {
+      let evicted_is_least_recent = evicted == [kb]
+      let within_budget = store_bytes_used(store: packed) <= measure_count(m: packed.budget)
+      let survivors_hit = match store_get(store: packed, key: ka) {
+        StoreHit { store: _, row: _ } => true
+        StoreMiss { store: _ } => false
+      }
+      evicted_is_least_recent && within_budget && survivors_hit
+    },
+    did_not_fit: (a, b) => false
+  )
+    }
+  )
+    }
+  )
 }
 
 test fn store_no_eviction_under_budget_holds() -> Bool {
-  let receipt = store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: byte_size(count: 40))
-  receipt.evicted == []
+  store_put_evicted_keys(
+    outcome: store_put(store: test_store(), key: key_of(toolchain: "solo"), artifact_bytes: byte_size(count: 40))
+  ) == []
+}
+
+
+data store_put_totality_witness_note: String = "The discriminating receipt for store_put's totality repair: an artifact larger than the whole budget must be a DidNotFit VALUE and must leave the store untouched. Before the repair these assertions were all false in the same direction - the oversized put reported success, its evicted list named the key just put, and against a warm store it had already discarded the valid rows. The warm case is asserted separately from the cold one because only the warm case exposes the DESTRUCTION: a cold oversized put merely returned an empty store it had also started with, so a cold-only witness would have gone green against the destructive implementation."
+
+fn oversize_store() -> ArtifactStore {
+  ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
+}
+
+test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool {
+  let outcome = store_put(store: oversize_store(), key: key_of(toolchain: "oversize"), artifact_bytes: byte_size(count: 500))
+  (store_put_is_admitted(outcome: outcome) == false)
+    && (store_put_evicted_keys(outcome: outcome) == [])
+}
+
+test fn store_put_oversized_artifact_never_evicts_itself_holds() -> Bool {
+  let k = key_of(toolchain: "oversize-self")
+  let evicted = store_put_evicted_keys(
+    outcome: store_put(store: oversize_store(), key: k, artifact_bytes: byte_size(count: 500))
+  )
+  (evicted |> any(e => e == k)) == false
+}
+
+test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool {
+  let survivor = key_of(toolchain: "warm-survivor")
+  store_put_fold(
+    outcome: store_put(store: oversize_store(), key: survivor, artifact_bytes: byte_size(count: 40)),
+    did_not_fit: (a, b) => false,
+    admitted: fn(warmed, e) {
+      let outcome = store_put(store: warmed, key: key_of(toolchain: "oversize-warm"), artifact_bytes: byte_size(count: 500))
+      let still_there = match store_get(store: warmed, key: survivor) {
+        StoreHit { store: _, row: _ } => true
+        StoreMiss { store: _ } => false
+      }
+      (store_put_is_admitted(outcome: outcome) == false)
+        && (store_put_evicted_keys(outcome: outcome) == [])
+        && still_there
+    }
+  )
+}
+
+test fn store_put_artifact_exactly_at_budget_is_admitted_holds() -> Bool {
+  store_put_is_admitted(
+    outcome: store_put(store: oversize_store(), key: key_of(toolchain: "exact"), artifact_bytes: byte_size(count: 100))
+  )
 }

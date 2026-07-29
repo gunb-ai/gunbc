@@ -37,12 +37,25 @@ import extdeps.git.object_store {
   StoreObject,
   GitContentAddressReceipt,
   GitHashObjectObserved,
+  GitHashObjectCliExecuted,
+  GitHashObjectCallerAssertion,
   GitHashObjectObservationUnavailable,
   GitCanonicalHashInputReady,
   GitCanonicalHashInputRefused,
   StoredObject,
   GitPromisorObjectUnavailable,
+  GitUnexpectedObjectMissing,
+  GitCorruptObject,
   GitRepositoryState,
+  GitRepositoryDecoded,
+  GitRepositoryDecodeRefused,
+  GitRepositoryDuplicateStoredObject,
+  GitRepositoryDuplicateUnavailableObject,
+  GitRepositoryPresentAndUnavailableObject,
+  GitRepositoryStoredObjectUnadmitted,
+  GitRepositoryDuplicateRef,
+  GitRepositoryPointerUnexpectedlyMissing,
+  GitRepositoryPointerCorrupt,
   GitRefRecord,
   DirectTarget,
   SymbolicTarget,
@@ -73,14 +86,14 @@ import extdeps.git.object_store {
   GitReadBackVerified,
   GitReadBackMismatch,
   GitRefTransitionModeled,
-  GitRefAdvanceDuplicate,
+  GitRefAdvanceRepositoryInvalid,
   GitRefAdvanceStale,
   GitRefAdvanceSymbolicCycle,
   GitRefAdvanceFormatMismatch,
   GitRefAdvanceTargetUnavailable,
   RefResolved,
   RefDuplicate,
-  ObjectCorrupt,
+  ObjectRepositoryInvalid,
   ObjectPromisorUnavailable,
   GitAttributesTransformExecution,
   GitCleanSmudgeFilterExecution,
@@ -91,6 +104,7 @@ import extdeps.git.object_store {
   git_decode_object_id_text,
   git_decode_ls_tree_z,
   git_decode_ls_files_stage_z,
+  git_decode_repository,
   git_project_repository,
   git_verify_independent_read_back,
   git_lookup_object,
@@ -342,6 +356,11 @@ fn fixture_content_address(
         object_format: GitObjectFormatSha1,
         canonical_input: bytes,
         observed_oid: oid,
+        producer: GitHashObjectCliExecuted {
+          attempt: "fixture-git-hash-object",
+          exit_code: 0,
+          stdout_oid: oid,
+        },
       }
     GitCanonicalHashInputRefused { cause } =>
       GitHashObjectObservationUnavailable { cause: cause }
@@ -915,7 +934,7 @@ test fn witness_git_promisor_missing_never_decodes_as_empty_object() -> Bool {
   }
 }
 
-test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
+test fn witness_git_content_address_kind_mismatch_refuses_repository_decode() -> Bool {
   let repo = fixture_repository()
   let observed_object = ObjectBlob {
     blob: Blob {
@@ -953,7 +972,9 @@ test fn witness_git_content_address_kind_mismatch_refuses_as_corrupt() -> Bool {
     worktree: repo.worktree,
   }
   match git_lookup_object(repo: invalid, oid: sha1_blob_regular) {
-    ObjectCorrupt { oid, reason: _ } => oid == sha1_blob_regular
+    ObjectRepositoryInvalid {
+      cause: GitRepositoryStoredObjectUnadmitted { oid },
+    } => oid == sha1_blob_regular
     _ => false
   }
 }
@@ -975,9 +996,19 @@ test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() ->
       object_format,
       canonical_input,
       observed_oid,
+      producer,
     } =>
       object_format == GitObjectFormatSha1
         && observed_oid == sha1_blob_regular
+        && match producer {
+          GitHashObjectCliExecuted {
+            attempt: _,
+            exit_code,
+            stdout_oid,
+          } =>
+            exit_code == 0 && stdout_oid == observed_oid
+          GitHashObjectCallerAssertion => false
+        }
         && bytes_octets(b: canonical_input) == [
           98, 108, 111, 98, 32, 54, 0,
           115, 111, 117, 114, 99, 101,
@@ -1027,14 +1058,244 @@ test fn witness_git_content_address_binds_observed_oid_and_exact_hash_input() ->
     worktree: repo.worktree,
   }
   match git_lookup_object(repo: input_repo, oid: sha1_blob_regular) {
-    ObjectCorrupt { oid, reason: _ } =>
+    ObjectRepositoryInvalid {
+      cause: GitRepositoryStoredObjectUnadmitted { oid },
+    } =>
       observation_grounded
         && oid == sha1_blob_regular
         && match git_lookup_object(repo: oid_repo, oid: sha1_blob_executable) {
-          ObjectCorrupt { oid: sized_oid, reason: _ } =>
+          ObjectRepositoryInvalid {
+            cause: GitRepositoryStoredObjectUnadmitted {
+              oid: sized_oid,
+            },
+          } =>
             sized_oid == sha1_blob_executable
           _ => false
         }
+    _ => false
+  }
+}
+
+test fn witness_git_duplicate_stored_identity_refuses_without_list_order() -> Bool {
+  let repo = fixture_repository()
+  let conflicting = StoredObject {
+    oid: sha1_blob_regular,
+    content_address: fixture_content_address(
+      oid: sha1_blob_regular,
+      object: ObjectBlob {
+        blob: Blob {
+          content: octets_bytes(o: [100, 105, 102, 102, 101, 114, 101, 110, 116]),
+        }
+      },
+    ),
+    object: ObjectBlob {
+      blob: Blob {
+        content: octets_bytes(o: [100, 105, 102, 102, 101, 114, 101, 110, 116]),
+      }
+    },
+  }
+  let duplicate = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: append(repo.objects, items: [conflicting]),
+    unavailable: repo.unavailable,
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: duplicate) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryDuplicateStoredObject { oid },
+    } => oid == sha1_blob_regular
+    _ => false
+  }
+}
+
+test fn witness_git_duplicate_unavailability_refuses_without_list_order() -> Bool {
+  let repo = fixture_repository()
+  let duplicate = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: append(
+      repo.unavailable,
+      items: [
+        GitPromisorObjectUnavailable {
+          oid: sha1_promisor_missing,
+          promisor: "mirror",
+        },
+      ],
+    ),
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: duplicate) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryDuplicateUnavailableObject { oid },
+    } => oid == sha1_promisor_missing
+    _ => false
+  }
+}
+
+test fn witness_git_present_object_cannot_also_be_unavailable() -> Bool {
+  let repo = fixture_repository()
+  let overlap = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: append(
+      repo.unavailable,
+      items: [
+        GitPromisorObjectUnavailable {
+          oid: sha1_blob_regular,
+          promisor: "origin",
+        },
+      ],
+    ),
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: overlap) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPresentAndUnavailableObject { oid },
+    } => oid == sha1_blob_regular
+    _ => false
+  }
+}
+
+test fn witness_git_caller_asserted_well_formed_wrong_oid_never_admits() -> Bool {
+  let repo = fixture_repository()
+  let subject = ObjectBlob {
+    blob: Blob {
+      content: octets_bytes(o: [115, 111, 117, 114, 99, 101]),
+    }
+  }
+  match git_store_object_canonical_hash_input(object: subject) {
+    GitCanonicalHashInputRefused { cause: _ } => false
+    GitCanonicalHashInputReady { bytes } =>
+      let asserted = StoredObject {
+        oid: sha1_blob_executable,
+        content_address: GitHashObjectObserved {
+          git_version: "caller-authored",
+          object_format: GitObjectFormatSha1,
+          canonical_input: bytes,
+          observed_oid: sha1_blob_executable,
+          producer: GitHashObjectCallerAssertion,
+        },
+        object: subject,
+      }
+      let invalid = GitRepositoryState {
+        object_format: repo.object_format,
+        objects: append(
+          repo.objects |> filter(object =>
+            !(stored_object_oid(stored: object) == sha1_blob_executable)
+          ),
+          items: [asserted],
+        ),
+        unavailable: repo.unavailable,
+        refs: repo.refs,
+        index: repo.index,
+        worktree: repo.worktree,
+      }
+      match git_decode_repository(repo: invalid) {
+        GitRepositoryDecodeRefused {
+          cause: GitRepositoryStoredObjectUnadmitted { oid },
+        } => oid == sha1_blob_executable
+        _ => false
+      }
+  }
+}
+
+test fn witness_git_tree_reference_must_be_present_or_promisor_declared() -> Bool {
+  let repo = fixture_repository()
+  let missing = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects |> filter(object =>
+      !(stored_object_oid(stored: object) == sha1_subtree)
+    ),
+    unavailable: append(
+      repo.unavailable,
+      items: [
+        GitUnexpectedObjectMissing { oid: sha1_subtree },
+      ],
+    ),
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: missing) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPointerUnexpectedlyMissing {
+        origin: _,
+        target,
+      },
+    } => target == sha1_subtree
+    _ => false
+  }
+}
+
+test fn witness_git_promisor_declared_tree_reference_stays_partial() -> Bool {
+  let repo = fixture_repository()
+  let partial = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects |> filter(object =>
+      !(stored_object_oid(stored: object) == sha1_subtree)
+    ),
+    unavailable: append(
+      repo.unavailable,
+      items: [
+        GitPromisorObjectUnavailable {
+          oid: sha1_subtree,
+          promisor: "origin",
+        },
+      ],
+    ),
+    refs: repo.refs,
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: partial) {
+    GitRepositoryDecoded { repository: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_git_branch_ref_to_corrupt_object_refuses_repository() -> Bool {
+  let repo = fixture_repository()
+  let corrupt = GitRepositoryState {
+    object_format: repo.object_format,
+    objects: repo.objects,
+    unavailable: append(
+      repo.unavailable,
+      items: [
+        GitCorruptObject {
+          oid: sha1_absent_commit,
+          reason: "fixture-corrupt-object",
+        },
+      ],
+    ),
+    refs: repo.refs |> map(record =>
+      if record.name == "refs/heads/main" {
+        GitRefRecord {
+          name: record.name,
+          target: DirectTarget { oid: sha1_absent_commit },
+        }
+      } else {
+        record
+      }
+    ),
+    index: repo.index,
+    worktree: repo.worktree,
+  }
+  match git_decode_repository(repo: corrupt) {
+    GitRepositoryDecodeRefused {
+      cause: GitRepositoryPointerCorrupt {
+        origin: _,
+        target,
+        reason,
+      },
+    } =>
+      target == sha1_absent_commit
+        && reason == "fixture-corrupt-object"
     _ => false
   }
 }
@@ -1083,7 +1344,10 @@ test fn witness_git_duplicate_ref_names_refuse_exact_transition() -> Bool {
     new_oid: sha1_next_commit,
     expected_old: sha1_parent_commit,
   ) {
-    GitRefAdvanceDuplicate { repository, name, count } =>
+    GitRefAdvanceRepositoryInvalid {
+      repository,
+      cause: GitRepositoryDuplicateRef { name, count },
+    } =>
       repository == duplicate
         && name == "refs/heads/main"
         && count == 2
