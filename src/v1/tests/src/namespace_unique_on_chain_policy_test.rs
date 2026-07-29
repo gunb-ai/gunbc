@@ -210,9 +210,7 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
         error_diag_messages(zero_on_chain_fixture())
     };
     assert!(
-        strict
-            .iter()
-            .any(|m| m.contains("unresolved type 'Stray'")),
+        strict.iter().any(|m| m.contains("unresolved type 'Stray'")),
         "NamespaceOnlyY labels the zero-on-chain whole-pool homonym as UnresolvedType \
          (empty chain never authorizes whole-corpus search); got {strict:?}"
     );
