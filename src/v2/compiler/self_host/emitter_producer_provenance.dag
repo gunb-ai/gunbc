@@ -251,14 +251,9 @@ fn producer_emission_canonical_receipt_for_oracle_row(
   }
 }
 
-fn producer_emission_oracle_row_frontier_receipt(
-  row: ProducerEmissionOracleRow
-) -> ProducerEmissionReceipt {
-  match producer_emission_receipt_from_oracle_row(row: row) {
-    Present { value: receipt } => receipt
-    Absent => fabricated_v1_seed_producer_receipt(module_path: row.module_path)
-  }
-}
+data emitter_produced_baseline: Int = 0
+
+data emitter_produced_baseline_note: String = "Review 44362: frontier EmitterProduced count stays zero until a quarantine probe greens and its row flips via producer_emission_canonical_receipt_for_oracle_row (BuildGreen only). Oracle enrollment (six quarantine rows) and frontier disposition (SeedRetained until authorized) are orthogonal."
 
 data producer_emission_oracle_row_body_producer: ProducerEmissionOracleRow = seed_emitter_behavioral_oracle_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
@@ -452,7 +447,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + wet quarantine citation + transport roster row — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER: requires executed BuildGreen canonical receipt only. Known-red quarantine probes must not authorize EmitterProduced until local wet execution greens and un-quarantines."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + wet quarantine citation + transport roster row — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER: requires executed BuildGreen canonical receipt only. Frontier disposition mirrors authorization: EmitterProduced is reachable only from producer_emission_canonical_receipt_for_oracle_row (BuildGreen); quarantine rows stay SeedRetained until wet execution greens and un-quarantines."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
