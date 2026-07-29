@@ -18,3 +18,16 @@ fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Op
     Absent => right
   }
 }
+
+data optional_axis_note: String = "Canonical query surface for Optional<T> (predicate-dissolution rule): classify through optional_axis once and match the tag — not a family of hand-rolled optional_is_present Bool predicates over the same coproduct."
+
+type OptionalAxis<T>
+  = OptionalAbsent
+  | OptionalPresent { value: T }
+
+fn optional_axis<T>(opt: Optional<T>) -> OptionalAxis<T> {
+  match opt {
+    Absent => OptionalAbsent
+    Present { value: value } => OptionalPresent { value: value }
+  }
+}
