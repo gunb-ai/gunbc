@@ -1,5 +1,7 @@
 module test.claim.asrock_live_probe
 
+import std.types { NonEmptyStr, String, Bool, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.boards.asrock_rack {
   asrock_srv3_live_bmc_host,
   asrock_srv3_live_probe_firmware_version,
