@@ -1,7 +1,7 @@
 module test.claim.materialization_provider_witness
 
 import std.types { Bool, Int, List, String, ContentHash }
-import std.measure { byte_size }
+import std.measure { byte_size, measure_count }
 import std.content_hash { content_hash_atom }
 import std.cache_identity {
   parse_source_artifact_kind,
@@ -15,7 +15,7 @@ import std.computation_identity {
 import std.artifact_store { ArtifactStore }
 import std.materialization_provider {
   DeclaredInput, ArtifactRequest, MaterializedArtifact,
-  ArtifactOutputId, CarriedOutput, artifact_content_digest,
+  ArtifactOutputId, CarriedOutput, artifact_content_digest, artifact_bytes,
   ProviderProbe, ProbeAbsent, ProbeFound,
   ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
   request_key, request_kind, request_required_outputs,
@@ -383,6 +383,32 @@ test fn red_forged_output_roster_refuses_as_wrong_content_on_admit() -> Bool {
 test fn carried_roster_is_the_content_digest_preimage() -> Bool {
   (witness_closure_digest() == witness_v1_shape_digest()) == false
     && (witness_closure_digest() == artifact_content_digest(artifact: witness_complete_closure_artifact()))
+}
+
+data derivation_invariant_witness_note: String = "The fourth instance of the one defect (parent finding, after reviews 44175 / 44265 / 44278): artifact_bytes was a caller-authored field that request_artifact_binding never verified and structurally COULD not verify, while provider_admit_bound branched the budget check on it and handed the same number to store_put as the stored size. So the 7406 construction wall — store_put refuses when the artifact exceeds the budget — was a wall against an honest caller only: an understated size walked past ProviderBudgetExhausted, was admitted, and then corrupted store_bytes_used for every subsequent eviction decision. The size is now folded over the carried parts, exactly parallel to the digest, so the roster is the preimage of both. The witnesses below show what that buys: the size IS the parts fold, and the only way to derive a smaller size is to shrink the parts — which changes the digest and is caught by the read-back comparison the door already runs. Understating the size is therefore not a bypass, it is the wrong-content refusal."
+
+test fn artifact_size_is_the_carried_parts_fold() -> Bool {
+  (measure_count(m: artifact_bytes(artifact: witness_complete_closure_artifact())) == 100)
+    && (measure_count(m: artifact_bytes(artifact: witness_v1_shape_closure_artifact())) == 85)
+}
+
+test fn red_understating_the_size_lands_on_wrong_content_not_a_budget_bypass() -> Bool {
+  let honest = provider_admit(
+    store: witness_empty_store(budget_count: 90),
+    req: witness_closure_request(),
+    artifact: witness_complete_closure_artifact(),
+    observed_digest: witness_closure_digest()
+  )
+  let understated = provider_admit(
+    store: witness_empty_store(budget_count: 90),
+    req: witness_closure_request(),
+    artifact: witness_v1_shape_closure_artifact(),
+    observed_digest: witness_closure_digest()
+  )
+  admission_is_budget_exhausted(a: honest)
+    && (admission_is_admitted(a: honest) == false)
+    && admission_is_refused_wrong_content_write(a: understated)
+    && (admission_is_admitted(a: understated) == false)
 }
 
 test fn completeness_holds_when_all_required_outputs_are_carried() -> Bool {
