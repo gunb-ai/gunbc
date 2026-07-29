@@ -14,12 +14,10 @@ type CompatibilityRepairHandle = NonEmptyStr where brand("CompatibilityRepairHan
 type CompatibilityCaptureClass
   = CompatibilityEndpointStateCaptured
   | CompatibilityUpstreamChangeEvidenceCaptured
-  | CompatibilityNativeProposalCaptured
 
 type CompatibilityCaptureClassFold<R> {
   endpoint_state: fn() -> R
   upstream_change_evidence: fn() -> R
-  native_proposal: fn() -> R
 }
 
 fn compatibility_capture_class_fold<R>(
@@ -29,7 +27,6 @@ fn compatibility_capture_class_fold<R>(
   match capture {
     CompatibilityEndpointStateCaptured => fold.endpoint_state()
     CompatibilityUpstreamChangeEvidenceCaptured => fold.upstream_change_evidence()
-    CompatibilityNativeProposalCaptured => fold.native_proposal()
   }
 }
 
@@ -69,8 +66,10 @@ type CompatibilityFidelityProfile {
 
 type CompatibilityAdvanceGuarantee
   = CompatibilityExactCompareAndAdvance
-  | CompatibilitySerializedConditionalAdvance
-  | CompatibilityUpstreamSpecificConditionalAdvance
+  | CompatibilityNamedConditionalAdvance {
+      authority: NonEmptyStr,
+      contract: NonEmptyStr,
+    }
 
 type CompatibilityAdvanceCapability
   = CompatibilityAdvanceModeled {
