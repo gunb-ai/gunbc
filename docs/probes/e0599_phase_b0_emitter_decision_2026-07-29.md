@@ -284,7 +284,7 @@ observations for B1, both grounded:
    would therefore be a §3 fork against an already-declared dissolution target.
 2. **`CloneShared` is already named in the ownership lane.**
    `docs/plans/emitter-ownership-defork.md` designs
-   `UseSiteVerdict = MoveWhole | MoveField | Borrow | CloneShared { decision }`. The 53
+   `UseSiteVerdict = MoveWhole | MoveField | Borrow | CloneShared { decision }`. The 52
    `CloneSharedRequirement` sites are that verdict's inhabitants, so B2 joins an existing
    concept rather than minting one.
 
@@ -317,11 +317,12 @@ fires exactly when the ownership verdict says not-owned — and that verdict com
 
 ## 6. Green by execution, with a discriminating RED
 
-`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **19 green**.
+`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **22 green**, of which
+**7** are RED controls, in the two classes named below (destination and routing).
 
-The three RED controls are the load-bearing half. Perturbing the classifier's fail-closed
+The RED controls are the load-bearing half. Perturbing the classifier's fail-closed
 arm into the absorbing default DESIGN §5 forbids (`Absent => CloneSharedRequirement`)
-turns **exactly** those three red and nothing else:
+turns **exactly** these three *destination* controls red and nothing else:
 
 ```
 FAIL e0599_b0_red_out_of_scope_method_refuses
