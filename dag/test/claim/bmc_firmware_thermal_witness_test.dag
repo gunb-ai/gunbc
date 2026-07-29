@@ -8,6 +8,8 @@ import extdeps.bmc.capability {
 import extdeps.bmc.types {
   BmcConfigPersistenceUnsupported,
   BmcFanCurve,
+  BmcFanCurveInvalid,
+  BmcFanCurveValid,
   BmcFanDutyDecision,
   BmcFanDutyFromCurve,
   BmcFanDutyFromSensorFailsafe,
@@ -24,6 +26,7 @@ import extdeps.bmc.types {
   RedfishThermalSubsystemSensorCollection,
   ResetGracefulRestart,
   bmc_fan_duty_decision,
+  validate_bmc_fan_curve,
   redfish_thermal_query_verdict,
 }
 import extdeps.boards.asrock_rack {
@@ -70,7 +73,14 @@ import gunbc.fleet_intent {
   srv4_baseboard,
   srv4_host,
 }
-import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
+import std.measure {
+  Celsius,
+  celsius,
+  celsius_count,
+  percent,
+  percent_count,
+  rpm_count,
+}
 import std.nat { Nat }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.uri { Uri, Https }
@@ -287,97 +297,97 @@ test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
     }
 }
 
+fn validated_curve_decision_has_duty(
+  curve: BmcFanCurve,
+  reading: Celsius?,
+  expected: Nat,
+) -> Bool {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveInvalid { cause: _ } => false
+    BmcFanCurveValid { curve: validated } =>
+      curve_decision_has_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: reading,
+        ),
+        expected: expected,
+      )
+  }
+}
+
 test fn temp_soc_curve_explains_the_audible_step() -> Bool {
-  curve_decision_has_duty(
-    decision: bmc_fan_duty_decision(
-      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-      reading: Present { value: celsius(39) }
-    ),
+  validated_curve_decision_has_duty(
+    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+    reading: Present { value: celsius(39) },
     expected: 30
   )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-        reading: Present { value: celsius(62) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: Present { value: celsius(62) },
       expected: 40
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-        reading: Present { value: celsius(69) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: Present { value: celsius(69) },
       expected: 50
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-        reading: Present { value: celsius(75) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: Present { value: celsius(75) },
       expected: 75
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-        reading: Present { value: celsius(85) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+      reading: Present { value: celsius(85) },
       expected: 100
     )
 }
 
 test fn fleet_curve_is_quiet_through_90c_and_emergency_full_before_continuous_limit() -> Bool {
   fleet_fan_policy_is_thermally_bounded()
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(74) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(74) },
       expected: 30
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(75) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(75) },
       expected: 30
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(90) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(90) },
       expected: 30
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(93) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(93) },
       expected: 55
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(97) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(97) },
       expected: 85
     )
-    && curve_decision_has_duty(
-      decision: bmc_fan_duty_decision(
-        curve: fleet_quiet_temp_soc_fan_curve,
-        reading: Present { value: celsius(98) }
-      ),
+    && validated_curve_decision_has_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: Present { value: celsius(98) },
       expected: 100
     )
 }
 
 test fn sensor_unavailable_uses_same_duty_but_retains_cause() -> Bool {
-  match bmc_fan_duty_decision(
-    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
-    reading: Absent
-  ) {
-    BmcFanDutyFromSensorFailsafe { duty: d } => percent_count(d) == 75
-    BmcFanDutyFromCurve { reading: _, duty: _ } => false
+  match validate_bmc_fan_curve(curve: asrock_altrad8ud_factory_temp_soc_fan_curve) {
+    BmcFanCurveInvalid { cause: _ } => false
+    BmcFanCurveValid { curve: validated } =>
+      match bmc_fan_duty_decision(
+        validated: validated,
+        reading: Absent,
+      ) {
+        BmcFanDutyFromSensorFailsafe { duty: d } => percent_count(d) == 75
+        BmcFanDutyFromCurve { reading: _, duty: _ } => false
+      }
   }
 }
 

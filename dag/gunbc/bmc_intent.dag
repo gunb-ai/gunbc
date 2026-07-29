@@ -8,11 +8,14 @@ import extdeps.bmc.capability {
 import extdeps.bmc.types {
   BmcFanAcousticPolicy,
   BmcFanCurve,
+  BmcFanCurveInvalid,
   BmcFanCurveStep,
+  BmcFanCurveValid,
   BmcFanThermalGuard,
   bmc_fan_curve_effectively_reaches_full_duty_before,
   bmc_fan_curve_reaches_emergency_full_duty,
   bmc_fan_curve_stays_within_quiet_duty,
+  validate_bmc_fan_curve,
 }
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
@@ -98,20 +101,24 @@ data fleet_fan_thermal_guard: BmcFanThermalGuard = BmcFanThermalGuard {
 }
 
 fn fleet_fan_policy_is_thermally_bounded() -> Bool {
-  bmc_fan_curve_stays_within_quiet_duty(
-    curve: fleet_quiet_temp_soc_fan_curve,
-    policy: fleet_fan_acoustic_policy,
-  )
-    && bmc_fan_curve_reaches_emergency_full_duty(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      policy: fleet_fan_acoustic_policy,
-    )
-    && bmc_fan_curve_effectively_reaches_full_duty_before(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      temperature: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature,
-    )
-    && (celsius_count(fleet_fan_acoustic_policy.quiet_through_temperature) < celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature))
-    && (celsius_count(fleet_fan_acoustic_policy.emergency_full_duty_at_or_below) < celsius_count(ampere_altra_max_m12830_thermal_limits.thermal_throttle_temperature))
+  match validate_bmc_fan_curve(curve: fleet_quiet_temp_soc_fan_curve) {
+    BmcFanCurveInvalid { cause: _ } => false
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_curve_stays_within_quiet_duty(
+        validated: validated,
+        policy: fleet_fan_acoustic_policy,
+      )
+        && bmc_fan_curve_reaches_emergency_full_duty(
+          validated: validated,
+          policy: fleet_fan_acoustic_policy,
+        )
+        && bmc_fan_curve_effectively_reaches_full_duty_before(
+          validated: validated,
+          temperature: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature,
+        )
+        && (celsius_count(fleet_fan_acoustic_policy.quiet_through_temperature) < celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature))
+        && (celsius_count(fleet_fan_acoustic_policy.emergency_full_duty_at_or_below) < celsius_count(ampere_altra_max_m12830_thermal_limits.thermal_throttle_temperature))
+  }
 }
 
 data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {

@@ -233,9 +233,10 @@ type BmcFanThermalGuard {
 }
 
 fn bmc_fan_curve_stays_within_quiet_duty(
-  curve: BmcFanCurve,
+  validated: ValidatedBmcFanCurve,
   policy: BmcFanAcousticPolicy,
 ) -> Bool {
+  let curve = validated.curve
   fold(
     curve.steps,
     init: true,
@@ -248,16 +249,17 @@ fn bmc_fan_curve_stays_within_quiet_duty(
   )
     && percent_count(
       bmc_fan_curve_duty_at(
-        curve: curve,
+        validated: validated,
         reading: policy.quiet_through_temperature,
       )
     ) <= percent_count(policy.quiet_duty_ceiling)
 }
 
 fn bmc_fan_curve_reaches_emergency_full_duty(
-  curve: BmcFanCurve,
+  validated: ValidatedBmcFanCurve,
   policy: BmcFanAcousticPolicy,
 ) -> Bool {
+  let curve = validated.curve
   fold(
     curve.steps,
     init: false,
@@ -271,9 +273,10 @@ fn bmc_fan_curve_reaches_emergency_full_duty(
 }
 
 fn bmc_fan_curve_effectively_reaches_full_duty_before(
-  curve: BmcFanCurve,
+  validated: ValidatedBmcFanCurve,
   temperature: Celsius,
 ) -> Bool {
+  let curve = validated.curve
   fold(
     curve.steps,
     init: false,
