@@ -1066,7 +1066,7 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "A mechanical tool declares an exact version and content digest; selection is either an authored pin or a recorded resolution of a moving reference, and execution never resolves a moving reference.",
         displaced_cost: "Removes per-host binary variance from every mechanical path and ends range-only or absent pins.",
         first_slice: "Extend CliTool with an exact digest-bearing pin and a selection policy, and carry a digest on SourceGitHubRelease.",
-        red_control: "A range-only or digest-less pin refuses; a tracked pin past its declared refresh window reds rather than floating forward.",
+        red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match.",
         out_of_scope: "No consumer migrates in this row; the model lands before any resolver reads it.",
         handback: "Return the pin carrier, the refresh-policy arms, and the refusing controls."
       )

@@ -249,12 +249,14 @@ consumers.
   (`extdeps.version.VersionIdentity`, the exact brand — never
   `VersionConstraint`, which is a range) + expected `ContentHash` reusing
   #7388's identity, `SourceGitHubRelease` gains the digest, selection policy
-  (`ExactPin | TrackedChannel`) with recorded resolution and a refresh window.
-  Both fields are required and non-optional, so a range-only or digest-less pin
-  is **unwritable** rather than validated — the RED lives at the ingest
-  boundary instead: converting a legacy `CliTool` whose `min_version` is a
-  `VersionConstraint` refuses, because a constraint is not an identity. A
-  tracked pin past its window reds.
+  (`ExactPin | TrackedChannel`) and a refresh window. Both fields are required
+  and non-optional, so a range-only or digest-less pin is **unwritable** rather
+  than validated — the RED lives at the ingest boundary instead: converting a
+  legacy `CliTool` whose `min_version` is a `VersionConstraint` refuses,
+  because a constraint is not an identity. A `TrackedChannel` pin refuses
+  admission outright, since its currency cannot be established without a
+  resolution date and day arithmetic (§4 above); the window is carried but not
+  yet load-bearing.
 - **P2 — one resolver.** Instantiate `membership_reconcile` for tools with the
   pin as desired and #7388's observed identity as observed, and collapse the
   sites onto it. Delete `resolve_host_tool_program` and the bash ladder — the
