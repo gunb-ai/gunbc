@@ -2262,10 +2262,9 @@ pub fn resolve_pattern_subject(
         PatternSubject::PatternResolved {
             node: scrutinee_type,
             ..
-        } => pattern_subject_from_node(preserve_outer_optional_cardinality(
-            scrutinee_type.clone(),
+        } => pattern_subject_from_node(
             resolve_scrutinee_type_node(scope.type_env.clone(), scrutinee_type.clone()),
-        )),
+        ),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
         } => Rc::new(PatternSubject::PatternDynamic {
