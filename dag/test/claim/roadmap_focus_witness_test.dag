@@ -2,6 +2,7 @@ module test.claim.roadmap_focus_witness_test
 
 import std.types { Bool, String, Int, List }
 import gunbc.roadmap_model {
+  RoadmapNodeIdentity,
   RoadmapNode, RoadmapEdge, Pointer, Sized, IntricacyMedium, VolumeMedium, ManualAcceptance,
 }
 import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
@@ -89,6 +90,7 @@ data focus_closure_witness_note: String = "THE CLAIM THAT WOULD HAVE CAUGHT THE 
 
 fn fx(id: String, owner: String) -> RoadmapNode {
   RoadmapNode {
+    identity: "rnfx_J1Y305CV88R38QJXQFCY" as RoadmapNodeIdentity,
     node: id,
     line: TicketLine { done: false, ticket: TicketFields {
       headline: "fixture", brief: "fixture", displaced_cost: "fixture",

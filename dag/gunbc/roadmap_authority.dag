@@ -207,6 +207,39 @@ fn superseded(identity: String,
   }
 }
 
+data shell_typed_invocation_contract_note: String = "THE FIRST BOUND NODE, and it is bound to an ALREADY-GREEN validation on purpose. Until this row existed every node was ExecutionContractUnspecified, so dispatch_environment_admit refused on all of them and no part of the workflow below Env had ever executed end to end. A first binding therefore has two jobs that pull in opposite directions: prove the Verify path runs at all, and prove it discriminates. Those want different nodes, and conflating them is how a green pipeline gets mistaken for a working one. This row takes the FIRST job only — the validation it names passes today, so an Agent turn that changes nothing still produces a real admitted environment, a real derived command, and a real validation receipt. What that proves is the PLUMBING: capability admission, argv derivation, and receipt production, independent of whether the provider accomplished anything. It deliberately proves NOTHING about discrimination, and must not be read as evidence that Verify can fail — the discriminating red belongs on a second node whose validation is currently red and goes green when the work lands, and that node is the next binding, not this one.\n\nThe operation is the transport-clean corpus witness because it is what this ticket's own red control describes: 'a new unclassified production construction site reds the census'. It reads the live tree (SubstrateInputsOnly), so it is a statement about the repository rather than a fixture — a raw shell literal reappearing in that transport module reds it for real."
+
+fn shell_typed_invocation_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "src/v2/test/claim/host_language_transport_script/corpus/migrated_transports_clean_test.dag" as FilePath,
+    function: "corpus_dag_compile_clean_transport_clean_holds" as NonEmptyStr,
+  )
+}
+
+data observation_raw_print_retirement_contract_note: String = "THE DISCRIMINATING BINDING — the half shell_typed_invocation_contract_note deliberately does not supply. That one names an already-green validation and therefore proves only that the Verify path RUNS: admission, argv derivation, receipt production. It cannot distinguish a working verifier from one that returns green unconditionally, because nothing it runs is capable of returning anything else. A pipeline with only that binding is the coverage-by-illusion tier — machinery present, nothing gating on it.\n\nThis contract names a validation that FAILS today. observation_emit_frontier_count() is 8; the witness asserts 0, which is this node's handback stated exactly ('the classified zero-residue progress census'). So Verify has a target that can genuinely go red, the red is the ticket's own acceptance condition rather than a planted fixture, and the transition red -> green IS the work being finished. Together the two bindings pin both directions: one proves the path executes, the other proves it discriminates, and neither claim is available from the other.\n\nThe witness is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots so a deliberately-red acceptance test does not red the corpus — the cadence built for precisely this, where greening is a counted un-quarantine event and not a silent pass."
+
+fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionContract {
+  gunbc_claim_execution_contract(
+    entry: "dag/test/claim/observation_raw_print_retirement_acceptance_test.dag" as FilePath,
+    function: "observation_emit_frontier_is_zero" as NonEmptyStr,
+  )
+}
+
+data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
+
+fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode {
+  RoadmapNode {
+    identity: rn.identity,
+    node: rn.node,
+    line: rn.line,
+    carriers: rn.carriers,
+    sizing: rn.sizing,
+    execution: e,
+    owner: rn.owner,
+    signoff: rn.signoff,
+  }
+}
+
 fn sign(rn: RoadmapNode, s: Signoff) -> RoadmapNode {
   RoadmapNode {
     identity: rn.identity,
@@ -460,8 +493,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )
     ),
-    active_sized(
-      id: "2-scm-compatibility-shape",
+    active_sized(identity: "rnfx_DQV1HD42VR40BA8WBP1Y", id: "2-scm-compatibility-shape",
       owner: "source-intent",
       path: "docs/plans/dag-scm-design.md",
       intricacy: IntricacyHigh,
@@ -681,7 +713,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "All three behaviours demonstrated."
       )
     ),
-    active_small(
+    with_execution(
+      e: observation_raw_print_retirement_execution_contract(),
+      rn: active_small(
       identity: "rn_81MBTXHVQFB0HJ6XPA0WXEGVVW",
       id: "observation-raw-print-retirement",
       owner: "ci-observation",
@@ -695,6 +729,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "A program's actual output — the thing you asked for — is not progress and stays as it is.",
         handback: "The inventory at zero unclassified."
       )
+    )
     ),
 
     active_small(
@@ -1051,7 +1086,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )
     ),
 
-    active_small(
+    with_execution(
+      e: shell_typed_invocation_execution_contract(),
+      rn: active_small(
       identity: "rn_7T6WSS1JYCV6GQNW1PZG73B0G3",
       id: "shell-typed-invocation",
       owner: "shell",
@@ -1065,6 +1102,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Genuinely shell-shaped leftovers stay in the shell layer.",
         handback: "The described version, proof it does the same thing, and the deleted string-building."
       )
+    )
     ),
     active_large(
       identity: "rn_MRCH9RMA0WPEEM73AKTS5HX9TT",
