@@ -7,8 +7,9 @@ census_baseline	docs/probes/e0599_canonical_seven_census_2026-07-26.tsv
 cause_authority	dag/tools/e0599_emitter_decision_census.dag (rows + operation->cause via gunbc, no second table)
 family_authority	dag/tools/e0599_probe_census.dag (R1/R2/R3 scope filter AND the canonical-seven roster, both via gunbc, no second table)
 joiner	docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD)
-witness	dag/test/claim/e0599_emitter_decision_census_witness_test.dag (22 green; RED controls in two classes - destination and routing)
+witness	dag/test/claim/e0599_emitter_decision_census_witness_test.dag (26 green; RED controls in two classes - destination and routing - plus scope/rollup single-authority controls)
 classification_field_contract	7 fields; the joiner REFUSES on any count mismatch (proven by perturbation: authority emitting 8 -> located refusal naming the key, exit 1)
+scope_and_rollup_single_authority	R1/R2/R3 scope set loads via e0599_write_mechanistic_root_family_labels_blob (tools.e0599_probe_census); cause rollup order loads via e0599_write_rollup_cause_labels_blob (tools.e0599_emitter_decision_census). Both label sets derive from the same e0599_root_family_label / e0599_requirement_cause_label the classification uses, so ZERO family or cause literals remain in the joiner. Wired on review 44371 (cursor/composer-2.5), which caught that this line's own 'both via gunbc' claim was false while R123 was a hand-set. Empty-roster and unknown-cause arms REFUSE (located), never narrow. Proven output-identical: re-running the census with the wired joiner over the same work dir reproduces the prior TSV byte-for-byte.
 routing_control	tuple projection must reach LoweringUnidentified; reverting e0599_receiver_is_field_access to its permissive form reds exactly the two tuple-projection controls and nothing else
 base_sha	0126077aa502627d6590171322fce279e76575e2
 measured_corpus_sha	210696d72e1a5278c15ced4a2b2de4e66e24a3d1

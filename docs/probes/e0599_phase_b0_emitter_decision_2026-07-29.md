@@ -317,8 +317,9 @@ fires exactly when the ownership verdict says not-owned — and that verdict com
 
 ## 6. Green by execution, with a discriminating RED
 
-`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **22 green**, of which
-**7** are RED controls, in the two classes named below (destination and routing).
+`dag/test/claim/e0599_emitter_decision_census_witness_test.dag` — **26 green**, of which
+**8** are RED controls, in the two classes named below (destination and routing) plus the
+scope/rollup single-authority controls added on `review 44371`.
 
 The RED controls are the load-bearing half. Perturbing the classifier's fail-closed
 arm into the absorbing default DESIGN §5 forbids (`Absent => CloneSharedRequirement`)
@@ -366,6 +367,30 @@ exits 1:
 ```
 REFUSED: cause authority returned 8 fields (expected 7) for key ('clone', '(*__fm)[0]')
 ```
+
+**Third control — the scope set and the rollup roster are loaded, not restated.** This one
+corrects a claim this receipt itself was making falsely. `review 44371`
+(cursor/composer-2.5) found that the joiner carried
+`R123 = {"R1CloneBoundOnTypeParam", "R2VectorMethodBounds", "R3ContainerCloneBounds"}` as a
+hand-set while the receipt's `family_authority` line asserted the scope filter went
+"via gunbc, no second table". The claim was false, and the same pattern held for the
+cause-rollup order, which restated all five variant labels.
+
+The failure direction is the one that hides: rename a family in `.dag` and the filter
+silently matches fewer sites — a smaller census, no error, the DESIGN §5 absorbing
+fallback wearing "narrow" instead of "widen". Both now load from their authorities
+(`e0599_write_mechanistic_root_family_labels_blob`,
+`e0599_write_rollup_cause_labels_blob`), whose labels derive from the same
+`e0599_root_family_label` / `e0599_requirement_cause_label` the classification uses, so
+**zero** family or cause literals remain in the joiner. An empty roster and a measured
+cause missing from the roster both refuse, located.
+
+Proven not to move the measurement: re-running the census with the wired joiner over the
+same work dir reproduces the previous TSV **byte-for-byte** (`diff` clean). Pinned by
+`e0599_b0_mechanistic_scope_is_exactly_the_three_roots`,
+`e0599_b0_red_mechanistic_scope_excludes_the_tail_families`,
+`e0599_b0_rollup_roster_covers_every_cause_the_classifier_can_emit`, and
+`e0599_b0_rollup_roster_retains_the_unresolved_arm`.
 
 ## 7. Corrections to the brief's verified facts (it asked for re-verification)
 

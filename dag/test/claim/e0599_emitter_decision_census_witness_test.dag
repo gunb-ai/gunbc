@@ -20,7 +20,9 @@ import tools.e0599_emitter_decision_census {
   e0599_requirement_cause_label,
   e0599_lowering_row_count,
   e0599_row_for_operation,
+  e0599_rollup_cause_labels_blob,
 }
+import tools.e0599_probe_census { e0599_mechanistic_root_family_labels_blob }
 
 data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 (ROUTING, added 2026-07-29 on warm-dove-316 / calm-badger-682 review) — a tuple projection is a structurally distinct emitter shape from a named field access (:6421/:6422/:6412 apply clone_value UNCONDITIONALLY, while named field access at :6438 is gated by base_is_owned at :6435, so they differ on the ownership axis). These controls perturb the ROUTING rather than the destination: the absorbing-default control below proves the fail-closed arm CAN fire, but only a routing control proves an unclassifiable shape REACHES it. RED family 4 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
 
@@ -125,4 +127,27 @@ test fn e0599_b0_classification_line_cites_the_linked_crate() -> Bool {
 
 test fn e0599_b0_red_classification_does_not_cite_im_rc() -> Bool {
   !string_contains(s: e0599_classification_line(method: "is_empty", receiver_expr: "__fm"), pattern: "im-rc")
+}
+
+test fn e0599_b0_rollup_roster_covers_every_cause_the_classifier_can_emit() -> Bool {
+  let roster = e0599_rollup_cause_labels_blob()
+  string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "is_empty", receiver_expr: "__fm")))
+    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "head", receiver_expr: "__fm")))
+    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "clone", receiver_expr: "item")))
+    && string_contains(s: roster, pattern: e0599_requirement_cause_label(cause: e0599_cause_for(method: "as_deref", receiver_expr: "x")))
+}
+
+test fn e0599_b0_rollup_roster_retains_the_unresolved_arm() -> Bool {
+  string_contains(s: e0599_rollup_cause_labels_blob(), pattern: "Unresolved")
+}
+
+test fn e0599_b0_mechanistic_scope_is_exactly_the_three_roots() -> Bool {
+  e0599_mechanistic_root_family_labels_blob() == "R1CloneBoundOnTypeParam\nR2VectorMethodBounds\nR3ContainerCloneBounds"
+}
+
+test fn e0599_b0_red_mechanistic_scope_excludes_the_tail_families() -> Bool {
+  let scope = e0599_mechanistic_root_family_labels_blob()
+  !string_contains(s: scope, pattern: "R4OptionalCoproductGrounding")
+    && !string_contains(s: scope, pattern: "R5AsDerefUnit")
+    && !string_contains(s: scope, pattern: "R6Other")
 }
