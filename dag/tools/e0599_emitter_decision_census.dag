@@ -36,6 +36,7 @@ type E0599ExternalAuthority {
 type E0599LoweringRow {
   operation: E0599LoweringOperation,
   source_construct: String,
+  ownership_alternative: String,
   emitter_authority: String,
   emitted_literal: String,
   cause: E0599RequirementCause,
@@ -79,6 +80,7 @@ data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
 data e0599_lowering_rows: List<E0599LoweringRow> = [
   E0599LoweringRow {
     operation: FreeMonoidEmptyTest,
+    ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
     source_construct: "match over the FreeMonoid coproduct — the Empty/Cons discrimination itself",
     emitter_authority: "src/v1/05_emit_rust.dag:7859 (emit_native_freemonoid_match) | :8715 (tco fork)",
     emitted_literal: "{ let __fm = <scrut>; if __fm.is_empty() { .. } else { .. } }",
@@ -89,6 +91,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidTailIterate,
+    ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
     source_construct: "match over the FreeMonoid coproduct — the Cons { tail } binding",
     emitter_authority: "src/v1/05_emit_rust.dag:7817 (freemonoid_tail_let_from_fm)",
     emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ",
@@ -99,6 +102,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidHeadExtract,
+    ownership_alternative: "NotApplicable - no move or borrow exists out of shared storage; the owned element must be materialized",
     source_construct: "match over the FreeMonoid coproduct — the Cons { head } binding",
     emitter_authority: "src/v1/05_emit_rust.dag:7838 (freemonoid_nonempty_branch_body) | :8694 (tco fork)",
     emitted_literal: "let <head> = (*__fm)[0].clone(); ",
@@ -109,6 +113,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidCatchallBind,
+    ownership_alternative: "NoEmitterArm - the bind is unconditional at :7826/:7844/:8682/:8700 (row is uninhabited in the B0 measurement)",
     source_construct: "match over the FreeMonoid coproduct — a catch-all arm binding the whole scrutinee",
     emitter_authority: "src/v1/05_emit_rust.dag:7826 | :7844 | :8682 | :8700",
     emitted_literal: "let <bind> = __fm.clone(); ",
@@ -119,6 +124,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: DerefCloneWholeValue,
+    ownership_alternative: "NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut. Semantically a move IS available (Rc::make_mut at refcount 1, the shape v1_rt.rs already uses), so B2 must ADD an arm here rather than flip a predicate",
     source_construct: "whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee",
     emitter_authority: "src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone",
     emitted_literal: "(*{0}).clone()",
@@ -129,6 +135,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: IdentReferenceClone,
+    ownership_alternative: "EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)",
     source_construct: "bare identifier reference in a value position",
     emitter_authority: "src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value",
     emitted_literal: "{0}.clone()",
@@ -139,6 +146,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FieldAccessClone,
+    ownership_alternative: "EmitterArmPresent - :6435 base_is_owned selects a bare field move; the clone is the else-arm at :6438, so the ownership verdict alone decides it (owned_bindings)",
     source_construct: "field projection on a record-typed binding",
     emitter_authority: "src/v1/05_emit_rust.dag:6438 (emit_typed_field_access, the non-owned arm) via sharing.clone_value",
     emitted_literal: "{0}.{1}.clone()",
@@ -253,6 +261,10 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
     Present { value: row } => row.source_construct
     Absent => ""
   }
+  let ownership_alternative = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.ownership_alternative
+    Absent => ""
+  }
   let required_trait = match e0599_row_for_operation(operation: operation) {
     Present { value: row } => row.required_trait
     Absent => ""
@@ -269,10 +281,11 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   concat(
     e0599_lowering_operation_label(operation: operation),
     concat("\t", concat(source_construct,
+    concat("\t", concat(ownership_alternative,
     concat("\t", concat(e0599_requirement_cause_label(cause: cause),
     concat("\t", concat(required_trait,
     concat("\t", concat(emitter_authority,
-    concat("\t", external_authority)))))))))
+    concat("\t", external_authority)))))))))))
   )
 }
 
