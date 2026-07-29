@@ -33,5 +33,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
 
 #[rustfmt::skip]
 pub const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &[
-    "module_path_index"
+    "module_path_index",
+    "cli_run"
 ];

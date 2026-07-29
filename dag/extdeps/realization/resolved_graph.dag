@@ -21,9 +21,9 @@ import std.cache_interface {
   ManualPurge,
   Org,
 }
-import std.measure { ByteSize, byte_size }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.measure { ByteSize, byte_size }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -31,6 +31,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
+
+data resolved_graph_cache_faithful_probe_support_dissolve_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.realization.resolved_graph",
+    decl_name: "resolved_graph_cache_faithful_probe_support",
+    field: WholeDeclaration
+  }
+}
+
+data resolved_graph_cache_faithful_probe_support: String = "dissolve-on: resolved_graph_cache FORMAT_VERSION >= 2 — faithful probe support lands when the cache format persists per-output digests and byte sizes for resolved_graph/source_indices, so the transport can build a faithful probe instead of refusing the v1 seam."
 
 data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
 
@@ -79,15 +90,4 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
       }
     },
   ]
-}
-
-data resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger: String = "dissolve-on: resolved_graph_cache_compile_clean_diagnostic_union_disk_hit_refusal — v1 disk artifacts carry graph+source_indices only; the compile-clean gate reads a resolve→normalize→typed→ownership diagnostic union. Until the union is serialized into the artifact, cross-process hits are refused and cold assembly runs (cli_run.rs resolved_graph_from_sources_with_index). DISSOLVES WHEN resolved_graph_cache FORMAT_VERSION persists compile_clean_diagnostic_union alongside the graph and the hit path installs the full union into the in-process memo (delete the refuse arm)."
-
-data resolved_graph_cache_compile_clean_diagnostic_union_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.realization.resolved_graph",
-    decl_name: "resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger",
-    field: WholeDeclaration
-  }
 }

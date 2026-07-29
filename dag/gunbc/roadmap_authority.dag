@@ -29,6 +29,15 @@ import gunbc.roadmap_model {
   section_prose,
 }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_focus {
+  RoadmapFocus,
+  NoFocus,
+  FocusOnOwners,
+  focus_visible_nodes,
+  focus_visible_edges,
+  focus_is_active,
+  focus_notice,
+}
 import gunbc.roadmap_status {
   AuthoredLine,
   DerivableLine,
@@ -1207,17 +1216,59 @@ fn preamble() -> List<MarkdownBlock> {
   ]
 }
 
+data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It is set to the v1 exit lane because that is the sustained effort under way (the v1 → v2 emitter exit plan); the other lanes remain real work, they are simply not on the page while this one is being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
+
+data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
+  label: "the v1 → v2 emitter exit lane",
+  owners: ["self-host"],
+}
+
 fn active_section() -> RoadmapSection {
+  active_section_for(focus: roadmap_focus_selection)
+}
+
+data roadmap_authority_focus_parameter_note: String = "roadmap_authority_for exists so a claim about the AUTHORITY can be written without a claim about the current VIEW. A witness that asserts which lanes are active, but reads the projected markdown to do it, silently becomes a witness about whatever focus happens to be set — it would go red the moment someone focused the page, having found nothing wrong with the roadmap at all. Passing NoFocus makes that independence explicit at the call site rather than leaving it to coincidence. roadmap_authority() keeps the declared focus, because the generated ROADMAP.md IS the focused view."
+
+fn roadmap_authority_for(focus: RoadmapFocus) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: preamble(),
+    lead_lanes: [],
+    sections: [active_section_for(focus: focus)],
+  }
+}
+
+fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
   RoadmapSection {
     title: "Active deliverables — dependency order",
-    elements: [
-      section_prose(content: "The graph has nine lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The three SCM R0 models and P−1 evidence carrier are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
-      section_group(
-        label: "",
-        nodes: active_roadmap_nodes(),
-        edges: active_roadmap_edges()
+    elements: concat(
+      [
+        section_prose(content: "The graph has nine lanes: SCM prerequisites · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene. The three SCM R0 models and P−1 evidence carrier are independent roots; compatibility extraction and later SCM/product lanes remain parked. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+      ],
+      concat(
+        if focus_is_active(focus: focus) {
+          [section_prose(content: focus_notice(
+            focus: focus,
+            nodes: active_roadmap_nodes(),
+          ))]
+        } else {
+          []
+        },
+        [
+          section_group(
+            label: "",
+            nodes: focus_visible_nodes(
+              focus: focus,
+              nodes: active_roadmap_nodes(),
+            ),
+            edges: focus_visible_edges(
+              focus: focus,
+              nodes: active_roadmap_nodes(),
+              edges: active_roadmap_edges(),
+            )
+          ),
+        ],
       ),
-    ],
+    ),
   }
 }
 
