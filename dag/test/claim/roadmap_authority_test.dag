@@ -141,6 +141,10 @@ fn id_count(id: RoadmapNodeId) -> Int {
   nodes() |> filter(n => n.node == id) |> count
 }
 
+fn active_id_exists(id: RoadmapNodeId) -> Bool {
+  active_nodes() |> any(n => n.node == id)
+}
+
 fn edge_exists(child: String, parent: String) -> Bool {
   edges() |> any(e => e.child == child && e.parent == parent)
 }
@@ -254,9 +258,14 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  count(accepted) == 2
+  count(accepted) == 7
     && (accepted |> any(a => a == "namespace-occurrence-transport"))
     && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
+    && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+    && (accepted |> any(a => a == "2-scm-git-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(a => a == "2-claim-indexed-evidence"))
     && count(active_nodes()) == count(nodes()) - count(accepted)
     && all(active_nodes(), n => !(accepted |> any(a => a == n.node)))
     && all(accepted, a => id_exists(id: a))
@@ -309,10 +318,16 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
   let act = active_edges()
   !(act |> any(e => e.child == "namespace-canonical-binding" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
+    && !(act |> any(e => e.child == "2-scm-compatibility-shape"))
     && is_top_level(edges: act, node: "namespace-canonical-binding")
     && is_top_level(edges: act, node: "pderive-static-supplemental-contract")
+    && is_top_level(edges: act, node: "2-scm-compatibility-shape")
     && edge_exists(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport")
     && edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model")
+    && edge_exists(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model")
+    && !edge_exists(child: "2-scm-compatibility-shape", parent: "2-claim-indexed-evidence")
 }
 
 fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
@@ -510,7 +525,8 @@ test fn witness_product_roots_have_no_false_roadmap_tool_dependency() -> Bool {
 
 data scm_prerequisite_witness_focus_note: String = "Projected UNFOCUSED deliberately. This claim is about which lanes the AUTHORITY declares active, and it happens to read the markdown to check it. Left on the focused projection it would silently become a claim about the current view — going red whenever someone focused the page, reporting a roadmap defect where none exists. NoFocus keeps the claim measuring what it names."
 
-test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
+test fn witness_only_requested_scm_compatibility_slice_is_active() -> Bool {
+  let accepted = accepted_roadmap_node_ids()
   let out = serialize_markdown_source(
     doc: project_roadmap_to_markdown(
       doc: roadmap_authority_for(focus: NoFocus),
@@ -521,14 +537,23 @@ test fn witness_only_requested_scm_prerequisites_are_active() -> Bool {
     && string_contains(s: out, pattern: "(docs/plans/dag-scm-product-strategy.md)")
     && string_contains(s: out, pattern: "(docs/plans/node-subtree-visibility-grants.md)")
     && node_has_carrier_path(path: "docs/plans/dag-scm-design.md")
-    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 4
+    && node_count_with_carrier_path(path: "docs/plans/dag-scm-design.md") == 5
     && !node_has_carrier_path(path: "docs/plans/dag-scm-product-strategy.md")
     && !node_has_carrier_path(path: "docs/plans/node-subtree-visibility-grants.md")
     && id_exists(id: "2-scm-git-upstream-model")
     && id_exists(id: "2-scm-mercurial-upstream-model")
     && id_exists(id: "2-scm-pijul-upstream-model")
     && id_exists(id: "2-claim-indexed-evidence")
-    && !id_exists(id: "2-scm-compatibility-shape")
+    && id_exists(id: "2-scm-compatibility-shape")
+    && !active_id_exists(id: "2-scm-git-upstream-model")
+    && !active_id_exists(id: "2-scm-mercurial-upstream-model")
+    && !active_id_exists(id: "2-scm-pijul-upstream-model")
+    && !active_id_exists(id: "2-claim-indexed-evidence")
+    && active_id_exists(id: "2-scm-compatibility-shape")
+    && (accepted |> any(id => id == "2-scm-git-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-mercurial-upstream-model"))
+    && (accepted |> any(id => id == "2-scm-pijul-upstream-model"))
+    && (accepted |> any(id => id == "2-claim-indexed-evidence"))
     && !id_exists(id: "2-scm-node-merge")
     && !id_exists(id: "2-scm-design-partner-shadow")
 }

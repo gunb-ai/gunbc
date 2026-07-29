@@ -6,6 +6,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
   NativeScmScenario,
   NativeScmReceipt,
+  NativeScmProjectionRepaired,
+  NativeScmProjectionRepairBlockedByInternalWork,
+  NativeScmOperationalReady,
+  NativeScmInternalWorkPending,
+  NativeScmLifecyclePending,
   TwoIndependentChangesLand,
   StaleTargetAutoResync,
   DuplicateSubmissionAppliesOnce,
@@ -14,18 +19,25 @@ import gunbc.native_scm_interaction_contract {
   IncompatibleGoalsNeedAuthorizedDecider,
   EvidenceGatheredInternally,
   ToolModelProofDeficitRoutesInternally,
-  GitExportFailureRepairsWithoutReinterpretation,
-  ConventionalGitImportWithoutRebase,
+  ProjectionFailureRepairsWithoutReinterpretation,
+  ConventionalScmImportWithoutManualRewrite,
   VisibilityAuthorizedDetails,
   native_scm_receipt_for,
   native_scm_primary_label,
   native_scm_resolve_choice,
-  native_scm_repair_git_projection,
+  native_scm_record_repaired_projection,
   native_scm_inspect_receipt,
   native_scm_submission_ledger,
   native_scm_apply_once,
   native_scm_applied_count,
   native_scm_rekey_receipt,
+}
+import gunbc.scm_compatibility_shape {
+  CompatibilityProjectionReceipt,
+  CompatibilityFidelityProfile,
+  CompatibilityFidelityPreserved,
+  CompatibilityFidelityUnavailable,
+  CompatibilityAdvanceUnavailable,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,6 +48,46 @@ fn receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
 
 fn primary_label(receipt: NativeScmReceipt) -> String {
   native_scm_primary_label(primary: receipt.primary)
+}
+
+fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
+  CompatibilityProjectionReceipt {
+    realization: "git-r0",
+    target: "refs/heads/main",
+    generation_evidence: "git-generation-fixture",
+    projection: "git-projection-fixture",
+    read_back: "git-readback-fixture",
+    advance: CompatibilityAdvanceUnavailable {
+      cause: "C0 witness does not establish an executing transition",
+    },
+    fidelity: CompatibilityFidelityProfile {
+      endpoint_state: CompatibilityFidelityPreserved,
+      upstream_change_evidence: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry authored-change evidence",
+      },
+      native_proposal_contract: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry a proposal contract",
+      },
+      history: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry history",
+      },
+      publication: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry publication facts",
+      },
+      conflict_facts: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry conflict facts",
+      },
+      path_and_mode: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry path or mode facts",
+      },
+      availability: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry availability facts",
+      },
+      native_identity: CompatibilityFidelityUnavailable {
+        cause: "C0 fixture does not carry native identity",
+      },
+    },
+  }
 }
 
 test fn witness_two_independent_changes_both_land() -> Bool {
@@ -154,27 +206,60 @@ test fn witness_tool_model_proof_deficits_stay_internal() -> Bool {
     }
 }
 
-test fn witness_git_export_failure_repairs_without_reinterpretation() -> Bool {
-  let r = receipt_for(scenario: GitExportFailureRepairsWithoutReinterpretation)
-  let repaired = native_scm_repair_git_projection(receipt: r, git_ref: "origin/main")
+test fn witness_projection_failure_repairs_without_reinterpretation() -> Bool {
+  let r = receipt_for(scenario: ProjectionFailureRepairsWithoutReinterpretation)
+  let outcome = native_scm_record_repaired_projection(
+    receipt: r,
+    projection: fixture_compatibility_projection(),
+  )
   primary_label(receipt: r) == "Landed"
-    && primary_label(receipt: repaired) == "Landed"
-    && match r.projections.git {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match repaired.projections.git {
-      Present { value: git_ref } => git_ref == "origin/main"
-      Absent => false
+    && count(r.projections.realizations) == 0
+    && match outcome {
+      NativeScmProjectionRepaired { receipt: repaired } =>
+        primary_label(receipt: repaired) == "Landed"
+          && count(repaired.projections.realizations) == 1
+          && repaired.projections.realizations
+            |> any(row =>
+              row.realization == "git-r0"
+                && row.target == "refs/heads/main"
+            )
+          && match repaired.operational {
+            NativeScmOperationalReady => true
+            _ => false
+          }
+      _ => false
     }
 }
 
-test fn witness_conventional_git_import_without_rebase() -> Bool {
-  let r = receipt_for(scenario: ConventionalGitImportWithoutRebase)
+test fn witness_projection_repair_cannot_clear_internal_deficit() -> Bool {
+  let r = receipt_for(scenario: ToolModelProofDeficitRoutesInternally)
+  let outcome = native_scm_record_repaired_projection(
+    receipt: r,
+    projection: fixture_compatibility_projection(),
+  )
+  match outcome {
+    NativeScmProjectionRepairBlockedByInternalWork { receipt: unchanged } =>
+      primary_label(receipt: unchanged) == "InProgress"
+        && count(unchanged.projections.realizations) == 0
+        && match unchanged.operational {
+          NativeScmInternalWorkPending => true
+          _ => false
+        }
+        && match unchanged.check {
+          NativeScmLifecyclePending => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_conventional_scm_import_without_manual_rewrite() -> Bool {
+  let r = receipt_for(scenario: ConventionalScmImportWithoutManualRewrite)
   primary_label(receipt: r) == "Landed"
     && match r.primary {
       Landed { result_preview } =>
-        !string_contains(s: result_preview, pattern: "rebase")
+        !string_contains(s: result_preview, pattern: "Git")
+          && !string_contains(s: result_preview, pattern: "rebase")
       _ => false
     }
 }

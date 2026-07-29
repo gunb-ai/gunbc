@@ -1,0 +1,448 @@
+module tools.e0599_emitter_decision_census
+
+import std.types { Bool, Int, String, list_length }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.error_primitives { Result, Ok, Err }
+import v2.std.optional { Optional, Present, Absent }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.rust.derive_contracts { im_15_1_0_vector_clone_impl_authority }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import tools.e0599_probe_census {
+  e0599_message_pattern_rows_blob,
+  e0599_canonical_seven_module_log_labels_blob,
+  e0599_mechanistic_root_family_labels_blob,
+  e0599_canonical_seven_module_count,
+}
+
+data e0599_measured_producer: String = "V1SeedEmitter"
+
+data e0599_measured_producer_note: String = "PRODUCER TAG (operator design ruling, 2026-07-29, relayed by calm-badger-682). Every row and count in this census characterizes what the V1 SEED EMITTER (src/v1/05_emit_rust.dag, executed through gunbc) synthesizes when it emits v2 modules. CompilerFixedPoint now recenters on the V2 emitter: the v1 stage0 runtime may temporarily EXECUTE the v2 emitter as .dag, but the v1 emitter stops DECIDING the generated Rust, and emitter authority exits v1 before interpreter execution does. CONSEQUENCE, stated so this census cannot later be misread: the measured sites and occurrences are DIAGNOSTIC COMPARISON ONLY and are NOT CompilerFixedPoint progress, and NOT a v2 sizing authority. COUNTS ARE DELIBERATELY NOT RESTATED HERE (review 44386, codex/codex-default): this note previously restated the brief-sha site and occurrence counts, which went stale the moment #7324 moved the corpus and then contradicted the receipt — a §3 dual representation of a fact whose home is the measurement, not this module. The single authority for every count is the stamped receipt docs/probes/e0599_phase_b0_emitter_decision_receipt_2026-07-29.tsv, which carries its own base_sha and measured_corpus_sha; the audit docs/probes/e0599_phase_b0_emitter_decision_2026-07-29.md reports both the brief-sha and post-merge measurements and attributes the delta. Re-syncing a copy here would only re-arm the same drift. The v2 emitter is a different producer, built from target-model rows consumed by the shared translate/serialize path, so no row here transfers to it by assumption — some may, some are artifacts of seed lowering templates v2 does not have. WHAT IT IS LOAD-BEARING FOR: seed-emitter changes are a finite bootstrap adapter queue, and this census is what makes that queue enumerable — it names which seed lowering decisions exist and exactly where each is made."
+
+data e0599_emitter_decision_census_note: String = "Single authority for the P-fn Phase B0 emitter-decision census: the typed requirement causes, the v1 lowering operations that produce the Rust operations rustc reports as E0599, the cited external impl bounds those operations land on, and the operation->cause decision. Phase A (#7389) proved the requirement does not originate in a .dag body; this module names where it DOES originate — an emitter lowering decision — at the grain of one row per lowering operation. Realization: docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD) joins these rows against structured rustc diagnostics from the real compilation path. CENSUS VOCABULARY, NOT A MODEL CARRIER: B0 is explicitly forbidden from pre-committing the sharing carrier (the B1 authority question is whether the requirement rides RequiredTraitWitness in v2.std.compilers.target_model or a capability-keyed contract that subsumes it). These types exist to make the measurement typed and fail-closed, and they dissolve into whatever B1 rules. dissolve-on (two, independent): (1) B1 lands the sharing model on the materialization axis, at which point this module's rows migrate to it and the census becomes a projection of that authority; (2) PARTIALLY FIRED 2026-07-29 when #7399 merged: the Clone-impl row now cites extdeps.languages.rust.derive_contracts im_15_1_0_vector_clone_impl_authority through cited_upstream instead of restating its locator. The inherent-impl (mod.rs:180, carrying is_empty and iter) and Index-impl (mod.rs:1838) rows STAY local and carry cited_upstream Absent, because derive_contracts is scoped to DERIVE traits and has no row for either; their narrowed trigger is an extdeps home for non-derive im impl citations, which does not exist yet. This is a declared residue, not an oversight — vivid-swift-837 confirmed (2026-07-29) that the std::Vec keying this census flagged was a real authority mismatch, not a deliberate lane, and #7399 adds exact im 15.1.0 line authorities there. P-fn sequences AFTER #7399 and must not mint a parallel Vec authority: when it lands, delete e0599_im_vector_inherent_impl / _index_impl / _clone_impl and import the derive_contracts rows instead."
+
+data e0599_cause_semantics_note: String = "WHAT CloneSharedRequirement MEANS, fixed by operator verdict 2026-07-29: the seed emitter INSERTED a clone at this seam. It does NOT mean the clone can safely be deleted. This census does not execute the per-site ownership verdict - it records which emitter predicate or alternative arm is ASSOCIATED with the site, never whether that site is SoleOwner, at last use, movable, or safely borrowable. The supported claim is that these occurrences are produced at seams owned by the ownership/lowering lane and their actual removability REMAINS TO BE PROVED. EmitterArmPresent means a move arm exists, not that the ownership verdict should select it; NoEmitterArm means no alternative arm exists, and a new lowering may still require Clone under sharing. Consequently the occurrence count is NOT a predicted burn-down and must not be used as one."
+
+type E0599RequirementCause
+  = TargetApiRequirement
+  | OwnedDeconstructionRequirement
+  | CloneSharedRequirement
+  | NoRequirement
+  | UnresolvedCause { method: String, receiver_expr: String, reason: String }
+
+type E0599LoweringOperation
+  = FreeMonoidEmptyTest
+  | FreeMonoidTailIterate
+  | FreeMonoidHeadExtract
+  | FreeMonoidCatchallBind
+  | DerefCloneWholeValue
+  | IdentReferenceClone
+  | FieldAccessClone
+  | LoweringUnidentified { method: String, receiver_expr: String }
+
+type E0599ExternalAuthority {
+  crate_name: String,
+  crate_version: String,
+  impl_site: String,
+  impl_bound: String,
+  member_site: String,
+  cited_upstream: Optional<ExternalAuthority>,
+}
+
+type E0599LoweringRow {
+  operation: E0599LoweringOperation,
+  source_construct: String,
+  ownership_alternative: String,
+  emitter_authority: String,
+  emitted_literal: String,
+  cause: E0599RequirementCause,
+  required_trait: String,
+  authority: E0599ExternalAuthority,
+  rationale: String,
+}
+
+data e0599_im_vector_inherent_impl: E0599ExternalAuthority = E0599ExternalAuthority {
+  crate_name: "im",
+  crate_version: "15.1.0",
+  impl_site: "src/vector/mod.rs:180",
+  impl_bound: "impl<A: Clone> Vector<A>",
+  member_site: "is_empty src/vector/mod.rs:315 | iter src/vector/mod.rs:383",
+  cited_upstream: Absent,
+}
+
+data e0599_im_vector_index_impl: E0599ExternalAuthority = E0599ExternalAuthority {
+  crate_name: "im",
+  crate_version: "15.1.0",
+  impl_site: "src/vector/mod.rs:1838",
+  impl_bound: "impl<A: Clone> Index<usize> for Vector<A>",
+  member_site: "index src/vector/mod.rs:1841",
+  cited_upstream: Absent,
+}
+
+data e0599_im_vector_clone_impl: E0599ExternalAuthority = E0599ExternalAuthority {
+  crate_name: "im",
+  crate_version: "15.1.0",
+  impl_site: "src/vector/mod.rs:1686",
+  impl_bound: "impl<A: Clone> Clone for Vector<A>",
+  member_site: "clone src/vector/mod.rs:1688",
+  cited_upstream: Present { value: im_15_1_0_vector_clone_impl_authority },
+}
+
+data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
+  crate_name: "std",
+  crate_version: "rust-1.93.0",
+  impl_site: "core::clone::Clone",
+  impl_bound: "trait Clone: Sized",
+  member_site: "fn clone(&self) -> Self",
+  cited_upstream: Absent,
+}
+
+data e0599_lowering_rows: List<E0599LoweringRow> = [
+  E0599LoweringRow {
+    operation: FreeMonoidEmptyTest,
+    ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
+    source_construct: "match over the FreeMonoid coproduct — the Empty/Cons discrimination itself",
+    emitter_authority: "src/v1/05_emit_rust.dag:7859 (emit_native_freemonoid_match) | :8715 (tco fork)",
+    emitted_literal: "{ let __fm = <scrut>; if __fm.is_empty() { .. } else { .. } }",
+    cause: TargetApiRequirement,
+    required_trait: "Clone",
+    authority: e0599_im_vector_inherent_impl,
+    rationale: "The source construct is a match over the FreeMonoid coproduct — a READ, requesting no copy. im::Vector's entire inherent surface sits behind impl<A: Clone> Vector<A>, so calling is_empty imposes A: Clone regardless of ownership. Not removable by ownership analysis; removable only by choosing a representation whose emptiness test is unbounded.",
+  },
+  E0599LoweringRow {
+    operation: FreeMonoidTailIterate,
+    ownership_alternative: "NotApplicable - a read; no copy is requested and no ownership predicate gates it",
+    source_construct: "match over the FreeMonoid coproduct — the Cons { tail } binding",
+    emitter_authority: "src/v1/05_emit_rust.dag:7817 (freemonoid_tail_let_from_fm)",
+    emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ",
+    cause: TargetApiRequirement,
+    required_trait: "Clone",
+    authority: e0599_im_vector_inherent_impl,
+    rationale: "iter() is in the same impl<A: Clone> block as is_empty. rustc reports the failure at .iter() and never reaches the .cloned() that follows it, so this site MASKS a co-located OwnedDeconstructionRequirement on the same expression; both discharge on the same A: Clone, but B1 must not read this row as evidence that the tail extract needs no owned element.",
+  },
+  E0599LoweringRow {
+    operation: FreeMonoidHeadExtract,
+    ownership_alternative: "NotApplicable - no move or borrow exists out of shared storage; the owned element must be materialized",
+    source_construct: "match over the FreeMonoid coproduct — the Cons { head } binding",
+    emitter_authority: "src/v1/05_emit_rust.dag:7838 (freemonoid_nonempty_branch_body) | :8694 (tco fork)",
+    emitted_literal: "let <head> = (*__fm)[0].clone(); ",
+    cause: OwnedDeconstructionRequirement,
+    required_trait: "Clone",
+    authority: e0599_im_vector_index_impl,
+    rationale: "The source binds Cons { head } by value, so an owned element must be materialized out of shared storage; you cannot move element 0 out of an Rc<Vector<T>>. Real given the representation, and not an ownership defect: no move or borrow was available to take instead.",
+  },
+  E0599LoweringRow {
+    operation: FreeMonoidCatchallBind,
+    ownership_alternative: "NoEmitterArm - the bind is unconditional at :7826/:7844/:8682/:8700 (row is uninhabited in the B0 measurement)",
+    source_construct: "match over the FreeMonoid coproduct — a catch-all arm binding the whole scrutinee",
+    emitter_authority: "src/v1/05_emit_rust.dag:7826 | :7844 | :8682 | :8700",
+    emitted_literal: "let <bind> = __fm.clone(); ",
+    cause: CloneSharedRequirement,
+    required_trait: "Clone",
+    authority: e0599_im_vector_clone_impl,
+    rationale: "A catch-all arm binds the whole scrutinee. The emitter copies the entire collection where the arm only reads it; the Rc it already holds could have been shared or the binding borrowed. Belongs to emitter-ownership-defork.",
+  },
+  E0599LoweringRow {
+    operation: DerefCloneWholeValue,
+    ownership_alternative: "NoEmitterArm - both branches clone (:6959/:7587 needs_rc picks deref_clone vs clone_value; :7893/:8748 is unconditional) and 05_emit_rust.dag contains zero Rc::try_unwrap/make_mut, so no alternative arm exists to select. NO CLAIM IS MADE THAT A COPY-FREE ALTERNATIVE EXISTS (operator verdict 2026-07-29): Rc::make_mut is clone-on-write, is declared `where T: Clone`, and clones the pointee whenever another strong Rc is live - so it REQUIRES the very bound this census counts and cannot evidence its removal. Whether any alternative lowering here avoids Clone under sharing is unproved and belongs to the ownership/lowering lane.",
+    source_construct: "whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee",
+    emitter_authority: "src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone",
+    emitted_literal: "(*{0}).clone()",
+    cause: CloneSharedRequirement,
+    required_trait: "Clone",
+    authority: e0599_im_vector_clone_impl,
+    rationale: "sharing.deref_clone (src/v1/languages.dag:393) derefs through the Rc and copies the whole pointee to obtain an owned value — the cons-cell spread shape (*acc.clone()).clone() then insert. This is an emitter-inserted copy at a seam the ownership/lowering lane owns; it is NOT a proof that the copy is deletable. The earlier Rc::make_mut rationale was withdrawn (operator verdict 2026-07-29): make_mut is clone-on-write, declared `where T: Clone`, and clones when another strong Rc is live. The site corresponds to the shape docs/plans/emitter-ownership-defork.md names UseSiteVerdict.CloneShared, which is a candidate for that lane to adjudicate, not a settled verdict.",
+  },
+  E0599LoweringRow {
+    operation: IdentReferenceClone,
+    ownership_alternative: "EmitterArmPresent - :6318 moves_by_value selects a bare move; the clone is the else-arm, so the ownership verdict alone decides it (movable, from ownership.dag build_movable_set)",
+    source_construct: "bare identifier reference in a value position",
+    emitter_authority: "src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value",
+    emitted_literal: "{0}.clone()",
+    cause: CloneSharedRequirement,
+    required_trait: "Clone",
+    authority: e0599_rust_clone_trait,
+    rationale: "sharing.clone_value (src/v1/languages.dag:392) on a bare identifier that is already owned at its use site. This is exactly the class build_movable_set / make_decision -> SoleOwner licenses as a move; it clones because the emitter's ownership fork bypasses that verdict. Belongs to emitter-ownership-defork.",
+  },
+  E0599LoweringRow {
+    operation: FieldAccessClone,
+    ownership_alternative: "EmitterArmPresent - :6435 base_is_owned selects a bare field move; the clone is the else-arm at :6438, so the ownership verdict alone decides it (owned_bindings)",
+    source_construct: "field projection on a record-typed binding",
+    emitter_authority: "src/v1/05_emit_rust.dag:6438 (emit_typed_field_access, the non-owned arm) via sharing.clone_value",
+    emitted_literal: "{0}.{1}.clone()",
+    cause: CloneSharedRequirement,
+    required_trait: "Clone",
+    authority: e0599_rust_clone_trait,
+    rationale: "The emitter chooses between a MOVE at :6435 (concat(base_str, field) when base_is_owned) and this clone at :6438, so the copy fires exactly when the ownership verdict says the base is not owned. That verdict comes from owned_bindings — the third, ad-hoc ownership set docs/plans/emitter-ownership-defork.md names, which is populated only with fold-accumulator names inside emit_rust_fold_method_call and therefore can never contain a parameter. acc.seen.clone() is the shape that doc calls the dominant dag_collect cost. Belongs to emitter-ownership-defork.",
+  },
+]
+
+fn e0599_receiver_is_bare_ident(receiver_expr: String) -> Bool {
+  receiver_expr != ""
+    && !string_contains(s: receiver_expr, pattern: ".")
+    && !string_contains(s: receiver_expr, pattern: "(")
+    && !string_contains(s: receiver_expr, pattern: "[")
+    && !string_contains(s: receiver_expr, pattern: "*")
+}
+
+fn e0599_receiver_is_deref_wrapped(receiver_expr: String) -> Bool {
+  starts_with(receiver_expr, prefix: "(*")
+    && !string_contains(s: receiver_expr, pattern: "[")
+}
+
+fn e0599_receiver_last_segment(receiver_expr: String) -> String {
+  match receiver_expr |> split(delimiter: ".") |> last {
+    Present { value: seg } => seg
+    Absent => ""
+  }
+}
+
+fn e0599_receiver_is_tuple_projection(receiver_expr: String) -> Bool {
+  let seg = e0599_receiver_last_segment(receiver_expr: receiver_expr)
+  string_contains(s: receiver_expr, pattern: ".")
+    && (starts_with(seg, prefix: "0") || starts_with(seg, prefix: "1") || starts_with(seg, prefix: "2")
+      || starts_with(seg, prefix: "3") || starts_with(seg, prefix: "4") || starts_with(seg, prefix: "5")
+      || starts_with(seg, prefix: "6") || starts_with(seg, prefix: "7") || starts_with(seg, prefix: "8")
+      || starts_with(seg, prefix: "9"))
+}
+
+fn e0599_receiver_is_field_access(receiver_expr: String) -> Bool {
+  string_contains(s: receiver_expr, pattern: ".")
+    && !string_contains(s: receiver_expr, pattern: "(")
+    && !string_contains(s: receiver_expr, pattern: "[")
+    && !string_contains(s: receiver_expr, pattern: "*")
+    && !e0599_receiver_is_tuple_projection(receiver_expr: receiver_expr)
+}
+
+fn e0599_lowering_operation_for(method: String, receiver_expr: String) -> E0599LoweringOperation {
+  if method == "is_empty" && receiver_expr == "__fm" {
+    FreeMonoidEmptyTest
+  } else if method == "iter" && receiver_expr == "(*__fm)" {
+    FreeMonoidTailIterate
+  } else if method == "clone" && receiver_expr == "(*__fm)[0]" {
+    FreeMonoidHeadExtract
+  } else if method == "clone" && receiver_expr == "__fm" {
+    FreeMonoidCatchallBind
+  } else if method == "clone" && e0599_receiver_is_deref_wrapped(receiver_expr: receiver_expr) {
+    DerefCloneWholeValue
+  } else if method == "clone" && e0599_receiver_is_bare_ident(receiver_expr: receiver_expr) {
+    IdentReferenceClone
+  } else if method == "clone" && e0599_receiver_is_field_access(receiver_expr: receiver_expr) {
+    FieldAccessClone
+  } else {
+    LoweringUnidentified { method: method, receiver_expr: receiver_expr }
+  }
+}
+
+fn e0599_lowering_operation_label(operation: E0599LoweringOperation) -> String {
+  match operation {
+    FreeMonoidEmptyTest => "FreeMonoidEmptyTest"
+    FreeMonoidTailIterate => "FreeMonoidTailIterate"
+    FreeMonoidHeadExtract => "FreeMonoidHeadExtract"
+    FreeMonoidCatchallBind => "FreeMonoidCatchallBind"
+    DerefCloneWholeValue => "DerefCloneWholeValue"
+    IdentReferenceClone => "IdentReferenceClone"
+    FieldAccessClone => "FieldAccessClone"
+    LoweringUnidentified { method: _, receiver_expr: _ } => "LoweringUnidentified"
+  }
+}
+
+fn e0599_requirement_cause_label(cause: E0599RequirementCause) -> String {
+  match cause {
+    TargetApiRequirement => "TargetApiRequirement"
+    OwnedDeconstructionRequirement => "OwnedDeconstructionRequirement"
+    CloneSharedRequirement => "CloneSharedRequirement"
+    NoRequirement => "NoRequirement"
+    UnresolvedCause { method: _, receiver_expr: _, reason: _ } => "Unresolved"
+  }
+}
+
+fn e0599_row_matches_operation(row: E0599LoweringRow, operation: E0599LoweringOperation) -> Bool {
+  e0599_lowering_operation_label(operation: row.operation) == e0599_lowering_operation_label(operation: operation)
+}
+
+fn e0599_row_for_operation(operation: E0599LoweringOperation) -> Optional<E0599LoweringRow> {
+  e0599_lowering_rows |> filter(r => e0599_row_matches_operation(row: r, operation: operation)) |> first
+}
+
+fn e0599_cause_for(method: String, receiver_expr: String) -> E0599RequirementCause {
+  let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
+  match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.cause
+    Absent =>
+      UnresolvedCause {
+        method: method,
+        receiver_expr: receiver_expr,
+        reason: "no lowering row names this (method, receiver) shape",
+      }
+  }
+}
+
+type E0599CensusParseError
+  = MalformedCensusLine { line: String, field_count: Int }
+
+fn e0599_census_parse_error_message(err: E0599CensusParseError) -> String {
+  match err {
+    MalformedCensusLine { line: line, field_count: field_count } =>
+      concat(
+        concat("e0599_classify_from_blob: refused malformed tuple (expected 2 tab fields, got ", to_string(value: field_count)),
+        concat("): ", line)
+      )
+  }
+}
+
+fn e0599_classification_line(method: String, receiver_expr: String) -> String {
+  let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
+  let cause = e0599_cause_for(method: method, receiver_expr: receiver_expr)
+  let source_construct = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.source_construct
+    Absent => ""
+  }
+  let ownership_alternative = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.ownership_alternative
+    Absent => ""
+  }
+  let required_trait = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.required_trait
+    Absent => ""
+  }
+  let emitter_authority = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.emitter_authority
+    Absent => ""
+  }
+  let external_authority = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } =>
+      concat(row.authority.crate_name, concat(" ", concat(row.authority.crate_version, concat(" ", row.authority.impl_site))))
+    Absent => ""
+  }
+  concat(
+    e0599_lowering_operation_label(operation: operation),
+    concat("\t", concat(source_construct,
+    concat("\t", concat(ownership_alternative,
+    concat("\t", concat(e0599_requirement_cause_label(cause: cause),
+    concat("\t", concat(required_trait,
+    concat("\t", concat(emitter_authority,
+    concat("\t", external_authority)))))))))))
+  )
+}
+
+fn e0599_classify_tuple_line(line: String) -> Result<String, E0599CensusParseError> {
+  let parts = line |> split(delimiter: "\t")
+  let field_count = list_length(items: parts)
+  if field_count != 2 {
+    Err { value: MalformedCensusLine { line: line, field_count: field_count } }
+  } else {
+    let method = match parts |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    let receiver_expr = match parts |> skip(n: 1) |> first {
+      Present { value: v } => v
+      Absent => ""
+    }
+    Ok { value: e0599_classification_line(method: method, receiver_expr: receiver_expr) }
+  }
+}
+
+fn e0599_classify_from_blob(blob: String) -> Result<String, E0599CensusParseError> {
+  let lines = if blob == "" { [] } else { blob |> split(delimiter: "\n") }
+  fold(lines, init: Ok { value: "" }, f: fn(acc, line) {
+    match acc {
+      Err { value: e } => Err { value: e }
+      Ok { value: prior } =>
+        match e0599_classify_tuple_line(line: line) {
+          Err { value: e } => Err { value: e }
+          Ok { value: out } =>
+            if prior == "" {
+              Ok { value: out }
+            } else {
+              Ok { value: concat(prior, concat("\n", out)) }
+            }
+        }
+    }
+  })
+}
+
+data e0599_rollup_cause_order: List<E0599RequirementCause> = [
+  TargetApiRequirement,
+  OwnedDeconstructionRequirement,
+  CloneSharedRequirement,
+  NoRequirement,
+  UnresolvedCause { method: "", receiver_expr: "", reason: "" },
+]
+
+data e0599_measured_producer_caveat: String = "DIAGNOSTIC COMPARISON ONLY - not CompilerFixedPoint progress, not a v2 sizing authority, and NOT a roadmap node: this census has no dependency edge into CompilerFixedPoint and does not gate v2 bootstrap. CompilerFixedPoint recenters on the V2 emitter, a different producer (operator ruling 2026-07-29). The bootstrap adapter queue is NOT this census: it is the intersection of this population with the exact native-v2-emitter bootstrap closure and the defects that demonstrably block generation 1 - an intersection that is unknown until the direct v2 Rust door exists (operator verdict 2026-07-29)."
+
+fn e0599_producer_blob() -> String {
+  concat(e0599_measured_producer, concat("\n", e0599_measured_producer_caveat))
+}
+
+fn e0599_write_producer_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_producer_blob(),
+    label: "e0599_producer_blob"
+  )
+}
+
+fn e0599_rollup_cause_labels_blob() -> String {
+  fold(e0599_rollup_cause_order, init: "", f: fn(acc, cause) {
+    let line = e0599_requirement_cause_label(cause: cause)
+    if acc == "" {
+      line
+    } else {
+      concat(acc, concat("\n", line))
+    }
+  })
+}
+
+fn e0599_write_rollup_cause_labels_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_rollup_cause_labels_blob(),
+    label: "e0599_rollup_cause_labels_blob"
+  )
+}
+
+fn e0599_probe_preamble_blob() -> String {
+  concat("#patterns\n", concat(e0599_message_pattern_rows_blob(),
+  concat("\n#roster\n", concat(e0599_canonical_seven_module_log_labels_blob(),
+  concat("\n#scope\n", concat(e0599_mechanistic_root_family_labels_blob(),
+  concat("\n#causes\n", concat(e0599_rollup_cause_labels_blob(),
+  concat("\n#roster_count\n", concat(to_string(e0599_canonical_seven_module_count()),
+  concat("\n#producer\n", e0599_producer_blob())))))))))))
+}
+
+fn e0599_write_probe_preamble_blob(out_path: String) -> ProcessExit {
+  e0599_write_census_blob(
+    path: out_path,
+    content: e0599_probe_preamble_blob(),
+    label: "e0599_probe_preamble_blob"
+  )
+}
+
+fn e0599_write_census_blob(path: String, content: String, label: String) -> ProcessExit {
+  if content == "" {
+    exit_failure(reason: concat(label, ": refused empty export"))
+  }
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error)))
+  }
+}
+
+fn e0599_write_classify_from_blob(blob: String, out_path: String) -> ProcessExit {
+  if blob == "" {
+    exit_failure(reason: "e0599_classify_from_blob: refused empty input blob")
+  }
+  match e0599_classify_from_blob(blob: blob) {
+    Err { value: e } => exit_failure(reason: e0599_census_parse_error_message(err: e))
+    Ok { value: out } =>
+      e0599_write_census_blob(path: out_path, content: out, label: "e0599_classify_from_blob")
+  }
+}
+
+fn e0599_lowering_row_count() -> Int {
+  e0599_lowering_rows.count()
+}
