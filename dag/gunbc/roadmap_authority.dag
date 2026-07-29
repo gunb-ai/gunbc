@@ -748,11 +748,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "src/v2/compiler/self_host/frontier.dag",
       t: fields(
         headline: "Build the new generator with itself, then do it again",
-        boundary: "The new generator writes and builds a native version of itself; that native version writes and builds another; the second one needs nothing from the old compiler.",
+        boundary: "The generator, and only the generator: it writes and builds a native version of itself, that native version writes and builds another, and the second one needs nothing from the old compiler. The other parts of the compiler are still produced the old way at this point.",
         displaced_cost: "This is the moment the new generator stops being something we produce and becomes something that produces itself.",
         first_slice: "Work through what the first native build actually needs to compile, in that order — not in order of total error count from the old generator.",
         red_control: "A behaviour difference on the second round blocks this, every difference gets located and named, and matching bytes is never accepted as proof.",
-        out_of_scope: "Matching the old generator byte for byte is explicitly not wanted and must not be chased.",
+        out_of_scope: "Matching the old generator byte for byte is explicitly not wanted and must not be chased. Nothing here covers the rest of the compiler rebuilding itself — that is the step after this one.",
         handback: "Both builds, the tests that tell them apart, and a named list of any differences found."
       )
     ),
@@ -761,13 +761,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "self-host",
       path: "dag/gunbc/v1_deletion_plan.dag",
       t: fields(
-        headline: "Get the new compiler to rebuild itself, twice, and still work",
-        boundary: "The new compiler generates its own source, that source is built, and the result generates the same behaviour again. Behaviour has to match; the bytes do not.",
-        displaced_cost: "This is the whole point of the project: until the new compiler can build itself, there is nothing to replace the old one with.",
-        first_slice: "Close the differences the second round turns up, and justify any change to the old generator as something the build-itself path actually needs, with a note saying when it gets deleted.",
-        red_control: "A behaviour difference on the second round, or a dependency on the old compiler, blocks this.",
-        out_of_scope: "Matching the old compiler byte for byte is deliberately not the goal — it would force us to reproduce its mistakes. The old generator does not get improved beyond what the build-itself path demonstrably needs.",
-        handback: "Two rounds of generation with behaviour, build, and test results."
+        headline: "Get the rest of the compiler to rebuild itself too",
+        boundary: "With the generator already building itself, extend the same two-round test to everything else the compiler does — reading source, working out names, working out types, translating — until the whole thing generates its own source, that source is built, and the result behaves the same. Behaviour has to match; the bytes do not.",
+        displaced_cost: "This is the whole point of the project: until the compiler can build itself end to end, there is nothing to replace the old one with.",
+        first_slice: "Take the stage nearest the generator, put it through the same two rounds, and close whatever the second round turns up.",
+        red_control: "A behaviour difference on the second round, or any remaining dependency on the old compiler, blocks this.",
+        out_of_scope: "The generator's own self-build is the step before this one and is not redone here. Matching the old compiler byte for byte is deliberately not the goal — it would force us to reproduce its mistakes. The old generator does not get improved beyond what the build-itself path demonstrably needs.",
+        handback: "Two rounds of generation for every remaining part, with behaviour, build, and test results."
       )
     ),
     active(
