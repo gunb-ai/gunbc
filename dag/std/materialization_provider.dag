@@ -1,0 +1,677 @@
+module std.materialization_provider
+
+import std.types { Bool, Int, List, String, NonEmptyStr, ContentHash }
+import std.measure { ByteSize, byte_size, measure_count, measure_add }
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
+import std.cache_identity {
+  ArtifactKindId,
+  parse_source_artifact_kind,
+  typed_module_artifact_kind,
+  resolved_graph_artifact_kind
+}
+import std.computation_identity {
+  ComputationIdentity, StructurallyIdentical, IdentityUnknown,
+  IdentityUnknownCause, MissingConcept, MissingEnforcement
+}
+import std.artifact_store { ArtifactStore, store_put, store_put_fold }
+import std.disposition { Disposition, Terminal }
+
+data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
+
+data materialization_provider_derivation_invariant: String = "THE GOVERNING INVARIANT OF THIS CONTRACT, stated once so it is not rediscovered instance by instance: NO CORRECTNESS-RELEVANT INPUT MAY BE CALLER-ASSERTED. Every one is derived from exactly one of three sources — (1) the request COPRODUCT, whose variant fixes kind, declared inputs, and the required-output roster; (2) a FOLD OVER THE CARRIED PARTS, which is how the content digest and the artifact size are obtained; or (3) a REALIZATION READ-BACK, which is observed_digest and nothing else. Anything a future variant or field adds must say which of the three it is, and if it is none of them it does not belong in this contract. Widening the carve-out below to a second item is the change this invariant exists to make visible.
+
+THE ONE CARVE-OUT, AND ITS HONEST CLASS (parent ruling on codex review 44286): source (3), the read-back, is today an ASSERTION — that the transport computed observed_digest from the stored parts by this same derivation. Classifying that as a permanent residual trust boundary would be the section 5 'never' trap: a permanent-sounding residue carries no trigger, so its frequency is zero by construction and it never ranks for fixing. It is not permanent. It is a WALL AFTER GROUNDING, and the grounding is decidable — just not INSIDE this module, which never receives bytes. It is decidable at the TRANSPORT: if the only way to obtain a ProviderProbe is to have called the realization's modeled read operation, the provenance is structural rather than asserted. Note what that does NOT mean — the grounding is not a brand on the digest value, because a brand is freely constructible here and would be forgeable theater (the same argument the 44265 custody token lost); it is that the PROBE is produced by the read rather than hand-built. What blocks it today is that ProbeFound stays freely constructible from any module — the same constructor-confinement gap DESIGN records for TransportScript, where a direct cast stays writable and the sink is lens-guarded rather than construction-walled. DISSOLUTION TRIGGER: this carve-out grounds when ProviderProbe is minted only by the modeled read operation (extdeps.realization.artifact_store_fs is the concrete site — a function taking an ArtifactFsLookup and computing the digest itself makes a hand-built ProbeFound impossible at the seam that matters) and constructor confinement lands; tracked against the node/subtree visibility-grants lane, whose Reference verb gates whether the reference edge may be formed at all. Until then this is counted debt, not accepted permanence. WHY IT IS STATED RATHER THAN PATCHED (parent ruling, DESIGN section 6 root-cause-do-not-patch-the-sites): four review findings — 44175 caller-supplied required_outputs, 44265 caller-supplied ComputationIdentity, 44278 caller-authored carried_outputs beside a caller-authored content_digest, and artifact_bytes, found by the parent by reading the three together — were ONE defect found four times, each an accepted assertion where a derivation was available. The fourth was the sharpest because it was load-bearing on a wall built for it: provider_admit_bound branches the budget check on the size and hands that same size to store_put as the stored size, so an understated value did not merely walk past ProviderBudgetExhausted once, it corrupted store_bytes_used and therefore every subsequent LRU eviction decision. The symmetric fix was chosen over carrying the size in the probe precisely BECAUSE of this invariant: a probe field would have been honest but would have added a second item to the trust boundary, whereas a fold over the parts makes the roster the preimage of BOTH the digest and the size — one construction, one argument, no new trust."
+
+data materialization_provider_identity_note: String = "Computation identity is CONSUMED, never re-invented (mandate rule; DESIGN duplicate-work thread): the ComputationIdentity qualification belongs to the materialize spine (v2.std.materialize is the structural-corner qualifier; std.computation_identity is the lattice authority). This slice grounds exactly the StructurallyIdentical corner, because the exact structural content key is the only sharing that key JUSTIFIES — and it DERIVES that grade from the binding it computes rather than accepting one (see the derivation note below, review 44265). Advertising normalized or extensional sharing while executing structural equality would be a fabricated capability, so those grades are not reachable here at all; they arrive by the spine widening the KEY, not by anyone passing a grade."
+
+data materialization_provider_backend_seam_note: String = "Relation to std.cache_interface (the shape/transport/policy cut, DESIGN section 3): CacheLookupResult / CacheRejectReason are BACKEND-grain — what one storage backend said, with producer receipts and transport faults (BackendUnavailable, TransportFaithfulnessFailure). This contract is CONSUMER-grain: given what the realization found at the key (ProviderProbe), decide serve or typed refusal under the request's correctness demands (declared-input key, artifact kind, content verification, artifact completeness, identity grade). Backend faults stay in CacheRejectReason at the transport and are deliberately not restated here; a transport that cannot probe refuses at its own layer and no ProviderProbe is fabricated."
+
+data materialization_provider_completeness_note: String = "The artifact-completeness rule: an artifact carries ALL correctness-relevant outputs of the transform it memoizes, including the compile-clean diagnostic union — a cached parse that dropped its diagnostics would green a red, which is the fabricated-plausible-output arm section 5 forbids. The rule has TWO halves and both are load-bearing: the obligation roster is derived from the request (below), and the SATISFACTION roster is derived from the payload — carried outputs are digested parts whose fold IS the artifact's content digest, so a claimed-but-absent output is caught by the read-back comparison rather than believed (codex review 44278; the payload-binding note carries the reasoning). Completeness is enforced on BOTH doors, and BOTH doors derive every obligation FROM THE REQUEST (operator rework ruling, PR 7385 blocker 1): provider_admit takes the ArtifactRequest itself — there is no caller-supplied required_outputs parameter, so a weakened obligation list is UNWRITABLE at the admission door by construction — and checks kind, request key, content digest, completeness, and identity grade before any byte enters the store; provider_serve runs the same request_artifact_binding as the validation backstop for pre-contract artifacts already on disk. The obligation roster itself is derived from the request COPRODUCT (codex review 44175), so 'admit against a weakened roster' is not merely unavailable at the door — it is unrepresentable in the request. FIRST NAMED CONSUMER TARGET: extdeps.realization.resolved_graph's disk-hit refusal (resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger) — v1 disk artifacts carry graph+source_indices only, so cross-process hits are refused today; under this contract that hand-rolled refuse arm becomes ProviderRefusedIncomplete { missing: [compile_clean_diagnostic_union] }, and it dissolves when the artifact FORMAT_VERSION persists the union and the artifact satisfies ResolveClosureRequest's derived required outputs."
+
+data materialization_provider_key_order_note: String = "Declared-input order is part of the key: declared_inputs_digest folds in list order, so the REQUESTER owes a canonical input order (the same duty artifact_key_hash discharges by fixed field order). Two requests that differ only by input permutation key apart — a loud miss, never a wrong hit — so the fail-open direction is closed; the canonical-order duty is on the constructor rows below, which fix an order by construction."
+
+type ArtifactOutputId = NonEmptyStr where brand("ArtifactOutputId")
+
+data output_parse_tree: ArtifactOutputId = "parse_tree"
+data output_parse_diagnostics: ArtifactOutputId = "parse_diagnostics"
+data output_typed_module_interface: ArtifactOutputId = "typed_module_interface"
+data output_typecheck_diagnostics: ArtifactOutputId = "typecheck_diagnostics"
+data output_resolved_graph: ArtifactOutputId = "resolved_graph"
+data output_source_indices: ArtifactOutputId = "source_indices"
+data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_diagnostic_union"
+
+type DeclaredInput {
+  ref: NonEmptyStr
+  digest: ContentHash
+}
+
+data materialization_provider_request_construction_note: String = "The request is a COPRODUCT, not a freely-filled record (codex review 44175, DESIGN section 5 correctness-by-construction): a record carrying both the kind discriminator and a caller-supplied required_outputs list left the illegal state WRITABLE — a resolve request with an empty output roster would let provider_admit accept an artifact lacking the compile-clean diagnostic union, and helper constructors that merely offer the right shape do not forbid the wrong one. Here the caller can only name a request FAMILY; kind, declared inputs, and required outputs are all DERIVED from the variant through request_fold, so an under-specified obligation roster cannot be expressed at all. A new family is a new variant, and the fold's totality makes every derivation a type error until it is answered."
+
+type ArtifactRequest
+  = ParseModuleRequest { source_digest: ContentHash, compiler: DeclaredInput }
+  | TypecheckModuleRequest {
+      source_digest: ContentHash,
+      direct_import_interfaces: List<InterfaceHash>,
+      compiler: DeclaredInput
+    }
+  | ResolveClosureRequest { closure_digest: ContentHash, compiler: DeclaredInput }
+
+fn request_fold<T>(
+  req: ArtifactRequest,
+  parse_module: fn(ContentHash, DeclaredInput) -> T,
+  typecheck_module: fn(ContentHash, List<InterfaceHash>, DeclaredInput) -> T,
+  resolve_closure: fn(ContentHash, DeclaredInput) -> T
+) -> T {
+  match req {
+    ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
+    TypecheckModuleRequest { source_digest: sd, direct_import_interfaces: ii, compiler: c } =>
+      typecheck_module(sd, ii, c)
+    ResolveClosureRequest { closure_digest: cd, compiler: c } => resolve_closure(cd, c)
+  }
+}
+
+fn request_kind(req: ArtifactRequest) -> ArtifactKindId {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => parse_source_artifact_kind,
+    typecheck_module: (sd, ii, c) => typed_module_artifact_kind,
+    resolve_closure: (cd, c) => resolved_graph_artifact_kind
+  )
+}
+
+fn request_subject_digest(req: ArtifactRequest) -> ContentHash {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => sd,
+    typecheck_module: (sd, ii, c) => sd,
+    resolve_closure: (cd, c) => cd
+  )
+}
+
+fn request_declared_inputs(req: ArtifactRequest) -> List<DeclaredInput> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [c],
+    typecheck_module: (sd, ii, c) =>
+      concat(ii |> map(h => DeclaredInput { ref: "direct_import_interface", digest: h }), [c]),
+    resolve_closure: (cd, c) => [c]
+  )
+}
+
+fn request_required_outputs(req: ArtifactRequest) -> List<ArtifactOutputId> {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => [output_parse_tree, output_parse_diagnostics],
+    typecheck_module: (sd, ii, c) => [output_typed_module_interface, output_typecheck_diagnostics],
+    resolve_closure: (cd, c) =>
+      [output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union]
+  )
+}
+
+fn declared_input_digest(input: DeclaredInput) -> ContentHash {
+  content_hash_combine(left: content_hash_atom(value: input.ref), right: input.digest)
+}
+
+fn declared_inputs_digest(inputs: List<DeclaredInput>) -> ContentHash {
+  inputs |> fold(
+    init: content_hash_atom(value: "materialization_provider.no_inputs"),
+    f: (acc, i) => content_hash_combine(left: acc, right: declared_input_digest(input: i))
+  )
+}
+
+data materialization_provider_key_authority_note: String = "WHICH AUTHORITY EACH FAMILY'S KEY COMES FROM (operator review, blocker 1 — a section 3 nickname violation in its exact form). The typed-module key already had a single authority: std.interface_summary's module_key (source hash + direct-import interface hashes) wrapped by typed_module_key (+ compiler identity), with its own RED controls in v2.test.claim.interface_summary.typed_module_key_test proving each term load-bearing. The earlier shape here reconstructed those same ingredients as an arbitrary ordered List<DeclaredInput> and hashed the LIST, which forked typed-module identity into two live definitions and re-homed the canonical direct-import ordering duty onto the caller — and nothing proved the two agreed. Generalizing the cited FACTS is not enough while both definitions are live. So the typecheck arm now CONSUMES the existing authority verbatim: TypecheckModuleRequest carries List<InterfaceHash>, the branded type module_key already takes, and its key IS typed_module_key(module_key(...)). The ordering duty is not a new one — it is the one that authority already owns, discharged by the same fold. Parse and resolve-closure have no prior key authority, so they keep the local tagged derivation, and the tags differ from typed-module-compiler, so no two families can collide on a shared subject. request_declared_inputs survives as a REPORTING projection over every family's reads, not as the typecheck key's ingredient list — one authority per fact, and the equivalence is witnessed by execution rather than asserted."
+
+fn local_request_key(req: ArtifactRequest) -> ContentHash {
+  content_hash_tagged(
+    tag: "materialization_provider.request",
+    payload: content_hash_combine(
+      left: content_hash_atom(value: request_kind(req: req)),
+      right: content_hash_combine(
+        left: request_subject_digest(req: req),
+        right: declared_inputs_digest(inputs: request_declared_inputs(req: req))
+      )
+    )
+  )
+}
+
+fn request_key(req: ArtifactRequest) -> ContentHash {
+  request_fold(
+    req: req,
+    parse_module: (sd, c) => local_request_key(req: req),
+    typecheck_module: (sd, ii, c) =>
+      typed_module_key(
+        interface_key: module_key(source_hash: sd, direct_import_interface_hashes: ii),
+        compiler_identity: c.digest
+      ),
+    resolve_closure: (cd, c) => local_request_key(req: req)
+  )
+}
+
+data materialization_provider_payload_binding_note: String = "Why a carried output is a DIGESTED PART and not a label (codex review 44278): the earlier shape carried an artifact's completeness as a caller-authored List<ArtifactOutputId> sitting BESIDE a caller-authored content_digest, with no relation between them — so an artifact could list every required output, including the compile-clean diagnostic union, while its bytes contained none of them, and request_artifact_binding would answer BindingOk. That is the specification-without-execution trap section 5 names: the completeness rule was asserted through labels rather than represented. Note that a validation pass cannot close it either — this contract never sees bytes, so a check 'do the bytes contain this output' is not expressible here, and a check that is not expressible is not a wall. The construction fix is to make the label ACCOUNTABLE TO THE DIGEST THE CONTRACT ALREADY VERIFIES: a CarriedOutput is (id, digest) — the part's own content hash — and the artifact's content digest is no longer a field at all but a DERIVATION, carried_outputs_digest, folded over those parts. So the roster is not beside the digest, it IS the digest's preimage. Adding a phantom output label to satisfy completeness necessarily changes the derived digest; dropping a real part changes it too; and the door already compares that derived digest against observed_digest, the read-back the realization computes from the stored bytes. A forged roster therefore lands on BindingWrongContent rather than BindingOk — the forgery is no longer self-consistent, which is exactly what it was before. What this DOES still rest on is the ordinary content-address boundary: observed_digest must be computed from the stored parts by this same derivation, which is the transport's obligation and the same trust boundary any CAS has (it is also why the digest is TAGGED and order-fixed — see the key-order note). It does not rest on the caller being honest, which is the property review 44278 found missing. The SAME construction carries the size: a part declares its own bytes, artifact_bytes is carried_outputs_bytes folded over the parts (grounded on std.measure measure_add, not on raw counts), and MaterializedArtifact has no size field either — so understating the size is not a free move, because the only way to shrink the fold is to shrink or alter the parts, which changes the digest and is caught by the same read-back comparison. THE SIZE MUST BE IN THE AUTHENTICATED PREIMAGE, NOT MERELY FOLDED (codex review 44300): an earlier version hashed only (id, digest) per part while artifact_bytes folded o.bytes, so the size was derived but UNAUTHENTICATED — a caller could keep every part digest identical and understate only the byte counts, the derived content digest would still match the read-back, and the understated size would be trusted by the budget check and by store_put. Folding a value and authenticating it are different properties and only the second is a wall; the fix is that carried_output_digest now hashes (id, digest, bytes), so changing a byte count changes the content digest and lands on the wrong-content refusal. The lesson generalizes past this field: for source (2) of the derivation invariant, EVERY correctness-relevant component of a part must be inside the preimage, or it is derived-but-forgeable. That is why the budget wall in provider_admit_bound is now a wall against any caller rather than an honest one; see the derivation invariant at the head of this module for the rule this is the fourth instance of."
+
+type CarriedOutput {
+  id: ArtifactOutputId
+  digest: ContentHash
+  bytes: ByteSize
+}
+
+fn carried_output_digest(o: CarriedOutput) -> ContentHash {
+  content_hash_combine(
+    left: content_hash_combine(left: content_hash_atom(value: o.id), right: o.digest),
+    right: content_hash_atom(value: concat("bytes:", to_string(measure_count(m: o.bytes))))
+  )
+}
+
+fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
+  content_hash_tagged(
+    tag: "materialization_provider.carried_outputs",
+    payload: outputs |> fold(
+      init: content_hash_atom(value: "materialization_provider.no_outputs"),
+      f: (acc, o) => content_hash_combine(left: acc, right: carried_output_digest(o: o))
+    )
+  )
+}
+
+data materialization_provider_artifact_construction_note: String = "The artifact is a COPRODUCT WITH REQUIRED PER-KIND PARTS (operator review, blocker 2), and this is a DIFFERENT fix from the digest-preimage work above — they are complementary. The preimage construction closed FORGERY: a producer can no longer CLAIM an output it does not carry, because the roster is the digest's preimage. What stayed open was OMISSION: while carried_outputs was a plain list, a resolved-graph artifact that simply LACKED the compile-clean diagnostic union was still WRITABLE — it merely got refused at the door. Section 5 says making the state unwritable beats catching it, which is the same argument this module already used on the request side when required_outputs became a coproduct (review 44175); applying it there and not here was inconsistent. So a complete artifact names its parts as REQUIRED FIELDS: ResolvedGraphArtifact cannot be constructed without its union, TypedModuleArtifact cannot drop its diagnostics, ParsedArtifact cannot drop its parse diagnostics. Note what did NOT change: a part is still (digest, bytes), never a payload — this contract still holds no bytes, so per-kind fields cost it nothing it was not already holding. Two further consequences follow from the derivation invariant. First, the part's ID is no longer carried: an ArtifactPart is (digest, bytes) and its id comes from its POSITION in the variant, so a mislabelled part is unwritable too — one more caller-asserted fact removed rather than checked. Second, v1's incomplete disk artifacts still have to be REPRESENTABLE, because refusing them is this contract's first named consumer target; they decode to the explicit LegacyIncompleteArtifact variant, which is the only shape carrying a free List<CarriedOutput>. So incompleteness is a NAMED VARIANT rather than a missing list element, artifact_completeness stays live (it is what LegacyIncompleteArtifact is measured by, and it is reached), and the day the resolved_graph FORMAT_VERSION persists the union, that variant is what deletes."
+
+type ArtifactPart {
+  digest: ContentHash
+  bytes: ByteSize
+}
+
+fn positioned_part(id: ArtifactOutputId, part: ArtifactPart) -> CarriedOutput {
+  CarriedOutput { id: id, digest: part.digest, bytes: part.bytes }
+}
+
+type MaterializedArtifact
+  = ParsedArtifact {
+      request_key: ContentHash,
+      parse_tree: ArtifactPart,
+      parse_diagnostics: ArtifactPart
+    }
+  | TypedModuleArtifact {
+      request_key: ContentHash,
+      typed_module_interface: ArtifactPart,
+      typecheck_diagnostics: ArtifactPart
+    }
+  | ResolvedGraphArtifact {
+      request_key: ContentHash,
+      resolved_graph: ArtifactPart,
+      source_indices: ArtifactPart,
+      compile_clean_diagnostic_union: ArtifactPart
+    }
+  | LegacyIncompleteArtifact {
+      kind: ArtifactKindId,
+      request_key: ContentHash,
+      carried_outputs: List<CarriedOutput>
+    }
+
+fn artifact_fold<T>(
+  artifact: MaterializedArtifact,
+  parsed: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  typed_module: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
+  resolved_graph: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart) -> T,
+  legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
+) -> T {
+  match artifact {
+    ParsedArtifact { request_key: k, parse_tree: t, parse_diagnostics: d } => parsed(k, t, d)
+    TypedModuleArtifact { request_key: k, typed_module_interface: i, typecheck_diagnostics: d } =>
+      typed_module(k, i, d)
+    ResolvedGraphArtifact {
+      request_key: k,
+      resolved_graph: g,
+      source_indices: s,
+      compile_clean_diagnostic_union: u
+    } => resolved_graph(k, g, s, u)
+    LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
+      legacy_incomplete(kd, k, cs)
+  }
+}
+
+fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => parse_source_artifact_kind,
+    typed_module: (k, i, d) => typed_module_artifact_kind,
+    resolved_graph: (k, g, s, u) => resolved_graph_artifact_kind,
+    legacy_incomplete: (kd, k, cs) => kd
+  )
+}
+
+fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => k,
+    typed_module: (k, i, d) => k,
+    resolved_graph: (k, g, s, u) => k,
+    legacy_incomplete: (kd, k, cs) => k
+  )
+}
+
+fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutput> {
+  artifact_fold(
+    artifact: artifact,
+    parsed: (k, t, d) => [
+      positioned_part(id: output_parse_tree, part: t),
+      positioned_part(id: output_parse_diagnostics, part: d)
+    ],
+    typed_module: (k, i, d) => [
+      positioned_part(id: output_typed_module_interface, part: i),
+      positioned_part(id: output_typecheck_diagnostics, part: d)
+    ],
+    resolved_graph: (k, g, s, u) => [
+      positioned_part(id: output_resolved_graph, part: g),
+      positioned_part(id: output_source_indices, part: s),
+      positioned_part(id: output_compile_clean_diagnostic_union, part: u)
+    ],
+    legacy_incomplete: (kd, k, cs) => cs
+  )
+}
+
+fn artifact_content_digest(artifact: MaterializedArtifact) -> ContentHash {
+  carried_outputs_digest(outputs: artifact_carried_outputs(artifact: artifact))
+}
+
+fn carried_outputs_bytes(outputs: List<CarriedOutput>) -> ByteSize {
+  outputs |> fold(init: byte_size(count: 0), f: (acc, o) => measure_add(a: acc, b: o.bytes))
+}
+
+fn artifact_bytes(artifact: MaterializedArtifact) -> ByteSize {
+  carried_outputs_bytes(outputs: artifact_carried_outputs(artifact: artifact))
+}
+
+type ArtifactCompleteness
+  = ArtifactComplete
+  | ArtifactMissingOutputs { missing: List<ArtifactOutputId> }
+
+fn output_list_contains(xs: List<ArtifactOutputId>, wanted: ArtifactOutputId) -> Bool {
+  xs |> fold(init: false, f: (acc, x) => acc || (x == wanted))
+}
+
+fn carried_output_ids(carried: List<CarriedOutput>) -> List<ArtifactOutputId> {
+  carried |> map(o => o.id)
+}
+
+fn carried_outputs_contain(carried: List<CarriedOutput>, wanted: ArtifactOutputId) -> Bool {
+  output_list_contains(xs: carried_output_ids(carried: carried), wanted: wanted)
+}
+
+fn artifact_completeness(required: List<ArtifactOutputId>, carried: List<CarriedOutput>) -> ArtifactCompleteness {
+  let missing = required |> filter(o => !carried_outputs_contain(carried: carried, wanted: o))
+  if missing.count() == 0 {
+    ArtifactComplete
+  } else {
+    ArtifactMissingOutputs { missing: missing }
+  }
+}
+
+data materialization_provider_binding_note: String = "request_artifact_binding is the ONE authority for the request-to-artifact obligations, consumed by BOTH doors (serve and admit) so they cannot drift apart: kind must match (blocker 2 — a matching key with a mismatched kind is a malformed pre-contract artifact and exactly what the validation backstop exists to catch), the artifact's recorded request_key must equal the request's derived key, the read-back digest must equal the artifact's DERIVED content digest (carried_outputs_digest — the payload-binding note explains why that derivation, not a recorded field, is what makes the next check load-bearing), and the carried outputs must cover the request's required outputs. Checks run cheapest-semantic first; the first failure is the verdict, typed and located."
+
+type RequestArtifactBinding
+  = BindingOk
+  | BindingKindMismatch { requested: ArtifactKindId, found: ArtifactKindId }
+  | BindingWrongArtifact { key: ContentHash, found_key: ContentHash }
+  | BindingWrongContent { recorded: ContentHash, observed: ContentHash }
+  | BindingIncomplete { missing: List<ArtifactOutputId> }
+
+fn request_artifact_binding(
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> RequestArtifactBinding {
+  let key = request_key(req: req)
+  let kind = request_kind(req: req)
+  if (artifact_kind(artifact: artifact) == kind) == false {
+    BindingKindMismatch { requested: kind, found: artifact_kind(artifact: artifact) }
+  } else if (artifact_request_key(artifact: artifact) == key) == false {
+    BindingWrongArtifact { key: key, found_key: artifact_request_key(artifact: artifact) }
+  } else if (observed_digest == artifact_content_digest(artifact: artifact)) == false {
+    BindingWrongContent { recorded: artifact_content_digest(artifact: artifact), observed: observed_digest }
+  } else {
+    match artifact_completeness(
+      required: request_required_outputs(req: req),
+      carried: artifact_carried_outputs(artifact: artifact)
+    ) {
+      ArtifactComplete => BindingOk
+      ArtifactMissingOutputs { missing: m } => BindingIncomplete { missing: m }
+    }
+  }
+}
+
+data materialization_provider_identity_derivation_note: String = "Identity is DERIVED from the comparison the contract already performs, never accepted from the caller (codex review 44265). The earlier shape took a ComputationIdentity parameter on both doors, which meant any consumer could pass StructurallyIdentical and be served without qualification — the enum arm carried no binding to the request, the artifact, or the computations being compared, so the module's claim that identity comes from the materialize spine was prose the API did not enforce. Note also what CANNOT fix this in .dag: a 'qualified identity token' type would not help, because records and variants are both freely constructible here, so a token is exactly as forgeable as the enum arm (the same lesson request_artifact_binding learned in review 44175). The enforceable move is therefore derivation, not custody: binding_identity_grade reads the RequestArtifactBinding — which is computed inside the door from the request and the probed artifact — and returns StructurallyIdentical only when kind, request key, content digest, and completeness all agree. Every other binding outcome derives IdentityUnknown with a LOCATED cause naming the specific disagreement, so the bottom of the lattice is reached by evidence rather than by assertion. Widening to NormalizedIdentical or ExtensionallyIdentical does not arrive as a caller-passed grade either: those grades justify a DIFFERENT KEY (a normalizer-canonicalized key, or a declared-bound equivalence class), so the spine's qualifier widens sharing by changing what request_key computes, and this derivation follows it for free. That is why there is no identity parameter and no identity-refusal arm to bypass."
+
+fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
+  match b {
+    BindingOk => StructurallyIdentical
+    BindingKindMismatch { requested: _, found: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
+    BindingWrongArtifact { key: _, found_key: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } }
+    BindingWrongContent { recorded: _, observed: _ } =>
+      IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
+    BindingIncomplete { missing: _ } =>
+      IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+  }
+}
+
+type ProviderProbe
+  = ProbeAbsent
+  | ProbeFound { artifact: MaterializedArtifact, observed_digest: ContentHash }
+
+type ProviderLookup
+  = ProviderHit { artifact: MaterializedArtifact, identity: ComputationIdentity }
+  | ProviderMiss { key: ContentHash }
+  | ProviderRefusedKindMismatch { key: ContentHash, requested: ArtifactKindId, found: ArtifactKindId }
+  | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
+  | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
+  | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
+
+fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
+  let key = request_key(req: req)
+  match probe {
+    ProbeAbsent => ProviderMiss { key: key }
+    ProbeFound { artifact: a, observed_digest: obs } =>
+      match request_artifact_binding(req: req, artifact: a, observed_digest: obs) {
+        BindingOk =>
+          ProviderHit {
+            artifact: a,
+            identity: binding_identity_grade(b: request_artifact_binding(req: req, artifact: a, observed_digest: obs))
+          }
+        BindingKindMismatch { requested: rk, found: fk } =>
+          ProviderRefusedKindMismatch { key: key, requested: rk, found: fk }
+        BindingWrongArtifact { key: k, found_key: fk } =>
+          ProviderRefusedWrongArtifact { key: k, found_key: fk }
+        BindingWrongContent { recorded: r, observed: o } =>
+          ProviderRefusedWrongContent { key: key, recorded: r, observed: o }
+        BindingIncomplete { missing: m } =>
+          ProviderRefusedIncomplete { key: key, missing: m }
+      }
+  }
+}
+
+type ProviderAdmission
+  = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
+  | ProviderRefusedKindMismatchWrite { requested: ArtifactKindId, found: ArtifactKindId }
+  | ProviderRefusedWrongArtifactWrite { key: ContentHash, found_key: ContentHash }
+  | ProviderRefusedWrongContentWrite { recorded: ContentHash, observed: ContentHash }
+  | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
+  | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
+
+data materialization_provider_fit_authority_note: String = "The budget fit test has ONE authority, and it is store_put's (PR 7406, merged 2026-07-29). This function used to re-implement it — compare artifact bytes against store.budget, and only then call store_put — which was a second representation of a rule the store now carries by construction: store_put runs the fit test BEFORE any eviction and answers StorePutDidNotFit, so the destructive oversized path is unwritable there rather than guarded here. Keeping the local comparison would have made ProviderBudgetExhausted reachable by two different judgements that could drift apart, and would have left store_put's own refusal arm unreachable from this door — an inert arm, which section 5 counts as a lie. So the check is DELETED and ProviderBudgetExhausted is now DERIVED from store_put's refusal, carrying the needed/budget the store itself reported."
+
+fn provider_admit_bound(store: ArtifactStore, artifact: MaterializedArtifact) -> ProviderAdmission {
+  store_put_fold(
+    outcome: store_put(
+      store: store,
+      key: artifact_request_key(artifact: artifact),
+      artifact_bytes: artifact_bytes(artifact: artifact)
+    ),
+    admitted: (packed, evicted) => ProviderAdmitted { store: packed, evicted: evicted },
+    did_not_fit: (needed, budget) => ProviderBudgetExhausted { needed: needed, budget: budget }
+  )
+}
+
+fn provider_admit(
+  store: ArtifactStore,
+  req: ArtifactRequest,
+  artifact: MaterializedArtifact,
+  observed_digest: ContentHash
+) -> ProviderAdmission {
+  match request_artifact_binding(req: req, artifact: artifact, observed_digest: observed_digest) {
+        BindingKindMismatch { requested: rk, found: fk } =>
+          ProviderRefusedKindMismatchWrite { requested: rk, found: fk }
+        BindingWrongArtifact { key: k, found_key: fk } =>
+          ProviderRefusedWrongArtifactWrite { key: k, found_key: fk }
+        BindingWrongContent { recorded: r, observed: o } =>
+          ProviderRefusedWrongContentWrite { recorded: r, observed: o }
+        BindingIncomplete { missing: m } => ProviderRefusedIncompleteWrite { missing: m }
+        BindingOk => provider_admit_bound(store: store, artifact: artifact)
+  }
+}
+
+data materialization_provider_request_family_note: String = "Each variant fixes its family's declared-input shape and required-output roster BY CONSTRUCTION, and the derivations above are the only readers: parse = source content + compiler identity, requiring the parse tree AND its diagnostics; typecheck = source content + direct-import interface digests + compiler identity (the typed_module_key facts, cited in extdeps.realization.reconcile_in_process), requiring the interface AND its diagnostics; resolve-closure = closure content + compiler identity (the resolved_graph_cache subject_digest facts, cited in extdeps.realization.resolved_graph), requiring graph, source indices, AND the compile-clean diagnostic union. Declared-input ORDER is fixed by request_declared_inputs, so the canonical-order duty request_key depends on is discharged by the fold rather than owed to the caller. Separate constructor functions were DELETED with the record shape (codex review 44175): a helper beside a freely-constructible record is an offer, not a wall, and a second way to spell a request is the redundancy section 2 forbids. A request family this module does not yet name lands as a new VARIANT — every derivation then fails to compile until it is answered — never a new outcome vocabulary."
+
+fn compiler_identity_input(digest: ContentHash) -> DeclaredInput {
+  DeclaredInput { ref: "compiler_binary_identity", digest: digest }
+}
+
+data materialization_provider_reader_predicate_contract: Disposition = Terminal {
+  reason: "One canonical fold per outcome coproduct is the total-match authority (codex rework, review 44158): lookup_fold and admission_fold are the ONLY matches over ProviderLookup / ProviderAdmission, and completeness_missing is the single projection over ArtifactCompleteness. Every predicate and projection below is a DERIVATION of its fold and contains no match of its own, so a new outcome variant is a type error at exactly one site per coproduct, never a sweep over a hand-rolled selector family. Handler returns are a bare type variable by design — the seed types fn-typed parameters returning bare vars or concrete types, not generic-applied enums (realization_reconcile substrate-limit receipt). There is deliberately NO admission_store(admission, fallback) projection: it answered every refusal arm with a caller-supplied store, which is the absorbing fallback section 5 forbids — it erases the stopped line and lets processing continue against a plausible substitute. A consumer that needs the post-admission store folds the ProviderAdmission and handles refusal explicitly; the store exists on exactly one arm, so the fold makes that unavoidable. Discriminating corpus: dag/test/claim/materialization_provider_witness_test.dag."
+}
+
+data no_output_ids: List<ArtifactOutputId> = []
+data no_evicted_keys: List<ContentHash> = []
+
+fn lookup_fold<T>(
+  l: ProviderLookup,
+  hit: fn(MaterializedArtifact, ComputationIdentity) -> T,
+  miss: fn(ContentHash) -> T,
+  kind_mismatch: fn(ContentHash, ArtifactKindId, ArtifactKindId) -> T,
+  wrong_artifact: fn(ContentHash, ContentHash) -> T,
+  wrong_content: fn(ContentHash, ContentHash, ContentHash) -> T,
+  incomplete: fn(ContentHash, List<ArtifactOutputId>) -> T
+) -> T {
+  match l {
+    ProviderHit { artifact: a, identity: i } => hit(a, i)
+    ProviderMiss { key: k } => miss(k)
+    ProviderRefusedKindMismatch { key: k, requested: r, found: f } => kind_mismatch(k, r, f)
+    ProviderRefusedWrongArtifact { key: k, found_key: fk } => wrong_artifact(k, fk)
+    ProviderRefusedWrongContent { key: k, recorded: r, observed: o } => wrong_content(k, r, o)
+    ProviderRefusedIncomplete { key: k, missing: m } => incomplete(k, m)
+  }
+}
+
+fn lookup_is_hit(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => true,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_is_miss(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => true,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_is_refused_kind_mismatch(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => true,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_is_refused_wrong_artifact(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => true,
+    wrong_content: (k, r, o) => false,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_is_refused_wrong_content(l: ProviderLookup) -> Bool {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => false,
+    miss: k => false,
+    kind_mismatch: (k, r, f) => false,
+    wrong_artifact: (k, fk) => false,
+    wrong_content: (k, r, o) => true,
+    incomplete: (k, m) => false
+  )
+}
+
+fn lookup_served_identity(l: ProviderLookup) -> ComputationIdentity {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => i,
+    miss: k => IdentityUnknown { cause: MissingEnforcement { detail: "no artifact was probed at this key" } },
+    kind_mismatch: (k, r, f) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact kind disagrees with the request kind" } },
+    wrong_artifact: (k, fk) => IdentityUnknown { cause: MissingEnforcement { detail: "artifact was keyed for a different request" } },
+    wrong_content: (k, r, o) => IdentityUnknown { cause: MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } },
+    incomplete: (k, m) => IdentityUnknown { cause: MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+  )
+}
+
+fn lookup_refused_incomplete_missing(l: ProviderLookup) -> List<ArtifactOutputId> {
+  lookup_fold(
+    l: l,
+    hit: (a, i) => no_output_ids,
+    miss: k => no_output_ids,
+    kind_mismatch: (k, r, f) => no_output_ids,
+    wrong_artifact: (k, fk) => no_output_ids,
+    wrong_content: (k, r, o) => no_output_ids,
+    incomplete: (k, m) => m
+  )
+}
+
+
+
+fn admission_fold<T>(
+  a: ProviderAdmission,
+  admitted: fn(ArtifactStore, List<ContentHash>) -> T,
+  kind_mismatch_write: fn(ArtifactKindId, ArtifactKindId) -> T,
+  wrong_artifact_write: fn(ContentHash, ContentHash) -> T,
+  wrong_content_write: fn(ContentHash, ContentHash) -> T,
+  incomplete_write: fn(List<ArtifactOutputId>) -> T,
+  budget_exhausted: fn(ByteSize, ByteSize) -> T
+) -> T {
+  match a {
+    ProviderAdmitted { store: s, evicted: e } => admitted(s, e)
+    ProviderRefusedKindMismatchWrite { requested: r, found: f } => kind_mismatch_write(r, f)
+    ProviderRefusedWrongArtifactWrite { key: k, found_key: fk } => wrong_artifact_write(k, fk)
+    ProviderRefusedWrongContentWrite { recorded: r, observed: o } => wrong_content_write(r, o)
+    ProviderRefusedIncompleteWrite { missing: m } => incomplete_write(m)
+    ProviderBudgetExhausted { needed: n, budget: b } => budget_exhausted(n, b)
+  }
+}
+
+fn admission_is_admitted(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => true,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_evicted_keys(a: ProviderAdmission) -> List<ContentHash> {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => e,
+    kind_mismatch_write: (r, f) => no_evicted_keys,
+    wrong_artifact_write: (k, fk) => no_evicted_keys,
+    wrong_content_write: (r, o) => no_evicted_keys,
+    incomplete_write: m => no_evicted_keys,
+    budget_exhausted: (n, b) => no_evicted_keys
+  )
+}
+
+fn admission_is_budget_exhausted(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => true
+  )
+}
+
+fn admission_refused_incomplete_missing(a: ProviderAdmission) -> List<ArtifactOutputId> {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => no_output_ids,
+    kind_mismatch_write: (r, f) => no_output_ids,
+    wrong_artifact_write: (k, fk) => no_output_ids,
+    wrong_content_write: (r, o) => no_output_ids,
+    incomplete_write: m => m,
+    budget_exhausted: (n, b) => no_output_ids
+  )
+}
+
+fn admission_is_refused_kind_mismatch_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => true,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_wrong_artifact_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => true,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_wrong_content_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => true,
+    incomplete_write: m => false,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+fn admission_is_refused_incomplete_write(a: ProviderAdmission) -> Bool {
+  admission_fold(
+    a: a,
+    admitted: (s, e) => false,
+    kind_mismatch_write: (r, f) => false,
+    wrong_artifact_write: (k, fk) => false,
+    wrong_content_write: (r, o) => false,
+    incomplete_write: m => true,
+    budget_exhausted: (n, b) => false
+  )
+}
+
+
+
+fn completeness_missing(c: ArtifactCompleteness) -> List<ArtifactOutputId> {
+  match c {
+    ArtifactComplete => no_output_ids
+    ArtifactMissingOutputs { missing: m } => m
+  }
+}
+
+fn completeness_is_complete(c: ArtifactCompleteness) -> Bool {
+  completeness_missing(c: c).count() == 0
+}

@@ -1,0 +1,101 @@
+module gunbc.materialization_provider_targets
+
+import std.types { Bool, Int, List, String }
+import std.cache_identity { CacheInterfaceId }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.realization.reconcile_in_process { parse_cache_id, typed_module_cache_id }
+import extdeps.realization.resolved_graph { resolved_graph_cache_id }
+import extdeps.realization.compile_stage_memo { compile_stage_memo_id }
+import extdeps.realization.parse_table_memo { parse_table_memo_id }
+import extdeps.realization.eval_memo { eval_memo_id }
+import extdeps.realization.native_artifact_cache { native_artifact_cache_id }
+
+data materialization_provider_targets_note: String = "The consumer-target frontier of std.materialization_provider (parent mandate 6B, model-only; homed in gunbc/ per operator rework ruling PR 7385 — this roster is INTERNAL planning data about our own tree, so it carries no ExternalAuthority anchor and does not live in extdeps): each row names an EXISTING cited cache row (by its CacheInterfaceId — grounding, never a second description of the cache) that today serves lookups through an ad-hoc carrier and later consumes the contract's provider_serve / provider_admit instead. Every row carries TYPED binds (blocker 4): cache_row points at the cited catalog-facts declaration that describes the cache, and consumer_seam points at the declaration governing the consumer surface that retires on the flip; prose reason/dissolve_on stay beside the binds as context, but the binds are the machine-followable edges. The rows are a DeclaredFrontier (registered in gunbc.roster_registry): countable, prioritizable; a consumer flip retires its row, and the roster deletes when empty. This module declares TARGETS only — no consumer flips, no Rust, per the mandate."
+
+data materialization_provider_non_target_note: String = "DECLARED EXCLUSION, so the roster's coverage claim is checkable rather than merely asserted: extdeps.realization.artifact_store_fs is named in the 6B mandate's grounding list but is deliberately NOT a row here, and the reason is directional. Every row below is a cache that will one day CONSUME the contract; artifact_store_fs sits UNDER it — it is the filesystem transport handler bound to std.artifact_store's persistent tier (put/get with typed grant refusals), and std.materialization_provider already consumes that store directly via store_put. It also has no CacheInterfaceId, because it describes a transport rather than a cache system, so it cannot inhabit ProviderContractTarget's cache field at all. Its scope and remaining gaps are tracked on that module and deliberately not restated here — an earlier version of this sentence copied a claim from that module's prose that its own functions refuted (operator-flagged on PR 7385), which is why this note now carries a pointer instead of a duplicate. If a future rung gives the fs transport its own cited catalog row, it enrolls below like any other."
+
+fn target_decl(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path,
+    decl_name: decl_name,
+    field: WholeDeclaration
+  }
+}
+
+type ProviderContractTarget {
+  cache: CacheInterfaceId
+  cache_row: DeclarationRef
+  consumer_seam: DeclarationRef
+  reason: String
+  dissolve_on: String
+}
+
+data materialization_provider_targets: List<ProviderContractTarget> = [
+  ProviderContractTarget {
+    cache: parse_cache_id,
+    cache_row: target_decl(module_path: "extdeps.realization.reconcile_in_process", decl_name: "parse_cache_facts"),
+    consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
+    reason: "cli_run MultiEntryIndex.parse_cache keys on file path, not content — the standing cache-impurity witness (reconcile_in_process Phase 2c); ParseModuleRequest keys on source content + compiler identity. The host seam is hollowing-plan area 2.6 (typed module cache / memo)",
+    dissolve_on: "parse lookups route through provider_serve with ParseModuleRequest and the path-keyed map retires"
+  },
+  ProviderContractTarget {
+    cache: typed_module_cache_id,
+    cache_row: target_decl(module_path: "extdeps.realization.reconcile_in_process", decl_name: "typed_module_cache_facts"),
+    consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
+    reason: "cli_run typed-module memo already keys on the typed_module_key facts this contract's TypecheckModuleRequest derives; the carrier is still an exposed in-process map (hollowing-plan area 2.6)",
+    dissolve_on: "typecheck lookups route through provider_serve with TypecheckModuleRequest and the map carrier retires"
+  },
+  ProviderContractTarget {
+    cache: resolved_graph_cache_id,
+    cache_row: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_facts"),
+    consumer_seam: target_decl(module_path: "extdeps.realization.resolved_graph", decl_name: "resolved_graph_cache_compile_clean_diagnostic_union_dissolve_trigger"),
+    reason: "the FIRST NAMED CONSUMER TARGET: the disk-hit refuse arm (artifacts carry graph+source_indices without the compile-clean diagnostic union) is this contract's ProviderRefusedIncomplete, hand-rolled — the consumer_seam bind IS that arm's own dissolve trigger, not a restatement",
+    dissolve_on: "resolved_graph_cache FORMAT_VERSION persists the diagnostic union, ResolveClosureRequest's derived required outputs are satisfiable, and the hand refuse arm deletes"
+  },
+  ProviderContractTarget {
+    cache: compile_stage_memo_id,
+    cache_row: target_decl(module_path: "extdeps.realization.compile_stage_memo", decl_name: "compile_stage_memo_facts"),
+    consumer_seam: target_decl(module_path: "v2.std.staging", decl_name: "cached_stage"),
+    reason: "v2 compile_ingest_staging cached_stage is content-addressed done right but answers through its own lookup shape rather than the contract's typed outcomes",
+    dissolve_on: "cached_stage lookups project through provider_serve outcomes (the DESIGN section 2 ParseTable/cached_stage grounding lane)"
+  },
+  ProviderContractTarget {
+    cache: parse_table_memo_id,
+    cache_row: target_decl(module_path: "extdeps.realization.parse_table_memo", decl_name: "parse_table_memo_facts"),
+    consumer_seam: target_decl(module_path: "v2.compiler.parse", decl_name: "ParseTable"),
+    reason: "the v2 ParseTable memo is the standing DESIGN section 2 hand-rolled-cache debt; its lookup answers are untyped hits/misses on an in-process map",
+    dissolve_on: "ParseTable grounds on the Realization carrier and its lookups adopt the contract's typed outcomes"
+  },
+  ProviderContractTarget {
+    cache: eval_memo_id,
+    cache_row: target_decl(module_path: "extdeps.realization.eval_memo", decl_name: "eval_memo_facts"),
+    consumer_seam: target_decl(module_path: "gunbc.plans.cli_run_hollowing_plan", decl_name: "cli_run_hollowing_plan"),
+    reason: "the interpreter eval-frame memo serves verified hits with its own ad-hoc verify-on-serve arm — the contract's wrong-content refusal, hand-rolled; the host seam is the interpreter builtin bridge (hollowing-plan area 2.13)",
+    dissolve_on: "eval-memo serves through provider_serve so the verify-on-serve arm is the shared ProviderRefusedWrongContent, not a private one"
+  },
+  ProviderContractTarget {
+    cache: native_artifact_cache_id,
+    cache_row: target_decl(module_path: "extdeps.realization.native_artifact_cache", decl_name: "native_artifact_cache_facts"),
+    consumer_seam: target_decl(module_path: "std.emit_on_demand", decl_name: "emit_on_demand_lookup"),
+    reason: "the emit-on-demand warm tier trusts its .native_ready marker without content re-verification on read (declared false in its cited row) — a wrong-content refusal the contract makes expressible; emit_on_demand_lookup is the modeled lookup that reroutes",
+    dissolve_on: "warm serves route through provider_serve with a read-back digest, upgrading content_verified_on_read to true on the cited row"
+  },
+]
+
+fn materialization_provider_target_count() -> Int {
+  materialization_provider_targets |> count()
+}
+
+fn materialization_provider_targets_contain(id: CacheInterfaceId) -> Bool {
+  materialization_provider_targets |> fold(init: false, f: (acc, t) => acc || (t.cache == id))
+}
+
+fn materialization_provider_targets_all_bound() -> Bool {
+  materialization_provider_targets |> fold(init: true, f: (acc, t) =>
+    acc
+      && !(t.cache_row.module_path == "")
+      && !(t.cache_row.decl_name == "")
+      && !(t.consumer_seam.module_path == "")
+      && !(t.consumer_seam.decl_name == "")
+  )
+}
