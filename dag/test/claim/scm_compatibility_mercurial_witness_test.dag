@@ -5,9 +5,11 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.mercurial {
   MercurialReadBackObservation,
   MercurialInaccessibleProjection,
+  MercurialPublishingServer,
 }
 import test.claim.mercurial_upstream_model_witness {
   mercurial_r0_fixture_projection,
+  projection_with_publishing,
 }
 import gunbc.scm_compatibility.mercurial {
   MercurialCompatibilityBindingOutcome,
@@ -153,5 +155,37 @@ test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
   ) {
     MercurialCompatibilityBindingRefused { cause: _ } => true
     MercurialCompatibilityBound { receipt: _ } => false
+  }
+}
+
+test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Bool {
+  let other_projection = projection_with_publishing(
+    projection: mercurial_r0_fixture_projection(),
+    publishing: MercurialPublishingServer,
+  )
+  match mercurial_fixture_binding() {
+    MercurialCompatibilityBindingRefused { cause: _ } => false
+    MercurialCompatibilityBound { receipt: expected } =>
+      match mercurial_compatibility_bind(
+        projection: other_projection,
+        target: "default",
+        read_back: MercurialReadBackObservation {
+          projection: other_projection,
+          observed_by: "mercurial-r1-independent-fixture",
+        },
+      ) {
+        MercurialCompatibilityBindingRefused { cause: _ } => false
+        MercurialCompatibilityBound { receipt: other_state } => {
+          let expected_projection = mercurial_compatibility_projection_receipt(
+            receipt: expected,
+          )
+          let other_state_projection = mercurial_compatibility_projection_receipt(
+            receipt: other_state,
+          )
+          expected_projection.generation_evidence == other_state_projection.generation_evidence
+            && expected_projection.read_back != other_state_projection.read_back
+            && expected_projection.projection != other_state_projection.projection
+        }
+      }
   }
 }

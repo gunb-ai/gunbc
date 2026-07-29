@@ -4,12 +4,17 @@ import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pijul {
   PijulUpstreamVersion,
+  PijulChannel,
+  PijulChannelStateIdentity,
   PijulReadBackObservation,
   PijulInaccessibleProjection,
   pijul_upstream_version,
 }
 import test.claim.pijul_upstream_model_witness {
   pijul_r0_fixture_projection,
+  pijul_r0_fixture_repository,
+  pijul_state_partial,
+  projection_with_channels,
 }
 import gunbc.scm_compatibility.pijul {
   PijulCompatibilityBindingOutcome,
@@ -188,5 +193,51 @@ test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
   ) {
     PijulCompatibilityBindingRefused { cause: _ } => true
     PijulCompatibilityBound { receipt: _ } => false
+  }
+}
+
+test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
+  let repository = pijul_r0_fixture_repository()
+  let other_projection = projection_with_channels(
+    projection: pijul_r0_fixture_projection(),
+    channels: repository.channels
+      |> map(channel =>
+        if channel.name == "main" {
+          PijulChannel {
+            name: channel.name,
+            state_identity: PijulChannelStateIdentity {
+              state: pijul_state_partial,
+              changes: channel.state_identity.changes,
+              producer: channel.state_identity.producer,
+            },
+          }
+        } else {
+          channel
+        }
+      ),
+  )
+  match pijul_fixture_binding() {
+    PijulCompatibilityBindingRefused { cause: _ } => false
+    PijulCompatibilityBound { receipt: expected } =>
+      match pijul_compatibility_bind(
+        projection: other_projection,
+        target: "main",
+        read_back: PijulReadBackObservation {
+          pijul_version: pijul_upstream_version,
+          projection: other_projection,
+        },
+      ) {
+        PijulCompatibilityBindingRefused { cause: _ } => false
+        PijulCompatibilityBound { receipt: other_state } => {
+          let expected_projection = pijul_compatibility_projection_receipt(
+            receipt: expected,
+          )
+          let other_state_projection = pijul_compatibility_projection_receipt(
+            receipt: other_state,
+          )
+          expected_projection.read_back != other_state_projection.read_back
+            && expected_projection.projection != other_state_projection.projection
+        }
+      }
   }
 }

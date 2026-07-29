@@ -1,13 +1,40 @@
 module gunbc.scm_compatibility.pijul
 
-import std.types { NonEmptyStr }
+import std.types { Bytes, ContentHash, List, NonEmptyStr, String }
+import std.integer { UInt8 }
+import std.bytes { bytes_octets }
 import v2.std.optional { Present, Absent }
 import extdeps.pijul {
   PijulUpstreamVersion,
+  PijulChangeHash,
   PijulChannelName,
   PijulChannelStateIdentity,
+  PijulChannel,
   PijulRepositoryProjection,
   PijulDecodedRepository,
+  PijulDecodedAvailability,
+  PijulDecodedComplete,
+  PijulDecodedPartial,
+  PijulRepositoryState,
+  PijulVertexId,
+  PijulGraphVertex,
+  PijulGraphEdge,
+  PijulEdgeDisposition,
+  PijulAliveEdge,
+  PijulDeletedEdge,
+  PijulConflictFact,
+  PijulConflictFactFold,
+  PijulTreeEntry,
+  PijulTreeEntryKind,
+  PijulDirectoryEntry,
+  PijulFileEntry,
+  PijulSymlinkEntry,
+  PijulWorkingCopyEntry,
+  PijulWorkingCopyDisposition,
+  PijulWorkingCopyClean,
+  PijulWorkingCopyModified,
+  PijulWorkingCopyUntracked,
+  PijulPath,
   PijulProjectionRefusal,
   PijulReadBackObservation,
   PijulReadBackMismatchAxis,
@@ -21,6 +48,7 @@ import extdeps.pijul {
   pijul_decode_projection,
   pijul_assess_read_back,
   pijul_find_channel,
+  pijul_conflict_fact_fold,
   pijul_r0_conditional_advance,
 }
 import gunbc.scm_compatibility_shape {
@@ -32,9 +60,15 @@ import gunbc.scm_compatibility_shape {
   CompatibilityFidelityDowngraded,
   CompatibilityFidelityUnavailable,
   CompatibilityAdvanceUnavailable,
+  compatibility_identity_text,
+  compatibility_identity_sequence,
+  compatibility_projection_handle,
+  compatibility_read_back_handle,
 }
 
 data pijul_compatibility_binding_note: NonEmptyStr = "The Pijul R1 handler consumes Pijul's own projection decoder, channel state identity, recorded changes, dependency/context graph, graph-conflict facts, partial availability, and independent read-back assessment. Those facts remain in PijulCompatibilityReceipt. The shared target and generation handles are opaque projections only; they are not commits, refs, branches, or semantic conflict verdicts, and R0 honestly reports conditional advance as unavailable."
+
+data pijul_compatibility_read_back_identity_note: NonEmptyStr = "A PijulCompatibilityReceipt is constructible by this handler only after pijul_assess_read_back proves that the independently decoded observation equals repository. Its common read-back handle fingerprints the decoded repository state and availability plus the observing Pijul version; the producer version never substitutes for state identity."
 
 type PijulCompatibilityReceipt {
   target: PijulChannelName
@@ -136,23 +170,20 @@ fn pijul_compatibility_fidelity() -> CompatibilityFidelityProfile {
   }
 }
 
-fn pijul_compatibility_read_back_handle(
+fn pijul_compatibility_version_text(
   version: PijulUpstreamVersion,
 ) -> NonEmptyStr {
   concat(
-    "pijul-readback:",
+    to_string(version.major),
     concat(
-      to_string(version.major),
+      ".",
       concat(
-        ".",
+        to_string(version.minor),
         concat(
-          to_string(version.minor),
+          ".",
           concat(
-            ".",
-            concat(
-              to_string(version.patch),
-              concat("-beta.", to_string(version.beta)),
-            ),
+            to_string(version.patch),
+            concat("-beta.", to_string(version.beta)),
           ),
         ),
       ),
@@ -160,10 +191,469 @@ fn pijul_compatibility_read_back_handle(
   )
 }
 
+fn pijul_compatibility_octets_identity(
+  tag: NonEmptyStr,
+  octets: List<UInt8>,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: tag,
+    members: octets
+      |> map(octet =>
+        compatibility_identity_text(
+          tag: "octet",
+          value: to_string(octet),
+        )
+      ),
+  )
+}
+
+fn pijul_compatibility_bytes_identity(
+  tag: NonEmptyStr,
+  bytes: Bytes,
+) -> ContentHash {
+  pijul_compatibility_octets_identity(
+    tag: tag,
+    octets: bytes_octets(b: bytes),
+  )
+}
+
+fn pijul_compatibility_path_identity(
+  tag: NonEmptyStr,
+  path: PijulPath,
+) -> ContentHash {
+  pijul_compatibility_octets_identity(
+    tag: tag,
+    octets: path.octets,
+  )
+}
+
+fn pijul_compatibility_vertex_identity(
+  tag: NonEmptyStr,
+  vertex: PijulVertexId,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: tag,
+    members: [
+      compatibility_identity_text(
+        tag: "introduced-by",
+        value: vertex.introduced_by as String,
+      ),
+      compatibility_identity_text(
+        tag: "position",
+        value: to_string(vertex.position.value),
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_graph_vertex_identity(
+  vertex: PijulGraphVertex,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: "pijul-graph-vertex",
+    members: [
+      pijul_compatibility_vertex_identity(
+        tag: "id",
+        vertex: vertex.id,
+      ),
+      pijul_compatibility_bytes_identity(
+        tag: "content",
+        bytes: vertex.content,
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_edge_disposition_identity(
+  disposition: PijulEdgeDisposition,
+) -> ContentHash {
+  let label = match disposition {
+    PijulAliveEdge => "alive"
+    PijulDeletedEdge => "deleted"
+  }
+  compatibility_identity_text(
+    tag: "pijul-edge-disposition",
+    value: label,
+  )
+}
+
+fn pijul_compatibility_graph_edge_identity(
+  edge: PijulGraphEdge,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: "pijul-graph-edge",
+    members: [
+      pijul_compatibility_vertex_identity(
+        tag: "source",
+        vertex: edge.source,
+      ),
+      pijul_compatibility_vertex_identity(
+        tag: "target",
+        vertex: edge.target,
+      ),
+      compatibility_identity_text(
+        tag: "introduced-by",
+        value: edge.introduced_by as String,
+      ),
+      pijul_compatibility_edge_disposition_identity(
+        disposition: edge.disposition,
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_change_hashes_identity(
+  tag: NonEmptyStr,
+  changes: List<PijulChangeHash>,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: tag,
+    members: changes
+      |> map(change =>
+        compatibility_identity_text(
+          tag: "change",
+          value: change as String,
+        )
+      ),
+  )
+}
+
+fn pijul_compatibility_vertices_identity(
+  tag: NonEmptyStr,
+  vertices: List<PijulVertexId>,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: tag,
+    members: vertices
+      |> map(vertex =>
+        pijul_compatibility_vertex_identity(
+          tag: "vertex",
+          vertex: vertex,
+        )
+      ),
+  )
+}
+
+fn pijul_compatibility_paths_identity(
+  tag: NonEmptyStr,
+  paths: List<PijulPath>,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: tag,
+    members: paths
+      |> map(path =>
+        pijul_compatibility_path_identity(
+          tag: "path",
+          path: path,
+        )
+      ),
+  )
+}
+
+fn pijul_compatibility_conflict_identity(
+  conflict: PijulConflictFact,
+) -> ContentHash {
+  pijul_conflict_fact_fold(
+    conflict: conflict,
+    fold: PijulConflictFactFold {
+      order: fn(left, right, at) {
+        compatibility_identity_sequence(
+          tag: "pijul-order-conflict",
+          members: [
+            compatibility_identity_text(
+              tag: "left",
+              value: left as String,
+            ),
+            compatibility_identity_text(
+              tag: "right",
+              value: right as String,
+            ),
+            pijul_compatibility_vertex_identity(
+              tag: "at",
+              vertex: at,
+            ),
+          ],
+        )
+      },
+      cycle: fn(changes, vertices) {
+        compatibility_identity_sequence(
+          tag: "pijul-cycle-conflict",
+          members: [
+            pijul_compatibility_change_hashes_identity(
+              tag: "changes",
+              changes: changes,
+            ),
+            pijul_compatibility_vertices_identity(
+              tag: "vertices",
+              vertices: vertices,
+            ),
+          ],
+        )
+      },
+      zombie: fn(introduced_by, vertex) {
+        compatibility_identity_sequence(
+          tag: "pijul-zombie-conflict",
+          members: [
+            compatibility_identity_text(
+              tag: "introduced-by",
+              value: introduced_by as String,
+            ),
+            pijul_compatibility_vertex_identity(
+              tag: "vertex",
+              vertex: vertex,
+            ),
+          ],
+        )
+      },
+      name: fn(left, right, path) {
+        compatibility_identity_sequence(
+          tag: "pijul-name-conflict",
+          members: [
+            compatibility_identity_text(
+              tag: "left",
+              value: left as String,
+            ),
+            compatibility_identity_text(
+              tag: "right",
+              value: right as String,
+            ),
+            pijul_compatibility_path_identity(
+              tag: "path",
+              path: path,
+            ),
+          ],
+        )
+      },
+      move: fn(changes, inode, paths) {
+        compatibility_identity_sequence(
+          tag: "pijul-move-conflict",
+          members: [
+            pijul_compatibility_change_hashes_identity(
+              tag: "changes",
+              changes: changes,
+            ),
+            compatibility_identity_text(
+              tag: "inode",
+              value: inode as String,
+            ),
+            pijul_compatibility_paths_identity(
+              tag: "paths",
+              paths: paths,
+            ),
+          ],
+        )
+      },
+    },
+  )
+}
+
+fn pijul_compatibility_tree_entry_kind_identity(
+  kind: PijulTreeEntryKind,
+) -> ContentHash {
+  let label = match kind {
+    PijulDirectoryEntry => "directory"
+    PijulFileEntry => "file"
+    PijulSymlinkEntry => "symlink"
+  }
+  compatibility_identity_text(
+    tag: "pijul-tree-entry-kind",
+    value: label,
+  )
+}
+
+fn pijul_compatibility_tree_entry_identity(
+  entry: PijulTreeEntry,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: "pijul-tree-entry",
+    members: [
+      compatibility_identity_text(
+        tag: "inode",
+        value: entry.inode as String,
+      ),
+      pijul_compatibility_path_identity(
+        tag: "path",
+        path: entry.path,
+      ),
+      pijul_compatibility_tree_entry_kind_identity(kind: entry.kind),
+      compatibility_identity_text(
+        tag: "introduced-by",
+        value: entry.introduced_by as String,
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_working_copy_disposition_identity(
+  disposition: PijulWorkingCopyDisposition,
+) -> ContentHash {
+  let label = match disposition {
+    PijulWorkingCopyClean => "clean"
+    PijulWorkingCopyModified => "modified"
+    PijulWorkingCopyUntracked => "untracked"
+  }
+  compatibility_identity_text(
+    tag: "pijul-working-copy-disposition",
+    value: label,
+  )
+}
+
+fn pijul_compatibility_working_copy_entry_identity(
+  entry: PijulWorkingCopyEntry,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: "pijul-working-copy-entry",
+    members: [
+      pijul_compatibility_path_identity(
+        tag: "path",
+        path: entry.path,
+      ),
+      pijul_compatibility_bytes_identity(
+        tag: "content",
+        bytes: entry.content,
+      ),
+      pijul_compatibility_working_copy_disposition_identity(
+        disposition: entry.disposition,
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_channel_identity(
+  channel: PijulChannel,
+) -> ContentHash {
+  compatibility_identity_sequence(
+    tag: "pijul-channel",
+    members: [
+      compatibility_identity_text(
+        tag: "name",
+        value: channel.name as String,
+      ),
+      compatibility_identity_text(
+        tag: "state",
+        value: channel.state_identity.state as String,
+      ),
+      pijul_compatibility_change_hashes_identity(
+        tag: "changes",
+        changes: channel.state_identity.changes
+          |> sort_by(change => change as String),
+      ),
+    ],
+  )
+}
+
+fn pijul_compatibility_availability_identity(
+  availability: PijulDecodedAvailability,
+) -> ContentHash {
+  match availability {
+    PijulDecodedComplete =>
+      compatibility_identity_sequence(
+        tag: "pijul-complete",
+        members: [],
+      )
+    PijulDecodedPartial {
+      missing_changes,
+      missing_vertices,
+      missing_paths,
+    } =>
+      compatibility_identity_sequence(
+        tag: "pijul-partial",
+        members: [
+          pijul_compatibility_change_hashes_identity(
+            tag: "missing-changes",
+            changes: missing_changes,
+          ),
+          pijul_compatibility_vertices_identity(
+            tag: "missing-vertices",
+            vertices: missing_vertices,
+          ),
+          pijul_compatibility_paths_identity(
+            tag: "missing-paths",
+            paths: missing_paths,
+          ),
+        ],
+      )
+  }
+}
+
+fn pijul_compatibility_observed_state_identity(
+  repository: PijulDecodedRepository,
+) -> ContentHash {
+  let state = repository.state
+  compatibility_identity_sequence(
+    tag: "pijul-readback-state-v1",
+    members: [
+      compatibility_identity_sequence(
+        tag: "changes",
+        members: state.changes
+          |> map(change =>
+            compatibility_identity_text(
+              tag: "change",
+              value: change.identity.hash as String,
+            )
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "vertices",
+        members: state.pristine.vertices
+          |> map(vertex =>
+            pijul_compatibility_graph_vertex_identity(vertex: vertex)
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "edges",
+        members: state.pristine.edges
+          |> map(edge =>
+            pijul_compatibility_graph_edge_identity(edge: edge)
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "conflicts",
+        members: state.pristine.conflicts
+          |> map(conflict =>
+            pijul_compatibility_conflict_identity(conflict: conflict)
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "tree",
+        members: state.tree.entries
+          |> map(entry =>
+            pijul_compatibility_tree_entry_identity(entry: entry)
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "working-copy",
+        members: state.working_copy.entries
+          |> map(entry =>
+            pijul_compatibility_working_copy_entry_identity(entry: entry)
+          ),
+      ),
+      compatibility_identity_sequence(
+        tag: "channels",
+        members: state.channels
+          |> map(channel =>
+            pijul_compatibility_channel_identity(channel: channel)
+          )
+          |> sort_by(identity => identity as String),
+      ),
+      compatibility_identity_text(
+        tag: "current-channel",
+        value: state.current_channel as String,
+      ),
+      pijul_compatibility_availability_identity(
+        availability: repository.availability,
+      ),
+    ],
+  )
+}
+
 fn pijul_compatibility_projection_receipt(
   receipt: PijulCompatibilityReceipt,
 ) -> CompatibilityProjectionReceipt {
   let generation = receipt.generation.state as NonEmptyStr
+  let state = pijul_compatibility_observed_state_identity(
+    repository: receipt.repository,
+  )
   match receipt.advance {
     PijulConditionalAdvanceUnavailable { reason } =>
       CompatibilityProjectionReceipt {
@@ -171,9 +661,16 @@ fn pijul_compatibility_projection_receipt(
         target: receipt.target as NonEmptyStr,
         generation_evidence: generation,
         capture: CompatibilityUpstreamChangeEvidenceCaptured,
-        projection: concat("pijul-channel-state:", generation),
-        read_back: pijul_compatibility_read_back_handle(
-          version: receipt.read_back.pijul_version,
+        projection: compatibility_projection_handle(
+          realization: "pijul-r0",
+          state: state,
+        ),
+        read_back: compatibility_read_back_handle(
+          realization: "pijul-r0",
+          producer: pijul_compatibility_version_text(
+            version: receipt.read_back.pijul_version,
+          ),
+          state: state,
         ),
         advance: CompatibilityAdvanceUnavailable { cause: reason },
         fidelity: pijul_compatibility_fidelity(),

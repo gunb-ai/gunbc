@@ -3,6 +3,7 @@ module test.claim.scm_compatibility_git_witness
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.git.object_store {
+  GitRepositoryState,
   GitR0ReadBackObservation,
 }
 import test.claim.git_upstream_model_witness {
@@ -189,5 +190,53 @@ test fn witness_git_generation_derives_tree_from_commit() -> Bool {
   ) {
     GitCompatibilityBindingRefused { cause: _ } => true
     GitCompatibilityBound { receipt: _ } => false
+  }
+}
+
+test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
+  let repository = git_r0_fixture_repository()
+  let observation = git_r0_fixture_read_back_observation()
+  let other_repository = GitRepositoryState {
+    object_format: repository.object_format,
+    objects: repository.objects,
+    unavailable: repository.unavailable,
+    refs: repository.refs,
+    index: repository.index,
+    worktree: [],
+  }
+  let other_observation = GitR0ReadBackObservation {
+    git_version: observation.git_version,
+    object_format: observation.object_format,
+    tree_oid: observation.tree_oid,
+    tree_entries: observation.tree_entries,
+    tag_oids: observation.tag_oids,
+    refs: observation.refs,
+    index: observation.index,
+    worktree: [],
+    unavailable: observation.unavailable,
+  }
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt: expected } =>
+      match git_compatibility_bind(
+        repository: other_repository,
+        read_back: other_observation,
+        target: "refs/heads/main",
+        expected_generation: sha1_parent_commit,
+        proposed_generation: sha1_next_commit,
+      ) {
+        GitCompatibilityBindingRefused { cause: _ } => false
+        GitCompatibilityBound { receipt: other_state } => {
+          let expected_projection = git_compatibility_projection_receipt(
+            receipt: expected,
+          )
+          let other_projection = git_compatibility_projection_receipt(
+            receipt: other_state,
+          )
+          expected_projection.generation_evidence == other_projection.generation_evidence
+            && expected_projection.read_back != other_projection.read_back
+            && expected_projection.projection != other_projection.projection
+        }
+      }
   }
 }
