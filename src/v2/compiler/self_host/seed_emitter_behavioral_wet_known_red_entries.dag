@@ -1,6 +1,10 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  ExecutionWitnessKind,
+  schedule_witness_entry_eq
+}
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -38,10 +42,6 @@ data seed_emitter_behavioral_wet_known_red_entries: List<ScheduleWitnessEntry> =
     f: "self_host_03_normalize_behavioral_receipt_holds"
   )
 ]
-
-fn schedule_witness_entry_eq(left: ScheduleWitnessEntry, right: ScheduleWitnessEntry) -> Bool {
-  (left.entry == right.entry) && (left.function == right.function)
-}
 
 fn schedule_witness_entry_cited(
   probe_entry: String,
