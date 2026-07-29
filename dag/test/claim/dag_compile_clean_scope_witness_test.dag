@@ -20,7 +20,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn dag_compile_clean_scope_empty_touched_skips_holds() -> Bool {
+test fn dag_compile_clean_scope_empty_touched_requires_whole_tree_holds() -> Bool {
   witness_empty_touched_requires_whole_tree()
 }
 
