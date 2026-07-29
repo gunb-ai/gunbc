@@ -8,7 +8,8 @@ import gunbc.roadmap_model {
   NodeSizing, Unsized, Sized,
   SectionElement, Group, SectionGroup,
 }
-import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff }
+import gunbc.roadmap_status { DerivableLine, SupersededLine, Signoff, Unsigned, SignedOff, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
 import gunbc.roadmap_page {
@@ -29,6 +30,7 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -40,8 +42,9 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
     line: base.line,
     carriers: base.carriers,
     sizing: base.sizing,
+    execution: base.execution,
     owner: base.owner,
-    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
 }
 
@@ -51,6 +54,7 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -177,6 +181,7 @@ fn superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     line: SupersededLine { by: by, content: "Old Row" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -188,8 +193,9 @@ fn signed_sized_superseded_node_fixture(id: String, by: String) -> RoadmapNode {
     line: SupersededLine { by: by, content: "Accepted Old Row" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
-    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
+    signoff: SignedOff { by: "operator", works: RedControlExecuted { witness_module: "test.fixture", witness_fn: "fixture_red_control", executed_on: "2026-07-28" }, scope_equivalent: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] }, as_expected: true },
   }
 }
 

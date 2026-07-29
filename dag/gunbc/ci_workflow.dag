@@ -13,7 +13,7 @@ import gunbc.ci_spec {
   ci_release_bins_archive_name,
   gunbc_ci_heal_regen_invoke, gunbc_ci_heal_commit_push_script,
 }
-import gunbc.merge_admission_produce {
+import v2.workflow.ci_merge_admission_gate_emit {
   ci_merge_admission_gate_script,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_regen_heal_if }
@@ -368,13 +368,8 @@ fn ci_floor_materialization_receipt_gate_step() -> Step {
 
 data merge_admission_gate_step_name: String = "Merge-admission gate (receipt required; freshness block held until GatingEnforced)"
 
-data merge_admission_ci_gate_step_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_workflow",
-    decl_name: "ci_merge_admission_gate_step",
-    field: WholeDeclaration
-  }
+data merge_admission_ci_gate_step_disposition: Disposition = Terminal {
+  reason: "DISSOLVED in Wave B (#7363). The row was a Scaffold only because the step's shell was a hand-spelled concat builder awaiting a typed carrier; that builder is deleted and the step's run text is now materialized from v2.workflow.ci_merge_admission_gate_emit's EffectPlan<BoundOperationInvocation>, whose argv is derived from the git.Core.FetchNoTags and gunbc.WitnessBin.Run declarations. GitHub Actions run: is a foreign executor, so emitted bash is this site's terminal payload class under shell→intent routing — there is no further transport to dissolve to, and marking it Scaffold now would be a scaffold with no dissolution left to name."
 }
 
 fn ci_merge_admission_gate_step() -> Step {
