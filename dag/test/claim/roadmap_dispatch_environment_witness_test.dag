@@ -1,0 +1,221 @@
+module test.claim.roadmap_dispatch_environment_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.ensure {
+  EnsureObserveOnly,
+  EnsureMayApply,
+  EnsureObserved,
+  EnsureAbsent,
+}
+import gunbc.roadmap_execution_contract {
+  GitWorkspaceCapability,
+  TmuxSessionCapability,
+  TmuxPipeShellCapability,
+  TeeEventCaptureCapability,
+  ProviderEventProjectionCapability,
+  EnvironmentBindingCapability,
+  AttemptStateDirectoryCapability,
+  AttemptCurrentPointerCapability,
+  GunbcClaimRunnerCapability,
+  CargoCapability,
+  ExecutionCapability,
+  GunbcClaimValidation,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  CapabilityRealization,
+  execution_capability_label,
+}
+import std.upsert_decision { Noop, upsert_decision_label }
+import gunbc.roadmap_dispatch_environment {
+  CapabilityEnsureReceipt,
+  DispatchEnvironmentAdmission,
+  EnvironmentAdmitted,
+  EnvironmentRefused,
+  capability_ensure_receipt,
+  missing_capability_receipt,
+  dispatch_environment_admission_decision,
+  dispatch_environment_admission_json,
+}
+
+fn git_realization() -> CapabilityRealization {
+  CapabilityRealization {
+    capability: GitWorkspaceCapability,
+    executable: "/usr/bin/git" as FilePath,
+    identity_args: ["--version"],
+    identity_contains: "git version" as NonEmptyStr,
+    ensure_policy: EnsureObserveOnly,
+  }
+}
+
+fn claim_realization() -> CapabilityRealization {
+  CapabilityRealization {
+    capability: GunbcClaimRunnerCapability,
+    executable: "/opt/gunbc/bin/gunbc" as FilePath,
+    identity_args: ["--help"],
+    identity_contains: "A causal compiler" as NonEmptyStr,
+    ensure_policy: EnsureObserveOnly,
+  }
+}
+
+fn admitted_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
+  ExecutionContract {
+    validations: [
+      GunbcClaimValidation {
+        entry: "dag/test/claim/example_test.dag" as FilePath,
+        function: "example_holds" as NonEmptyStr,
+      },
+    ],
+    extra_capabilities: [],
+  }
+}
+
+fn grounded_receipt(
+  realization: CapabilityRealization,
+  evidence: String,
+) -> CapabilityEnsureReceipt {
+  capability_ensure_receipt(
+    realization: realization,
+    observation: EnsureObserved { evidence: evidence },
+    identity_matches: true,
+  )
+}
+
+fn grounded_capability(cap: ExecutionCapability) -> CapabilityEnsureReceipt {
+  CapabilityEnsureReceipt {
+    capability: cap,
+    capability_label: execution_capability_label(capability: cap),
+    executable: "/fixture/executable",
+    decision: Noop,
+    grounded: true,
+    evidence: "fixture identity evidence",
+    reason: "",
+  }
+}
+
+fn platform_grounded_receipts() -> List<CapabilityEnsureReceipt> {
+  [
+    grounded_receipt(
+      realization: git_realization(),
+      evidence: "git version 2.39",
+    ),
+    grounded_capability(cap: TmuxSessionCapability),
+    grounded_capability(cap: TmuxPipeShellCapability),
+    grounded_capability(cap: TeeEventCaptureCapability),
+    grounded_capability(cap: ProviderEventProjectionCapability),
+    grounded_capability(cap: EnvironmentBindingCapability),
+    grounded_capability(cap: AttemptStateDirectoryCapability),
+    grounded_capability(cap: AttemptCurrentPointerCapability),
+  ]
+}
+
+fn admitted_fixture() -> DispatchEnvironmentAdmission {
+  dispatch_environment_admission_decision(
+    contract: admitted_contract(),
+    receipts: concat(
+      platform_grounded_receipts(),
+      [grounded_receipt(
+        realization: claim_realization(),
+        evidence: "A causal compiler",
+      )],
+    ),
+    validation_summary: "/opt/gunbc/bin/gunbc run --claim-run",
+  )
+}
+
+test fn all_required_grounded_receipts_admit() -> Bool {
+  match admitted_fixture() {
+    EnvironmentAdmitted { receipts, validation_summary } =>
+      count(receipts) == 9 && validation_summary != ""
+    EnvironmentRefused { receipts: _, validation_summary: _, reason: _ } => false
+  }
+}
+
+test fn missing_capability_realization_refuses() -> Bool {
+  let missing = missing_capability_receipt(cap: GunbcClaimRunnerCapability)
+  match dispatch_environment_admission_decision(
+    contract: admitted_contract(),
+    receipts: concat(platform_grounded_receipts(), [missing]),
+    validation_summary: "validation command has no host capability realization",
+  ) {
+    EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    EnvironmentRefused { receipts: _, validation_summary: _, reason } =>
+      string_contains(s: reason, pattern: "gunbc-claim-runner")
+  }
+}
+
+test fn observe_only_absence_never_fabricates_apply() -> Bool {
+  let receipt = capability_ensure_receipt(
+    realization: claim_realization(),
+    observation: EnsureAbsent { reason: "gunbc missing" },
+    identity_matches: false,
+  )
+  !receipt.grounded
+    && upsert_decision_label(decision: receipt.decision) == "refuse"
+    && string_contains(s: receipt.reason, pattern: "gunbc missing")
+}
+
+test fn may_apply_without_a_typed_plan_still_refuses() -> Bool {
+  let realization = CapabilityRealization {
+    capability: CargoCapability,
+    executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
+    identity_args: ["--version"],
+    identity_contains: "cargo" as NonEmptyStr,
+    ensure_policy: EnsureMayApply,
+  }
+  let receipt = capability_ensure_receipt(
+    realization: realization,
+    observation: EnsureAbsent { reason: "cargo missing" },
+    identity_matches: false,
+  )
+  !receipt.grounded
+    && upsert_decision_label(decision: receipt.decision) == "refuse"
+    && string_contains(s: receipt.reason, pattern: "generic Ensure cannot choose an installer")
+}
+
+test fn unspecified_contract_refuses_before_capability_checks() -> Bool {
+  match dispatch_environment_admission_decision(
+    contract: ExecutionContractUnspecified,
+    receipts: [],
+    validation_summary: "execution contract unspecified",
+  ) {
+    EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    EnvironmentRefused { receipts, validation_summary: _, reason } =>
+      count(receipts) == 0 && string_contains(s: reason, pattern: "will not guess")
+  }
+}
+
+test fn admission_receipt_is_structured_and_located() -> Bool {
+  let wire = dispatch_environment_admission_json(admission: admitted_fixture())
+  string_contains(s: wire, pattern: "\"status\": \"admitted\"")
+    && string_contains(s: wire, pattern: "\"capability\": \"git-workspace\"")
+    && string_contains(
+      s: wire,
+      pattern: "\"capability\": \"provider-event-projection\"",
+    )
+    && string_contains(s: wire, pattern: "\"grounded\": true")
+}
+
+data empty_validation_contract_refusal_note: String = "review 44043 predicate dissolution. execution_contract_is_specified collapsed the WorkItemExecutionContract coproduct to a Bool, and its two false cases carried ONE refusal reason: an unspecified contract and a specified contract declaring zero validations are different states with different remedies (declare a contract vs. fix the one you declared). The decision now matches the coproduct directly and each state gets its own located diagnostic. This is the arm that had no witness at all before, because the predicate hid it."
+
+test fn empty_validation_contract_refuses_with_its_own_reason() -> Bool {
+  match dispatch_environment_admission_decision(
+    contract: ExecutionContract { validations: [], extra_capabilities: [] },
+    receipts: [],
+    validation_summary: "",
+  ) {
+    EnvironmentAdmitted { receipts: _, validation_summary: _ } => false
+    EnvironmentRefused { receipts: _, validation_summary: _, reason } =>
+      string_contains(s: reason, pattern: "declares no validation operations")
+        && !string_contains(s: reason, pattern: "will not guess")
+  }
+}
+
+test fn roadmap_dispatch_environment_keystone_holds() -> Bool {
+  empty_validation_contract_refuses_with_its_own_reason()
+    && all_required_grounded_receipts_admit()
+    && missing_capability_realization_refuses()
+    && observe_only_absence_never_fabricates_apply()
+    && may_apply_without_a_typed_plan_still_refuses()
+    && unspecified_contract_refuses_before_capability_checks()
+    && admission_receipt_is_structured_and_located()
+}

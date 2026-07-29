@@ -1,0 +1,100 @@
+module test.claim.ensure_witness
+
+import std.types { Bool }
+import std.upsert_decision { Noop, Apply, Refuse }
+import std.realization_reconcile { Converged, NotConverged }
+import gunbc.ensure {
+  EnsureObserveOnly,
+  EnsureMayApply,
+  EnsureObserved,
+  EnsureAbsent,
+  EnsureInaccessible,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+  ensure_decide,
+  ensure_readback,
+}
+
+test fn ensure_satisfied_is_noop_for_every_policy() -> Bool {
+  match ensure_decide(
+    policy: EnsureObserveOnly,
+    observation: EnsureObserved { evidence: "cargo 1.90" },
+    observation_satisfies: true,
+    mismatch_reason: "wrong version",
+    plan: EnsurePlanAvailable { plan: "unused" },
+  ) {
+    Noop => true
+    _ => false
+  }
+}
+
+test fn ensure_known_absence_applies_only_with_authority_and_plan() -> Bool {
+  let permitted = ensure_decide(
+    policy: EnsureMayApply,
+    observation: EnsureAbsent { reason: "cargo absent" },
+    observation_satisfies: false,
+    mismatch_reason: "cargo mismatch",
+    plan: EnsurePlanAvailable { plan: "provision-rust-toolchain" },
+  )
+  let observe_only = ensure_decide(
+    policy: EnsureObserveOnly,
+    observation: EnsureAbsent { reason: "cargo absent" },
+    observation_satisfies: false,
+    mismatch_reason: "cargo mismatch",
+    plan: EnsurePlanAvailable { plan: "provision-rust-toolchain" },
+  )
+  match permitted {
+    Apply { plan } => plan == "provision-rust-toolchain"
+    _ => false
+  }
+    && match observe_only {
+      Refuse { reason } => string_contains(s: reason as String, pattern: "cargo absent")
+      _ => false
+    }
+}
+
+test fn ensure_inaccessible_never_mutates() -> Bool {
+  match ensure_decide(
+    policy: EnsureMayApply,
+    observation: EnsureInaccessible { reason: "probe transport refused" },
+    observation_satisfies: false,
+    mismatch_reason: "unknown",
+    plan: EnsurePlanAvailable { plan: "would-mutate" },
+  ) {
+    Refuse { reason } =>
+      string_contains(s: reason as String, pattern: "transport refused")
+    _ => false
+  }
+}
+
+test fn ensure_readback_is_the_convergence_authority() -> Bool {
+  let green = ensure_readback(
+    applied: true,
+    observation: EnsureObserved { evidence: "gunbc-help-identity" },
+    observation_satisfies: true,
+    mismatch_reason: "identity mismatch",
+  )
+  let red = ensure_readback(
+    applied: true,
+    observation: EnsureObserved { evidence: "other-program" },
+    observation_satisfies: false,
+    mismatch_reason: "identity mismatch",
+  )
+  match green {
+    Converged { evidence, applied } =>
+      evidence == "gunbc-help-identity" && applied
+    NotConverged { reason: _, applied: _ } => false
+  }
+    && match red {
+      Converged { evidence: _, applied: _ } => false
+      NotConverged { reason, applied } =>
+        applied && reason == "identity mismatch"
+    }
+}
+
+test fn generic_ensure_keystone_holds() -> Bool {
+  ensure_satisfied_is_noop_for_every_policy()
+    && ensure_known_absence_applies_only_with_authority_and_plan()
+    && ensure_inaccessible_never_mutates()
+    && ensure_readback_is_the_convergence_authority()
+}

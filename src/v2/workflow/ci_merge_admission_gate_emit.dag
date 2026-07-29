@@ -1,0 +1,101 @@
+module v2.workflow.ci_merge_admission_gate_emit
+
+import gunbc.merge_admission_produce {
+  merge_admission_gate_bin_rel_path,
+  merge_admission_gate_fetch_parts,
+  merge_admission_gate_tool_args
+}
+import v2.std.effect_plan { Do, EffectPlan }
+import v2.std.operation_argv {
+  BoundOperationInvocation,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text,
+  operation_argv_bind_text_list
+}
+import v2.std.orchestration { FailFast }
+import v2.std.text { String }
+import v2.workflow.effect_plan_bash_materialize {
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label
+}
+
+data ci_merge_admission_gate_emit_authority_note: String = "The live merge-admission CI gate, migrated off its concat builder onto the typed carrier (Wave B, first production consumer of v2.workflow.effect_plan_bash_materialize). The intent is two ordinary graph nodes — git.Core.FetchNoTags then gunbc.WitnessBin.Run — bound by name to inputs those extdeps declarations themselves declare; argv is DERIVED from the declarations by shell_materialize_operation_argv, so this module spells no command, no flag, and no shell fragment. The deleted builder spelled all three by hand (gunbc.merge_admission_produce.ci_merge_admission_gate_script), and its `ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)` line went with it: the gate's own relative arguments (--source-root dag, --entry dag/tools/…) already required the step's working directory to be the checkout root, so binding the release binary relative to that same directory removes a shell variable without weakening any assumption the gate did not already make. GitHub Actions run: is a foreign executor, so bash IS the terminal payload class here (shell→intent routing), not a scaffold awaiting a transport."
+
+data ci_merge_admission_gate_fail_fast_note: String = "FailFast is the POLICY, not a rendering detail. It is the carrier's own FailurePolicy, and effect_plan_bash_materialize refuses Continue outright rather than emitting a weaker chain — so `fetch failed, gate never ran, step green` is unwritable here. The deleted builder achieved the same only by leaning on the GitHub Actions default shell's -e flag: newline separation carries no ordering obligation of its own, whereas the grammar-owned && the typed carrier emits does, and does so visibly in the generated ci.yml."
+
+data ci_merge_admission_gate_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ merge-admission gate: "
+
+data ci_merge_admission_gate_refusal_note: String = "A materialization refusal must not be rendered as shell that runs. The emitted text is a marker line that is not a valid command, prefixed so it is greppable and suffixed with the carrier's own located label (step index, operation ref, cause) — so the failure names WHICH step and WHICH cause rather than being an anonymous poison, and the CI step fails loudly instead of a hand-spelled fallback quietly standing in for the gate (DESIGN §5: refuse, never widen). It is deliberately not `exit 1` prose either: composing replacement shell at the refusal arm is the very concat-builder move this module deletes."
+
+fn ci_merge_admission_gate_fetch_step() -> BoundOperationInvocation {
+  let parts = merge_admission_gate_fetch_parts()
+  bind_operation_invocation(
+    at: OperationRef {
+      path: "dag/extdeps/git/git.dag",
+      service: "git.Core",
+      operation: "FetchNoTags"
+    },
+    bindings: [
+      operation_argv_bind_text(name: "remote", text: parts.remote),
+      operation_argv_bind_text(name: "ref", text: parts.ref_name)
+    ]
+  )
+}
+
+fn ci_merge_admission_gate_invoke_step() -> BoundOperationInvocation {
+  bind_operation_invocation(
+    at: OperationRef {
+      path: "dag/extdeps/gunbc/gunbc.dag",
+      service: "gunbc.WitnessBin",
+      operation: "Run"
+    },
+    bindings: [
+      operation_argv_bind_text(name: "workdir", text: "."),
+      operation_argv_bind_text(
+        name: "bin_path",
+        text: merge_admission_gate_bin_rel_path()
+      ),
+      operation_argv_bind_text_list(
+        name: "args",
+        items: merge_admission_gate_tool_args()
+      )
+    ]
+  )
+}
+
+fn ci_merge_admission_gate_intent() -> EffectPlan<BoundOperationInvocation> {
+  EffectPlan {
+    steps: [
+      Do { effect: ci_merge_admission_gate_fetch_step() },
+      Do { effect: ci_merge_admission_gate_invoke_step() }
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_merge_admission_gate_render(
+  plan: EffectPlan<BoundOperationInvocation>
+) -> String {
+  let _fail_fast_note = ci_merge_admission_gate_fail_fast_note
+  let _refusal_note = ci_merge_admission_gate_refusal_note
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => concat(source, "\n")
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      concat(
+        concat(
+          ci_merge_admission_gate_refusal_prefix,
+          effect_plan_bash_refusal_label(refusal: refusal)
+        ),
+        "\n"
+      )
+  }
+}
+
+data ci_merge_admission_gate_render_parameterized_note: String = "The renderer takes the plan as a PARAMETER so its refusal arm has an executing consumer. Inlining the real intent would leave that arm reachable only by a corpus regression — the arm would ship unexercised, and a witness that rebuilt the marker text beside it would be asserting its own arithmetic rather than this code (the proxy-assertion fail-open). The witness perturbs one operation name and calls THIS function, so the arm the gate would actually take is the arm under test."
+
+fn ci_merge_admission_gate_script() -> String {
+  ci_merge_admission_gate_render(plan: ci_merge_admission_gate_intent())
+}

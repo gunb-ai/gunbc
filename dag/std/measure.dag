@@ -224,6 +224,8 @@ type Hertz = Measure<Frequency, One, Nat>
 
 type HardwareThreadCount = Measure<Count, One, Nat>
 
+type CharacterCount = Measure<Count, One, Nat>
+
 type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
@@ -375,6 +377,16 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   measure_count(t)
+}
+
+data character_count_note: String = "A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same axis HardwareThreadCount already instantiates, with a different thing being counted. It lives here rather than as a std.types brand because the consumers compare and order these budgets, and measure_le is where that ordering already lives (review 44089)."
+
+fn character_count(count: Nat) -> CharacterCount {
+  CharacterCount { count: count }
+}
+
+fn character_count_value(c: CharacterCount) -> Nat {
+  measure_count(c)
 }
 
 fn millicore(count: Nat) -> Millicore {

@@ -97,6 +97,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: ProbeDoc,
+    slug: "e0599_phase_a_body_evidence_2026-07-28",
+    work: DeclarationRef { module_path: "v2.test.manual.e0599_phase_a_body_evidence_probe", decl_name: "e0599pa_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the P-fn re-ruling lands — either a carrier keyed on emission-time lowering decisions, or the Rc-ownership wrap-decision lane absorbing R1/R3 — at which point this audit's recommendation section retires and its measurements fold into the successor receipt" },
+  },
+  HandAuthoredDocBind {
+    home: ProbeDoc,
     slug: "rc-scalar-wrap-fresh-build-correction-2026-07-25",
     work: DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "value_inferred_type_is_rc_wrapped", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the residual generic function return-type substitution RC_SCALAR_WRAP sub-class (materialization_carriers, flat at 15) lands via the shared Root-4 lane" },
@@ -184,6 +190,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     slug: "roadmap-workspace-remodel-plan",
     work: DeclarationRef { module_path: "gunbc.roadmap_belt_actuate", decl_name: "belt_dispatch_result_band", field: WholeDeclaration },
     dissolution: HasTrigger { text: "the composition-session slices land on their carriers — the StateResponse rule kind and ResponseScope in gunbc.design.*, the RoadmapRow archetype grid, page altitude from the attention law, anomaly evidence in the row disclosure — and the plan registers as a gunbc.plan.Plan row (extends roadmap-workspace-ux-plan, whose row dissolves on its own trigger)" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "recursive-workflow-advancement-design",
+    work: DeclarationRef { module_path: "gunbc.workflow_reconcile", decl_name: "workflow_recursive_reconcile_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the advancement plan, exact-candidate receipt producers through goal audit, and recursive child-workflow realization land as typed carriers and register as a gunbc.plan.Plan row; then this bind deletes while the md remains the design record" },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

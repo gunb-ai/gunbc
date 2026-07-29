@@ -30,6 +30,8 @@ import std.realization_reconcile { Converged, NotConverged }
 
 type HostToolchainKind = BuildCache | OsInstallActuator
 
+data host_toolchain_ensure_specialization_note: String = "Compatibility specialization, not the Ensure abstraction: HostToolchainKind is the closed selector for two existing HostEffect adapters in this entrypoint. Generic convergence semantics live in gunbc.ensure and dispatch requirements live in gunbc.roadmap_execution_contract. Cargo, rustc, provider auth, and future task dependencies must not be added to this enum merely because their callers say ensure; they require their own typed observation/plan/readback adapters and may then reuse generic Ensure."
+
 data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
   reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
 }

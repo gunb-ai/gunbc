@@ -1,0 +1,247 @@
+module test.claim.stage0_rust_source_lifecycle_scaffold_witness
+
+import gunbc.stage0_rust_source_lifecycle_scaffold {
+  DerivedDuplicateExactPaths,
+  DerivedHandMaintainedGrew,
+  DerivedNewlyUnclassified,
+  DerivedUnclassifiedTracked,
+  GitObservationRefused,
+  ManifestStateScaffoldOk,
+  ManifestStateScaffoldRefused,
+  RustManifestObserved,
+  ObservedCargoPathUntracked,
+  UnobservedTrackedManifest,
+  behavioral_oracle_carrier_ref,
+  classified_residue_disjoint_holds,
+  derived_generated_hand_disjoint_holds,
+  derived_generated_stage0_repo_paths,
+  duplicate_exact_paths_zero_holds,
+  file_grain_paths_avoid_discovery_prefix_holds,
+  generated_authority_subset_of_derived_holds,
+  generated_repo_paths_cover_authority_holds,
+  generated_stage0_files_authority_ref,
+  lifecycle_row_well_formed,
+  lifecycle_row_well_formed_query_scaffold,
+  list_paths_all_unique,
+  manifest_state_verdict_scaffold_holds,
+  partition_crate_paths_complete_holds,
+  path_occurrence_count,
+  residue_row,
+  rust_source_host_observation,
+  rust_source_manifest_state_verdict,
+  rust_source_manifest_state_verdict_query_scaffold,
+  stage0_cargo_bin_manifest_authority_ref,
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds,
+  stage0_rust_lifecycle_scaffold_mechanical_checks_holds,
+  stage0_rust_source_lifecycle_scaffold_note,
+  RustManifestUnobserved,
+  witness_duplicate_tracked_observation,
+  witness_honest_minimal_observation_ok,
+  witness_hand_maintained_growth_observation,
+  witness_observation_covering_lifecycle_plus_extra
+}
+import gunbc.stage0_emit_model { generated_stage0_file_count }
+import std.disposition { Scaffold, SingleAuthority }
+import v2.std.algebra { length }
+import v2.std.text { String }
+
+data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle SCAFFOLD witnesses (PR A): pure .dag joins + evidence-shaped host observation model; zero Rust delta vs merge-base (git diff origin/main...HEAD -- '*.rs' empty). Host observation boundary is PR B."
+
+test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
+  string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
+    && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "NOT the live ZeroHandMaintainedRust")
+}
+
+test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
+  match rust_source_manifest_state_verdict_query_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
+  match lifecycle_row_well_formed_query_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
+  string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "ROADMAP.md:24")
+    && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "v1-zero-hand-maintained-rust")
+}
+
+test fn scaffold_host_observation_defaults_unobserved() -> Bool {
+  match rust_source_host_observation {
+    RustManifestUnobserved { awaiting: _ } => true
+    _ => false
+  }
+}
+
+test fn scaffold_host_observation_default_verdict_refuses_unobserved() -> Bool {
+  match rust_source_manifest_state_verdict(observation: rust_source_host_observation) {
+    ManifestStateScaffoldRefused { cause: UnobservedTrackedManifest { awaiting: _ } } => true
+    ManifestStateScaffoldOk => false
+    ManifestStateScaffoldRefused { cause: _ } => false
+  }
+}
+
+test fn scaffold_join_mechanical_checks_holds() -> Bool {
+  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
+}
+
+test fn scaffold_mechanical_checks_red_while_host_unobserved() -> Bool {
+  !stage0_rust_lifecycle_scaffold_mechanical_checks_holds()
+    && !manifest_state_verdict_scaffold_holds()
+}
+
+test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {
+  length(xs: derived_generated_stage0_repo_paths()) == generated_stage0_file_count()
+}
+
+test fn w_scaffold_generated_hand_disjoint_holds() -> Bool {
+  derived_generated_hand_disjoint_holds()
+}
+
+test fn scaffold_classified_residue_disjoint_holds() -> Bool {
+  classified_residue_disjoint_holds()
+}
+
+test fn scaffold_generated_authority_bidirectional_holds() -> Bool {
+  generated_repo_paths_cover_authority_holds() && generated_authority_subset_of_derived_holds()
+}
+
+test fn scaffold_partition_crate_paths_complete_holds() -> Bool {
+  partition_crate_paths_complete_holds()
+}
+
+test fn scaffold_duplicate_exact_paths_zero_holds() -> Bool {
+  duplicate_exact_paths_zero_holds()
+}
+
+test fn scaffold_file_grain_avoids_discovery_prefix_holds() -> Bool {
+  file_grain_paths_avoid_discovery_prefix_holds()
+}
+
+test fn scaffold_cargo_manifest_ref_points_at_host_observation_boundary() -> Bool {
+  stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
+    && stage0_cargo_bin_manifest_authority_ref.decl_name == "stage0_cargo_bin_repo_paths_observed"
+}
+
+test fn scaffold_authority_refs_populated_holds() -> Bool {
+  !(generated_stage0_files_authority_ref.module_path == "")
+    && behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
+}
+
+test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestObserved {
+      repository_revision: "deadbeef",
+      manifest_digest: "abc123",
+      tracked_rust_repo_paths: [
+        "src/v1/stage0/src/unclassified.rs",
+        "src/v1/stage0/src/cli_run.rs",
+        "src/v1/stage0/src/main.rs"
+      ],
+      prior_tracked_rust_repo_paths: [
+        "src/v1/stage0/src/cli_run.rs",
+        "src/v1/stage0/src/main.rs"
+      ],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    }
+  ) {
+    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_ratchet_red_control_hand_maintained_growth_reds() -> Bool {
+  match rust_source_manifest_state_verdict(observation: witness_hand_maintained_growth_observation()) {
+    ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: _, current: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_derives_unclassified_from_path_evidence_red_control() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: witness_observation_covering_lifecycle_plus_extra(
+      extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
+    )
+  ) {
+    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestObserved {
+      repository_revision: "",
+      manifest_digest: "",
+      tracked_rust_repo_paths: [],
+      prior_tracked_rust_repo_paths: [],
+      cargo_bin_repo_paths: []
+    }
+  ) {
+    ManifestStateScaffoldRefused { cause: _ } => true
+    ManifestStateScaffoldOk => false
+  }
+}
+
+test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
+  match rust_source_manifest_state_verdict(observation: witness_honest_minimal_observation_ok()) {
+    ManifestStateScaffoldOk => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
+  match rust_source_manifest_state_verdict(
+    observation: RustManifestObserved {
+      repository_revision: "deadbeef",
+      manifest_digest: "abc123",
+      tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
+      prior_tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
+      cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
+    }
+  ) {
+    ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
+  match rust_source_manifest_state_verdict(observation: GitObservationRefused { detail: "git unavailable" }) {
+    ManifestStateScaffoldRefused { cause: _ } => true
+    ManifestStateScaffoldOk => false
+  }
+}
+
+test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
+  !lifecycle_row_well_formed(
+    row: residue_row(
+      path: "synthetic/unclassified.rs",
+      reason: "red control",
+      dissolve_on: ""
+    )
+  )
+}
+
+test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
+  match rust_source_manifest_state_verdict(observation: witness_duplicate_tracked_observation()) {
+    ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: _ } } => true
+    _ => false
+  }
+}
+
+test fn scaffold_residue_red_control_duplicate_path_reds() -> Bool {
+  let paths = [
+    "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs",
+    "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+  ]
+  !list_paths_all_unique(paths: paths)
+    && path_occurrence_count(
+      paths: paths,
+      needle: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+    ) == 2
+}

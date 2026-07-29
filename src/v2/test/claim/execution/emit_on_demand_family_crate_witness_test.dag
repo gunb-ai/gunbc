@@ -39,6 +39,7 @@ import v2.extdeps.languages.rust_test {
   rust_logic_join_target_model_staging,
   rust_logic_complement_target_model_staging,
   rust_logic_family_target_model_staging,
+  rust_logic_family_target_model_meet_zero_staging,
   rust_family_member_run_args,
 }
 import v2.test.execution.emit_host_meet_join_equals_eval {
@@ -69,6 +70,7 @@ import v2.std.native_agreement {
   format_native_agreement_divergence
 }
 import v2.std.node { Node }
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -196,6 +198,35 @@ fn family_crate_member_run(
   match run_emit_host_cached_with_run_args(
     workspace_dir: workspace,
     target: rust_logic_family_target_model_staging(),
+    source: source,
+    fixture_inputs: family_crate_fixture_inputs(),
+    run_args: rust_family_member_run_args(member_id: member_id)
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted {
+          value: HostLogicalRun { stdout: stdout },
+          diagnostics: None
+        } =>
+          receipt.compile_skipped == expect_compile_skipped
+            && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn family_crate_member_run_with_target(
+  workspace: String,
+  source: Medium<String>,
+  target: TargetModel,
+  member_id: String,
+  expect_compile_skipped: Bool,
+  expected_octet: Int
+) -> Bool {
+  match run_emit_host_cached_with_run_args(
+    workspace_dir: workspace,
+    target: target,
     source: source,
     fixture_inputs: family_crate_fixture_inputs(),
     run_args: rust_family_member_run_args(member_id: member_id)
@@ -491,6 +522,47 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
           )
       Rejected { diagnostics: _ } => false
     }
+  }
+}
+
+data family_crate_realization_key_regression_note: String = "srv2-05 root-cause RED: inferred-tree member digests do not change when only the transport dispatcher/workspace changes. Before artifact_realization_digest joined the effective workspace identity, the second run below reused the first target's .native_ready marker and returned meet=1 instead of meet=0 with compile_skipped=true. The executing control keeps the outer family key and emitted member source identical, changes only the dispatcher suffix, and requires a cold realization child followed by a warm hit on that exact child."
+
+test fn family_crate_dispatch_change_cold_rebuild_holds() -> Bool {
+  let members = family_crate_members()
+  let workspace = family_crate_evict_and_workspace(
+    test_id: "dispatch_change_cold_rebuild",
+    members: members
+  )
+  match emit_family(
+    members: members,
+    transport_target: rust_logic_family_target_model_staging()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      family_crate_member_run_with_target(
+        workspace: workspace,
+        source: source,
+        target: rust_logic_family_target_model_staging(),
+        member_id: "meet",
+        expect_compile_skipped: false,
+        expected_octet: 1
+      )
+        && family_crate_member_run_with_target(
+          workspace: workspace,
+          source: source,
+          target: rust_logic_family_target_model_meet_zero_staging(),
+          member_id: "meet",
+          expect_compile_skipped: false,
+          expected_octet: 0
+        )
+        && family_crate_member_run_with_target(
+          workspace: workspace,
+          source: source,
+          target: rust_logic_family_target_model_meet_zero_staging(),
+          member_id: "meet",
+          expect_compile_skipped: true,
+          expected_octet: 0
+        )
+    Rejected { diagnostics: _ } => false
   }
 }
 

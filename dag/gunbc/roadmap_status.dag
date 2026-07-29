@@ -2,6 +2,8 @@ module gunbc.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
+import std.types { NonEmptyStr }
+
 data ticket_line_note: String = "The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow fields, references, and the item's whole history — so the page can only dump it, the dispatch brief can only stub its slots with the title, and every update concatenates into the blob because no time axis exists (ts-dispatch-elevate was the live specimen). TicketLine carries the fields as fields. The field set is the union of ts-wf-node-schema's list and the dispatch_brief_template slots — the template was always the spec of what dispatch needs — plus the updates thread. References reuse the node's carriers (Pointer is the existing ref concept; a ticket-local refs list would be a second one). AuthoredLine survives as the counted LEGACY frontier: every remaining prose row is burn-down for the mechanical migration (W2-bulk), and a new prose row where a ticket was possible is the review reject."
 
 type TicketUpdate {
@@ -35,14 +37,41 @@ type RoadmapItem
 
   | TicketLine { done: Bool, ticket: TicketFields }
 
+data signoff_evidence_note: String = "Acceptance was three hand-set Bools, so a row could be accepted by asserting works/scope_equivalent while its declared red_control never executed and its declared handback was never delivered — the DESIGN.md §5 shape where a check is satisfied by editing the declaration while the realization still lies. Each row already declares its own acceptance criteria in TicketFields.red_control and TicketFields.handback; nothing consumed them. works and scope_equivalent now carry evidence pointing at those two declared fields instead of asserting them, and the pointers are NonEmptyStr so an unnamed witness is unwritable rather than checked. as_expected stays a Bool because operator satisfaction is the genuinely unstructurable residue §5 reserves for post-hoc judgment. Unsigned remains the fail-closed default. REMAINING GAP, stated so it is countable rather than implied: signoff_accepts receives only the Signoff, so it cannot compare the named witness against the row's own TicketFields.red_control, nor the delivered artifacts against its TicketFields.handback — any non-empty witness name accepts, including an unrelated one. This is strictly narrower than the prior bare-Bool assertion (a witness must be named and artifacts delivered, both non-empty by type) but it is not yet derivation. It cannot be closed here because red_control and handback are prose Strings; there is no machine-checkable link from 'two authored occurrences with the same leaf name remain distinct' to a witness function. Satisfaction is encoded in the carriers rather than validated: RedControlExecuted names its witness in NonEmptyStr fields and HandbackDelivered carries first_artifact separately from further_artifacts, so an unnamed witness and an empty delivery are both unwritable and the two predicates below are pure discrimination with nothing left to check. OWNER: roadmap-runtime, the lane that already owns typed identity for node/branch/pull-request/attempt joins; the same typing pass that gives a row a checkable identity is what gives red_control a checkable referent. DISSOLVE-ON: TicketFields.red_control becomes a typed reference to the witness that discharges it and TicketFields.handback a typed artifact list, at which point acceptance takes the RoadmapNode, derives both arms from the row's own declarations, and these two predicates collapse into that fold."
+
+type RedControlEvidence
+  = RedControlNotRun
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
+
+type HandbackEvidence
+  = HandbackNotDelivered
+  | HandbackDelivered { first_artifact: NonEmptyStr, further_artifacts: List<NonEmptyStr> }
+
 type Signoff
   = Unsigned
-  | SignedOff { by: String, works: Bool, scope_equivalent: Bool, as_expected: Bool }
+  | SignedOff { by: String, works: RedControlEvidence, scope_equivalent: HandbackEvidence, as_expected: Bool }
+
+fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
+  match e {
+    RedControlNotRun => false
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true
+  }
+}
+
+fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {
+  match e {
+    HandbackNotDelivered => false
+    HandbackDelivered { first_artifact: _, further_artifacts: _ } => true
+  }
+}
 
 fn signoff_accepts(s: Signoff) -> Bool {
   match s {
     Unsigned => false
-    SignedOff { by: _, works, scope_equivalent, as_expected } => works && scope_equivalent && as_expected
+    SignedOff { by: _, works, scope_equivalent, as_expected } =>
+      red_control_evidence_satisfied(e: works)
+        && handback_evidence_satisfied(e: scope_equivalent)
+        && as_expected
   }
 }
 

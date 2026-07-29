@@ -6,6 +6,7 @@ import extdeps.llm.cli {
   claude_trust_store_path,
   claude_workspace_trust_seeded,
   shape_claude_invoke_argv,
+  ReasoningHigh,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -63,7 +64,7 @@ test fn w_argv_head_is_program_authority() -> Bool {
   let argv = shape_claude_invoke_argv(
     session_id: "u",
     node_id: "n",
-    effort: "high",
+    effort: ReasoningHigh,
     settings_json: "\{\}",
     append_system_prompt: "brief",
     start_prompt: "go",

@@ -282,6 +282,8 @@ pub type Hertz = Rc<Measure<(), (), i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
 
+pub type CharacterCount = Rc<Measure<(), (), i64>>;
+
 pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
@@ -498,6 +500,26 @@ pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t.clone())
+}
+
+pub fn character_count_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same axis HardwareThreadCount already instantiates, with a different thing being counted. It lives here rather than as a std.types brand because the consumers compare and order these budgets, and measure_le is where that ordering already lives (review 44089).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn character_count(count: Nat) -> CharacterCount {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn character_count_value(c: CharacterCount) -> Nat {
+    measure_count(c.clone())
 }
 
 pub fn millicore(count: Nat) -> Millicore {

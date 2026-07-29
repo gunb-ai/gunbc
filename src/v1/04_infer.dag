@@ -1,5 +1,4 @@
 module v1.compiler.infer
-
 import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name, kernel_type_set, is_kernel_type }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
@@ -56,7 +55,7 @@ import v1.std.core {
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   is_container_type, container_expected_arity,
-  default_ident_span, node_name_span
+  default_ident_span, node_name_span,
 }
 import v1.compiler.resolve { ModuleGraph, ResolvedModule, ResolvedImport }
 import v1.compiler.infer_types {
@@ -7541,7 +7540,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
           source_indices: source_indices
         ),
         func_env: ResolvedFuncEnv { name: authored_name_at(source_indices: source_indices, node: resolved.module), local: empty_map(), parents: [] },
-        item_registry: empty_map()
+        item_registry: empty_map(),
+        occurrence_transport: Present { value: resolved.occurrence_transport },
       },
       diagnostics: concat(env_diags, seed_diags),
       binding_forks: env_result.binding_forks
@@ -7633,7 +7633,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
         source_indices: source_indices
       ),
       func_env: updated_func_env,
-      item_registry: ctx.item_registry
+      item_registry: ctx.item_registry,
+      occurrence_transport: Present { value: resolved.occurrence_transport },
     },
     diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, seed_diags),
     binding_forks: env_result.binding_forks
@@ -8109,7 +8110,8 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
       type_env_cache: m.type_env_cache,
       interface: m.interface,
       func_env: m.func_env,
-      item_registry: m.item_registry
+      item_registry: m.item_registry,
+      occurrence_transport: m.occurrence_transport,
     }
   )
 }
@@ -8185,7 +8187,8 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       type_env_cache: m.type_env_cache,
       interface: m.interface,
       func_env: m.func_env,
-      item_registry: m.item_registry
+      item_registry: m.item_registry,
+      occurrence_transport: m.occurrence_transport,
     }
   )
 }
@@ -8209,7 +8212,8 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       type_env_cache: m.type_env_cache,
       interface: m.interface,
       func_env: ResolvedFuncEnv { name: m.func_env.name, local: m.func_env.local, parents: flatten_parent_envs(direct_parents: parents) },
-      item_registry: m.item_registry
+      item_registry: m.item_registry,
+      occurrence_transport: m.occurrence_transport,
     }
   )
 }
@@ -8225,5 +8229,10 @@ fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: modules)
   let emit_info = build_emit_graph_info(modules: modules, has_v1_seed: has_v1_seed)
-  ResolvedGraph { modules: modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
+  ResolvedGraph {
+    modules: modules,
+    item_registry: typed.item_registry,
+    diagnostics: typed.diagnostics,
+    emit_graph_info: emit_info,
+  }
 }

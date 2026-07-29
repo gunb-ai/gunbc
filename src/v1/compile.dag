@@ -12,6 +12,7 @@ import v1.std.core {
   import_specific_names_at, FieldAccessStyle, FieldValueShape, FieldSummary, InferredNode,
   Resolved, CompilerError, TypeVariable, VarBindingKind, CallSemantics, MethodSemantics,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, ExprErrorKind,
+  OccurrenceTransportViolation,
   ExprData, MatchPattern, field_binding_name_at, field_binding_pattern, arg_name_at, arg_value,
   arm_pattern, arm_guard, arm_body, field_init_node_name_at, field_init_node_value,
   UnaryOpKind, StringPart, Node, Token, NewlineIndex, build_newline_index,
@@ -21,9 +22,27 @@ import v1.std.core {
 
 import v1.compiler.tokenize { tokenize }
 
-import v1.compiler.parse { parse_with_table, ParseResult }
+import v1.compiler.parse {
+  parse_with_table,
+  parse_with_table_in_occurrence_scope,
+  ParseResult,
+}
+import std.occurrence_identity {
+  OccurrenceIdAllocator,
+  OccurrenceIndex,
+  OccurrenceTransport,
+  occurrence_id_allocator_initial,
+  occurrence_transport_refusal,
+}
 
-import v1.compiler.resolve { resolve_modules, ModuleGraph }
+import v1.compiler.resolve {
+  resolve_modules_with_occurrence_transport,
+  ModuleGraph,
+  ModuleOccurrenceInput,
+  module_occurrence_input,
+  module_occurrence_input_node,
+  module_occurrence_input_transport,
+}
 
 import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
@@ -59,8 +78,6 @@ import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default
 import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
 
 import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
-
-
 type SourceFile {
   path: String
   content: String
@@ -80,17 +97,37 @@ type FrontendResult {
   diagnostics: List<ErrorNode>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  occurrence_transport: OccurrenceTransport
+}
+
+type FrontendOccurrenceResolution {
+  graph: ModuleGraph?
+  diagnostics: List<ErrorNode>
 }
 
 type FrontendAccum {
   parse_results: List<ParseResult>
+  module_inputs: List<ModuleOccurrenceInput>
   newline_indices: List<NewlineIndex>
   intern_table: InternTable
+  occurrence_allocator: OccurrenceIdAllocator
 }
 
 type FrontendPrepared {
   tokens: List<Token>
   newline_index: NewlineIndex
+}
+
+fn merge_occurrence_transports(
+  transports: List<OccurrenceTransport>
+) -> OccurrenceTransport {
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: transports |> flat_map(transport => transport.index.entries),
+    },
+    declarations: transports |> flat_map(transport => transport.declarations),
+    references: transports |> flat_map(transport => transport.references),
+  }
 }
 
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
@@ -913,6 +950,35 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
   )
 }
 
+fn resolve_frontend_occurrence_transport(
+  module_inputs: List<ModuleOccurrenceInput>,
+  source_indices: Map<String, NewlineIndex>,
+  occurrence_transport: OccurrenceTransport
+) -> FrontendOccurrenceResolution {
+  match occurrence_transport_refusal(transport: occurrence_transport) {
+    Present { value: refusal } =>
+      FrontendOccurrenceResolution {
+        graph: none,
+        diagnostics: [
+          make_error_node(
+            diagnostic: OccurrenceTransportViolation { refusal: refusal },
+            module_name: ""
+          )
+        ],
+      }
+    Absent =>
+      let graph = resolve_modules_with_occurrence_transport(
+        module_inputs: module_inputs,
+        source_indices: source_indices,
+        occurrence_transport: occurrence_transport
+      )
+      FrontendOccurrenceResolution {
+        graph: Present { value: graph },
+        diagnostics: graph.diagnostics,
+      }
+  }
+}
+
 fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let prepared = sources |> map(s =>
     let tokens = tokenize(source: s.content, file: s.path)
@@ -920,28 +986,59 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum {
+    parse_results: [],
+    module_inputs: [],
+    newline_indices: [],
+    intern_table: intern_table,
+    occurrence_allocator: occurrence_id_allocator_initial(),
+  }, f: (acc, p) =>
+    let parsed = parse_with_table_in_occurrence_scope(
+      tokens: p.tokens,
+      source_indices: map_insert(
+        empty_map(),
+        p.newline_index.file,
+        p.newline_index
+      ),
+      intern_table: acc.intern_table,
+      occurrence_allocator: acc.occurrence_allocator
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
+      module_inputs: match parsed.result.module {
+        Present { value: parsed_module } =>
+          list_push(acc.module_inputs, module_occurrence_input(
+            module: parsed_module,
+            occurrence_transport: parsed.occurrence_transport
+          ))
+        Absent => acc.module_inputs
+      },
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      occurrence_allocator: parsed.occurrence_allocator,
     }
   )
   let parse_results = parsed.parse_results
   let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let modules = parse_results |> flat_map(p => match p.module {
-    Present { value: m } => [m]
-    Absent => []
-  })
+  let module_inputs = parsed.module_inputs
   let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-  let graph = resolve_modules(modules: modules, source_indices: source_indices)
+  let occurrence_transport = merge_occurrence_transports(
+    transports: module_inputs |> map(input =>
+      module_occurrence_input_transport(input: input)
+    )
+  )
+  let resolution = resolve_frontend_occurrence_transport(
+    module_inputs: module_inputs,
+    source_indices: source_indices,
+    occurrence_transport: occurrence_transport
+  )
   FrontendResult {
-    graph: Present { value: graph },
-    diagnostics: concat(parse_diagnostics, graph.diagnostics),
+    graph: resolution.graph,
+    diagnostics: concat(parse_diagnostics, resolution.diagnostics),
     newline_indices: newline_indices,
-    intern_table: parsed.intern_table
+    intern_table: parsed.intern_table,
+    occurrence_transport: occurrence_transport
   }
 }
 
@@ -949,6 +1046,7 @@ type CensusFillParse {
   modules: List<Node>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
+  occurrence_transport: OccurrenceTransport
 }
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
@@ -960,23 +1058,51 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     FrontendPrepared { tokens: tokens, newline_index: si }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum { parse_results: [], newline_indices: [], intern_table: intern_table }, f: (acc, p) =>
-    let parsed = parse_with_table(tokens: p.tokens, source_indices: map_insert(empty_map(), p.newline_index.file, p.newline_index), intern_table: acc.intern_table)
+  let parsed = prepared |> fold(init: FrontendAccum {
+    parse_results: [],
+    module_inputs: [],
+    newline_indices: [],
+    intern_table: intern_table,
+    occurrence_allocator: occurrence_id_allocator_initial(),
+  }, f: (acc, p) =>
+    let parsed = parse_with_table_in_occurrence_scope(
+      tokens: p.tokens,
+      source_indices: map_insert(
+        empty_map(),
+        p.newline_index.file,
+        p.newline_index
+      ),
+      intern_table: acc.intern_table,
+      occurrence_allocator: acc.occurrence_allocator
+    )
     FrontendAccum {
       parse_results: list_push(acc.parse_results, parsed.result),
+      module_inputs: match parsed.result.module {
+        Present { value: parsed_module } =>
+          list_push(acc.module_inputs, module_occurrence_input(
+            module: parsed_module,
+            occurrence_transport: parsed.occurrence_transport
+          ))
+        Absent => acc.module_inputs
+      },
       newline_indices: list_push(acc.newline_indices, p.newline_index),
-      intern_table: parsed.intern_table
+      intern_table: parsed.intern_table,
+      occurrence_allocator: parsed.occurrence_allocator,
     }
   )
   let parse_results = parsed.parse_results
-  let modules = parse_results |> flat_map(p => match p.module {
-    Present { value: m } => [m]
-    Absent => []
-  })
+  let module_inputs = parsed.module_inputs
   CensusFillParse {
-    modules: modules,
+    modules: module_inputs |> map(input =>
+      module_occurrence_input_node(input: input)
+    ),
     newline_indices: parsed.newline_indices,
-    diagnostics: collect_diagnostics(parse_results: parse_results)
+    diagnostics: collect_diagnostics(parse_results: parse_results),
+    occurrence_transport: merge_occurrence_transports(
+      transports: module_inputs |> map(input =>
+        module_occurrence_input_transport(input: input)
+      )
+    ),
   }
 }
 

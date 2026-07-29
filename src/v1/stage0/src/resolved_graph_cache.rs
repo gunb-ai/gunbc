@@ -44,6 +44,20 @@ pub enum CacheRejectReason {
     BackendKeyMalformed,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheProbeHit {
+    pub format_version: u32,
+    pub content_digest: Hash,
+    pub payload_byte_count: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CacheProbeResult {
+    Hit(CacheProbeHit),
+    Miss,
+    RejectedHit(CacheRejectReason),
+}
+
 #[derive(Debug, Clone)]
 pub enum CacheLookupResult {
     Hit(CachedResolvedGraph),
@@ -55,6 +69,8 @@ pub enum CacheLookupResult {
 pub struct CachedResolvedGraph {
     pub graph: Rc<ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub content_digest: Hash,
+    pub payload_byte_count: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -271,6 +287,54 @@ fn payload_content_digest(payload_bytes: &[u8]) -> Hash {
     v1_rt::bytes_identity_hash(payload_bytes)
 }
 
+const CACHE_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
+const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 2;
+
+pub fn faithful_probe_unavailable_gap() -> String {
+    "faithful resolved-graph disk probe unavailable: resolved_graph_cache v1 only exposes the whole payload digest and payload byte count, not per-output digests or byte sizes for resolved_graph/source_indices; fabricating those facts would violate the derivation invariant"
+        .to_string()
+}
+
+pub fn supports_faithful_probe() -> bool {
+    FORMAT_VERSION >= FAITHFUL_PROBE_FORMAT_VERSION
+}
+
+fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return CacheProbeResult::Miss,
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    let mut header = [0u8; CACHE_HEADER_LEN];
+    if file.read_exact(&mut header).is_err() {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    if &header[..MAGIC.len()] != MAGIC {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let version = u32::from_le_bytes(header[MAGIC.len()..MAGIC.len() + 4].try_into().unwrap());
+    let mut off = MAGIC.len() + 4;
+    let subject = match std::str::from_utf8(&header[off..off + 16]) {
+        Ok(s) => s.to_string(),
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    off += 16;
+    if subject != expected_subject {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    let stored_content_digest = match std::str::from_utf8(&header[off..off + 16]) {
+        Ok(s) => s.to_string(),
+        Err(_) => return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed),
+    };
+    off += 16;
+    let payload_len = u64::from_le_bytes(header[off..off + 8].try_into().unwrap());
+    CacheProbeResult::Hit(CacheProbeHit {
+        format_version: version,
+        content_digest: stored_content_digest,
+        payload_byte_count: payload_len,
+    })
+}
+
 fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     let mut file = match File::open(path) {
         Ok(f) => f,
@@ -338,6 +402,8 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
     CacheLookupResult::Hit(CachedResolvedGraph {
         graph,
         source_indices,
+        content_digest: computed,
+        payload_byte_count: payload_bytes.len() as u64,
     })
 }
 
@@ -346,6 +412,13 @@ pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
         return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     read_cached_file(&artifact_path(cache_root, subject_digest), subject_digest)
+}
+
+pub fn probe(cache_root: &Path, subject_digest: &str) -> CacheProbeResult {
+    if !v1_rt::is_hash_digest(subject_digest) {
+        return CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
+    }
+    read_cached_header(&artifact_path(cache_root, subject_digest), subject_digest)
 }
 
 /// Enforce the modeled `SizeBounded` eviction on the on-disk cache: if the total
@@ -535,6 +608,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             emit_graph_info: decoded.emit_graph_info.clone(),
         }),
         source_indices,
+        content_digest: payload_content_digest(bytes),
+        payload_byte_count: bytes.len() as u64,
     })
 }
 

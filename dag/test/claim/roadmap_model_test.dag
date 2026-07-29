@@ -4,6 +4,7 @@ import gunbc.roadmap_status {
   RoadmapItem, DerivableLine, AuthoredLine,
   DriftVerdict, Drifted, Clean, Underivable,
 }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 import gunbc.roadmap_model {
   RoadmapNodeId,
   Pointer,
@@ -69,6 +70,7 @@ fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
     carriers: cs,
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -98,6 +100,7 @@ test fn witness_node_status_drifts() -> Bool {
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -110,6 +113,7 @@ test fn witness_node_unsigned_box_clean() -> Bool {
     line: AuthoredLine { done: false, content: "partial evidence" },
     carriers: [],
     sizing: Unsized,
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }

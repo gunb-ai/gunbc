@@ -1,0 +1,76 @@
+module test.claim.roadmap_focus_witness_test
+
+import std.types { Bool, String, Int, List }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_authority {
+  active_roadmap_nodes,
+  active_roadmap_edges,
+  roadmap_focus_selection,
+}
+import gunbc.roadmap_focus {
+  RoadmapFocus,
+  NoFocus,
+  FocusOnOwners,
+  focus_visible_nodes,
+  focus_visible_edges,
+  focus_hidden_node_count,
+  focus_is_active,
+  focus_notice,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data focus_witness_note: String = "Focus is a VIEW, so the property that matters is not what it shows but what it cannot do: it must never be able to lose work. These claims pin the two ways a filtered projection goes wrong. First, the filter must be a partition and not an edit — visible plus hidden equals the whole declared set, so a node cannot fall out of both and vanish from the roadmap entirely; that is checked by arithmetic against the same list the filter runs over, not by trusting the filter. Second, the page must not read as a shorter roadmap — the notice carries a DERIVED count, so a reader who forgot the focus was set is told what is missing rather than shown a plausible-looking complete page.\n\nThe RED control is the one that would otherwise rot: clearing the focus must restore every node. Without it, a filter that silently dropped nodes on BOTH paths would still satisfy an is-subset check and still look correct on the focused page."
+
+fn all_nodes() -> List<RoadmapNode> { active_roadmap_nodes() }
+
+fn visible() -> List<RoadmapNode> {
+  focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes())
+}
+
+test fn focus_partitions_rather_than_deletes() -> Bool {
+  count(visible()) + focus_hidden_node_count(
+    focus: roadmap_focus_selection,
+    nodes: all_nodes(),
+  ) == count(all_nodes())
+}
+
+test fn clearing_focus_restores_every_node() -> Bool {
+  count(focus_visible_nodes(focus: NoFocus, nodes: all_nodes())) == count(all_nodes())
+    && focus_hidden_node_count(focus: NoFocus, nodes: all_nodes()) == 0
+}
+
+test fn focus_actually_narrows_the_page() -> Bool {
+  focus_is_active(focus: roadmap_focus_selection)
+    && count(visible()) < count(all_nodes())
+    && count(visible()) > 0
+}
+
+test fn every_visible_edge_has_both_endpoints_visible() -> Bool {
+  let vis = visible()
+  all(
+    focus_visible_edges(
+      focus: roadmap_focus_selection,
+      nodes: all_nodes(),
+      edges: active_roadmap_edges(),
+    ),
+    e => any(vis, n => (n.node as String) == (e.child as String))
+      && any(vis, n => (n.node as String) == (e.parent as String)),
+  )
+}
+
+test fn focus_notice_states_the_derived_hidden_count() -> Bool {
+  let notice = focus_notice(focus: roadmap_focus_selection, nodes: all_nodes())
+  string_contains(
+    s: notice,
+    pattern: to_string(focus_hidden_node_count(
+      focus: roadmap_focus_selection,
+      nodes: all_nodes(),
+    )),
+  ) && string_contains(s: notice, pattern: "Focused view")
+}
+
+test fn unfocused_projection_emits_no_notice() -> Bool {
+  focus_notice(focus: NoFocus, nodes: all_nodes()) == ""
+}

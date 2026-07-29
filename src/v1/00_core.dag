@@ -8,6 +8,18 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.induction { SubValueRelation }
+import std.occurrence_identity {
+  AuthoredTokenOrdinalSpace,
+  authored_token_ordinal_space_initial,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_advance_to,
+  OccurrenceIdAllocator,
+  OccurrenceTransportRefusal,
+  MissingAuthoredOccurrenceIdentity,
+  DuplicateAuthoredOccurrenceIdentity,
+  InconsistentOccurrenceContainment,
+  WrongOccurrenceCategory,
+}
 
 type Token {
   text: String
@@ -156,6 +168,7 @@ type CompilerDiagnostic
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
+  | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -164,6 +177,60 @@ type ErrorNode {
 
 type ErrorDAG {
   errors: List<ErrorNode>
+}
+
+fn occurrence_transport_refusal_diagnostic_span(
+  refusal: OccurrenceTransportRefusal
+) -> SourceSpan {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => span
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: _,
+      diagnostic_span: span,
+    } => span
+    InconsistentOccurrenceContainment {
+      occurrence: _,
+      diagnostic_span: span,
+    } => span
+    WrongOccurrenceCategory {
+      occurrence: _,
+      expected: _,
+      observed: _,
+      diagnostic_span: span,
+    } => span
+  }
+}
+
+fn occurrence_transport_refusal_diagnostic_message(
+  refusal: OccurrenceTransportRefusal
+) -> String {
+  match refusal {
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
+      "occurrence transport refused: missing authored occurrence identity"
+    DuplicateAuthoredOccurrenceIdentity {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: duplicate authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    InconsistentOccurrenceContainment {
+      occurrence: occurrence,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: inconsistent containment for authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+    WrongOccurrenceCategory {
+      occurrence: occurrence,
+      expected: _,
+      observed: _,
+      diagnostic_span: _,
+    } => concat(
+      "occurrence transport refused: wrong category for authored occurrence identity ",
+      to_string(value: occurrence.value)
+    )
+  }
 }
 
 fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
@@ -188,6 +255,8 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     SoleConstructorViolation { type_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
+    OccurrenceTransportViolation { refusal: refusal } =>
+      occurrence_transport_refusal_diagnostic_span(refusal: refusal)
   }
 }
 
@@ -213,6 +282,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
+    OccurrenceTransportViolation { refusal: refusal } =>
+      occurrence_transport_refusal_diagnostic_message(refusal: refusal)
   }
 }
 
@@ -1318,6 +1389,7 @@ type InternTable {
   strings: List<String>
   index: Map<String, Int>
   next_id: Int
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
 }
 
 type InternResult {
@@ -1326,7 +1398,24 @@ type InternResult {
 }
 
 fn empty_intern_table() -> InternTable {
-  InternTable { strings: [""], index: map_insert(empty_map(), "", 0), next_id: 1 }
+  InternTable {
+    strings: [""],
+    index: map_insert(empty_map(), "", 0),
+    next_id: 1,
+    authored_token_ordinals: authored_token_ordinal_space_initial(),
+  }
+}
+
+fn intern_table_with_authored_token_ordinals(
+  table: InternTable,
+  authored_token_ordinals: AuthoredTokenOrdinalSpace
+) -> InternTable {
+  InternTable {
+    strings: table.strings,
+    index: table.index,
+    next_id: table.next_id,
+    authored_token_ordinals: authored_token_ordinals,
+  }
 }
 
 fn intern(table: InternTable, s: String) -> InternResult {
@@ -1338,7 +1427,8 @@ fn intern(table: InternTable, s: String) -> InternResult {
         table: InternTable {
           strings: list_push(table.strings, s),
           index: map_insert(table.index, s, id),
-          next_id: id + 1
+          next_id: id + 1,
+          authored_token_ordinals: table.authored_token_ordinals,
         },
         id: id
       }
@@ -1368,6 +1458,16 @@ fn intern_find_or_empty(table: InternTable, s: String) -> Int {
 
 fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   tables |> fold(init: empty_intern_table(), f: (merged, t) =>
+    let merged_allocator = occurrence_id_allocator_advance_to(
+      alloc: merged.authored_token_ordinals.allocator,
+      min_next: t.authored_token_ordinals
+    )
+    let merged = intern_table_with_authored_token_ordinals(
+      table: merged,
+      authored_token_ordinals: authored_token_ordinal_space_from_allocator(
+        alloc: merged_allocator
+      )
+    )
     t.strings |> fold(init: merged, f: (m, s) =>
       if s == "" { m } else { intern(table: m, s: s).table }
     )

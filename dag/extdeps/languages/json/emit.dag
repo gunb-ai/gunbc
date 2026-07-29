@@ -105,17 +105,21 @@ fn serialize_json_array(elements: List<JsonValue>) -> String {
   concat("[", concat(join_json_values(items: elements), "]"))
 }
 
+fn serialize_json_object_members(members: List<JsonKeyValue>) -> String {
+  fold(members, init: "", f: (acc, kv) => {
+    let part = concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
+    if acc == "" { part } else { concat(acc, concat(", ", part)) }
+  })
+}
+
+data json_object_prefix_note: String = "serialize_json_object_prefix is the canonical serialization of an object's OPENING plus its leading members, with no closing brace — the exact byte prefix every document beginning with those members must carry. It exists so a consumer can identify a document by its leading members POSITIONALLY (starts_with) instead of scanning the serialized text for a fragment: a nested value can carry any fragment a scan looks for, but no nested value can occupy the document's prefix. serialize_json_object is defined as this prefix plus the closing brace, so the two cannot drift."
+
+fn serialize_json_object_prefix(members: List<JsonKeyValue>) -> String {
+  concat("{", serialize_json_object_members(members: members))
+}
+
 fn serialize_json_object(members: List<JsonKeyValue>) -> String {
-  concat(
-    "{",
-    concat(
-      fold(members, init: "", f: (acc, kv) => {
-        let part = concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
-        if acc == "" { part } else { concat(acc, concat(", ", part)) }
-      }),
-      "}"
-    )
-  )
+  concat(serialize_json_object_prefix(members: members), "}")
 }
 
 fn serialize_json(v: JsonValue) -> String {

@@ -1,0 +1,623 @@
+module gunbc.roadmap_workflow_progress
+
+import std.types { String, Int, Bool, List }
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_array,
+  json_object,
+  json_kv,
+}
+import gunbc.roadmap_dispatch_environment {
+  dispatch_environment_receipt_decode,
+  ReceiptDecoded,
+  ReceiptUndecodable,
+  ReceiptAdmitted,
+  ReceiptRefused,
+}
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState,
+  ProviderNotStarted,
+  ProviderStarting,
+  ProviderRunning,
+  ProviderCompleted,
+  ProviderFailed,
+  ProviderEventsRefused,
+  provider_execution_state,
+  provider_execution_state_label,
+  provider_execution_activity,
+  provider_execution_detail,
+  parse_codex_jsonl,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind,
+  EnvironmentWorkflowSegment,
+  WorkspaceWorkflowSegment,
+  AgentWorkflowSegment,
+  VerificationWorkflowSegment,
+  PublicationWorkflowSegment,
+  ReviewWorkflowSegment,
+  GoalAuditWorkflowSegment,
+  WorkflowSegmentState,
+  WorkflowSegmentPending,
+  WorkflowSegmentActive,
+  WorkflowSegmentComplete,
+  WorkflowSegmentFailed,
+  WorkflowSegmentRefused,
+  WorkflowSegment,
+  roadmap_attempt_workflow_segment_kinds,
+  workflow_segment_kind_key,
+  workflow_segment_kind_label,
+  workflow_segment_kind_short_label,
+  workflow_segment_intent_revision,
+  workflow_segment_state_key,
+}
+import gunbc.workflow_reconcile {
+  WorkflowFactState,
+  WorkflowFactPending,
+  WorkflowFactActive,
+  WorkflowFactSatisfied,
+  WorkflowFactFailed,
+  WorkflowFactRefused,
+  WorkflowFactKey,
+  WorkflowFact,
+  WorkflowFactTree,
+  WorkflowFactLeaf,
+  WorkflowReconcileReport,
+  workflow_reconcile_report,
+  workflow_reconcile_status_key,
+}
+import gunbc.worker_lifecycle {
+  WorkerProcessEvidence,
+  WorkerProcessUnobserved,
+  WorkerProcessAbsent,
+  WorkerProcessRunning,
+  WorkerProcessExited,
+}
+
+type WorkflowAttemptEvidence {
+  node_id: String
+  attempt_key: String
+  branch: String
+  modeled_state_present: Bool
+  admission_receipt_readable: Bool
+  admission_receipt: String
+  spawn_failure_present: Bool
+  spawn_failure: String
+  provider_events_readable: Bool
+  provider_events: String
+  provider_events_error: String
+  process: WorkerProcessEvidence
+  validation_summary: String
+}
+
+type WorkflowAttemptProgress {
+  node_id: String
+  attempt_key: String
+  branch: String
+  admission_receipt: String
+  provider: ProviderExecutionState
+  validation_summary: String
+  segments: List<WorkflowSegment>
+  reconciliation: WorkflowReconcileReport
+}
+
+data workflow_progress_projection_note: String = "The row progress bar is a pure projection over independent evidence, never a stored workflow status. An attempt state pointer is published only after environment admission, worktree creation, an immutable admission receipt, and an empty provider-events file all exist. Readability alone is not admission: the projection requires the receipt to START with the emitter's own admitted identity prefix (schema then status), so a corrupted or refused receipt cannot paint Environment complete. Positional identity replaces a text scan that any value position could satisfy. Complete Codex JSONL remains attempt evidence; the observer's modeled jq capability validates it and emits bounded structural envelopes before this module derives agent activity and provider terminal events. Large command output is therefore opaque to the synchronous UI rather than a workflow refusal. The shared gunbc.worker_lifecycle.WorkerProcessEvidence supplies process presence and exit to both the Sessions surface and Agent reconciliation. Reconciliation is fail-closed, and Agent completes ONLY on the design contract's compatible process exit: a failed event projection refuses, nonzero exit before a terminal event is failure, zero exit without a terminal event is refused/incomplete, malformed events remain refused, contradictory turn.completed plus nonzero process exit is refused, turn.completed with the pane still running stays ACTIVE awaiting that exit, and turn.completed with an absent or unobserved process REFUSES because no exit was established. A terminal provider event alone never paints Agent complete — that would fabricate a completed obligation from incomplete evidence. The ordered desired facts derive from roadmap_attempt_workflow_segment_kinds; only non-pending evidence projections enter the observed fact forest, so Pending in the row means an absent observation rather than a fabricated pending receipt. The two forests reconcile through gunbc.workflow_reconcile, making observed count, remaining work, and overall convergence fold results rather than another hand-authored status. Verification, publication, review, and goal audit remain pending until their own authoritative receipts exist; provider completion cannot fabricate them."
+
+
+
+data admission_receipt_decode_note: String = "review 44094. This consumer used to ask a Bool of the receipt text and give ONE message to two different states: a receipt that records a refusal, and a document this reader cannot decode at all. They have different remedies — read the refusal's own reason versus find out who wrote a foreign document at the attempt path — so each gets its own located arm, decoded through the emitter's own rows rather than re-spelled here."
+
+fn receipt_records_admission(receipt: String) -> Bool {
+  match dispatch_environment_receipt_decode(receipt: receipt) {
+    ReceiptDecoded { status } =>
+      match status {
+        ReceiptAdmitted => true
+        ReceiptRefused => false
+      }
+    ReceiptUndecodable { reason: _ } => false
+  }
+}
+
+fn admission_receipt_refusal(receipt: String) -> ProviderExecutionState {
+  match dispatch_environment_receipt_decode(receipt: receipt) {
+    ReceiptDecoded { status: _ } =>
+      ProviderEventsRefused {
+        activity: "environment admission refused",
+        detail: "admission receipt records a refused environment admission; its own reason field carries the cause",
+      }
+    ReceiptUndecodable { reason } =>
+      ProviderEventsRefused {
+        activity: "admission receipt undecodable",
+        detail: reason,
+      }
+  }
+}
+
+fn provider_execution_reconcile_process(
+  provider: ProviderExecutionState,
+  process: WorkerProcessEvidence,
+) -> ProviderExecutionState {
+  match provider {
+    ProviderFailed { activity: _, detail: _ } => provider
+    ProviderEventsRefused { activity: _, detail: _ } => provider
+    ProviderCompleted { activity } =>
+      match process {
+        WorkerProcessExited { exit_code, last_command: _ } =>
+          if exit_code == 0 {
+            provider
+          } else {
+            ProviderEventsRefused {
+              activity: activity,
+              detail: join([
+                "Codex emitted turn.completed but the retained pane exited ",
+                to_string(exit_code),
+                "; terminal evidence conflicts",
+              ], ""),
+            }
+          }
+        WorkerProcessRunning { command: _ } =>
+          ProviderRunning {
+            activity: join([
+              activity,
+              "; awaiting process exit",
+            ], ""),
+          }
+        WorkerProcessAbsent =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: "Codex emitted turn.completed but no process exit was observed; the pane is absent, so the compatible exit the Agent obligation requires cannot be established",
+          }
+        WorkerProcessUnobserved { reason } =>
+          ProviderEventsRefused {
+            activity: activity,
+            detail: join([
+              "Codex emitted turn.completed but process evidence is unobserved (",
+              reason,
+              "); the compatible exit the Agent obligation requires cannot be established",
+            ], ""),
+          }
+      }
+    _ =>
+      match process {
+        WorkerProcessRunning { command: _ } =>
+          match provider {
+            ProviderNotStarted =>
+              ProviderStarting { activity: "waiting for first provider event" }
+            _ => provider
+          }
+        WorkerProcessExited { exit_code, last_command: _ } =>
+          if exit_code == 0 {
+            ProviderEventsRefused {
+              activity: "provider process exited",
+              detail: "provider process exited 0 without turn.completed, turn.failed, or error",
+            }
+          } else {
+            ProviderFailed {
+              activity: "provider process exited",
+              detail: join([
+                "provider process exited ",
+                to_string(exit_code),
+                " before a terminal provider event",
+              ], ""),
+            }
+          }
+        WorkerProcessAbsent =>
+          ProviderEventsRefused {
+            activity: "provider process absent",
+            detail: "no retained provider pane and no terminal provider event",
+          }
+        WorkerProcessUnobserved { reason } =>
+          ProviderEventsRefused {
+            activity: "process observation refused",
+            detail: reason as String,
+          }
+      }
+  }
+}
+
+fn workflow_provider_from_evidence(
+  evidence: WorkflowAttemptEvidence,
+) -> ProviderExecutionState {
+  if !evidence.modeled_state_present {
+    ProviderEventsRefused {
+      activity: "legacy attempt",
+      detail: "attempt predates modeled admission/event capture; progress cannot be reconstructed",
+    }
+  } else if !evidence.admission_receipt_readable {
+    ProviderEventsRefused {
+      activity: "attempt state refused",
+      detail: "current attempt pointer exists but its admission receipt is unreadable",
+    }
+  } else if !receipt_records_admission(receipt: evidence.admission_receipt) {
+    admission_receipt_refusal(receipt: evidence.admission_receipt)
+  } else if evidence.spawn_failure_present {
+    ProviderFailed {
+      activity: "dispatch staging failed",
+      detail: evidence.spawn_failure,
+    }
+  } else if !evidence.provider_events_readable {
+    ProviderEventsRefused {
+      activity: "event capture refused",
+      detail: join([
+        "initialized provider event stream is unreadable: ",
+        evidence.provider_events_error,
+      ], ""),
+    }
+  } else {
+    provider_execution_reconcile_process(
+      provider: provider_execution_state(
+        parsed: parse_codex_jsonl(text: evidence.provider_events),
+      ),
+      process: evidence.process,
+    )
+  }
+}
+
+fn provider_workflow_segment(
+  provider: ProviderExecutionState,
+) -> WorkflowSegment {
+  match provider {
+    ProviderNotStarted =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "provider has not emitted an event",
+      }
+    ProviderStarting { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: activity,
+      }
+    ProviderRunning { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentActive,
+        detail: activity,
+      }
+    ProviderCompleted { activity } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentComplete,
+        detail: activity,
+      }
+    ProviderFailed { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentFailed,
+        detail: join([activity, ": ", detail], ""),
+      }
+    ProviderEventsRefused { activity, detail } =>
+      WorkflowSegment {
+        kind: AgentWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: join([activity, ": ", detail], ""),
+      }
+  }
+}
+
+fn verification_segment(
+  provider: ProviderExecutionState,
+  validation_summary: String,
+) -> WorkflowSegment {
+  match provider {
+    ProviderCompleted { activity: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: join([
+          "awaiting independent validation receipt",
+          if validation_summary == "" {
+            ""
+          } else {
+            join([": ", validation_summary], "")
+          },
+        ], ""),
+      }
+    ProviderFailed { activity: _, detail: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "not reached because the agent failed",
+      }
+    ProviderEventsRefused { activity: _, detail: _ } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "not reached because agent evidence is refused",
+      }
+    _ =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentPending,
+        detail: "waits for a terminal agent event",
+      }
+  }
+}
+
+fn workflow_segment_from_evidence(
+  kind: WorkflowSegmentKind,
+  evidence: WorkflowAttemptEvidence,
+  provider: ProviderExecutionState,
+  admitted: Bool,
+) -> WorkflowSegment {
+  match kind {
+    EnvironmentWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: if admitted {
+          WorkflowSegmentComplete
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: if admitted {
+          "dispatch environment admitted with grounded Ensure receipts"
+        } else if evidence.admission_receipt_readable {
+          "environment admission receipt is corrupt or does not say admitted"
+        } else {
+          "environment admission receipt unavailable"
+        },
+      }
+    WorkspaceWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: if evidence.modeled_state_present {
+          WorkflowSegmentComplete
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: if evidence.modeled_state_present {
+          "attempt branch and worktree preceded state publication"
+        } else {
+          "legacy branch has no modeled workspace publication receipt"
+        },
+      }
+    AgentWorkflowSegment =>
+      provider_workflow_segment(provider: provider)
+    VerificationWorkflowSegment =>
+      verification_segment(
+        provider: provider,
+        validation_summary: evidence.validation_summary,
+      )
+    PublicationWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentPending,
+        detail: "awaiting a verified change-set, publication intent, remote branch read-back, and pull-request binding",
+      }
+    ReviewWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentPending,
+        detail: "awaiting an exact-head pull-request binding and review verdict",
+      }
+    GoalAuditWorkflowSegment =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentPending,
+        detail: "awaiting an independent audit of the exact candidate against the current approved goal",
+      }
+  }
+}
+
+fn workflow_fact_state_from_segment_state(
+  state: WorkflowSegmentState,
+) -> WorkflowFactState {
+  match state {
+    WorkflowSegmentPending => WorkflowFactPending
+    WorkflowSegmentActive => WorkflowFactActive
+    WorkflowSegmentComplete => WorkflowFactSatisfied
+    WorkflowSegmentFailed => WorkflowFactFailed
+    WorkflowSegmentRefused => WorkflowFactRefused
+  }
+}
+
+fn workflow_attempt_id(
+  node_id: String,
+  attempt_key: String,
+) -> String {
+  join([node_id, ":", attempt_key], "")
+}
+
+fn workflow_desired_fact(
+  workflow_id: String,
+  kind: WorkflowSegmentKind,
+) -> WorkflowFact {
+  WorkflowFact {
+    key: WorkflowFactKey {
+      workflow_id: workflow_id,
+      obligation_id: workflow_segment_kind_key(kind: kind),
+    },
+    intent_revision: workflow_segment_intent_revision(kind: kind),
+    state: WorkflowFactSatisfied,
+    detail: workflow_segment_kind_label(kind: kind),
+  }
+}
+
+fn workflow_observed_fact(
+  workflow_id: String,
+  segment: WorkflowSegment,
+) -> WorkflowFact {
+  WorkflowFact {
+    key: WorkflowFactKey {
+      workflow_id: workflow_id,
+      obligation_id: workflow_segment_kind_key(kind: segment.kind),
+    },
+    intent_revision: workflow_segment_intent_revision(kind: segment.kind),
+    state: workflow_fact_state_from_segment_state(state: segment.state),
+    detail: segment.detail,
+  }
+}
+
+fn workflow_desired_fact_forest(
+  workflow_id: String,
+) -> List<WorkflowFactTree> {
+  map(
+    roadmap_attempt_workflow_segment_kinds,
+    kind => WorkflowFactLeaf {
+      fact: workflow_desired_fact(
+        workflow_id: workflow_id,
+        kind: kind,
+      ),
+    },
+  )
+}
+
+fn workflow_observed_fact_forest(
+  workflow_id: String,
+  segments: List<WorkflowSegment>,
+) -> List<WorkflowFactTree> {
+  flat_map(
+    segments,
+    segment => match segment.state {
+      WorkflowSegmentPending => []
+      _ => [
+        WorkflowFactLeaf {
+          fact: workflow_observed_fact(
+            workflow_id: workflow_id,
+            segment: segment,
+          ),
+        },
+      ]
+    },
+  )
+}
+
+fn workflow_attempt_reconciliation(
+  evidence: WorkflowAttemptEvidence,
+  segments: List<WorkflowSegment>,
+) -> WorkflowReconcileReport {
+  let workflow_id = workflow_attempt_id(
+    node_id: evidence.node_id,
+    attempt_key: evidence.attempt_key,
+  )
+  workflow_reconcile_report(
+    desired: workflow_desired_fact_forest(workflow_id: workflow_id),
+    observed: workflow_observed_fact_forest(
+      workflow_id: workflow_id,
+      segments: segments,
+    ),
+  )
+}
+
+fn workflow_attempt_progress(
+  evidence: WorkflowAttemptEvidence,
+) -> WorkflowAttemptProgress {
+  let provider = workflow_provider_from_evidence(evidence: evidence)
+  let admitted = evidence.modeled_state_present
+    && evidence.admission_receipt_readable
+    && receipt_records_admission(receipt: evidence.admission_receipt)
+  let segments = map(
+    roadmap_attempt_workflow_segment_kinds,
+    kind => workflow_segment_from_evidence(
+      kind: kind,
+      evidence: evidence,
+      provider: provider,
+      admitted: admitted,
+    ),
+  )
+  WorkflowAttemptProgress {
+    node_id: evidence.node_id,
+    attempt_key: evidence.attempt_key,
+    branch: evidence.branch,
+    admission_receipt: evidence.admission_receipt,
+    provider: provider,
+    validation_summary: evidence.validation_summary,
+    segments: segments,
+    reconciliation: workflow_attempt_reconciliation(
+      evidence: evidence,
+      segments: segments,
+    ),
+  }
+}
+
+fn workflow_segment_json_value(segment: WorkflowSegment) -> JsonValue {
+  json_object(members: [
+    json_kv(
+      key: "kind",
+      value: json_string(s: workflow_segment_kind_key(kind: segment.kind)),
+    ),
+    json_kv(
+      key: "label",
+      value: json_string(s: workflow_segment_kind_label(kind: segment.kind)),
+    ),
+    json_kv(
+      key: "short_label",
+      value: json_string(s: workflow_segment_kind_short_label(kind: segment.kind)),
+    ),
+    json_kv(
+      key: "state",
+      value: json_string(s: workflow_segment_state_key(state: segment.state)),
+    ),
+    json_kv(key: "detail", value: json_string(s: segment.detail)),
+  ])
+}
+
+fn workflow_attempt_progress_json_value(
+  progress: WorkflowAttemptProgress,
+) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: progress.node_id)),
+    json_kv(key: "attempt_key", value: json_string(s: progress.attempt_key)),
+    json_kv(key: "branch", value: json_string(s: progress.branch)),
+    json_kv(
+      key: "provider_status",
+      value: json_string(s: provider_execution_state_label(state: progress.provider)),
+    ),
+    json_kv(
+      key: "provider_activity",
+      value: json_string(s: provider_execution_activity(state: progress.provider)),
+    ),
+    json_kv(
+      key: "provider_detail",
+      value: json_string(s: provider_execution_detail(state: progress.provider)),
+    ),
+    json_kv(
+      key: "validation_summary",
+      value: json_string(s: progress.validation_summary),
+    ),
+    json_kv(
+      key: "admission_receipt",
+      value: json_string(s: progress.admission_receipt),
+    ),
+    json_kv(
+      key: "workflow_status",
+      value: json_string(s: workflow_reconcile_status_key(
+        report: progress.reconciliation,
+      )),
+    ),
+    json_kv(
+      key: "desired_obligations",
+      value: json_int(n: progress.reconciliation.desired_count),
+    ),
+    json_kv(
+      key: "observed_obligations",
+      value: json_int(n: progress.reconciliation.observed_count),
+    ),
+    json_kv(
+      key: "remaining_obligations",
+      value: json_int(n: progress.reconciliation.remaining_count),
+    ),
+    json_kv(
+      key: "failed_obligations",
+      value: json_int(n: progress.reconciliation.observed_failure_count),
+    ),
+    json_kv(
+      key: "refused_obligations",
+      value: json_int(n: progress.reconciliation.observed_refusal_count),
+    ),
+    json_kv(
+      key: "reconciliation_refusals",
+      value: json_int(n: progress.reconciliation.plan_refusal_count),
+    ),
+    json_kv(
+      key: "segments",
+      value: json_array(elements: map(
+        progress.segments,
+        segment => workflow_segment_json_value(segment: segment),
+      )),
+    ),
+  ])
+}

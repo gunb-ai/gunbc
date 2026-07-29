@@ -29,6 +29,10 @@ fn parse_ctx() -> Rc<ParseContext> {
     Rc::new(ParseContext {
         source_indices: Rc::new(HashMap::new()),
         intern_table: empty_intern_table(),
+        occurrence_allocator: None,
+        occurrence_index: None,
+        declaration_occurrences: None,
+        reference_occurrences: None,
     })
 }
 

@@ -10,13 +10,18 @@ import gunbc.roadmap_component {
   dispatch_button_component, dispatch_client_js_source,
   dispatch_caption_set,
 }
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels, belt_dispatch_label_band_key }
+import gunbc.roadmap_belt_actuate {
+  belt_dispatch_all_status_labels,
+  belt_dispatch_label_band_key,
+  belt_dispatch_disabled_status_label,
+  belt_dispatch_provider_label,
+}
 import gunbc.roadmap_style { roadmap_css }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data dispatch_presentation_witness_note: String = "P3 keystone, re-grounded by remodel W1d (2026-07-24): the dispatch button's presentation is a projection of the modeled rows, not hand pixels/colors. The reserved width is derived from the longest CAPTION the button can wear (band phrases + session-chip morphs — wire labels no longer render as captions, so they no longer drive geometry); each state class paints its BAND's fill/ink vars, cross-checked as the EXACT css rule so a paint drift reds, with the band-of-label glue asserted beside it; the located fields (step/detail) surface into a title attribute, not console-only; and the client script + stylesheet flip the SAME class vocabulary (one authority), so the live button and the P4 gallery cannot disagree."
+data dispatch_presentation_witness_note: String = "P3 keystone, re-grounded by remodel W1d (2026-07-24) and lifecycle correction (2026-07-27): the dispatch button's presentation is a projection of modeled rows, not hand pixels/colors. Reserved width derives from every caption it can wear, including dispatch receipts and observed-session presence; each state class paints its BAND's exact fill/ink vars; located fields surface in the title; and client plus stylesheet share one class vocabulary."
 
 fn role_var_for_label(wire_label: String) -> String {
   fold(component_state_for_label(c: dispatch_button_component(), wire_label: wire_label),
@@ -74,6 +79,20 @@ test fn witness_located_fields_surface_to_title() -> Bool {
     && string_contains(s: js, pattern: "j.detail")
 }
 
+test fn witness_dispatch_receipt_is_provider_agnostic() -> Bool {
+  let js = dispatch_client_js_source()
+  let captions = dispatch_caption_set()
+  any(captions, c => c == "dispatch · accepted")
+    && any(captions, c => c == "dispatch · disabled")
+    && !any(
+      captions,
+      c => string_contains(s: c, pattern: belt_dispatch_provider_label()),
+    )
+    && !string_contains(s: js, pattern: "j.provider")
+    && string_contains(s: js, pattern: "dispatch · accepted")
+    && string_contains(s: js, pattern: belt_dispatch_disabled_status_label())
+}
+
 test fn witness_js_and_css_share_class_authority() -> Bool {
   let js = dispatch_client_js_source()
   let css = roadmap_css()
@@ -84,4 +103,3 @@ test fn witness_js_and_css_share_class_authority() -> Bool {
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_refused], ""))
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_requested], ""))
 }
-

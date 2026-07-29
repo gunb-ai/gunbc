@@ -1,0 +1,33 @@
+label	canonical_seven_sweep_root_attribution_2026-07-28
+classifier_stamp	full-residual-histogram-no-first-error-limit-v1
+protocol	CSSL_STD_SEED_LINK=1; shim_lib_rel=empty; docs/probes/curated_cargo_probe_one.sh invocation contract ported to /tmp scratchpad driver; gunbc compile -> cssl_assemble -> cargo build --release --lib; ONE stamped gunbc+cssl_assemble binary pair for the whole seven-module sweep; every row below is the FULL cargo --message-format=json diagnostic set for that module, not first_error-limited (contrast classifier_stamp on refresh_canonical_seven_2026-07-26.tsv: rule1-first-error-plus-residual-histogram-v3-uncoded-split, which stamped a symptom histogram alongside a first-error field but did not itself limit the histogram — the "not first-error-limited" property here is about this receipt's provenance query (`cargo build --message-format=json`, full compile, no -q/--jobs=1 early-exit), not a claim the prior histograms were truncated)
+gunbc_sha256	54c3fea91dbb87fd6794f29d5f23f79ee58bfff51fb99c935e5878bdd8b145c7
+cssl_assemble_sha256	2cd17c5040afb470ea3af631d5d773e5e7028c4691341b50187d186abfee3720
+gunbc_binary_mtime_utc	2026-07-28T16:07:12Z
+cssl_assemble_binary_mtime_utc	2026-07-28T16:07:10Z
+git_sha	623519aa3ca871b7afbcbd47c7ac137542c8f426
+git_sha_note	origin/main advanced to 220b556d537e9cce55f419c3ebfbac9c5eb80f72 (merge of #7352) mid-sweep; per parent instruction (msg_942468e3) this sweep was continued and stamped against 623519aa, the sha it started against — not mixed with the newer sha
+baseline_compared_against	docs/probes/root4_measure_missing_generics_canonical_seven_2026-07-26.tsv AFTER row (aggregate 2892 total / 843 E0308 / 635 E0599); mandate msg_2c058326 quoted 2892/837/635 — the E0308 figure in this receipt's baseline comparison uses 843 (the TSV's own AFTER row), a 6-error discrepancy from the mandate's paraphrase, noted here rather than silently reconciled
+root_attribution_companion	docs/probes/canonical_seven_cause_signature_attribution_2026-07-28.tsv (Task B: per-error-code histograms below are SYMPTOM counts, not roots; see companion file for located cause-signature attribution)
+seed_vs_v2_emit_caveat	this probe runs `gunbc compile --target rust`, which drives the V1 SEED emitter (src/v1/05_emit_rust.dag) over the v2 AST as data, NOT the v2 emitter; fixes for anything measured here land in the seed + regen_stage0, not v2-only wiring — a v2-emit-only fix would measure zero against this receipt
+module	emit	cargo	total_errors	verdict	residual_histogram
+src/v2/compiler/06_translate.dag	60 files emitted, 27 diagnostics	refuse	385	refuse	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[unreachable_patterns]:21 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0061]:1 error[E0560]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/04_infer.dag	52 files emitted, 19 diagnostics	refuse	345	refuse	error[E0308]:91 error[E0599]:88 error[E0277]:75 error[E0063]:18 error[unreachable_patterns]:18 error[E0369]:14 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0597]:5 error[E0614]:3 error[E0392]:2 error[E0061]:1 error[E0560]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/05_eval.dag	59 files emitted, 26 diagnostics	refuse	427	refuse	error[E0308]:117 error[E0599]:91 error[E0277]:81 error[E0369]:29 error[E0614]:22 error[E0063]:20 error[unreachable_patterns]:20 error[E0107]:14 error[E0282]:9 error[E0597]:8 error[E0609]:6 error[E0392]:2 error[E0560]:2 error[E0310]:2 error[E0061]:1 error[E0271]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/05_emit.dag	61 files emitted, 27 diagnostics	refuse	385	refuse	error[E0308]:114 error[E0599]:93 error[E0277]:76 error[unreachable_patterns]:21 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0061]:1 error[E0560]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/emit_host.dag	91 files emitted, 81 diagnostics	refuse	640	refuse	error[E0308]:206 error[E0277]:129 error[E0599]:96 error[E0369]:83 error[unreachable_patterns]:24 error[E0614]:22 error[E0063]:20 error[E0107]:17 error[E0597]:16 error[E0282]:9 error[E0609]:6 error[E0392]:2 error[E0560]:2 error[E0425]:2 error[E0310]:2 error[E0061]:1 error[E0271]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/emit_module.dag	62 files emitted, 27 diagnostics	refuse	393	refuse	error[E0308]:122 error[E0599]:93 error[E0277]:76 error[unreachable_patterns]:21 error[E0063]:18 error[E0369]:14 error[E0597]:13 error[E0107]:12 error[E0282]:9 error[E0609]:6 error[E0614]:3 error[E0392]:2 error[E0061]:1 error[E0560]:1 error[E0004]:1 uncoded_UNRESOLVED_CompilerError:1
+src/v2/compiler/materialization_carriers.dag	44 files emitted, 50 diagnostics	refuse	323	refuse	error[E0277]:90 error[E0599]:81 error[E0308]:81 error[E0369]:64 error[E0107]:3 error[E0061]:2 error[E0282]:1 error[unreachable_patterns]:1
+TOTAL	-	-	2898	-	E0308:845 E0599:635 E0277:603 E0369:232 unreachable_patterns:126 E0063:112 E0107:82 E0597:68 E0614:56 E0282:55 E0609:36 E0392:12 E0061:8 E0560:8 E0004:6 E0310:4 E0271:2 E0425:2
+baseline_delta	module	before_2026-07-26	after_2026-07-28	delta
+baseline_delta	06_translate	385	385	0
+baseline_delta	04_infer	345	345	0
+baseline_delta	05_eval	427	427	0
+baseline_delta	05_emit	385	385	0
+baseline_delta	emit_host	637	640	+3
+baseline_delta	emit_module	393	393	0
+baseline_delta	materialization_carriers	320	323	+3
+baseline_delta	TOTAL	2892	2898	+6
+baseline_delta	E0308(aggregate)	843	845	+2
+baseline_delta	E0599(aggregate)	635	635	0
+baseline_delta_note	the +6 total / +2 E0308 / +4 E0369 movement is confined to emit_host (+1 E0308, +2 E0369) and materialization_carriers (+1 E0308, +2 E0369); every other module is byte-for-byte flat against the 07-26 AFTER row. This reads as small unrelated main-branch drift between 623519aa and the 07-26 baseline sha, not a burn-down or a regression from any Gate-1 root work — no root family shifted size in this window.

@@ -9,6 +9,8 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   HostExecArgv,
@@ -22,6 +24,10 @@ import gunbc.roadmap_belt_actuate {
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
+  BeltExecStep,
+  ExecStepsOk,
+  ExecStepFailed,
+  belt_exec_steps,
   BeltSpawnOutcome, Spawned, SpawnFailed,
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
@@ -29,20 +35,28 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
+  belt_dispatch_node_for_instance,
+  belt_stop_node_for_instance,
+  BeltStopResult, StopDisabled,
   BeltNodeLookup, NodeFound, NodeMissing,
   belt_find_node_in,
   belt_node_session_live,
-  BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
+  BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
+  belt_dispatch_result_json_value,
+  belt_dispatch_provider_label,
   belt_dispatch_ok_status_labels,
   DispatchLabelBandRow, belt_dispatch_label_band_rows, label_band_rows_cover,
   belt_dispatch_result_exemplars,
   belt_dispatch_all_status_labels,
   BeltClaudePreflight, ClaudePreflightOk, ClaudePreflightRefused,
   belt_claude_preflight_decision,
+  BeltCodexPreflight, CodexPreflightOk, CodexPreflightRefused,
+  belt_codex_preflight_decision_observed_for_home,
 }
+import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -55,6 +69,7 @@ fn ready_node(id: String) -> RoadmapNode {
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: "",
     signoff: Unsigned,
   }
@@ -165,6 +180,31 @@ test fn witness_exec_all_fails_on_later_step() -> Bool {
     workdir: "/",
   )
   is_exec_failed(o: o)
+}
+
+test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
+  match belt_exec_steps(
+    steps: [
+      BeltExecStep {
+        step: "prepare",
+        command: host_exec_argv(program: "/usr/bin/true", args: []),
+      },
+      BeltExecStep {
+        step: "tmux-event-pipe",
+        command: host_exec_argv(program: "/usr/bin/false", args: []),
+      },
+      BeltExecStep {
+        step: "provider-start",
+        command: host_exec_argv(program: "/usr/bin/true", args: []),
+      },
+    ],
+    workdir: "/",
+  ) {
+    ExecStepsOk => false
+    ExecStepFailed { step, detail } =>
+      step == "tmux-event-pipe"
+        && string_contains(s: detail, pattern: "exit 1")
+  }
 }
 
 test fn witness_spawn_member_refuses_observed_shape() -> Bool {
@@ -279,6 +319,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    execution: ExecutionContractUnspecified,
     owner: owner,
     signoff: Unsigned,
   }
@@ -312,7 +353,8 @@ test fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
 }
 
 test fn witness_dispatch_result_refusals_not_ok() -> Bool {
-  !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
+  !belt_dispatch_result_ok(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" })
+    && !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
     && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
     && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
@@ -327,6 +369,7 @@ fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
 test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
   status_label_glued_to_ok(r: DispatchSpawned { node_id: "a", session_name: "s" })
     && status_label_glued_to_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "s" })
+    && status_label_glued_to_ok(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" })
     && status_label_glued_to_ok(r: DispatchNodeNotFound { node_id: "a" })
     && status_label_glued_to_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
     && status_label_glued_to_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
@@ -336,10 +379,23 @@ test fn witness_dispatch_status_labels_glued_to_ok_set() -> Bool {
 test fn witness_dispatch_status_labels_pin_wire_contract() -> Bool {
   belt_dispatch_status_label(r: DispatchSpawned { node_id: "a", session_name: "s" }) == "spawned"
     && belt_dispatch_status_label(r: DispatchAlreadyLive { node_id: "a", session_name: "s" }) == "already_live"
+    && belt_dispatch_status_label(r: DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" }) == "disabled"
     && belt_dispatch_status_label(r: DispatchNodeNotFound { node_id: "a" }) == "node_not_found"
     && belt_dispatch_status_label(r: DispatchNodeAlreadyDone { node_id: "a" }) == "already_done_signed_off"
     && belt_dispatch_status_label(r: DispatchObserveRefused { node_id: "a", reason: "x" }) == "observe_refused"
     && belt_dispatch_status_label(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" }) == "spawn_failed"
+}
+
+test fn witness_fresh_spawn_wire_names_selected_provider() -> Bool {
+  belt_dispatch_provider_label() == "codex"
+    && string_contains(
+      s: serialize_json(v: belt_dispatch_result_json_value(
+        r: DispatchSpawned { node_id: "a", session_name: "s" })),
+      pattern: "\"provider\": \"codex\"")
+    && string_contains(
+      s: serialize_json(v: belt_dispatch_result_json_value(
+        r: DispatchSpawnFailed { node_id: "a", step: "codex-auth", detail: "not logged in" })),
+      pattern: "\"provider\": \"codex\"")
 }
 
 fn band_key_for_label(label: String) -> String {
@@ -351,9 +407,10 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 6
+  belt_dispatch_label_band_rows().length() == 7
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
+    && band_key_for_label(label: "disabled") == "fail"
     && band_key_for_label(label: "node_not_found") == "fail"
     && band_key_for_label(label: "already_done_signed_off") == "fail"
     && band_key_for_label(label: "observe_refused") == "loud"
@@ -376,10 +433,10 @@ test fn witness_label_band_cover_reds_on_missing_row() -> Bool {
     && !label_band_rows_cover(rows: truncated, labels: labels)
 }
 
-data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls a 7th VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same six labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
+data d4_exemplar_reconcile_note: String = "D4: belt_dispatch_result_exemplars is a HAND roster (one exemplar per BeltDispatchResult arm), enrolled DeclaredFrontier in gunbc.roster_registry. belt_dispatch_status_label's total match walls an 8th VARIANT at compile time, but nothing ties the exemplar LIST to the variant set — a missed exemplar silently narrows belt_dispatch_all_status_labels AND the component wire-total that reads it, while the live server emits the unmodeled label. This reconciles the exemplar-derived label set against the independent wire-contract pin (the same seven labels witness_dispatch_status_labels_pin_wire_contract pins), and the RED control proves a missing-variant list reds. Dissolves when inhabitance enumeration or the serve-JSON total match replaces the hand list."
 
 fn d4_wire_contract_labels() -> List<String> {
-  ["spawned", "already_live", "node_not_found", "already_done_signed_off", "observe_refused", "spawn_failed"]
+  ["spawned", "already_live", "disabled", "node_not_found", "already_done_signed_off", "observe_refused", "spawn_failed"]
 }
 
 fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
@@ -395,6 +452,7 @@ fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
   [
     DispatchSpawned { node_id: "a", session_name: "s" },
     DispatchAlreadyLive { node_id: "a", session_name: "s" },
+    DispatchDisabled { node_id: "a", instance_id: "preview", reason: "observe-only" },
     DispatchNodeNotFound { node_id: "a" },
     DispatchNodeAlreadyDone { node_id: "a" },
     DispatchObserveRefused { node_id: "a", reason: "x" },
@@ -486,4 +544,161 @@ test fn witness_preflight_ok_on_enriched_entry() -> Bool {
   ))
 }
 
+fn codex_preflight_refused_step(p: BeltCodexPreflight) -> String {
+  match p {
+    CodexPreflightRefused { step: st, detail: _ } => st
+    CodexPreflightOk { auth_method: _ } => ""
+  }
+}
+
+test fn witness_codex_preflight_refuses_missing_cli_before_auth() -> Bool {
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: false,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
+    login_status_success: true,
+    login_status_stdout: "Logged in using ChatGPT",
+    login_status_stderr: "",
+  )) == "codex-cli"
+}
+
+test fn witness_codex_preflight_refuses_missing_env_binding() -> Bool {
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: false,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
+    login_status_success: true,
+    login_status_stdout: "Logged in using ChatGPT",
+    login_status_stderr: "",
+  )) == "codex-env"
+}
+
+test fn witness_codex_preflight_refuses_login_status_nonzero() -> Bool {
+  codex_preflight_refused_step(p: belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli 0.145.0",
+    identity_stderr: "",
+    login_status_success: false,
+    login_status_stdout: "",
+    login_status_stderr: "Not logged in",
+  )) == "codex-auth"
+}
+
+test fn witness_codex_preflight_separates_broken_runtime_from_auth() -> Bool {
+  match belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: false,
+    identity_stdout: "",
+    identity_stderr: "/usr/bin/env: node: No such file or directory",
+    login_status_success: false,
+    login_status_stdout: "",
+    login_status_stderr: "",
+  ) {
+    CodexPreflightOk { auth_method: _ } => false
+    CodexPreflightRefused { step, detail } =>
+      step == "codex-identity"
+        && string_contains(s: detail, pattern: "node")
+  }
+}
+
+test fn witness_codex_preflight_refuses_wrong_executable_identity() -> Bool {
+  match belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "some-other-cli 1.0",
+    identity_stderr: "",
+    login_status_success: true,
+    login_status_stdout: "Logged in using ChatGPT",
+    login_status_stderr: "",
+  ) {
+    CodexPreflightOk { auth_method: _ } => false
+    CodexPreflightRefused { step, detail } =>
+      step == "codex-identity"
+        && string_contains(s: detail, pattern: "codex-cli")
+  }
+}
+
+data codex_preflight_ok_dissolution_note: String = "review 44110. The codex_preflight_ok helper was a Bool fold over the two-variant BeltCodexPreflight — a variant test, the is_hermetic shape the 2026-07-12 predicate dissolution removed, and every sibling witness here already matches the coproduct directly. Matching in place also recovers what the Bool discarded: the accepted arm CARRIES the auth_method it derived, and asserting that it survives unparsed is the actual claim this witness makes about wording-independence."
+
+test fn witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording() -> Bool {
+  match belt_codex_preflight_decision_observed_for_home(
+    codex_home: "/state/codex",
+    codex_on_path: true,
+    env_on_path: true,
+    identity_command_success: true,
+    identity_stdout: "codex-cli future",
+    identity_stderr: "non-fatal runtime warning",
+    login_status_success: true,
+    login_status_stdout: "future CLI auth method wording",
+    login_status_stderr: "",
+  ) {
+    CodexPreflightOk { auth_method } =>
+      string_contains(s: auth_method as String, pattern: "future CLI auth method wording")
+    CodexPreflightRefused { step: _, detail: _ } => false
+  }
+}
+
+test fn codex_provider_v0_preflight_keystone_holds() -> Bool {
+  witness_codex_preflight_refuses_missing_cli_before_auth()
+    && witness_codex_preflight_refuses_missing_env_binding()
+    && witness_codex_preflight_separates_broken_runtime_from_auth()
+    && witness_codex_preflight_refuses_wrong_executable_identity()
+    && witness_codex_preflight_refuses_login_status_nonzero()
+    && witness_codex_preflight_accepts_cli_auth_verdict_without_parsing_wording()
+    && witness_fresh_spawn_wire_names_selected_provider()
+}
+
+test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
+  witness_dispatch_result_ok_spawned_and_live()
+    && witness_dispatch_result_refusals_not_ok()
+    && witness_dispatch_status_labels_glued_to_ok_set()
+    && witness_dispatch_status_labels_pin_wire_contract()
+    && witness_band_fold_pins_operator_vocabulary()
+    && witness_no_result_maps_to_in_progress()
+    && witness_ok_labels_derive_from_band_fold()
+    && witness_label_band_cover_reds_on_missing_row()
+    && witness_exemplar_roster_reconciles_variant_set()
+    && witness_exemplar_roster_missing_variant_reds()
+    && codex_provider_v0_preflight_keystone_holds()
+}
+
 data attempt_grain_home_note: String = "The attempt-grain claim (U1) is PURE — content hashes and string derivations, no host reach — so it lives in dag/test/claim/dispatch_attempts_witness_test.dag, which discovery scans on every affected PR. This file is BinWitnessWet-excluded because its witnesses execute real host commands; a pure row parked here is enrolled with zero executing consumers, which is exactly what the Phase 0(b) admission invariant refused (CI 30184138800). Deferral is a property of the EXECUTION the row needs, never of the module it happens to name."
+
+data observe_only_posture_behavioral_note: String = "review 44039/44043 predicate dissolution. dashboard_instance_can_actuate was a Bool nickname for a two-variant coproduct test, so both belt entrypoints now match DashboardActuationPosture directly. Deleting the predicate would have deleted its only assertions with it, and those assertions never proved the wiring anyway — they restated the posture field. This proves the behaviour instead: an observe-only instance REFUSES at both entrypoints, before any observation, provider preflight, or worktree creation. Only the refusing arm is exercised because it short-circuits; the actuating arm would reach live tmux."
+
+test fn observe_only_instance_refuses_dispatch_and_stop() -> Bool {
+  let preview = srv2_preview_dashboard_instance()
+  let dispatched = belt_dispatch_node_for_instance(
+    instance: preview,
+    node_id: "namespace-canonical-binding",
+  )
+  let stopped = belt_stop_node_for_instance(
+    instance: preview,
+    node_id: "namespace-canonical-binding",
+  )
+  match dispatched {
+    DispatchDisabled { node_id, instance_id, reason: _ } =>
+      node_id == "namespace-canonical-binding"
+        && instance_id == (preview.instance_id as String)
+    _ => false
+  }
+    && match stopped {
+      StopDisabled { node_id, instance_id, reason: _ } =>
+        node_id == "namespace-canonical-binding"
+          && instance_id == (preview.instance_id as String)
+      _ => false
+    }
+}

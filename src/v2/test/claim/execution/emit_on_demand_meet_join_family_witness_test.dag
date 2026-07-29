@@ -7,7 +7,7 @@ import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
 }
 import std.artifact_store {
-  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put,
+  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put, store_put_fold,
 }
 import std.realization { Share, Recompute }
 import std.realize_pack {
@@ -100,14 +100,19 @@ test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
 
 test fn emit_on_demand_meet_join_materialize_share_on_hit_holds() -> Bool {
   let key = meet_join_family_native_key_for(tree: meet_family_tree())
-  let put = store_put(store: meet_join_family_test_store(), key: key, artifact_bytes: byte_size(count: 64))
-  let lookup = emit_on_demand_lookup(store: put.store, key: key)
-  match lookup {
-    EmitOnDemandHit { receipt: r } =>
-      r.compile_skipped
-        && materialization_for_lookup(lookup: lookup) == Share
-    EmitOnDemandMiss => false
-  }
+  store_put_fold(
+    outcome: store_put(store: meet_join_family_test_store(), key: key, artifact_bytes: byte_size(count: 64)),
+    admitted: fn(put_store, evicted) {
+      let lookup = emit_on_demand_lookup(store: put_store, key: key)
+      match lookup {
+        EmitOnDemandHit { receipt: r } =>
+          r.compile_skipped
+            && materialization_for_lookup(lookup: lookup) == Share
+        EmitOnDemandMiss => false
+      }
+    },
+    did_not_fit: (a, b) => false
+  )
 }
 
 test fn emit_on_demand_meet_join_materialize_recompute_on_miss_holds() -> Bool {

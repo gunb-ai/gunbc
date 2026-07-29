@@ -137,6 +137,43 @@ fn decode_node_list_cons(head_node: Node, tail_node: Node) -> Outcome<FreeMonoid
   }
 }
 
+fn decode_node_list_item_step<T>(
+  acc: Outcome<FreeMonoid<T>>,
+  item_node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<FreeMonoid<T>> {
+  match acc {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: items, diagnostics: _ } =>
+      match decode_item(item_node) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: item, diagnostics: _ } =>
+          outcome_accepted(value: list_snoc_item(xs: items, item: item))
+      }
+  }
+}
+
+fn node_list_from_node<T>(
+  node: Node,
+  decode_item: fn(Node) -> Outcome<T>
+) -> Outcome<FreeMonoid<T>> {
+  match decode_node_list(node: node) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: item_nodes, diagnostics: _ } =>
+      fold_list(
+        xs: item_nodes,
+        empty: outcome_accepted(value: freemonoid_empty()),
+        cons: fn(acc, item_node) {
+          decode_node_list_item_step(
+            acc: acc,
+            item_node: item_node,
+            decode_item: decode_item
+          )
+        }
+      )
+  }
+}
+
 fn decode_per_element(node: Node) -> Outcome<FreeMonoid<FreeMonoid<Node>>> {
   match decode_node_list(node: node) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }

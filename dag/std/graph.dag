@@ -30,9 +30,9 @@ type SccComponentAcc {
   members: List<String>
 }
 
-type SccCycleAcc {
+type SccMembersAcc {
   visited: Set<String>
-  has_cycle: Bool
+  members: List<String>
 }
 
 fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
@@ -108,23 +108,80 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
   }
 }
 
-fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+fn graph_multi_node_scc_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
   let adjacency = build_adjacency_views(names: names, graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
     dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
   )
-  let result = finish.order |> reverse |> fold(init: SccCycleAcc { visited: empty_set(), has_cycle: false }, f: (acc, name) =>
-    if acc.has_cycle || set_contains(acc.visited, name) {
+  let result = finish.order |> reverse |> fold(init: SccMembersAcc { visited: empty_set(), members: [] }, f: (acc, name) =>
+    if set_contains(acc.visited, name) {
       acc
     } else {
       let component = dfs_collect_component(node: name, adjacency: adjacency.reverse, acc: SccComponentAcc { visited: acc.visited, members: [] })
-      SccCycleAcc {
+      let members = if (component.members |> count) > 1 {
+        concat(acc.members, component.members)
+      } else {
+        acc.members
+      }
+      SccMembersAcc {
         visited: component.visited,
-        has_cycle: (component.members |> count) > 1
+        members: members
       }
     }
   )
-  result.has_cycle
+  result.members
+}
+
+fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
+  count(graph_multi_node_scc_members(names: names, graph: graph)) > 0
+}
+
+fn graph_cycle_members(
+  names: List<String>,
+  graph: CallGraph,
+) -> List<String> {
+  let self_scan = graph.edges
+    |> filter(edge => edge.caller == edge.callee)
+    |> fold(
+      init: DfsFinishAcc { visited: empty_set(), order: [] },
+      f: fn(acc, edge) {
+        if set_contains(acc.visited, edge.caller) {
+          acc
+        } else {
+          DfsFinishAcc {
+            visited: set_insert(acc.visited, edge.caller),
+            order: list_push(acc.order, edge.caller),
+          }
+        }
+      },
+    )
+  let self_cycles = self_scan.order
+  concat(
+    self_cycles,
+    graph_multi_node_scc_members(names: names, graph: graph)
+      |> filter(member =>
+        !any(self_cycles, self_cycle => self_cycle == member)
+      ),
+  )
+}
+
+fn graph_reverse_reachable_members(
+  names: List<String>,
+  graph: CallGraph,
+  start: String,
+) -> List<String> {
+  let reached = dfs_collect_component(
+    node: start,
+    adjacency: reverse_adjacency(names: names, graph: graph),
+    acc: SccComponentAcc {
+      visited: empty_set(),
+      members: [],
+    },
+  )
+  reached.members |> filter(member => member != start)
 }
 
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {

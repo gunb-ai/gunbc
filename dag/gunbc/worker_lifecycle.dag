@@ -1,6 +1,6 @@
 module gunbc.worker_lifecycle
 
-import std.types { String, NonEmptyStr, Timestamp }
+import std.types { String, NonEmptyStr, Timestamp, Int }
 import std.integer { PositiveInt }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
@@ -62,6 +62,40 @@ type TerminalOutcomeEvidence
   = TerminalOutcomeObserved { outcome: WorkerTerminalOutcome }
   | TerminalOutcomeUnobserved { reason: NonEmptyStr }
 
+type WorkerProcessEvidence
+  = WorkerProcessUnobserved { reason: NonEmptyStr }
+  | WorkerProcessAbsent
+  | WorkerProcessRunning { command: NonEmptyStr }
+  | WorkerProcessExited { exit_code: Int, last_command: String }
+
+fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
+  match evidence {
+    WorkerProcessUnobserved { reason: _ } => "process unobserved"
+    WorkerProcessAbsent => "process absent"
+    WorkerProcessRunning { command: _ } => "process running"
+    WorkerProcessExited { exit_code: _, last_command: _ } => "process exited"
+  }
+}
+
+fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
+  match evidence {
+    WorkerProcessUnobserved { reason } => reason as String
+    WorkerProcessAbsent => "no provider pane was observed"
+    WorkerProcessRunning { command } =>
+      join(["running command=", command as String], "")
+    WorkerProcessExited { exit_code, last_command } =>
+      join([
+        "exit=",
+        to_string(exit_code),
+        if last_command == "" {
+          ""
+        } else {
+          join([" last-command=", last_command], "")
+        },
+      ], "")
+  }
+}
+
 type AttemptEvidence {
   node_id: NonEmptyStr
   attempt_key: String
@@ -118,15 +152,20 @@ fn terminal_outcome_evidence_label(evidence: TerminalOutcomeEvidence) -> String 
 
 type WorkerObservation {
   configured_provider: ProviderInstance
+  process: WorkerProcessEvidence
   provider_instance: ProviderEvidence
   provider_readiness: ProviderReadiness
   tool_readiness: ToolExecutionReadiness
   phase: WorkerPhase
 }
 
-fn worker_observation_without_provider_probe(instance: ProviderInstance) -> WorkerObservation {
+fn worker_observation_without_provider_probe_for_process(
+  instance: ProviderInstance,
+  process: WorkerProcessEvidence,
+) -> WorkerObservation {
   WorkerObservation {
     configured_provider: instance,
+    process: process,
     provider_instance: ProviderEvidenceUnobserved {
       reason: "tmux name presence does not identify the provider process tree" as NonEmptyStr,
     },
@@ -142,4 +181,13 @@ fn worker_observation_without_provider_probe(instance: ProviderInstance) -> Work
   }
 }
 
-data worker_lifecycle_separation_note: String = "spawned != session present != provider ready != agent executing != work completed. WorkerObservation keeps the configured provider separate from the observed ProviderEvidence, then keeps provider readiness, sandbox readiness, and worker phase as independent axes. A tmux name may therefore report configured_provider=Claude while provider_instance remains Unobserved; this prevents a node wrapper or foreign child from inheriting Claude identity by naming convention. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer."
+fn worker_observation_without_provider_probe(instance: ProviderInstance) -> WorkerObservation {
+  worker_observation_without_provider_probe_for_process(
+    instance: instance,
+    process: WorkerProcessUnobserved {
+      reason: "tmux name presence does not observe pane liveness or exit" as NonEmptyStr,
+    },
+  )
+}
+
+data worker_lifecycle_separation_note: String = "spawned != session present != process running != provider ready != agent executing != work completed. WorkerObservation keeps pane/process evidence separate from the configured provider, observed ProviderEvidence, provider readiness, sandbox readiness, and worker phase. A retained tmux session can therefore carry WorkerProcessExited while provider phase or terminal outcome remains refused; a tmux name can report configured_provider=Codex while provider_instance remains Unobserved. AttemptEvidence binds only evidence actually observed at attempt grain; an unobserved process, transcript, or terminal outcome remains a named refusal-to-infer."

@@ -1,12 +1,95 @@
 module v2.test.manual.coproduct_reflection_conformance
 
+import std.trait_derive_shape { ReprGroundingDeriveTrait }
+import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+import v2.test.fixture.coproduct_reflection_generic_wrapper {
+  nullary_reflection_through_generic_wrapper
+}
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
+data reflect_imported_derive_trait_type: Symbol = ^ReprGroundingDeriveTrait
+
+type NullaryReflectionRequestedA
+  = NullaryReflectionRequestedAFirst
+  | NullaryReflectionRequestedASecond
+
+type NullaryReflectionContextB
+  = NullaryReflectionContextBFirst
+  | NullaryReflectionContextBSecond
 
 fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
   a == b
+}
+
+fn behavior_discriminant(value: Behavior) -> Symbol {
+  discriminant(v: value)
+}
+
+fn connective_discriminant(value: Connective) -> Symbol {
+  discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminant(
+  value: ReprGroundingDeriveTrait
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn imported_derive_trait_discriminants(
+  inhabitants: List<ReprGroundingDeriveTrait>
+) -> List<Symbol> {
+  fold_list(
+    xs: inhabitants,
+    empty: Empty,
+    cons: fn(acc, value) {
+      list_snoc_item(
+        xs: acc,
+        item: imported_derive_trait_discriminant(value: value)
+      )
+    }
+  )
+}
+
+test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper() -> Bool {
+  match nullary_reflection_through_generic_wrapper(
+    type_name: reflect_imported_derive_trait_type,
+    discriminant_of: imported_derive_trait_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      bag_eq(
+        xs: imported_derive_trait_discriminants(inhabitants: inhabitants),
+        ys: coproduct_arm_keys(type_name: reflect_imported_derive_trait_type),
+        eq: symbol_eq
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn nullary_reflection_context_b_discriminant(
+  value: NullaryReflectionContextB
+) -> Symbol {
+  discriminant(v: value)
+}
+
+fn nullary_reflection_context_b_outcome_is_rejected(
+  result: Outcome<List<NullaryReflectionContextB>>
+) -> Bool {
+  match result {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn witness_nullary_reflection_rejects_requested_a_with_context_b() -> Bool {
+  nullary_reflection_context_b_outcome_is_rejected(
+    result: coproduct_nullary_inhabitants(
+      type_name: ^NullaryReflectionRequestedA,
+      discriminant_of: nullary_reflection_context_b_discriminant
+    )
+  )
 }
 
 test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
@@ -39,7 +122,10 @@ fn all_inhabitant_discriminants_are_reflected_arms(
 }
 
 test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_behavior_type,
+    discriminant_of: behavior_discriminant
+  ) {
     Accepted { value: inhabitants, diagnostics: _ } =>
       let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
       bag_eq(
@@ -55,9 +141,11 @@ test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
 }
 
 test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
-  match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
+  match coproduct_nullary_inhabitants(
+    type_name: reflect_connective_type,
+    discriminant_of: connective_discriminant
+  ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
 }
-

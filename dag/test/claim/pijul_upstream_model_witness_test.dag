@@ -1,0 +1,1123 @@
+module test.claim.pijul_upstream_model_witness
+
+import extdeps.pijul {
+  PijulChangeHash,
+  PijulStateHash,
+  PijulPath,
+  PijulVertexId,
+  PijulVertexPosition,
+  PijulChangeFileObserved,
+  PijulChangeIdentity,
+  PijulStructuralDependency,
+  PijulDependency,
+  PijulContext,
+  PijulAliveEdge,
+  PijulGraphEdge,
+  PijulNewVertex,
+  PijulRecordedChange,
+  PijulGraphVertex,
+  PijulOrderConflict,
+  PijulPristineState,
+  PijulFileEntry,
+  PijulTreeEntry,
+  PijulTree,
+  PijulWorkingCopyModified,
+  PijulWorkingCopyUntracked,
+  PijulWorkingCopyEntry,
+  PijulWorkingCopy,
+  PijulLogStateObserved,
+  PijulChannelStateIdentity,
+  PijulChannel,
+  PijulRepositoryState,
+  PijulRepositoryProjection,
+  PijulRepositoryProjectionFold,
+  PijulCompleteProjection,
+  PijulPartialProjection,
+  PijulInaccessibleProjection,
+  PijulDecodedPartial,
+  PijulDecoded,
+  PijulDecodeRefused,
+  PijulProjected,
+  PijulReadBackObservation,
+  PijulReadBackMatches,
+  PijulReadBackMismatch,
+  PijulReadBackWorkingCopyMismatch,
+  PijulLogHeadDecoded,
+  PijulLogHeadDecodeRefused,
+  PijulLogHashSetDecoded,
+  PijulLogHashSetDecodeRefused,
+  PijulChannelLogObserved,
+  PijulChannelLogInvalid,
+  PijulChannelLogReadBackMatches,
+  PijulChannelLogReadBackMismatch,
+  PijulRenderedOrderConflictObservation,
+  PijulRenderedOrderConflictGrounded,
+  PijulRenderedConflictNotGrounded,
+  PijulDependencyTextObservation,
+  PijulDependencyMentionGrounded,
+  PijulDependencyMentionNotGrounded,
+  pijul_upstream_version,
+  pijul_upstream_cli_version,
+  PijulDeliveryAdmissible,
+  PijulDeliveryRefused,
+  PijulDeliveryRepositoryInvalid,
+  PijulDeliveryMissingDependency,
+  PijulDeliveryChangeUnavailable,
+  PijulDuplicateChannelMember,
+  PijulStateIdentityCollision,
+  PijulStateIdentityDivergence,
+  PijulMissingContext,
+  PijulPresentChangeDeclaredMissing,
+  PijulConditionalAdvanceUnavailable,
+  pijul_repository_projection_fold,
+  pijul_decode_projection,
+  pijul_project_repository,
+  pijul_assess_read_back,
+  pijul_decode_log_head_plaintext,
+  pijul_decode_hash_only_log,
+  pijul_decode_channel_log_observation,
+  pijul_assess_channel_log_read_back,
+  pijul_assess_rendered_order_conflict,
+  pijul_assess_dependency_text,
+  pijul_plan_delivery,
+  pijul_change_sets_equal,
+  pijul_hash_count,
+  pijul_duplicate_change,
+  pijul_duplicate_channel,
+  pijul_duplicate_channel_member,
+  pijul_duplicate_vertex,
+  pijul_duplicate_tree_path,
+  pijul_duplicate_tree_inode,
+  pijul_duplicate_working_copy_path,
+  pijul_self_dependency,
+  pijul_missing_dependency_issue,
+  pijul_missing_context_issue,
+  pijul_missing_channel_member_issue,
+  pijul_missing_tree_change_issue,
+  pijul_missing_conflict_change_issue,
+  pijul_state_identity_issue,
+  pijul_find_channel,
+  pijul_r0_conditional_advance,
+}
+import std.bytes { octets_bytes }
+
+data pijul_change_root: PijulChangeHash = "2QVMZO2O2KDKOW7OGJ7F3KPCPG26ZNXPS7ZJ4GWSB3MJOZTAC6RQC"
+data pijul_change_left: PijulChangeHash = "E44VZEK2SLDRWUDOWRT77OTHT4JPRPIECA2CBSTXCLHSRNF5HCJAC"
+data pijul_change_right: PijulChangeHash = "T3IOCG4HN7LXJZ5KKE7EMBAKB7CISZBYURRR6IQ52YSVR4266ZRQC"
+data pijul_change_missing: PijulChangeHash = "EXKC67TCSWSPRG4JP5AK2MYSRG6RCC3N5W3N62KESUUFN3FN6R4AC"
+data pijul_change_dependent: PijulChangeHash = "5PI4BUI3SDD23P7V3NNCA3FR6NA7YCMF7PJRIJNMZH5TGDA7AGWQC"
+
+data pijul_state_root: PijulStateHash = "SZI2BZ2Z3WAXEYFTQUJ2PXJRJFSCAWS5S4FOQRRUS24FZAAISFYAC"
+data pijul_state_combined: PijulStateHash = "4PUVTHWGVI3KPYJ7SSWTHUXASLJS5QOGH3D2RYOXUBWCDI62SB3QC"
+data pijul_state_partial: PijulStateHash = "PARTIALSTATE5QOGH3D2RYOXUBWCDI62SB3QCPARTIALSTATE5QO"
+data pijul_state_wrong: PijulStateHash = "WRONGSTATE15QOGH3D2RYOXUBWCDI62SB3QCWRONGSTATE15Q"
+
+data pijul_path_source: PijulPath = PijulPath {
+  octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
+}
+data pijul_path_scratch: PijulPath = PijulPath {
+  octets: [255, 46, 116, 109, 112]
+}
+data pijul_path_missing: PijulPath = PijulPath {
+  octets: [118, 101, 110, 100, 111, 114]
+}
+
+test fn witness_pijul_upstream_authority_and_receipt_share_one_version() -> Bool {
+  pijul_upstream_version.major == 1
+    && pijul_upstream_version.minor == 0
+    && pijul_upstream_version.patch == 0
+    && pijul_upstream_version.beta == 20
+    && pijul_upstream_cli_version == "pijul 1.0.0-beta.20"
+}
+
+data pijul_vertex_root: PijulVertexId = PijulVertexId {
+  introduced_by: pijul_change_root,
+  position: PijulVertexPosition { value: 0 },
+}
+data pijul_vertex_left: PijulVertexId = PijulVertexId {
+  introduced_by: pijul_change_left,
+  position: PijulVertexPosition { value: 0 },
+}
+data pijul_vertex_right: PijulVertexId = PijulVertexId {
+  introduced_by: pijul_change_right,
+  position: PijulVertexPosition { value: 0 },
+}
+data pijul_vertex_missing: PijulVertexId = PijulVertexId {
+  introduced_by: pijul_change_missing,
+  position: PijulVertexPosition { value: 0 },
+}
+
+fn fixture_identity(hash: PijulChangeHash) -> PijulChangeIdentity {
+  PijulChangeIdentity {
+    hash: hash,
+    producer: PijulChangeFileObserved {
+      pijul_version: pijul_upstream_version,
+    },
+  }
+}
+
+fn fixture_changes() -> List<PijulRecordedChange> {
+  [
+    PijulRecordedChange {
+      identity: fixture_identity(hash: pijul_change_root),
+      dependencies: [],
+      actions: [
+        PijulNewVertex {
+          vertex: pijul_vertex_root,
+          up_context: [],
+          down_context: [],
+          content: octets_bytes(o: [114, 111, 111, 116]),
+        },
+      ],
+      authors: ["Fixture Author"],
+      message: "root",
+      recorded_at: "provenance-only-root",
+    },
+    PijulRecordedChange {
+      identity: fixture_identity(hash: pijul_change_left),
+      dependencies: [
+        PijulDependency {
+          change: pijul_change_root,
+          kind: PijulStructuralDependency,
+        },
+      ],
+      actions: [
+        PijulNewVertex {
+          vertex: pijul_vertex_left,
+          up_context: [PijulContext { vertex: pijul_vertex_root }],
+          down_context: [],
+          content: octets_bytes(o: [108, 101, 102, 116]),
+        },
+      ],
+      authors: ["Fixture Author"],
+      message: "left",
+      recorded_at: "provenance-only-left",
+    },
+    PijulRecordedChange {
+      identity: fixture_identity(hash: pijul_change_right),
+      dependencies: [
+        PijulDependency {
+          change: pijul_change_root,
+          kind: PijulStructuralDependency,
+        },
+      ],
+      actions: [
+        PijulNewVertex {
+          vertex: pijul_vertex_right,
+          up_context: [PijulContext { vertex: pijul_vertex_root }],
+          down_context: [],
+          content: octets_bytes(o: [114, 105, 103, 104, 116]),
+        },
+      ],
+      authors: ["Fixture Author"],
+      message: "right",
+      recorded_at: "provenance-only-right",
+    },
+  ]
+}
+
+fn fixture_pristine() -> PijulPristineState {
+  PijulPristineState {
+    vertices: [
+      PijulGraphVertex {
+        id: pijul_vertex_root,
+        content: octets_bytes(o: [114, 111, 111, 116]),
+      },
+      PijulGraphVertex {
+        id: pijul_vertex_left,
+        content: octets_bytes(o: [108, 101, 102, 116]),
+      },
+      PijulGraphVertex {
+        id: pijul_vertex_right,
+        content: octets_bytes(o: [114, 105, 103, 104, 116]),
+      },
+    ],
+    edges: [
+      PijulGraphEdge {
+        source: pijul_vertex_root,
+        target: pijul_vertex_left,
+        introduced_by: pijul_change_left,
+        disposition: PijulAliveEdge,
+      },
+      PijulGraphEdge {
+        source: pijul_vertex_root,
+        target: pijul_vertex_right,
+        introduced_by: pijul_change_right,
+        disposition: PijulAliveEdge,
+      },
+    ],
+    conflicts: [
+      PijulOrderConflict {
+        left: pijul_change_left,
+        right: pijul_change_right,
+        at: pijul_vertex_root,
+      },
+    ],
+  }
+}
+
+fn fixture_tree() -> PijulTree {
+  PijulTree {
+    entries: [
+      PijulTreeEntry {
+        inode: "inode-source",
+        path: pijul_path_source,
+        kind: PijulFileEntry,
+        introduced_by: pijul_change_root,
+      },
+    ]
+  }
+}
+
+fn fixture_working_copy() -> PijulWorkingCopy {
+  PijulWorkingCopy {
+    entries: [
+      PijulWorkingCopyEntry {
+        path: pijul_path_source,
+        content: octets_bytes(o: [114, 111, 111, 116, 10, 108, 101, 102, 116, 10, 114, 105, 103, 104, 116]),
+        disposition: PijulWorkingCopyModified,
+      },
+      PijulWorkingCopyEntry {
+        path: pijul_path_scratch,
+        content: octets_bytes(o: [115, 99, 114, 97, 116, 99, 104]),
+        disposition: PijulWorkingCopyUntracked,
+      },
+    ]
+  }
+}
+
+fn fixture_channels() -> List<PijulChannel> {
+  [
+    PijulChannel {
+      name: "main",
+      state_identity: PijulChannelStateIdentity {
+        state: pijul_state_combined,
+        changes: [pijul_change_root, pijul_change_left, pijul_change_right],
+        producer: PijulLogStateObserved {
+          pijul_version: pijul_upstream_version,
+        },
+      },
+    },
+    PijulChannel {
+      name: "review",
+      state_identity: PijulChannelStateIdentity {
+        state: pijul_state_combined,
+        changes: [pijul_change_root, pijul_change_right, pijul_change_left],
+        producer: PijulLogStateObserved {
+          pijul_version: pijul_upstream_version,
+        },
+      },
+    },
+    PijulChannel {
+      name: "base",
+      state_identity: PijulChannelStateIdentity {
+        state: pijul_state_root,
+        changes: [pijul_change_root],
+        producer: PijulLogStateObserved {
+          pijul_version: pijul_upstream_version,
+        },
+      },
+    },
+  ]
+}
+
+fn fixture_repository() -> PijulRepositoryState {
+  PijulRepositoryState {
+    changes: fixture_changes(),
+    pristine: fixture_pristine(),
+    tree: fixture_tree(),
+    working_copy: fixture_working_copy(),
+    channels: fixture_channels(),
+    current_channel: "main",
+  }
+}
+
+fn fixture_projection() -> PijulRepositoryProjection {
+  PijulPartialProjection {
+    candidate: fixture_repository(),
+    missing_changes: [pijul_change_missing],
+    missing_vertices: [pijul_vertex_missing],
+    missing_paths: [pijul_path_missing],
+  }
+}
+
+fn projection_with_channels(
+  projection: PijulRepositoryProjection,
+  channels: List<PijulChannel>,
+) -> PijulRepositoryProjection {
+  pijul_repository_projection_fold(
+    projection: projection,
+    fold: PijulRepositoryProjectionFold {
+      complete: fn(candidate) {
+        PijulCompleteProjection {
+          candidate: PijulRepositoryState {
+            changes: candidate.changes,
+            pristine: candidate.pristine,
+            tree: candidate.tree,
+            working_copy: candidate.working_copy,
+            channels: channels,
+            current_channel: candidate.current_channel,
+          },
+        }
+      },
+      partial: fn(candidate, missing_changes, missing_vertices, missing_paths) {
+        PijulPartialProjection {
+          candidate: PijulRepositoryState {
+            changes: candidate.changes,
+            pristine: candidate.pristine,
+            tree: candidate.tree,
+            working_copy: candidate.working_copy,
+            channels: channels,
+            current_channel: candidate.current_channel,
+          },
+          missing_changes: missing_changes,
+          missing_vertices: missing_vertices,
+          missing_paths: missing_paths,
+        }
+      },
+      inaccessible: fn(reason) {
+        PijulInaccessibleProjection { reason: reason }
+      },
+    },
+  )
+}
+
+test fn witness_pijul_fixture_uniqueness_frontier_is_clear() -> Bool {
+  let state = fixture_repository()
+  match pijul_duplicate_change(changes: state.changes) {
+    Present { value: _ } => false
+    Absent => match pijul_duplicate_channel(channels: state.channels) {
+      Present { value: _ } => false
+      Absent => match pijul_duplicate_channel_member(channels: state.channels) {
+        Present { value: _ } => false
+        Absent => match pijul_duplicate_vertex(pristine: state.pristine) {
+          Present { value: _ } => false
+          Absent => match pijul_duplicate_tree_path(tree: state.tree) {
+            Present { value: _ } => false
+            Absent => match pijul_duplicate_tree_inode(tree: state.tree) {
+              Present { value: _ } => false
+              Absent => match pijul_duplicate_working_copy_path(
+                working_copy: state.working_copy,
+              ) {
+                Present { value: _ } => false
+                Absent => true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn witness_pijul_fixture_has_no_duplicate_change_identity() -> Bool {
+  match pijul_duplicate_change(changes: fixture_repository().changes) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_pijul_fixture_reference_frontier_is_clear() -> Bool {
+  match pijul_decode_projection(projection: fixture_projection()) {
+    PijulDecoded { repository: _ } => true
+    PijulDecodeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_pijul_fixture_has_no_self_dependency() -> Bool {
+  match pijul_self_dependency(changes: fixture_repository().changes) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn witness_pijul_fixture_state_identity_frontier_is_clear() -> Bool {
+  let state = fixture_repository()
+  match pijul_state_identity_issue(channels: state.channels) {
+    Present { value: _ } => false
+    Absent => match pijul_find_channel(
+      channels: state.channels,
+      name: state.current_channel,
+    ) {
+      Present { value: _ } => true
+      Absent => false
+    }
+  }
+}
+
+test fn witness_pijul_bounded_projection_decodes_with_conflict_and_partial_facts() -> Bool {
+  match pijul_decode_projection(projection: fixture_projection()) {
+    PijulDecoded { repository } =>
+      count(repository.state.changes) == 3
+        && count(repository.state.pristine.conflicts) == 1
+        && count(repository.state.channels) == 3
+        && match repository.availability {
+          PijulDecodedPartial {
+            missing_changes,
+            missing_vertices,
+            missing_paths,
+          } =>
+            missing_changes == [pijul_change_missing]
+              && missing_vertices == [pijul_vertex_missing]
+              && missing_paths == [pijul_path_missing]
+          _ => false
+        }
+    PijulDecodeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_pijul_projects_and_assesses_caller_supplied_readback() -> Bool {
+  let repository = fixture_repository()
+  match pijul_project_repository(repository: repository) {
+    PijulProjected { projection } =>
+      match pijul_assess_read_back(
+        expected: projection,
+        observation: PijulReadBackObservation {
+          pijul_version: pijul_upstream_version,
+          projection: PijulCompleteProjection {
+            candidate: fixture_repository(),
+          },
+        },
+      ) {
+        PijulReadBackMatches { observation: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_pijul_readback_rejects_perturbed_working_copy() -> Bool {
+  let expected = fixture_repository()
+  let perturbed = PijulPartialProjection {
+    candidate: PijulRepositoryState {
+      changes: expected.changes,
+      pristine: expected.pristine,
+      tree: expected.tree,
+      working_copy: PijulWorkingCopy { entries: [] },
+      channels: expected.channels,
+      current_channel: expected.current_channel,
+    },
+    missing_changes: [pijul_change_missing],
+    missing_vertices: [pijul_vertex_missing],
+    missing_paths: [pijul_path_missing],
+  }
+  match pijul_assess_read_back(
+    expected: fixture_projection(),
+    observation: PijulReadBackObservation {
+      pijul_version: pijul_upstream_version,
+      projection: perturbed,
+    },
+  ) {
+    PijulReadBackMismatch { axis: PijulReadBackWorkingCopyMismatch } => true
+    _ => false
+  }
+}
+
+test fn witness_pijul_change_identity_is_channel_independent() -> Bool {
+  let channels = fixture_channels()
+  match channels |> filter(channel => channel.name == "main") |> first {
+    Present { value: main } =>
+      match channels |> filter(channel => channel.name == "review") |> first {
+        Present { value: review } =>
+          pijul_hash_count(
+            changes: main.state_identity.changes,
+            target: pijul_change_left,
+          ) == 1
+            && pijul_hash_count(
+              changes: review.state_identity.changes,
+              target: pijul_change_left,
+            ) == 1
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_pijul_channel_state_is_set_valued_not_delivery_order() -> Bool {
+  let channels = fixture_channels()
+  match channels |> filter(channel => channel.name == "main") |> first {
+    Present { value: main } =>
+      match channels |> filter(channel => channel.name == "review") |> first {
+        Present { value: review } =>
+          main.state_identity.state == review.state_identity.state
+            && pijul_change_sets_equal(
+              left: main.state_identity.changes,
+              right: review.state_identity.changes,
+            )
+            && count(main.state_identity.changes) == 3
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_pijul_log_wire_constructs_independent_channel_readback() -> Bool {
+  let head = join(
+    [
+      concat("Change ", pijul_change_right as String),
+      "Author: fixture",
+      concat("State: ", pijul_state_combined as String),
+      "",
+      "    right",
+    ],
+    "\n",
+  )
+  let hashes = join(
+    [
+      pijul_change_right as String,
+      pijul_change_root as String,
+      pijul_change_left as String,
+    ],
+    "\n",
+  )
+  match pijul_decode_channel_log_observation(
+    pijul_version: pijul_upstream_version,
+    channel: "read-back",
+    head_plaintext: head,
+    hash_only: hashes,
+  ) {
+    PijulChannelLogInvalid { cause: _ } => false
+    PijulChannelLogObserved { observation } =>
+      match pijul_assess_channel_log_read_back(
+        expected: PijulChannelStateIdentity {
+          state: pijul_state_combined,
+          changes: [pijul_change_root, pijul_change_left, pijul_change_right],
+          producer: PijulLogStateObserved {
+            pijul_version: pijul_upstream_version,
+          },
+        },
+        observation: observation,
+      ) {
+        PijulChannelLogReadBackMatches { observation: matched } =>
+          matched.channel == "read-back"
+            && matched.head.change == pijul_change_right
+        PijulChannelLogReadBackMismatch { axis: _ } => false
+      }
+  }
+}
+
+test fn witness_pijul_log_wire_refuses_duplicate_state_and_hash_rows() -> Bool {
+  let duplicated_state = join(
+    [
+      concat("Change ", pijul_change_left as String),
+      concat("State: ", pijul_state_combined as String),
+      concat("State: ", pijul_state_wrong as String),
+    ],
+    "\n",
+  )
+  let duplicated_hash = join(
+    [pijul_change_left as String, pijul_change_left as String],
+    "\n",
+  )
+  match pijul_decode_log_head_plaintext(text: duplicated_state) {
+    PijulLogHeadDecoded { head: _ } => false
+    PijulLogHeadDecodeRefused { cause: _ } =>
+      match pijul_decode_hash_only_log(text: duplicated_hash) {
+        PijulLogHashSetDecoded { changes: _ } => false
+        PijulLogHashSetDecodeRefused { cause: _ } => true
+      }
+  }
+}
+
+test fn witness_pijul_rendered_conflict_grounds_only_observed_conflict_shape() -> Bool {
+  let rendered = join(
+    [
+      concat(">>>>>>> 1 [", substring(
+        s: pijul_change_left as String,
+        start: 0,
+        end: 8,
+      )),
+      "left",
+      "=======",
+      concat("right [", substring(
+        s: pijul_change_right as String,
+        start: 0,
+        end: 8,
+      )),
+      "<<<<<<< 1",
+    ],
+    "\n",
+  )
+  match pijul_assess_rendered_order_conflict(
+    observation: PijulRenderedOrderConflictObservation {
+      path: pijul_path_source,
+      left: pijul_change_left,
+      right: pijul_change_right,
+      rendered_working_copy: rendered,
+    },
+  ) {
+    PijulRenderedOrderConflictGrounded { path, left, right } =>
+      path == pijul_path_source
+        && left == pijul_change_left
+        && right == pijul_change_right
+    PijulRenderedConflictNotGrounded => false
+  }
+}
+
+test fn witness_pijul_dependency_must_appear_inside_dependency_section() -> Bool {
+  let grounded = PijulDependencyTextObservation {
+    change: pijul_change_left,
+    dependency: pijul_change_root,
+    change_text: join(
+      [
+        "# Dependencies",
+        concat("[2] ", pijul_change_root as String),
+        "# Hunks",
+        "1. File addition",
+      ],
+      "\n",
+    ),
+  }
+  let only_hunk_mentions = PijulDependencyTextObservation {
+    change: pijul_change_left,
+    dependency: pijul_change_root,
+    change_text: join(
+      [
+        "# Dependencies",
+        "",
+        "# Hunks",
+        concat("context ", pijul_change_root as String),
+      ],
+      "\n",
+    ),
+  }
+  match pijul_assess_dependency_text(observation: grounded) {
+    PijulDependencyMentionGrounded { change, dependency } =>
+      change == pijul_change_left
+        && dependency == pijul_change_root
+        && match pijul_assess_dependency_text(observation: only_hunk_mentions) {
+          PijulDependencyMentionNotGrounded => true
+          _ => false
+        }
+    PijulDependencyMentionNotGrounded => false
+  }
+}
+
+test fn witness_pijul_independent_delivery_permutations_have_one_change_set() -> Bool {
+  let left_then_right = pijul_plan_delivery(
+    projection: fixture_projection(),
+    channel_name: "base",
+    delivered: [pijul_change_left, pijul_change_right],
+  )
+  let right_then_left = pijul_plan_delivery(
+    projection: fixture_projection(),
+    channel_name: "base",
+    delivered: [pijul_change_right, pijul_change_left],
+  )
+  match left_then_right {
+    PijulDeliveryAdmissible {
+      channel: _,
+      resulting_changes: left,
+    } => match right_then_left {
+      PijulDeliveryAdmissible {
+        channel: _,
+        resulting_changes: right,
+      } => pijul_change_sets_equal(left: left, right: right)
+      _ => false
+    }
+    _ => false
+  }
+}
+
+test fn witness_pijul_duplicate_delivery_contributes_once() -> Bool {
+  match pijul_plan_delivery(
+    projection: fixture_projection(),
+    channel_name: "base",
+    delivered: [pijul_change_left, pijul_change_left],
+  ) {
+    PijulDeliveryAdmissible {
+      channel: _,
+      resulting_changes,
+    } =>
+      pijul_hash_count(
+        changes: resulting_changes,
+        target: pijul_change_left,
+      ) == 1
+    _ => false
+  }
+}
+
+test fn witness_pijul_missing_dependency_refuses_delivery() -> Bool {
+  let base = fixture_repository()
+  let dependent = PijulRecordedChange {
+    identity: fixture_identity(hash: pijul_change_dependent),
+    dependencies: [
+      PijulDependency {
+        change: pijul_change_left,
+        kind: PijulStructuralDependency,
+      },
+    ],
+    actions: [],
+    authors: ["Fixture Author"],
+    message: "depends on unavailable change",
+    recorded_at: "provenance-only-dependent",
+  }
+  let repository = PijulRepositoryState {
+    changes: append(base.changes, items: [dependent]),
+    pristine: base.pristine,
+    tree: base.tree,
+    working_copy: base.working_copy,
+    channels: base.channels,
+    current_channel: base.current_channel,
+  }
+  let projection = PijulCompleteProjection { candidate: repository }
+  match pijul_plan_delivery(
+    projection: projection,
+    channel_name: "base",
+    delivered: [pijul_change_dependent],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryMissingDependency { change, dependency },
+    } =>
+      change == pijul_change_dependent
+        && dependency == pijul_change_left
+    _ => false
+  }
+}
+
+test fn witness_pijul_unknown_change_never_applies_as_empty() -> Bool {
+  match pijul_plan_delivery(
+    projection: fixture_projection(),
+    channel_name: "base",
+    delivered: [pijul_change_missing],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryChangeUnavailable { change },
+    } => change == pijul_change_missing
+    _ => false
+  }
+}
+
+test fn witness_pijul_present_change_cannot_also_be_declared_missing() -> Bool {
+  let invalid = PijulPartialProjection {
+    candidate: fixture_repository(),
+    missing_changes: [pijul_change_root],
+    missing_vertices: [],
+    missing_paths: [],
+  }
+  match pijul_decode_projection(projection: invalid) {
+    PijulDecodeRefused {
+      cause: PijulPresentChangeDeclaredMissing { change },
+    } => change == pijul_change_root
+    _ => false
+  }
+}
+
+test fn witness_pijul_delivery_revalidates_raw_projection() -> Bool {
+  let invalid = PijulPartialProjection {
+    candidate: fixture_repository(),
+    missing_changes: [pijul_change_root],
+    missing_vertices: [],
+    missing_paths: [],
+  }
+  match pijul_plan_delivery(
+    projection: invalid,
+    channel_name: "base",
+    delivered: [pijul_change_left],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryRepositoryInvalid {
+        cause: PijulPresentChangeDeclaredMissing { change },
+      },
+    } => change == pijul_change_root
+    _ => false
+  }
+}
+
+test fn witness_pijul_missing_dependency_in_channel_still_refuses_delivery() -> Bool {
+  let base = fixture_repository()
+  let dependent = PijulRecordedChange {
+    identity: fixture_identity(hash: pijul_change_dependent),
+    dependencies: [
+      PijulDependency {
+        change: pijul_change_missing,
+        kind: PijulStructuralDependency,
+      },
+    ],
+    actions: [],
+    authors: ["Fixture Author"],
+    message: "depends on a channel member whose change object is unavailable",
+    recorded_at: "provenance-only-partial-dependent",
+  }
+  let partial_channel = PijulChannel {
+    name: "partial",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_partial,
+      changes: [pijul_change_root, pijul_change_missing],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  let projection = PijulPartialProjection {
+    candidate: PijulRepositoryState {
+      changes: append(base.changes, items: [dependent]),
+      pristine: base.pristine,
+      tree: base.tree,
+      working_copy: base.working_copy,
+      channels: append(base.channels, items: [partial_channel]),
+      current_channel: base.current_channel,
+    },
+    missing_changes: [pijul_change_missing],
+    missing_vertices: [pijul_vertex_missing],
+    missing_paths: [pijul_path_missing],
+  }
+  match pijul_plan_delivery(
+    projection: projection,
+    channel_name: "partial",
+    delivered: [pijul_change_dependent],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryMissingDependency { change, dependency },
+    } =>
+      change == pijul_change_dependent
+        && dependency == pijul_change_missing
+    _ => false
+  }
+}
+
+test fn witness_pijul_existing_channel_member_dependency_gap_refuses_delivery() -> Bool {
+  let base = fixture_repository()
+  let existing = PijulRecordedChange {
+    identity: fixture_identity(hash: pijul_change_left),
+    dependencies: [
+      PijulDependency {
+        change: pijul_change_missing,
+        kind: PijulStructuralDependency,
+      },
+    ],
+    actions: [],
+    authors: ["Fixture Author"],
+    message: "existing channel member depends on unavailable history",
+    recorded_at: "provenance-only-transitive-gap",
+  }
+  let partial_channel = PijulChannel {
+    name: "partial-transitive",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_partial,
+      changes: [
+        pijul_change_root,
+        pijul_change_left,
+        pijul_change_missing,
+      ],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  let projection = PijulPartialProjection {
+    candidate: PijulRepositoryState {
+      changes: append(
+        base.changes
+          |> filter(change =>
+            !(change.identity.hash == pijul_change_left)
+          ),
+        items: [existing],
+      ),
+      pristine: base.pristine,
+      tree: base.tree,
+      working_copy: base.working_copy,
+      channels: append(base.channels, items: [partial_channel]),
+      current_channel: base.current_channel,
+    },
+    missing_changes: [pijul_change_missing],
+    missing_vertices: [pijul_vertex_missing],
+    missing_paths: [pijul_path_missing],
+  }
+  match pijul_plan_delivery(
+    projection: projection,
+    channel_name: "partial-transitive",
+    delivered: [pijul_change_right],
+  ) {
+    PijulDeliveryRefused {
+      cause: PijulDeliveryMissingDependency { change, dependency },
+    } =>
+      change == pijul_change_left
+        && dependency == pijul_change_missing
+    _ => false
+  }
+}
+
+test fn witness_pijul_duplicate_channel_member_refuses_capture() -> Bool {
+  let base = fixture_projection()
+  let duplicate = PijulChannel {
+    name: "main",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_combined,
+      changes: [pijul_change_root, pijul_change_left, pijul_change_left],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  match pijul_decode_projection(
+    projection: projection_with_channels(
+      projection: base,
+      channels: [duplicate],
+    ),
+  ) {
+    PijulDecodeRefused {
+      cause: PijulDuplicateChannelMember { channel, change },
+    } => channel == "main" && change == pijul_change_left
+    _ => false
+  }
+}
+
+test fn witness_pijul_one_state_hash_cannot_name_different_change_sets() -> Bool {
+  let projection = fixture_projection()
+  let collision = PijulChannel {
+    name: "collision",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_combined,
+      changes: [pijul_change_root],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  match pijul_decode_projection(
+    projection: projection_with_channels(
+      projection: projection,
+      channels: append(fixture_repository().channels, items: [collision]),
+    ),
+  ) {
+    PijulDecodeRefused {
+      cause: PijulStateIdentityCollision {
+        state,
+        left: _,
+        right: _,
+      },
+    } => state == pijul_state_combined
+    _ => false
+  }
+}
+
+test fn witness_pijul_equal_change_sets_require_one_state_identity() -> Bool {
+  let projection = fixture_projection()
+  let divergent = PijulChannel {
+    name: "divergent",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_wrong,
+      changes: [pijul_change_right, pijul_change_root, pijul_change_left],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  match pijul_decode_projection(
+    projection: projection_with_channels(
+      projection: projection,
+      channels: append(fixture_repository().channels, items: [divergent]),
+    ),
+  ) {
+    PijulDecodeRefused {
+      cause: PijulStateIdentityDivergence {
+        left_state: _,
+        right_state: _,
+        left: _,
+        right: _,
+      },
+    } => true
+    _ => false
+  }
+}
+
+test fn witness_pijul_undeclared_context_refuses_capture() -> Bool {
+  let base = fixture_repository()
+  let bad_change = PijulRecordedChange {
+    identity: fixture_identity(hash: pijul_change_dependent),
+    dependencies: [],
+    actions: [
+      PijulNewVertex {
+        vertex: PijulVertexId {
+          introduced_by: pijul_change_dependent,
+          position: PijulVertexPosition { value: 0 },
+        },
+        up_context: [PijulContext { vertex: pijul_vertex_missing }],
+        down_context: [],
+        content: octets_bytes(o: [98, 97, 100]),
+      },
+    ],
+    authors: ["Fixture Author"],
+    message: "bad context",
+    recorded_at: "provenance-only-bad",
+  }
+  let changed = PijulCompleteProjection {
+    candidate: PijulRepositoryState {
+      changes: append(base.changes, items: [bad_change]),
+      pristine: base.pristine,
+      tree: base.tree,
+      working_copy: base.working_copy,
+      channels: base.channels,
+      current_channel: base.current_channel,
+    },
+  }
+  match pijul_decode_projection(projection: changed) {
+    PijulDecodeRefused {
+      cause: PijulMissingContext { owner, vertex },
+    } => owner == pijul_change_dependent && vertex == pijul_vertex_missing
+    _ => false
+  }
+}
+
+test fn witness_pijul_declared_partial_change_is_not_fabricated() -> Bool {
+  let projection = fixture_projection()
+  let partial_channel = PijulChannel {
+    name: "partial",
+    state_identity: PijulChannelStateIdentity {
+      state: pijul_state_partial,
+      changes: [pijul_change_root, pijul_change_missing],
+      producer: PijulLogStateObserved {
+        pijul_version: pijul_upstream_version,
+      },
+    },
+  }
+  let changed = projection_with_channels(
+    projection: projection,
+    channels: append(fixture_repository().channels, items: [partial_channel]),
+  )
+  match pijul_decode_projection(projection: changed) {
+    PijulDecoded { repository } =>
+      repository.state.changes
+        |> filter(change => change.identity.hash == pijul_change_missing)
+        |> count == 0
+    _ => false
+  }
+}
+
+test fn witness_pijul_graph_conflict_is_retained_without_capture_refusal() -> Bool {
+  match pijul_decode_projection(projection: fixture_projection()) {
+    PijulDecoded { repository } =>
+      match repository.state.pristine.conflicts |> first {
+        Present {
+          value: PijulOrderConflict { left, right, at },
+        } =>
+          left == pijul_change_left
+            && right == pijul_change_right
+            && at == pijul_vertex_root
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn witness_pijul_tree_pristine_and_working_copy_remain_distinct() -> Bool {
+  let state = fixture_repository()
+  count(state.tree.entries) == 1
+    && count(state.pristine.vertices) == 3
+    && count(state.working_copy.entries) == 2
+    && match state.working_copy.entries |> filter(entry =>
+      entry.path == pijul_path_scratch
+    ) |> first {
+      Present { value: scratch } =>
+        scratch.disposition == PijulWorkingCopyUntracked
+      Absent => false
+    }
+}
+
+test fn witness_pijul_r0_write_capability_remains_unavailable() -> Bool {
+  match pijul_r0_conditional_advance() {
+    PijulConditionalAdvanceUnavailable { reason } =>
+      string_contains(s: reason, pattern: "No executing upstream operation")
+  }
+}

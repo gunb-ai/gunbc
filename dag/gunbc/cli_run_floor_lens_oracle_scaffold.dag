@@ -1,0 +1,74 @@
+module gunbc.cli_run_floor_lens_oracle_scaffold
+
+
+data cli_run_floor_lens_legacy_graph_oracle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "floor_lens_graph_legacy",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_legacy_walk_oracle_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "inert_lens_modules_legacy",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_oracle_dissolve_trigger: String = "🟡 dissolve-on: floor_lens_graph_legacy + inert_lens_modules_legacy — the 6A repoint's TEST-SIDE equality oracle (the deleted build_floor_lens_import_graph corpus scan and module-name-grain walk, retained only inside cli_run.rs inert_lens_hygiene_tests as the executing equivalence receipt, the same shape as resolve_transitively_bfs_legacy). DELETES WHEN the legacy-oracle class dissolves (the queued resolve_transitively_bfs_legacy triage deletion) OR cli_run.rs Chunk F retires the HAND census entirely (docs/plans/cli-run-reconcile-defork.md)"
+
+data cli_run_floor_lens_census_walk_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "inert_lens_modules",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_justification_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "lens_justification_census",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_read_refusal_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "refuse_on_module_graph_read_refusals",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_observation_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v1_compiler.cli_run",
+    decl_name: "import_resolution_facts_with_observation",
+    field: WholeDeclaration
+  }
+}
+
+data cli_run_floor_lens_hand_rust_dissolve_trigger: String = "🟡 dissolve-on: inert_lens_modules + lens_justification_census + refuse_on_module_graph_read_refusals + import_resolution_facts_with_observation — the 6A repoint's PRODUCTION census walk, justification census, typed read-refusal arm, and observation projection in HAND-Rust (counted interim seed growth, net +22 production LOC at landing; the host realization of the v2.lens.module_graph selection-tier reach until the census emits from workflow dag). DISSOLVES WHEN cli_run.rs Chunk F lands (docs/plans/cli-run-reconcile-defork.md — the census emits from workflow dag over v2.lens.module_graph and the HAND arms delete) OR ROADMAP 5-dissolve-patches (gunbc.roadmap_authority ticket) retires the HAND census entirely"
+
+data cli_run_floor_lens_hand_rust_loc_delta_net: Int = 22
+
+data cli_run_floor_lens_scaffold_shape_red_control: Disposition = Terminal {
+  reason: "RED CONTROL for the scaffold-shape cells in dag/test/claim/cli_run_floor_lens_oracle_witness_test.dag: a Terminal disposition, so the canonical reader v2.lens.disposition_redundancy.disposition_is_terminal must answer true for it while answering false for every Scaffold row above. Without this row the shape assertions could pass on a reader that answered false unconditionally; with it, the reader is proven to discriminate. Not a disposition ABOUT any declaration — it is test data declared beside the rows it controls."
+}
+
+data cli_run_floor_lens_oracle_receipt_plan_anchor: String = "docs/plans/cli-run-reconcile-defork.md"
+
+data cli_run_floor_lens_oracle_equality_receipt_test: String = "facts_walk_matches_legacy_floor_lens_graph_on_live_corpus"
+
+data cli_run_floor_lens_oracle_build_count_receipt_test: String = "lens_census_single_facts_build_receipt"
+
+data cli_run_floor_lens_oracle_read_refusal_receipt_test: String = "unreadable_lens_is_a_read_refusal_not_an_absence"

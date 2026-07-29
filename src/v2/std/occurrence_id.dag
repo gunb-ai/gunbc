@@ -1,38 +1,16 @@
 module v2.std.occurrence_id
 
 import v2.std.node { OccurrenceId }
-
-type OccurrenceIdAllocator {
-  next_id: Int
+import std.occurrence_identity {
+  OccurrenceIdAllocator,
+  OccurrenceIdAllocResult,
+  authored_token_ordinal_space_from_allocator,
+  occurrence_id_allocator_initial,
+  alloc_occurrence_id,
+  occurrence_id_eq,
+  occurrence_id_allocator_advance_to,
 }
 
-type OccurrenceIdAllocResult {
-  id: OccurrenceId
-  alloc: OccurrenceIdAllocator
-}
+data occurrence_identity_v2_facade_note: String = "Source-compatible v2 facade over std.occurrence_identity while existing v2 consumers still import v2.std.occurrence_id. It contains no allocator body or identity rule."
 
-fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
-  OccurrenceIdAllocator { next_id: 0 }
-}
-
-fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
-  OccurrenceIdAllocResult {
-    id: OccurrenceId { value: alloc.next_id },
-    alloc: OccurrenceIdAllocator { next_id: alloc.next_id + 1 }
-  }
-}
-
-fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
-  left.value == right.value
-}
-
-fn occurrence_id_allocator_advance_to(
-  alloc: OccurrenceIdAllocator,
-  min_next: Int
-) -> OccurrenceIdAllocator {
-  if alloc.next_id < min_next {
-    OccurrenceIdAllocator { next_id: min_next }
-  } else {
-    alloc
-  }
-}
+data occurrence_identity_v2_facade_dissolve_on: String = "DISSOLVE-ON: the counted v2.std.occurrence_id import census reaches zero after consumers import std.occurrence_identity directly; then delete this facade."

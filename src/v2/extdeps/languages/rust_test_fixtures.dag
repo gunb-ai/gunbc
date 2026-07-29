@@ -2456,6 +2456,41 @@ fn rust_logic_family_target_model_staging() -> TargetModel {
   }
 }
 
+data rust_logic_family_member_meet_zero: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
+  member_id: "meet",
+  result_expression: "match meet(True, False) { False => 0, True => 1 }"
+}
+
+fn rust_logic_family_dispatch_members_meet_zero() -> List<RustEmitHostFamilyMember> {
+  [
+    rust_logic_family_member_meet_zero,
+    rust_logic_family_member_join,
+    rust_logic_family_member_complement
+  ]
+}
+
+fn rust_logic_family_meet_zero_runtime_row() -> TargetEmitHostRuntimeRow {
+  rust_bool_fn_host_runtime_row(
+    host_identity_sym: ^rust_host_transport_logic_family_identity,
+    main_suffix: rust_family_main_suffix(
+      prelude: rust_logic_family_prelude,
+      members: rust_logic_family_dispatch_members_meet_zero()
+    )
+  )
+}
+
+fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
+  let base = rust_logic_meet_target_model_staging()
+  TargetModel {
+    bundle: base.bundle,
+    lex: base.lex,
+    binding_spellings: base.binding_spellings,
+    token_class_emit_transforms: base.token_class_emit_transforms,
+    authority_source_text: base.authority_source_text,
+    runtime_row: rust_logic_family_meet_zero_runtime_row()
+  }
+}
+
 data rust_match_loop_fold_family_prelude: String = "\n\nfn fold_call_callee(xs: i32, z: i32, f: impl Fn(i32, i32) -> i32) -> i32 { f(xs, z) }"
 
 data rust_match_loop_fold_family_member_match: RustEmitHostFamilyMember = RustEmitHostFamilyMember {
