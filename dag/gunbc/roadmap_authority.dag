@@ -718,7 +718,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "Every result says which generator made it and how far it got, as two separate facts. Claiming the new generator made something, without the evidence that it did, has to be impossible to write down.",
         displaced_cost: "Right now everything is made by the old generator, and the count we track reads as if the new one made it. We are measuring the wrong thing, so we cannot tell how far along we are.",
         first_slice: "Relabel the existing rows as made by the old generator, and replace the single count with separate counts per generator in the same change.",
-        red_control: "Take the old generator away. Anything claiming the new generator made it must come out identical. Living in the new source folder is not evidence of anything.",
+        red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. All six existing rows are recorded as made by the old generator, because that is what made them. Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
         out_of_scope: "Nothing changes which generator makes it here, and no check gets loosened to keep a number looking good.",
         handback: "The relabelled list, the retired count, and the result of the run with the old generator taken away."
       )
@@ -897,7 +897,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       path: "src/v1/05_emit_rust.dag",
       t: fields(
         headline: "Delete the old Rust generator",
-        boundary: "The old generator and the Rust it produced are removed, the Rust option leaves the old build path, and the fixtures and counts that only existed for it go too.",
+        boundary: "The old generator itself is removed, along with the one Rust file it generated to run itself, the Rust option in the old build path, and the fixtures, helpers and measurements that existed only for it. What produced a file in the past does not decide whether it goes: any Rust the new generator now produces stays exactly where it is.",
         displaced_cost: "Removes the second set of Rust-generation rules for good — the split the shared rules were meant to end.",
         first_slice: "Take the Rust option out of the old build path once nothing calls it.",
         red_control: "Any remaining caller, fixture, or count tied to the old generator blocks the deletion.",
@@ -1197,6 +1197,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance"),
     edge(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door"),
     edge(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-first-behavioral-module"),
+    edge(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt"),
     edge(child: "v1-emitter-fixed-point", parent: "v2-emitter-native-bootstrap"),
     edge(child: "v1-honest-frontier", parent: "v1-test-hygiene-producer-retirement"),
     edge(child: "v1-verification-ledger", parent: "v1-materialization-kernel"),

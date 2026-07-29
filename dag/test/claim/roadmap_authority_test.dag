@@ -398,6 +398,10 @@ test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool 
     && edge_exists(child: "pderive-error-movement-receipt", parent: "pderive-v2-emitter-consumer")
 }
 
+test fn witness_pderive_vertical_slice_gates_bootstrap_widening() -> Bool {
+    edge_exists(child: "v2-emitter-native-bootstrap", parent: "pderive-error-movement-receipt")
+}
+
 test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool {
     edge_exists(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance")
     && edge_exists(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-direct-rust-door")
