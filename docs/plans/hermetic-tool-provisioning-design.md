@@ -199,17 +199,45 @@ deriving an age in P1 would mean both becoming that type's first consumer and
 forking calendar arithmetic into `extdeps/`, a §3 fork of a std concern.
 
 So P1 does not offer a verdict it cannot ground. The fabricable parameter is
-deleted outright, and a `TrackedChannel` pin is `PinFreshnessUnderivable` —
-never fresh, therefore never admitted, even when its observed digest matches
-exactly. `ExactPin` is unaffected and fully usable, which is what P3 needs (the
-Rust toolchain is an exact pin). Dissolve-on: `v2.std.datetime` gains day
-arithmetic and `TrackedChannel` carries `resolved_on: CalendarDate`, at which
-point the arm becomes a real fresh/stale decision derived from stored evidence
+deleted outright, and a `TrackedChannel` pin refuses admission even when its
+observed digest matches exactly.
+
+### Integrity and currency are different questions — review 44274
+
+The first correction still exempted the wrong variant. `ExactPin` returned
+`PinFresh` **unconditionally**, on the reasoning that an authored pin has no
+upstream drift for a window to bound. That was wrong, and wrong against this
+lane's own purpose: *authorship proves reproducibility, not currency.* An exact
+pin authored three years ago is exactly as reproducible and exactly as rotten,
+and reporting it fresh forever is precisely the "pinned and never updated"
+failure the refresh axis exists to prevent — the operator's own framing when
+they asked for the axis.
+
+One word was carrying two questions:
+
+| axis | question | decidable in P1? |
+|---|---|---|
+| **integrity** | is this binary the one the pin declares? | **yes** — compare observed digest to `expected_identity` |
+| **currency** | is the declared version still the one we want? | **no** — for *either* variant |
+
+They are now separate. `admit_pin_integrity` establishes integrity only and is
+named so it cannot be misread; its success arm is `PinIntegrityAdmitted`.
+`pin_currency_gap` is **total and has no positive arm at all** — it returns
+`AuthoredPinHasNoReviewDate` for an exact pin and
+`TrackedPinHasNoResolutionDate` for a tracked one. No arm anywhere reports a
+pin current, so currency can never be inherited from an integrity pass; a
+consumer that needs it reads the gap and refuses.
+
+`ExactPin` remains usable for what P3 needs (the Rust toolchain is an exact
+pin) — its *integrity* is fully checkable. Dissolve-on: `v2.std.datetime` gains
+day arithmetic and the pin carries a review/resolution date, at which point
+`pin_currency_gap` gains a genuine positive arm derived from stored evidence
 and an observed date.
 
 So "allow a latest tag" is satisfied without conceding hermeticity: `latest` is
-admissible as a *selection policy*, never as a runtime lookup. The recorded
-resolution is what runs.
+admissible as a *selection policy*, never as a runtime lookup — and the
+companion half of that request, *don't pin and never update*, is honoured by
+refusing to claim currency for any pin rather than by exempting authored ones.
 
 `min_version: VersionConstraint?` does not survive this. It is a *range*
 (`curl` pins `">= 7.68"`), it is optional, and a range admits a different
