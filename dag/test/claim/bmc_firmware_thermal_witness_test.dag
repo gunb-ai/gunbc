@@ -32,11 +32,13 @@ import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
   asrock_altrad8ud_factory_temp_soc_fan_curve,
 }
+import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
   srv3_bmc_redfish_surface_observation,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
+  srv4_bmc_fan_active_config_digest,
   srv4_bmc_fan_converged_policy_observation,
   srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_perturbation_generation,
@@ -46,10 +48,20 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_bmc_state {
+  BmcFanDurabilityEvidenceBuilt,
+  BmcFanDurabilityEvidenceConstructionRefused,
+  DurabilityReceiptCapabilityVersionMismatch,
+  bmc_fan_reboot_durability_evidence,
   srv4_bmc_fan_durability_admission,
   srv4_bmc_fan_durability_evidence,
   srv4_bmc_fan_projection_capability,
 }
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_quiet_curve_changed_digest,
+}
+import std.state_durability { StateDurabilityCapabilityVersion }
+import std.types { ContentHash }
 import extdeps.filesystem.linux { linux_overlay_observation_is_flash_backed }
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
@@ -72,7 +84,6 @@ import gunbc.fleet_intent {
 }
 import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
 import std.nat { Nat }
-import extdeps.crypto.hash { sha256_digest }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
@@ -385,6 +396,7 @@ fn srv4_fan_policy_with_curve(curve: BmcFanCurve) -> BmcFanPolicyObservation {
   BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
     curve: curve,
+    active_config_digest: srv4_bmc_fan_active_config_digest,
     selected_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.selected_config_path,
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
@@ -586,6 +598,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
   let stale_topology = BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
     curve: fleet_quiet_temp_soc_fan_curve,
+    active_config_digest: srv4_bmc_fan_active_config_digest,
     selected_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.selected_config_path,
     board_config_path: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.board_config_path,
     controller_service: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_service,
@@ -672,6 +685,7 @@ test fn major_three_track_does_not_authorize_a_322_projection_on_306() -> Bool {
   let observed = BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
     curve: minimum_duty_perturbation(),
+    active_config_digest: srv4_bmc_fan_active_config_digest,
     selected_config_path: "/usr/share/swampd/config.json",
     board_config_path: "/usr/share/swampd/config-asrr.json",
     controller_service: "phosphor-pid-control.service",
@@ -715,5 +729,97 @@ test fn srv3_fan_realization_refuses_until_global_firmware_track_converges() -> 
       Refuse { reason: _ } => true
       Noop => false
       Apply { plan: _ } => false
+    }
+}
+
+test fn reboot_durability_evidence_refuses_capability_version_relabeling() -> Bool {
+  let relabeled = BmcFanPolicyProjectionCapability {
+    board: srv4_bmc_fan_projection_capability.board,
+    firmware: srv4_bmc_fan_projection_capability.firmware,
+    projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
+    projected_config_digest: srv4_bmc_fan_projection_capability.projected_config_digest,
+    config_path: srv4_bmc_fan_projection_capability.config_path,
+    controller_service: srv4_bmc_fan_projection_capability.controller_service,
+    controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
+    aggregate_fan_pid_entry: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
+    realization: srv4_bmc_fan_projection_capability.realization,
+    durability_capability_version: StateDurabilityCapabilityVersion {
+      version: "relabelled-capability",
+      definition_hash: "relabelled-definition" as ContentHash,
+    },
+    publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
+    durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
+    required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
+  }
+  match bmc_fan_reboot_durability_evidence(
+    receipt: srv4_bmc_fan_reboot_persistence_receipt,
+    capability: relabeled,
+  ) {
+    BmcFanDurabilityEvidenceConstructionRefused {
+      cause: DurabilityReceiptCapabilityVersionMismatch,
+    } => true
+    BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
+  }
+}
+
+test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
+  let digest_mismatch = BmcFanPolicyObservation {
+    firmware: srv4_bmc_fan_converged_policy_observation.firmware,
+    curve: fleet_quiet_temp_soc_fan_curve,
+    active_config_digest: bmc_fan_quiet_curve_changed_digest,
+    selected_config_path: srv4_bmc_fan_converged_policy_observation.selected_config_path,
+    board_config_path: srv4_bmc_fan_converged_policy_observation.board_config_path,
+    controller_service: srv4_bmc_fan_converged_policy_observation.controller_service,
+    controller_binary: srv4_bmc_fan_converged_policy_observation.controller_binary,
+    controller_shape: srv4_bmc_fan_converged_policy_observation.controller_shape,
+    observed_at: "fixture",
+  }
+  let classified = bmc_fan_policy_classification(
+    host: srv4_host.identity,
+    board: srv4_baseboard.catalog.model,
+    intent: fleet_bmc_valid_state,
+    observation: Present { value: digest_mismatch },
+    persistence: Present { value: srv4_bmc_config_persistence_observation },
+    projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence: srv4_bmc_fan_durability_evidence,
+  )
+  classified.verdict == Drifted
+    && match classified.decision {
+      Apply { plan: _ } => true
+      Noop => false
+      Refuse { reason: _ } => false
+    }
+}
+
+test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
+  let drifted = asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation
+  let classified = bmc_fan_policy_classification(
+    host: srv4_host.identity,
+    board: srv4_baseboard.catalog.model,
+    intent: fleet_bmc_valid_state,
+    observation: Present { value: drifted },
+    persistence: Present { value: srv4_bmc_config_persistence_observation },
+    projection: Present { value: srv4_bmc_fan_projection_capability },
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence: [],
+  )
+  classified.verdict == Drifted
+    && match classified.decision {
+      Apply { plan: _ } => true
+      Noop => false
+      Refuse { reason: _ } => false
+    }
+}
+
+test fn srv4_fixture_durability_evidence_is_constructed_not_relabelled() -> Bool {
+  srv4_bmc_fan_durability_evidence.length() == 1
+    && match bmc_fan_reboot_durability_evidence(
+      receipt: srv4_bmc_fan_reboot_persistence_receipt,
+      capability: srv4_bmc_fan_projection_capability,
+    ) {
+      BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
+        evidence.admission == srv4_bmc_fan_durability_admission
+      BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
     }
 }

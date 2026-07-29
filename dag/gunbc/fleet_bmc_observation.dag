@@ -52,10 +52,14 @@ import std.measure {
   second,
 }
 import std.nat { Nat }
+import std.content_hash { content_hash_atom }
 import std.state_durability {
+  StateDurabilityCapabilityVersion,
   StatePerturbationGeneration,
+  StateRealizationDefinitionHashes,
+  StateRealizationIdentity,
 }
-import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, ContentHash, EpochMs, List, NonEmptyStr, String }
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -196,12 +200,20 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
   hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
 )
 
+data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "openbmc-overlay-config-graceful-restart-v2",
+  definition_hash: content_hash_atom(
+    value: "rename-in-target-directory-sync-all-filesystems-graceful-bmc-restart-readback-v2",
+  ),
+}
+
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -274,6 +286,7 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,

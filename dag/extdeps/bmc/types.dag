@@ -5,6 +5,7 @@ import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
 }
+import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -352,6 +353,7 @@ type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
   evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
+  active_config_digest: Digest
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr

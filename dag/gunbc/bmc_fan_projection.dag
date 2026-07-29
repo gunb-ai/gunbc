@@ -8,11 +8,13 @@ import extdeps.bmc.types {
   FanPidIndependentEntries,
 }
 import extdeps.boards.types { BaseboardModel }
-import extdeps.crypto.hash { Digest }
+import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   linux_file_publication_has_synchronized_commit,
 }
+import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
+import gunbc.fleet_bmc_observation { srv4_bmc_fan_active_config_digest }
 import product.placement_supply { HostIdentity }
 import std.state_durability {
   NoDurabilityCommitBarrier,
@@ -54,7 +56,50 @@ type BmcFanPolicyProjectionCapability {
   required_tach_inputs: List<NonEmptyStr>
 }
 
-fn bmc_fan_policy_projection_supports_apply(
+data bmc_fan_quiet_curve_changed_digest: Digest = sha256_digest(
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+)
+
+fn bmc_fan_admitted_config_digest(curve: BmcFanCurve) -> Digest {
+  if curve == fleet_quiet_temp_soc_fan_curve {
+    srv4_bmc_fan_active_config_digest
+  } else {
+    bmc_fan_quiet_curve_changed_digest
+  }
+}
+
+fn bmc_fan_policy_projection_capability(
+  board: BaseboardModel,
+  firmware: BmcFirmwareVersion,
+  projected_curve: BmcFanCurve,
+  config_path: NonEmptyStr,
+  controller_service: NonEmptyStr,
+  controller_zone_path: NonEmptyStr,
+  aggregate_fan_pid_entry: NonEmptyStr,
+  realization: StateRealizationIdentity,
+  durability_capability_version: StateDurabilityCapabilityVersion,
+  publication_protocol: LinuxFilePublicationProtocol,
+  durability_boundaries: List<StateDurabilityBoundary>,
+  required_tach_inputs: List<NonEmptyStr>,
+) -> BmcFanPolicyProjectionCapability {
+  BmcFanPolicyProjectionCapability {
+    board: board,
+    firmware: firmware,
+    projected_curve: projected_curve,
+    projected_config_digest: bmc_fan_admitted_config_digest(curve: projected_curve),
+    config_path: config_path,
+    controller_service: controller_service,
+    controller_zone_path: controller_zone_path,
+    aggregate_fan_pid_entry: aggregate_fan_pid_entry,
+    realization: realization,
+    durability_capability_version: durability_capability_version,
+    publication_protocol: publication_protocol,
+    durability_boundaries: durability_boundaries,
+    required_tach_inputs: required_tach_inputs,
+  }
+}
+
+fn bmc_fan_policy_projection_apply_suitability(
   capability: BmcFanPolicyProjectionCapability,
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
@@ -68,11 +113,13 @@ fn bmc_fan_policy_projection_supports_apply(
     && linux_file_publication_has_synchronized_commit(
       protocol: capability.publication_protocol,
     )
-    && durability_commit_barrier_is_synchronized(
-      barrier: bmc_fan_policy_projection_durability_capability(
-        capability: capability,
-      ).commit_barrier,
-    )
+}
+
+fn bmc_fan_policy_projection_live_digest_matches(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> Bool {
+  observation.active_config_digest == capability.projected_config_digest
 }
 
 fn bmc_fan_state_durability_capability(
@@ -138,4 +185,14 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Thus OpenBMC 3.06 and 3.22 can both satisfy a 3.x intent while only 3.22 has the currently qualified projection."
+fn bmc_fan_policy_projection_durability_commit_ready(
+  capability: BmcFanPolicyProjectionCapability,
+) -> Bool {
+  durability_commit_barrier_is_synchronized(
+    barrier: bmc_fan_policy_projection_durability_capability(
+      capability: capability,
+    ).commit_barrier,
+  )
+}
+
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
