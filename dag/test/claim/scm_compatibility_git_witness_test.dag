@@ -44,7 +44,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn git_fixture_binding() -> GitCompatibilityBindingOutcome {
   git_compatibility_bind(
     repository: fixture_repository(),
-    tree: sha1_root_tree,
     read_back: fixture_read_back_observation(),
     target: "refs/heads/main",
     expected_generation: sha1_parent_commit,
@@ -167,10 +166,22 @@ test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
   }
   match git_compatibility_bind(
     repository: fixture_repository(),
-    tree: sha1_root_tree,
     read_back: wrong,
     target: "refs/heads/main",
     expected_generation: sha1_parent_commit,
+    proposed_generation: sha1_next_commit,
+  ) {
+    GitCompatibilityBindingRefused { cause: _ } => true
+    GitCompatibilityBound { receipt: _ } => false
+  }
+}
+
+test fn witness_git_generation_derives_tree_from_commit() -> Bool {
+  match git_compatibility_bind(
+    repository: fixture_repository(),
+    read_back: fixture_read_back_observation(),
+    target: "refs/heads/main",
+    expected_generation: sha1_root_tree,
     proposed_generation: sha1_next_commit,
   ) {
     GitCompatibilityBindingRefused { cause: _ } => true

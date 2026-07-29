@@ -1,23 +1,45 @@
 module gunbc.scm_compatibility.git
 
 import std.types { List, NonEmptyStr }
+import std.integer { NonNegativeInt }
+import extdeps.git { ObjectType }
 import extdeps.git.object_store {
   GitObjectId,
+  GitObjectFormat,
   GitRefName,
   GitRepositoryState,
+  GitRepositoryDecodeRefusal,
+  StoredObject,
+  StoreObjectFold,
+  ObjectLookupResult,
   GitR0Projection,
   GitR0ReadBackObservation,
+  GitReadBackMismatchAxis,
   GitModeledRefTransition,
   GitR0UnsupportedBoundary,
-  GitProjectionOutcome,
   GitProjected,
-  GitReadBackOutcome,
+  GitProjectionRefused,
   GitReadBackVerified,
-  GitUpdateRefOutcome,
+  GitReadBackMismatch,
   GitRefTransitionModeled,
+  GitRefAdvanceRepositoryInvalid,
+  GitRefAdvanceStale,
+  GitRefAdvanceMissing,
+  GitRefAdvanceDuplicate,
+  GitRefAdvanceSymbolicCycle,
+  GitRefAdvanceFormatMismatch,
+  GitRefAdvanceTargetUnavailable,
+  GitRefAdvanceTargetKindRefused,
+  ObjectFound,
+  ObjectPromisorUnavailable,
+  ObjectUnexpectedlyMissing,
+  ObjectCorrupt,
+  ObjectRepositoryInvalid,
+  store_object_fold,
   git_project_repository,
   git_verify_independent_read_back,
   git_model_update_ref_exact,
+  git_lookup_object,
   git_object_id_content_hash,
   git_r0_unsupported_boundary,
 }
@@ -44,10 +66,61 @@ type GitCompatibilityReceipt {
   unsupported: List<GitR0UnsupportedBoundary>
 }
 
+type GitCompatibilityObjectPurpose
+  = GitCompatibilityGenerationCommit
+  | GitCompatibilityProjectionTree
+  | GitCompatibilityAdvanceTarget
+
 type GitCompatibilityRefusal
-  = GitCompatibilityProjectionRejected { outcome: GitProjectionOutcome }
-  | GitCompatibilityReadBackRejected { outcome: GitReadBackOutcome }
-  | GitCompatibilityAdvanceRejected { outcome: GitUpdateRefOutcome }
+  = GitCompatibilityObjectWrongKind {
+      purpose: GitCompatibilityObjectPurpose,
+      stored: StoredObject,
+    }
+  | GitCompatibilityObjectPromisorUnavailable {
+      purpose: GitCompatibilityObjectPurpose,
+      oid: GitObjectId,
+      promisor: NonEmptyStr,
+    }
+  | GitCompatibilityObjectUnexpectedlyMissing {
+      purpose: GitCompatibilityObjectPurpose,
+      oid: GitObjectId,
+    }
+  | GitCompatibilityObjectCorrupt {
+      purpose: GitCompatibilityObjectPurpose,
+      oid: GitObjectId,
+      reason: NonEmptyStr,
+    }
+  | GitCompatibilityRepositoryInvalid {
+      purpose: GitCompatibilityObjectPurpose,
+      cause: GitRepositoryDecodeRefusal,
+    }
+  | GitCompatibilityReadBackRejected { axis: GitReadBackMismatchAxis }
+  | GitCompatibilityAdvanceRepositoryInvalid {
+      cause: GitRepositoryDecodeRefusal,
+    }
+  | GitCompatibilityAdvanceStale {
+      name: GitRefName,
+      expected_old: GitObjectId,
+      observed: GitObjectId,
+    }
+  | GitCompatibilityAdvanceMissing { name: GitRefName }
+  | GitCompatibilityAdvanceDuplicate {
+      name: GitRefName,
+      count: NonNegativeInt,
+    }
+  | GitCompatibilityAdvanceSymbolicCycle {
+      name: GitRefName,
+      chain: List<GitRefName>,
+    }
+  | GitCompatibilityAdvanceFormatMismatch {
+      repository_format: GitObjectFormat,
+      oid: GitObjectId,
+    }
+  | GitCompatibilityAdvanceTargetKindRefused {
+      name: GitRefName,
+      oid: GitObjectId,
+      object_type: ObjectType,
+    }
 
 type GitCompatibilityBindingOutcome
   = GitCompatibilityBound { receipt: GitCompatibilityReceipt }
@@ -68,7 +141,42 @@ fn git_compatibility_binding_outcome_fold<R>(
   }
 }
 
-fn git_compatibility_bind(
+fn git_compatibility_object_refusal(
+  purpose: GitCompatibilityObjectPurpose,
+  lookup: ObjectLookupResult,
+) -> GitCompatibilityRefusal {
+  match lookup {
+    ObjectFound { stored } =>
+      GitCompatibilityObjectWrongKind {
+        purpose: purpose,
+        stored: stored,
+      }
+    ObjectPromisorUnavailable { oid, promisor } =>
+      GitCompatibilityObjectPromisorUnavailable {
+        purpose: purpose,
+        oid: oid,
+        promisor: promisor,
+      }
+    ObjectUnexpectedlyMissing { oid } =>
+      GitCompatibilityObjectUnexpectedlyMissing {
+        purpose: purpose,
+        oid: oid,
+      }
+    ObjectCorrupt { oid, reason } =>
+      GitCompatibilityObjectCorrupt {
+        purpose: purpose,
+        oid: oid,
+        reason: reason,
+      }
+    ObjectRepositoryInvalid { cause } =>
+      GitCompatibilityRepositoryInvalid {
+        purpose: purpose,
+        cause: cause,
+      }
+  }
+}
+
+fn git_compatibility_bind_commit(
   repository: GitRepositoryState,
   tree: GitObjectId,
   read_back: GitR0ReadBackObservation,
@@ -106,25 +214,158 @@ fn git_compatibility_bind(
                   unsupported: git_r0_unsupported_boundary,
                 },
               }
-            rejected =>
+            GitRefAdvanceRepositoryInvalid {
+              repository: _,
+              cause,
+            } =>
               GitCompatibilityBindingRefused {
-                cause: GitCompatibilityAdvanceRejected {
-                  outcome: rejected,
+                cause: GitCompatibilityAdvanceRepositoryInvalid {
+                  cause: cause,
+                },
+              }
+            GitRefAdvanceStale {
+              repository: _,
+              name,
+              expected_old,
+              observed,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceStale {
+                  name: name,
+                  expected_old: expected_old,
+                  observed: observed,
+                },
+              }
+            GitRefAdvanceMissing { repository: _, name } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceMissing { name: name },
+              }
+            GitRefAdvanceDuplicate {
+              repository: _,
+              name,
+              count,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceDuplicate {
+                  name: name,
+                  count: count,
+                },
+              }
+            GitRefAdvanceSymbolicCycle {
+              repository: _,
+              name,
+              chain,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceSymbolicCycle {
+                  name: name,
+                  chain: chain,
+                },
+              }
+            GitRefAdvanceFormatMismatch {
+              repository: _,
+              repository_format,
+              oid,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceFormatMismatch {
+                  repository_format: repository_format,
+                  oid: oid,
+                },
+              }
+            GitRefAdvanceTargetUnavailable {
+              repository: _,
+              oid: _,
+              lookup,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: git_compatibility_object_refusal(
+                  purpose: GitCompatibilityAdvanceTarget,
+                  lookup: lookup,
+                ),
+              }
+            GitRefAdvanceTargetKindRefused {
+              repository: _,
+              name,
+              oid,
+              object_type,
+            } =>
+              GitCompatibilityBindingRefused {
+                cause: GitCompatibilityAdvanceTargetKindRefused {
+                  name: name,
+                  oid: oid,
+                  object_type: object_type,
                 },
               }
           }
-        rejected =>
+        GitReadBackMismatch { axis } =>
           GitCompatibilityBindingRefused {
-            cause: GitCompatibilityReadBackRejected {
-              outcome: rejected,
-            },
+            cause: GitCompatibilityReadBackRejected { axis: axis },
           }
       }
+    GitProjectionRefused { cause } =>
+      GitCompatibilityBindingRefused {
+        cause: git_compatibility_object_refusal(
+          purpose: GitCompatibilityProjectionTree,
+          lookup: cause,
+        ),
+      }
+  }
+}
+
+fn git_compatibility_generation_wrong_kind(
+  stored: StoredObject,
+) -> GitCompatibilityBindingOutcome {
+  GitCompatibilityBindingRefused {
+    cause: GitCompatibilityObjectWrongKind {
+      purpose: GitCompatibilityGenerationCommit,
+      stored: stored,
+    },
+  }
+}
+
+fn git_compatibility_bind(
+  repository: GitRepositoryState,
+  read_back: GitR0ReadBackObservation,
+  target: GitRefName,
+  expected_generation: GitObjectId,
+  proposed_generation: GitObjectId,
+) -> GitCompatibilityBindingOutcome {
+  match git_lookup_object(
+    repo: repository,
+    oid: expected_generation,
+  ) {
+    ObjectFound { stored } =>
+      store_object_fold(
+        object: stored.object,
+        fold: StoreObjectFold {
+          blob: fn(_) {
+            git_compatibility_generation_wrong_kind(stored: stored)
+          },
+          tree: fn(_) {
+            git_compatibility_generation_wrong_kind(stored: stored)
+          },
+          commit: fn(commit) {
+            git_compatibility_bind_commit(
+              repository: repository,
+              tree: commit.tree,
+              read_back: read_back,
+              target: target,
+              expected_generation: expected_generation,
+              proposed_generation: proposed_generation,
+            )
+          },
+          tag: fn(_) {
+            git_compatibility_generation_wrong_kind(stored: stored)
+          },
+        },
+      )
     rejected =>
       GitCompatibilityBindingRefused {
-        cause: GitCompatibilityProjectionRejected {
-          outcome: rejected,
-        },
+        cause: git_compatibility_object_refusal(
+          purpose: GitCompatibilityGenerationCommit,
+          lookup: rejected,
+        ),
       }
   }
 }
