@@ -2,7 +2,8 @@ module extdeps.realization.emit_on_demand_host
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String }
+import std.types { ContentHash, String, NonEmptyStr, List, Present, Absent }
+import std.content_hash { content_hash_atom, content_hash_combine }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -18,17 +19,43 @@ data emit_on_demand_host_concurrent_same_key_note: String = "Concurrent same-key
 
 data emit_on_demand_host_seed_deferral_note: String = "Pure Bootstrap receipt for the bounded existing HAND-RUST boundary: no new Rust file or parallel key authority is admitted. This seed observation/apply arm is explicitly deferred to ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and the concrete dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel deletion row. Delete it when the self-emitted transport consumes ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm agreement witnesses stay green with the Rust helpers removed."
 
+type ObservedToolIdentity {
+  tool_name: NonEmptyStr
+  observed_identity: ContentHash
+}
+
 type ResolvedBuildContext {
-  toolchain_identity: ContentHash
+  observed_tool_identities: List<ObservedToolIdentity>
   environment_identity: ContentHash
   cargo_configuration_identity: ContentHash
+}
+
+fn toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
+  fold(
+    context.observed_tool_identities,
+    init: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
+    f: (acc, observed_tool_identity) => content_hash_combine(
+      left: acc,
+      right: observed_tool_identity.observed_identity
+    )
+  )
+}
+
+fn observed_tool_identity(
+  context: ResolvedBuildContext,
+  tool_name: NonEmptyStr,
+) -> ObservedToolIdentity? {
+  match context.observed_tool_identities |> filter(row => row.tool_name == tool_name) |> first {
+    Present { value: row } => Present { value: row }
+    Absent => Absent
+  }
 }
 
 fn resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash {
   artifact_realization_digest(inputs: [
     ArtifactRealizationInput {
       identity: "resolved-build-toolchain",
-      content_digest: context.toolchain_identity
+      content_digest: toolchain_identity(context: context)
     },
     ArtifactRealizationInput {
       identity: "constructed-build-environment",

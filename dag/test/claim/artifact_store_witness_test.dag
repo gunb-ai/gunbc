@@ -16,10 +16,13 @@ import std.artifact_store {
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
 }
 import extdeps.realization.emit_on_demand_host {
+  ObservedToolIdentity,
   ResolvedBuildContext,
   native_cache_realization_workspace_root,
   native_cache_resolved_build_context_workspace_root,
+  observed_tool_identity,
   resolved_build_context_identity,
+  toolchain_identity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -59,6 +62,13 @@ fn key_of(toolchain: String) -> ContentHash {
   })
 }
 
+fn observed_tool(tool_name: String, observed_identity: String) -> ObservedToolIdentity {
+  ObservedToolIdentity {
+    tool_name: tool_name,
+    observed_identity: content_hash_atom(value: observed_identity)
+  }
+}
+
 test fn store_construction_reads_eviction_holds() -> Bool {
   let ok = match store_over_provider(provider: spacepacked_provider, budget: byte_size(count: 100)) {
     StoreReady { store: _ } => true
@@ -92,6 +102,9 @@ test fn store_hit_and_stale_never_served_holds() -> Bool {
 }
 
 test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
+  let cargo_row = observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv")
+  let rustc_before = observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV")
+  let rustc_after = observed_tool(tool_name: "rustc", observed_identity: "rustc 1.94.0 -vV")
   let fixed_inputs: List<ArtifactRealizationInput> = [
     ArtifactRealizationInput {
       identity: "workspace:src/main.rs",
@@ -107,15 +120,32 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     realization_digest: artifact_realization_digest(inputs: fixed_inputs)
   )
   let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "cargo 1.93.0 + rustc 1.93.0"),
+    observed_tool_identities: [cargo_row, rustc_before],
     environment_identity: content_hash_atom(value: "fixed environment"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
   let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "cargo 1.94.0 + rustc 1.94.0"),
+    observed_tool_identities: [cargo_row, rustc_after],
     environment_identity: content_hash_atom(value: "fixed environment"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
+  let cargo_before = match observed_tool_identity(context: ResolvedBuildContext {
+    observed_tool_identities: [cargo_row, rustc_before],
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  }, tool_name: "cargo") {
+    Present { value: row } => row.observed_identity == content_hash_atom(value: "cargo 1.93.0 -Vv")
+    Absent => false
+  }
+  let rustc_changed = match observed_tool_identity(context: ResolvedBuildContext {
+    observed_tool_identities: [cargo_row, rustc_after],
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  }, tool_name: "rustc") {
+    Present { value: row } => row.observed_identity == content_hash_atom(value: "rustc 1.94.0 -vV")
+    Absent => false
+  }
+  let aggregate_differs = before_context != after_context
   let before = native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: before_context
@@ -124,21 +154,23 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: after_context
   )
-  before != after
+  cargo_before && rustc_changed && aggregate_differs && before != after
 }
 
 test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
+  let cargo_row = observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc")
+  let rustc_row = observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc")
   let fixed_realization = native_cache_realization_workspace_root(
     workspace_root: "/tmp/gunbc_environment_identity/outer-key",
     realization_digest: content_hash_atom(value: "fixed files and build argv")
   )
   let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    observed_tool_identities: [cargo_row, rustc_row],
     environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=2"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
   let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    observed_tool_identities: [cargo_row, rustc_row],
     environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=3"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
