@@ -447,7 +447,7 @@ fn producer_emission_oracle_row_for_module(module_path: String) -> List<Producer
   )
 }
 
-data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + wet quarantine citation + transport roster row — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER: requires executed BuildGreen canonical receipt only. Frontier disposition mirrors authorization: EmitterProduced is reachable only from producer_emission_canonical_receipt_for_oracle_row (BuildGreen); quarantine rows stay SeedRetained until wet execution greens and un-quarantines."
+data producer_emission_oracle_authorization_note: String = "Reviews 44328/44333/44350/44362/44393: enrollment (producer_emission_oracle_enrolls_row) binds module_path to minted receipt + known-red quarantine citation + transport roster — honest BuildRefused while assemble-red. Authorization (producer_emission_oracle_authorizes_row) is STRICTER and ORTHOGONAL: requires BuildGreen canonical receipt equality + transport roster only — NOT known-red enrollment (review 44393: enrollment and BuildGreen are mutually exclusive; dissolve-on deletes known-red entry, build_result greens, canonical authorizes). Frontier disposition mirrors authorization."
 
 fn producer_emission_oracle_enrolls_row(
   module_path: String,
@@ -478,11 +478,37 @@ fn producer_emission_oracle_authorizes_row(
         match producer_emission_canonical_receipt_for_oracle_row(row: row) {
           Present { value: canonical } =>
             producer_emission_receipt_eq(left: canonical, right: receipt)
-              && producer_emission_oracle_probe_is_enrolled(row: row)
+              && producer_emission_oracle_row_has_behavioral_transport_config(row: row)
           Absent => false
         }
       }
     )
+}
+
+fn producer_emission_oracle_authorization_promotion_path_holds() -> Bool {
+  fold_list(
+    xs: producer_emission_oracle_rows,
+    empty: true,
+    cons: fn(ok, row) {
+      ok && (
+        if producer_emission_oracle_probe_is_known_red_quarantine(row: row) {
+          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+            Present { value: _ } => false
+            Absent => true
+          }
+        } else {
+          match producer_emission_canonical_receipt_for_oracle_row(row: row) {
+            Present { value: canonical } =>
+              producer_emission_oracle_authorizes_row(
+                module_path: row.module_path,
+                receipt: canonical
+              )
+            Absent => true
+          }
+        }
+      )
+    }
+  )
 }
 
 fn producer_emission_enrollment_entry_has_oracle_row(

@@ -8,6 +8,7 @@ import v2.compiler.self_host.emitter_producer_provenance {
   producer_emission_canonical_receipt_for_oracle_row,
   producer_emission_flip_wave_reverted_module_paths,
   producer_emission_flip_wave_reverted_modules_lack_oracle_holds,
+  producer_emission_oracle_authorization_promotion_path_holds,
   producer_emission_oracle_authorizes_row,
   producer_emission_oracle_enrolls_row,
   producer_emission_receipt_from_oracle_row,
@@ -70,7 +71,11 @@ test fn witness_live_roster_emitter_produced_oracle_backed_holds() -> Bool {
   compiler_frontier_emitter_produced_oracle_backed_holds()
 }
 
-data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen — census must gate backed_holds, not enrollment alone."
+test fn witness_oracle_authorization_promotion_path_holds() -> Bool {
+  producer_emission_oracle_authorization_promotion_path_holds()
+}
+
+data witness_quarantine_enrolled_build_refused_does_not_authorize_red_note: String = "Review 44385 RED: quarantine oracle mint enrolls via producer_emission_receipt_from_oracle_row (BuildRefused) but authorization requires BuildGreen canonical — enrollment and authorization are split (review 44393)."
 
 test fn witness_quarantine_enrolled_build_refused_does_not_authorize_reds() -> Bool {
   let oracle = producer_emission_oracle_row_body_producer
