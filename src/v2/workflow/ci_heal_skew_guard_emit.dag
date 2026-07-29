@@ -52,19 +52,17 @@ data ci_heal_skew_guard_for_step_residue_note: String = "WHY THERE IS NO `For` S
 
 data ci_heal_skew_resolve_note: String = "RESOLUTION IS ONE NUL-DELIMITED APPLICATION, AND IT REFUSES RATHER THAN TOLERATING A FAILED CHECKOUT. `git diff --name-only --diff-filter=U -z | xargs -0 git checkout --ours --` replaces the per-path loop: NUL delimiting makes it correct for paths containing spaces or newlines, which the prior unquoted `for c in $CONFLICTS` was not. Both sides of the pipe are cited extdeps argv shapes — the producer from extdeps.git, the consumer from extdeps.exec.xargs, which carries xargs's own two authorities and the fidelity fact that `-0` is a GNU extension the POSIX spec does not define. WHICH operation feeds which is deliberately a WORKFLOW fact and not an extdeps row (DESIGN §3 (b)/(c)): 'feed this operation's output into that one' is this job's policy, not a fact about either dependency. The prior cut ran `git checkout --ours -- \"$c\" 2>/dev/null || true` and then staged the path REGARDLESS — a failed resolution would stage an unresolved file, which is the fabricated-plausible-output arm §5 forbids. Here a checkout failure propagates and the step refuses, because at that point every conflict is known to be a registered generated artifact and a checkout that cannot take our side means the resolution did not happen."
 
-data ci_heal_skew_diag_note: String = "DIAGNOSTIC RENDERING HAS ONE AUTHORITY, NOT TWELVE HAND-SPELLED LINES. v2.std.orchestration models a bash Comment (a `#` line) but has no stderr-diagnostic step, and RedirectSpec.StdoutAndStderr is the `>&2` carrier the emitter already spells (extdeps.languages.bash bash_redir_stdout_to_stderr_phrase, literally \">&2\" — the variant name reads backwards but the emitted token is correct). So each operator-facing message is DATA passed to ci_heal_skew_diag, which owns the single `echo` + quoting + redirect spelling. That is the honest scope of the former 'multi-line stderr diagnostics have no modeled shape' gap: it needed one workflow-layer authority, not a new orchestration variant. Message text carries no double quote, so the surrounding quoting is total; `$BUILT_FROM` / `$BASE_REF` expansions inside a message are intended and survive double quoting."
+data ci_heal_skew_diag_note: String = "DIAGNOSTIC RENDERING HAS ONE AUTHORITY, NOT TWELVE HAND-SPELLED LINES. v2.std.orchestration models a bash Comment (a `#` line) but has no stderr-diagnostic step, and RedirectSpec.StdoutAndStderr is the `>&2` carrier the emitter already spells (extdeps.languages.bash bash_redir_stdout_to_stderr_phrase, literally \">&2\" — the variant name reads backwards but the emitted token is correct). So each operator-facing message is DATA passed to ci_heal_skew_diag, which owns the single `echo` + quoting + redirect spelling. That is the honest scope of the former 'multi-line stderr diagnostics have no modeled shape' gap: it needed one workflow-layer authority, not a new orchestration variant. Message text carries no double quote, so the surrounding quoting is total; the `$BUILT_FROM` expansion inside a message is intended and survives double quoting."
+
+data ci_heal_skew_remedy_target_note: String = "THE REMEDY MERGES BUILT_FROM, NOT origin/BASE_REF, AND THAT IS THE DIFFERENCE BETWEEN CONVERGING AND LIVELOCKING. The guard's question is one-directional: does the revision the binary was built from carry seed (src/v1) source this tree lacks? BUILT_FROM (github.sha — on a pull_request, the synthetic merge ref) is that revision, and it is FIXED for the whole workflow run. The prior cut answered a skew against BUILT_FROM by merging `origin/$BASE_REF` — the LATEST base — which is a different revision of the base than the one the comparison is pinned to. So the remedy OVERSHOT its own target whenever the base advanced between the build and the heal job, and since the release build takes ~15 minutes on a base that merges more often than that, the post-remedy re-check found a difference and refused. Not a transient: it is unwinnable by re-running, because every re-run rebuilds against a newer base and the window reopens.\n\nMerging BUILT_FROM instead makes the re-check pass BY CONSTRUCTION rather than by luck (DESIGN §5 construction over validation): after `git merge \\\"$BUILT_FROM\\\"`, BUILT_FROM is an ancestor of HEAD, so `git rev-list HEAD..\\\"$BUILT_FROM\\\" -- src/v1` is empty for every input. The still-skewed arm is retained as a fail-closed backstop and its message now says the arm should be unreachable and that re-running is the wrong response — the prior text speculated 'the base moved again during this run', an explanation the receipt below falsifies.\n\nRECEIPT (measured on the live failing run 30497545614, PR #7420 @ 1fb763d18ac): the run refused with the two checks 350ms apart, so 'the base moved during this run' was impossible. The merge ref's base parent was b0c8eba0835 while origin/main had already advanced to 37ae94b8211 — exactly one intervening base commit, and it touched src/v1 — so merging the latest base pulled in seed source BUILT_FROM did not have. Merging BUILT_FROM on the same tree makes the seed-ahead set empty. Merging the base is also no longer NEEDED for the fetch: BUILT_FROM is already fetched by the provenance step and its resolvability is REFUSED on upfront, so the base fetch, the BASE_REF binding and the origin/BASE_REF spelling are deleted as dead rather than left as scaffolding."
 
 data ci_heal_skew_indent_residue_note: String = "🟡 dissolve-on: ci_heal_skew_indent_commit_list — the one hand-spelled shell fragment left in this module, `echo \"$X\" | head -20 | sed 's/^/    /'`, which indents and caps a captured commit list for operator display. It is presentation over a captured stdout blob, and the irreducible kernel today for the same reason ci_regen_rustfmt_path_emit's `test -x` leaves are: there is no text-indent or bounded-list carrier to render it from. The `head -20` cap moved from the seed-ahead CAPTURE (where the prior cut had it) onto this DISPLAY leaf, which is behaviour-preserving for the guard's decision — a truncated non-empty list is still non-empty, so the emptiness test that drives every arm is unchanged — and keeps the operator output bounded. DISSOLVES WHEN a modeled diagnostic-list carrier renders an indented bounded list, at which point this leaf and ci_heal_skew_diag collapse into it."
 
 data ci_heal_skew_built_from_binding: String = "\"${{ github.sha }}\""
 
-data ci_heal_skew_base_ref_binding: String = "\"${{ github.base_ref }}\""
-
 data ci_heal_skew_workflow_ref_expr: String = "\"${{ github.ref }}\""
 
 data ci_heal_skew_built_from_ref: String = "\"$BUILT_FROM\""
-
-data ci_heal_skew_base_remote_ref: String = "\"origin/$BASE_REF\""
 
 data ci_heal_skew_seed_path: String = "src/v1"
 
@@ -177,12 +175,6 @@ fn ci_heal_skew_provenance_fetch_step() -> PipelineStep {
       lhs: ci_heal_skew_fetch_quiet_ok(ref_spelling: ci_heal_skew_built_from_ref),
       rhs: ci_heal_skew_fetch_quiet_ok(ref_spelling: ci_heal_skew_workflow_ref_expr)
     }
-  )
-}
-
-fn ci_heal_skew_base_fetch_step() -> PipelineStep {
-  ci_heal_skew_tolerated_fetch_step(
-    cond: ci_heal_skew_fetch_quiet_ok(ref_spelling: "\"$BASE_REF\"")
   )
 }
 
@@ -327,8 +319,8 @@ fn ci_heal_skew_conflict_arm() -> Pipeline {
 fn ci_heal_skew_still_skewed_refusal() -> Pipeline {
   Pipeline {
     steps: [
-      ci_heal_skew_diag(text: "heal refused: still skewed after merging origin/$BASE_REF"),
-      ci_heal_skew_diag(text: "  the base moved again during this run; the next run will re-attempt."),
+      ci_heal_skew_diag(text: "heal refused: still skewed after merging $BUILT_FROM"),
+      ci_heal_skew_diag(text: "  this arm should be unreachable — merging BUILT_FROM makes it an ancestor of HEAD, so the seed-ahead set is empty by construction. Reaching it means that invariant broke; do not re-run, investigate."),
       Exit { status: "1" }
     ],
     on_failure: FailFast
@@ -340,19 +332,18 @@ fn ci_heal_skew_remedy_arm() -> Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal: binary/source revision skew — the branch head lacks these seed (src/v1) commits:"),
       ci_heal_skew_diag_list(var_name: ci_heal_skew_ahead_var),
-      ci_heal_skew_diag(text: "heal: applying the remedy automatically (merging origin/$BASE_REF into this branch)"),
+      ci_heal_skew_diag(text: "heal: applying the remedy automatically (merging $BUILT_FROM — the revision the binary was built from — into this branch)"),
       ci_heal_skew_git_step(
         argv: shape_git_config_argv(key: "user.name", value: ci_heal_skew_commit_author_name)
       ),
       ci_heal_skew_git_step(
         argv: shape_git_config_argv(key: "user.email", value: ci_heal_skew_commit_author_email)
       ),
-      ci_heal_skew_base_fetch_step(),
       If {
         cond: Not {
           inner: ExitZero {
             run: ci_heal_skew_git_run(
-              argv: shape_git_merge_no_edit_argv(ref: ci_heal_skew_base_remote_ref)
+              argv: shape_git_merge_no_edit_argv(ref: ci_heal_skew_built_from_ref)
             )
           }
         },
@@ -377,10 +368,6 @@ fn ci_heal_binary_source_skew_guard_intent() -> Pipeline {
       Let {
         name: "BUILT_FROM",
         value: ExprLit { spelling: ci_heal_skew_built_from_binding }
-      },
-      Let {
-        name: "BASE_REF",
-        value: ExprLit { spelling: ci_heal_skew_base_ref_binding }
       },
       ci_heal_skew_provenance_fetch_step(),
       ci_heal_skew_unresolvable_provenance_step(),

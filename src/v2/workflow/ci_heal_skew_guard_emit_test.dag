@@ -27,7 +27,7 @@ test fn ci_heal_skew_guard_uses_structural_control_flow_holds() -> Bool {
   let s = ci_heal_skew_guard_script_text()
   string_contains(s: s, pattern: "if ! git rev-parse --verify --quiet \"$BUILT_FROM\" >/dev/null; then")
     && string_contains(s: s, pattern: "if [ -n \"$SEED_AHEAD\" ]; then")
-    && string_contains(s: s, pattern: "if ! git merge --no-edit \"origin/$BASE_REF\"; then")
+    && string_contains(s: s, pattern: "if ! git merge --no-edit \"$BUILT_FROM\"; then")
     && string_contains(s: s, pattern: "if [ -n \"$AUTHORED_CONFLICTS\" ]; then")
     && string_contains(s: s, pattern: "exit 1")
 }
@@ -92,7 +92,20 @@ test fn ci_heal_skew_guard_remedy_rechecks_before_proceeding_holds() -> Bool {
   let s = ci_heal_skew_guard_script_text()
   string_contains(s: s, pattern: "SEED_AHEAD_AFTER=\"$(git rev-list HEAD..\"$BUILT_FROM\" -- src/v1)\"")
     && string_contains(s: s, pattern: "if [ -n \"$SEED_AHEAD_AFTER\" ]; then")
-    && string_contains(s: s, pattern: "heal refused: still skewed after merging origin/$BASE_REF")
+    && string_contains(s: s, pattern: "heal refused: still skewed after merging $BUILT_FROM")
+}
+
+test fn ci_heal_skew_guard_remedy_merges_the_built_from_revision_holds() -> Bool {
+  let s = ci_heal_skew_guard_script_text()
+  string_contains(s: s, pattern: "git merge --no-edit \"$BUILT_FROM\"")
+    && !string_contains(s: s, pattern: "git merge --no-edit \"origin/")
+    && !string_contains(s: s, pattern: "BASE_REF")
+}
+
+test fn ci_heal_skew_guard_red_when_remedy_merges_the_moving_base_holds() -> Bool {
+  let control = "BASE_REF=\"${{ github.base_ref }}\"; git merge --no-edit \"origin/$BASE_REF\""
+  string_contains(s: control, pattern: "git merge --no-edit \"origin/")
+    && !string_contains(s: control, pattern: "git merge --no-edit \"$BUILT_FROM\"")
 }
 
 test fn ci_heal_skew_guard_refusal_aborts_the_merge_holds() -> Bool {
