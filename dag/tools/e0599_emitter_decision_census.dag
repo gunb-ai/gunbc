@@ -34,6 +34,7 @@ type E0599ExternalAuthority {
 
 type E0599LoweringRow {
   operation: E0599LoweringOperation,
+  source_construct: String,
   emitter_authority: String,
   emitted_literal: String,
   cause: E0599RequirementCause,
@@ -77,6 +78,7 @@ data e0599_rust_clone_trait: E0599ExternalAuthority = E0599ExternalAuthority {
 data e0599_lowering_rows: List<E0599LoweringRow> = [
   E0599LoweringRow {
     operation: FreeMonoidEmptyTest,
+    source_construct: "match over the FreeMonoid coproduct — the Empty/Cons discrimination itself",
     emitter_authority: "src/v1/05_emit_rust.dag:7859 (emit_native_freemonoid_match) | :8715 (tco fork)",
     emitted_literal: "{ let __fm = <scrut>; if __fm.is_empty() { .. } else { .. } }",
     cause: TargetApiRequirement,
@@ -86,6 +88,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidTailIterate,
+    source_construct: "match over the FreeMonoid coproduct — the Cons { tail } binding",
     emitter_authority: "src/v1/05_emit_rust.dag:7817 (freemonoid_tail_let_from_fm)",
     emitted_literal: "let <tail>: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect()); ",
     cause: TargetApiRequirement,
@@ -95,6 +98,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidHeadExtract,
+    source_construct: "match over the FreeMonoid coproduct — the Cons { head } binding",
     emitter_authority: "src/v1/05_emit_rust.dag:7838 (freemonoid_nonempty_branch_body) | :8694 (tco fork)",
     emitted_literal: "let <head> = (*__fm)[0].clone(); ",
     cause: OwnedDeconstructionRequirement,
@@ -104,6 +108,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: FreeMonoidCatchallBind,
+    source_construct: "match over the FreeMonoid coproduct — a catch-all arm binding the whole scrutinee",
     emitter_authority: "src/v1/05_emit_rust.dag:7826 | :7844 | :8682 | :8700",
     emitted_literal: "let <bind> = __fm.clone(); ",
     cause: CloneSharedRequirement,
@@ -113,6 +118,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: DerefCloneWholeValue,
+    source_construct: "whole-value reference through a shared (Rc) carrier — record spread, field access, or match scrutinee",
     emitter_authority: "src/v1/05_emit_rust.dag:6434 (field access) | :6959 / :7587 (record spread) | :7893 / :8748 (match scrutinee) via sharing.deref_clone",
     emitted_literal: "(*{0}).clone()",
     cause: CloneSharedRequirement,
@@ -122,6 +128,7 @@ data e0599_lowering_rows: List<E0599LoweringRow> = [
   },
   E0599LoweringRow {
     operation: IdentReferenceClone,
+    source_construct: "bare identifier reference in a value position",
     emitter_authority: "src/v1/05_emit_rust.dag:6320 | :6330 (emit_var_ref) via sharing.clone_value",
     emitted_literal: "{0}.clone()",
     cause: CloneSharedRequirement,
@@ -221,6 +228,10 @@ fn e0599_census_parse_error_message(err: E0599CensusParseError) -> String {
 fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   let operation = e0599_lowering_operation_for(method: method, receiver_expr: receiver_expr)
   let cause = e0599_cause_for(method: method, receiver_expr: receiver_expr)
+  let source_construct = match e0599_row_for_operation(operation: operation) {
+    Present { value: row } => row.source_construct
+    Absent => ""
+  }
   let required_trait = match e0599_row_for_operation(operation: operation) {
     Present { value: row } => row.required_trait
     Absent => ""
@@ -236,10 +247,11 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
   }
   concat(
     e0599_lowering_operation_label(operation: operation),
+    concat("\t", concat(source_construct,
     concat("\t", concat(e0599_requirement_cause_label(cause: cause),
     concat("\t", concat(required_trait,
     concat("\t", concat(emitter_authority,
-    concat("\t", external_authority)))))))
+    concat("\t", external_authority)))))))))
   )
 }
 
