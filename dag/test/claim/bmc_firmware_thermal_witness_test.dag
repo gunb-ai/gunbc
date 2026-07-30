@@ -38,6 +38,7 @@ import extdeps.boards.asrock_rack {
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
+  bmc_fan_admitted_config_digest,
   srv3_bmc_firmware_observation,
   srv3_bmc_redfish_surface_observation,
   srv3_bmc_update_service_observation,
@@ -47,8 +48,6 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_durability_capability_version,
   srv4_bmc_fan_perturbation_generation,
-  srv4_bmc_fan_projection_capability,
-  srv4_bmc_fan_reboot_persistence_receipt,
   srv4_bmc_firmware_observation,
   srv4_bmc_redfish_surface_observation,
   srv4_bmc_update_service_observation,
@@ -61,12 +60,13 @@ import gunbc.fleet_bmc_state {
   bmc_fan_reboot_durability_evidence,
   srv4_bmc_fan_durability_admission,
   srv4_bmc_fan_durability_evidence,
+  srv4_bmc_fan_projection_capability,
+  srv4_bmc_fan_reboot_persistence_receipt,
 }
 import gunbc.bmc_fan_projection {
   AdmittedConfigDigestKnown,
   AdmittedConfigDigestUnavailable,
   BmcFanPolicyProjectionCapability,
-  bmc_fan_admitted_config_digest,
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_witness_digest_mismatch_sentinel,
 }
