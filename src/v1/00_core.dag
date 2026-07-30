@@ -298,6 +298,8 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
+data where_refinement_deferral_reason_scaffold_note: String = "WhereRefinementUnenforced.reason is an interim closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any other reason fails closed blocking. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
+
 fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
   reason == "predicate deferred at compile time"
     || reason == "non-literal value at refined position"

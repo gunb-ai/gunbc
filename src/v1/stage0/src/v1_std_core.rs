@@ -797,6 +797,15 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     }
 }
 
+pub fn where_refinement_deferral_reason_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WhereRefinementUnenforced.reason is an interim closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any other reason fails closed blocking. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
     (((((reason.clone() == "predicate deferred at compile time".to_string())
         || (reason.clone() == "non-literal value at refined position".to_string()))
