@@ -315,29 +315,6 @@ pub enum OccurrenceTransportRefusal {
         occurrence: OccurrenceId,
     },
 }
-impl OccurrenceTransportRefusal {
-    pub fn diagnostic_span(&self) -> Option<Rc<SourceSpan>> {
-        match self {
-            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => Some(__val.clone()),
-            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
-                diagnostic_span: __val,
-                ..
-            } => Some(__val.clone()),
-            OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
-                diagnostic_span: __val,
-                ..
-            } => Some(__val.clone()),
-            OccurrenceTransportRefusal::WrongOccurrenceCategory {
-                diagnostic_span: __val,
-                ..
-            } => Some(__val.clone()),
-            OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
-        }
-    }
-}
 
 pub fn occurrence_identity_constructor_spelling_note() -> String {
     thread_local! {

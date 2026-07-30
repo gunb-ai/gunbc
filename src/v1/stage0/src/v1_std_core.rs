@@ -502,7 +502,7 @@ pub fn occurrence_transport_refusal_diagnostic_message(
     OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
-    OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: unknown occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: occurrence, .. } => v1_rt::concat("occurrence transport refused: unknown occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
 }
 }
 
@@ -531,7 +531,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
-            Some(span) => span,
+            Some(span) => span.clone(),
             None => match (*refusal.clone()).clone() {
                 OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
                     occurrence: occurrence,
