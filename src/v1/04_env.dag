@@ -572,7 +572,6 @@ fn global_bare_chain_candidates(env_module_path: String, candidates: List<Global
 fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
   let chain = global_bare_chain_candidates(env_module_path: env_module_path, candidates: candidates)
   match global_bare_chain_owner_path_from_decide(
-    env_module_path: env_module_path,
     owners: chain |> map(c => c.module_path),
   ) {
     Present { value: owner } =>
@@ -597,7 +596,6 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
       global_bare_chain_ambiguity_labels_from_decide(
-        env_module_path: env.module_path,
         owners: chain |> map(c => c.module_path),
         name: name,
       )
@@ -791,7 +789,6 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
       if name_resolution_policy_is_namespace_only() {
         let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
         global_bare_chain_is_ambiguous_from_decide(
-          env_module_path: env.module_path,
           owners: chain |> map(c => c.module_path),
         )
       } else {

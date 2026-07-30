@@ -14,7 +14,8 @@ import v1.compiler.infer_types { emit_map_has }
 
 import v1.compiler.infer_occurrence_binding {
   func_parent_closure_ambiguity_labels_from_decide,
-  func_parent_closure_owner_count_from_decide,
+  module_path_owner_binding_decide,
+  ModulePathBindingProjection,
 }
 
 import std.induction { SubValueRelation }
@@ -95,20 +96,16 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
       Absent => acc
     }
   )
-  match func_parent_closure_owner_count_from_decide(
-    env_module_path: env.name,
-    owners: scan.owners,
-  ) {
-    0 => FuncSigUnresolved
-    1 =>
+  match module_path_owner_binding_decide(owners: scan.owners) {
+    ModulePathBindingMiss => FuncSigUnresolved
+    ModulePathBindingHit { owner: _ } =>
       match scan.first_sig {
         Present { value: sig } => FuncSigResolved { sig: sig }
         Absent => FuncSigUnresolved
       }
-    _ =>
+    ModulePathBindingAmbiguous { owners: _ } =>
       FuncSigAmbiguous {
         candidates: func_parent_closure_ambiguity_labels_from_decide(
-          env_module_path: env.name,
           owners: scan.owners,
           name: name,
         ),

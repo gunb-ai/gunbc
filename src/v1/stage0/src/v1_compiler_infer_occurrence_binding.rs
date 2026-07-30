@@ -50,18 +50,8 @@ pub fn module_path_owner_binding_decide(
     }
 }
 
-pub fn project_module_path_binding_decide(
-    env_module_path: String,
-    owners: Rc<Vec<String>>,
-) -> Rc<ModulePathBindingProjection> {
-    module_path_owner_binding_decide(owners.clone())
-}
-
-pub fn global_bare_chain_owner_path_from_decide(
-    env_module_path: String,
-    owners: Rc<Vec<String>>,
-) -> Option<String> {
-    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
+pub fn global_bare_chain_owner_path_from_decide(owners: Rc<Vec<String>>) -> Option<String> {
+    match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => {
             Some(owner.clone())
         }
@@ -70,22 +60,18 @@ pub fn global_bare_chain_owner_path_from_decide(
     }
 }
 
-pub fn global_bare_chain_is_ambiguous_from_decide(
-    env_module_path: String,
-    owners: Rc<Vec<String>>,
-) -> bool {
-    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
+pub fn global_bare_chain_is_ambiguous_from_decide(owners: Rc<Vec<String>>) -> bool {
+    match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
         _ => false,
     }
 }
 
 pub fn global_bare_chain_ambiguity_labels_from_decide(
-    env_module_path: String,
     owners: Rc<Vec<String>>,
     name: String,
 ) -> Rc<Vec<String>> {
-    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
+    match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: owners, .. } => {
             Rc::new({
                 let mut __result = Vec::new();
@@ -103,11 +89,10 @@ pub fn global_bare_chain_ambiguity_labels_from_decide(
 }
 
 pub fn func_parent_closure_ambiguity_labels_from_decide(
-    env_module_path: String,
     owners: Rc<Vec<String>>,
     name: String,
 ) -> Rc<Vec<String>> {
-    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
+    match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous {
             owners: ambiguous_owners,
             ..
@@ -122,16 +107,5 @@ pub fn func_parent_closure_ambiguity_labels_from_decide(
             __result
         }),
         _ => Rc::new(vec![]),
-    }
-}
-
-pub fn func_parent_closure_owner_count_from_decide(
-    env_module_path: String,
-    owners: Rc<Vec<String>>,
-) -> i64 {
-    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
-        ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => 1,
-        ModulePathBindingProjection::ModulePathBindingMiss => 0,
-        ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => 2,
     }
 }

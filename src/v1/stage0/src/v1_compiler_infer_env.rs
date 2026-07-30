@@ -1002,16 +1002,13 @@ pub fn global_bare_unique_chain_candidate(
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
         let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
-        match global_bare_chain_owner_path_from_decide(
-            env_module_path.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in chain.clone().iter().cloned() {
-                    __result.push(c.module_path.clone());
-                }
-                __result
-            }),
-        ) {
+        match global_bare_chain_owner_path_from_decide(Rc::new({
+            let mut __result = Vec::new();
+            for c in chain.clone().iter().cloned() {
+                __result.push(c.module_path.clone());
+            }
+            __result
+        })) {
             Some(owner) => Rc::new({
                 let mut __result = Vec::new();
                 for c in chain.clone().iter().cloned() {
@@ -1053,7 +1050,6 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
             }) => {
                 let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
                 global_bare_chain_ambiguity_labels_from_decide(
-                    env.module_path.clone(),
                     Rc::new({
                         let mut __result = Vec::new();
                         for c in chain.clone().iter().cloned() {
@@ -1443,16 +1439,13 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
                 {
                     let chain =
                         global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                    global_bare_chain_is_ambiguous_from_decide(
-                        env.module_path.clone(),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for c in chain.clone().iter().cloned() {
-                                __result.push(c.module_path.clone());
-                            }
-                            __result
-                        }),
-                    )
+                    global_bare_chain_is_ambiguous_from_decide(Rc::new({
+                        let mut __result = Vec::new();
+                        for c in chain.clone().iter().cloned() {
+                            __result.push(c.module_path.clone());
+                        }
+                        __result
+                    }))
                 }
             } else {
                 (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
