@@ -126,114 +126,110 @@ type StateRealizationDefinitionLinkages {
 
 data state_definition_linkage_frontier_note: String = "🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex containment tree. Until then, every realization and capability definition is CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is forbidden because callers could forge it from a label and recreate the lie this frontier removes."
 
-fn state_definition_caller_assertion(
+type StateDefinitionLinkageVerdict
+  = StateDefinitionLinkageEvidence {
+      role: StateDefinitionRole,
+    }
+  | StateDefinitionLinkageUnavailable {
+      assertion: StateDefinitionCallerAssertion,
+    }
+
+type StateDefinitionLinkageAdmissionVerdict
+  = StateDefinitionLinkageAdmissionPermitted
+  | StateDefinitionLinkageAdmissionBlocked {
+      assertions: List<StateDefinitionCallerAssertion>,
+    }
+
+fn state_definition_linkage_verdict(
   role: StateDefinitionRole,
   linkage: StateDefinitionLinkage,
-) -> StateDefinitionCallerAssertion {
+) -> StateDefinitionLinkageVerdict {
   match linkage {
     CallerAssertedDefinitionLinkage {
       reason: reason,
       dissolve_on: dissolve_on,
     } =>
-      StateDefinitionCallerAssertion {
-        role: role,
-        reason: reason,
-        dissolve_on: dissolve_on,
+      StateDefinitionLinkageUnavailable {
+        assertion: StateDefinitionCallerAssertion {
+          role: role,
+          reason: reason,
+          dissolve_on: dissolve_on,
+        },
       }
   }
 }
 
-fn state_realization_definition_assertions(
-  realization: StateRealizationIdentity,
-) -> List<StateDefinitionCallerAssertion> {
+fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> List<StateDefinitionLinkageVerdict> {
   [
-    state_definition_caller_assertion(
+    state_definition_linkage_verdict(
       role: RealizationProjectionDefinition,
-      linkage: realization.definition_linkages.projection,
+      linkage: admission.realization.definition_linkages.projection,
     ),
-    state_definition_caller_assertion(
+    state_definition_linkage_verdict(
       role: RealizationVerifierDefinition,
-      linkage: realization.definition_linkages.verifier,
+      linkage: admission.realization.definition_linkages.verifier,
     ),
-    state_definition_caller_assertion(
+    state_definition_linkage_verdict(
       role: RealizationObserverDefinition,
-      linkage: realization.definition_linkages.observer,
+      linkage: admission.realization.definition_linkages.observer,
     ),
-    state_definition_caller_assertion(
+    state_definition_linkage_verdict(
       role: RealizationTransportDefinition,
-      linkage: realization.definition_linkages.transport,
+      linkage: admission.realization.definition_linkages.transport,
     ),
-    state_definition_caller_assertion(
+    state_definition_linkage_verdict(
       role: RealizationActuatorDefinition,
-      linkage: realization.definition_linkages.actuator,
+      linkage: admission.realization.definition_linkages.actuator,
+    ),
+    state_definition_linkage_verdict(
+      role: DurabilityCapabilityDefinition,
+      linkage: admission.capability_version.definition_linkage,
     ),
   ]
 }
 
-fn state_durability_definition_assertions<Target, ReadbackSubject>(
-  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> List<StateDefinitionCallerAssertion> {
-  append(
-    state_realization_definition_assertions(
-      realization: admission.realization,
-    ),
-    items: [
-      state_definition_caller_assertion(
-        role: DurabilityCapabilityDefinition,
-        linkage: admission.capability_version.definition_linkage,
-      ),
-    ],
+fn state_durability_definition_linkage_admission_verdict(
+  verdicts: List<StateDefinitionLinkageVerdict>,
+) -> StateDefinitionLinkageAdmissionVerdict {
+  fold(
+    verdicts,
+    init: StateDefinitionLinkageAdmissionBlocked {
+      assertions: [],
+    },
+    f: (acc, verdict) =>
+      match acc {
+        StateDefinitionLinkageAdmissionPermitted => StateDefinitionLinkageAdmissionPermitted
+        StateDefinitionLinkageAdmissionBlocked { assertions: assertions } =>
+          match verdict {
+            StateDefinitionLinkageUnavailable { assertion: assertion } =>
+              StateDefinitionLinkageAdmissionBlocked {
+                assertions: append(assertions, items: [assertion]),
+              }
+            StateDefinitionLinkageEvidence { role: _ } =>
+              StateDefinitionLinkageAdmissionPermitted
+          }
+      },
   )
-}
-
-fn state_definition_linkage_gate_is_open(
-  linkage: StateDefinitionLinkage,
-) -> Bool {
-  match linkage {
-    CallerAssertedDefinitionLinkage { reason: _, dissolve_on: _ } => false
-  }
-}
-
-fn state_durability_definition_linkage_gate_is_closed<Target, ReadbackSubject>(
-  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
-) -> Bool {
-  state_definition_linkage_gate_is_open(
-    linkage: admission.realization.definition_linkages.projection,
-  ) == false
-    && state_definition_linkage_gate_is_open(
-      linkage: admission.realization.definition_linkages.verifier,
-    ) == false
-    && state_definition_linkage_gate_is_open(
-      linkage: admission.realization.definition_linkages.observer,
-    ) == false
-    && state_definition_linkage_gate_is_open(
-      linkage: admission.realization.definition_linkages.transport,
-    ) == false
-    && state_definition_linkage_gate_is_open(
-      linkage: admission.realization.definition_linkages.actuator,
-    ) == false
-    && state_definition_linkage_gate_is_open(
-      linkage: admission.capability_version.definition_linkage,
-    ) == false
 }
 
 fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
   admission: StateDurabilityAdmission<Target, ReadbackSubject>,
 ) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
-  if state_durability_definition_linkage_gate_is_closed(admission: admission) {
-    let assertions = state_durability_definition_assertions(
-      admission: admission,
-    )
-    Present {
-      value: DurabilityDefinitionLinkageUnavailable {
-        realization: admission.realization,
-        capability: admission.capability_version,
-        assertions: assertions,
-        count: list_length(assertions),
-      },
-    }
-  } else {
-    none
+  match state_durability_definition_linkage_admission_verdict(
+    verdicts: state_durability_definition_linkage_verdicts(admission: admission),
+  ) {
+    StateDefinitionLinkageAdmissionBlocked { assertions: assertions } =>
+      Present {
+        value: DurabilityDefinitionLinkageUnavailable {
+          realization: admission.realization,
+          capability: admission.capability_version,
+          assertions: assertions,
+          count: list_length(assertions),
+        },
+      }
+    StateDefinitionLinkageAdmissionPermitted => none
   }
 }
 
