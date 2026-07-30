@@ -227,7 +227,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
 
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
-data v1_lane_binding_survey_note: String = "TWO OF SEVEN STARTABLE ROOTS ARE BINDABLE, and the other five are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it; and caret-parse-smoke-seed-growth-justification declares no red control at all, being a justification row.\n\nSo those five stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those five is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
+data v1_lane_binding_survey_note: String = "TWO OF SIX STARTABLE ROOTS ARE BINDABLE, and the other four are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; and pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it.\n\nSo those four stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those four is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -386,15 +386,6 @@ fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification
   }
 }
 
-fn caret_parse_smoke_seed_growth_justification() -> SeedGrowthJustification {
-  SeedGrowthJustification {
-    reason: "This old hand-written parser test predates a later change that added fields to a structure it builds. It was updated only enough to keep compiling — no new behaviour — but it is still a hand-written Rust file, so it needs to be counted rather than forgotten.",
-    owning_dissolution_lane: nid(s: "v1-zero-hand-maintained-rust"),
-    trigger: "Either regenerate this test from a description, or delete it once equivalent coverage exists that would still catch the same bug; then remove this row.",
-    current_boundary: "src/v1/stage0/tests/caret_parse_smoke.rs",
-  }
-}
-
 fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   fields(
     headline: "Account for the five hand-written files that progress output still needs",
@@ -414,30 +405,6 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
     out_of_scope: "Not a general list of hand-written files, not new progress features, and not a status report.",
     handback: concat(
       "Show that the five files are still the only ones, and carry this exact plan into ",
-      j.owning_dissolution_lane as String,
-    ),
-  )
-}
-
-fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
-  fields(
-    headline: "Regenerate or delete one leftover hand-written parser test",
-    boundary: concat(
-      "Exactly one hand-written file is kept for now: ",
-      concat(j.current_boundary, ". This adds no new test behaviour and no second hand-written file."),
-    ),
-    displaced_cost: concat("Why it is still here: ", j.reason),
-    first_slice: concat("Do what the owning item's plan says: ", j.trigger),
-    red_control: concat(
-      "If the file stays hand-written without exactly one item owned by ",
-      concat(
-        j.owning_dissolution_lane as String,
-        " tracking it, or if a second file joins it, this is refused.",
-      ),
-    ),
-    out_of_scope: "No changes to what the test checks, to the parser, or to other hand-written files; no separate written-down list.",
-    handback: concat(
-      "Show the file regenerated or deleted, with equivalent coverage in place if its behaviour moved, then remove this row from ",
       j.owning_dissolution_lane as String,
     ),
   )
@@ -1104,13 +1071,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The builds, the product runs, and the list of anything deliberately kept."
       )
     ),
-    active_small(
-      identity: "rn_VK5TWKCDCMR1G8PQY0GK9TKSRR",
-      id: "caret-parse-smoke-seed-growth-justification",
-      owner: "self-host",
-      path: "dag/gunbc/v1_deletion_plan.dag",
-      t: caret_parse_smoke_seed_growth_fields(j: caret_parse_smoke_seed_growth_justification())
-    ),
     active_large(
       identity: "rn_RSBHA36N72JKQ0NAVKJ5AV153R",
       id: "v1-zero-hand-maintained-rust",
@@ -1471,7 +1431,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
-    edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
