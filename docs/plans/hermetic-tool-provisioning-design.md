@@ -198,8 +198,12 @@ deliberately unlike `CliTool` — three plain `String` fields against a
 `NonEmptyStr` name, an optional `VersionConstraint` and a `List<InstallSource>` —
 and it instantiates `Pin`, `pin_value_eq` and `admit_pin_integrity` with zero
 edits to `extdeps.pin` (`pin_composes_over_a_structurally_different_subject`,
-green by execution). The subject is *consumed, not minted*: `upload_artifact_action`
-is the live row already in the corpus. That the subject carries no version while
+green by execution). The subject is *consumed, not minted* — it is a live
+`ActionRef` row already in the corpus, and **which** row is a fact owned by the
+witness, not restated here (`review 44910` caught this paragraph still naming
+`upload_artifact_action` after the witness had moved to `checkout_action` to avoid
+a double-bound name; a row name with two homes drifts, so this one now has one).
+That the subject carries no version while
 the *pin* carries one is the point rather than a gap: the version is the pin's own
 declared fact, so the dimension supplies it for subjects that have none.
 
