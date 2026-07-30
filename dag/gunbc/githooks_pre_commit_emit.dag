@@ -1,6 +1,13 @@
 module gunbc.githooks_pre_commit_emit
 
-import gunbc.local_tidy_spec { local_tidy_trigger_globs, LocalTidyCargoFmtCheck }
+import gunbc.local_tidy_spec {
+  local_tidy_trigger_globs,
+  LocalTidyCargoFmtCheck,
+  FmtDrift,
+  FmtToolUnavailable,
+  local_tidy_fmt_outcome_recipe,
+  local_tidy_fmt_pre_commit_drift_recipe,
+}
 import extdeps.git { git_toplevel_shell_subexpr }
 
 fn emit_glob_case_arms(globs: List<String>) -> String {
@@ -25,10 +32,38 @@ fn emit_pre_commit_staged_scan() -> String {
   )
 }
 
+data pre_commit_fmt_outcome_split_note: String = "Same three-way split as the pre-push sibling, from the one authority (gunbc.local_tidy_spec): exit 1 is the only status that reports drift in staged Rust, and any other non-zero status names cargo as unrunnable rather than blaming the staged work. The branches are spelled as explicit if-blocks instead of an and-list so the arm does not depend on bash errexit's suppression rules inside a && list."
+
+fn emit_pre_commit_fmt_recipe_echo(outcome_recipe: String) -> String {
+  concat("  echo \"[pre-commit] ", concat(outcome_recipe, "\" >&2\n  exit 1\nfi\n"))
+}
+
 fn emit_pre_commit_run_fmt() -> String {
   concat(
-    "echo \"[pre-commit] cargo fmt --all --check\"\nif cargo fmt --all --check; then\n  exit 0\nfi\n",
-    "echo \"[pre-commit] fmt drift in staged Rust — run: cargo fmt --all && git add -u, then re-commit.\" >&2\nexit 1\n"
+    concat(
+      "echo \"[pre-commit] cargo fmt --all --check\"\nfmt_rc=0\ncargo fmt --all --check || fmt_rc=$?\nif [[ \"$fmt_rc\" == \"0\" ]]; then\n  exit 0\nfi\n",
+      concat(
+        "if [[ \"$fmt_rc\" == \"1\" ]]; then\n",
+        emit_pre_commit_fmt_recipe_echo(
+          outcome_recipe: local_tidy_fmt_outcome_recipe(
+            outcome: FmtDrift,
+            drift_recipe: local_tidy_fmt_pre_commit_drift_recipe
+          )
+        )
+      )
+    ),
+    concat(
+      "if [[ \"$fmt_rc\" != \"0\" ]]; then\n",
+      emit_pre_commit_fmt_recipe_echo(
+        outcome_recipe: local_tidy_fmt_outcome_recipe(
+          outcome: FmtToolUnavailable {
+            program: "cargo",
+            cause: "exit status $fmt_rc"
+          },
+          drift_recipe: local_tidy_fmt_pre_commit_drift_recipe
+        )
+      )
+    )
   )
 }
 

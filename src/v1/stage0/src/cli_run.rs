@@ -3276,7 +3276,7 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
-/// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
+/// When set by `claim_executor` for `gunbc_ci_floor_plan`, the first gate consume installs
 /// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
 static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
 /// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
@@ -24080,7 +24080,10 @@ pub fn resolution_divergence_census_from_ctx(
     for tm in ctx.modules.iter() {
         let module_path = tm.type_env.module_path.clone();
         let func_env = tm.func_env.clone();
-        let module_index = (*tm.type_env.symbol_index).clone();
+        // Borrow the index out of its Rc rather than deep-cloning it per module: the
+        // sole consumer below takes `&SymbolIndex`, so the clone bought nothing and cost
+        // one full index copy per module in the closure (DESIGN §6 bare-minimum cost).
+        let module_index: &SymbolIndex = &tm.type_env.symbol_index;
 
         for item in tm.items.iter() {
             let caller_fn = authored_name_at(source_indices.clone(), item.clone());
@@ -24092,12 +24095,18 @@ pub fn resolution_divergence_census_from_ctx(
                 out.sites_checked += 1;
                 let import_sig =
                     func_sig_if_resolved(lookup_resolved_sig(func_env.clone(), callee.clone()));
+                // Resolved once per site and shared by both consumers. This was previously
+                // computed here and again below; the second call was unconditional, so
+                // hoisting is a strict reduction (2 calls -> 1 on the resolved path, 1 -> 1
+                // otherwise) with no change in which sites compute it.
+                let import_owner = import_chain_owner(&func_env, &callee);
                 let import_binding = import_sig.as_ref().and_then(|sig| {
-                    import_chain_owner(&func_env, &callee)
-                        .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
+                    import_owner
+                        .as_ref()
+                        .map(|owner| fn_binding_from_sig(owner, &callee, sig))
                 });
                 let containment = containment_resolve_fn_v1_for_module(
-                    &module_index,
+                    module_index,
                     &module_path,
                     &callee,
                     Some(&item_index),
@@ -24122,7 +24131,6 @@ pub fn resolution_divergence_census_from_ctx(
                     }
                 }
 
-                let import_owner = import_chain_owner(&func_env, &callee);
                 let (containment_owner_module, containment_via) =
                     containment_owner_and_via(&containment);
                 let bucket = bucket_site(import_binding, containment.clone());
