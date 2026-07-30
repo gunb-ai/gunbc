@@ -5686,18 +5686,31 @@ fn bare_reference_pull_paths_for_source(
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
+                    // Same chain+decide authority as inference / containment_resolve
+                    // (unique_on_chain_policy_note): zero on-chain never authorizes
+                    // whole-corpus search, including nearest-ancestor LCP widen.
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => {
-                        if pullable(binding) {
-                            Some(module_path.clone())
+                    } => global_bare_unique_chain_candidate(
+                        referencing_module.clone(),
+                        Rc::new(
+                            vec![Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
+                                module_path: module_path.clone(),
+                                binding: binding.clone(),
+                            })]
+                            .into(),
+                        ),
+                    )
+                    .and_then(|c| {
+                        if pullable(&c.binding) {
+                            Some(c.module_path.clone())
                         } else {
                             None
                         }
-                    }
+                    }),
                     GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
+                        global_bare_unique_chain_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
                         )
