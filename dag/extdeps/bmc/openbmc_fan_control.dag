@@ -188,6 +188,100 @@ type OpenBmcInstantResult
   = OpenBmcInstantObserved { observed_at: EpochMs }
   | OpenBmcInstantRefused { reason: String }
 
+fn openbmc_path_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcPathResult {
+  if !remote.success {
+    OpenBmcPathRefused { reason: remote.stderr }
+  } else if trim(remote.stdout) == "" {
+    OpenBmcPathRefused { reason: "path response is empty" }
+  } else {
+    OpenBmcPathObserved { path: trim(remote.stdout) as NonEmptyStr }
+  }
+}
+
+fn openbmc_zone_failsafe_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if !remote.success {
+    OpenBmcBoolRefused { reason: remote.stderr }
+  } else {
+    let tokens = split(s: trim(remote.stdout), delimiter: " ")
+      |> filter(token => trim(token) != "")
+    if tokens.length() != 2 {
+      OpenBmcBoolRefused {
+        reason: "zone failsafe response does not have one typed boolean payload",
+      }
+    } else {
+      let payload = trim(tokens.skip(n: 1).first())
+      if payload == "true" {
+        OpenBmcBoolObserved { value: true }
+      } else if payload == "false" {
+        OpenBmcBoolObserved { value: false }
+      } else {
+        OpenBmcBoolRefused { reason: "zone failsafe payload is not boolean" }
+      }
+    }
+  }
+}
+
+fn openbmc_disk_usage_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcByteSizeResult {
+  if !remote.success {
+    OpenBmcByteSizeRefused { reason: remote.stderr }
+  } else {
+    let lines = split(s: trim(remote.stdout), delimiter: "\n")
+    if lines.length() < 2 {
+      OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
+    } else {
+      let fields = split(
+        s: trim(lines.skip(n: 1).first()),
+        delimiter: " ",
+      ) |> filter(field => trim(field) != "")
+      if fields.length() < 4 {
+        OpenBmcByteSizeRefused {
+          reason: "disk usage data row has no available-kibibyte field",
+        }
+      } else {
+        match parse_int(s: trim(fields.skip(n: 3).first())) {
+          Absent =>
+            OpenBmcByteSizeRefused {
+              reason: "available-kibibyte field is not an integer",
+            }
+          Present { value: kibibytes } =>
+            if kibibytes < 0 {
+              OpenBmcByteSizeRefused {
+                reason: "available-kibibyte field is negative",
+              }
+            } else {
+              OpenBmcByteSizeObserved { value: byte_size(kibibytes * 1024) }
+            }
+        }
+      }
+    }
+  }
+}
+
+fn openbmc_epoch_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcInstantResult {
+  if !remote.success {
+    OpenBmcInstantRefused { reason: remote.stderr }
+  } else {
+    match parse_int(s: trim(remote.stdout)) {
+      Absent =>
+        OpenBmcInstantRefused { reason: "UTC epoch-second response is not an integer" }
+      Present { value: epoch_seconds } =>
+        if epoch_seconds < 0 {
+          OpenBmcInstantRefused { reason: "UTC epoch-second response is negative" }
+        } else {
+          OpenBmcInstantObserved { observed_at: epoch_seconds * 1000 }
+        }
+    }
+  }
+}
+
 fn openbmc_execute(
   session: PasswordSshSession,
   operation: OpenBmcOperation,
@@ -639,13 +733,7 @@ fn openbmc_resolve_path(
     session: session,
     operation: OpenBmcResolvePath { path: path },
   )
-  if !remote.success {
-    OpenBmcPathRefused { reason: remote.stderr }
-  } else if trim(remote.stdout) == "" {
-    OpenBmcPathRefused { reason: "resolved path is empty" }
-  } else {
-    OpenBmcPathObserved { path: trim(remote.stdout) as NonEmptyStr }
-  }
+  openbmc_path_result(remote: remote)
 }
 
 fn openbmc_parent_directory(
@@ -656,13 +744,7 @@ fn openbmc_parent_directory(
     session: session,
     operation: OpenBmcParentDirectory { path: path },
   )
-  if !remote.success {
-    OpenBmcPathRefused { reason: remote.stderr }
-  } else if trim(remote.stdout) == "" {
-    OpenBmcPathRefused { reason: "parent directory is empty" }
-  } else {
-    OpenBmcPathObserved { path: trim(remote.stdout) as NonEmptyStr }
-  }
+  openbmc_path_result(remote: remote)
 }
 
 fn openbmc_systemd_is_active(
@@ -687,26 +769,7 @@ fn openbmc_zone_failsafe(
     session: session,
     operation: OpenBmcZoneFailsafe { zone_path: zone_path },
   )
-  if !remote.success {
-    OpenBmcBoolRefused { reason: remote.stderr }
-  } else {
-    let tokens = split(s: trim(remote.stdout), delimiter: " ")
-      |> filter(token => trim(token) != "")
-    if tokens.length() != 2 {
-      OpenBmcBoolRefused {
-        reason: "zone failsafe response does not have one typed boolean payload",
-      }
-    } else {
-      let payload = trim(tokens.skip(n: 1).first())
-      if payload == "true" {
-        OpenBmcBoolObserved { value: true }
-      } else if payload == "false" {
-        OpenBmcBoolObserved { value: false }
-      } else {
-        OpenBmcBoolRefused { reason: "zone failsafe payload is not boolean" }
-      }
-    }
-  }
+  openbmc_zone_failsafe_result(remote: remote)
 }
 
 type OpenBmcSensorServicesResult
@@ -1538,59 +1601,14 @@ fn openbmc_disk_usage_kib(
     session: session,
     operation: OpenBmcDiskUsageKib { path: path },
   )
-  if !remote.success {
-    OpenBmcByteSizeRefused { reason: remote.stderr }
-  } else {
-    let lines = split(s: trim(remote.stdout), delimiter: "\n")
-    if lines.length() < 2 {
-      OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
-    } else {
-      let fields = split(
-        s: trim(lines.skip(n: 1).first()),
-        delimiter: " ",
-      ) |> filter(field => trim(field) != "")
-      if fields.length() < 4 {
-        OpenBmcByteSizeRefused {
-          reason: "disk usage data row has no available-kibibyte field",
-        }
-      } else {
-        match parse_int(s: trim(fields.skip(n: 3).first())) {
-          Absent =>
-            OpenBmcByteSizeRefused {
-              reason: "available-kibibyte field is not an integer",
-            }
-          Present { value: kibibytes } =>
-            if kibibytes < 0 {
-              OpenBmcByteSizeRefused {
-                reason: "available-kibibyte field is negative",
-              }
-            } else {
-              OpenBmcByteSizeObserved { value: byte_size(kibibytes * 1024) }
-            }
-        }
-      }
-    }
-  }
+  openbmc_disk_usage_result(remote: remote)
 }
 
 fn openbmc_utc_timestamp(
   session: PasswordSshSession,
 ) -> OpenBmcInstantResult {
   let remote = openbmc_execute(session: session, operation: OpenBmcUtcTimestamp)
-  if !remote.success {
-    OpenBmcInstantRefused { reason: remote.stderr }
-  } else {
-    match parse_int(s: trim(remote.stdout)) {
-      Absent =>
-        OpenBmcInstantRefused { reason: "UTC epoch-second response is not an integer" }
-      Present { value: epoch_seconds } =>
-        if epoch_seconds < 0 {
-          OpenBmcInstantRefused { reason: "UTC epoch-second response is negative" }
-        } else {
-          OpenBmcInstantObserved { observed_at: epoch_seconds * 1000 }
-        }
-    }
-  }
+  openbmc_epoch_result(remote: remote)
 }
 
 fn openbmc_make_directory(

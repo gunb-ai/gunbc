@@ -4,6 +4,11 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
+  OpenBmcBoolObserved,
+  OpenBmcByteSizeObserved,
+  OpenBmcInstantObserved,
+  OpenBmcPathObserved,
+  OpenBmcPathRefused,
   OpenBmcSensorServicesObserved,
   OpenBmcSensorValueAbsent,
   OpenBmcSensorValueRefused,
@@ -12,14 +17,18 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcTachHealthObserved,
   OpenBmcWarningLowThreshold,
   openbmc_collection_from_values,
+  openbmc_disk_usage_result,
+  openbmc_epoch_result,
   openbmc_object_mapper_services_rec,
   openbmc_sensor_integer_projection_result,
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
+  openbmc_path_result,
+  openbmc_zone_failsafe_result,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { rpm, rpm_count }
+import std.measure { byte_size_count, rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -123,6 +132,77 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
         source: _,
       },
     } => sensor == "FAN4" && rpm_count(reading_rpm) == 900 && rpm_count(minimum_rpm) == 900
+    _ => false
+  }
+}
+
+test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "  /usr/share/swampd/config-asrr.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathObserved { path } =>
+      path == "/usr/share/swampd/config-asrr.json"
+    _ => false
+  }
+}
+
+test fn empty_path_transport_is_refused() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "b true\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => value
+    _ => false
+  }
+}
+
+test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
+  match openbmc_disk_usage_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 10000 7500 2500 75% /\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcByteSizeObserved { value } => byte_size_count(value) == 2560000
+    _ => false
+  }
+}
+
+test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
+  match openbmc_epoch_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "1722345678\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
     _ => false
   }
 }
