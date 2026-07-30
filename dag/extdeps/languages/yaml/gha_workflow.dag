@@ -128,14 +128,12 @@ fn cancel_in_progress_when_queue_max_yaml(spec: CancelInProgressWhenQueueMax) ->
   }
 }
 
-data concurrency_queue_max_value: String = "max"
-
-data concurrency_queue_max_emission_note: String = "ConcurrencyMappingQueueMax exists to say `queue: max`, and until now it did not say it: this serializer emitted only group and cancel-in-progress, byte-identical to ConcurrencyMappingQueueNotMax. A coproduct whose two arms project to the same bytes is not a distinction — it is a declared field the serializer discards, which is worse than not modelling it at all, because a fix can be authored, typecheck, and have no realized effect (DESIGN §5 specification-without-execution). The arms differ in behaviour that matters: default queueing keeps at most ONE pending job per group and cancels the previously pending one as each new arrival supersedes it, whereas `queue: max` admits multiple pending runs and only cancels past the cap — which is the difference between 'block on the previous deploy' and 'drop every deploy but the newest'. GitHub constrains cancel-in-progress to false under queue: max, and CancelInProgressWhenQueueMax already models exactly that constraint, so the type was right and only the projection was missing. Diagnosed in docs/plans/srv1-deploy-serialization-and-false-greens.md §4."
+data concurrency_queue_max_emission_note: String = "ConcurrencyMappingQueueMax exists to express GitHub's `queue: max`, and until this row it emitted NO queue key — so it serialized byte-identically to ConcurrencyMappingQueueNotMax and the modeled distinction had no realization difference at all (srv1-deploy-serialization-and-false-greens.md §4, second drop). That matters because the two variants mean DIFFERENT THINGS on the platform: the default (QueueNotMax) holds at most one running and one pending entry, and a newly-arriving entry CANCELS the existing pending one, whereas `queue: max` permits multiple pending up to a documented cap of 100 with cancel-in-progress forced false. A caller reaching for QueueMax is asking for the no-cancel queue and was silently getting pending-replacement. `queue` is emitted FIRST so the mapping reads queue-then-group-then-cancel; CancelInProgressWhenQueueMax already models the platform's constraint that cancel-in-progress cannot be true here, so that arm needs no extra guard. Witness: gha_job_projection_witness_test asserts the emitted mapping CONTAINS the queue key and that the two variants no longer serialize identically."
 
 fn concurrency_mapping_queue_max(group: String, cip: CancelInProgressWhenQueueMax?) -> YamlValue {
   let base = [
-    kv(key: "group", value: yaml_string(s: group)),
-    kv(key: "queue", value: yaml_string(s: concurrency_queue_max_value))
+    kv(key: "queue", value: yaml_string(s: "max")),
+    kv(key: "group", value: yaml_string(s: group))
   ]
   let with_cancel = match cip {
     Absent => base
@@ -195,21 +193,18 @@ fn yaml_key_values(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
   }
 }
 
-data optional_named_mapping_consolidation_note: String = "with / env / outputs were three byte-identical copies of one shape differing only in their key, and adding a fourth for Job.outputs is exactly the redundancy §2 forbids — one concept, derived per use, not copied per use. They now project through optional_named_mapping; the two original names are kept as key-bound projections because their call sites read better with the key implied, and they are one line each rather than one body each. Byte-identical by construction: same guard, same yaml_mapping, key supplied instead of literal."
-
-fn optional_named_mapping(key: String, entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn optional_kv_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
   match entries {
     Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: key, value: yaml_mapping(entries: es))] }
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
   }
 }
 
-fn optional_kv_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
-  optional_named_mapping(key: "with", entries: entries)
-}
-
 fn optional_env_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
-  optional_named_mapping(key: "env", entries: entries)
+  match entries {
+    Absent => []
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
+  }
 }
 
 fn optional_string_kv(key: String, value: String?) -> List<YamlKeyValue> {
@@ -331,9 +326,7 @@ fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue
   }
 }
 
-data job_yaml_dropped_field_note: String = "job_yaml emitted eight of Job's twelve fields and SILENTLY DISCARDED name, outputs, strategy and concurrency. The cost is not the missing YAML — it is that setting one of them is a no-op that looks like a fix: srv1 deploy serialization needs job-level `concurrency`, and a row authoring it would have typechecked, regenerated ci.yml byte-identically, and changed nothing on GitHub (DESIGN §5 specification-without-execution; diagnosed in docs/plans/srv1-deploy-serialization-and-false-greens.md §4). name, outputs and concurrency are now emitted through the projections that already existed for them. Emitting them is provably drift-free: no Job in the corpus sets any of the four, so generated ci.yml and falsifier.yml are byte-unchanged, and the discriminating REDs assert presence on synthetic Jobs that DO set them rather than on the live workflows. strategy is the residue — see job_strategy_unemitted_note."
-
-data job_strategy_unemitted_note: String = "🟡 dissolve-on: Job.strategy is declared MatrixStrategy? and is STILL not emitted, and this note is the difference between a marked gap and the silent drop this change removed. Two reasons it is not fixed here rather than one: MatrixStrategy has zero construction sites in the corpus, so any serializer would be speculative with no consumer to prove it by execution; and its dimensions/include/exclude fields are Map-typed, where v2 Maps are closures rather than wire-serializable values, so a faithful projection is real work with a known hazard and not a line of glue. DISSOLVES WHEN a Job actually needs a matrix — at which point the serializer lands WITH that consumer and a discriminating RED, the same bar the three fields above just met. Until then the field is honestly unemitted and counted here, not quietly dropped."
+data job_field_projection_completeness_note: String = "job_yaml projected SEVEN of the Job type's eleven emittable fields and silently dropped four — concurrency, name, outputs, and strategy — so setting any of them was a no-op that still typechecked. That is the specification-without-execution trap (DESIGN §5) at the emitter seam, and it is worse than an unsupported field: the model reads as configured while the running workflow has nothing, and the ci.yml drift gate cannot catch it because BOTH sides agree the key does not appear. Named as the first of two drops in srv1-deploy-serialization-and-false-greens.md §4, whose §7 item 4 rules them closable INDEPENDENTLY of any deploy decision, because a declared field the serializer discards is a fail-open in every future consumer. THE FIELD-BY-FIELD DISPOSITION, because 'project everything' and 'delete everything' are both wrong here: concurrency, name, and outputs are now PROJECTED — each is a real GitHub job key, each is cheap (a String or a List<YamlKeyValue>), and concurrency is load-bearing for the srv1 lane. strategy is DELETED from the model instead, along with the MatrixStrategy type it referenced: no site anywhere in the corpus ever set a MatrixStrategy VALUE — every one of the eight occurrences was a field initializer supplying the empty optional — and realizing it would require iterating MatrixStrategy.dimensions (a Map), which std offers no order-stable traversal for — a bare map_keys reach is exactly what v2.lens.determinism.determinism_compile_gate reds, so the honest options were an unrealizable declaration or removal, and DESIGN §5 picks removal. It returns as a modeled field when a real matrix consumer arrives WITH a determinism-safe map projection, not before. BYTE-STABILITY: every Job in the corpus currently sets name/outputs/concurrency to none, so adding these three projections changes no generated artifact — the new keys are proven to work by a synthetic all-fields job in gha_job_projection_witness_test rather than by any change to ci.yml or falsifier.yml, and that witness also pins that an absent field stays absent so the projections cannot start emitting empty keys."
 
 fn optional_job_concurrency_kv(spec: ConcurrencySpec?) -> List<YamlKeyValue> {
   match spec {
@@ -342,28 +335,36 @@ fn optional_job_concurrency_kv(spec: ConcurrencySpec?) -> List<YamlKeyValue> {
   }
 }
 
+fn optional_job_outputs_kv(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+  match entries {
+    Absent => []
+    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "outputs", value: yaml_mapping(entries: es))] }
+  }
+}
+
 fn job_yaml(job: Job) -> YamlValue {
   yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: job.name),
     concat(
-    [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
-    concat(
-      optional_string_list_kv(key: "needs", items: job.needs),
+      [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
       concat(
-        optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
+        optional_string_list_kv(key: "needs", items: job.needs),
         concat(
-          optional_string_kv(key: "if", value: job.if_condition),
+          optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
           concat(
-            optional_job_permissions_kv(perms: job.permissions),
+            optional_string_kv(key: "if", value: job.if_condition),
             concat(
-              optional_job_concurrency_kv(spec: job.concurrency),
+              optional_job_permissions_kv(perms: job.permissions),
               concat(
-                [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+                optional_job_concurrency_kv(spec: job.concurrency),
                 concat(
-                  optional_env_mapping(entries: job.env),
+                  optional_job_outputs_kv(entries: job.outputs),
                   concat(
-                    optional_named_mapping(key: "outputs", entries: job.outputs),
-                    optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+                    [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+                    concat(
+                      optional_env_mapping(entries: job.env),
+                      optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+                    )
                   )
                 )
               )
@@ -371,7 +372,6 @@ fn job_yaml(job: Job) -> YamlValue {
           )
         )
       )
-    )
     )
   ))
 }
