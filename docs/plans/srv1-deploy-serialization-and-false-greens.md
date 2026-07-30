@@ -1,20 +1,26 @@
 # srv1 deploy — the concurrency race, the false greens, and the misattributed refusal
 
-Status: DIAGNOSIS, receipts complete, no fix landed (2026-07-29, session sleek-lynx-322). Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**. Every claim below is backed by a receipt in §9; nothing here is inferred from the shape of the code alone.
+Status: DIAGNOSIS, no fix landed (2026-07-29, session sleek-lynx-322). Origin: operator asked to root-cause a `deploy_dashboard_srv1` failure reporting `ServedSurfaceStale`, then directed that the **false greens and the misattributed errors matter as much as the flake**.
 
-One sentence: **`deploy_dashboard_srv1` has no mutual exclusion, so several main-push deploys mutate one srv1 host at once; the loser refuses correctly (red), the winners green whether or not they deployed their own tree, and the refusal's own diagnostic is overwritten by an unrelated rendering complaint.**
+**Epistemic status, stated up front** — an earlier revision of this line claimed "nothing here is inferred from the shape of the code alone", and that was false of its own contents (review 44766 caught it). Three tiers are used deliberately and marked where they appear:
+
+- **Observed** — digests, commit shas, job windows, step conclusions, and the emitter/roster contents in §4. Reproducible from §9.
+- **Reconstructed** — the §1 step ordering. The endpoints are observed; the interleaving *between* them is the simplest ordering consistent with them, not a logged sequence.
+- **Possible-by-construction** — hazards derived from code shape (§2.2). These say a state is *writable*, not that it *occurred*. One claim previously stated at this tier as though observed (two interleaved rsyncs) was wrong and has been removed.
+
+One sentence: **`deploy_dashboard_srv1` has no mutual exclusion, so several main-push deploys mutate one srv1 host at once; the loser refuses correctly (red), the winners green without establishing which tree is live, and the refusal's own diagnostic is overwritten by an unrelated rendering complaint.**
 
 ## 0. Displaced cost (§6 — the pain this removes)
 
-Measured over the last 25 pushes to main (§9.3):
+Measured over the last 25 pushes to main, all 25 of which ran a deploy job (§9.3):
 
 | | count | what it costs |
 |---|---|---|
-| red main deploys, all from the race | 3 / 23 (13%) | a red main that has nothing to do with the commit; per `deploy-srv1-job-masked-by-skip-on-red-ci`, per-job faults here stay latent |
-| **silent false greens** — overlapping deploys that greened | **8 / 11 overlapping runs** | a deploy reports success without establishing that its tree is live; the live dashboard can be another commit's |
-| refusals naming the wrong cause | every refusal carrying a captured diagnostic | the mechanism added *specifically* to locate this failure is defeated at the moment it fires |
+| red main deploys, every one inside an overlap window | 3 / 25 (12%) | a red main that has nothing to do with the commit; per `deploy-srv1-job-masked-by-skip-on-red-ci`, per-job faults here stay latent |
+| **identity-unproven greens** — successes inside an overlap window | **8 / 11 overlapping jobs** | success is reported without establishing that this run's source closure and binary are the live ones. Not "8 wrong-tree deployments" — see §3.2 on what is and is not measured |
+| refusals naming the wrong cause | every refusal carrying a captured multi-line diagnostic | the mechanism added *specifically* to locate this failure is defeated at the moment it fires |
 
-The false-green row is the load-bearing one. The flake is loud and self-heals on the next push; the false green is the §5 absorbing-fallback shape one level up — the deploy's *success* signal does not mean what it says, and nothing counts how often it lies.
+The middle row is the load-bearing one. The flake is loud and self-heals on the next push; the identity-unproven green is the §5 absorbing-fallback shape moved onto the *success* arm — the contract's claim is narrower than the obligation it is trusted for, and nothing counts the gap. The honest quantity is **exposure concealed by the success contract**, not proven lies.
 
 ## 1. The incident, with receipts
 
@@ -32,16 +38,18 @@ ab58f6bca4   success   21:30:00 -> 21:33:48
 b61ed50962   failure   21:30:12 -> 21:34:42     <- the reported run
 ```
 
-So the run for `b61ed50962` observed `ab58f6bca4`'s surface. Timeline, reconciled against the unit diagnosis in the refusal (`Active: since 21:32:26; 2min 12s`) to within seconds:
+**Precisely what this establishes (observed):** the run for `b61ed50962` observed a served-surface fingerprint equal to `ab58f6bca4`'s *expected* fingerprint. It does **not** establish that `ab58f6bca4`'s *tree* was live — the health endpoint identifies five rendered bodies, while the deploy mutates a source tree and a binary. Saying "observed `ab58f6bca4`'s tree" would contradict §3.2's own finding, and an earlier revision of this doc did exactly that (review 44766).
 
-1. both runs rsync into `/opt/gunbc/gunbc`; the last writer is `ab58f6bca4`'s tree
+**Reconstructed timeline** — the endpoints below are observed (job windows, the unit diagnosis `Active: since 21:32:26; 2min 12s`, the probe transcript); the ordering between them is the simplest sequence consistent with those endpoints, not a logged trace:
+
+1. both runs drive the tree sync; the effective source selector ends up pointing at `ab58f6bca4`'s checkout (see §2.2 — the mechanism is the shared env file, not two concurrent rsyncs)
 2. `21:32:26` — a `systemctl restart gunbc-roadmap.service` wins; the new process begins loading whatever is on disk
 3. `~21:32:38` — the loser's poll starts (bound 120 s, cadence 1 s)
-4. `~21:33:3x` — the process finishes load-plus-compile and binds; this is the ~70 straight `curl` exit=7 probes, *not* a crash — the second restart reset the load clock mid-poll
-5. `21:33:48` — the winner's poll sees a current surface, converges, job green
-6. `21:34:38` — the loser exhausts its bound against a surface that is genuinely not its tree, refuses `ServedSurfaceStale`
+4. `~21:33:3x` — the process finishes load-plus-compile and binds; this is the ~70 straight `curl` exit=7 probes, *not* a crash — a restart reset the load clock mid-poll
+5. `21:33:48` — the winner's poll sees a matching fingerprint, converges, job green
+6. `21:34:38` — the loser exhausts its bound against a fingerprint that is not its own, refuses `ServedSurfaceStale`
 
-The refusal is **correct**. `gunbc serve` binds its graph once at process start (`service_ready_means_serving_this_tree_note`), the unit is a singleton, so exactly one concurrent deploy can be right about the served surface.
+The refusal is **correct**. `gunbc serve` binds its graph once at process start (`service_ready_means_serving_this_tree_note`), the unit is a singleton, so at most one concurrent deploy can hold a matching fingerprint.
 
 ## 2. The mechanism
 
@@ -61,16 +69,16 @@ srv1 carries at least three runner slots eligible for this job — observed empi
 
 ### 2.2 What is being raced
 
-Every concurrent deploy mutates the same singleton host state, unlocked (`.github/live-deploy-srv1-apply.sh`):
+Every concurrent deploy mutates the same singleton host state, unlocked (`.github/live-deploy-srv1-apply.sh`). These are **possible-by-construction** hazards — each names a state the code permits to be written, not an event observed in the incident:
 
 | state | hazard |
 |---|---|
-| `/etc/gunbc-tree-sync.env` — holds `GUNBC_TREE_SRC=$PWD` | a **global last-writer-wins channel**: run X's `systemctl restart gunbc-tree-sync.service` can rsync run **Y's** checkout, so a run can sync a tree that is not its own while believing otherwise |
-| `/opt/gunbc/gunbc` via `rsync -rlpt --delete` | two interleaved `--delete` rsyncs into one destination can leave a **mixed tree that never existed in git** |
-| `/opt/gunbc/bin/gunbc` | last writer wins; the running binary and the tree can come from different commits |
+| `/etc/gunbc-tree-sync.env` — holds `GUNBC_TREE_SRC=$PWD` | a **global last-writer-wins source selector**. The CI deploy uses `LocalShell`, so `$PWD` really is the individual runner slot's checkout. Run X's `systemctl restart gunbc-tree-sync.service` can therefore sync run **Y's** checkout, and X has no way to tell |
+| `/opt/gunbc/gunbc` via `rsync -rlpt --delete` | the tree is replaced in place, so a serve process can begin loading while replacement is in flight. **Not** claimed: two simultaneous rsync processes — the sync is one `Type=oneshot` unit and systemd holds at most one job per unit, merging or replacing conflicting queued jobs, so concurrent callers get a merged/replaced job rather than parallel rsyncs (correction from review 44766; the earlier "mixed tree that never existed in git" claim was asserted from code shape and is withdrawn) |
+| `/opt/gunbc/bin/gunbc` | last writer wins, and it is installed into the live path rather than activated atomically; the running binary and the loaded tree can come from different commits |
 | `gunbc-roadmap.service` (one unit) | last restarter decides the served graph for everyone |
 
-The env-file channel means even the *winner* is not guaranteed to have deployed its own tree — it is only the run whose expected digest happened to match what got served.
+Two consequences worth stating separately. First, more than one caller can believe it initiated its own sync when systemd actually ran a merged job against another caller's env file — so even the *winner* has not established that it deployed its own tree; it is the run whose expected fingerprint happened to match. Second, `live_deploy_apply_via_transport` performs mutation, readiness polling, and digest readback as three separate phases, so an exclusion boundary that does not span **all three** lets another deploy change the host while the previous run is still proving readiness.
 
 ### 2.3 Arrival order at the deploy stage is already inverted relative to commit order
 
@@ -89,16 +97,26 @@ Any fix that orders deploys by *arrival* therefore orders them wrongly with resp
 
 The loser burns its full 120 s bound and refuses. Nothing is wrong with the refusal: it is typed, located, and true. It is simply attributable to a scheduling defect rather than to the commit under test. Cost: a red main deploy, plus 120 s of poll per occurrence.
 
-### 3.2 The false green — the dangerous half
+### 3.2 The identity-unproven green — the dangerous half
 
-In the 25-run sample there were 5 overlap events covering 11 runs, but only 3 failed. **The other 8 greened.** They greened because the racing commits' served surfaces happened to be byte-identical: the whole `/ROADMAP.md` block `a8a773489d754237` spans ten consecutive commits, so during that window a stale surface is *indistinguishable* from a current one.
+**What the sample establishes.** In the 25-run sample there were 5 overlap events covering 11 deploy jobs; 3 refused and **8 succeeded**. The success contract identifies only five rendered bodies. Therefore those 8 successes **do not establish that the run's source closure and binary were the live ones**. The sample demonstrates 8 *identity-unproven* overlapping greens and a real false-green channel.
 
-Two distinct gaps compose here:
+**What it does not establish**, and an earlier revision of this section wrongly implied (review 44766): that all 8 deployed the wrong source or binary. The missing discriminators are specific and worth naming, because each is a thing a follow-up could actually measure:
 
-1. **Coincidence hides the race.** When the fingerprint of tree A equals that of tree B, the readiness contract is satisfied by the wrong tree. The check is honest about what it claims ("the surface I can observe is my surface") but that claim is weaker than the deploy's actual obligation.
-2. **The fingerprint covers less than the deploy mutates.** `roadmap_site_healthz_body()` publishes digests for exactly five URL paths. The deploy also installs the whole source tree and the `gunbc` binary, which the dispatch path and the serve closure both depend on. So `green` means *those five bodies match*, never *my tree is what is deployed*.
+- job-window overlap does not prove the *mutation* phases overlapped — checkout, artifact download and verification all precede the deploy step;
+- in a two-way overlap with one green and one red, the green may simply be the correct final winner;
+- equal `/ROADMAP.md` digests do not imply all five healthz bodies were equal (that axis is just the one cheap enough to compute across history — §9.1);
+- even equal five-path maps prove only that the contract *cannot distinguish* the revisions, not that the wrong one was live;
+- the global source selector (§2.2) makes wrong-tree success *possible*; possibility is not a receipt that it happened in any particular green run.
 
-The §5 reading: the frequency of the underlying fault is **zeroed by construction** whenever the surfaces coincide, so the deficit never ranks for fixing. That is the same concealment the absorbing fallback performs, sitting on the success arm instead of the failure arm.
+**The defensible statement:** of 11 deploy jobs whose windows overlapped, 8 completed successfully, and because the contract identifies only five rendered bodies none of those 8 established that its own source closure and binary were live.
+
+Two distinct gaps compose to produce that:
+
+1. **Coincidence can satisfy the check.** When the fingerprint of tree A equals that of tree B, the contract is satisfied without discriminating them — and the `/ROADMAP.md` block `a8a773489d754237` spans ten consecutive commits, so such windows demonstrably exist. The check is honest about what it claims ("the surface I can observe matches mine"); that claim is simply narrower than the deploy's obligation.
+2. **The fingerprint covers less than the deploy mutates.** `roadmap_site_healthz_body()` publishes digests for exactly five URL paths. The deploy also installs the whole source tree and the `gunbc` binary, which the dispatch path and the serve closure both depend on. So `green` means *those five bodies match*, never *my tree and binary are what is deployed*.
+
+The §5 reading: whenever the fingerprints coincide, the underlying fault cannot be *observed at all*, so its frequency is zero by construction and the deficit never ranks for fixing (§6 prices by displaced cost, and a masked cost displaces nothing). That is the absorbing fallback's concealment moved onto the success arm. The measured quantity is exposure, and the remedy is to widen what the contract identifies (§7 item 3) so the fault becomes countable rather than to assert how often it has already bitten.
 
 ### 3.3 The misattributed refusal — the diagnostic overwrites itself
 
@@ -134,11 +152,18 @@ The operator's ask — *each srv1 deploy blocks on the previous one, and no depl
 |---|---|---|---|
 | job-level `concurrency: {group: deploy-srv1, cancel-in-progress: false}` | yes | **yes** — pending depth is 1 | documented: *"any existing `pending` job or workflow in the same concurrency group will be canceled and the new queued job or workflow will take its place."* The in-progress run is untouched; intermediate **pending** runs are dropped as each new one arrives |
 | job-level `concurrency` with `queue: max` | yes | only past the cap | permits multiple pending (documented cap 100); `cancel-in-progress` must be false. Closest to literal "queue, don't cancel" — but the emitter cannot emit `queue` today (§4) |
-| a **dedicated single runner label** (e.g. `runs-on: [self-hosted, linux, arm64, srv1, srv1-deploy]` with exactly one runner carrying `srv1-deploy`) | yes, strict FIFO | **no** | a self-hosted runner executes one job at a time, so extra deploys simply wait for the runner. Nothing is cancelled, no GitHub-side queue semantics involved, and it needs no emitter change — only a runner registration and a label row |
+| a **dedicated single runner label** (e.g. `runs-on: [self-hosted, linux, arm64, srv1, srv1-deploy]` with exactly one runner carrying `srv1-deploy`) | one-at-a-time execution | **no ordinary pending-replacement** | a self-hosted runner executes one job at a time, so extra deploys wait for the runner. Needs no emitter change — a runner registration and a label row |
 
 `concurrency` **is** supported at job level, so this can be scoped to the deploy without touching the `ci` job's group.
 
-The third option is the only one that literally satisfies "don't cancel any deploy, block until the previous completes (pass or fail)", and it is also the cheapest to land given §4. It has one operational cost worth naming: a single deploy slot means a hung deploy blocks all subsequent deploys until its `timeout-minutes: 10` backstop fires — bounded, and loud.
+The third option is the closest to "don't cancel any deploy, block until the previous completes (pass or fail)", and the cheapest to land given §4. Four limits, because an earlier revision called it "strict FIFO" and that is too strong (review 44766):
+
+- GitHub documents **no commit-order FIFO guarantee** for self-hosted runner routing;
+- GitHub's own concurrency queue orders by *when a job begins waiting* — after its dependencies resolve — not by push or dispatch order, and the docs say ordering is not guaranteed;
+- §2.3 already proves deploy eligibility inverts relative to commit order in practice, so whatever order emerges is not commit order;
+- a queued self-hosted job can eventually fail on the platform's queue timeout, so "never cancels anything" is operational, not absolute. Separately, a single slot means a hung deploy blocks the rest until its `timeout-minutes: 10` backstop fires — bounded and loud.
+
+The accurate claim is therefore: *exactly one matching runner gives one-at-a-time execution without ordinary pending-job replacement.* It is not an ordering guarantee, and §7 item 1 explains why it must not be the mutual-exclusion authority either.
 
 ## 6. Why serialization alone is not the fix — it would make things worse
 
