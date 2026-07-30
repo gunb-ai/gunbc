@@ -2802,8 +2802,16 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 // selector the suite exists to verify. A broken selector therefore cannot suppress its own
 // control.
 //
-// Fail-closed on every arm: diff-observation failure, empty diff, departed non-docs path,
-// closure-computation failure, and any intersection all RUN the suite.
+// Fail-closed on every arm, in TWO different ways — the distinction is load-bearing:
+//   - STRUCTURAL arms (empty diff, ANY departed path, ANY markdown path, any closure
+//     intersection) RUN the suite. The diff was observed, so the answer is computed.
+//   - REFUSAL arms (diff-observation failure, input-closure failure) REFUSE: typed, located,
+//     countable, non-zero exit, no label. They do NOT run the suite, because "I could not
+//     compute what is affected" is a different state from "everything is affected" and has a
+//     different remedy (DESIGN §5 absorbing fallback; the ruling recorded in
+//     `floor_diff_baseline_law`, operator 2026-07-05).
+// Corrected after review 44778 caught this comment still claiming the failure arms RUN — the
+// same Rust-side single-authority drift review 44768 fixed in the emitted policy note.
 //
 // RESIDUAL, stated rather than elided, and mirroring the regen precedent's accepted trade
 // exactly: the suite builds its resolve index over the WHOLE of `[src/v2, dag]`, so an
