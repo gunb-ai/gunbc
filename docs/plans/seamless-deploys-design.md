@@ -300,9 +300,35 @@ of the missing machinery have working precedent:
 - **The apply site — `gunbc.host_effect_realize`** already runs reconciles inside srvN apply
   (`:990`, `:1076`), which is the "bmc/srvN apply" process named in the direction.
 
-So 2a and 2c are **patterned work**, not new mechanism. **2b remains the genuinely new modelling**
-— no sibling has an artifact whose *realization is a running process*, so de-fusing the service from
-the unit file is the part with no precedent to copy, and it is where the design attention belongs.
+So 2a and 2c are **patterned work**, not new mechanism.
+
+**On 2b — an earlier statement here was too pessimistic and is corrected.** It said no sibling has
+an artifact whose realization is a running process. That is wrong: `gunbc.roadmap_belt` reconciles
+**live dispatch sessions** — running processes — with a genuine observed provider
+(`belt_observed_members(live: List<DispatchLiveSession>)`), ownership lifted from an actuator's
+observation, and R5 teardown meaning *reap a live session* (refusing when it cannot prove it owns
+one). So process-as-member, live observation of processes, and owned-only teardown of a running
+thing are **all precedented**.
+
+The genuinely new cell is narrower, and naming it precisely is what makes 2b tractable:
+
+|  | inert artifact | running process |
+|---|---|---|
+| **presence-only value** | — | `roadmap_belt` (`dispatch_member_value_eq` is constant `true`) |
+| **content-sensitive value** | `host_authorized_keys_reconcile`, `tool_readiness` | **← deploy needs this; nothing here yet** |
+
+The belt's member value is deliberately degenerate — `dispatch_member_value_eq(a, b) = true`, so it
+never produces a `Modified` hunk. A session either exists (`Unchanged`), is missing (`Added` →
+spawn), or is extra (`Removed` → reap). It has no notion of *this running thing is stale relative to
+the inputs it was started from* — which is exactly deploy's requirement, and exactly the axis on
+which today's always-restart is hiding.
+
+So 2b is the **composition of two existing patterns** (belt's process-member machinery + the
+siblings' content-sensitive value), not virgin territory. That is a materially smaller and
+lower-risk piece of work than "no precedent" implied, and the design attention it needs is on one
+question: *what are the running service's inputs, such that its value changes exactly when a restart
+is genuinely required* — answered by 2a's identities (unit file text, binary identity, tree
+identity).
 
 **Two decisions this direction surfaces, which the precedents deliberately leave to a human:**
 
