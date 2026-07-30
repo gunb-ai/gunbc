@@ -63,6 +63,7 @@ import extdeps.bmc.openbmc_operation {
   OpenBmcCriticalLow,
   OpenBmcZoneFailsafe,
   OpenBmcZoneFailsafeDuty,
+  openbmc_busctl_authority,
 }
 import extdeps.bmc.openbmc_password_ssh_transport {
   openbmc_password_ssh_transport_note,
@@ -91,6 +92,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
 }
+
+data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
 data openbmc_json_projection_authority: ExternalAuthority = jq_authority
 
