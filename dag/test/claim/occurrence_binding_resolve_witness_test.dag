@@ -14,6 +14,7 @@ import std.occurrence_identity {
   LexicalValueOccurrence,
   TypeOccurrence,
   DuplicateAuthoredOccurrenceIdentity,
+  MissingAuthoredOccurrenceIdentity,
 }
 import std.occurrence_binding {
   OccurrenceBound,
@@ -211,8 +212,7 @@ test fn occurrence_binding_resolve_unique_reference_is_bound_holds() -> Bool {
     Present { value: ref } =>
       match resolve_reference_occurrence_binding(
         transport: transport,
-        reference: ref,
-        segment: "y",
+        occurrence: ref.occurrence,
       ) {
         OccurrenceReferenceBindingDecided {
           result: OccurrenceBound { binding: _ },
@@ -230,8 +230,7 @@ test fn occurrence_binding_resolve_unbound_reference_refuses_holds() -> Bool {
     Present { value: ref } =>
       match resolve_reference_occurrence_binding(
         transport: transport,
-        reference: ref,
-        segment: "missing",
+        occurrence: ref.occurrence,
       ) {
         OccurrenceReferenceBindingDecided {
           result: OccurrenceUnbound { occurrence: _ },
@@ -249,8 +248,7 @@ test fn occurrence_binding_resolve_ambiguous_reference_refuses_holds() -> Bool {
     Present { value: ref } =>
       match resolve_reference_occurrence_binding(
         transport: transport,
-        reference: ref,
-        segment: "y",
+        occurrence: ref.occurrence,
       ) {
         OccurrenceReferenceBindingDecided {
           result: OccurrenceAmbiguous {
@@ -346,8 +344,7 @@ test fn occurrence_binding_resolve_decide_is_the_single_fold_authority_holds() -
     Present { value: ref } =>
       let direct = resolve_reference_occurrence_binding(
         transport: transport,
-        reference: ref,
-        segment: "y",
+        occurrence: ref.occurrence,
       )
       let manual = occurrence_binding_decide(
         occurrence: binding_occurrence_from_reference(reference: ref),
@@ -416,14 +413,44 @@ test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
     Present { value: ref } =>
       match resolve_reference_occurrence_binding(
         transport: transport,
-        reference: ref,
-        segment: "y",
+        occurrence: ref.occurrence,
       ) {
         OccurrenceReferenceBindingTransportRefused {
           refusal: DuplicateAuthoredOccurrenceIdentity {
             occurrence: _,
             diagnostic_span: _,
           },
+        } => true
+        OccurrenceReferenceBindingDecided { result: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn occurrence_binding_resolve_unknown_occurrence_refuses_holds() -> Bool {
+  let transport = obr_unique_transport()
+  match resolve_reference_occurrence_binding(
+    transport: transport,
+    occurrence: OccurrenceId { value: 999 },
+  ) {
+    OccurrenceReferenceBindingTransportRefused {
+      refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ },
+    } => true
+    OccurrenceReferenceBindingDecided { result: _ } => false
+  }
+}
+
+test fn occurrence_binding_resolve_declaration_id_is_not_a_reference_holds() -> Bool {
+  let transport = obr_unique_transport()
+  let declaration = transport.declarations |> first
+  match declaration {
+    Present { value: decl } =>
+      match resolve_reference_occurrence_binding(
+        transport: transport,
+        occurrence: decl.occurrence,
+      ) {
+        OccurrenceReferenceBindingTransportRefused {
+          refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ },
         } => true
         OccurrenceReferenceBindingDecided { result: _ } => false
       }
