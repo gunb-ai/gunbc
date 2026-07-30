@@ -355,9 +355,17 @@ type LandingCandidateSpace
       options: LandingNormativeOptions,
     }
 
+type LandingIndependentReadBackAuthorityReceipt {
+  observer: LandingObservationAuthorityHandle
+  admission_contract: LandingAdmissionContractHandle
+  established_by: LandingActorAuthorityHandle
+  receipt: ContentHash
+}
+
 type LandingClosureSubject {
   ready_evidence: LandingReadyEvidenceReceipt
   admission_contract: LandingAdmissionContractHandle
+  read_back_authority: LandingIndependentReadBackAuthorityReceipt
   equivalence: LandingEquivalenceHandle
   candidates: LandingCandidateSpace
 }
@@ -859,15 +867,19 @@ type LandingReadBackAssessment
   | LandingReadBackMismatched {
       observation: LandingReadBackObservation,
     }
-  | LandingReadBackNotIndependent {
+  | LandingReadBackAuthorityRefused {
       observation: LandingReadBackObservation,
     }
 
 fn landing_independent_read_back(
   observation: LandingReadBackObservation,
 ) -> LandingReadBackAssessment {
-  if observation.authority == observation.transition.transition_authority {
-    LandingReadBackNotIndependent {
+  let subject = observation.transition.admitted.admission.semantic.closed_space.subject
+  let authority = subject.read_back_authority
+  if authority.admission_contract != subject.admission_contract
+    || observation.authority != authority.observer
+    || authority.observer == observation.transition.transition_authority {
+    LandingReadBackAuthorityRefused {
       observation: observation,
     }
   } else if observation.observed_state == observation.transition.resulting_state {
@@ -1023,9 +1035,9 @@ fn landing_committed_transition(
   projections: List<LandingProjectionStatus>,
 ) -> LandingCommitAssembly {
   match read_back {
-    LandingReadBackNotIndependent { observation: _ } =>
+    LandingReadBackAuthorityRefused { observation: _ } =>
       LandingCommitRelationRefused {
-        cause: "the transition producer cannot certify independent read-back",
+        cause: "read-back did not use the independent authority frozen by admission",
       }
     LandingReadBackMismatched { observation: _ } =>
       LandingCommitRelationRefused {

@@ -60,6 +60,7 @@ import gunbc.source_integration_landing_spine {
   LandingOneResultClass,
   LandingManyResultClasses,
   LandingClosureSubject,
+  LandingIndependentReadBackAuthorityReceipt,
   LandingCaptureCompletenessReceipt,
   LandingAffectedScopeReceipt,
   LandingRuleClosureReceipt,
@@ -107,7 +108,7 @@ import gunbc.source_integration_landing_spine {
   LandingReadBackObservation,
   LandingReadBackMatched,
   LandingReadBackMismatched,
-  LandingReadBackNotIndependent,
+  LandingReadBackAuthorityRefused,
   LandingCompatibilityTargetBinding,
   LandingProjectionBound,
   LandingProjectionBindingRefused,
@@ -422,6 +423,12 @@ fn p0_closed_receipt(
     subject: LandingClosureSubject {
       ready_evidence: p0_ready_evidence(),
       admission_contract: "p0-admission-contract",
+      read_back_authority: LandingIndependentReadBackAuthorityReceipt {
+        observer: "independent-read-back",
+        admission_contract: "p0-admission-contract",
+        established_by: "fixture-admission-authority",
+        receipt: "read-back-authority-receipt",
+      },
       equivalence: "p0-declared-equivalence",
       candidates: candidates,
     },
@@ -864,6 +871,12 @@ test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
   let subject = LandingClosureSubject {
     ready_evidence: p0_ready_evidence(),
     admission_contract: "p0-admission-contract",
+    read_back_authority: LandingIndependentReadBackAuthorityReceipt {
+      observer: "independent-read-back",
+      admission_contract: "p0-admission-contract",
+      established_by: "fixture-admission-authority",
+      receipt: "read-back-authority-receipt",
+    },
     equivalence: "p0-declared-equivalence",
     candidates: LandingOneResultClass {
       result: p0_result(
@@ -936,17 +949,17 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     LandingReadBackMismatched { observation } =>
       observation.transition.identity == "transition-42"
     LandingReadBackMatched { receipt: _ } => false
-    LandingReadBackNotIndependent { observation: _ } => false
+    LandingReadBackAuthorityRefused { observation: _ } => false
   }
     && match landing_independent_read_back(
       observation: LandingReadBackObservation {
         transition: transition,
         observed_state: "state-42",
-        authority: "transition-executor",
+        authority: "caller-invented-different-reader",
       },
     ) {
-      LandingReadBackNotIndependent { observation } =>
-        observation.transition.transition_authority == observation.authority
+      LandingReadBackAuthorityRefused { observation } =>
+        observation.authority != observation.transition.admitted.admission.semantic.closed_space.subject.read_back_authority.observer
       LandingReadBackMatched { receipt: _ } => false
       LandingReadBackMismatched { observation: _ } => false
     }
