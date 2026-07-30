@@ -29,7 +29,6 @@ import std.observation {
   EntryGrain,
   EntrySegment,
   Failed,
-<<<<<<< HEAD
   Measured,
   MeasuredUnavailable,
   MeasuredValue,
@@ -47,6 +46,7 @@ import std.observation {
   RunGrain,
   RunSegment,
   Step,
+  TimedOut,
   observation_subject_declaration,
   observation_subject_entry_path,
   observation_subject_grain,
@@ -57,9 +57,6 @@ import v2.std.optional {
   Absent,
   Optional,
   Present,
-=======
-  TimedOut,
->>>>>>> origin/main
 }
 import v2.std.text { String }
 
