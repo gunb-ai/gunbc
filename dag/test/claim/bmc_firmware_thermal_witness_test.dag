@@ -12,6 +12,7 @@ import extdeps.bmc.types {
   BmcConfigPersistenceUnsupported,
   BmcFanAggregatedControllerTopology,
   BmcFanCurve,
+  BmcFanCurveStep,
   BmcFanPolicyObservation,
   BmcOverlayConfigObserved,
   FanPidAggregatedEntry,
@@ -125,11 +126,13 @@ import std.measure {
   celsius_count,
   percent,
   percent_count,
+  positive_celsius_delta,
+  positive_measure_count,
   PositiveMeasureCountNonPositive,
   rpm_count,
 }
 import std.nat { Nat }
-import std.types { NonEmptyStr, list_length }
+import std.types { List, NonEmptyStr, list_length }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
@@ -395,46 +398,39 @@ test fn temp_soc_curve_explains_the_audible_step() -> Bool {
     }
 }
 
-test fn fleet_curve_is_quiet_through_90c_and_emergency_full_before_continuous_limit() -> Bool {
+test fn fleet_curve_engages_cooling_early_and_reaches_full_before_continuous_limit() -> Bool {
   fleet_fan_policy_is_thermally_bounded()
     && match bmc_fan_curve_curve_duty_at_temperature(
       curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(74),
+      reading: celsius(54),
     ) {
       Present { value: duty } => percent_count(duty) == 30
+      Absent => false
+    }
+    && match bmc_fan_curve_curve_duty_at_temperature(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: celsius(55),
+    ) {
+      Present { value: duty } => percent_count(duty) == 40
+      Absent => false
+    }
+    && match bmc_fan_curve_curve_duty_at_temperature(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      reading: celsius(65),
+    ) {
+      Present { value: duty } => percent_count(duty) == 50
       Absent => false
     }
     && match bmc_fan_curve_curve_duty_at_temperature(
       curve: fleet_quiet_temp_soc_fan_curve,
       reading: celsius(75),
     ) {
-      Present { value: duty } => percent_count(duty) == 30
+      Present { value: duty } => percent_count(duty) == 75
       Absent => false
     }
     && match bmc_fan_curve_curve_duty_at_temperature(
       curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(90),
-    ) {
-      Present { value: duty } => percent_count(duty) == 30
-      Absent => false
-    }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(93),
-    ) {
-      Present { value: duty } => percent_count(duty) == 55
-      Absent => false
-    }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(97),
-    ) {
-      Present { value: duty } => percent_count(duty) == 85
-      Absent => false
-    }
-    && match bmc_fan_curve_curve_duty_at_temperature(
-      curve: fleet_quiet_temp_soc_fan_curve,
-      reading: celsius(98),
+      reading: celsius(85),
     ) {
       Present { value: duty } => percent_count(duty) == 100
       Absent => false
@@ -479,6 +475,32 @@ fn minimum_duty_perturbation() -> BmcFanCurve {
     negative_hysteresis: fleet_quiet_temp_soc_fan_curve.negative_hysteresis,
   }
 }
+
+data lazy_onboarding_drift_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
+  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
+  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
+  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+]
+
+data lazy_onboarding_drift_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: lazy_onboarding_drift_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(75),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 1),
+  ),
+}
+
+data lazy_onboarding_drift_curve_note: String = "The stripped onboarding-overwrite curve (fleet incident 2026-07-30): minimum 30 percent held through 90C, then a late panic ramp to 55/70/85/100 percent at 93/95/97/98C. It is deliberately NOT the fleet intent, which is now the srv3 2.07.00 vendor stock aggressive curve (byte-equal to asrock_altrad8ud_factory_temp_soc_fan_curve). This is the witness's genuine drift fixture: a BMC carrying it is drifted from fleet intent and must receive a typed apply plan back to the stock curve. The prior model instead carried the lazy curve AS the fleet intent, so its drift fixture was the factory aggressive curve and its apply plan would have converted srv4's factory default INTO this lazy curve."
 
 test fn srv4_flash_overlay_is_observed_writable_and_live_overridden() -> Bool {
   match srv4_bmc_config_persistence_observation {
@@ -626,7 +648,7 @@ test fn fleet_quiet_temp_soc_curve_matches_projected_config_content_identity() -
 
 test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
   match bmc_fan_projected_config_digest(
-    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+    curve: lazy_onboarding_drift_curve,
     intent_curve: fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
     config_path: srv4_bmc_fan_observed_config_path,
@@ -656,7 +678,7 @@ test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Boo
     && receipt.reset.accepted
     && receipt.bmc_down_observed
     && receipt.bmc_returned
-    && receipt.bmc_returned_at - receipt.bmc_down_observed_at == 157000
+    && receipt.bmc_returned_at - receipt.bmc_down_observed_at == 170000
     && receipt.host_power_before == On
     && receipt.host_power_after == On
     && receipt.host_os_ssh_reachable_throughout
@@ -808,7 +830,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
 }
 
 test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_and_persistence() -> Bool {
-  let drifted = asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation
+  let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
   let with_storage = bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
@@ -1077,7 +1099,7 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
 }
 
 test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
-  let drifted = asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation
+  let drifted = srv4_fan_policy_with_curve(curve: lazy_onboarding_drift_curve)
   let classified = bmc_fan_policy_classification(
     host: srv4_host.identity,
     board: srv4_baseboard.catalog.model,
@@ -1122,7 +1144,7 @@ test fn fleet_quiet_curve_admits_srv4_active_config_digest() -> Bool {
 
 test fn non_fleet_curve_admitted_config_digest_is_unavailable() -> Bool {
   match bmc_fan_admitted_config_digest(
-    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+    curve: lazy_onboarding_drift_curve,
     intent_curve: fleet_quiet_temp_soc_fan_curve,
     projected_config_digest: Present {
       value: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,

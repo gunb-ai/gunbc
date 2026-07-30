@@ -121,7 +121,7 @@ data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/sw
 
 data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481"
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "f559aff7f3455011e951bed1eac52e8cbe7a724b772fe6ece1d8545ff47cb5bc"
 
 type BmcProjectedConfigContentIdentity {
   realization_id: NonEmptyStr
@@ -132,12 +132,10 @@ type BmcProjectedConfigContentIdentity {
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
-  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
-  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
-  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
 ]
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: BmcFanCurve = BmcFanCurve {
@@ -145,12 +143,12 @@ data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: BmcFanCurve = Bmc
   steps: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps,
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(75),
+  zone_failsafe_duty: percent(30),
   positive_hysteresis: positive_celsius_delta(
     count: positive_measure_count(predecessor: 0),
   ),
   negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 1),
+    count: positive_measure_count(predecessor: 0),
   ),
 }
 
@@ -161,7 +159,7 @@ data altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity: BmcPro
   projected_config_sha256_hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 }
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated read-only BMC SSH probe 2026-07-27 (srv4_bmc_fan_projection_probe_note). altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve (the srv3 2.07.00 vendor stock aggressive curve) through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated BMC SSH 2026-07-30: the jq realization was run on srv4's pre-onboarding base config with the stock aggressive desired params, the resulting canonical bytes were written to srv4 by staged same-filesystem atomic rename, and the live config-asrr.json digest read back equal to this hex. Unlike the earlier lazy row (whose hex was the raw onboarding file, idempotent only in structure), this hex IS the realization's own output — the realization reproduces the cited digest byte-for-byte. altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
 
 data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
   hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
