@@ -32,10 +32,18 @@ Two are independently defective:
 **`resolve_host_tool_program` fails open.** After three probes miss it returns
 `name.to_string()` and hands the bare name to `Command::new`, so the failure
 arm *widens* to "try it and see" and surfaces later as an opaque spawn error —
-the absorbing fallback DESIGN §5 forbids. Its success arm is also decorative:
-it locates the file in a specific `PATH` directory and then returns the bare
-name rather than the resolved path, discarding what it learned and
-re-resolving ambiently at spawn time.
+the absorbing fallback DESIGN §5 forbids.
+
+> **Correction (2026-07-30).** An earlier version of this paragraph added that
+> "its success arm is also decorative: it locates the file in a specific `PATH`
+> directory and then returns the bare name rather than the resolved path." That
+> was **false**, and it shipped in #7398. Read against main, every success arm
+> returns `candidate.to_string_lossy().into_owned()` — the *resolved* path — for
+> the `PATH`, `CARGO_HOME/bin` and `$HOME/.cargo/bin` probes alike. Only the
+> terminal arm returns the bare name, which is the fail-open above and the whole
+> of the defect. The claim is withdrawn rather than edited silently, because a
+> census that overstates a defect is as damaging to prioritisation as one that
+> misses it: it invites a fix to a working code path.
 
 **`curated_cargo_probe_one.sh` conflates existence with freshness.** A stale
 binary is executable, so the rebuild arm never fires. This already produced a
