@@ -49,7 +49,6 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
-            __m.insert("FreeMonoid".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -227,7 +226,7 @@ pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
 pub fn free_monoid_prefix_query_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical FreeMonoid/List prefix query (DESIGN §2/§3): is_prefix_of is the single Empty|Cons walker for prefix tests. Domain surfaces consume this — they do not re-walk storage shape. Parameterized over List (= FreeMonoid) so stage0 emit attaches Clone on the element type param via container_type_arity.".to_string()
+            "Canonical FreeMonoid/List prefix query (DESIGN §2/§3): is_prefix_of is the single prefix walker over List (= FreeMonoid). Domain surfaces consume this — they do not re-walk Empty|Cons. Parameterized as List so stage0 Clone bounds fire via container_type_arity; FreeMonoid itself stays out of that map (enrolling it treated String=FreeMonoid<Char> as a container and broke Edge/String inference).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -239,23 +238,32 @@ pub fn is_prefix_of<T: Clone>(
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = prefix.clone();
-        if __fm.is_empty() {
-            true
-        } else {
-            let h_prefix = (*__fm)[0].clone();
-            let t_prefix: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-            {
-                let __fm = xs.clone();
-                if __fm.is_empty() {
-                    false
-                } else {
-                    let h_xs = (*__fm)[0].clone();
-                    let t_xs: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+        match prefix.clone().first().cloned() {
+            None => true,
+            Some(h_prefix) => match xs.clone().first().cloned() {
+                None => false,
+                Some(h_xs) => {
                     (eq(h_prefix.clone(), h_xs.clone())
-                        && is_prefix_of(t_prefix.clone(), t_xs.clone(), eq.clone()))
+                        && is_prefix_of(
+                            Rc::new(
+                                prefix
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                xs.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            eq.clone(),
+                        ))
                 }
-            }
+            },
         }
     })
 }

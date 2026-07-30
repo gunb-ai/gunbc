@@ -13,13 +13,16 @@ import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
   OccurrenceTransport,
-  OccurrenceCategoryBindingVerdict,
+  OccurrenceTransportRefusal,
+  OccurrenceTransportValidated,
+  OccurrenceTransportRefused,
+  ValidatedOccurrenceTransport,
   OccurrenceIndexEntry,
   DeclarationOccurrence,
   ReferenceOccurrence,
-  occurrence_containment_paths_equal,
   occurrence_containment_path_is_prefix_of,
   occurrence_category_binding_verdict,
+  occurrence_transport_validate,
 }
 
 data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through occurrence_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
@@ -27,6 +30,8 @@ data occurrence_binding_resolve_authority_note: String = "THE one name-decision 
 data occurrence_binding_resolve_module_path_scaffold_note: String = "STAGED ADOPTION: module-path keyed candidate producers (global_bare chain, func parent closure) bridge owner module paths into BindingCandidate<String> containment paths until every production reference site threads exact OccurrenceContainmentPath identity from OccurrenceTransport. Cardinality still folds only through occurrence_binding_decide."
 
 data occurrence_binding_resolve_module_path_scaffold_dissolve_on: String = "DISSOLVE-ON: type, value, and callee production consumers enumerate BindingCandidate<OccurrenceId> from OccurrenceTransport by execution; then delete module-path scaffold producers and both scaffold rows."
+
+data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult (review 45043): malformed transports refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport.entries_by_id is the indexed lookup authority — resolvers never rescan OccurrenceIndex.entries per declaration."
 
 fn occurrence_binding_decide<N>(
   occurrence: BindingOccurrence<N>,
@@ -68,14 +73,10 @@ fn binding_candidate_from_declaration(
 }
 
 fn occurrence_index_entry_for_declaration(
-  transport: OccurrenceTransport,
+  validated: ValidatedOccurrenceTransport,
   declaration: DeclarationOccurrence
 ) -> OccurrenceIndexEntry? {
-  transport.index.entries
-    |> filter(entry =>
-      entry.projection.occurrence.value == declaration.occurrence.value
-    )
-    |> first
+  map_get(validated.entries_by_id, declaration.occurrence.value)
 }
 
 fn declaration_exposed_on_reference_chain(
@@ -89,13 +90,13 @@ fn declaration_exposed_on_reference_chain(
 }
 
 fn declaration_matches_reference_segment(
-  transport: OccurrenceTransport,
+  validated: ValidatedOccurrenceTransport,
   declaration: DeclarationOccurrence,
   reference: ReferenceOccurrence,
   segment: String
 ) -> Bool {
   match occurrence_index_entry_for_declaration(
-    transport: transport,
+    validated: validated,
     declaration: declaration,
   ) {
     Present { value: entry } =>
@@ -116,14 +117,14 @@ fn declaration_matches_reference_segment(
 }
 
 fn binding_candidates_for_reference(
-  transport: OccurrenceTransport,
+  validated: ValidatedOccurrenceTransport,
   reference: ReferenceOccurrence,
   segment: String
 ) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
-  transport.declarations
+  validated.declarations
     |> filter(declaration =>
       declaration_matches_reference_segment(
-        transport: transport,
+        validated: validated,
         declaration: declaration,
         reference: reference,
         segment: segment,
@@ -134,19 +135,46 @@ fn binding_candidates_for_reference(
     )
 }
 
-fn resolve_reference_occurrence_binding(
-  transport: OccurrenceTransport,
+type OccurrenceReferenceBindingOutcome
+  = OccurrenceReferenceBindingDecided {
+      result: OccurrenceBindingResult<OccurrenceId>,
+    }
+  | OccurrenceReferenceBindingTransportRefused {
+      refusal: OccurrenceTransportRefusal,
+    }
+
+fn resolve_reference_occurrence_binding_validated(
+  validated: ValidatedOccurrenceTransport,
   reference: ReferenceOccurrence,
   segment: String
 ) -> OccurrenceBindingResult<OccurrenceId> {
   occurrence_binding_decide(
     occurrence: binding_occurrence_from_reference(reference: reference),
     candidates: binding_candidates_for_reference(
-      transport: transport,
+      validated: validated,
       reference: reference,
       segment: segment,
     ),
   )
+}
+
+fn resolve_reference_occurrence_binding(
+  transport: OccurrenceTransport,
+  reference: ReferenceOccurrence,
+  segment: String
+) -> OccurrenceReferenceBindingOutcome {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } =>
+      OccurrenceReferenceBindingTransportRefused { refusal: refusal }
+    OccurrenceTransportValidated { transport: validated } =>
+      OccurrenceReferenceBindingDecided {
+        result: resolve_reference_occurrence_binding_validated(
+          validated: validated,
+          reference: reference,
+          segment: segment,
+        ),
+      }
+  }
 }
 
 fn module_path_binding_occurrence(module_path: String) -> BindingOccurrence<String> {

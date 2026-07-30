@@ -546,21 +546,33 @@ fn reference_occurrence_refusal(
   }
 }
 
-fn occurrence_transport_refusal(
+type ValidatedOccurrenceTransport {
+  entries_by_id: Map<Int, OccurrenceIndexEntry>
+  declarations: List<DeclarationOccurrence>
+  references: List<ReferenceOccurrence>
+}
+
+type OccurrenceTransportValidation
+  = OccurrenceTransportValidated { transport: ValidatedOccurrenceTransport }
+  | OccurrenceTransportRefused { refusal: OccurrenceTransportRefusal }
+
+data occurrence_transport_validation_authority_note: String = "Canonical transport validity boundary (review 45043): occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id is the indexed authority. Resolvers consume the validated carrier — never rescan OccurrenceIndex.entries per authored occurrence. occurrence_transport_refusal is the Option projection of the same validation."
+
+fn occurrence_transport_validate(
   transport: OccurrenceTransport
-) -> OccurrenceTransportRefusal? {
+) -> OccurrenceTransportValidation {
   let index_build = occurrence_transport_index_build(
     index: transport.index
   )
   match index_build.refusal {
-    Present { value: refusal } => Present { value: refusal }
+    Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
     Absent =>
       let role_index_build = occurrence_transport_role_index_build(
         declarations: transport.declarations,
         references: transport.references
       )
       match role_index_build.refusal {
-        Present { value: refusal } => Present { value: refusal }
+        Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
         Absent =>
           let declaration_refusal = fold(
             transport.declarations,
@@ -576,9 +588,9 @@ fn occurrence_transport_refusal(
               }
           )
           match declaration_refusal {
-            Present { value: refusal } => Present { value: refusal }
+            Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
             Absent =>
-              fold(
+              let reference_refusal = fold(
                 transport.references,
                 init: none,
                 f: (refusal, reference) =>
@@ -591,7 +603,26 @@ fn occurrence_transport_refusal(
                     )
                   }
               )
+              match reference_refusal {
+                Present { value: refusal } => OccurrenceTransportRefused { refusal: refusal }
+                Absent => OccurrenceTransportValidated {
+                  transport: ValidatedOccurrenceTransport {
+                    entries_by_id: index_build.entries_by_id,
+                    declarations: transport.declarations,
+                    references: transport.references,
+                  },
+                }
+              }
           }
       }
+  }
+}
+
+fn occurrence_transport_refusal(
+  transport: OccurrenceTransport
+) -> OccurrenceTransportRefusal? {
+  match occurrence_transport_validate(transport: transport) {
+    OccurrenceTransportRefused { refusal: refusal } => Present { value: refusal }
+    OccurrenceTransportValidated { transport: _ } => none
   }
 }

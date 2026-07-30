@@ -13,6 +13,7 @@ import std.occurrence_identity {
   ReferenceOccurrence,
   LexicalValueOccurrence,
   TypeOccurrence,
+  DuplicateAuthoredOccurrenceIdentity,
 }
 import std.occurrence_binding {
   OccurrenceBound,
@@ -26,6 +27,8 @@ import std.occurrence_binding_resolve {
   binding_candidate_from_declaration,
   resolve_reference_occurrence_binding,
   module_path_binding_decide,
+  OccurrenceReferenceBindingDecided,
+  OccurrenceReferenceBindingTransportRefused,
 }
 
 fn obr_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
@@ -211,7 +214,9 @@ test fn occurrence_binding_resolve_unique_reference_is_bound_holds() -> Bool {
         reference: ref,
         segment: "y",
       ) {
-        OccurrenceBound { binding: _ } => true
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceBound { binding: _ },
+        } => true
         _ => false
       }
     Absent => false
@@ -228,7 +233,9 @@ test fn occurrence_binding_resolve_unbound_reference_refuses_holds() -> Bool {
         reference: ref,
         segment: "missing",
       ) {
-        OccurrenceUnbound { occurrence: _ } => true
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceUnbound { occurrence: _ },
+        } => true
         _ => false
       }
     Absent => false
@@ -245,12 +252,14 @@ test fn occurrence_binding_resolve_ambiguous_reference_refuses_holds() -> Bool {
         reference: ref,
         segment: "y",
       ) {
-        OccurrenceAmbiguous {
-          occurrence: _,
-          candidates: AmbiguousBindingCandidates {
-            first: _,
-            second: _,
-            rest: Empty,
+        OccurrenceReferenceBindingDecided {
+          result: OccurrenceAmbiguous {
+            occurrence: _,
+            candidates: AmbiguousBindingCandidates {
+              first: _,
+              second: _,
+              rest: Empty,
+            },
           },
         } => true
         _ => false
@@ -345,7 +354,79 @@ test fn occurrence_binding_resolve_decide_is_the_single_fold_authority_holds() -
         candidates: transport.declarations
           |> map(binding_candidate_from_declaration),
       )
-      direct == manual
+      match direct {
+        OccurrenceReferenceBindingDecided { result: decided } => decided == manual
+        OccurrenceReferenceBindingTransportRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn obr_duplicate_index_transport() -> OccurrenceTransport {
+  let span = obr_fixture_span(file: "duplicate.dag", start: 7, end: 8)
+  let decl_id = OccurrenceId { value: 50 }
+  let ref_id = OccurrenceId { value: 51 }
+  let decl_path = obr_fixture_path(ancestors: Empty, terminal: decl_id)
+  let ref_path = obr_fixture_path(
+    ancestors: Cons { head: decl_id, tail: Empty },
+    terminal: ref_id,
+  )
+  let entry = obr_fixture_index_entry(
+    occurrence: decl_id,
+    authored_name: "y",
+    span: span,
+    containment: decl_path,
+  )
+  OccurrenceTransport {
+    index: OccurrenceIndex {
+      entries: [
+        entry,
+        entry,
+        obr_fixture_index_entry(
+          occurrence: ref_id,
+          authored_name: "y",
+          span: span,
+          containment: ref_path,
+        ),
+      ],
+    },
+    declarations: [
+      DeclarationOccurrence {
+        occurrence: decl_id,
+        containment: decl_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: span,
+      },
+    ],
+    references: [
+      ReferenceOccurrence {
+        occurrence: ref_id,
+        containment: ref_path,
+        category: LexicalValueOccurrence,
+        diagnostic_span: span,
+      },
+    ],
+  }
+}
+
+test fn occurrence_binding_resolve_malformed_transport_refuses_holds() -> Bool {
+  let transport = obr_duplicate_index_transport()
+  let reference = transport.references |> first
+  match reference {
+    Present { value: ref } =>
+      match resolve_reference_occurrence_binding(
+        transport: transport,
+        reference: ref,
+        segment: "y",
+      ) {
+        OccurrenceReferenceBindingTransportRefused {
+          refusal: DuplicateAuthoredOccurrenceIdentity {
+            occurrence: _,
+            diagnostic_span: _,
+          },
+        } => true
+        OccurrenceReferenceBindingDecided { result: _ } => false
+      }
     Absent => false
   }
 }
