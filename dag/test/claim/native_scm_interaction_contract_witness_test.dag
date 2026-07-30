@@ -4,13 +4,27 @@ import std.types { Bool, String }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
-  NativeScmScenario,
   NativeScmReceipt,
+  NativeScmContinuation,
+  NativeScmContinuationOption,
+  NativeScmContinuationOptions,
+  NativeScmFirstContinuationOption,
+  NativeScmSecondContinuationOption,
+  NativeScmContinuationChoiceMatched,
+  NativeScmContinuationChoiceNotOffered,
   NativeScmProjectionRepaired,
   NativeScmProjectionRepairBlockedByInternalWork,
   NativeScmOperationalReady,
   NativeScmInternalWorkPending,
   NativeScmLifecyclePending,
+  native_scm_primary_label,
+  native_scm_choice_previews,
+  native_scm_resolve_choice,
+  native_scm_record_repaired_projection,
+  native_scm_inspect_receipt,
+}
+import test.claim.native_scm_interaction_scenario_fixture {
+  NativeScmScenario,
   TwoIndependentChangesLand,
   StaleTargetAutoResync,
   DuplicateSubmissionAppliesOnce,
@@ -23,10 +37,6 @@ import gunbc.native_scm_interaction_contract {
   ConventionalScmImportWithoutManualRewrite,
   VisibilityAuthorizedDetails,
   native_scm_receipt_for,
-  native_scm_primary_label,
-  native_scm_resolve_choice,
-  native_scm_record_repaired_projection,
-  native_scm_inspect_receipt,
   native_scm_submission_ledger,
   native_scm_apply_once,
   native_scm_applied_count,
@@ -149,31 +159,125 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
   let r = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
-      ChoiceRequired { question, previews, continuation } =>
+      ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "rename")
-          && count(previews) == 2
-          && continuation.resume_choice == "follow the rename"
-          && match native_scm_resolve_choice(receipt: r, choice: "follow the rename") {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "follow the rename")
-            _ => false
+          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && continuation.options.first_option.label == "follow the rename"
+          && continuation.options.second_option.label == "keep a separate name"
+          && match native_scm_resolve_choice(
+            continuation: continuation,
+            choice: NativeScmFirstContinuationOption,
+          ) {
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmFirstContinuationOption
+                && selected.option.resume_token == "resume-follow-the-rename"
+                && string_contains(
+                  s: selected.option.result_preview,
+                  pattern: "follow the rename",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+          }
+          && match native_scm_resolve_choice(
+            continuation: continuation,
+            choice: NativeScmSecondContinuationOption,
+          ) {
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmSecondContinuationOption
+                && selected.option.resume_token == "resume-keep-separate-name"
+                && string_contains(
+                  s: selected.option.result_preview,
+                  pattern: "keep a separate name",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }
+}
+
+test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
+  let receipt = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
+  let duplicate = match receipt.primary {
+    ChoiceRequired { question, continuation } =>
+      NativeScmReceipt {
+        identity: receipt.identity,
+        transition: receipt.transition,
+        review: receipt.review,
+        access: receipt.access,
+        check: receipt.check,
+        operational: receipt.operational,
+        projections: receipt.projections,
+        primary: ChoiceRequired {
+          question: question,
+          continuation: NativeScmContinuation {
+            proposal: continuation.proposal,
+            options: NativeScmContinuationOptions {
+              first_option: continuation.options.first_option,
+              second_option: NativeScmContinuationOption {
+                label: continuation.options.first_option.label,
+                result_preview: "a different result hidden behind the same choice",
+                resume_token: "resume-duplicate-choice",
+              },
+              additional_options: [],
+            },
+          },
+        },
+        receipt_details: receipt.receipt_details,
+      }
+    _ => receipt
+  }
+  match duplicate.primary {
+    ChoiceRequired { question: _, continuation } =>
+      match native_scm_resolve_choice(
+        continuation: continuation,
+        choice: NativeScmSecondContinuationOption,
+      ) {
+        NativeScmContinuationChoiceMatched { selected } =>
+          selected.identity.choice == NativeScmSecondContinuationOption
+            && selected.option.resume_token == "resume-duplicate-choice"
+            && string_contains(
+              s: selected.option.result_preview,
+              pattern: "different result",
+            )
+        NativeScmContinuationChoiceNotOffered { choice: _ } => false
+      }
+    _ => false
+  }
 }
 
 test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
   let r = receipt_for(scenario: IncompatibleGoalsNeedAuthorizedDecider)
   primary_label(receipt: r) == "ChoiceRequired"
     && match r.primary {
-      ChoiceRequired { question, previews, continuation } =>
+      ChoiceRequired { question, continuation } =>
         string_contains(s: question, pattern: "authorized decider")
-          && count(previews) == 2
-          && continuation.resume_choice == "retain goal A"
-          && match native_scm_resolve_choice(receipt: r, choice: "retain goal A") {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "retain goal A")
-            _ => false
+          && count(native_scm_choice_previews(continuation: continuation)) == 2
+          && continuation.options.first_option.label == "retain goal A"
+          && continuation.options.second_option.label == "retain goal B"
+          && match native_scm_resolve_choice(
+            continuation: continuation,
+            choice: NativeScmFirstContinuationOption,
+          ) {
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmFirstContinuationOption
+                && selected.option.resume_token == "resume-retain-goal-a"
+                && string_contains(
+                  s: selected.option.result_preview,
+                  pattern: "retain goal A",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
+          }
+          && match native_scm_resolve_choice(
+            continuation: continuation,
+            choice: NativeScmSecondContinuationOption,
+          ) {
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmSecondContinuationOption
+                && selected.option.resume_token == "resume-retain-goal-b"
+                && string_contains(
+                  s: selected.option.result_preview,
+                  pattern: "retain goal B",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }

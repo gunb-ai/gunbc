@@ -1,0 +1,899 @@
+module std.state_durability
+
+import extdeps.crypto.hash { Digest }
+import std.disposition { Disposition, Terminal }
+import std.measure { PositiveMillisecond, positive_millisecond_count }
+import std.types {
+  Bool,
+  EpochMs,
+  Int,
+  List,
+  NonEmptyStr,
+  String,
+  list_length,
+}
+
+data state_durability_boundary_contract: Disposition = Terminal {
+  reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
+}
+
+data state_durability_separation_note: String = "State durability is neither extdeps.storage.types.PersistenceKind nor std.materialization_ladder. PersistenceKind describes a storage device/medium; the materialization ladder decides where redundant computation is retained. This module asks a different reconciliation question: across WHICH lifecycle boundary must desired world state remain effective, can the selected realizer provide that lifetime with a commit barrier, and has that exact target + desired state + realization + capability generation been qualified by a perturbation and independent readback? Keeping the facts separate prevents a writable filesystem, an extant file, current runtime effectiveness, or a stale receipt from being misclassified as durable convergence."
+
+type LifecycleRestartMode
+  = LifecycleGracefulRestart
+  | LifecycleForcedRestart
+
+type PowerLossScope
+  = ControlPlanePowerLoss
+  | HostPowerLoss
+  | SitePowerLoss
+
+type SoftwareReplacementScope
+  = ControlPlaneFirmwareReplacement
+  | HostOsReplacement
+  | ApplicationReplacement
+
+type StateDurabilityBoundary
+  = ServiceRestartBoundary
+  | ControlPlaneRestartBoundary { mode: LifecycleRestartMode }
+  | HostRestartBoundary { mode: LifecycleRestartMode }
+  | PowerLossBoundary { scope: PowerLossScope }
+  | SoftwareReplacementBoundary { scope: SoftwareReplacementScope }
+  | FactoryResetBoundary
+
+type StateDurabilityIntent
+  = DurabilityUnspecified
+  | RuntimeLifetimeOnly
+  | DurableAcross { boundaries: StateDurabilityBoundaryRequirements }
+
+type StateDurabilityBoundaryRequirements {
+  first: StateDurabilityBoundary
+  additional_unique: List<StateDurabilityBoundary>
+}
+
+data state_durability_boundary_uniqueness_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. Nonemptiness is already unwritable through first + additional_unique. Uniqueness is decidable but remains a typed, reachable, counted refusal because .dag record literals are public and refinements are not construction-enforced; Set is the non-enumerable PointwisePower while durability qualification must enumerate every boundary. This is a corpus-wide language gap also visible in bare proof wrappers such as ValidatedGrammarRoot and ValidatedBmcFanCurve, not a license for a Map-as-set or bitset nickname."
+
+type StateDurabilityBoundaryRequirementBuild {
+  ordered: List<StateDurabilityBoundary>
+}
+
+fn state_durability_boundary_requirements(
+  first: StateDurabilityBoundary,
+  additional: List<StateDurabilityBoundary>,
+) -> StateDurabilityBoundaryRequirements {
+  let built = fold(
+    additional,
+    init: StateDurabilityBoundaryRequirementBuild {
+      ordered: [first],
+    },
+    f: (acc, boundary) =>
+      if any(acc.ordered, existing => existing == boundary) {
+        acc
+      } else {
+        StateDurabilityBoundaryRequirementBuild {
+          ordered: append(acc.ordered, items: [boundary]),
+        }
+      },
+  )
+  StateDurabilityBoundaryRequirements {
+    first: first,
+    additional_unique: built.ordered.skip(n: 1),
+  }
+}
+
+fn state_durability_boundary_requirement_list(
+  requirements: StateDurabilityBoundaryRequirements,
+) -> List<StateDurabilityBoundary> {
+  append([requirements.first], items: requirements.additional_unique)
+}
+
+type DurabilityCommitBarrier
+  = NoDurabilityCommitBarrier
+  | SynchronizedCommit
+
+type StateRealizationIdentity {
+  realization_id: NonEmptyStr
+  definition_linkages: StateRealizationDefinitionLinkages
+}
+
+type StateDefinitionLinkage
+  = CallerAssertedDefinitionLinkage {
+      reason: NonEmptyStr,
+      dissolve_on: NonEmptyStr,
+    }
+
+type StateDefinitionRole
+  = RealizationProjectionDefinition
+  | RealizationVerifierDefinition
+  | RealizationObserverDefinition
+  | RealizationTransportDefinition
+  | RealizationActuatorDefinition
+  | DurabilityCapabilityDefinition
+
+type StateDefinitionCallerAssertion {
+  role: StateDefinitionRole
+  reason: NonEmptyStr
+  dissolve_on: NonEmptyStr
+}
+
+type StateRealizationDefinitionLinkages {
+  projection: StateDefinitionLinkage
+  verifier: StateDefinitionLinkage
+  observer: StateDefinitionLinkage
+  transport: StateDefinitionLinkage
+  actuator: StateDefinitionLinkage
+}
+
+data state_definition_linkage_frontier_note: String = "🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex containment tree. Until then, every realization and capability definition is CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is forbidden because callers could forge it from a label and recreate the lie this frontier removes."
+
+fn state_definition_caller_assertion(
+  role: StateDefinitionRole,
+  linkage: StateDefinitionLinkage,
+) -> StateDefinitionCallerAssertion {
+  match linkage {
+    CallerAssertedDefinitionLinkage {
+      reason: reason,
+      dissolve_on: dissolve_on,
+    } =>
+      StateDefinitionCallerAssertion {
+        role: role,
+        reason: reason,
+        dissolve_on: dissolve_on,
+      }
+  }
+}
+
+fn state_realization_definition_assertions(
+  realization: StateRealizationIdentity,
+) -> List<StateDefinitionCallerAssertion> {
+  [
+    state_definition_caller_assertion(
+      role: RealizationProjectionDefinition,
+      linkage: realization.definition_linkages.projection,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationVerifierDefinition,
+      linkage: realization.definition_linkages.verifier,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationObserverDefinition,
+      linkage: realization.definition_linkages.observer,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationTransportDefinition,
+      linkage: realization.definition_linkages.transport,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationActuatorDefinition,
+      linkage: realization.definition_linkages.actuator,
+    ),
+  ]
+}
+
+fn state_durability_definition_assertions<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> List<StateDefinitionCallerAssertion> {
+  append(
+    state_realization_definition_assertions(
+      realization: admission.realization,
+    ),
+    items: [
+      state_definition_caller_assertion(
+        role: DurabilityCapabilityDefinition,
+        linkage: admission.capability_version.definition_linkage,
+      ),
+    ],
+  )
+}
+
+type StateDurabilityCapabilityVersion {
+  version: NonEmptyStr
+  definition_linkage: StateDefinitionLinkage
+}
+
+type StatePerturbationGeneration =
+  Int where range(min: 1), brand("StatePerturbationGeneration")
+
+type StateDurabilityInstant = EpochMs
+
+type StateDurabilityAdmission<Target, ReadbackSubject> {
+  target: Target
+  desired_state_digest: Digest
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  perturbation_generation: StatePerturbationGeneration
+  readback_subject: ReadbackSubject
+}
+
+type StateDurabilityCapability {
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  supported_boundaries: List<StateDurabilityBoundary>
+  commit_barrier: DurabilityCommitBarrier
+}
+
+type StatePerturbationReceipt<Target> {
+  receipt_id: NonEmptyStr
+  target: Target
+  boundary: StateDurabilityBoundary
+  generation: StatePerturbationGeneration
+  started_after_before_readback: PositiveMillisecond
+  duration: PositiveMillisecond
+}
+
+type StateBeforeReadbackReceipt<Target, ReadbackSubject> {
+  perturbation_receipt_id: NonEmptyStr
+  target: Target
+  subject: ReadbackSubject
+  state_digest: Digest
+  observed_at: StateDurabilityInstant
+}
+
+type StateAfterReadbackReceipt<Target, ReadbackSubject> {
+  perturbation_receipt_id: NonEmptyStr
+  target: Target
+  subject: ReadbackSubject
+  state_digest: Digest
+  observed_after_perturbation_completion: PositiveMillisecond
+}
+
+fn state_durability_perturbation_started_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = before.observed_at + positive_millisecond_count(
+    m: perturbation.started_after_before_readback,
+  )
+  instant
+}
+
+fn state_durability_perturbation_completed_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_started_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: perturbation.duration,
+  )
+  instant
+}
+
+fn state_durability_after_readback_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+  after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_completed_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: after.observed_after_perturbation_completion,
+  )
+  instant
+}
+
+type StateActivationReceipt<Target, ReadbackSubject> {
+  perturbation_receipt_id: NonEmptyStr
+  target: Target
+  subject: ReadbackSubject
+  desired_state_digest: Digest
+  realization: StateRealizationIdentity
+  capability_version: StateDurabilityCapabilityVersion
+  perturbation_generation: StatePerturbationGeneration
+}
+
+type StateActivationEvidence<Target, ReadbackSubject>
+  = ActivationVerified {
+      receipt: StateActivationReceipt<Target, ReadbackSubject>,
+    }
+  | ActivationUnverified { reason: String }
+
+type StatePreservationOutcome<Target, ReadbackSubject>
+  = StatePreserved {
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      activation: StateActivationEvidence<Target, ReadbackSubject>,
+    }
+  | StateLost {
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      reason: String,
+    }
+  | StatePreservationObservationRefused { reason: String }
+
+type StateDurabilityEvidence<Target, ReadbackSubject> {
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>
+  perturbation: StatePerturbationReceipt<Target>
+  outcome: StatePreservationOutcome<Target, ReadbackSubject>
+}
+
+type StateReadbackPosition
+  = BeforeBoundaryReadback
+  | AfterBoundaryReadback
+
+type StateDurabilityRefusal<Target, ReadbackSubject>
+  = DurabilityIntentUnspecified
+  | DurabilityRequirementDuplicate {
+      boundary: StateDurabilityBoundary,
+      count: Int,
+    }
+  | DurabilityCapabilityMissing
+  | DurabilityDefinitionLinkageUnavailable {
+      realization: StateRealizationIdentity,
+      capability: StateDurabilityCapabilityVersion,
+      assertions: List<StateDefinitionCallerAssertion>,
+      count: Int,
+    }
+  | DurabilityCapabilityAdmissionMismatch {
+      expected_realization: StateRealizationIdentity,
+      observed_realization: StateRealizationIdentity,
+      expected_capability_version: StateDurabilityCapabilityVersion,
+      observed_capability_version: StateDurabilityCapabilityVersion,
+    }
+  | DurabilityCommitBarrierMissing {
+      realization: StateRealizationIdentity,
+    }
+  | DurabilityBoundaryUnsupported {
+      realization: StateRealizationIdentity,
+      boundary: StateDurabilityBoundary,
+    }
+  | DurabilityEvidenceMissing {
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      boundary: StateDurabilityBoundary,
+    }
+  | DurabilityEvidenceAmbiguous {
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      boundary: StateDurabilityBoundary,
+      count: Int,
+    }
+  | DurabilityPerturbationTargetMismatch {
+      expected: Target,
+      observed: Target,
+    }
+  | DurabilityPerturbationBoundaryMismatch {
+      expected: StateDurabilityBoundary,
+      observed: StateDurabilityBoundary,
+    }
+  | DurabilityPerturbationGenerationMismatch {
+      expected: StatePerturbationGeneration,
+      observed: StatePerturbationGeneration,
+    }
+  | DurabilityReadbackReceiptLinkMismatch {
+      position: StateReadbackPosition,
+      expected_receipt_id: NonEmptyStr,
+      observed_receipt_id: NonEmptyStr,
+    }
+  | DurabilityReadbackTargetMismatch {
+      position: StateReadbackPosition,
+      expected: Target,
+      observed: Target,
+    }
+  | DurabilityReadbackSubjectMismatch {
+      position: StateReadbackPosition,
+      expected: ReadbackSubject,
+      observed: ReadbackSubject,
+    }
+  | DurabilityDesiredStateMismatch {
+      desired: Digest,
+      before: Digest,
+      after: Digest,
+    }
+  | DurabilityActivationReceiptLinkMismatch {
+      expected_receipt_id: NonEmptyStr,
+      observed_receipt_id: NonEmptyStr,
+    }
+  | DurabilityActivationScopeMismatch {
+      expected: StateDurabilityAdmission<Target, ReadbackSubject>,
+      observed: StateActivationReceipt<Target, ReadbackSubject>,
+    }
+  | DurabilityActivationUnverified { reason: String }
+  | DurabilityStateLost {
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+      reason: String,
+    }
+  | DurabilityObservationRefused { reason: String }
+
+type StateDurabilityQualification<Target, ReadbackSubject>
+  = RuntimeLifetimeQualification {
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+    }
+  | DurableLifetimeQualification {
+      admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+      capability: StateDurabilityCapability,
+      boundaries: StateDurabilityBoundaryRequirements,
+      evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+    }
+
+type StateDurabilityVerdict<Target, ReadbackSubject>
+  = StateDurabilityQualified {
+      qualification: StateDurabilityQualification<Target, ReadbackSubject>,
+    }
+  | StateDurabilityRefused {
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
+    }
+
+type StateDurabilityEvidenceCardinality<Target, ReadbackSubject>
+  = NoMatchingDurabilityEvidence
+  | OneMatchingDurabilityEvidence {
+      evidence: StateDurabilityEvidence<Target, ReadbackSubject>,
+    }
+  | MultipleMatchingDurabilityEvidence { count: Int }
+
+type StateDurabilityEvidenceVerdict<Target, ReadbackSubject>
+  = StateDurabilityEvidenceAccepted {
+      evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+    }
+  | StateDurabilityEvidenceRefused {
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
+    }
+
+type StateDurabilityBoundaryUniquenessFold {
+  seen: List<StateDurabilityBoundary>
+  duplicate: StateDurabilityBoundary?
+  duplicate_count: Int
+}
+
+fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
+  requirements: StateDurabilityBoundaryRequirements,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
+  let boundaries = state_durability_boundary_requirement_list(
+    requirements: requirements,
+  )
+  let folded = fold(
+    boundaries,
+    init: StateDurabilityBoundaryUniquenessFold {
+      seen: [],
+      duplicate: none,
+      duplicate_count: 0,
+    },
+    f: (acc, boundary) =>
+      match acc.duplicate {
+        Present { value: duplicate } =>
+          if boundary == duplicate {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: acc.seen,
+              duplicate: acc.duplicate,
+              duplicate_count: acc.duplicate_count + 1,
+            }
+          } else {
+            acc
+          }
+        Absent =>
+          if any(acc.seen, existing => existing == boundary) {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: acc.seen,
+              duplicate: Present { value: boundary },
+              duplicate_count: 2,
+            }
+          } else {
+            StateDurabilityBoundaryUniquenessFold {
+              seen: append(acc.seen, items: [boundary]),
+              duplicate: none,
+              duplicate_count: 0,
+            }
+          }
+      },
+  )
+  match folded.duplicate {
+    Present { value: boundary } =>
+      Present {
+        value: DurabilityRequirementDuplicate {
+          boundary: boundary,
+          count: folded.duplicate_count,
+        },
+      }
+    Absent => none
+  }
+}
+
+fn state_durability_admission_eq<Target, ReadbackSubject>(
+  a: StateDurabilityAdmission<Target, ReadbackSubject>,
+  b: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> Bool {
+  a.target == b.target
+    && a.desired_state_digest == b.desired_state_digest
+    && a.realization == b.realization
+    && a.capability_version == b.capability_version
+    && a.perturbation_generation == b.perturbation_generation
+    && a.readback_subject == b.readback_subject
+}
+
+fn state_durability_capability_matches_admission<Target, ReadbackSubject>(
+  capability: StateDurabilityCapability,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> Bool {
+  capability.realization == admission.realization
+    && capability.capability_version == admission.capability_version
+}
+
+fn state_durability_evidence_cardinality<Target, ReadbackSubject>(
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  boundary: StateDurabilityBoundary,
+) -> StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
+  fold(
+    evidence,
+    init: NoMatchingDurabilityEvidence,
+    f: (cardinality, candidate) =>
+      if state_durability_admission_eq(
+        a: candidate.admission,
+        b: admission,
+      ) && candidate.perturbation.boundary == boundary {
+        match cardinality {
+          NoMatchingDurabilityEvidence =>
+            OneMatchingDurabilityEvidence { evidence: candidate }
+          OneMatchingDurabilityEvidence { evidence: _ } =>
+            MultipleMatchingDurabilityEvidence { count: 2 }
+          MultipleMatchingDurabilityEvidence { count: count } =>
+            MultipleMatchingDurabilityEvidence { count: count + 1 }
+        }
+      } else {
+        cardinality
+      },
+  )
+}
+
+fn state_durability_admission_evidence_cardinality<Target, ReadbackSubject>(
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> StateDurabilityEvidenceCardinality<Target, ReadbackSubject> {
+  fold(
+    evidence,
+    init: NoMatchingDurabilityEvidence,
+    f: (cardinality, candidate) =>
+      if state_durability_admission_eq(
+        a: candidate.admission,
+        b: admission,
+      ) {
+        match cardinality {
+          NoMatchingDurabilityEvidence =>
+            OneMatchingDurabilityEvidence { evidence: candidate }
+          OneMatchingDurabilityEvidence { evidence: _ } =>
+            MultipleMatchingDurabilityEvidence { count: 2 }
+          MultipleMatchingDurabilityEvidence { count: count } =>
+            MultipleMatchingDurabilityEvidence { count: count + 1 }
+        }
+      } else {
+        cardinality
+      },
+  )
+}
+
+fn state_durability_evidence_refusal<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  boundary: StateDurabilityBoundary,
+  evidence: StateDurabilityEvidence<Target, ReadbackSubject>,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
+  if evidence.perturbation.target != admission.target {
+    Present {
+      value: DurabilityPerturbationTargetMismatch {
+        expected: admission.target,
+        observed: evidence.perturbation.target,
+      },
+    }
+  } else if evidence.perturbation.boundary != boundary {
+    Present {
+      value: DurabilityPerturbationBoundaryMismatch {
+        expected: boundary,
+        observed: evidence.perturbation.boundary,
+      },
+    }
+  } else if evidence.perturbation.generation != admission.perturbation_generation {
+    Present {
+      value: DurabilityPerturbationGenerationMismatch {
+        expected: admission.perturbation_generation,
+        observed: evidence.perturbation.generation,
+      },
+    }
+  } else {
+    match evidence.outcome {
+      StatePreservationObservationRefused { reason: reason } =>
+        Present {
+          value: DurabilityObservationRefused { reason: reason },
+        }
+      StateLost {
+        before: before,
+        after: after,
+        reason: reason,
+      } =>
+        Present {
+          value: DurabilityStateLost {
+            before: before,
+            after: after,
+            reason: reason,
+          },
+        }
+      StatePreserved {
+        before: before,
+        after: after,
+        activation: activation,
+      } =>
+        if before.perturbation_receipt_id != evidence.perturbation.receipt_id {
+          Present {
+            value: DurabilityReadbackReceiptLinkMismatch {
+              position: BeforeBoundaryReadback,
+              expected_receipt_id: evidence.perturbation.receipt_id,
+              observed_receipt_id: before.perturbation_receipt_id,
+            },
+          }
+        } else if after.perturbation_receipt_id != evidence.perturbation.receipt_id {
+          Present {
+            value: DurabilityReadbackReceiptLinkMismatch {
+              position: AfterBoundaryReadback,
+              expected_receipt_id: evidence.perturbation.receipt_id,
+              observed_receipt_id: after.perturbation_receipt_id,
+            },
+          }
+        } else if before.target != admission.target {
+          Present {
+            value: DurabilityReadbackTargetMismatch {
+              position: BeforeBoundaryReadback,
+              expected: admission.target,
+              observed: before.target,
+            },
+          }
+        } else if after.target != admission.target {
+          Present {
+            value: DurabilityReadbackTargetMismatch {
+              position: AfterBoundaryReadback,
+              expected: admission.target,
+              observed: after.target,
+            },
+          }
+        } else if before.subject != admission.readback_subject {
+          Present {
+            value: DurabilityReadbackSubjectMismatch {
+              position: BeforeBoundaryReadback,
+              expected: admission.readback_subject,
+              observed: before.subject,
+            },
+          }
+        } else if after.subject != admission.readback_subject {
+          Present {
+            value: DurabilityReadbackSubjectMismatch {
+              position: AfterBoundaryReadback,
+              expected: admission.readback_subject,
+              observed: after.subject,
+            },
+          }
+        } else if before.state_digest != admission.desired_state_digest
+          || after.state_digest != admission.desired_state_digest {
+          Present {
+            value: DurabilityDesiredStateMismatch {
+              desired: admission.desired_state_digest,
+              before: before.state_digest,
+              after: after.state_digest,
+            },
+          }
+        } else {
+          match activation {
+            ActivationUnverified { reason: reason } =>
+              Present {
+                value: DurabilityActivationUnverified { reason: reason },
+              }
+            ActivationVerified { receipt: receipt } =>
+              if receipt.perturbation_receipt_id != evidence.perturbation.receipt_id {
+                Present {
+                  value: DurabilityActivationReceiptLinkMismatch {
+                    expected_receipt_id: evidence.perturbation.receipt_id,
+                    observed_receipt_id: receipt.perturbation_receipt_id,
+                  },
+                }
+              } else if receipt.target != admission.target
+                || receipt.subject != admission.readback_subject
+                || receipt.desired_state_digest != admission.desired_state_digest
+                || receipt.realization != admission.realization
+                || receipt.capability_version != admission.capability_version
+                || receipt.perturbation_generation != admission.perturbation_generation {
+                Present {
+                  value: DurabilityActivationScopeMismatch {
+                    expected: admission,
+                    observed: receipt,
+                  },
+                }
+              } else {
+                none
+              }
+          }
+        }
+    }
+  }
+}
+
+fn state_durability_boundary_evidence_verdict<Target, ReadbackSubject>(
+  boundary: StateDurabilityBoundary,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
+  if !any(
+    capability.supported_boundaries,
+    supported => supported == boundary,
+  ) {
+    StateDurabilityEvidenceRefused {
+      cause: DurabilityBoundaryUnsupported {
+        realization: capability.realization,
+        boundary: boundary,
+      },
+    }
+  } else {
+    match state_durability_evidence_cardinality(
+      evidence: evidence,
+      admission: admission,
+      boundary: boundary,
+    ) {
+      NoMatchingDurabilityEvidence =>
+        match state_durability_admission_evidence_cardinality(
+          evidence: evidence,
+          admission: admission,
+        ) {
+          OneMatchingDurabilityEvidence { evidence: mismatched } =>
+            match state_durability_evidence_refusal(
+              admission: admission,
+              boundary: boundary,
+              evidence: mismatched,
+            ) {
+              Present { value: cause } =>
+                StateDurabilityEvidenceRefused { cause: cause }
+              Absent =>
+                StateDurabilityEvidenceRefused {
+                  cause: DurabilityEvidenceMissing {
+                    admission: admission,
+                    boundary: boundary,
+                  },
+                }
+            }
+          _ =>
+            StateDurabilityEvidenceRefused {
+              cause: DurabilityEvidenceMissing {
+                admission: admission,
+                boundary: boundary,
+              },
+            }
+        }
+      MultipleMatchingDurabilityEvidence { count: count } =>
+        StateDurabilityEvidenceRefused {
+          cause: DurabilityEvidenceAmbiguous {
+            admission: admission,
+            boundary: boundary,
+            count: count,
+          },
+        }
+      OneMatchingDurabilityEvidence { evidence: receipt } =>
+        match state_durability_evidence_refusal(
+          admission: admission,
+          boundary: boundary,
+          evidence: receipt,
+        ) {
+          Present { value: cause } =>
+            StateDurabilityEvidenceRefused { cause: cause }
+          Absent =>
+            StateDurabilityEvidenceAccepted {
+              evidence: [receipt],
+            }
+        }
+    }
+  }
+}
+
+type StateDurabilityEvidenceFold<Target, ReadbackSubject> {
+  refusal: StateDurabilityRefusal<Target, ReadbackSubject>?
+  accepted: List<StateDurabilityEvidence<Target, ReadbackSubject>>
+}
+
+fn state_durability_boundaries_evidence_verdict<Target, ReadbackSubject>(
+  required: StateDurabilityBoundaryRequirements,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
+  let required_list = state_durability_boundary_requirement_list(
+    requirements: required,
+  )
+  let folded = fold(
+    required_list,
+    init: StateDurabilityEvidenceFold {
+      refusal: none,
+      accepted: [],
+    },
+    f: (acc, boundary) =>
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          match state_durability_boundary_evidence_verdict(
+            boundary: boundary,
+            admission: admission,
+            capability: capability,
+            evidence: evidence,
+          ) {
+            StateDurabilityEvidenceRefused { cause: cause } =>
+              StateDurabilityEvidenceFold {
+                refusal: Present { value: cause },
+                accepted: acc.accepted,
+              }
+            StateDurabilityEvidenceAccepted { evidence: matched } =>
+              StateDurabilityEvidenceFold {
+                refusal: none,
+                accepted: append(acc.accepted, items: matched),
+              }
+          }
+      },
+  )
+  match folded.refusal {
+    Present { value: cause } =>
+      StateDurabilityEvidenceRefused { cause: cause }
+    Absent =>
+      StateDurabilityEvidenceAccepted {
+        evidence: folded.accepted,
+      }
+  }
+}
+
+fn state_durability_verdict<Target, ReadbackSubject>(
+  intent: StateDurabilityIntent,
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+  capability: StateDurabilityCapability?,
+  evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+) -> StateDurabilityVerdict<Target, ReadbackSubject> {
+  match intent {
+    DurabilityUnspecified =>
+      StateDurabilityRefused { cause: DurabilityIntentUnspecified }
+    RuntimeLifetimeOnly =>
+      StateDurabilityQualified {
+        qualification: RuntimeLifetimeQualification {
+          admission: admission,
+        },
+      }
+    DurableAcross { boundaries: boundaries } =>
+      match state_durability_boundary_requirements_refusal(
+        requirements: boundaries,
+      ) {
+        Present { value: cause } =>
+          StateDurabilityRefused { cause: cause }
+        Absent =>
+          match capability {
+            Absent =>
+              StateDurabilityRefused { cause: DurabilityCapabilityMissing }
+            Present { value: realizer } =>
+              if !state_durability_capability_matches_admission(
+                capability: realizer,
+                admission: admission,
+              ) {
+                StateDurabilityRefused {
+                  cause: DurabilityCapabilityAdmissionMismatch {
+                    expected_realization: admission.realization,
+                    observed_realization: realizer.realization,
+                    expected_capability_version: admission.capability_version,
+                    observed_capability_version: realizer.capability_version,
+                  },
+                }
+              } else {
+                match realizer.commit_barrier {
+                  NoDurabilityCommitBarrier =>
+                    StateDurabilityRefused {
+                      cause: DurabilityCommitBarrierMissing {
+                        realization: realizer.realization,
+                      },
+                    }
+                  SynchronizedCommit => {
+                    let assertions = state_durability_definition_assertions(
+                      admission: admission,
+                    )
+                    StateDurabilityRefused {
+                      cause: DurabilityDefinitionLinkageUnavailable {
+                        realization: admission.realization,
+                        capability: admission.capability_version,
+                        assertions: assertions,
+                        count: list_length(assertions),
+                      },
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
