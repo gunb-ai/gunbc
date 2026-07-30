@@ -790,9 +790,20 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     }
 }
 
+pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
+    (((((reason.clone() == "predicate deferred at compile time".to_string())
+        || (reason.clone() == "non-literal value at refined position".to_string()))
+        || (reason.clone() == "predicate argument is not an int literal".to_string()))
+        || (reason.clone() == "int predicate not implemented".to_string()))
+        || (reason.clone() == "string predicate not implemented".to_string()))
+}
+
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            !is_where_refinement_unenforced_advisory_reason(r.clone())
+        }
         _ => true,
     }
 }
@@ -804,14 +815,6 @@ pub fn where_refinement_deferral_reason_scaffold_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
-}
-
-pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
-    (((((reason.clone() == "predicate deferred at compile time".to_string())
-        || (reason.clone() == "non-literal value at refined position".to_string()))
-        || (reason.clone() == "predicate argument is not an int literal".to_string()))
-        || (reason.clone() == "int predicate not implemented".to_string()))
-        || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {

@@ -291,15 +291,6 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
   }
 }
 
-fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
-  match d {
-    UnlistedImportUse { name: _, span: _ } => false
-    _ => true
-  }
-}
-
-data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
-
 fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
   reason == "predicate deferred at compile time"
     || reason == "non-literal value at refined position"
@@ -307,6 +298,17 @@ fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
     || reason == "int predicate not implemented"
     || reason == "string predicate not implemented"
 }
+
+fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+  match d {
+    UnlistedImportUse { name: _, span: _ } => false
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
+      !is_where_refinement_unenforced_advisory_reason(reason: r)
+    _ => true
+  }
+}
+
+data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
 
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
