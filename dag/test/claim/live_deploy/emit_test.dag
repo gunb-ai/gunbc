@@ -194,10 +194,13 @@ test fn witness_tree_sync_restart_diagnoses_on_failure() -> Bool {
   string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; systemctl status --no-pager --full gunbc-tree-sync.service 2>&1 | tail -n 40 >&2; exit 1; }")
 }
 
+data owned_only_forbids_the_node_global_reset_note: String = "THIS CLAIM'S TAILSCALE CONJUNCT INVERTED, from requiring `sudo -n tailscale serve reset` to forbidding it (review 45207, which caught it contradicting the emitted artifact). The flip is not a weakening — it is this witness finally agreeing with its own name. `tailscale serve reset` is node-global: it clears every mapping on the host, including those of deployments this retract does not own. A claim called owned_only was requiring the one command in the script that is definitionally not owned-only.\\n\\nThe emission now refuses instead, so the honest assertion is the negative one plus the refusal marker's presence. Asserting the marker alone would pass against an emission that both refused AND reset; asserting the absence alone would pass against an emission that silently dropped the mapping. Both conjuncts are needed to pin refuse-and-do-not-widen.\\n\\nThe forbidden pattern is `sudo -n tailscale` rather than the full subcommand, so any privileged tailscale invocation reds here, not merely the one spelling that was there before."
+
 test fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
+    && !string_contains(s: sh, pattern: "sudo -n tailscale")
+    && string_contains(s: sh, pattern: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")
     && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "sudo -n rm -d /opt/gunbc/dispatch-worktrees")
@@ -238,7 +241,8 @@ test fn witness_retract_owned_process_removes_serve_service() -> Bool {
   let sh = expected_live_deploy_retract_script()
   string_contains(s: sh, pattern: "/opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
-    && string_contains(s: sh, pattern: "tailscale serve reset")
+    && !string_contains(s: sh, pattern: "tailscale serve reset")
+    && string_contains(s: sh, pattern: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")
     && string_contains(s: sh, pattern: "systemctl disable --now")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "roadmap-site-readback")

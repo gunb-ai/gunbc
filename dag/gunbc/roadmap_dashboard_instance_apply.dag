@@ -217,7 +217,7 @@ fn dashboard_run_target_argvs(
   )
 }
 
-data path_observation_preserves_refusal_note: String = "THE THREE-VALUED PROBE THE TWO-VALUED ONE COLLAPSED. `test -d` exiting non-zero means the path is absent; a transport that could not deliver the test at all means nothing is known. dashboard_target_path_present returned .success for both, so the second became the first.\\n\\nThe SSH arm distinguishes them already — TypedArgvExecRefused carries a reason — and the local arm distinguishes them through the same program-availability question belt_exec asks before running anything: a probe whose own binary is missing has not observed a negative, it has failed to observe. Both are recoverable here because dashboard_exec_refused marks a refusal with empty stdout and a populated stderr, which is the signal the collapse discarded.\\n\\nCallers that only want a Bool keep dashboard_target_path_present, which now answers false for BOTH absent and refused — that is still wrong to trust, which is why the refusal is simultaneously recorded on the observation's refusal channel where consumers must consult it first. The Bool remains for the arithmetic; the channel carries the truth about whether the arithmetic means anything."
+data path_observation_preserves_refusal_note: String = "THE THREE-VALUED PROBE THE TWO-VALUED ONE COLLAPSED. `test -d` exiting non-zero means the path is absent; a transport that could not deliver the test at all means nothing is known. dashboard_target_path_present returned .success for both, so the second became the first.\\n\\nThe SSH arm distinguishes them already — TypedArgvExecRefused carries a reason — and the local arm distinguishes them through the same program-availability question belt_exec asks before running anything: a probe whose own binary is missing has not observed a negative, it has failed to observe. Both are recoverable here because dashboard_exec_refused marks a refusal with empty stdout and a populated stderr, which is the signal the collapse discarded.\\n\\nTHIS OBSERVATION IS NOW THE ONLY WAY TO ASK. The first version of this fix left the collapsing predicate in place for callers that wanted a Bool, on the reasoning that the refusal was recorded on a channel those callers could consult — and review 45213 found the two that did not, in the preflight paths that produce operator instructions. A discipline nothing enforces is not a wall, and the leak reappeared one layer below the one it was introduced to close. See observation_present_bit_scope_note for what survived and why."
 
 type DashboardPathObservation
   = PathObservedPresent
@@ -270,7 +270,9 @@ fn dashboard_path_observation_refusal(obs: DashboardPathObservation) -> List<Str
   }
 }
 
-fn dashboard_path_observation_present(obs: DashboardPathObservation) -> Bool {
+data observation_present_bit_scope_note: String = "THE ONE PERMITTED COLLAPSE, named for what it is and scoped to the one place it is sound. This projection answers false for absent AND for refused, which is the exact loss review 45153 was raised about — so it exists only to fill the Bool fields of DashboardInstanceObservation, whose refusal channel is populated by the SAME fold that fills them and which consumers must read first.\\n\\nAN EARLIER VERSION OF THIS MODULE KEPT A SECOND, UNSCOPED COLLAPSE BESIDE IT (review 45213). dashboard_target_path_present probed and returned .success, never constructing an observation at all, and two preflight consumers read it bare: a refused transport made a required executable report as missing, and made a bootstrap parent report as not writable. Both then produced actionable remediation for a condition nobody observed — the same fabricated-verdict shape as 45153, one layer down, in the fix for 45153.\\n\\nThe note that shipped with that version said callers wanting a Bool could keep the collapsing predicate because the refusal was recorded on a channel elsewhere. That was documenting a leak rather than closing it: nothing made a caller consult the channel, and the two that mattered did not. The predicate is deleted, the preflight consumers take the observation and carry its refusal, and what remains is this projection with the word bit in its name, so a future use outside the record fold reads as the collapse it is."
+
+fn dashboard_observation_present_bit(obs: DashboardPathObservation) -> Bool {
   match obs {
     PathObservedPresent => true
     PathObservedAbsent => false
@@ -278,30 +280,22 @@ fn dashboard_path_observation_present(obs: DashboardPathObservation) -> Bool {
   }
 }
 
-fn dashboard_target_path_present(
-  instance: HostDashboardInstance,
-  flag: String,
-  path: FilePath,
-) -> Bool {
-  dashboard_target_probe(
-    instance: instance,
-    program: "/usr/bin/test" as FilePath,
-    args: [flag, path as String],
-  ).success
-}
-
 fn dashboard_target_directory_present(
   instance: HostDashboardInstance,
   path: FilePath,
 ) -> Bool {
-  dashboard_target_path_present(instance: instance, flag: "-d", path: path)
+  dashboard_observation_present_bit(
+    obs: dashboard_target_path_observe(instance: instance, flag: "-d", path: path),
+  )
 }
 
 fn dashboard_target_file_present(
   instance: HostDashboardInstance,
   path: FilePath,
 ) -> Bool {
-  dashboard_target_path_present(instance: instance, flag: "-f", path: path)
+  dashboard_observation_present_bit(
+    obs: dashboard_target_path_observe(instance: instance, flag: "-f", path: path),
+  )
 }
 
 fn dashboard_next_path(path: FilePath) -> FilePath {
@@ -541,7 +535,9 @@ fn dashboard_ensure_source_repo(
   anchor_ref: NonEmptyStr,
 ) -> DashboardExecResult {
   let git_dir = concat(repo as String, "/.git") as FilePath
-  if !dashboard_target_directory_present(instance: instance, path: git_dir) {
+  match dashboard_target_path_observe(instance: instance, flag: "-d", path: git_dir) {
+    PathObservationRefused { reason } => dashboard_exec_refused(detail: reason)
+    PathObservedAbsent =>
     dashboard_target_exec(
       instance: instance,
       program: "/usr/bin/git" as FilePath,
@@ -551,7 +547,7 @@ fn dashboard_ensure_source_repo(
         branch: dashboard_instance_checkout_branch(instance: instance),
       ),
     )
-  } else {
+    PathObservedPresent => {
     let status = dashboard_target_exec(
       instance: instance,
       program: "/usr/bin/git" as FilePath,
@@ -587,6 +583,7 @@ fn dashboard_ensure_source_repo(
       ])
     }
   }
+}
 }
 
 fn dashboard_ensure_service(
@@ -1145,11 +1142,11 @@ fn dashboard_instance_observe(
   )
   DashboardInstanceObserved {
     observation_refusals: concat(path_refusals, probe_refusals),
-    root_present: dashboard_path_observation_present(obs: obs_root),
-    ownership_marker_present: dashboard_path_observation_present(obs: obs_marker),
+    root_present: dashboard_observation_present_bit(obs: obs_root),
+    ownership_marker_present: dashboard_observation_present_bit(obs: obs_marker),
     bundle_present: bundle_present,
-    origin_present: dashboard_path_observation_present(obs: obs_origin),
-    source_present: dashboard_path_observation_present(obs: obs_source),
+    origin_present: dashboard_observation_present_bit(obs: obs_origin),
+    source_present: dashboard_observation_present_bit(obs: obs_source),
     source_revision_observed: source_revision.success,
     source_revision_current: source_revision.success
       && trim(source_revision.stdout) == desired_source_revision,
@@ -1158,8 +1155,8 @@ fn dashboard_instance_observe(
       "\n",
       source_revision.stderr,
     ], "")),
-    attempts_present: dashboard_path_observation_present(obs: obs_attempts),
-    attempt_state_present: dashboard_path_observation_present(obs: obs_attempt_state),
+    attempts_present: dashboard_observation_present_bit(obs: obs_attempts),
+    attempt_state_present: dashboard_observation_present_bit(obs: obs_attempt_state),
     provider_runtime_ready: provider_runtime.success
       && string_contains(
         s: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
@@ -1326,18 +1323,34 @@ fn dashboard_required_target_executables(
   )
 }
 
-fn dashboard_missing_target_executables(
+data executable_survey_note: String = "ABSENT AND UNOBSERVED ARE DIFFERENT ANSWERS ABOUT A REQUIRED EXECUTABLE, and this survey is the fold that stopped conflating them (review 45213). The predecessor filtered the required paths on a Bool that was false for both, so a refused transport reported every required executable as missing — a list of real paths, each of which may well exist, handed to an operator as the thing to go install.\\n\\nThe survey refuses on the FIRST unobservable path rather than continuing, because the refusal is a property of the transport and not of the path: once a probe could not be delivered, the remaining probes carry no information either, and a partial missing-list assembled from the ones that happened to answer is exactly the partial observation that looks complete. Carrying the path alongside the reason keeps the refusal located — which probe stopped the line — rather than reporting only that something went wrong."
+
+type DashboardExecutableSurvey
+  = ExecutablesSurveyed { missing: List<FilePath> }
+  | ExecutableSurveyRefused { path: FilePath, reason: String }
+
+fn dashboard_survey_target_executables(
   instance: HostDashboardInstance,
-) -> List<FilePath> {
-  filter(
+) -> DashboardExecutableSurvey {
+  fold(
     dashboard_required_target_executables(instance: instance),
-    path => !dashboard_target_path_present(
-      instance: instance,
-      flag: "-x",
-      path: path,
-    ),
+    ExecutablesSurveyed { missing: [] },
+    f: fn(acc, path) {
+      match acc {
+        ExecutableSurveyRefused { path: _, reason: _ } => acc
+        ExecutablesSurveyed { missing } =>
+          match dashboard_target_path_observe(instance: instance, flag: "-x", path: path) {
+            PathObservedPresent => acc
+            PathObservedAbsent => ExecutablesSurveyed { missing: append(missing, [path]) }
+            PathObservationRefused { reason } =>
+              ExecutableSurveyRefused { path: path, reason: reason }
+          }
+      }
+    },
   )
 }
+
+data bootstrap_unobserved_is_its_own_verdict_note: String = "THE THIRD VERDICT, because absent, unwritable and unobservable call for three different actions (review 45213). This decision took three Bools, and the writability one came from the collapsing predicate, so a refused transport arrived here as bootstrap_writable: false and the operator was told the nearest modeled bootstrap parent is not writable — a claim about permissions on a directory nobody managed to stat.\\n\\nBoth pre-existing arms are ACTIONABLE and that is what made the collapse harmful rather than merely imprecise: absent says create it, not-writable says fix its mode, and each sends someone to do something specific on evidence that was never gathered. The new arm deliberately carries no instruction at all, only the path whose observation failed and the reason it failed, because nothing about the bootstrap parent is known when the probe did not run.\\n\\nIt is a separate variant rather than a reason string on the existing refusal so that consumers must decide what to do with it — a match that forgot the case does not compile, which is the wall the Bool never was."
 
 type DashboardBootstrapPreflight
   = DashboardBootstrapReady { bootstrap_root: FilePath }
@@ -1345,30 +1358,59 @@ type DashboardBootstrapPreflight
       bootstrap_root: FilePath,
       reason: NonEmptyStr,
     }
+  | DashboardBootstrapUnobserved {
+      path: FilePath,
+      reason: String,
+    }
 
 fn dashboard_bootstrap_preflight_decision(
   instance: HostDashboardInstance,
-  root_present: Bool,
-  bootstrap_present: Bool,
-  bootstrap_writable: Bool,
+  root: DashboardPathObservation,
+  bootstrap_present: DashboardPathObservation,
+  bootstrap_writable: DashboardPathObservation,
 ) -> DashboardBootstrapPreflight {
-  let bootstrap_root = if root_present {
-    instance.instance_root
-  } else {
-    instance.provision_parent_root
+  match root {
+    PathObservationRefused { reason } =>
+      DashboardBootstrapUnobserved { path: instance.instance_root, reason: reason }
+    PathObservedPresent =>
+      dashboard_bootstrap_parent_decision(
+        bootstrap_root: instance.instance_root,
+        bootstrap_present: bootstrap_present,
+        bootstrap_writable: bootstrap_writable,
+      )
+    PathObservedAbsent =>
+      dashboard_bootstrap_parent_decision(
+        bootstrap_root: instance.provision_parent_root,
+        bootstrap_present: bootstrap_present,
+        bootstrap_writable: bootstrap_writable,
+      )
   }
-  if !bootstrap_present {
-    DashboardBootstrapRefused {
-      bootstrap_root: bootstrap_root,
-      reason: "nearest modeled bootstrap parent is absent" as NonEmptyStr,
-    }
-  } else if !bootstrap_writable {
-    DashboardBootstrapRefused {
-      bootstrap_root: bootstrap_root,
-      reason: "nearest modeled bootstrap parent is not writable" as NonEmptyStr,
-    }
-  } else {
-    DashboardBootstrapReady { bootstrap_root: bootstrap_root }
+}
+
+fn dashboard_bootstrap_parent_decision(
+  bootstrap_root: FilePath,
+  bootstrap_present: DashboardPathObservation,
+  bootstrap_writable: DashboardPathObservation,
+) -> DashboardBootstrapPreflight {
+  match bootstrap_present {
+    PathObservationRefused { reason } =>
+      DashboardBootstrapUnobserved { path: bootstrap_root, reason: reason }
+    PathObservedAbsent =>
+      DashboardBootstrapRefused {
+        bootstrap_root: bootstrap_root,
+        reason: "nearest modeled bootstrap parent is absent" as NonEmptyStr,
+      }
+    PathObservedPresent =>
+      match bootstrap_writable {
+        PathObservationRefused { reason } =>
+          DashboardBootstrapUnobserved { path: bootstrap_root, reason: reason }
+        PathObservedAbsent =>
+          DashboardBootstrapRefused {
+            bootstrap_root: bootstrap_root,
+            reason: "nearest modeled bootstrap parent is not writable" as NonEmptyStr,
+          }
+        PathObservedPresent => DashboardBootstrapReady { bootstrap_root: bootstrap_root }
+      }
   }
 }
 
@@ -1395,29 +1437,42 @@ fn dashboard_instance_apply_preflight(
         ], ""),
       )
     } else {
-      let root_present = dashboard_target_directory_present(
+      let root_obs = dashboard_target_path_observe(
         instance: instance,
+        flag: "-d",
         path: instance.instance_root,
       )
-      let bootstrap_root = if root_present {
-        instance.instance_root
-      } else {
-        instance.provision_parent_root
+      let bootstrap_root = match root_obs {
+        PathObservedPresent => instance.instance_root
+        PathObservedAbsent => instance.provision_parent_root
+        PathObservationRefused { reason: _ } => instance.instance_root
       }
       let bootstrap = dashboard_bootstrap_preflight_decision(
         instance: instance,
-        root_present: root_present,
-        bootstrap_present: dashboard_target_directory_present(
+        root: root_obs,
+        bootstrap_present: dashboard_target_path_observe(
           instance: instance,
+          flag: "-d",
           path: bootstrap_root,
         ),
-        bootstrap_writable: dashboard_target_path_present(
+        bootstrap_writable: dashboard_target_path_observe(
           instance: instance,
           flag: "-w",
           path: bootstrap_root,
         ),
       )
       match bootstrap {
+        DashboardBootstrapUnobserved { path: unobserved, reason } =>
+          dashboard_apply_preflight_refused(
+            instance: instance,
+            step: "instance-bootstrap-parent",
+            detail: join([
+              "bootstrap parent could not be observed at ",
+              unobserved as String,
+              ": ",
+              reason,
+            ], ""),
+          )
         DashboardBootstrapRefused { bootstrap_root: refused_root, reason } =>
           dashboard_apply_preflight_refused(
             instance: instance,
@@ -1485,7 +1540,19 @@ fn dashboard_instance_apply_preflight(
               instance_id: _,
               source_revision,
             } => {
-              let missing = dashboard_missing_target_executables(instance: instance)
+              match dashboard_survey_target_executables(instance: instance) {
+                ExecutableSurveyRefused { path: unobserved, reason } =>
+                  dashboard_apply_preflight_refused(
+                    instance: instance,
+                    step: "target-dependencies",
+                    detail: join([
+                      "required executable could not be observed at ",
+                      unobserved as String,
+                      ": ",
+                      reason,
+                    ], ""),
+                  )
+                ExecutablesSurveyed { missing } =>
               if count(missing) > 0 {
                 dashboard_apply_preflight_refused(
                   instance: instance,
@@ -1559,6 +1626,7 @@ fn dashboard_instance_apply_preflight(
                     }
                   }
                 }
+              }
               }
             }
           }
