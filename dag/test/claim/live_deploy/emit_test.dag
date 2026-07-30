@@ -29,6 +29,8 @@ import gunbc.live_deploy.emit {
   deployment_ensure_dependency_script,
   emit_deploy_teardown_dependency_refusal,
   live_deploy_wholesale_refused_poison,
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
@@ -378,4 +380,25 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
     Dependency { step: _ } => []
   })
   spec_owned_paths(spec: twin) == reverse(applied_paths)
+}
+
+data emitted_effect_twin_note: String = "THE PATH-LIST TWIN CLAIM WAS COVERAGE BY ILLUSION AND THIS IS ITS REPLACEMENT. The previous claim compared five declared artifact paths and pinned count == 5, so its proof was bounded by the symbolic footprint — and three destructive effects lived outside it: the systemd unit hardcoded --function roadmap_serve_handle so a twin would IDENTIFY as production, tree-sync installed and deleted one host-wide unit and env file, and teardown ran a node-global `tailscale serve reset`. Every one of those passes a declared-member comparison while the emitted script is unsafe (review, 2026-07-30).\\n\\nSo this reads the SCRIPTS. It asserts over the actual apply and retract text that production's identifying strings — its handler, its unit, its tree-sync files — appear in production's emission and are ABSENT from the twin's, and that the twin's own names are absent from production's. A string a reviewer can see in the emitted output is exactly the grain the previous claim could not reach.\\n\\nThe negative direction is the load-bearing half. Asserting the twin contains its own names would pass even if it ALSO contained production's; only absence proves it cannot touch them. The tailscale conjunct asserts the refusal marker rather than a scoped command, because the CLI offers no per-port removal and the honest emission is a refusal — a claim expecting a scoped teardown would demand a widen that cannot be written safely."
+
+test fn emitted_twin_scripts_touch_none_of_productions_effects() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  string_contains(s: live, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: twin, pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && !string_contains(s: twin, pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: live, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "/etc/systemd/system/gunbc-roadmap.service")
+}
+
+test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
+  let twin = live_deploy_retract_script_for(spec: srv1_twin_spec())
+  !string_contains(s: twin, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+    && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
+    && !string_contains(s: twin, pattern: "tailscale serve reset")
+    && string_contains(s: twin, pattern: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")
 }

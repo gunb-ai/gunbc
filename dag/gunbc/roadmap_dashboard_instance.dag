@@ -432,12 +432,15 @@ fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
   starts_with(s: path as String, prefix: concat(root as String, "/"))
 }
 
+data owned_paths_omitted_the_binary_note: String = "serve_binary WAS MISSING FROM THE CANONICAL OWNED SET while live_deploy treated it as an Owned artifact and removed it on retract — two models of one fact, one saying owned-and-retractable and the other saying neither (review, 2026-07-30). The omission was correct while instances BORROWED production's binary: a path you do not own does not belong in your owned set. Making it instance-derived changed the answer and nothing propagated it here.\\n\\nThe consequence was concrete rather than tidy. dashboard_instances_have_disjoint_owned_paths reads this roster, so the disjointness check could not see the one path two instances actually shared — which is why the twin witness had to assert binary inequality as a SEPARATE conjunct rather than getting it from the canonical set. A check that needs a hand-written supplement to cover the thing it exists to cover is not covering it.\\n\\nIt belongs here for both instance shapes: srv1-live's /opt/gunbc/bin/gunbc sits under its instance_root /opt/gunbc, and an isolated lab's sits under its own root by derivation, so dashboard_instance_paths_are_owned's containment law holds for both without exception. The twin claim can now drop its supplemental conjunct and read the roster."
+
 fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     instance.local_origin_root,
     instance.repo_root,
     instance.dispatch_worktree_root,
     instance.dispatch_attempt_state_root,
+    instance.serve_binary,
   ]
 }
 
