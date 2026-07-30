@@ -201,23 +201,7 @@ data merge_admission_shell_emit_disposition: Disposition = Scaffold {
   }
 }
 
-fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
-  if exit_code == 0 { Success } else { Failure }
-}
-
-fn stamp_floor_receipt(
-  pr_number: Int?,
-  head_sha: CommitSha,
-  base_tree_hash: ContentHash,
-  floor_exit_code: Int,
-) -> MergeAdmissionReceipt {
-  stamp_floor_receipt_with_conclusion(
-    pr_number: pr_number,
-    head_sha: head_sha,
-    base_tree_hash: base_tree_hash,
-    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code),
-  )
-}
+data merge_admission_exit_code_mapping_retired_note: String = "floor_exit_to_check_conclusion(exit_code) and the stamp_floor_receipt(floor_exit_code:) wrapper over it are DELETED, not deprecated. They existed to translate the ci.yml floor tail's CI_FLOOR_EXIT into a CheckConclusion; with merge admission fused into the walk as an OnWalkSuccess finalizer, reaching the stamp PROVES the floor was green, so the conclusion is derived from reachability and there is no exit code to translate (see merge_admission_stamp_green_only_by_reachability). Once the production caller was gone, the only remaining callers were this module's OWN witnesses — an authority kept alive solely by the tests that test it, which is the dead-scaffold shape DESIGN §5 says to delete rather than carry. Receipts are now minted through stamp_floor_receipt_with_conclusion at every site, including synthetic Failure fixtures: a test that wants a red receipt asks for Failure directly instead of encoding 1 and relying on a mapping no production path exercises. This is deliberately NOT a loss of Failure coverage — merge_admission_actuator_witness_test and the enforcement witnesses still drive MergeDeniedNotSuccess from synthetic conclusion:Failure receipts, so the verdict arm keeps its discriminating control."
 
 fn stamp_floor_receipt_with_conclusion(
   pr_number: Int?,

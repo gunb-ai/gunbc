@@ -1,7 +1,6 @@
 module tools.merge_admission_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.ci_gates { exit_ok }
 import std.types { GitRef }
 import extdeps.git
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -35,7 +34,7 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
 }
 
 func merge_admission_gate_claim() -> Bool {
-  exit_ok(e: main())
+  tools.ci_gates.exit_ok(e: main())
 }
 
 func main() -> ProcessExit {

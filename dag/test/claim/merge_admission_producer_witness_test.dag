@@ -6,47 +6,56 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data scenario_base: ContentHash = "merge-admission-producer-base"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
 
-data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt_with_conclusion(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
-  floor_exit_code: 0,
+  conclusion: Success,
 )
 
-data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt_with_conclusion(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
-  floor_exit_code: 1,
+  conclusion: Failure,
 )
 
-test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
-  string_contains(
-    s: v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script(),
-    pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
-  )
+data floor_shell_transport_retired_note: String = "These replace three witnesses that pinned the RETIRED shell transport: floor_stamp_exports_ci_floor_exit_on_gunbc_line asserted the literal `CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run` line, floor_stamp_propagates_stamp_failure_after_green_floor asserted the STAMP_EXIT/FLOOR_EXIT capture arithmetic, and stamp_missing_floor_exit_policy_is_fail_closed asserted a policy note about unset CI_FLOOR_EXIT. All three described a producer that no longer exists — merge admission is now an OnWalkSuccess finalizer inside the walk, not a shell tail. Deleting them without replacement would have removed the producer-shape coverage entirely, so the assertions are re-aimed at the NEW transport and, critically, keep a NEGATIVE arm: the retired env channel must be provably absent from the emitted floor script, not merely unmentioned. Two exit-code mapping witnesses went with them (see merge_admission_exit_code_mapping_retired_note) because the function they tested is deleted."
+
+test fn floor_script_no_longer_carries_the_exit_code_channel() -> Bool {
+  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  !string_contains(s: script, pattern: "CI_FLOOR_EXIT")
+    && !string_contains(s: script, pattern: "FLOOR_EXIT=$?")
+    && !string_contains(s: script, pattern: "STAMP_EXIT")
+    && !string_contains(s: script, pattern: "set +e")
+    && !string_contains(s: script, pattern: "merge_admission_stamp.dag")
 }
 
-test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
-  let script = v2.workflow.ci_merge_admission_emit.ci_floor_stamp_merge_admission_script()
-  string_contains(s: script, pattern: "STAMP_EXIT=$?")
-    && string_contains(s: script, pattern: "exit \"$STAMP_EXIT\"")
-    && string_contains(s: script, pattern: "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi")
+test fn floor_script_still_invokes_the_executor() -> Bool {
+  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  string_contains(s: script, pattern: "claim_executor")
+    && string_contains(s: script, pattern: "gunbc_ci_floor_batches")
 }
 
-test fn stamp_missing_floor_exit_policy_is_fail_closed() -> Bool {
-  string_contains(
-    s: merge_admission_stamp_missing_floor_exit_is_failure,
-    pattern: "fail-closed"
-  )
+test fn admission_rides_the_floor_finalizers_in_stamp_then_gate_order() -> Bool {
+  let fin = gunbc_ci_floor_finalizers()
+  length(xs: fin) == 2
+    && match fin.first() {
+      RunnableSingleClaim { entry: e, function: f, profile: _ } =>
+        (e == "dag/tools/merge_admission_stamp.dag") && (f == "merge_admission_stamp_claim")
+      _ => false
+    }
+    && match fin.last() {
+      RunnableSingleClaim { entry: e, function: f, profile: _ } =>
+        (e == "dag/tools/merge_admission_gate.dag") && (f == "merge_admission_gate_claim")
+      _ => false
+    }
 }
 
-test fn floor_exit_zero_maps_to_success() -> Bool {
-  floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
-}
-
-test fn floor_exit_nonzero_maps_to_failure() -> Bool {
-  floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
+test fn stamp_conclusion_is_green_only_by_reachability() -> Bool {
+  string_contains(s: merge_admission_stamp_green_only_by_reachability, pattern: "REACHABILITY")
+    && string_contains(s: merge_admission_stamp_green_only_by_reachability, pattern: "FullLedger")
+    && string_contains(s: merge_admission_stamp_green_only_by_reachability, pattern: "finalizer_index")
 }
 
 test fn mint_binds_current_gate_roster_hash() -> Bool {
@@ -106,11 +115,11 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
 }
 
 test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
-  let receipt = stamp_floor_receipt(
+  let receipt = stamp_floor_receipt_with_conclusion(
     pr_number: none,
     head_sha: scenario_head,
     base_tree_hash: scenario_base,
-    floor_exit_code: 0,
+    conclusion: Success,
   )
   let wire = render_receipt_wire(receipt: receipt)
   match parse_receipt_wire(text: wire) {

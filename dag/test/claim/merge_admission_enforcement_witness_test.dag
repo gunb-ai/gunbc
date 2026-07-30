@@ -8,11 +8,11 @@ data scenario_base_b1: ContentHash = "merge-admission-enforce-base-b1"
 data scenario_roster_r1: ContentHash = "merge-admission-enforce-roster-r1"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
 
-data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt_with_conclusion(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
-  floor_exit_code: 0,
+  conclusion: Success,
 )
 
 data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
@@ -31,11 +31,11 @@ data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt_with_conclusion(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
-  floor_exit_code: 1,
+  conclusion: Failure,
 )
 
 test fn gating_still_deferred_until_activation_flip() -> Bool {

@@ -6,7 +6,6 @@ import extdeps.git
 import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
 import extdeps.github.checks { Success }
-import tools.ci_gates { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { FilePath }
 import gunbc.merge_admission_produce {
@@ -53,7 +52,7 @@ fn pr_number_from_event() -> Int? {
 }
 
 func merge_admission_stamp_claim() -> Bool {
-  exit_ok(e: main())
+  tools.ci_gates.exit_ok(e: main())
 }
 
 func main() -> ProcessExit {
