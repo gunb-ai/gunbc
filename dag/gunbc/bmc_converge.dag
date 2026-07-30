@@ -556,6 +556,8 @@ fn bmc_fan_policy_classification(
                 }
               }
           }
+              }
+          }
       }
   }
 }
