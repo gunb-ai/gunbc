@@ -49,15 +49,38 @@ data ci_regen_rustfmt_unpinned_frontier: UnpinnedToolFrontierRow = UnpinnedToolF
   }
 }
 
-data ci_regen_rustfmt_test_x_cargo_home: String = "[ -x \"$CARGO_HOME/bin/rustfmt\" ]"
+data ci_regen_rustfmt_frontier_realization_note: String = "This existing shell handler is the first frontier realization of gunbc.tool_readiness, not a second readiness decision. Every occurrence of the tool name in the emitted PATH probe derives from ci_regen_rustfmt_unpinned_frontier.tool, so the handler cannot silently resolve a tool outside the closed frontier roster. The shell still observes presence only; it does not fabricate the ResolvedBuildContext needed for PinnedAdmitted. Once toolchain-rust-hermetic supplies a stable expected identity and a host observation transport feeds that context, this frontier row and handler dissolve rather than becoming an escape hatch."
 
-data ci_regen_rustfmt_test_x_opt_cargo: String = "[ -x /opt/cargo/bin/rustfmt ]"
+fn ci_regen_rustfmt_frontier_tool_name() -> String {
+  ci_regen_rustfmt_unpinned_frontier.tool.name as String
+}
 
-data ci_regen_rustfmt_test_x_home_cargo: String = "[ -x \"$HOME/.cargo/bin/rustfmt\" ]"
+fn ci_regen_rustfmt_test_x_cargo_home() -> String {
+  concat(
+    "[ -x \"$CARGO_HOME/bin/",
+    concat(ci_regen_rustfmt_frontier_tool_name(), "\" ]"),
+  )
+}
+
+fn ci_regen_rustfmt_test_x_opt_cargo() -> String {
+  concat(
+    "[ -x /opt/cargo/bin/",
+    concat(ci_regen_rustfmt_frontier_tool_name(), " ]"),
+  )
+}
+
+fn ci_regen_rustfmt_test_x_home_cargo() -> String {
+  concat(
+    "[ -x \"$HOME/.cargo/bin/",
+    concat(ci_regen_rustfmt_frontier_tool_name(), "\" ]"),
+  )
+}
 
 data ci_regen_rustfmt_test_x_rf: String = "[ -x \"$RF\" ]"
 
-data ci_regen_rustfmt_command_v: String = "command -v rustfmt"
+fn ci_regen_rustfmt_command_v() -> String {
+  concat("command -v ", ci_regen_rustfmt_frontier_tool_name())
+}
 
 data ci_regen_rustfmt_export_cargo_home_path: String = "export PATH=\"$CARGO_HOME/bin:$PATH\""
 
@@ -67,9 +90,22 @@ data ci_regen_rustfmt_export_home_cargo_path: String = "export PATH=\"$HOME/.car
 
 data ci_regen_rustfmt_export_rf_dir_path: String = "export PATH=\"$RF_DIR:$PATH\""
 
-data ci_regen_rustfmt_error_echo: String = "echo \"::error::rustfmt not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\""
+fn ci_regen_rustfmt_error_echo() -> String {
+  concat(
+    "echo \"::error::",
+    concat(
+      ci_regen_rustfmt_frontier_tool_name(),
+      " not on PATH for regen_stage0 standalone spawn (hosts with a cargo shim and no CARGO_HOME/bin — receipt CI #7290 srv3-03)\"",
+    ),
+  )
+}
 
-data ci_regen_rustfmt_rustup_which_assign: String = "RF=$(/opt/cargo/bin/rustup which rustfmt)"
+fn ci_regen_rustfmt_rustup_which_assign() -> String {
+  concat(
+    "RF=$(/opt/cargo/bin/rustup which ",
+    concat(ci_regen_rustfmt_frontier_tool_name(), ")"),
+  )
+}
 
 data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -87,7 +123,7 @@ fn ci_regen_rustfmt_exit_zero(command: String) -> Predicate {
 fn ci_regen_rustfmt_command_v_ok() -> Predicate {
   ExitZero {
     run: Run {
-      command: ci_regen_rustfmt_command_v,
+      command: ci_regen_rustfmt_command_v(),
       env: [],
       redirect: Present { value: DiscardAll },
       capture: Absent
@@ -114,7 +150,7 @@ fn ci_regen_rustfmt_probe_cargo_home_step() -> PipelineStep {
   If {
     cond: And {
       lhs: StrNonempty { operand: "\"$CARGO_HOME\"" },
-      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_cargo_home)
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_cargo_home())
     },
     then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_cargo_home_path),
     else_: Absent
@@ -125,7 +161,7 @@ fn ci_regen_rustfmt_probe_opt_cargo_step() -> PipelineStep {
   If {
     cond: And {
       lhs: ci_regen_rustfmt_command_v_missing(),
-      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_opt_cargo)
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_opt_cargo())
     },
     then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_opt_cargo_path),
     else_: Absent
@@ -136,7 +172,7 @@ fn ci_regen_rustfmt_probe_home_cargo_step() -> PipelineStep {
   If {
     cond: And {
       lhs: ci_regen_rustfmt_command_v_missing(),
-      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_home_cargo)
+      rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_home_cargo())
     },
     then_: ci_regen_rustfmt_one_step(command: ci_regen_rustfmt_export_home_cargo_path),
     else_: Absent
@@ -146,7 +182,7 @@ fn ci_regen_rustfmt_probe_home_cargo_step() -> PipelineStep {
 fn ci_regen_rustfmt_rustup_which_bind_step() -> PipelineStep {
   Do {
     run: Run {
-      command: ci_regen_rustfmt_rustup_which_assign,
+      command: ci_regen_rustfmt_rustup_which_assign(),
       env: [],
       redirect: Present { value: DiscardErr },
       capture: Present { value: IgnoreFail }
@@ -200,7 +236,7 @@ fn ci_regen_rustfmt_require_step() -> PipelineStep {
     cond: ci_regen_rustfmt_command_v_missing(),
     then_: Pipeline {
       steps: [
-        orch_bash_do(command: ci_regen_rustfmt_error_echo),
+        orch_bash_do(command: ci_regen_rustfmt_error_echo()),
         Exit { status: "1" }
       ],
       on_failure: FailFast

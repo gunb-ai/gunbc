@@ -1,12 +1,11 @@
 module gunbc.tool_readiness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Int, List, NonEmptyStr, String }
 import std.integer { NonNegativeInt }
 import std.decl_ref { DeclarationRef }
 import extdeps.tools { CliTool }
 import extdeps.pin {
   Pin,
-  PinAdmission,
   PinIntegrityAdmitted,
   PinRefused,
   PinRefusalCause,
