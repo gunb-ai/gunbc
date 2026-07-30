@@ -247,6 +247,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "ci-invocation-fixed-tax-attribution",
+    work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_selection_control_step_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's outcome-based return trigger (selection control back per-PR once a named receipt shows the whole control step consistently below a seconds-scale ceiling on the CI fleet across a full falsifier window) consumes its measurements" },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "srv1-deploy-serialization-and-false-greens",
     work: DeclarationRef { module_path: "gunbc.ci_spec", decl_name: "gunbc_ci_deploy_srv1_stage", field: WholeDeclaration },
     dissolution: HasTrigger { text: "all FOUR findings this diagnosis names are facts on their carriers: (1) srv1 deployment holds a typed HOST-SIDE lease spanning mutation, readiness and identity readback — a runner label or concurrency group is mitigation only, since neither excludes the operator apply path — plus a counted refusal when the candidate is not the authoritative revision under whichever revision authority is ruled, (2) the healthz fingerprint identifies what is DEPLOYED (source closure and binary artifact identity, not build provenance alone) rather than five rendered bodies, (3) the refusal path preserves the decl's located diagnosis instead of substituting a render complaint, with control-byte admission decided per CursorAction and DynamicLineState rather than one global roster, and (4) job_yaml emits Job.concurrency with a discriminating RED. Then the doc deletes with this row. Twice corrected in review: review 44735 caught that the trigger omitted the misattributed-refusal defect entirely, and review 44766 caught that it would have accepted scheduler-only exclusion, source-only identity and a global byte-roster fix" },
