@@ -9,7 +9,7 @@ import gunbc.scm_compatibility_shape {
   compatibility_projection_upsert,
 }
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed label is backed by a stored resumable option, and selection uses the option's structural position rather than caller-authored display text. Equal labels therefore cannot collapse two resume tokens into an ambiguous identity. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed label is backed by a stored resumable option, and selection uses the option's structural position rather than caller-authored display text. Equal labels therefore cannot collapse two resume tokens into an ambiguous identity, and selection returns the stored option for resumption rather than fabricating Landed before semantic admission, transition, and independent read-back. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -546,7 +546,7 @@ fn native_scm_choice_previews(
     |> map(option => option.result_preview)
 }
 
-fn native_scm_continuation_option(
+fn native_scm_resolve_choice(
   continuation: NativeScmContinuation,
   choice: NativeScmContinuationChoice,
 ) -> NativeScmContinuationChoiceLookup {
@@ -580,39 +580,6 @@ fn native_scm_continuation_option(
       },
     },
   )
-}
-
-fn native_scm_resolve_choice(
-  receipt: NativeScmReceipt,
-  choice: NativeScmContinuationChoice,
-) -> NativeScmPrimaryOutcome {
-  match receipt.primary {
-    ChoiceRequired { question: _, continuation } =>
-      native_scm_continuation_choice_lookup_fold(
-        lookup: native_scm_continuation_option(
-          continuation: continuation,
-          choice: choice,
-        ),
-        fold: NativeScmContinuationChoiceLookupFold {
-          matched: fn(option) {
-            Landed { result_preview: option.result_preview }
-          },
-          not_offered: fn(_) {
-            CouldNotLand {
-              refusal: NativeScmRefusal {
-                plain_reason: "the selected option was not offered",
-                responsible_party: "authorized decider",
-                next_action: "select one of the offered options",
-                refusal_receipt: continuation.proposal.attempt_key,
-              },
-            }
-          },
-        },
-      )
-    Landed { result_preview: p } => Landed { result_preview: p }
-    InProgress { progress_preview } => InProgress { progress_preview: progress_preview }
-    CouldNotLand { refusal } => CouldNotLand { refusal: refusal }
-  }
 }
 
 fn native_scm_attach_projection(

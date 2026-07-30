@@ -28,7 +28,7 @@ import gunbc.native_scm_interaction_contract {
   Landed,
   ChoiceRequired,
   CouldNotLand,
-  native_scm_continuation_option,
+  native_scm_resolve_choice,
   native_scm_continuation_choice_lookup_fold,
 }
 import gunbc.scm_compatibility_shape {
@@ -316,7 +316,7 @@ fn landing_resolve_question(
 ) -> LandingChoiceResolution {
   let continuation = landing_question_continuation(question: question)
   native_scm_continuation_choice_lookup_fold(
-    lookup: native_scm_continuation_option(
+    lookup: native_scm_resolve_choice(
       continuation: continuation,
       choice: choice,
     ),

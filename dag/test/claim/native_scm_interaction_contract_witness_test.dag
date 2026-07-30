@@ -11,6 +11,8 @@ import gunbc.native_scm_interaction_contract {
   NativeScmContinuationOptions,
   NativeScmFirstContinuationOption,
   NativeScmSecondContinuationOption,
+  NativeScmContinuationChoiceMatched,
+  NativeScmContinuationChoiceNotOffered,
   NativeScmProjectionRepaired,
   NativeScmProjectionRepairBlockedByInternalWork,
   NativeScmOperationalReady,
@@ -161,20 +163,28 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
           && continuation.options.first_option.label == "follow the rename"
           && continuation.options.second_option.label == "keep a separate name"
           && match native_scm_resolve_choice(
-            receipt: r,
+            continuation: continuation,
             choice: NativeScmFirstContinuationOption,
           ) {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "follow the rename")
-            _ => false
+            NativeScmContinuationChoiceMatched { option } =>
+              option.resume_token == "resume-follow-the-rename"
+                && string_contains(
+                  s: option.result_preview,
+                  pattern: "follow the rename",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
           && match native_scm_resolve_choice(
-            receipt: r,
+            continuation: continuation,
             choice: NativeScmSecondContinuationOption,
           ) {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "keep a separate name")
-            _ => false
+            NativeScmContinuationChoiceMatched { option } =>
+              option.resume_token == "resume-keep-separate-name"
+                && string_contains(
+                  s: option.result_preview,
+                  pattern: "keep a separate name",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }
@@ -211,15 +221,20 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
       }
     _ => receipt
   }
-  match native_scm_resolve_choice(
-    receipt: duplicate,
-    choice: NativeScmSecondContinuationOption,
-  ) {
-    Landed { result_preview } =>
-      string_contains(
-        s: result_preview,
-        pattern: "different result",
-      )
+  match duplicate.primary {
+    ChoiceRequired { question: _, continuation } =>
+      match native_scm_resolve_choice(
+        continuation: continuation,
+        choice: NativeScmSecondContinuationOption,
+      ) {
+        NativeScmContinuationChoiceMatched { option } =>
+          option.resume_token == "resume-duplicate-choice"
+            && string_contains(
+              s: option.result_preview,
+              pattern: "different result",
+            )
+        NativeScmContinuationChoiceNotOffered { choice: _ } => false
+      }
     _ => false
   }
 }
@@ -234,20 +249,28 @@ test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
           && continuation.options.first_option.label == "retain goal A"
           && continuation.options.second_option.label == "retain goal B"
           && match native_scm_resolve_choice(
-            receipt: r,
+            continuation: continuation,
             choice: NativeScmFirstContinuationOption,
           ) {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "retain goal A")
-            _ => false
+            NativeScmContinuationChoiceMatched { option } =>
+              option.resume_token == "resume-retain-goal-a"
+                && string_contains(
+                  s: option.result_preview,
+                  pattern: "retain goal A",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
           && match native_scm_resolve_choice(
-            receipt: r,
+            continuation: continuation,
             choice: NativeScmSecondContinuationOption,
           ) {
-            Landed { result_preview } =>
-              string_contains(s: result_preview, pattern: "retain goal B")
-            _ => false
+            NativeScmContinuationChoiceMatched { option } =>
+              option.resume_token == "resume-retain-goal-b"
+                && string_contains(
+                  s: option.result_preview,
+                  pattern: "retain goal B",
+                )
+            NativeScmContinuationChoiceNotOffered { choice: _ } => false
           }
       _ => false
     }
