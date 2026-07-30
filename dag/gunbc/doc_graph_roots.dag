@@ -31,6 +31,12 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "seamless-deploys-design",
+    work: DeclarationRef { module_path: "gunbc.live_deploy.service_ready", decl_name: "live_deploy_service_ready_poll_bound_reason", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the four separable items the note models are each landed or retired: the observation-outcome de-conflation in gunbc.roadmap_component, the readiness de-fork (systemd Type=simple asserts ready at process spawn while this module's healthz poll carries the correct answer — two representations of one fact), the observed-set provider that makes the degenerate apply pole in gunbc.live_deploy.emit reach Unchanged-to-noop by construction, and the residual-window handover. The note binds to this decl because its deep dependency IS this decl's recorded dissolution trigger: the poll bound is sized around the corpus-scale load cost, so demand-scoping load_sources_for_entry to the entry closure dissolves the bound and most of the outage. Registers as a gunbc.plan.Plan row if the design freezes before those items land; deletes outright if they land first." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "inner-cost-lanes-scoping",
     work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
     dissolution: HasTrigger { text: "both lanes have landed or been retired: Lane A when process_escapes_loop is migrated onto source_chars with its discriminating non-ASCII receipt, Lane B when the shared-overlap measurement it asks for exists and either opens the program or prices it down. The note is scoping for two roadmap nodes, so it dissolves when those nodes close, not into a gunbc.plan.Plan row." },
