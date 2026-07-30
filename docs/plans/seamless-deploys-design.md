@@ -5,8 +5,24 @@ grounded and agreed before implementation; this note does the grounding, propose
 names the decisions that need operator sign-off. Every claim below carries a receipt against the
 live tree or a measurement, or is marked as an open question.
 
-Brief: *Deploying should not take the dashboard away.* Boundary: the restart path only — the serve
-process, its unit, and how the browser is told what it is seeing. Not what the deploy installs.
+Brief: *Deploying should not take the dashboard away.* Boundary as originally written: the restart
+path only — the serve process, its unit, and how the browser is told what it is seeing; *not what
+the deploy installs*.
+
+**Boundary amendment, 2026-07-30 (operator direction).** That original boundary predates the
+direction that deploy should reconcile to intent and apply the minimal items (§2 Concept C), which
+widens it. Stated precisely, because the two halves are easy to conflate and item 3 sits across the
+seam:
+
+- **Still out of scope — the desired set.** *Which* artifacts constitute the deployment, and what
+  goes inside them, is unchanged. This ticket adds no member and changes no artifact's contents.
+- **Now in scope — how the desired set is applied.** Whether an unchanged member is re-applied, and
+  the member modelling that makes "unchanged" decidable (content identity, and the running service
+  as a member distinct from the unit file). This is item 3, and it is required work.
+
+So the ticket does not change *what* the deploy installs; it changes *how much of it is re-applied
+to reach intent*. Everything else in the brief's `out_of_scope` stands: no dispatch or belt changes,
+and no attempt to make the service restart-free in general — only invisible to a viewer.
 
 **Revision, 2026-07-30 (review 45229).** Two central re-cuts in the first draft prescribed models
 that could not establish the behaviour they claimed, and both are corrected in place with the
@@ -517,7 +533,9 @@ no seam.
    realization rather than cemented. **Does not touch the digest check** (§2 Concept B).
 3. **Slice 4 — the residual window (item 4).** Socket activation, evaluated against §3's three
    decisions, with the staleness cue. This is where the headline outcome is actually delivered.
-4. **Slice 2a/2b/2c — item 3**, in that internal order, whenever it is worth its cost:
+4. **Slice 2a/2b/2c — item 3**, in that internal order. **Required, not discretionary** (operator
+   direction, §2 Concept C). Listed last because it gates nothing and can run in parallel with
+   1/3/4 — *not* because it is optional:
    - **2a** give `DeploymentArtifactStep` the content identity that makes two installations
      comparable (load-bearing carrier change);
    - **2b** de-fuse the running service from the unit file, so a restart is a consequence of its
@@ -607,10 +625,28 @@ Adopting the brief's, and adding the ones the analysis surfaced:
 
 ## Provenance
 
-Grounded against the tree at `a07d1b73f8` (2026-07-30). Receipts: `dag/gunbc/roadmap_component.dag`
-(:2463, :2507, `workflow_observation_poll_interval`, `workflow_poll_single_flight_note`),
-`dag/gunbc/live_deploy/emit.dag` (:110, :123, :158, :283–289, `live_deploy_reconcile_binding_note`),
+Grounded against the tree at `0d6ffc4db9` (2026-07-30; first drafted at `a07d1b73f8` and re-checked
+after merging main).
+
+**Item receipts:** `dag/gunbc/roadmap_component.dag` (:2463, :2507,
+`workflow_observation_poll_interval`, `workflow_poll_single_flight_note`) ·
+`dag/gunbc/live_deploy/emit.dag` (:110, :123, :158, :219, :283–289,
+`live_deploy_reconcile_binding_note`, `emit_deploy_member_effect_note`) ·
+`dag/gunbc/live_deploy/spec.dag` (:38–41 `DeploymentArtifactStep`, `deployment_apply_order_note`) ·
 `dag/gunbc/live_deploy/service_ready.dag` (`live_deploy_service_ready_poll_bound_reason`,
-`live_deploy_roadmap_unit_expected_startup`), `src/v1/stage0/src/cli_run.rs` (:11885, :11893, :11918),
-`dag/gunbc/roadmap_authority.dag` (:948). Deploy-job count: GitHub Actions, `deploy_dashboard_srv1`,
-24h window ending 2026-07-30T20:11Z.
+`live_deploy_roadmap_unit_expected_startup`) · `dag/gunbc/live_deploy/readiness.dag`
+(`service_ready_means_serving_this_tree_note`, the F1/F2 split and the 2026-07-24 incident) ·
+`src/v1/stage0/src/cli_run.rs` (:11885, :11893, :11918) · `dag/gunbc/roadmap_authority.dag` (:948).
+
+**Reconcile-precedent receipts** (added for the operator's reconcile-to-intent direction):
+`dag/gunbc/membership_reconcile.dag` (`membership_reconcile_authority_note`) ·
+`dag/gunbc/host_authorized_keys_reconcile.dag` (identity-vs-value split, staged observation) ·
+`dag/gunbc/tool_readiness.dag` (live observation, `observed_pin_projection_note`) ·
+`dag/extdeps/realization/emit_on_demand_host.dag` (`observed_tool_identity`, Found/Missing/Duplicate)
+· `dag/gunbc/roadmap_belt.dag` (process-as-member; `dispatch_member_value_eq` constant `true`) ·
+`dag/gunbc/host_effect_realize.dag` (:990, :1076, reconciles inside srvN apply).
+
+**Measurements:** deploy-job count — GitHub Actions, `deploy_dashboard_srv1`, 24h window ending
+2026-07-30T20:11Z (40 jobs). Serve closure and phase split — the unit's exact ExecStart run on a
+spare port: `resolved 208 sources` at t+56s, listening at t+74s (this build box under load, **not**
+srv1; see §1's caveat).
