@@ -50,6 +50,7 @@ import std.measure {
   celsius,
   percent,
   positive_celsius_delta,
+  positive_measure_count,
   rpm,
   second,
 }
@@ -188,8 +189,12 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis: positive_celsius_delta(count: 1),
-  negative_hysteresis: positive_celsius_delta(count: 2),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 1),
+  ),
 }
 
 data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
@@ -373,7 +378,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
 
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
 
-data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: this layer does not contain the projection, verifier, observer, transport, and actuator definitions whose transitive hashes StateRealizationDefinitionHashes requires. The operation/actuator layer must derive those five hashes from its actual definitions before a durability admission can be written; hashing a remembered label or these observed output values would leave definition changes invisible."
+data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
 
 data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
 
