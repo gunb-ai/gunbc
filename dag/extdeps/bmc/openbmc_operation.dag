@@ -1,0 +1,95 @@
+module extdeps.bmc.openbmc_operation
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import std.measure {
+  Celsius,
+  CelsiusDelta,
+  Percent,
+  Second,
+}
+import std.types { Bool, Int, List, NonEmptyStr }
+
+data openbmc_busctl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
+  },
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = openbmc_busctl_authority
+
+type OpenBmcOperation
+  = OpenBmcReadFile { path: NonEmptyStr }
+  | OpenBmcResolvePath { path: NonEmptyStr }
+  | OpenBmcParentDirectory { path: NonEmptyStr }
+  | OpenBmcSystemdIsActive { service: NonEmptyStr }
+  | OpenBmcSystemdRestart { service: NonEmptyStr }
+  | OpenBmcZoneFailsafe { zone_path: NonEmptyStr }
+  | OpenBmcSensorServices { sensor_path: NonEmptyStr }
+  | OpenBmcSensorValue { service: NonEmptyStr, sensor_path: NonEmptyStr }
+  | OpenBmcSensorThreshold {
+      service: NonEmptyStr,
+      sensor_path: NonEmptyStr,
+      threshold: OpenBmcThresholdProperty,
+    }
+  | OpenBmcFanConfigScalar {
+      config_path: NonEmptyStr,
+      query: OpenBmcFanConfigQuery,
+    }
+  | OpenBmcFanConfigValidate { config_path: NonEmptyStr }
+  | OpenBmcFanConfigVerify {
+      config_path: NonEmptyStr,
+      desired: OpenBmcFanConfigDesired,
+    }
+  | OpenBmcPathIsWritable { path: NonEmptyStr }
+  | OpenBmcPathExists { path: NonEmptyStr }
+  | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
+  | OpenBmcDiskUsageKib { path: NonEmptyStr }
+  | OpenBmcFileSha256 { path: NonEmptyStr }
+  | OpenBmcUtcTimestamp
+  | OpenBmcMakeDirectory { path: NonEmptyStr, parents: Bool }
+  | OpenBmcRemoveDirectory { path: NonEmptyStr }
+  | OpenBmcRemoveFile { path: NonEmptyStr }
+  | OpenBmcCopyFilePreservingMetadata {
+      source_path: NonEmptyStr,
+      destination_path: NonEmptyStr,
+    }
+  | OpenBmcRenameReplace {
+      source_path: NonEmptyStr,
+      destination_path: NonEmptyStr,
+    }
+  | OpenBmcSynchronizeFilesystems
+  | OpenBmcWaitSeconds { duration: Second }
+
+type OpenBmcFanConfigQuery
+  = OpenBmcStepwiseCount
+  | OpenBmcMinimumDuty
+  | OpenBmcZoneFailsafeDuty
+  | OpenBmcSensorFailsafeDuty
+  | OpenBmcPositiveHysteresis
+  | OpenBmcNegativeHysteresis
+  | OpenBmcReadingCount
+  | OpenBmcOutputCount
+  | OpenBmcReadingAt { index: Int }
+  | OpenBmcOutputAt { index: Int }
+  | OpenBmcFanControllerCount
+  | OpenBmcFanControllerNameAt { index: Int }
+  | OpenBmcFanInputCountAt { fan_index: Int }
+  | OpenBmcFanInputAt { fan_index: Int, input_index: Int }
+
+type OpenBmcThresholdProperty
+  = OpenBmcWarningLow
+  | OpenBmcCriticalLow
+
+type OpenBmcFanConfigDesired {
+  minimum_duty: Percent
+  zone_failsafe_duty: Percent
+  sensor_failsafe_duty: Percent
+  positive_hysteresis: CelsiusDelta
+  negative_hysteresis: CelsiusDelta
+  readings: List<Celsius>
+  outputs: List<Percent>
+  fan_controller_name: NonEmptyStr
+  fan_inputs: List<NonEmptyStr>
+}
