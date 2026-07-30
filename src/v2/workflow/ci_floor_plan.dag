@@ -11,6 +11,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_known_red_roster
 }
 import v2.compiler.self_host.native_routing_frontier { native_routed_rows, NativeRoutingFrontierRow }
+import gunbc.ci_materialization { ci_floor_declared_resolve_count }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
@@ -1232,6 +1233,12 @@ fn gunbc_ci_plan_artifact_ordinary_batches() -> List<List<Runnable>> {
 }
 
 data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The four argv/step consumers follow automatically because they derive from the floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function / falsifier_plan_function constants (gunbc.ci_spec, gunbc.falsifier_workflow) — those constants are the single naming authority, renamed with the functions."
+
+data gunbc_ci_floor_declared_resolve_count_projection_note: String = "Projection of gunbc.ci_materialization.ci_floor_declared_resolve_count INTO THE PLAN CLOSURE, so claim_executor can read the resolve law from the same resolved plan context it already holds — the clamp-params pattern. The authority stays in ci_materialization (single authority, with its receipt history); this fn is a read, not a second declaration. Consumed by the executor's floor finalization (ruling 2026-07-30): the resolve-count law and the materialization disclosure law moved from two GitHub shell steps into run_walk's ordinary-floor finalization, so a receipt-law violation is an ORDINARY-FLOOR failure that blocks every on-success stage — the old step ordering could red AFTER admission had already stamped, which is the can-red-after-admission hole this closes. The two workflow steps are deleted in the same motion; keeping them would be a second representation of the floor-completion rule."
+
+fn gunbc_ci_floor_declared_resolve_count() -> Int {
+  ci_floor_declared_resolve_count
+}
 
 fn gunbc_ci_floor_plan() -> WalkPlan {
   WalkPlan {

@@ -19,6 +19,12 @@ fn budget_red_control_claim() -> Runnable {
   }
 }
 
+data budget_red_control_declared_resolve_note: String = "The fixture impersonates the floor plan BY NAME so claim_executor arms the derived clamp against it — and as of the in-executor floor finalization (ruling 2026-07-30) that name also arms the resolve law, so the fixture must declare it or the run refuses before walking (that refusal is itself the finalization read's executable RED, exercised before this row landed). Declared 1: the fixture runs exactly one single-claim batch, which pays exactly one entry resolve."
+
+fn gunbc_ci_floor_declared_resolve_count() -> Int {
+  1
+}
+
 fn gunbc_ci_floor_plan() -> WalkPlan {
   WalkPlan {
     batches: [[budget_red_control_claim()]],

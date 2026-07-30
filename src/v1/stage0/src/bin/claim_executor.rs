@@ -2697,10 +2697,85 @@ fn batch_unit_lane(
     }
 }
 
+/// The floor plan's finalization laws, read from the plan closure at arm time (the
+/// clamp-params pattern) and enforced INSIDE the walk as ordinary-floor finalization
+/// (ruling 2026-07-30). These were two GitHub shell steps — the resolve-receipt gate
+/// and the materialization-receipt gate — which ran AFTER the floor step, so a
+/// receipt-law violation could red the job after admission had already stamped. In
+/// here, a violation is an ordinary-floor failure and blocks every on-success stage.
+/// Scoped to the floor plan: regen/falsifier/plan-artifact declare no finalization and
+/// are unchanged.
+struct FloorFinalization {
+    declared_resolve_count: i64,
+}
+
+/// Validate the floor's finalization laws against the walk's own records. Returns the
+/// list of typed refusals (empty = contract satisfied). The receipt FILES keep being
+/// written by the walk — they are observability — this validates the laws the deleted
+/// shell steps used to re-derive from those files.
+fn validate_floor_finalization(
+    fin: &FloorFinalization,
+    batch_records: &[BatchRecord],
+) -> Vec<String> {
+    let mut refusals = Vec::new();
+    // Law 1 — the declared cold-resolve count (gunbc.ci_materialization
+    // ci_floor_resolve_receipt_note): resolves_total is recomputed from the SAME rule
+    // write_resolve_receipt_at uses, never re-parsed from the file we just wrote.
+    let mut resolves_total: u64 = 0;
+    for rec in batch_records {
+        for result in &rec.results {
+            if result.resolve_nanos > 0 {
+                resolves_total += 1;
+            }
+        }
+    }
+    if resolves_total as i64 != fin.declared_resolve_count {
+        refusals.push(format!(
+            "floor resolve count {} differs from declared {}: duplicate-computation debt \
+             changed - update ci_floor_declared_resolve_count consciously \
+             (dag/gunbc/ci_materialization.dag)",
+            resolves_total, fin.declared_resolve_count
+        ));
+    }
+    // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
+    // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
+    // file because the accumulator is process-global and already harvested into it.
+    let path = std::path::Path::new("target/floor-materialization-receipt.txt");
+    match std::fs::read_to_string(path) {
+        Err(_) => refusals.push("floor materialization receipt missing - fail closed".to_string()),
+        Ok(body) => {
+            let field = |key: &str| -> Option<u64> {
+                body.lines()
+                    .find_map(|l| l.strip_prefix(key))
+                    .and_then(|v| v.trim().parse::<u64>().ok())
+            };
+            match (
+                field("keyed_calls="),
+                field("unkeyed_calls="),
+                field("duplicated_keys="),
+            ) {
+                (Some(k), Some(_u), Some(_d)) => {
+                    if k == 0 {
+                        refusals.push(
+                            "floor evaluated zero keyed calls - ledger disabled or floor empty - \
+                             fail closed"
+                                .to_string(),
+                        );
+                    }
+                }
+                _ => refusals
+                    .push("floor materialization receipt malformed - fail closed".to_string()),
+            }
+        }
+    }
+    refusals
+}
+
 fn run_walk(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
     on_success_stages: &[Vec<Runnable>],
+    floor_finalization: Option<&FloorFinalization>,
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
@@ -2978,13 +3053,34 @@ fn run_walk(
     // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
     // is an ordinary-floor failure, so success stages are gated on the whole floor
     // contract this process owns, not just the batch verdicts (ruling 2026-07-30).
-    let ordinary_failed = any_failed
+    let mut ordinary_failed = any_failed
         || !resolve_receipt_ok
         || !batch_wall_receipt_ok
         || !gate_warm_cost_receipt_ok
         || !witness_row_cost_receipt_ok
         || !witness_row_cost_drift_receipt_ok
         || !materialization_receipt_ok;
+    // Floor finalization laws (the in-executor form of the deleted resolve/
+    // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
+    // on-success stages, so a violation blocks admission instead of post-dating it.
+    if let Some(fin) = floor_finalization {
+        let refusals = validate_floor_finalization(fin, &batch_records);
+        if refusals.is_empty() {
+            if !ordinary_failed {
+                eprintln!(
+                    "claim_executor: floor contract finalized — resolve count matches declared {} \
+                     and materialization disclosure holds",
+                    fin.declared_resolve_count
+                );
+            }
+        } else {
+            ordinary_failed = true;
+            for msg in refusals {
+                eprintln!("claim_executor: FLOOR-FINALIZATION-REFUSED: {msg}");
+                failure_details.push(format!("floor finalization refused: {msg}"));
+            }
+        }
+    }
     // On-success stages: run only on a fully-green ordinary floor; each stage is a
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members execute
@@ -3303,6 +3399,7 @@ fn run_perturb_check(
         &[temp_root],
         &remapped,
         &[],
+        None,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
@@ -3517,6 +3614,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
     let batches = walk_plan.batches;
     let on_success_stages = walk_plan.on_success_stages;
+    // Floor finalization: the floor plan declares its resolve law in the plan closure
+    // (gunbc_ci_floor_declared_resolve_count, projecting the ci_materialization
+    // authority). Read fail-closed — a floor plan whose law cannot be read refuses the
+    // run rather than walking without its contract. Other plans declare none.
+    let floor_finalization: Option<FloorFinalization> = if plan_function == "gunbc_ci_floor_plan" {
+        match run_value(&plan_ctx, "gunbc_ci_floor_declared_resolve_count") {
+            Ok(Value::Int(n)) => Some(FloorFinalization {
+                declared_resolve_count: n,
+            }),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: gunbc_ci_floor_declared_resolve_count must be an Int, got \
+                     {other:?} (fail-closed)"
+                );
+                return Err(ExitCode::from(1));
+            }
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: gunbc_ci_floor_declared_resolve_count unavailable \
+                     (fail-closed): {msg}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
@@ -3719,6 +3843,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         &source_roots,
         &batches,
         &on_success_stages,
+        floor_finalization.as_ref(),
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
@@ -3875,6 +4000,80 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn finalization_record(resolve_counts: &[u64]) -> BatchRecord {
+        BatchRecord {
+            batch_index: 0,
+            wall_nanos: 0,
+            clamp_ms: None,
+            unit_count: 0,
+            results: resolve_counts
+                .iter()
+                .map(|n| ClaimResult {
+                    function: "fixture".to_string(),
+                    ok: true,
+                    detail: String::new(),
+                    wall_nanos: 0,
+                    resolve_nanos: *n as u128,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                    witness_row_costs: Vec::new(),
+                })
+                .collect(),
+        }
+    }
+
+    // Floor finalization law 1 (in-executor form of the deleted resolve-receipt gate
+    // step): the count is recomputed from batch records by the same nonzero-
+    // resolve_nanos rule the receipt writer uses. Declared-vs-actual mismatch refuses
+    // in BOTH directions; match passes. The materialization arm is exercised through
+    // the missing-file refusal (no target/ receipt exists under cargo test), which
+    // also pins that law 2 cannot silently pass when the receipt is absent.
+    #[test]
+    fn floor_finalization_refuses_on_resolve_count_mismatch_both_directions() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 1,
+        };
+        let over = [finalization_record(&[5, 7])];
+        let refusals = validate_floor_finalization(&fin, &over);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor resolve count 2 differs from declared 1")),
+            "over-count must refuse: {refusals:?}"
+        );
+        let under = [finalization_record(&[])];
+        let refusals = validate_floor_finalization(&fin, &under);
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor resolve count 0 differs from declared 1")),
+            "under-count must refuse: {refusals:?}"
+        );
+    }
+
+    #[test]
+    fn floor_finalization_matching_count_leaves_only_the_materialization_arm() {
+        let fin = FloorFinalization {
+            declared_resolve_count: 2,
+        };
+        let records = [finalization_record(&[3, 0, 9])];
+        let refusals = validate_floor_finalization(&fin, &records);
+        // resolve law satisfied (two nonzero-resolve results); under cargo test no
+        // materialization receipt file exists, so exactly the missing-receipt refusal
+        // remains — proving law 2 fails closed on absence rather than passing.
+        assert!(
+            !refusals.iter().any(|m| m.contains("differs from declared")),
+            "resolve law must be satisfied: {refusals:?}"
+        );
+        assert!(
+            refusals
+                .iter()
+                .any(|m| m.contains("floor materialization receipt missing")),
+            "absent receipt must refuse, never pass: {refusals:?}"
+        );
+    }
 
     // D2 wiring pin: the fast-exit consumes exactly this mapping, so the terminal
     // process code stays behavior-identical to the ExitCode return it replaced.
