@@ -8,9 +8,12 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 import std.algebra { FreeMonoid, Empty, Cons }
 
 import v1.compiler.infer_occurrence_binding {
+  module_path_owner_binding_decide,
+  ModulePathBindingAmbiguous,
+  ModulePathBindingHit,
+  ModulePathBindingMiss,
   global_bare_chain_owner_path_from_decide,
   global_bare_chain_ambiguity_labels_from_decide,
-  global_bare_chain_is_ambiguous_from_decide,
 }
 
 
@@ -786,9 +789,11 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
-      global_bare_chain_is_ambiguous_from_decide(
-        owners: chain |> map(c => c.module_path),
-      )
+      match module_path_owner_binding_decide(owners: chain |> map(c => c.module_path)) {
+        ModulePathBindingAmbiguous { owners: _ } => true
+        ModulePathBindingHit { owner: _ } => false
+        ModulePathBindingMiss => false
+      }
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
     Absent => false
   }

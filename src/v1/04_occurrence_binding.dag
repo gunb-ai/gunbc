@@ -35,15 +35,6 @@ fn global_bare_chain_owner_path_from_decide(
   }
 }
 
-fn global_bare_chain_is_ambiguous_from_decide(
-  owners: List<String>
-) -> Bool {
-  match module_path_owner_binding_decide(owners: owners) {
-    ModulePathBindingAmbiguous { owners: _ } => true
-    _ => false
-  }
-}
-
 fn global_bare_chain_ambiguity_labels_from_decide(
   owners: List<String>,
   name: String

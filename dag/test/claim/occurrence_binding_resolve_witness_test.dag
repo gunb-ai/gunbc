@@ -26,7 +26,6 @@ import std.occurrence_binding_resolve {
   binding_candidate_from_declaration,
   resolve_reference_occurrence_binding,
   module_path_binding_decide,
-  list_to_free_monoid,
 }
 
 fn obr_fixture_span(file: String, start: Int, end: Int) -> SourceSpan {
@@ -343,10 +342,8 @@ test fn occurrence_binding_resolve_decide_is_the_single_fold_authority_holds() -
       )
       let manual = occurrence_binding_decide(
         occurrence: binding_occurrence_from_reference(reference: ref),
-        candidates: list_to_free_monoid(
-          items: transport.declarations
-            |> map(binding_candidate_from_declaration),
-        ),
+        candidates: transport.declarations
+          |> map(binding_candidate_from_declaration),
       )
       direct == manual
     Absent => false

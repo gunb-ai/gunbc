@@ -67,28 +67,6 @@ fn binding_candidate_from_declaration(
   }
 }
 
-fn free_monoid_append<T>(
-  acc: FreeMonoid<T>,
-  item: T
-) -> FreeMonoid<T> {
-  match acc {
-    Empty => Cons { head: item, tail: Empty }
-    Cons { head: head, tail: tail } =>
-      Cons {
-        head: head,
-        tail: free_monoid_append(acc: tail, item: item),
-      }
-  }
-}
-
-fn list_to_free_monoid<T>(items: List<T>) -> FreeMonoid<T> {
-  fold(
-    items,
-    init: Empty,
-    f: (acc, item) => free_monoid_append(acc: acc, item: item),
-  )
-}
-
 fn occurrence_index_entry_for_declaration(
   transport: OccurrenceTransport,
   declaration: DeclarationOccurrence
@@ -142,7 +120,7 @@ fn binding_candidates_for_reference(
   reference: ReferenceOccurrence,
   segment: String
 ) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
-  let matching = transport.declarations
+  transport.declarations
     |> filter(declaration =>
       declaration_matches_reference_segment(
         transport: transport,
@@ -151,12 +129,9 @@ fn binding_candidates_for_reference(
         segment: segment,
       )
     )
-  list_to_free_monoid(
-    items: matching
-      |> map(declaration =>
-        binding_candidate_from_declaration(declaration: declaration)
-      ),
-  )
+    |> map(declaration =>
+      binding_candidate_from_declaration(declaration: declaration)
+    )
 }
 
 fn resolve_reference_occurrence_binding(
@@ -198,8 +173,6 @@ fn module_path_binding_decide(
 ) -> OccurrenceBindingResult<String> {
   occurrence_binding_decide(
     occurrence: module_path_binding_occurrence(module_path: env_module_path),
-    candidates: list_to_free_monoid(
-      items: owners |> map(owner => module_path_binding_candidate(owner: owner)),
-    ),
+    candidates: owners |> map(owner => module_path_binding_candidate(owner: owner)),
   )
 }
