@@ -1,0 +1,613 @@
+module gunbc.roadmap_validation_oracle
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, ContentHash }
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import extdeps.pin {
+  Pin,
+  ExactPin,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  ObservedIdentityMismatch,
+  TrackedResolutionUnrecorded,
+  ConstraintIsNotIdentity,
+  PinAbsent,
+  admit_pin_integrity,
+}
+import extdeps.version { VersionIdentity }
+import gunbc.roadmap_execution_contract {
+  ValidationOperation,
+  GunbcClaimValidation,
+  CargoTestValidation,
+  CargoFmtValidation,
+  WorkItemExecutionContract,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  json_string,
+  json_int,
+  json_array,
+  json_object,
+  json_kv,
+  serialize_json,
+  serialize_json_object_prefix,
+}
+
+data validation_oracle_authority_note: String = "The single authority for WHAT a verification run is run AGAINST, kept separate from whether that run passed. Verify used to be hardcoded pending, so a finished agent left an uncommitted diff and a human ran the receipts by hand; running them automatically is only worth anything if the thing being run cannot be edited by the agent whose work it judges. That is what this module models: the oracle a declared validation names, its observed identity, and the pin captured before the agent started. It mints no new digest concept — identity is std.types.ContentHash produced through std.content_hash, the same authority v1's surface fingerprints and v2's node hashing already use — and no new pin concept: expected-versus-observed is extdeps.pin, reached through admit_pin_integrity, so this module supplies the SUBJECT and the OBSERVATION and borrows the adjudication."
+
+data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. RESIDUE, stated because it is real and this note is where it stays countable: a witness that imports a SHARED test helper from another file can still be weakened by editing that helper, which is outside the entry file and therefore outside this pin. dissolve-on: feature:validation-oracle-closure-partition — the claim runner's loaded closure is partitioned into oracle-side and subject-side modules from the containment tree, and the pin covers the oracle side entire; at that point the entry-file grain becomes a projection of the partition rather than a proxy for it."
+
+data validation_oracle_declaration_scan_note: String = "The declaration count is a LINE-START scan over the entry source, and its limits are stated rather than discovered. A top-level .dag declaration is unindented, so requiring the line to BEGIN with `fn <name>(` or `fn <name><` excludes the common false positive — the same identifier appearing inside one of this corpus's large note strings — without pretending to be a parse. It is used for exactly one decision, how MANY declarations answer to the contract's name, because that count is what separates three genuinely different states with three different remedies: none is a missing oracle, one is the oracle, and more than one means the contract does not determine which declaration the claim runner will pick. That last state is not hypothetical here — this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped — so the arm has a real producer rather than being coverage by illusion. dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when identifiers resolve against the containment tree, this scan is replaced by that resolution and the ambiguity arm is answered structurally instead of textually."
+
+type ValidationOracleRef {
+  entry: FilePath
+  function: NonEmptyStr
+}
+
+data validation_oracle_observation_note: String = "Three arms because three remedies. OracleFound carries the identity that the pin is adjudicated against. OracleMissing means the entry source was obtained and the contract's function is NOT declared in it, or the source could not be obtained at all; the host's own reason travels in `detail` rather than being reclassified here. Those two causes share an arm deliberately and the sharing is bounded: neither can green, both stop the line, and the located detail says which one happened. What is NOT claimed is that this arm distinguishes a deleted file from an unreadable one — the Filesystem.Read surface reports success plus a message and exposes no typed absence, so inventing that distinction from an error string would be a classification this module cannot decide. dissolve-on: feature:filesystem-read-typed-absence — the read surface carries absent as its own arm, and OracleMissing splits along it. OracleAmbiguous is the count>1 state above."
+
+type OracleObservation
+  = OracleFound {
+      oracle: ValidationOracleRef,
+      identity: ContentHash,
+    }
+  | OracleMissing {
+      oracle: ValidationOracleRef,
+      detail: String,
+    }
+  | OracleAmbiguous {
+      oracle: ValidationOracleRef,
+      declaration_count: Int,
+    }
+
+data validation_oracle_identity_tag: NonEmptyStr = "gunbc.validation-oracle/v1"
+
+data validation_oracle_set_tag: NonEmptyStr = "gunbc.validation-oracle-set/v1"
+
+fn validation_oracle_source_identity(source: String) -> ContentHash {
+  content_hash_tagged(
+    tag: validation_oracle_identity_tag,
+    payload: content_hash_atom(value: source as NonEmptyStr),
+  )
+}
+
+fn validation_oracle_declaration_line_matches(
+  line: String,
+  function: NonEmptyStr,
+) -> Bool {
+  starts_with(
+    s: line,
+    prefix: join(["fn ", function as String, "("], ""),
+  ) || starts_with(
+    s: line,
+    prefix: join(["fn ", function as String, "<"], ""),
+  )
+}
+
+fn validation_oracle_declaration_count(
+  source: String,
+  function: NonEmptyStr,
+) -> Int {
+  count(filter(
+    xs: split(s: source, delimiter: "\n"),
+    f: line => validation_oracle_declaration_line_matches(
+      line: line,
+      function: function,
+    ),
+  ))
+}
+
+fn validation_oracle_observe_from_source(
+  oracle: ValidationOracleRef,
+  source_readable: Bool,
+  source: String,
+  read_error: String,
+) -> OracleObservation {
+  if !source_readable {
+    OracleMissing {
+      oracle: oracle,
+      detail: join([
+        "validation oracle source could not be obtained at ",
+        oracle.entry as String,
+        ": ",
+        read_error,
+      ], ""),
+    }
+  } else {
+    let declarations = validation_oracle_declaration_count(
+      source: source,
+      function: oracle.function,
+    )
+    if declarations == 0 {
+      OracleMissing {
+        oracle: oracle,
+        detail: join([
+          "validation oracle source at ",
+          oracle.entry as String,
+          " declares no ",
+          oracle.function as String,
+        ], ""),
+      }
+    } else if declarations > 1 {
+      OracleAmbiguous {
+        oracle: oracle,
+        declaration_count: declarations,
+      }
+    } else {
+      OracleFound {
+        oracle: oracle,
+        identity: validation_oracle_source_identity(source: source),
+      }
+    }
+  }
+}
+
+data validation_oracle_pin_scope_note: String = "Not every declared validation names an oracle this pin can cover, and the ones that do not REFUSE rather than verifying unpinned. A gunbc claim validation names an exact entry file and function, so its oracle is a modeled artifact with an observable identity. A cargo test or a rustfmt check does not: the first names a filter over a Rust test corpus whose extent is decided by cargo at run time, the second names a tool whose oracle is its own formatting rules. Both have real oracles; neither has one this module can observe today. Verifying them anyway would hand back a green whose meaning is 'the agent's own edits passed the agent's own tests', which is precisely the fail-open this lane exists to close, so the honest answer is a typed, counted refusal that names the validation that could not be pinned. dissolve-on: feature:validation-oracle-nondag-subjects — a cargo test target and a formatter's rule set each carry an observable identity, at which point these become OraclePinnable rows and this arm loses its producers."
+
+type OraclePinScope
+  = OraclePinnable { oracle: ValidationOracleRef }
+  | OracleNotPinnable {
+      validation_label: String,
+      reason: String,
+    }
+
+fn validation_oracle_scope(validation: ValidationOperation) -> OraclePinScope {
+  match validation {
+    GunbcClaimValidation { entry, function } =>
+      OraclePinnable {
+        oracle: ValidationOracleRef {
+          entry: entry,
+          function: function,
+        },
+      }
+    CargoTestValidation { filter: f } =>
+      OracleNotPinnable {
+        validation_label: join(["cargo-test ", f as String], ""),
+        reason: "a cargo test filter names no single observable oracle artifact; its extent is decided by cargo at run time",
+      }
+    CargoFmtValidation =>
+      OracleNotPinnable {
+        validation_label: "cargo-fmt",
+        reason: "a formatter's oracle is its own rule set, which carries no identity this module can observe",
+      }
+  }
+}
+
+fn validation_oracle_scopes(
+  contract: WorkItemExecutionContract,
+) -> List<OraclePinScope> {
+  match contract {
+    ExecutionContractUnspecified => []
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      map(validations, v => validation_oracle_scope(validation: v))
+  }
+}
+
+data validation_oracle_set_identity_note: String = "A contract may declare several validations, so the pinned fact is one identity over the ORDERED set of their oracles, folded left with std.content_hash.combine under a tag. One digest rather than a list keeps the persisted pin a single value with a single home, and ordering is the contract's own declaration order, which is already the order the validations run in — so the fold introduces no ordering decision of its own. Any oracle moving moves the combined identity, which is the property the pin needs; WHICH one moved is recovered from the per-oracle observations carried beside the refusal, not from the digest."
+
+type OracleSetObservation
+  = OracleSetObserved {
+      identity: ContentHash,
+      observations: List<OracleObservation>,
+    }
+  | OracleSetIncomplete {
+      blocking: OracleObservation,
+      observations: List<OracleObservation>,
+    }
+
+fn validation_oracle_observation_identity(
+  observation: OracleObservation,
+) -> ContentHash? {
+  match observation {
+    OracleFound { oracle: _, identity } => Present { value: identity }
+    OracleMissing { oracle: _, detail: _ } => none
+    OracleAmbiguous { oracle: _, declaration_count: _ } => none
+  }
+}
+
+fn validation_oracle_first_incomplete(
+  observations: List<OracleObservation>,
+) -> OracleObservation? {
+  observations
+    |> filter(o => match validation_oracle_observation_identity(observation: o) {
+      Present { value: _ } => false
+      Absent => true
+    })
+    |> first
+}
+
+fn validation_oracle_set_observe(
+  observations: List<OracleObservation>,
+) -> OracleSetObservation {
+  match validation_oracle_first_incomplete(observations: observations) {
+    Present { value: blocking } =>
+      OracleSetIncomplete {
+        blocking: blocking,
+        observations: observations,
+      }
+    Absent =>
+      OracleSetObserved {
+        identity: fold(
+          observations,
+          init: content_hash_atom(value: validation_oracle_set_tag),
+          f: fn(acc, o) {
+            match validation_oracle_observation_identity(observation: o) {
+              Present { value: identity } =>
+                content_hash_combine(acc, identity)
+              Absent => acc
+            }
+          },
+        ),
+        observations: observations,
+      }
+  }
+}
+
+data validation_verdict_note: String = "The typed verdict stored beside the attempt and projected into the Verify lamp. Passed and Failed are the two ANSWERS a run can produce — the claim runner exits nonzero when its Bool entry returns false, so a red witness is data this module adjudicates, not a fault. Every other outcome is a REFUSAL that names its own cause, and no arm widens: there is no arm that runs the validation without a satisfied pin, no arm that treats an unobservable oracle as a pass, and no arm that treats a refusal as a red. The distinction between a refusal and a red is the whole point of the second oracle control — a deleted witness must not read as a failing witness, because the remedies are opposite: one restores the oracle, the other fixes the subject."
+
+type ValidationRefusalCause
+  = ValidationContractUnspecified
+  | ValidationOracleUnpinnable {
+      validation_label: String,
+      reason: String,
+    }
+  | ValidationOracleMissing {
+      entry: String,
+      function: String,
+      detail: String,
+    }
+  | ValidationOracleAmbiguous {
+      entry: String,
+      function: String,
+      declaration_count: Int,
+    }
+  | ValidationOracleMoved {
+      expected: ContentHash,
+      observed: ContentHash,
+    }
+  | ValidationOraclePinUnrecorded { channel: NonEmptyStr }
+  | ValidationPinReceiptUnreadable { detail: String }
+  | ValidationCommandUnrealized
+  | ValidationCommandRefused {
+      program: String,
+      reason: String,
+    }
+
+type ValidationVerdict
+  = ValidationPassed {
+      command: String,
+      oracle_identity: ContentHash,
+    }
+  | ValidationFailed {
+      command: String,
+      exit_code: Int,
+      detail: String,
+    }
+  | ValidationRefused { cause: ValidationRefusalCause }
+
+fn validation_oracle_incomplete_cause(
+  observation: OracleObservation,
+) -> ValidationRefusalCause {
+  match observation {
+    OracleFound { oracle: _, identity: _ } =>
+      ValidationPinReceiptUnreadable {
+        detail: "a found oracle is not an incomplete observation; this arm is unreachable by construction of validation_oracle_set_observe",
+      }
+    OracleMissing { oracle, detail } =>
+      ValidationOracleMissing {
+        entry: oracle.entry as String,
+        function: oracle.function as String,
+        detail: detail,
+      }
+    OracleAmbiguous { oracle, declaration_count } =>
+      ValidationOracleAmbiguous {
+        entry: oracle.entry as String,
+        function: oracle.function as String,
+        declaration_count: declaration_count,
+      }
+  }
+}
+
+data validation_oracle_pin_admission_note: String = "The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names."
+
+fn validation_oracle_pin(
+  oracle_count: Int,
+  expected_identity: ContentHash,
+  revision: VersionIdentity,
+) -> Pin<Int> {
+  Pin {
+    subject: oracle_count,
+    version: revision,
+    expected_identity: expected_identity,
+    selection: ExactPin,
+  }
+}
+
+fn validation_oracle_pin_refusal_cause(
+  cause: extdeps.pin.PinRefusalCause,
+) -> ValidationRefusalCause {
+  match cause {
+    ObservedIdentityMismatch { expected, observed } =>
+      ValidationOracleMoved {
+        expected: expected,
+        observed: observed,
+      }
+    TrackedResolutionUnrecorded { channel } =>
+      ValidationOraclePinUnrecorded { channel: channel }
+    ConstraintIsNotIdentity { constraint } =>
+      ValidationPinReceiptUnreadable {
+        detail: join([
+          "pinned oracle identity is a constraint, not an identity: ",
+          constraint as String,
+        ], ""),
+      }
+    PinAbsent =>
+      ValidationPinReceiptUnreadable {
+        detail: "no oracle identity was recorded for this attempt at dispatch",
+      }
+  }
+}
+
+type ValidationOracleGate
+  = ValidationOracleAdmitted { identity: ContentHash }
+  | ValidationOracleGateRefused { cause: ValidationRefusalCause }
+
+data validation_oracle_gate_note: String = "The one place a validation run becomes permitted. It is a GATE rather than a check beside the runner because the run is an effect: the only way to reach the exec is through an Admitted answer carrying the identity that admitted it, so there is no code path that runs the declared command with an unsatisfied pin. That is weaker than making the bad state unwritable in the type system and it is not claimed to be more — a caller could ignore this fn — but it removes the shape where a run happens first and its pin is consulted afterwards, which is the shape that greens an agent's edits to its own witness."
+
+fn validation_oracle_gate(
+  contract: WorkItemExecutionContract,
+  observations: List<OracleObservation>,
+  pin_recorded: Bool,
+  expected_identity: ContentHash,
+  revision: VersionIdentity,
+  pin_read_detail: String,
+) -> ValidationOracleGate {
+  match contract {
+    ExecutionContractUnspecified =>
+      ValidationOracleGateRefused { cause: ValidationContractUnspecified }
+    ExecutionContract { validations: _, extra_capabilities: _ } =>
+      match validation_oracle_scopes(contract: contract)
+        |> filter(s => match s {
+          OraclePinnable { oracle: _ } => false
+          OracleNotPinnable { validation_label: _, reason: _ } => true
+        })
+        |> first {
+        Present { value: unpinnable } =>
+          match unpinnable {
+            OracleNotPinnable { validation_label, reason } =>
+              ValidationOracleGateRefused {
+                cause: ValidationOracleUnpinnable {
+                  validation_label: validation_label,
+                  reason: reason,
+                },
+              }
+            OraclePinnable { oracle: _ } =>
+              ValidationOracleGateRefused {
+                cause: ValidationPinReceiptUnreadable {
+                  detail: "a pinnable scope is not an unpinnable one; this arm is unreachable by construction of the filter above",
+                },
+              }
+          }
+        Absent =>
+          if !pin_recorded {
+            ValidationOracleGateRefused {
+              cause: ValidationPinReceiptUnreadable {
+                detail: pin_read_detail,
+              },
+            }
+          } else {
+            match validation_oracle_set_observe(observations: observations) {
+              OracleSetIncomplete { blocking, observations: _ } =>
+                ValidationOracleGateRefused {
+                  cause: validation_oracle_incomplete_cause(
+                    observation: blocking,
+                  ),
+                }
+              OracleSetObserved { identity, observations: _ } =>
+                match admit_pin_integrity(
+                  pin: validation_oracle_pin(
+                    oracle_count: count(observations),
+                    expected_identity: expected_identity,
+                    revision: revision,
+                  ),
+                  observed_identity: identity,
+                ) {
+                  PinIntegrityAdmitted { pin: _ } =>
+                    ValidationOracleAdmitted { identity: identity }
+                  PinRefused { subject: _, cause } =>
+                    ValidationOracleGateRefused {
+                      cause: validation_oracle_pin_refusal_cause(cause: cause),
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
+  match cause {
+    ValidationContractUnspecified => "contract-unspecified"
+    ValidationOracleUnpinnable { validation_label: _, reason: _ } =>
+      "oracle-unpinnable"
+    ValidationOracleMissing { entry: _, function: _, detail: _ } =>
+      "oracle-missing"
+    ValidationOracleAmbiguous { entry: _, function: _, declaration_count: _ } =>
+      "oracle-ambiguous"
+    ValidationOracleMoved { expected: _, observed: _ } => "oracle-moved"
+    ValidationOraclePinUnrecorded { channel: _ } => "oracle-pin-unrecorded"
+    ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
+    ValidationCommandUnrealized => "command-unrealized"
+    ValidationCommandRefused { program: _, reason: _ } => "command-refused"
+  }
+}
+
+fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
+  match cause {
+    ValidationContractUnspecified =>
+      "the node declares no execution contract, so there is no validation to run"
+    ValidationOracleUnpinnable { validation_label, reason } =>
+      join([
+        "declared validation ",
+        validation_label,
+        " cannot be pinned: ",
+        reason,
+      ], "")
+    ValidationOracleMissing { entry: _, function: _, detail } => detail
+    ValidationOracleAmbiguous { entry, function, declaration_count } =>
+      join([
+        entry,
+        " declares ",
+        to_string(declaration_count),
+        " declarations named ",
+        function,
+        "; the contract does not determine which one the claim runner selects",
+      ], "")
+    ValidationOracleMoved { expected, observed } =>
+      join([
+        "the validation oracle changed after dispatch: pinned ",
+        expected as String,
+        ", observed ",
+        observed as String,
+        ". A run against an oracle the attempt itself moved proves nothing",
+      ], "")
+    ValidationOraclePinUnrecorded { channel } =>
+      join([
+        "the oracle identity was resolved from the moving reference ",
+        channel as String,
+        " and no record of that resolution is carried",
+      ], "")
+    ValidationPinReceiptUnreadable { detail } => detail
+    ValidationCommandUnrealized =>
+      "the declared validation has no host capability realization, so no command exists to run"
+    ValidationCommandRefused { program, reason } =>
+      join([program, ": ", reason], "")
+  }
+}
+
+fn validation_verdict_key(verdict: ValidationVerdict) -> String {
+  match verdict {
+    ValidationPassed { command: _, oracle_identity: _ } => "passed"
+    ValidationFailed { command: _, exit_code: _, detail: _ } => "failed"
+    ValidationRefused { cause: _ } => "refused"
+  }
+}
+
+fn validation_verdict_detail(verdict: ValidationVerdict) -> String {
+  match verdict {
+    ValidationPassed { command, oracle_identity } =>
+      join([
+        "declared validation passed against the pinned oracle ",
+        oracle_identity as String,
+        ": ",
+        command,
+      ], "")
+    ValidationFailed { command, exit_code, detail } =>
+      join([
+        "declared validation returned false (exit ",
+        to_string(exit_code),
+        ") against the pinned oracle: ",
+        command,
+        if detail == "" { "" } else { join([" — ", detail], "") },
+      ], "")
+    ValidationRefused { cause } =>
+      join([
+        "validation refused (",
+        validation_refusal_cause_key(cause: cause),
+        "): ",
+        validation_refusal_cause_detail(cause: cause),
+      ], "")
+  }
+}
+
+data validation_receipt_schema: NonEmptyStr = "roadmap-validation-receipt/v1"
+
+data validation_receipt_identity_note: String = "The persisted verdict is identified by its LEADING members exactly as the environment-admission receipt is, and for the same reason recorded there: a reader that scans a serialized document for a word can be satisfied from ANY value position, so a refusal whose detail happens to carry the word `passed` would read as a pass. The emitter always writes schema then verdict first, so the passed document's byte prefix is derivable from this same emitter and a reader requires the receipt to START with it. No nested value can occupy a document prefix, which is what makes the fabricated pass unwritable rather than merely unlikely."
+
+fn validation_receipt_identity_prefix(verdict_key: String) -> String {
+  serialize_json_object_prefix(members: [
+    json_kv(key: "schema", value: json_string(s: validation_receipt_schema as String)),
+    json_kv(key: "verdict", value: json_string(s: verdict_key)),
+  ])
+}
+
+fn validation_oracle_observation_json(
+  observation: OracleObservation,
+) -> JsonValue {
+  match observation {
+    OracleFound { oracle, identity } =>
+      json_object(members: [
+        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
+        json_kv(key: "function", value: json_string(s: oracle.function as String)),
+        json_kv(key: "state", value: json_string(s: "found")),
+        json_kv(key: "identity", value: json_string(s: identity as String)),
+      ])
+    OracleMissing { oracle, detail } =>
+      json_object(members: [
+        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
+        json_kv(key: "function", value: json_string(s: oracle.function as String)),
+        json_kv(key: "state", value: json_string(s: "missing")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    OracleAmbiguous { oracle, declaration_count } =>
+      json_object(members: [
+        json_kv(key: "entry", value: json_string(s: oracle.entry as String)),
+        json_kv(key: "function", value: json_string(s: oracle.function as String)),
+        json_kv(key: "state", value: json_string(s: "ambiguous")),
+        json_kv(key: "declaration_count", value: json_int(n: declaration_count)),
+      ])
+  }
+}
+
+fn validation_receipt_json(
+  verdict: ValidationVerdict,
+  observations: List<OracleObservation>,
+) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: validation_receipt_schema as String)),
+    json_kv(
+      key: "verdict",
+      value: json_string(s: validation_verdict_key(verdict: verdict)),
+    ),
+    json_kv(
+      key: "detail",
+      value: json_string(s: validation_verdict_detail(verdict: verdict)),
+    ),
+    json_kv(
+      key: "oracles",
+      value: json_array(elements: map(
+        observations,
+        o => validation_oracle_observation_json(observation: o),
+      )),
+    ),
+  ]))
+}
+
+type ValidationReceiptDecode
+  = ValidationReceiptDecoded { verdict_key: String }
+  | ValidationReceiptUndecodable { reason: String }
+
+fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
+  if starts_with(
+    s: receipt,
+    prefix: validation_receipt_identity_prefix(verdict_key: "passed"),
+  ) {
+    ValidationReceiptDecoded { verdict_key: "passed" }
+  } else if starts_with(
+    s: receipt,
+    prefix: validation_receipt_identity_prefix(verdict_key: "failed"),
+  ) {
+    ValidationReceiptDecoded { verdict_key: "failed" }
+  } else if starts_with(
+    s: receipt,
+    prefix: validation_receipt_identity_prefix(verdict_key: "refused"),
+  ) {
+    ValidationReceiptDecoded { verdict_key: "refused" }
+  } else {
+    ValidationReceiptUndecodable {
+      reason: "validation receipt does not lead with this emitter's schema and a known verdict",
+    }
+  }
+}
