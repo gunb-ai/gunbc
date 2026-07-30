@@ -203,14 +203,14 @@ Three corrections recorded with it:
   describes exactly one blob, so the grain question cannot arise, and it carries
   `digest: ContentHash` natively so `expected_identity` is **derived** from the
   subject rather than copied.
-- **Multi-artifact grain, kept as a finding.** For subjects that publish several
-  artifacts the pin subject is the *artifact* (release × platform), not the release.
-  That observation stands on the corpus rather than on the witness, and it is why
-  sccache was *rejected* as the proof subject. Recorded as
-  `feature:pin-artifact-grain`. Related and unfixed, belonging to no lane here:
-  `extdeps.crypto.hash.Digest` and `std.types.ContentHash` are two digest concepts
-  in one corpus — the sccache route would have needed a conversion between them,
-  which is exactly where that fork would have been laundered into this witness.
+- **Multi-artifact grain, LANDED** (`feature:pin-artifact-grain`, PR #7451). For subjects
+  that publish several artifacts the pin subject is the *artifact* (release × platform),
+  not the release row. `SccacheBinaryArtifact` at `dag/extdeps/cache/sccache.dag`
+  (`SccachePublishedMuslArch` construction wall) is the sound sccache instantiation;
+  `Pin<SccacheBinaryRelease>` remains documented as ambiguous. Witness:
+  `dag/test/claim/sccache_pin_witness_test.dag` (grain + arch refusal controls). The
+  `Digest`→`ContentHash` bridge is `extdeps.crypto.hash.sha256_digest_content_hash`
+  — one named rendering rule, not a silent cast between hash families.
 
 Two census entries #7388 adds rather than removes:
 
