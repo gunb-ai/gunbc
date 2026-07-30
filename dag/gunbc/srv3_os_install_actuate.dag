@@ -54,15 +54,17 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
   uses net: std.resources.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
-  match bmc_credential_materialization_failure_reason(materialization: materialization) {
-    Present { value: reason } =>
-      return exit_failure(reason: concat("bmcweb-login: ", reason))
-    Absent => {}
-  }
-  let password = match bmc_credential_materialization_password(materialization: materialization) {
-    Present { value: password } => password
-    Absent =>
-      return exit_failure(reason: "bmcweb-login: could not materialize BMC password from resolution")
+  let password = match materialization {
+    BmcCredentialMaterialized { password: password } => password
+    BmcCredentialAccessUpsertRequired { plan: plan } =>
+      return exit_failure(
+        reason: concat(
+          "bmcweb-login: ",
+          access_token_upsert_required_reason(plan: plan),
+        ),
+      )
+    BmcCredentialFetchRefused { reason: reason } =>
+      return exit_failure(reason: concat("bmcweb-login: ", reason as String))
   }
 
   let body_content = srv3_bmcweb_login_body_content_for_resolution(

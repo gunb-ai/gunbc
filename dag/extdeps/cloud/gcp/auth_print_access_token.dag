@@ -1,0 +1,59 @@
+module extdeps.cloud.gcp.auth_print_access_token
+
+import std.types { Bool, List, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/sdk/gcloud/reference/auth/print-access-token"
+  }
+}
+
+type GcloudAuthDeficitPattern {
+  stderr_substring: String
+  observation_note: String
+}
+
+data gcloud_auth_print_access_token_deficit_patterns: List<GcloudAuthDeficitPattern> = [
+  GcloudAuthDeficitPattern {
+    stderr_substring: "Reauthentication",
+    observation_note: "gcloud auth print-access-token interactive reauthentication prompt",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "not currently have an active account",
+    observation_note: "gcloud reports no active account selected",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "Could not load the default credentials",
+    observation_note: "ADC load failure on stderr",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "default credentials were not found",
+    observation_note: "ADC missing on stderr",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "invalid_grant",
+    observation_note: "OAuth2 invalid_grant token refresh failure",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "RefreshError",
+    observation_note: "google-auth RefreshError wrapper on stderr",
+  },
+  GcloudAuthDeficitPattern {
+    stderr_substring: "not logged in",
+    observation_note: "gcloud reports operator not logged in",
+  },
+]
+
+fn gcloud_stderr_matches_auth_deficit_pattern(stderr: String) -> Bool {
+  fold(
+    gcloud_auth_print_access_token_deficit_patterns,
+    init: false,
+    f: (matched, deficit_pattern) =>
+      matched
+        || string_contains(
+          s: stderr,
+          pattern: deficit_pattern.stderr_substring,
+        ),
+  )
+}

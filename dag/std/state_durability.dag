@@ -186,35 +186,35 @@ fn state_durability_definition_assertions<Target, ReadbackSubject>(
   )
 }
 
-fn state_definition_linkage_is_caller_asserted(
+fn state_definition_linkage_gate_is_open(
   linkage: StateDefinitionLinkage,
 ) -> Bool {
   match linkage {
-    CallerAssertedDefinitionLinkage { reason: _, dissolve_on: _ } => true
+    CallerAssertedDefinitionLinkage { reason: _, dissolve_on: _ } => false
   }
 }
 
 fn state_durability_definition_linkage_gate_is_closed<Target, ReadbackSubject>(
   admission: StateDurabilityAdmission<Target, ReadbackSubject>,
 ) -> Bool {
-  state_definition_linkage_is_caller_asserted(
+  state_definition_linkage_gate_is_open(
     linkage: admission.realization.definition_linkages.projection,
-  )
-    && state_definition_linkage_is_caller_asserted(
+  ) == false
+    && state_definition_linkage_gate_is_open(
       linkage: admission.realization.definition_linkages.verifier,
-    )
-    && state_definition_linkage_is_caller_asserted(
+    ) == false
+    && state_definition_linkage_gate_is_open(
       linkage: admission.realization.definition_linkages.observer,
-    )
-    && state_definition_linkage_is_caller_asserted(
+    ) == false
+    && state_definition_linkage_gate_is_open(
       linkage: admission.realization.definition_linkages.transport,
-    )
-    && state_definition_linkage_is_caller_asserted(
+    ) == false
+    && state_definition_linkage_gate_is_open(
       linkage: admission.realization.definition_linkages.actuator,
-    )
-    && state_definition_linkage_is_caller_asserted(
+    ) == false
+    && state_definition_linkage_gate_is_open(
       linkage: admission.capability_version.definition_linkage,
-    )
+    ) == false
 }
 
 fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
