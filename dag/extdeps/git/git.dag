@@ -15,6 +15,34 @@ data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data git_rev_list_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-rev-list"
+  }
+}
+
+data git_merge_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-merge"
+  }
+}
+
+data git_checkout_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-checkout"
+  }
+}
+
+data git_pathspec_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/gitglossary"
+  }
+}
+
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
@@ -298,6 +326,62 @@ fn shape_git_current_branch_argv() -> List<String> {
 
 fn shape_git_branch_show_current_argv() -> List<String> {
   ["git", "branch", "--show-current"]
+}
+
+data git_pathspec_exclude_note: String = "PATHSPEC MAGIC IS GIT'S INTERFACE; WHICH PATHS TO EXCLUDE IS NOT (DESIGN §3 (a)/(c) split). gitglossary(7) 'pathspec' defines the long-form magic word `exclude` — a pathspec of the form `:(exclude)<pattern>` removes matching paths from the set an otherwise-matching pathspec selected, and git requires at least one positive pathspec beside it for there to be a set to subtract from (hence the leading `.` that shape_git_diff_unmerged_pathspec_args emits). This module owns only that SPELLING. The exclusion LIST is a caller's business policy — a workflow fact — and passing pathspec WORDS as a parameter is what keeps this row from becoming the layer inversion §3 names (an argv carrying a literal it should receive as an argument).\n\nA PATHSPEC WORD IS NOT A SHELL WORD, AND THIS MODULE DELIBERATELY DOES NOT QUOTE IT. `:(exclude)p` contains `(` and `)`, which are bash metacharacters, so any shell realization that joins this word into a command line unquoted emits a SYNTAX ERROR — proven by execution, not reasoned: the first cut of the heal skew guard did exactly that and `bash -n` rejected the emitted line. git_shell_join_argv is a join over already-spelled words, not a quoter, and must not become one (its existing callers pass words that are already quoted, so quoting there would double-quote them). Quoting therefore belongs to the emitting realization, which is the only layer that knows the target shell — see v2.workflow.ci_heal_skew_guard_emit ci_heal_skew_shell_single_quoted. Callers composing a pathspec into shell MUST quote the whole word."
+
+fn git_pathspec_exclude(path: String) -> String {
+  concat(":(exclude)", path)
+}
+
+data git_argv_program_note: String = "Each shape below is declared as an ARGS list (the operands after the `git` program) with an `_argv` sibling that prepends the program. Both spellings have live consumers and neither is derived by hand: `_argv` feeds git_shell_join_argv for a whole-command leaf, `_args` feeds a command-substitution carrier that already holds `git` as its callee. One authority, two projections — not two lists to keep in step."
+
+fn git_argv_of_args(args: List<String>) -> List<String> {
+  concat(["git"], args)
+}
+
+fn shape_git_diff_unmerged_args() -> List<String> {
+  ["diff", "--name-only", "--diff-filter=U"]
+}
+
+fn shape_git_diff_unmerged_nul_argv() -> List<String> {
+  git_argv_of_args(args: concat(shape_git_diff_unmerged_args(), ["-z"]))
+}
+
+fn shape_git_diff_unmerged_pathspec_args(pathspec_words: List<String>) -> List<String> {
+  concat(concat(shape_git_diff_unmerged_args(), ["--", "."]), pathspec_words)
+}
+
+fn shape_git_rev_list_ahead_path_limited_args(target: String, path: String) -> List<String> {
+  ["rev-list", concat("HEAD..", target), "--", path]
+}
+
+fn shape_git_merge_no_edit_argv(ref: String) -> List<String> {
+  ["git", "merge", "--no-edit", ref]
+}
+
+fn shape_git_merge_abort_argv() -> List<String> {
+  ["git", "merge", "--abort"]
+}
+
+fn shape_git_checkout_ours_argv() -> List<String> {
+  ["git", "checkout", "--ours", "--"]
+}
+
+fn shape_git_add_argv() -> List<String> {
+  ["git", "add"]
+}
+
+fn shape_git_commit_no_verify_no_edit_argv() -> List<String> {
+  ["git", "commit", "--no-verify", "--no-edit"]
+}
+
+fn shape_git_config_argv(key: String, value: String) -> List<String> {
+  ["git", "config", key, value]
+}
+
+fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
+  ["git", "rev-parse", "--verify", "--quiet", target]
 }
 
 fn git_observe_meta_shell_fragment() -> String {

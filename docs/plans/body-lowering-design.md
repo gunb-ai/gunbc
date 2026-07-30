@@ -127,6 +127,14 @@ This is the same "one grammar, both directions" move: the descent measure is rea
 proof; body-lowering is the inference direction of the same edge discipline `content_hash`
 canonicalizes.
 
+A note on the `For` case specifically, since "sugar over `Loop`" is a claim about what *would* lower
+and not about what exists: there is **no `for` in the corpus today** — zero `for`-statements, with
+iteration carried by `fold` (1,346 sites), `map` (383) and `filter` (304), and `for` merely reserved in
+the dag keyword table. The surface form and its desugaring, kept deliberately separate from
+`v2.std.orchestration`'s `PipelineStep.For` (a *bash* statement we emit, whose emitter refuses it
+today), are scoped in → [`for` as syntax sugar over `fold`](for-sugar-over-fold.md). Nothing in this
+lane is blocked on it.
+
 ## 4. Non-goals / scope fence
 
 - **Not** touching `program.dag` or surface syntax — this is inference over the already-lowered
