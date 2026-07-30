@@ -141,7 +141,7 @@ test fn w_caret_paren_tokenizes_as_caret_then_lparen() -> Bool {
   let tokens = tokenize(source: "^(1)", file: "test.dag")
   match tokens |> first {
     Present { value: t1 } =>
-      match tokens |> skip(n: 1) |> first {
+      match tokens |> skip(count: 1) |> first {
         Present { value: t2 } => t1.shape == ShCaret && t2.shape == ShLParen
         Absent => false
       }
