@@ -33,6 +33,7 @@ import v2.workflow.ci_floor_peak_emit {
 }
 import v2.workflow.ci_workflow_run_emit {
   ci_isolate_toolchain_script,
+  ci_native_cache_root_script,
   ci_pin_rustup_default_script,
   ci_selection_control_script
 }
@@ -109,6 +110,31 @@ fn ci_isolate_toolchain_step() -> Step {
   }
 }
 
+data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
+
+fn ci_native_cache_root_step() -> Step {
+  RunStep {
+    name: Present { value: ci_native_cache_derive_step_name },
+    id: none,
+    run: ci_native_cache_root_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_native_cache_prelude_order_bridge() -> String {
+  concat(
+    concat("HOME: ", ci_setup_rust_home()),
+    concat("\n      - name: ", ci_native_cache_derive_step_name)
+  )
+}
+
+data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
+
 fn ci_prelude_steps() -> List<Step> {
   [
     ci_checkout_step(),
@@ -131,6 +157,7 @@ fn ci_prelude_steps() -> List<Step> {
       continue_on_error: none,
       timeout_minutes: none
     },
+    ci_native_cache_root_step(),
     RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
