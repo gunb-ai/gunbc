@@ -22,6 +22,7 @@ correction recorded rather than silently restated:
 - *Item 2* was framed as a §3 de-fork of one readiness fact. There are **two** facts; the tree's own
   `service_ready_means_serving_this_tree_note` and the dated 2026-07-24 incident say so. The digest
   check is irreducible and must survive slice 3 (§2 Concept B).
+
 **Operator direction, 2026-07-30** — deploy should use the existing apply/delete/reconcile process
 (bmc/srvN apply) and deploy the minimal items needed to reach intent. This answers §7 q3: item 3 is
 **in scope and not droppable**, and it is instantiation of a spine several siblings already drive,
@@ -38,8 +39,10 @@ Earlier corrections, retained:
 
 ## 1. Grounding — what the tree actually says
 
-The brief's four items were checked against the tree. Three confirm exactly, one confirms and
-sharpens into a different fix, and two side claims need correcting.
+The brief's four items were checked against the tree. Three confirm exactly, and one confirms but
+sharpens into a different fix. Of the two side claims: the restart count resolves *opposite* to the
+brief's own caveat, and the "208 sources" figure — which an earlier draft of this note wrongly
+disputed — is **correct**, with the tree's competing figure being the stale one.
 
 | Brief claim | Verdict | Receipt |
 |---|---|---|
@@ -53,14 +56,38 @@ sharpens into a different fix, and two side claims need correcting.
 
 ### Two corrections
 
-**"208 sources" does not match the tree's own figure.** `live_deploy_service_ready_poll_bound_reason`
-records the measurement differently: `build_module_index` reads **every** source root — 2,356 `.dag`
-files, 12.7 MB at time of writing — in order to serve **a closure of 91**. The brief's 208 is
-neither of those numbers. These are different quantities (files read vs. closure compiled) and the
-gap between them *is* the cost shape, so the deep fix must not be sized off a single conflated
-figure. **Corpus today is 2,719 `.dag` files** — up ~15% from the 2,356 that measurement was taken
-against on 2026-07-21, nine days ago. The load term grows with the corpus, which is exactly what
-that note predicted, and it means the 40s expectation is already drifting under us.
+**"208 sources" is correct — this note's earlier objection to it was wrong, and the tree's figure is
+the stale one.** An earlier draft said 208 matched neither figure on record and asked where it came
+from. Settled by measurement instead of left as a question — running the unit's exact ExecStart
+(`gunbc serve --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle`, on a spare port)
+prints:
+
+```
+[t+56s] resolved 208 sources
+[t+59s] ✓ compile.frontend done in 3 seconds
+[t+59s] ✓ compile.normalize done in 298ms
+[t+74s] ✓ compile.reconcile done in 14 seconds
+[t+74s] ✓ compile.analyses done in 213ms
+[t+74s] gunbc serve listening -> roadmap_serve_handle()
+```
+
+So the brief's 208 is the real resolved-closure count, and
+`live_deploy_service_ready_poll_bound_reason`'s *"a closure of 91"* is stale or measuring something
+else. **The tree's figure is the one to distrust, not the brief's.**
+
+The phase split is the more valuable half of that measurement, and it **confirms the load-dominant
+diagnosis**: **56s of the 74s — 76% — elapses before `resolved 208 sources` even prints**, i.e. in
+the load phase, with the entire compile (frontend + normalize + reconcile + analyses) accounting for
+18s. Within the compile, `reconcile` is 14s of the 18s.
+
+**Honest caveat on the wall-clock number:** 74s was measured on this build box, which is not srv1
+and was concurrently running builds. It is *not* comparable to the four srv1 observations of
+35/36/36/39s recorded in the tree, and it must not be read as "startup regressed to 74s". What *is*
+machine-independent is the source count (208, exact) and the load-vs-compile *ratio*. What it does
+suggest is that `live_deploy_roadmap_unit_expected_startup = 40s` deserves re-measurement on srv1,
+since **corpus today is 2,719 `.dag` files** — up ~15% from the 2,356 that expectation was
+calibrated against nine days ago — and the load term grows with the corpus exactly as that note
+predicted.
 
 **The restart count resolves opposite to the caveat.** The brief flags: *"I have not confirmed
 whether all 24 restarts were deploys. Some may have been you."* Counted from the deploy side:
@@ -559,8 +586,11 @@ Adopting the brief's, and adding the ones the analysis surfaced:
    `sd_notify` on the same seam) an acceptable way to touch the seed for slices 3–4? If the answer
    is that the seed should not grow host integration at all, slice 4 needs a different candidate and
    I would want to know that before designing it.
-5. **The 208 figure.** Where does it come from? It matches neither the 91-source closure nor the
-   2,356-file read in the tree's own measurement. Worth pinning before the deep fix is sized.
+5. ~~**The 208 figure** — where does it come from?~~ **RESOLVED by measurement.** 208 is the real
+   resolved-closure count; the tree's *"closure of 91"* is the stale figure (§1). The measurement
+   also confirms the deep fix's premise directly: **76% of startup is the load phase**, before
+   compilation begins. No decision needed from you — but `expected_startup = 40s` should be
+   re-measured on srv1 given ~15% corpus growth since it was set.
 6. **srv1 access.** I could not reach srv1 to count restarts from the journal (§1). If you want that
    confirmation rather than the deploy-side count, I need a path in.
 
