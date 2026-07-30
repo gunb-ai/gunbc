@@ -301,8 +301,8 @@ nicety.
 > *"i think i'd like deploy to use our existing apply/delete/reconcile type process (i.e. bmc/srvN
 > apply) — my point is, i want to deploy the minimal possible items to update to intent."*
 
-This **resolves §7 q3 and re-prioritises the ticket**: item 3 is not an optional scope reducer to be
-dropped if expensive — it is the deployment ask, and "minimal possible items to update to intent" is
+This **resolves §7 q3 and re-prioritises the ticket**: item 3 is not optional work to be dropped if
+it proves expensive — it is the deployment ask, and "minimal possible items to update to intent" is
 exactly the spine's `Unchanged → noop`. The vocabulary already lines up one-to-one: **apply** =
 `MemberUpsert`, **delete** = `MemberTeardown` (owned-only, else a typed refusal), **reconcile** =
 the diff itself, with unchanged members producing no hunk and therefore no effect.
@@ -388,15 +388,21 @@ Two consequences worth stating up front, both good:
 ### Item 4 (handover) is downstream of B **only**; C is an independent scope reducer
 
 **Corrected (review 45241).** An earlier draft headed this section *"downstream of B and C"* and
-treated the two jointly. That contradicted two later statements in this same note — that item 2 is
-the handover prerequisite (§2 Concept B) and that item 3 is *not* required for the headline outcome
-(§7 q3) — and, read as a plan, it would have gated the cheap handover work on the expensive
-carrier changes. Stated unambiguously, once:
+treated the two jointly. That contradicted §2 Concept B, which names item 2 alone as the handover
+prerequisite, and — read as a plan — it would have gated the handover work on reconciliation it does
+not depend on. Stated unambiguously, once:
+
+*(Scope note, so this is not misread: item 3 is **in scope and not droppable** per the operator
+direction in §2 Concept C. That is a question of priority, and it is orthogonal to the question of
+dependency settled here — item 4 does not **depend on** item 3, which is why the two can proceed in
+parallel. An earlier version of this paragraph cited a since-answered §7 q3 to argue item 3 was
+unnecessary; that cross-reference is retired.)*
 
 - **B is a prerequisite.** Handover means *move traffic when the replacement is ready*, and there is
   no trustworthy "the replacement has bound" signal without it. Item 4 cannot be built correctly
   first.
-- **C is not a prerequisite. It is an independent scope reducer.** C changes *how often* a handover
+- **C is not a prerequisite** — it is independent, and in *function* a scope reducer (which says
+  nothing about its priority: it is in scope and not droppable, §2 Concept C). C changes *how often* a handover
   runs, never *whether it works*. A handover built with C still outstanding is correct — it simply
   performs on all ~40 deploys/day rather than on the subset that changed something. Nothing in item
   4's design reads any reconciliation fact.
@@ -573,10 +579,13 @@ Adopting the brief's, and adding the ones the analysis surfaced:
 3. ~~**Item 3's cost** — is it in scope?~~ **ANSWERED 2026-07-30 (operator).** Deploy should use the
    existing apply/delete/reconcile process (bmc/srvN apply) and deploy the minimal items needed to
    reach intent. So item 3 is **in scope and not droppable**, and the two carrier changes it needs
-   are authorised. Recorded in §2 Concept C with the two sibling precedents it should follow
-   (`host_authorized_keys_reconcile` for the comparable value, `tool_readiness` for the live
-   observation), which reduces 2a and 2c to patterned work and leaves **2b — de-fusing the running
-   service from the unit file — as the only part with no precedent.**
+   are authorised. Recorded in §2 Concept C with the sibling precedents it should follow —
+   `host_authorized_keys_reconcile` (comparable value), `tool_readiness` (live observation), and
+   `roadmap_belt` (process-as-member with live observation and owned-only teardown of a running
+   thing). **All three sub-slices have precedent.** 2a and 2c are patterned work; **2b is the
+   composition of two existing patterns** — belt's process-member machinery with the siblings'
+   content-sensitive `value_eq` — occupying the one empty cell of that 2×2, not virgin territory
+   (§2 Concept C carries the table and the measurement behind this).
 
    *Two sub-decisions this raises, both deliberately left to a human by the sibling modules
    (§2 Concept C):* whether deploy's bounded owned-artifact scope keeps today's wholesale-refuse
