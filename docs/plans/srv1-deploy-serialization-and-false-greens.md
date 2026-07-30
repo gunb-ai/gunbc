@@ -167,13 +167,19 @@ The accurate claim is therefore: *exactly one matching runner gives one-at-a-tim
 
 ## 6. Why serialization alone is not the fix — it would make things worse
 
-Given §2.3, strict FIFO by arrival will regularly run an **older** commit's deploy after a newer one. That older run then rsyncs its older tree, restarts, polls, sees its own surface, **converges, and greens** — silently regressing the live dashboard to a superseded commit. Applied to the reported pair, queueing alone would have produced: `ab58f6bca4` deploys, then `b61ed50962` deploys over it and greens, leaving main serving the older tree with two green jobs. That is strictly worse than today's honest red.
+Given §2.3, serialization by arrival will regularly run an **older** commit's deploy after a newer one. That older run then rsyncs its older tree, restarts, polls, sees its own fingerprint, **converges, and greens** — silently regressing the live dashboard to a superseded commit. Applied to the reported pair, queueing alone would have produced: `ab58f6bca4` deploys, then `b61ed50962` deploys over it and greens, leaving main serving the older tree with two green jobs. That is strictly worse than today's honest red.
 
 So serialization is necessary and not sufficient. The missing half is a **freshness precondition**: a deploy is convergence toward main's tip, not a per-commit obligation, so a deploy whose commit is no longer main's tip has *nothing to do* and must say so rather than act.
 
 ## 7. Proposed shape (for operator ruling — nothing landed)
 
-1. **Exclusion** — one deploy at a time on srv1. Recommend the dedicated-runner-label route (§5, option 3): no cancellation, no emitter dependency, expressible as a runner spec row on `gunbc_ci_deploy_srv1_stage`.
+1. **Exclusion, in two layers — the scheduler is mitigation, the host is the authority.** A runner label or a `concurrency` group only constrains *GitHub jobs routed through it*. The repo also exposes `live_deploy_apply_srv1_operator_wet` (`apply.dag`) on a different access path, and neither mechanism can exclude that caller, another workflow, or an accidental second runner picking up the label. So:
+   - **(a) scheduler pressure control** — job-level `concurrency` with `queue: max` once §4's emitter drops are closed, or one matching runner as the immediate mitigation (a runner spec row on `gunbc_ci_deploy_srv1_stage`);
+   - **(b) the actual invariant: a typed host-side lease on the srv1 deployment resource**, held from source synchronisation through binary activation, service restart, readiness, *and* the final identity readback. §2.2 is why the span matters: `live_deploy_apply_via_transport` has three phases, so releasing at restart lets the next deploy mutate the host while this one is still proving readiness — the same race one phase later.
+
+   Two further properties belong with (b), and neither is expressible today:
+   - **atomic activation** — build a versioned release directory and switch one active pointer, instead of rsyncing and installing into live mutable paths (which is what makes "loading while the tree is replaced" writable at all);
+   - **monotonicity** — refuse a candidate that would move the deployed generation *backward*. This is the construction-side form of §6's regression, and it holds even if the freshness check in item 2 is wrong or unavailable.
 2. **Superseded-tip refusal** — before mutating, the deploy establishes that its revision is main's tip. If not, it emits a typed, located, **counted** `SupersededByNewerTip` and mutates nothing. This is what keeps §6 from biting. It also subsumes the flake: the loser stops racing instead of refusing after 120 s.
 3. **Deployment identity in the fingerprint** — attack the false-green class at its root by having healthz publish the identity of what is *deployed*, not only what is *rendered*. That identity is a **pair**, because §2.2 and §3.2 establish that the deploy mutates two things:
    - **(a) the source closure the serve process actually loaded** — a content hash over it makes `observed == expected` decidable regardless of whether the rendered pages coincide. Precedent exists (`resolved_graph_cache` already combines per-module content hashes; `std.content_hash` is the authority). It must stay a pure function of the loaded sources — not a `git rev-parse`, which would make healthz wet.
@@ -182,7 +188,7 @@ So serialization is necessary and not sufficient. The missing half is a **freshn
    **(a) alone does not close the class.** It is a strict improvement over five rendered bodies, but describing it as closing the false-green class would repeat §3.2's own error one level up — a check trusted for an obligation wider than the claim it actually makes. The mechanism for (b) is a genuine choice and is deferred to §8 Q5; until that is ruled on, this item is "identify the source closure, and name the binary as still-unidentified", not "the class is closed".
 4. **Close the two emitter drops** (§4) with RED controls, whether or not option 1 needs them — a declared field the serializer discards is a fail-open in every future consumer.
 5. **Retire the `/etc/gunbc-tree-sync.env` channel** — the rsync source belongs in the unit invocation, not in a globally-mutable env file. Exclusion closes the window, but the misattribution hazard is independent and cheap to remove.
-6. **Narrow the control-byte wall** — `ansi_text_contains_terminal_control` should test for the bytes the wall is actually defending against (ESC/CSI, CR, and the C1 range), not LF and TAB, which are ordinary content in any captured diagnostic. Alternatively the refusal-write path must preserve the decl's reason and report the render failure as a *second* fact rather than a substitution. Either way the invariant is: **a diagnostic channel may not replace a located diagnosis with a complaint about itself.**
+6. **Make the control-byte admission cursor-action aware, and make the diagnosis survive regardless.** Two separate repairs, and the first is *not* "allow LF and TAB everywhere" (review 44766): `serialize_frame` deliberately joins lines with `\n`, so `Append` can legitimately carry a multi-line frame — but `Overwrite` models a single open dynamic line, and permitting embedded line feeds there would leave earlier lines uncleared on the next overwrite. So admission must depend on the requested `CursorAction` and the `DynamicLineState`, not on one global byte roster. Independently, the refusal-write path must **preserve the decl's located diagnosis** and report a render failure as a *second* fact, so the diagnosis survives whether or not its multi-line detail renders. The invariant: **a diagnostic channel may not replace a located diagnosis with a complaint about itself.**
 
 ## 8. Open questions the operator should rule on
 
@@ -192,7 +198,20 @@ So serialization is necessary and not sufficient. The missing half is a **freshn
 2. **Does `Superseded` skip the mutation entirely, or still install the binary?** If a newer tree is live, an older binary install is itself a regression — argues for skipping everything.
 3. **Scope of the healthz fingerprint (item 3).** Widening it to a source-closure hash makes the readiness contract strictly stronger and will red any deploy whose sync was partial — including cases that green today. That is the point, but it is a behavioural change to a live gate and wants an explicit go.
 4. **Is `queue: max` worth modelling now**, or is the single-runner label the terminus? The label route makes the `ConcurrencyMappingQueueMax` variant's missing `queue:` emission a latent bug rather than a blocker.
-5. **How is binary identity established (§7 item 3b)?** A source-closure hash leaves `/opt/gunbc/bin/gunbc` unidentified, so source and binary can come from different commits and still green. Two candidates with different costs: a **build-time stamp** (the emitted crate carries the source hash it was built from) keeps healthz pure but needs the emit lane to thread it; hashing **`/proc/self/exe` at startup** needs no emit change but makes the serve process read its own image — a live-tree read inside a body this doc otherwise insists must stay pure. **Which — or is the obligation explicitly narrowed to source identity, with binary identity discharged by a named mechanism elsewhere?** Raised in review (review 44735). Until it is answered, item 3 must not be described as closing the false-green class.
+5. **How is binary identity established (§7 item 3b)?** A source-closure hash leaves `/opt/gunbc/bin/gunbc` unidentified, so source and binary can come from different commits and still green.
+
+   **Provenance is not identity** (review 44766). A build-time *source* stamp proves only what source the binary claims to have been built from: two binaries from identical source but different compiler version, feature set, linker inputs — or a tampered one — carry the same stamp. Binary identity wants the artifact itself: a post-link digest, an attested artifact digest, or a linker build ID. So the honest shape is a versioned manifest rather than one field —
+
+   ```
+   DeploymentIdentity { source_closure_digest, binary_artifact_digest_or_build_id, source_commit, schema_version }
+   ```
+
+   — with the installed artifact verified against the manifest *before* activation, and the running process exposing the immutable identity it was launched with.
+
+   One more constraint on the carrier: today's `ContentHash` path bottoms out in **64-bit FNV-1a**. That is adequate for correlating this bounded incident (§9.1 relies on it), but a 64-bit value cannot serve as collision-resistant deployment identity over arbitrary artifacts, so item 3 needs a decision about the digest carrier too, not only about what is digested.
+
+   **Which mechanism — or is the obligation explicitly narrowed to source identity, with binary identity discharged by a named mechanism elsewhere?** Until this is answered, item 3 must not be described as closing the false-green class.
+6. **What is the desired revision authority (§7 item 2)?** "A deploy is convergence toward main's tip" is a proposed *policy*, not a derived fact, and there are at least three candidates with different behaviour: the **raw current main tip**; the **newest main revision that passed deployment admission**; or merely a **monotonic no-rollback relation** against the currently active deployment. The discriminating case: commit B lands after A but B's CI fails. A raw-tip check makes A superseded and leaves the *previously* deployed version live; a latest-admitted-green policy deploys A; a monotonicity-only policy also deploys A but tolerates B never arriving. All three are defensible and they are different semantics — so this belongs **before** `SupersededByNewerTip` is named as the carrier, since the name presupposes the first answer.
 
 Related lane: [srvN build-cache provisioning](srvn-buildcache-provisioning-design.md) shares the srv1 host-effect surface and the same "absorbing fallback masks the deficit" shape on `ci_release_build_script`.
 
@@ -223,6 +242,8 @@ gh run view <id> --json jobs \
 
 ### 9.3 The 25-push sample (deploy job windows, sorted by start)
 
+Denominator, stated explicitly because an earlier revision said "25 pushes" over a 23-row table (review 44766): **all 25 push runs ran a deploy job.** The two absent rows were `042a35fe86` and `d6ec32b98f`, whose deploy jobs had not yet been created when the sample was taken; both have since concluded `success` and neither overlaps another window. They are included below.
+
 ```
 76ddfd8c75 success 03:36:38 -> 03:40:21
 4b54914cc2 success 04:58:51 -> 05:02:21   ┐ overlap, both green
@@ -247,6 +268,8 @@ f67a0c644e success 21:00:09 -> 21:04:43   ┐ overlap, both green
 ab58f6bca4 success 21:30:00 -> 21:33:48   ┐ overlap, exactly one green
 b61ed50962 FAILURE 21:30:12 -> 21:34:42   ┘ (the reported run)
 2ee7a5c40a success 21:51:51 -> 21:55:24
+042a35fe86 success 22:47:16 -> 22:50:53
+d6ec32b98f success 23:12:52 -> 23:16:27
 ```
 
-Every failure is in an overlap window; no non-overlapping deploy failed. Five overlap events, 11 runs involved, 3 refusals — the other 8 are the false greens of §3.2.
+25 deploy jobs; 5 overlap events involving 11 of them; 3 refusals, every one inside an overlap window, and no non-overlapping deploy failed. The other 8 overlapping jobs are the **identity-unproven greens** of §3.2 — successes whose own source closure and binary were never established as live, which is not the same claim as 8 wrong-tree deployments.
