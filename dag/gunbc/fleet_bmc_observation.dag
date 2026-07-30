@@ -38,6 +38,10 @@ import extdeps.filesystem.linux {
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
+<<<<<<< HEAD
+=======
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+>>>>>>> origin/main
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -210,7 +214,7 @@ data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
 data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"

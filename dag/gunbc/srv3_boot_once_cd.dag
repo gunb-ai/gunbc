@@ -12,12 +12,19 @@ import gunbc.srv3_os_install_actuate_workflow {
   srv3_boot_once_cd_workflow_disposition
 }
 import gunbc.srv3_bmc_credential_resolve {
+  BmcCredentialAccessUpsertRequired,
+  BmcCredentialFetchRefused,
+  BmcCredentialMaterialized,
   BmcCredentialResolution,
+<<<<<<< HEAD
   bmc_credential_materialization_failure_reason,
   bmc_credential_materialization_password,
+=======
+>>>>>>> origin/main
   materialize_bmc_login_password,
   observe_and_resolve_srv3_bmc_credential,
 }
+import gunbc.auth.access_token_source { access_token_upsert_required_reason }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_netrc_path,
@@ -99,6 +106,7 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
   let account = plan.factory_login.username
 
   let materialization = materialize_bmc_login_password(resolution: resolution)
+<<<<<<< HEAD
   match bmc_credential_materialization_failure_reason(materialization: materialization) {
     Present { value: reason } =>
       return exit_failure(reason: concat("boot-once-cd: ", reason))
@@ -108,6 +116,19 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
     Present { value: password } => password
     Absent =>
       return exit_failure(reason: "boot-once-cd: could not materialize BMC password from resolution")
+=======
+  let password = match materialization {
+    BmcCredentialMaterialized { password: password } => password
+    BmcCredentialAccessUpsertRequired { plan: plan } =>
+      return exit_failure(
+        reason: concat(
+          "boot-once-cd: ",
+          access_token_upsert_required_reason(plan: plan),
+        ),
+      )
+    BmcCredentialFetchRefused { reason: reason } =>
+      return exit_failure(reason: concat("boot-once-cd: ", reason as String))
+>>>>>>> origin/main
   }
 
   let netrc_write = Filesystem.Write(
