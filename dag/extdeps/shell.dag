@@ -199,10 +199,7 @@ service shell.GCloud {
     output {
       access_token: Secret from "stdout"
       success: Bool from "exit_success"
-<<<<<<< HEAD
-=======
       stderr: String from "stderr"
->>>>>>> origin/main
     }
     readonly
     transport shell { argv: ["gcloud", "auth", "print-access-token"] }

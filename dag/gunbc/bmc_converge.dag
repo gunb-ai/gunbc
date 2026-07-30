@@ -32,14 +32,6 @@ import gunbc.bmc_intent {
 import gunbc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityEvidence,
-<<<<<<< HEAD
-  BmcFanPolicyProjectionCapability,
-  bmc_fan_policy_projection_apply_suitability,
-  bmc_fan_policy_projection_durability_admission,
-  bmc_fan_policy_projection_durability_capability,
-  bmc_fan_policy_projection_live_digest_matches,
-  bmc_fan_policy_projection_topology_matches,
-=======
   BmcFanPolicyDriftAssessment,
   BmcFanPolicyDrifted,
   BmcFanPolicyConverged,
@@ -67,7 +59,6 @@ import gunbc.fleet_bmc_state {
   BmcFanDurabilityEvidenceConstructionRefused,
   bmc_fan_durability_evidence_built_items,
   bmc_fan_durability_evidence_construction_refusal_reason,
->>>>>>> origin/main
 }
 import product.placement_supply { HostIdentity }
 import std.state_durability {
@@ -75,10 +66,7 @@ import std.state_durability {
   DurabilityEvidenceAmbiguous,
   DurabilityEvidenceMissing,
   NoDurabilityCommitBarrier,
-<<<<<<< HEAD
-=======
   StateDurabilityQualification,
->>>>>>> origin/main
   StateDurabilityQualified,
   StateDurabilityRefused,
   StateDurabilityVerdict,
@@ -121,15 +109,6 @@ type BmcFanPolicyApplyPlan {
   projection: BmcFanPolicyProjectionCapability
 }
 
-<<<<<<< HEAD
-type BmcFanPolicySuitability
-  = FanPolicySuitable
-  | FanPolicySuitabilityRefused { reason: String }
-
-type BmcFanConfigPersistenceApplySuitability
-  = BmcFanConfigPersistenceApplySuitable
-  | BmcFanConfigPersistenceApplyRefused { reason: String }
-=======
 type BmcFanConfigPersistenceApplyRefusalCause
   = BmcFanConfigPersistenceSubstrateNotGrounded
   | BmcFanConfigPersistenceSubstrateUnsupported { detail: NonEmptyStr }
@@ -212,7 +191,6 @@ fn bmc_fan_policy_suitability_refusal_reason(
       "bmc fan projection lacks a synchronized durability commit barrier"
   }
 }
->>>>>>> origin/main
 
 data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
 
@@ -381,11 +359,7 @@ fn bmc_fan_config_persistence_apply_suitability(
         BmcFanConfigPersistenceApplySuitable
       } else {
         BmcFanConfigPersistenceApplyRefused {
-<<<<<<< HEAD
-          reason: "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path",
-=======
           cause: BmcFanConfigPersistenceSubstrateNotGrounded,
->>>>>>> origin/main
         }
       }
     BmcConfigPersistenceUnsupported {
@@ -395,13 +369,9 @@ fn bmc_fan_config_persistence_apply_suitability(
       observed_at: _,
     } =>
       BmcFanConfigPersistenceApplyRefused {
-<<<<<<< HEAD
-        reason: concat("bmc config persistence unsupported: ", reason),
-=======
         cause: BmcFanConfigPersistenceSubstrateUnsupported {
           detail: bmc_fan_config_persistence_unsupported_detail(reason: reason),
         },
->>>>>>> origin/main
       }
   }
 }
@@ -417,11 +387,7 @@ fn bmc_fan_policy_apply_suitability(
   match intent.firmware {
     BmcFirmwareUnpinned =>
       FanPolicySuitabilityRefused {
-<<<<<<< HEAD
-        reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
-=======
         cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
->>>>>>> origin/main
       }
     BmcFirmwareTrackRequired { track: _ } =>
       match bmc_firmware_version_intent_verdict(
@@ -430,51 +396,11 @@ fn bmc_fan_policy_apply_suitability(
       ) {
         BmcFirmwareIntentMismatch { required: _, observed: _ } =>
           FanPolicySuitabilityRefused {
-<<<<<<< HEAD
-            reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
-=======
             cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
->>>>>>> origin/main
           }
         BmcFirmwareIntentSatisfied =>
           if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
             FanPolicySuitabilityRefused {
-<<<<<<< HEAD
-              reason: "bmc fan projection installed-tach topology differs from fleet intent",
-            }
-          } else if !bmc_fan_policy_projection_apply_suitability(
-            capability: projection,
-            board: board,
-            desired_curve: intent.fan_policy.curve,
-            observation: observation,
-          ) {
-            FanPolicySuitabilityRefused {
-              reason: "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service",
-            }
-          } else {
-            match persistence {
-              Absent =>
-                FanPolicySuitabilityRefused {
-                  reason: "bmc fan realizer lifetime cannot be evaluated because its current filesystem substrate has not been observed",
-                }
-              Present { value: storage } =>
-                match bmc_fan_config_persistence_apply_suitability(
-                  observation: storage,
-                  expected_firmware: observation.firmware,
-                  config_path: observation.board_config_path,
-                ) {
-                  BmcFanConfigPersistenceApplyRefused { reason: reason } =>
-                    FanPolicySuitabilityRefused { reason: reason }
-                  BmcFanConfigPersistenceApplySuitable =>
-                    match bmc_fan_policy_projection_durability_capability(
-                      capability: projection,
-                    ).commit_barrier {
-                      NoDurabilityCommitBarrier =>
-                        FanPolicySuitabilityRefused {
-                          reason: "bmc fan projection lacks a synchronized durability commit barrier",
-                        }
-                      SynchronizedCommit => FanPolicySuitable
-=======
               cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
             }
           } else {
@@ -514,7 +440,6 @@ fn bmc_fan_policy_apply_suitability(
                             }
                           SynchronizedCommit => FanPolicySuitable
                         }
->>>>>>> origin/main
                     }
                 }
             }
@@ -549,10 +474,6 @@ fn bmc_fan_durability_refusal_reason(
             "selected realization has duplicate or conflicting exact durability evidence: ",
             admission.realization.realization_id as String,
           )
-<<<<<<< HEAD
-        _ =>
-          "bmc fan realizer does not satisfy the declared state lifetime"
-=======
         DurabilityIntentUnspecified =>
           "bmc fan durability intent is unspecified"
         DurabilityCapabilityMissing =>
@@ -671,7 +592,6 @@ fn bmc_fan_durability_refusal_reason(
           concat("bmc fan durable state lost across boundary: ", reason)
         DurabilityObservationRefused { reason: reason } =>
           concat("bmc fan durability observation refused: ", reason)
->>>>>>> origin/main
       }
   }
 }
@@ -699,63 +619,17 @@ fn bmc_fan_policy_durability_qualification(
   )
 }
 
-<<<<<<< HEAD
-fn bmc_fan_policy_needs_apply(
-  desired_curve: BmcFanCurve,
-  observation: BmcFanPolicyObservation,
-  projection: BmcFanPolicyProjectionCapability,
-) -> Bool {
-  observation.curve != desired_curve
-    || !bmc_fan_policy_projection_topology_matches(
-      capability: projection,
-      observation: observation,
-    )
-    || !bmc_fan_policy_projection_live_digest_matches(
-      capability: projection,
-      observation: observation,
-    )
-}
-
-=======
->>>>>>> origin/main
 fn bmc_fan_policy_ordinary_convergence(
   host: HostIdentity,
   observation: BmcFanPolicyObservation,
   desired_curve: BmcFanCurve,
   projection: BmcFanPolicyProjectionCapability,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
-<<<<<<< HEAD
-  if bmc_fan_policy_needs_apply(
-=======
   match bmc_fan_policy_drift_assessment(
->>>>>>> origin/main
     desired_curve: desired_curve,
     observation: observation,
     projection: projection,
   ) {
-<<<<<<< HEAD
-    UpsertClassification {
-      verdict: Drifted,
-      decision: Apply {
-        plan: BmcFanPolicyApplyPlan {
-          host: host,
-          observed: observation,
-          desired_curve: desired_curve,
-          config_path: observation.board_config_path,
-          controller_service: observation.controller_service,
-          projection: projection,
-        },
-      },
-    }
-  } else {
-    UpsertClassification {
-      verdict: Converged,
-      decision: Noop,
-    }
-  }
-}
-
-=======
     BmcFanPolicyDrifted { cause: _ } =>
       UpsertClassification {
         verdict: Drifted,
@@ -880,7 +754,6 @@ fn bmc_fan_policy_durability_gated_convergence_from_inputs(
   )
 }
 
->>>>>>> origin/main
 fn bmc_fan_policy_classification(
   host: HostIdentity,
   board: BaseboardModel,
@@ -889,10 +762,7 @@ fn bmc_fan_policy_classification(
   persistence: BmcConfigPersistenceObservation?,
   projection: BmcFanPolicyProjectionCapability?,
   durability_generation: StatePerturbationGeneration,
-<<<<<<< HEAD
-=======
   durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
->>>>>>> origin/main
   durability_evidence: List<BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   let desired = intent.fan_policy.curve
@@ -910,13 +780,9 @@ fn bmc_fan_policy_classification(
           UpsertClassification {
             verdict: Conflict,
             decision: Refuse {
-<<<<<<< HEAD
-              reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
-=======
               reason: bmc_fan_policy_suitability_refusal_reason(
                 cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
               ),
->>>>>>> origin/main
             },
           }
         BmcFirmwareTrackRequired { track: _ } =>
@@ -928,13 +794,9 @@ fn bmc_fan_policy_classification(
               UpsertClassification {
                 verdict: Conflict,
                 decision: Refuse {
-<<<<<<< HEAD
-                  reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
-=======
                   reason: bmc_fan_policy_suitability_refusal_reason(
                     cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
                   ),
->>>>>>> origin/main
                 },
               }
             BmcFirmwareIntentSatisfied =>
@@ -955,15 +817,6 @@ fn bmc_fan_policy_classification(
                     persistence: persistence,
                     projection: projector,
                   ) {
-<<<<<<< HEAD
-                    FanPolicySuitabilityRefused { reason: reason } =>
-                      UpsertClassification {
-                        verdict: UnknownRefused,
-                        decision: Refuse { reason: reason },
-                      }
-                    FanPolicySuitable =>
-                      if bmc_fan_policy_needs_apply(
-=======
                     FanPolicySuitabilityRefused { cause: cause } =>
                       UpsertClassification {
                         verdict: UnknownRefused,
@@ -975,29 +828,10 @@ fn bmc_fan_policy_classification(
                       }
                     FanPolicySuitable =>
                       match bmc_fan_policy_drift_assessment(
->>>>>>> origin/main
                         desired_curve: desired,
                         observation: observed,
                         projection: projector,
                       ) {
-<<<<<<< HEAD
-                        bmc_fan_policy_ordinary_convergence(
-                          host: host,
-                          observation: observed,
-                          desired_curve: desired,
-                          projection: projector,
-                        )
-                      } else {
-                        let durability = bmc_fan_policy_durability_qualification(
-                          intent: intent,
-                          host: host,
-                          projection: projector,
-                          durability_generation: durability_generation,
-                          durability_evidence: durability_evidence,
-                        )
-                        match durability {
-                          StateDurabilityRefused { cause: _ } =>
-=======
                         BmcFanPolicyDrifted { cause: _ } =>
                           bmc_fan_policy_ordinary_convergence(
                             host: host,
@@ -1010,37 +844,10 @@ fn bmc_fan_policy_classification(
                           Present {
                             value: BmcFanDurabilityEvidenceConstructionRefused { cause: cause },
                           } =>
->>>>>>> origin/main
                             UpsertClassification {
                               verdict: UnknownRefused,
                               decision: Refuse {
                                 reason: concat(
-<<<<<<< HEAD
-                                  "bmc fan realizer does not satisfy the declared state lifetime: ",
-                                  bmc_fan_durability_refusal_reason(verdict: durability),
-                                ),
-                              },
-                            }
-                          StateDurabilityQualified { qualification: _ } =>
-                            if !bmc_fan_policy_projection_live_digest_matches(
-                              capability: projector,
-                              observation: observed,
-                            ) {
-                              UpsertClassification {
-                                verdict: UnknownRefused,
-                                decision: Refuse {
-                                  reason: "bmc fan live canonical config digest does not equal the admitted digest",
-                                },
-                              }
-                            } else {
-                              bmc_fan_policy_ordinary_convergence(
-                                host: host,
-                                observation: observed,
-                                desired_curve: desired,
-                                projection: projector,
-                              )
-                            }
-=======
                                   "bmc fan durability evidence construction refused: ",
                                   bmc_fan_durability_evidence_construction_refusal_reason(
                                     cause: cause,
@@ -1072,7 +879,6 @@ fn bmc_fan_policy_classification(
                               durability_evidence_construction: durability_evidence_construction,
                               durability_evidence: durability_evidence,
                             )
->>>>>>> origin/main
                         }
                       }
                   }

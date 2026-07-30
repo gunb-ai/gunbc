@@ -113,7 +113,8 @@ import gunbc.bmc_onboarding {
   srv4_onboarding_plan,
 }
 import gunbc.fleet_bmc_state {
-  srv4_bmc_fan_durability_evidence,
+  BmcFanDurabilityEvidenceConstruction,
+  srv4_bmc_fan_durability_evidence_construction,
   srv4_bmc_fan_projection_capability,
 }
 import gunbc.fleet_bmc_observation {
@@ -177,6 +178,7 @@ type BmcFanConvergeTarget {
   onboarding: BmcOnboardingPlan
   projection: BmcFanPolicyProjectionCapability?
   durability_generation: StatePerturbationGeneration
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?
   durability_evidence: List<BmcFanDurabilityEvidence>
   ssh_identity: BmcFanSshIdentityAdmission
   credential_ref: SecretRef
@@ -225,6 +227,7 @@ data srv3_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   onboarding: srv3_onboarding_plan,
   projection: none,
   durability_generation: 1,
+  durability_evidence_construction: none,
   durability_evidence: [],
   ssh_identity: BmcFanSshIdentityAdmission {
     target: srv3_host.identity,
@@ -245,7 +248,10 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
   onboarding: srv4_onboarding_plan,
   projection: Present { value: srv4_bmc_fan_projection_capability },
   durability_generation: srv4_bmc_fan_perturbation_generation,
-  durability_evidence: srv4_bmc_fan_durability_evidence,
+  durability_evidence_construction: Present {
+    value: srv4_bmc_fan_durability_evidence_construction,
+  },
+  durability_evidence: [],
   ssh_identity: BmcFanSshIdentityAdmission {
     target: srv4_host.identity,
     known_hosts_path: "/etc/gunbc/bmc-known-hosts/srv4",
@@ -1516,6 +1522,7 @@ fn bmc_fan_observe_only_with_credential(
         persistence: Present { value: observed.persistence },
         projection: target.projection,
         durability_generation: target.durability_generation,
+        durability_evidence_construction: target.durability_evidence_construction,
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {
@@ -1590,6 +1597,7 @@ fn bmc_fan_converge_with_credential(
         persistence: Present { value: observed.persistence },
         projection: target.projection,
         durability_generation: target.durability_generation,
+        durability_evidence_construction: target.durability_evidence_construction,
         durability_evidence: target.durability_evidence,
       )
       match classified.decision {

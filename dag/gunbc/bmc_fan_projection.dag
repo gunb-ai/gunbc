@@ -2,16 +2,6 @@ module gunbc.bmc_fan_projection
 
 import extdeps.bmc.capability { BmcFirmwareVersion }
 import extdeps.bmc.types {
-<<<<<<< HEAD
-  BmcFanCurve,
-  BmcFanPolicyObservation,
-  FanPidAggregatedEntry,
-  FanPidIndependentEntries,
-}
-import extdeps.boards.types { BaseboardModel }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
-=======
   BmcFanAggregatedControllerTopology,
   BmcFanCurve,
   BmcFanCurveStep,
@@ -26,7 +16,6 @@ import std.measure {
   positive_celsius_delta,
   positive_measure_count,
 }
->>>>>>> origin/main
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   LinuxFilePublicationProtocolUnsynchronized,
@@ -46,8 +35,6 @@ import std.state_durability {
 }
 import std.types { Bool, List, NonEmptyStr }
 
-<<<<<<< HEAD
-=======
 type BmcFanProjectionApplyRefusalCause
   = BmcFanProjectionBoardMismatch
   | BmcFanProjectionFirmwareMismatch
@@ -96,7 +83,6 @@ type BmcFanPolicyDriftAssessment
   = BmcFanPolicyConverged
   | BmcFanPolicyDrifted { cause: BmcFanPolicyDriftCause }
 
->>>>>>> origin/main
 type BmcFanConfigReadbackSubject {
   config_path: NonEmptyStr
 }
@@ -135,15 +121,6 @@ data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/sw
 
 data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-<<<<<<< HEAD
-data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
-)
-
-data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
-  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-)
-=======
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481"
 
 type BmcProjectedConfigContentIdentity {
@@ -206,28 +183,12 @@ fn bmc_fan_projected_config_digest_sha256_hex(
     none
   }
 }
->>>>>>> origin/main
 
 fn bmc_fan_projected_config_digest(
   curve: BmcFanCurve,
   intent_curve: BmcFanCurve,
   realization: StateRealizationIdentity,
   config_path: NonEmptyStr,
-<<<<<<< HEAD
-) -> BmcProjectedConfigDigest {
-  if curve == intent_curve
-    && curve == fleet_quiet_temp_soc_fan_curve
-    && realization.realization_id == altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id
-    && config_path == altrad8ud_openbmc_322_swampd_config_asrr_path {
-    ProjectedConfigDigestKnown {
-      digest: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
-    }
-  } else {
-    ProjectedConfigDigestUnavailable
-  }
-}
-
-=======
   content_identity: BmcProjectedConfigContentIdentity,
 ) -> BmcProjectedConfigDigest {
   match bmc_fan_projected_config_digest_sha256_hex(
@@ -249,7 +210,6 @@ data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
->>>>>>> origin/main
 fn bmc_fan_admitted_config_digest(
   curve: BmcFanCurve,
   intent_curve: BmcFanCurve,
@@ -302,21 +262,6 @@ fn bmc_fan_policy_projection_apply_suitability(
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
-<<<<<<< HEAD
-) -> Bool {
-  capability.board == board
-    && capability.firmware == observation.firmware
-    && capability.projected_curve == desired_curve
-    && capability.config_path == observation.board_config_path
-    && capability.controller_service == observation.controller_service
-}
-
-fn bmc_fan_policy_projection_live_digest_matches(
-  capability: BmcFanPolicyProjectionCapability,
-  observation: BmcFanPolicyObservation,
-) -> Bool {
-  observation.active_config_digest == capability.projected_config_digest
-=======
 ) -> BmcFanProjectionApplySuitability {
   if capability.board != board {
     BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
@@ -415,7 +360,6 @@ fn bmc_fan_policy_drift_assessment(
         }
     }
   }
->>>>>>> origin/main
 }
 
 fn bmc_fan_state_durability_capability(
@@ -468,23 +412,4 @@ fn bmc_fan_policy_projection_durability_admission(
   }
 }
 
-<<<<<<< HEAD
-fn bmc_fan_policy_projection_topology_matches(
-  capability: BmcFanPolicyProjectionCapability,
-  observation: BmcFanPolicyObservation,
-) -> Bool {
-  match observation.controller_shape {
-    FanPidAggregatedEntry {
-      entry_name: entry_name,
-      tach_inputs: tach_inputs,
-    } =>
-      entry_name == capability.aggregate_fan_pid_entry
-        && tach_inputs == capability.required_tach_inputs
-    FanPidIndependentEntries { entry_names: _ } => false
-  }
-}
-
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve and realization, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest from intent curve plus realization identity and config path; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
-=======
 data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, a BmcProjectedConfigContentIdentity row binding probed curve bytes to cited sha256 hex, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest only when curve, intent curve, realization, config path, and content_identity match exactly; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
->>>>>>> origin/main

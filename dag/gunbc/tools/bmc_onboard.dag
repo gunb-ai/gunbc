@@ -213,17 +213,9 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
 
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
-<<<<<<< HEAD
-      return CredentialStateUnknown {
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
-      }
-    AccessTokenEnsureRefused { reason: reason } =>
-      return CredentialStateUnknown { reason: reason as String }
-=======
       return CredentialAccessUpsertRequired { plan: upsert_plan }
     AccessTokenEnsureRefused { reason: reason } =>
       return CredentialEnsureRefused { reason: reason }
->>>>>>> origin/main
     AccessTokenReady { token: token } => {
       secret_resp = gcp.SecretManager.AccessVersion(
         access_token: token,

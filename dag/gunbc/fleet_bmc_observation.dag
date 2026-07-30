@@ -38,10 +38,7 @@ import extdeps.filesystem.linux {
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
-<<<<<<< HEAD
-=======
   altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
->>>>>>> origin/main
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
