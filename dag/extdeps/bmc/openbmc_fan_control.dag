@@ -1,6 +1,7 @@
 module extdeps.bmc.openbmc_fan_control
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
 import extdeps.ssh.password_session {
   PasswordSshExecResult,
   PasswordSshSession,
@@ -87,7 +88,14 @@ import std.measure {
 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 
-data extdeps_external_authority_anchor: ExternalAuthority = openbmc_busctl_authority
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
+  },
+}
+
+data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
 data openbmc_json_projection_authority: ExternalAuthority = jq_authority
 
