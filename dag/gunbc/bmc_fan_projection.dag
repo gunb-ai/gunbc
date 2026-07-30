@@ -115,15 +115,6 @@ fn bmc_fan_policy_projection_apply_suitability(
     && capability.projected_curve == desired_curve
     && capability.config_path == observation.board_config_path
     && capability.controller_service == observation.controller_service
-    && match capability.publication_protocol {
-      LinuxSynchronizedRenameReplacePublication => true
-      LinuxFilePublicationProtocolUnsynchronized {
-        stage_in_target_directory: _,
-        staged_content_validated: _,
-        replacement: _,
-        synchronization: _,
-      } => false
-    }
 }
 
 fn bmc_fan_policy_projection_live_digest_matches(
@@ -195,17 +186,6 @@ fn bmc_fan_policy_projection_topology_matches(
       entry_name == capability.aggregate_fan_pid_entry
         && tach_inputs == capability.required_tach_inputs
     FanPidIndependentEntries { entry_names: _ } => false
-  }
-}
-
-fn bmc_fan_policy_projection_durability_commit_ready(
-  capability: BmcFanPolicyProjectionCapability,
-) -> Bool {
-  match bmc_fan_policy_projection_durability_capability(
-    capability: capability,
-  ).commit_barrier {
-    SynchronizedCommit => true
-    NoDurabilityCommitBarrier => false
   }
 }
 
