@@ -19,7 +19,6 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
-  gunbc_roadmap_systemd_unit_path,
   gunbc_tree_sync_unit_name,
   gunbc_tree_sync_unit_path,
   gunbc_tree_sync_env_path,
@@ -168,7 +167,7 @@ fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep>
 fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
   membership_reconcile(
     desired: [],
-    observed: map(deployment_owned_steps_retract_order(), s => ArtifactStep { step: s }),
+    observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
     key_of: deployment_step_key,
     key_eq: deployment_step_key_eq,
     value_eq: deployment_step_value_eq,
@@ -176,9 +175,14 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
   )
 }
 
+data staged_unit_filename_note: String = "The staged filename reads from spec.service.unit_name for the same reason the install does: these two steps write and then install THE SAME FILE, and while both were the literal gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a fact. Parameterizing only the install side would have left the writer staging one name and the installer copying another — a deploy that fails on a missing file, which is at least loud, or worse installs a stale unit left in the stage directory from a previous run."
+
 fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: concat(
-    concat("cat > \"$_gunbc_stage/gunbc-roadmap.service\" <<'GUNBC_UNIT_EOF'\n", render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)),
+    concat(
+      join(["cat > \"$_gunbc_stage/", spec.service.unit_name as String, "\" <<'GUNBC_UNIT_EOF'\n"], ""),
+      render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol),
+    ),
     "GUNBC_UNIT_EOF"
   ))
 }
@@ -282,7 +286,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
     ]
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec),
-      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", spec.service.unit_name as String, "\" ",
+        art.path as String,
+      ], "")),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
@@ -302,7 +309,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
     ]
     SystemdUnit => [
       deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
-      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     DispatchWorktreeRoot => [

@@ -198,7 +198,7 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
       "gunbc-dashboard-srv1-lab-codex-feedback-v0",
       "-c",
       "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/source",
-      "/opt/gunbc/bin/gunbc",
+      "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin/gunbc",
       "serve",
       "--source-root",
       "dag",

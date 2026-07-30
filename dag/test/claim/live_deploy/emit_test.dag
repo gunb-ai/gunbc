@@ -1,6 +1,6 @@
 module test.claim.live_deploy.emit
 
-import std.types { Bool, String }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -11,9 +11,16 @@ import gunbc.live_deploy.spec {
   deployment_plan_host_identity,
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
+  deployment_steps_apply_order,
+  deployment_spec_for,
+  derived_deployment_identity,
+  deployment_srv1_target,
+  ArtifactStep,
+  Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
 }
+import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
@@ -85,7 +92,7 @@ test fn witness_owned_vs_ensured_typed() -> Bool {
 }
 
 test fn witness_retract_owned_only() -> Bool {
-  count(deployment_owned_steps_retract_order()) == 5
+  count(deployment_owned_steps_retract_order(spec: deployment_spec_srv1())) == 5
 }
 
 test fn witness_tailnet_domain_propagates_optional() -> Bool {
@@ -320,4 +327,55 @@ test fn witness_deploy_access_job_principal_refused_poison_golden_independent() 
 test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
+}
+
+data twin_on_one_host_witness_note: String = "THE CLAIM THAT WAS UNWRITABLE BEFORE THIS CHANGE, and it is the whole point of it. deployment_owned_steps and deployment_service_config took no arguments, so there was exactly one deployment in the model and a second one on the SAME machine could not be constructed at all — not merely inconvenient, unexpressible. That is what proved host was the wrong axis: if the only thing that varies is which host, then two deployments on one host is a contradiction, and a model that makes it a contradiction has fused two independent facts.\\n\\nSo the test is the twin. Same target — one machine, one ssh host, one package manager — and a different instance, and every owned path, the unit, the tailscale mapping and the port must come out disjoint. srv1_lab is a real declared instance rather than a synthetic one, so this also states that the two dashboards already declared today CAN both be deployed, which was false an hour ago.\\n\\nThe conjunct that would survive a bad fix is the target equality. Without it the claim passes trivially if someone makes the twin differ by host, which is precisely the abstraction this replaces."
+
+fn srv1_twin_spec() -> DeploymentSpec {
+  deployment_spec_for(
+    instance: srv1_lab_dashboard_instance(),
+    target: deployment_srv1_target(),
+    identity: derived_deployment_identity(instance: srv1_lab_dashboard_instance()),
+  )
+}
+
+fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
+  deployment_owned_steps_retract_order(spec: spec) |> map(s => s.path as String)
+}
+
+test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
+  let live = deployment_spec_srv1()
+  let twin = srv1_twin_spec()
+  let live_paths = spec_owned_paths(spec: live)
+  let twin_paths = spec_owned_paths(spec: twin)
+  deployment_plan_host_identity(spec: live) == deployment_plan_host_identity(spec: twin)
+    && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
+    && !(live.service.unit_name == twin.service.unit_name)
+    && !(live.service.repo_root == twin.service.repo_root)
+    && !(live.service.serve_binary == twin.service.serve_binary)
+    && count(live_paths) == 5
+    && count(twin_paths) == 5
+    && all(twin_paths, t => !any(live_paths, l => l == t))
+}
+
+data teardown_safety_witness_note: String = "THE CLAIM THAT NAMES WHAT THE COLLISION WOULD HAVE COST, rather than only that paths differ. Every owned artifact is torn down by retract, so an overlap between two specs' owned sets is not an untidy duplicate — it is one deployment's retract deleting another's live files. The first version of the twin claim above went RED on exactly one path, the serve binary, because both instances read it from the host layout; a lab retract would have removed the binary production was executing.\\n\\nThis states the property directly in retract's own terms: nothing production owns appears in what the twin's teardown would remove. It is written over the retract order specifically, not the apply order, because teardown is the destructive direction and a claim about apply would not have caught it."
+
+test fn twin_teardown_removes_nothing_production_owns() -> Bool {
+  let live_paths = spec_owned_paths(spec: deployment_spec_srv1())
+  let twin_teardown = deployment_owned_steps_retract_order(spec: srv1_twin_spec())
+  count(twin_teardown) == 5
+    && all(twin_teardown, t => !any(live_paths, l => l == (t.path as String)))
+}
+
+test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
+  let twin = srv1_twin_spec()
+  let applied = deployment_steps_apply_order(
+    instance: srv1_lab_dashboard_instance(),
+    identity: derived_deployment_identity(instance: srv1_lab_dashboard_instance()),
+  )
+  let applied_paths = applied |> flat_map(s => match s {
+    ArtifactStep { step } => [step.path as String]
+    Dependency { step: _ } => []
+  })
+  spec_owned_paths(spec: twin) == reverse(applied_paths)
 }
