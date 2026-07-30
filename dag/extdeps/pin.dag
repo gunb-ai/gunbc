@@ -1,3 +1,13 @@
 module extdeps.pin
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
 data pin_authority_note: String = "P1 of the hermetic tool-provisioning lane (docs/plans/hermetic-tool-provisioning-design.md). A mechanical tool dependency is a ToolPin — an exact version identity plus the expected content identity of the binary — never a location and never a range. Both fields are REQUIRED, so a digest-less or range-only pin is unwritable rather than validated (DESIGN section 5 construction, not a post-check). The reconcile compares that ToolPin against the observed row named by its tool. The key lives on the pin side, not as an extra identity on the observed row."
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "reproducible-builds.org/docs/definition/"
+  }
+}

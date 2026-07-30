@@ -2,10 +2,11 @@ module extdeps.realization.emit_on_demand_host
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { ContentHash, String, NonEmptyStr, List, Present, Absent }
+import std.types { ContentHash, String, NonEmptyStr, List }
 import std.integer { NonNegativeInt }
 import std.content_hash { content_hash_atom, content_hash_combine }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
+import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
