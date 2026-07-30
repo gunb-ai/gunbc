@@ -14,8 +14,6 @@ import extdeps.filesystem.linux {
   LinuxFilePublicationProtocolUnsynchronized,
   LinuxSynchronizedRenameReplacePublication,
 }
-import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
-import gunbc.fleet_bmc_observation { srv4_bmc_fan_active_config_digest }
 import product.placement_supply { HostIdentity }
 import std.state_durability {
   NoDurabilityCommitBarrier,
@@ -63,14 +61,6 @@ type BmcAdmittedConfigDigest
 data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
-
-fn bmc_fan_admitted_config_digest(curve: BmcFanCurve) -> BmcAdmittedConfigDigest {
-  if curve == fleet_quiet_temp_soc_fan_curve {
-    AdmittedConfigDigestKnown { digest: srv4_bmc_fan_active_config_digest }
-  } else {
-    AdmittedConfigDigestUnavailable
-  }
-}
 
 fn bmc_fan_policy_projection_capability(
   board: BaseboardModel,
@@ -189,4 +179,4 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_admitted_config_digest returns AdmittedConfigDigestUnavailable for curves whose admitted digest is not yet modeled rather than fabricating a placeholder digest. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. gunbc.fleet_bmc_observation.bmc_fan_admitted_config_digest returns AdmittedConfigDigestUnavailable for curves whose admitted digest is not yet modeled rather than fabricating a placeholder digest. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
