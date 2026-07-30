@@ -1,5 +1,8 @@
 module extdeps.bmc.capability
 
+import std.bmc { BmcFirmwareFamily, BmcEndpoint }
+import std.nat { Nat }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -20,12 +23,123 @@ type BmcCapability
 
 type BmcFirmwareVersion {
   family: BmcFirmwareFamily
-  version: NonEmptyStr
+  version: BmcFirmwareSemanticVersion
 }
+
+type BmcFirmwareSemanticVersion {
+  major: Nat
+  minor: Nat
+  patch: Nat
+}
+
+type BmcFirmwareVersionParse
+  = BmcFirmwareVersionParsed { version: BmcFirmwareSemanticVersion }
+  | BmcFirmwareVersionRefused { wire: String }
+
+data bmc_firmware_semver_parser_dissolve_on: String = "🟡 dissolve-on: a cited semantic-version grammar row set lands in the shared grammar substrate with forward ingest. bmc_firmware_version_from_wire then consumes that grammar fold instead of its local three-component parser; until then this is the declared Redfish/OpenBMC wire scaffold and refuses every non-exact or non-Nat component through BmcFirmwareVersionRefused."
+
+fn bmc_firmware_semantic_version(
+  major: Nat,
+  minor: Nat,
+  patch: Nat,
+) -> BmcFirmwareSemanticVersion {
+  BmcFirmwareSemanticVersion {
+    major: major,
+    minor: minor,
+    patch: patch,
+  }
+}
+
+fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
+  let fields = split(s: wire, delimiter: ".")
+  if fields.length() != 3 {
+    BmcFirmwareVersionRefused { wire: wire }
+  } else {
+    match parse_int(s: fields.first()) {
+      Absent => BmcFirmwareVersionRefused { wire: wire }
+      Present { value: major } =>
+        match parse_int(s: fields.skip(n: 1).first()) {
+          Absent => BmcFirmwareVersionRefused { wire: wire }
+          Present { value: minor } =>
+            match parse_int(s: fields.skip(n: 2).first()) {
+              Absent => BmcFirmwareVersionRefused { wire: wire }
+              Present { value: patch } =>
+                if major < 0 || minor < 0 || patch < 0 {
+                  BmcFirmwareVersionRefused { wire: wire }
+                } else {
+                  BmcFirmwareVersionParsed {
+                    version: bmc_firmware_semantic_version(
+                      major: major,
+                      minor: minor,
+                      patch: patch,
+                    ),
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+type BmcFirmwareTrack {
+  family: BmcFirmwareFamily
+  major_version: Nat
+}
+
+type BmcFirmwareIntent
+  = BmcFirmwareUnpinned
+  | BmcFirmwareTrackRequired { track: BmcFirmwareTrack }
+
+type BmcFirmwareObservation {
+  endpoint: BmcEndpoint
+  firmware: BmcFirmwareVersion
+  evidence_scope: BmcEvidenceTemporalScope
+  observed_at: EpochMs
+}
+
+type BmcFirmwareIntentObservationVerdict
+  = BmcFirmwareIntentSatisfied
+  | BmcFirmwareIntentMismatch {
+      required: BmcFirmwareTrack,
+      observed: BmcFirmwareVersion,
+    }
+
+type BmcEvidenceTemporalScope
+  = HistoricalEvidenceSnapshot
+  | CurrentEvidenceUnclaimed
 
 type BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion
   capabilities: List<BmcCapability>
+}
+
+fn bmc_firmware_version_matches_track(
+  firmware: BmcFirmwareVersion,
+  track: BmcFirmwareTrack
+) -> Bool {
+  firmware.family == track.family
+    && firmware.version.major == track.major_version
+}
+
+fn bmc_firmware_observation_intent_verdict(
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation
+) -> BmcFirmwareIntentObservationVerdict {
+  match intent {
+    BmcFirmwareUnpinned => BmcFirmwareIntentSatisfied
+    BmcFirmwareTrackRequired { track: required } =>
+      if bmc_firmware_version_matches_track(
+        firmware: observation.firmware,
+        track: required
+      ) {
+        BmcFirmwareIntentSatisfied
+      } else {
+        BmcFirmwareIntentMismatch {
+          required: required,
+          observed: observation.firmware,
+        }
+      }
+  }
 }
 
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {

@@ -1,0 +1,609 @@
+module test.claim.state_durability_witness
+
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.measure {
+  PositiveMeasureCountBuilt,
+  PositiveMeasureCountRefused,
+  positive_measure_count,
+  positive_measure_count_from_int,
+  positive_measure_count_value,
+  positive_millisecond,
+}
+import std.state_durability {
+  ActivationVerified,
+  CallerAssertedDefinitionLinkage,
+  ControlPlaneFirmwareReplacement,
+  ControlPlaneRestartBoundary,
+  DurableAcross,
+  DurabilityActivationScopeMismatch,
+  DurabilityCapabilityAdmissionMismatch,
+  DurabilityDefinitionLinkageUnavailable,
+  DurabilityDesiredStateMismatch,
+  DurabilityEvidenceAmbiguous,
+  DurabilityPerturbationBoundaryMismatch,
+  DurabilityRequirementDuplicate,
+  DurabilityReadbackReceiptLinkMismatch,
+  LifecycleGracefulRestart,
+  MultipleMatchingDurabilityEvidence,
+  SoftwareReplacementBoundary,
+  StateActivationEvidence,
+  StateActivationReceipt,
+  StateAfterReadbackReceipt,
+  StateBeforeReadbackReceipt,
+  StateDurabilityAdmission,
+  StateDurabilityBoundary,
+  StateDurabilityCapability,
+  StateDurabilityCapabilityVersion,
+  StateDurabilityEvidence,
+  StateDurabilityEvidenceAccepted,
+  StateDurabilityEvidenceRefused,
+  StateDurabilityInstant,
+  StateDurabilityQualified,
+  StateDurabilityRefused,
+  StateDurabilityVerdict,
+  StateDefinitionLinkage,
+  StatePerturbationGeneration,
+  StatePerturbationReceipt,
+  StatePreserved,
+  StateRealizationDefinitionLinkages,
+  StateRealizationIdentity,
+  SynchronizedCommit,
+  state_durability_after_readback_at,
+  state_durability_admission_evidence_cardinality,
+  state_durability_boundaries_evidence_verdict,
+  state_durability_boundary_requirements,
+  state_durability_boundary_requirement_list,
+  state_durability_perturbation_completed_at,
+  state_durability_perturbation_started_at,
+  state_durability_evidence_refusal,
+  state_durability_verdict,
+}
+import std.types { Bool, List, NonEmptyStr, list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type FixtureTarget = NonEmptyStr where brand("FixtureTarget")
+
+type FixtureReadbackSubject {
+  path: NonEmptyStr
+}
+
+data fixture_target: FixtureTarget = "fixture-host" as FixtureTarget
+data fixture_subject: FixtureReadbackSubject = FixtureReadbackSubject {
+  path: "/etc/fixture-policy",
+}
+
+data fixture_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+  mode: LifecycleGracefulRestart,
+}
+
+data fixture_wrong_boundary: StateDurabilityBoundary = SoftwareReplacementBoundary {
+  scope: ControlPlaneFirmwareReplacement,
+}
+
+data fixture_digest_a: Digest = sha256_digest(
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+)
+
+data fixture_digest_b: Digest = sha256_digest(
+  hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+)
+
+fn fixture_definition_linkage(reason: NonEmptyStr) -> StateDefinitionLinkage {
+  CallerAssertedDefinitionLinkage {
+    reason: reason,
+    dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
+  }
+}
+
+fn fixture_definition_linkages() -> StateRealizationDefinitionLinkages {
+  StateRealizationDefinitionLinkages {
+    projection: fixture_definition_linkage(reason: "fixture projection definition is caller asserted"),
+    verifier: fixture_definition_linkage(reason: "fixture verifier definition is caller asserted"),
+    observer: fixture_definition_linkage(reason: "fixture observer definition is caller asserted"),
+    transport: fixture_definition_linkage(reason: "fixture transport definition is caller asserted"),
+    actuator: fixture_definition_linkage(reason: "fixture actuator definition is caller asserted"),
+  }
+}
+
+data fixture_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: "fixture-realizer",
+  definition_linkages: fixture_definition_linkages(),
+}
+
+data fixture_stale_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: "fixture-stale-realizer",
+  definition_linkages: fixture_definition_linkages(),
+}
+
+data fixture_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "fixture-capability-v1",
+  definition_linkage: fixture_definition_linkage(
+    reason: "fixture capability definition is caller asserted",
+  ),
+}
+
+data fixture_stale_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "fixture-capability-v0",
+  definition_linkage: fixture_definition_linkage(
+    reason: "fixture stale capability definition is caller asserted",
+  ),
+}
+
+fn fixture_admission(
+  realization: StateRealizationIdentity,
+  capability_version: StateDurabilityCapabilityVersion,
+  desired: Digest,
+) -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+  StateDurabilityAdmission {
+    target: fixture_target,
+    desired_state_digest: desired,
+    realization: realization,
+    capability_version: capability_version,
+    perturbation_generation: 7,
+    readback_subject: fixture_subject,
+  }
+}
+
+fn current_admission() -> StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject> {
+  fixture_admission(
+    realization: fixture_realization,
+    capability_version: fixture_capability_version,
+    desired: fixture_digest_a,
+  )
+}
+
+fn fixture_capability(
+  realization: StateRealizationIdentity,
+  capability_version: StateDurabilityCapabilityVersion,
+) -> StateDurabilityCapability {
+  StateDurabilityCapability {
+    realization: realization,
+    capability_version: capability_version,
+    supported_boundaries: [fixture_boundary],
+    commit_barrier: SynchronizedCommit,
+  }
+}
+
+fn current_capability() -> StateDurabilityCapability {
+  fixture_capability(
+    realization: fixture_realization,
+    capability_version: fixture_capability_version,
+  )
+}
+
+fn fixture_activation(
+  admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  receipt_id: NonEmptyStr,
+) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
+  ActivationVerified {
+    receipt: StateActivationReceipt {
+      perturbation_receipt_id: receipt_id,
+      target: admission.target,
+      subject: admission.readback_subject,
+      desired_state_digest: admission.desired_state_digest,
+      realization: admission.realization,
+      capability_version: admission.capability_version,
+      perturbation_generation: admission.perturbation_generation,
+    },
+  }
+}
+
+fn fixture_before_readback(
+  receipt_id: NonEmptyStr,
+  digest: Digest,
+) -> StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+  StateBeforeReadbackReceipt {
+    perturbation_receipt_id: receipt_id,
+    target: fixture_target,
+    subject: fixture_subject,
+    state_digest: digest,
+    observed_at: 1000,
+  }
+}
+
+fn fixture_after_readback(
+  receipt_id: NonEmptyStr,
+  digest: Digest,
+) -> StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+  StateAfterReadbackReceipt {
+    perturbation_receipt_id: receipt_id,
+    target: fixture_target,
+    subject: fixture_subject,
+    state_digest: digest,
+    observed_after_perturbation_completion: positive_millisecond(
+      count: positive_measure_count(predecessor: 29),
+    ),
+  }
+}
+
+fn fixture_evidence(
+  admission: StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
+  boundary: StateDurabilityBoundary,
+  readback_receipt_id: NonEmptyStr,
+  before: Digest,
+  after: Digest,
+  activation: StateActivationEvidence<FixtureTarget, FixtureReadbackSubject>,
+) -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  StateDurabilityEvidence {
+    admission: admission,
+    perturbation: StatePerturbationReceipt {
+      receipt_id: "fixture-perturbation",
+      target: fixture_target,
+      boundary: boundary,
+      generation: 7,
+      started_after_before_readback: positive_millisecond(
+        count: positive_measure_count(predecessor: 9),
+      ),
+      duration: positive_millisecond(
+        count: positive_measure_count(predecessor: 19),
+      ),
+    },
+    outcome: StatePreserved {
+      before: fixture_before_readback(
+        receipt_id: readback_receipt_id,
+        digest: before,
+      ),
+      after: fixture_after_readback(
+        receipt_id: readback_receipt_id,
+        digest: after,
+      ),
+      activation: activation,
+    },
+  }
+}
+
+fn matching_evidence() -> StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject> {
+  fixture_evidence(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    readback_receipt_id: "fixture-perturbation",
+    before: fixture_digest_a,
+    after: fixture_digest_a,
+    activation: fixture_activation(
+      admission: current_admission(),
+      receipt_id: "fixture-perturbation",
+    ),
+  )
+}
+
+fn durable_verdict(
+  evidence: List<StateDurabilityEvidence<FixtureTarget, FixtureReadbackSubject>>,
+) -> StateDurabilityVerdict<FixtureTarget, FixtureReadbackSubject> {
+  state_durability_verdict(
+    intent: DurableAcross {
+      boundaries: state_durability_boundary_requirements(
+        first: fixture_boundary,
+        additional: [],
+      ),
+    },
+    admission: current_admission(),
+    capability: Present { value: current_capability() },
+    evidence: evidence,
+  )
+}
+
+test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> Bool {
+  let requirements = state_durability_boundary_requirements(
+    first: fixture_boundary,
+    additional: [fixture_boundary, fixture_wrong_boundary, fixture_wrong_boundary],
+  )
+  let boundaries = state_durability_boundary_requirement_list(
+    requirements: requirements,
+  )
+  fold(boundaries, init: 0, f: (count, _) => count + 1) == 2
+    && any(boundaries, boundary => boundary == fixture_boundary)
+    && any(boundaries, boundary => boundary == fixture_wrong_boundary)
+}
+
+test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool {
+  let duplicated = StateDurabilityBoundaryRequirements {
+    first: fixture_boundary,
+    additional_unique: [fixture_boundary, fixture_boundary],
+  }
+  match state_durability_verdict(
+    intent: DurableAcross { boundaries: duplicated },
+    admission: current_admission(),
+    capability: Present { value: current_capability() },
+    evidence: [matching_evidence()],
+  ) {
+    StateDurabilityRefused {
+      cause: DurabilityRequirementDuplicate {
+        boundary: boundary,
+        count: count,
+      },
+    } => boundary == fixture_boundary && count == 3
+    _ => false
+  }
+}
+
+test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
+  let evidence = matching_evidence()
+  match evidence.outcome {
+    StatePreserved {
+      before: before,
+      after: after_readback,
+      activation: _,
+    } => {
+      let started = state_durability_perturbation_started_at(
+        before: before,
+        perturbation: evidence.perturbation,
+      )
+      let completed = state_durability_perturbation_completed_at(
+        before: before,
+        perturbation: evidence.perturbation,
+      )
+      let after = state_durability_after_readback_at(
+        before: before,
+        perturbation: evidence.perturbation,
+        after: after_readback,
+      )
+      before.observed_at < started
+    && started < completed
+    && completed < after
+    }
+    _ => false
+  }
+}
+
+test fn non_positive_measure_counts_are_typed_refusals() -> Bool {
+  match positive_measure_count_from_int(count: 0) {
+    PositiveMeasureCountRefused { cause: zero } =>
+      match positive_measure_count_from_int(count: 0 - 5) {
+        PositiveMeasureCountRefused { cause: negative } =>
+          zero.observed == 0 && negative.observed == (0 - 5)
+        PositiveMeasureCountBuilt { count: _ } => false
+      }
+    PositiveMeasureCountBuilt { count: _ } => false
+  }
+}
+
+test fn positive_measure_count_build_executes_positive_arm() -> Bool {
+  match positive_measure_count_from_int(count: 3) {
+    PositiveMeasureCountBuilt { count: count } =>
+      positive_measure_count_value(count: count) == 3
+    PositiveMeasureCountRefused { cause: _ } => false
+  }
+}
+
+test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
+  match durable_verdict(evidence: [matching_evidence()]) {
+    StateDurabilityRefused {
+      cause: DurabilityDefinitionLinkageUnavailable {
+        realization: realization,
+        capability: capability,
+        assertions: assertions,
+        count: count,
+      },
+    } =>
+      realization == fixture_realization
+        && capability == fixture_capability_version
+        && count == 6
+        && list_length(assertions) == 6
+    _ => false
+  }
+}
+
+test fn realization_identity_change_invalidates_old_receipt() -> Bool {
+  match state_durability_verdict(
+    intent: DurableAcross {
+      boundaries: state_durability_boundary_requirements(
+        first: fixture_boundary,
+        additional: [],
+      ),
+    },
+    admission: current_admission(),
+    capability: Present {
+      value: fixture_capability(
+        realization: fixture_stale_realization,
+        capability_version: fixture_capability_version,
+      ),
+    },
+    evidence: [],
+  ) {
+    StateDurabilityRefused {
+      cause: DurabilityCapabilityAdmissionMismatch {
+        expected_realization: _,
+        observed_realization: _,
+        expected_capability_version: _,
+        observed_capability_version: _,
+      },
+    } => fixture_realization != fixture_stale_realization
+    _ => false
+  }
+}
+
+test fn capability_definition_change_invalidates_old_receipt() -> Bool {
+  match state_durability_verdict(
+    intent: DurableAcross {
+      boundaries: state_durability_boundary_requirements(
+        first: fixture_boundary,
+        additional: [],
+      ),
+    },
+    admission: current_admission(),
+    capability: Present {
+      value: fixture_capability(
+        realization: fixture_realization,
+        capability_version: fixture_stale_capability_version,
+      ),
+    },
+    evidence: [],
+  ) {
+    StateDurabilityRefused {
+      cause: DurabilityCapabilityAdmissionMismatch {
+        expected_realization: _,
+        observed_realization: _,
+        expected_capability_version: _,
+        observed_capability_version: _,
+      },
+    } => true
+    _ => false
+  }
+}
+
+test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
+  let wrong = fixture_evidence(
+    admission: current_admission(),
+    boundary: fixture_wrong_boundary,
+    readback_receipt_id: "fixture-perturbation",
+    before: fixture_digest_a,
+    after: fixture_digest_a,
+    activation: fixture_activation(
+      admission: current_admission(),
+      receipt_id: "fixture-perturbation",
+    ),
+  )
+  match state_durability_evidence_refusal(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    evidence: wrong,
+  ) {
+    Present {
+      value: DurabilityPerturbationBoundaryMismatch {
+        expected: expected,
+        observed: observed,
+      },
+    } => expected == fixture_boundary && observed == fixture_wrong_boundary
+    _ => false
+  }
+}
+
+test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
+  let wrong = fixture_evidence(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    readback_receipt_id: "unrelated-perturbation",
+    before: fixture_digest_a,
+    after: fixture_digest_a,
+    activation: fixture_activation(
+      admission: current_admission(),
+      receipt_id: "fixture-perturbation",
+    ),
+  )
+  match state_durability_evidence_refusal(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    evidence: wrong,
+  ) {
+    Present {
+      value: DurabilityReadbackReceiptLinkMismatch {
+        position: _,
+        expected_receipt_id: expected,
+        observed_receipt_id: observed,
+      },
+    } => expected == "fixture-perturbation" && observed == "unrelated-perturbation"
+    _ => false
+  }
+}
+
+test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
+  let stale = fixture_admission(
+    realization: fixture_realization,
+    capability_version: fixture_capability_version,
+    desired: fixture_digest_b,
+  )
+  let wrong = fixture_evidence(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    readback_receipt_id: "fixture-perturbation",
+    before: fixture_digest_a,
+    after: fixture_digest_a,
+    activation: fixture_activation(
+      admission: stale,
+      receipt_id: "fixture-perturbation",
+    ),
+  )
+  match state_durability_evidence_refusal(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    evidence: wrong,
+  ) {
+    Present {
+      value: DurabilityActivationScopeMismatch {
+        expected: _,
+        observed: observed,
+      },
+    } => observed.desired_state_digest == fixture_digest_b
+    _ => false
+  }
+}
+
+test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
+  let wrong = fixture_evidence(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    readback_receipt_id: "fixture-perturbation",
+    before: fixture_digest_b,
+    after: fixture_digest_b,
+    activation: fixture_activation(
+      admission: current_admission(),
+      receipt_id: "fixture-perturbation",
+    ),
+  )
+  match state_durability_evidence_refusal(
+    admission: current_admission(),
+    boundary: fixture_boundary,
+    evidence: wrong,
+  ) {
+    Present {
+      value: DurabilityDesiredStateMismatch {
+        desired: desired,
+        before: before,
+        after: after,
+      },
+    } =>
+      desired == fixture_digest_a
+        && before == fixture_digest_b
+        && after == fixture_digest_b
+    _ => false
+  }
+}
+
+test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
+  match state_durability_admission_evidence_cardinality(
+    evidence: [matching_evidence(), matching_evidence()],
+    admission: current_admission(),
+  ) {
+    MultipleMatchingDurabilityEvidence { count: 2 } => true
+    _ => false
+  }
+}
+
+test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
+  match state_durability_boundaries_evidence_verdict(
+    required: state_durability_boundary_requirements(
+      first: fixture_boundary,
+      additional: [],
+    ),
+    admission: current_admission(),
+    capability: current_capability(),
+    evidence: [matching_evidence()],
+  ) {
+    StateDurabilityEvidenceAccepted { evidence: accepted } =>
+      list_length(accepted) == 1
+    StateDurabilityEvidenceRefused { cause: _ } => false
+  }
+}
+
+test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bool {
+  match state_durability_boundaries_evidence_verdict(
+    required: state_durability_boundary_requirements(
+      first: fixture_boundary,
+      additional: [],
+    ),
+    admission: current_admission(),
+    capability: current_capability(),
+    evidence: [matching_evidence(), matching_evidence()],
+  ) {
+    StateDurabilityEvidenceRefused {
+      cause: DurabilityEvidenceAmbiguous {
+        admission: _,
+        boundary: boundary,
+        count: count,
+      },
+    } => boundary == fixture_boundary && count == 2
+    _ => false
+  }
+}
