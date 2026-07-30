@@ -1461,13 +1461,18 @@ pub fn type_where_refinement_predicates_transitive(
             && (ty.type_annotation.clone() != None))
             && ((ty.children.clone().len() as i64) == 1))
         {
-            {
-                let base = ty.children.clone()[(0) as usize].clone();
-                let base_resolved = match lookup_type_for(type_env.clone(), base.clone().expect("fail-closed: an optional value flowed into non-optional parameter 1 of lookup_type_for (empty Optional at runtime)")) {
-    Some(resolved) => resolved.clone(),
-    None => base.clone(),
-};
-                type_where_refinement_predicates_transitive(base_resolved.clone(), type_env.clone())
+            match ty.children.clone().first().cloned() {
+                Some(base) => {
+                    let base_resolved = match lookup_type_for(type_env.clone(), base.clone()) {
+                        Some(resolved) => resolved.clone(),
+                        None => base.clone(),
+                    };
+                    type_where_refinement_predicates_transitive(
+                        base_resolved.clone(),
+                        type_env.clone(),
+                    )
+                }
+                None => Rc::new(vec![]),
             }
         } else {
             Rc::new(vec![])
@@ -1484,13 +1489,22 @@ pub fn where_predicate_name_at(
 }
 
 pub fn literal_int_from_expr(expr: Rc<Node>) -> Option<i64> {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-            LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+                _ => None,
+            },
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => match literal_int_from_expr(unaryop_operand(expr.clone())) {
+                Some(v) => Some((0 - v.clone())),
+                None => None,
+            },
             _ => None,
-        },
-        _ => None,
-    }
+        }
+    })
 }
 
 pub fn literal_string_from_expr(expr: Rc<Node>) -> Option<String> {
