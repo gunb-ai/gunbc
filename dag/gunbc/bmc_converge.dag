@@ -384,67 +384,59 @@ fn bmc_fan_policy_apply_suitability(
   persistence: BmcConfigPersistenceObservation?,
   projection: BmcFanPolicyProjectionCapability,
 ) -> BmcFanPolicySuitability {
-  match intent.firmware {
-    BmcFirmwareUnpinned =>
+  if bmc_fan_firmware_blocks_realizer(
+    intent_firmware: intent.firmware,
+    observed_firmware: observation.firmware,
+  ) {
+    FanPolicySuitabilityRefused {
+      cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
+    }
+  } else {
+    if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
       FanPolicySuitabilityRefused {
-        cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
+        cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
       }
-    BmcFirmwareTrackRequired { track: _ } =>
-      match bmc_firmware_version_intent_verdict(
-        firmware: observation.firmware,
-        intent: intent.firmware,
+    } else {
+      match bmc_fan_policy_projection_apply_suitability(
+        capability: projection,
+        board: board,
+        desired_curve: intent.fan_policy.curve,
+        observation: observation,
       ) {
-        BmcFirmwareIntentMismatch { required: _, observed: _ } =>
+        BmcFanProjectionApplyRefused { cause: cause } =>
           FanPolicySuitabilityRefused {
-            cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
+            cause: FanPolicyProjectionCapabilityRefused { cause: cause },
           }
-        BmcFirmwareIntentSatisfied =>
-          if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
-            FanPolicySuitabilityRefused {
-              cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
-            }
-          } else {
-            match bmc_fan_policy_projection_apply_suitability(
-              capability: projection,
-              board: board,
-              desired_curve: intent.fan_policy.curve,
-              observation: observation,
-            ) {
-              BmcFanProjectionApplyRefused { cause: cause } =>
-                FanPolicySuitabilityRefused {
-                  cause: FanPolicyProjectionCapabilityRefused { cause: cause },
-                }
-              BmcFanProjectionApplySuitable =>
-                match persistence {
-                  Absent =>
-                    FanPolicySuitabilityRefused {
-                      cause: FanPolicyRealizerSubstrateUnobserved,
-                    }
-                  Present { value: storage } =>
-                    match bmc_fan_config_persistence_apply_suitability(
-                      observation: storage,
-                      expected_firmware: observation.firmware,
-                      config_path: observation.board_config_path,
-                    ) {
-                      BmcFanConfigPersistenceApplyRefused { cause: cause } =>
-                        FanPolicySuitabilityRefused {
-                          cause: FanPolicyPersistenceApplyRefused { cause: cause },
-                        }
-                      BmcFanConfigPersistenceApplySuitable =>
-                        match bmc_fan_policy_projection_durability_capability(
-                          capability: projection,
-                        ).commit_barrier {
-                          NoDurabilityCommitBarrier =>
-                            FanPolicySuitabilityRefused {
-                              cause: FanPolicyDurabilityCommitBarrierMissing,
-                            }
-                          SynchronizedCommit => FanPolicySuitable
-                        }
-                    }
-                }
-            }
+        BmcFanProjectionApplySuitable =>
+          match persistence {
+            Absent =>
+              FanPolicySuitabilityRefused {
+                cause: FanPolicyRealizerSubstrateUnobserved,
+              }
+            Present { value: storage } =>
+              match bmc_fan_config_persistence_apply_suitability(
+                observation: storage,
+                expected_firmware: observation.firmware,
+                config_path: observation.board_config_path,
+              ) {
+                BmcFanConfigPersistenceApplyRefused { cause: cause } =>
+                  FanPolicySuitabilityRefused {
+                    cause: FanPolicyPersistenceApplyRefused { cause: cause },
+                  }
+                BmcFanConfigPersistenceApplySuitable =>
+                  match bmc_fan_policy_projection_durability_capability(
+                    capability: projection,
+                  ).commit_barrier {
+                    NoDurabilityCommitBarrier =>
+                      FanPolicySuitabilityRefused {
+                        cause: FanPolicyDurabilityCommitBarrierMissing,
+                      }
+                    SynchronizedCommit => FanPolicySuitable
+                  }
+              }
           }
       }
+    }
   }
 }
 
@@ -754,11 +746,30 @@ fn bmc_fan_policy_durability_gated_convergence_from_inputs(
   )
 }
 
-fn bmc_fan_policy_classification(
+data bmc_fan_firmware_unpinned_realizer_note: String = "The fan realizer needs a firmware-matched projection (the projection's config bytes and digest are firmware-version-specific). It does NOT require the fleet to pin a single firmware track: an unpinned firmware intent is admitted, and each host qualifies against a projection whose firmware matches that host's observed firmware (bmc_fan_policy_apply_suitability rejects a firmware mismatch). What is refused is a PINNED track that the host has not yet converged to (FanPolicyFirmwareMustConvergeBeforeRealizer) -- a firmware update would replace the flash and wipe the fan config, so fans must not be realized until that update lands. Unpinned means no update is intended, so realization is safe."
+
+fn bmc_fan_firmware_blocks_realizer(
+  intent_firmware: BmcFirmwareIntent,
+  observed_firmware: BmcFirmwareVersion,
+) -> Bool {
+  match intent_firmware {
+    BmcFirmwareUnpinned => false
+    BmcFirmwareTrackRequired { track: _ } =>
+      match bmc_firmware_version_intent_verdict(
+        firmware: observed_firmware,
+        intent: intent_firmware,
+      ) {
+        BmcFirmwareIntentMismatch { required: _, observed: _ } => true
+        BmcFirmwareIntentSatisfied => false
+      }
+  }
+}
+
+fn bmc_fan_policy_qualify_with_projection(
   host: HostIdentity,
   board: BaseboardModel,
   intent: BmcControlPlaneIntent,
-  observation: BmcFanPolicyObservation?,
+  observed: BmcFanPolicyObservation,
   persistence: BmcConfigPersistenceObservation?,
   projection: BmcFanPolicyProjectionCapability?,
   durability_generation: StatePerturbationGeneration,
@@ -766,41 +777,7 @@ fn bmc_fan_policy_classification(
   durability_evidence: List<BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   let desired = intent.fan_policy.curve
-  match observation {
-    Absent =>
-      UpsertClassification {
-        verdict: UnknownRefused,
-        decision: Refuse {
-          reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
-        },
-      }
-    Present { value: observed } =>
-      match intent.firmware {
-        BmcFirmwareUnpinned =>
-          UpsertClassification {
-            verdict: Conflict,
-            decision: Refuse {
-              reason: bmc_fan_policy_suitability_refusal_reason(
-                cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
-              ),
-            },
-          }
-        BmcFirmwareTrackRequired { track: _ } =>
-          match bmc_firmware_version_intent_verdict(
-            firmware: observed.firmware,
-            intent: intent.firmware,
-          ) {
-            BmcFirmwareIntentMismatch { required: _, observed: _ } =>
-              UpsertClassification {
-                verdict: Conflict,
-                decision: Refuse {
-                  reason: bmc_fan_policy_suitability_refusal_reason(
-                    cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
-                  ),
-                },
-              }
-            BmcFirmwareIntentSatisfied =>
-              match projection {
+  match projection {
                 Absent =>
                   UpsertClassification {
                     verdict: UnknownRefused,
@@ -883,7 +860,52 @@ fn bmc_fan_policy_classification(
                       }
                   }
               }
-          }
+}
+
+fn bmc_fan_policy_classification(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcControlPlaneIntent,
+  observation: BmcFanPolicyObservation?,
+  persistence: BmcConfigPersistenceObservation?,
+  projection: BmcFanPolicyProjectionCapability?,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  match observation {
+    Absent =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
+        },
+      }
+    Present { value: observed } =>
+      if bmc_fan_firmware_blocks_realizer(
+        intent_firmware: intent.firmware,
+        observed_firmware: observed.firmware,
+      ) {
+        UpsertClassification {
+          verdict: Conflict,
+          decision: Refuse {
+            reason: bmc_fan_policy_suitability_refusal_reason(
+              cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
+            ),
+          },
+        }
+      } else {
+        bmc_fan_policy_qualify_with_projection(
+          host: host,
+          board: board,
+          intent: intent,
+          observed: observed,
+          persistence: persistence,
+          projection: projection,
+          durability_generation: durability_generation,
+          durability_evidence_construction: durability_evidence_construction,
+          durability_evidence: durability_evidence,
+        )
       }
   }
 }

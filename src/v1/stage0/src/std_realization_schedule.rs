@@ -5,6 +5,7 @@ use self::CostBasis::*;
 use self::NodeFrontierSelection::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
+use self::WalkFinalization::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
 pub use crate::std_execution_mode::execution_mode_eq;
@@ -306,6 +307,65 @@ pub enum Runnable {
     RunnableKernelWorkload {
         fused_op_count: i64,
     },
+}
+
+pub fn walk_plan_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully completes with zero failures before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — members WITHIN a stage run concurrently (distinct entries become distinct spawned units), so intra-stage order does not exist and anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30).\n\nWHAT THE EXECUTOR ACTUALLY PROVIDES TODAY, stated because a carrier that promises more than its executor delivers is the same defect this type exists to end (review 2026-07-30). The stage BARRIER is real: stage N completes before stage N+1 starts, and a failed stage prevents every later one. THREE GAPS remain, and none is currently reachable because every plan declares an empty stage list: (1) members within a stage run SERIALLY, not concurrently — serial is a strictly stronger order than the contract promises, so no current caller is misled, but wall time, peak memory, and overlap are resource facts a future author would measure wrongly; (2) stages execute through run_memo_shared_claims directly rather than the ordinary unit-lane partition, so they bypass governor admission, batch clamps, and resource-profile enforcement — safe for the negligible admission claims that will occupy them, unsafe for the substantial or host-compiler-spawning claim the generic carrier permits; (3) ONE aggregate stage receipt is written after the whole sequence rather than one per stage before the next begins. The repair is to extract the ordinary batch machinery into a reusable run_stage(stage) — group by entry and mode, acquire governor admission, spawn eligible units, join, write THAT stage receipt — so both populations share one executor and differ only in ordering and failure policy. Until that lands, do not place a Substantial or host-compiler runnable in a stage; the arm-time validator refuses discovery runnables outright, and the profile restriction is the next wall. Every plan function returns WalkPlan — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn walk_finalization_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE PLAN CARRIES ITS FINALIZATION POLICY; the executor never infers it from a function's spelling. The first cut selected finalization by plan-function name (if plan_function == gunbc_ci_floor_plan read the law from the closure) — the same hidden seed-roster convention the WalkPlan carrier was built to remove, reintroduced in the same PR (review 2026-07-30), and the RED fixture made the coupling visible by having to impersonate the production name to arm the contract. As a FIELD, the policy is part of the parsed value: a floor plan without its law is now UNWRITABLE (the strict parser refuses a missing field) rather than checked at arm time, schedule lenses and plan artifacts can see it, and the fixture declares its own policy instead of name-impersonating into one. NoWalkFinalization is the declared empty policy — regen, falsifier, and the plan-artifact shortcut say so explicitly, never by omission.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WalkFinalization {
+    NoWalkFinalization,
+    FloorFinalization {
+        declared_resolve_count: i64,
+        require_materialization_disclosure: bool,
+    },
+}
+impl WalkFinalization {
+    pub fn declared_resolve_count(&self) -> i64 {
+        match self {
+            WalkFinalization::NoWalkFinalization => {
+                panic!("no declared_resolve_count on unit variant")
+            }
+            WalkFinalization::FloorFinalization {
+                declared_resolve_count: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn require_materialization_disclosure(&self) -> bool {
+        match self {
+            WalkFinalization::NoWalkFinalization => {
+                panic!("no require_materialization_disclosure on unit variant")
+            }
+            WalkFinalization::FloorFinalization {
+                require_materialization_disclosure: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WalkPlan {
+    pub batches: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
+    pub finalization: Rc<WalkFinalization>,
+    pub on_success_stages: Rc<Vec<Rc<Vec<Rc<Runnable>>>>>,
 }
 
 pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {

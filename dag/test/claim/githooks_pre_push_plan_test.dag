@@ -19,7 +19,7 @@ fn witness_plan_roster_authority() -> Bool {
       pre_push_all_bindings(),
       b => match b.kind {
         DocWitnessRun { entry: _, function: _ } => true
-        CargoFmtCheck { fail_recipe: _ } => true
+        CargoFmtCheck => true
         WitnessCorpusRun { fail_recipe: _ } => true
       }
     )

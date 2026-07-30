@@ -99,6 +99,28 @@ service shell.Test {
       1 => Unit "Path is missing or not a regular file"
     }
   }
+
+  operation IsDirectory {
+    input { path: FilePath }
+    output { is_directory: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-d", "{path}"] }
+    exit {
+      0 => Unit "Path is a directory"
+      1 => Unit "Path is missing or not a directory"
+    }
+  }
+
+  operation IsWritable {
+    input { path: FilePath }
+    output { writable: Bool from "exit_success" }
+    readonly
+    transport shell { argv: ["test", "-w", "{path}"] }
+    exit {
+      0 => Unit "Path is writable by the effective principal"
+      1 => Unit "Path is missing or not writable by the effective principal"
+    }
+  }
 }
 
 service shell.Mktemp {
