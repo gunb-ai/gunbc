@@ -3,14 +3,16 @@ module v1.tests.claim.caret_parse_smoke_test
 import v1.std.core {
   Node,
   ErrorNode,
+  NewlineIndex,
   ExprData,
+  ExprLiteral,
+  ExprCall,
   TokenShape,
   ShCaret,
   ShIdent,
   ShLParen,
   ShEof,
   empty_intern_table,
-  empty_map,
   diagnostic_to_message,
   is_error_diagnostic,
 }
@@ -30,8 +32,9 @@ data caret_parse_smoke_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/re
 data caret_parse_smoke_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget."
 
 fn caret_parse_ctx() -> ParseContext {
+  let empty: Map<String, NewlineIndex> = empty_map()
   ParseContext {
-    source_indices: empty_map(),
+    source_indices: empty,
     intern_table: empty_intern_table(),
     occurrence_allocator: none,
     occurrence_index: none,
@@ -121,7 +124,7 @@ fn caret_expr_is_literal(expr: Node) -> Bool {
 
 fn caret_expr_is_discriminant_call(expr: Node) -> Bool {
   match expr.expr_data {
-    ExprCall { .. } => expr.name == "discriminant"
+    ExprCall { call_semantics: _, descent_evidence: _ } => expr.name == "discriminant"
     _ => false
   }
 }
