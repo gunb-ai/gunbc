@@ -475,10 +475,11 @@ fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
 
 fn namespace_root_from_properties(properties: List<Node>, name: String, source_indices: Map<String, NewlineIndex>) -> String {
   match properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "namespace_root") |> first {
-    Present { value: ns_prop } => match field_init_node_value(n: ns_prop).expr_data {
-      ExprLiteral { value: LitStr { value: root } } => root
-      _ => name
-    }
+    Present { value: ns_prop } =>
+      match literal_string_from_expr(expr: field_init_node_value(n: ns_prop)) {
+        Present { value: root } => root
+        Absent => name
+      }
     Absent => name
   }
 }
@@ -833,6 +834,388 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv
     && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
 }
 
+fn type_expr_where_refinement_predicates(ty: Node) -> List<Node> {
+  if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
+    match ty.type_annotation {
+      Present { value: annot } =>
+        match annot.connective {
+          Conj => annot.children
+          _ => [annot]
+        }
+      Absent => []
+    }
+  } else { [] }
+}
+
+fn where_predicate_name_at(pred: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  field_init_node_name_at(n: pred, source_indices: source_indices)
+}
+
+fn literal_int_from_expr(expr: Node) -> Int? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitInt { value: v } => Present { value: v }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn literal_string_from_expr(expr: Node) -> String? {
+  match expr.expr_data {
+    ExprLiteral { value: lit } =>
+      match lit {
+        LitStr { value: v } => Present { value: v }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn where_predicate_named_int_arg(pred: Node, field: String, source_indices: Map<String, NewlineIndex>) -> Int? {
+  let value_expr = field_init_node_value(n: pred)
+  match value_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match value_expr.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field) |> first {
+        Present { value: fi } => literal_int_from_expr(expr: field_init_node_value(n: fi))
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn where_predicate_named_int_field_present(pred: Node, field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let value_expr = field_init_node_value(n: pred)
+  match value_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      (value_expr.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field) |> count) > 0
+    _ => false
+  }
+}
+
+fn where_predicate_has_non_literal_int_bound_arg(pred: Node, field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if where_predicate_named_int_field_present(pred: pred, field: field, source_indices: source_indices) {
+    match where_predicate_named_int_arg(pred: pred, field: field, source_indices: source_indices) {
+      Present { value: _ } => false
+      Absent => true
+    }
+  } else {
+    false
+  }
+}
+
+fn where_predicate_canonical_name(pred_name: String) -> String {
+  if pred_name == "brand" { "Brand" } else { pred_name }
+}
+
+fn where_predicate_optional_int_args_match(
+  left: Node,
+  right: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let min_ok = match where_predicate_named_int_arg(pred: left, field: "min", source_indices: source_indices) {
+    Present { value: a } =>
+      match where_predicate_named_int_arg(pred: right, field: "min", source_indices: source_indices) {
+        Present { value: b } => a == b
+        Absent => false
+      }
+    Absent =>
+      match where_predicate_named_int_arg(pred: right, field: "min", source_indices: source_indices) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+  let max_ok = match where_predicate_named_int_arg(pred: left, field: "max", source_indices: source_indices) {
+    Present { value: a } =>
+      match where_predicate_named_int_arg(pred: right, field: "max", source_indices: source_indices) {
+        Present { value: b } => a == b
+        Absent => false
+      }
+    Absent =>
+      match where_predicate_named_int_arg(pred: right, field: "max", source_indices: source_indices) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+  min_ok && max_ok
+}
+
+fn where_predicate_literal_string_args_match(left: Node, right: Node) -> Bool {
+  match literal_string_from_expr(expr: field_init_node_value(n: left)) {
+    Present { value: a } =>
+      match literal_string_from_expr(expr: field_init_node_value(n: right)) {
+        Present { value: b } => a == b
+        Absent => false
+      }
+    Absent =>
+      match literal_string_from_expr(expr: field_init_node_value(n: right)) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+fn where_refinement_predicates_equivalent(
+  formal_pred: Node,
+  actual_pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let formal_name = where_predicate_canonical_name(
+    pred_name: where_predicate_name_at(pred: formal_pred, source_indices: source_indices)
+  )
+  let actual_name = where_predicate_canonical_name(
+    pred_name: where_predicate_name_at(pred: actual_pred, source_indices: source_indices)
+  )
+  if formal_name != actual_name {
+    false
+  } else if formal_name == "range" {
+    where_predicate_optional_int_args_match(
+      left: formal_pred, right: actual_pred, source_indices: source_indices
+    )
+  } else if formal_name == "Brand"
+    || formal_name == "Pattern"
+    || formal_name == "Format"
+    || formal_name == "ContentEncoding"
+    || formal_name == "Domain" {
+    where_predicate_literal_string_args_match(left: formal_pred, right: actual_pred)
+  } else {
+    true
+  }
+}
+
+fn where_refinement_predicates_covered(
+  formal_preds: List<Node>,
+  actual_preds: List<Node>,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  formal_preds |> all(fp =>
+    actual_preds |> any(ap =>
+      where_refinement_predicates_equivalent(
+        formal_pred: fp, actual_pred: ap, source_indices: source_indices
+      )
+    )
+  )
+}
+
+fn decidable_where_int_predicate_holds(pred_name: String, pred: Node, value: Int, source_indices: Map<String, NewlineIndex>) -> Bool? {
+  if pred_name == "gt_zero" {
+    Present { value: value > 0 }
+  } else if pred_name == "range" {
+    let passes_min = if where_predicate_named_int_field_present(pred: pred, field: "min", source_indices: source_indices) {
+      match where_predicate_named_int_arg(pred: pred, field: "min", source_indices: source_indices) {
+        Present { value: lo } => Present { value: value >= lo }
+        Absent => none
+      }
+    } else {
+      Present { value: true }
+    }
+    let passes_max = if where_predicate_named_int_field_present(pred: pred, field: "max", source_indices: source_indices) {
+      match where_predicate_named_int_arg(pred: pred, field: "max", source_indices: source_indices) {
+        Present { value: hi } => Present { value: value <= hi }
+        Absent => none
+      }
+    } else {
+      Present { value: true }
+    }
+    match passes_min {
+      Present { value: min_ok } =>
+        match passes_max {
+          Present { value: max_ok } => Present { value: min_ok && max_ok }
+          Absent => none
+        }
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {
+  pred_name == "gt_zero" || pred_name == "range"
+}
+
+fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
+  pred_name == "non_empty"
+}
+
+fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
+  pred_name == "brand" || pred_name == "Brand"
+    || pred_name == "unicode_scalar"
+    || pred_name == "is_text_readable"
+    || pred_name == "Pattern"
+    || pred_name == "Format"
+    || pred_name == "ContentEncoding"
+    || pred_name == "Domain"
+}
+
+fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> Bool? {
+  if pred_name == "non_empty" {
+    Present { value: string_length(s: value) > 0 }
+  } else {
+    none
+  }
+}
+
+fn where_refinement_unenforced_error(
+  predicate: String,
+  formal: Node,
+  reason: String,
+  span: SourceSpan,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> ErrorNode {
+  make_error_node(
+    diagnostic: WhereRefinementUnenforced {
+      predicate: predicate,
+      formal_type: node_type_shape(n: formal, source_indices: source_indices),
+      reason: reason,
+      span: span
+    },
+    module_name: module_name
+  )
+}
+
+fn where_refinement_diags_for_predicate(
+  pred: Node,
+  formal: Node,
+  value_expr: Node,
+  span: SourceSpan,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> List<ErrorNode> {
+  let pname = field_init_node_name_at(n: pred, source_indices: source_indices)
+  let refinement_refusal = [type_mismatch_error(
+    expected: node_type_shape(n: formal, source_indices: source_indices),
+    got: node_type_shape(n: resolved_type(n: value_expr), source_indices: source_indices),
+    span: span,
+    module_name: module_name
+  )]
+  if where_refinement_is_int_literal_predicate(pred_name: pname) {
+    match literal_int_from_expr(expr: value_expr) {
+      Present { value: v } =>
+        match decidable_where_int_predicate_holds(pred_name: pname, pred: pred, value: v, source_indices: source_indices) {
+          Present { value: holds } =>
+            if !holds { refinement_refusal } else { [] }
+          Absent =>
+            if pname == "range"
+              && (where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "min", source_indices: source_indices)
+                || where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "max", source_indices: source_indices)) {
+              [where_refinement_unenforced_error(
+                predicate: pname, formal: formal, reason: "predicate argument is not an int literal",
+                span: span, module_name: module_name, source_indices: source_indices
+              )]
+            } else {
+              [where_refinement_unenforced_error(
+                predicate: pname, formal: formal, reason: "int predicate not implemented",
+                span: span, module_name: module_name, source_indices: source_indices
+              )]
+            }
+        }
+      Absent => refinement_refusal
+    }
+  } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
+    match literal_string_from_expr(expr: value_expr) {
+      Present { value: v } =>
+        match decidable_where_string_predicate_holds(pred_name: pname, value: v) {
+          Present { value: holds } =>
+            if !holds { refinement_refusal } else { [] }
+          Absent => [where_refinement_unenforced_error(
+            predicate: pname, formal: formal, reason: "string predicate not implemented",
+            span: span, module_name: module_name, source_indices: source_indices
+          )]
+        }
+      Absent => [where_refinement_unenforced_error(
+        predicate: pname, formal: formal, reason: "non-literal value at refined position",
+        span: span, module_name: module_name, source_indices: source_indices
+      )]
+    }
+  } else if where_refinement_is_deferred_predicate(pred_name: pname) {
+    [where_refinement_unenforced_error(
+      predicate: pname, formal: formal, reason: "predicate deferred at compile time",
+      span: span, module_name: module_name, source_indices: source_indices
+    )]
+  } else {
+    [where_refinement_unenforced_error(
+      predicate: pname, formal: formal, reason: "predicate not enforced at compile time",
+      span: span, module_name: module_name, source_indices: source_indices
+    )]
+  }
+}
+
+fn where_refinement_mismatch_diags(
+  formal: Node,
+  value_expr: Node,
+  span: SourceSpan,
+  module_name: String,
+  type_env: TypeEnv
+) -> List<ErrorNode> {
+  let source_indices = type_env.source_indices
+  let formal_resolved = match lookup_type_for(env: type_env, node: formal) {
+    Present { value: resolved } => resolved
+    Absent => formal
+  }
+  let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
+  let preds = type_expr_where_refinement_predicates(ty: formal_resolved)
+  if preds |> count == 0 {
+    []
+  } else {
+    let actual_raw = resolved_type(n: value_expr)
+    let actual_resolved = match lookup_type_for(env: type_env, node: actual_raw) {
+      Present { value: resolved } => resolved
+      Absent => actual_raw
+    }
+    let actual_preds = type_expr_where_refinement_predicates(ty: actual_resolved)
+    if where_refinement_predicates_covered(
+      formal_preds: preds,
+      actual_preds: actual_preds,
+      source_indices: source_indices
+    ) {
+      []
+    } else {
+      flat_map(
+        preds,
+        pred => where_refinement_diags_for_predicate(
+          pred: pred,
+          formal: formal_checked,
+          value_expr: value_expr,
+          span: span,
+          module_name: module_name,
+          source_indices: source_indices
+        )
+      )
+    }
+  }
+}
+
+fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, scope: InferScope) -> InferResult {
+  match expected {
+    Present { value: expected_ty } =>
+      InferResult {
+        typed: result.typed,
+        diagnostics: concat(
+          result.diagnostics,
+          where_refinement_mismatch_diags(
+            formal: expected_ty,
+            value_expr: result.typed,
+            span: result.typed.span,
+            module_name: scope.module_name,
+            type_env: scope.type_env
+          )
+        )
+      }
+    Absent => result
+  }
+}
+
+fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
+  with_expected_where_refinement_diags(
+    result: infer_expr_body(texpr: texpr, scope: scope, expected: expected),
+    expected: expected,
+    scope: scope
+  )
+}
+
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
     false
@@ -971,7 +1354,15 @@ fn direct_call_arg_mismatch_diags(
               span: arg_value(n: ta).span,
               module_name: module_name
             )]
-          } else { [] }
+          } else {
+            where_refinement_mismatch_diags(
+              formal: formal_subst,
+              value_expr: arg_value(n: ta),
+              span: arg_value(n: ta).span,
+              module_name: module_name,
+              type_env: type_env
+            )
+          }
         Absent => []
       }
   )
@@ -1574,7 +1965,7 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
   }
 }
 
-fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
+fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
       let span = texpr.span
@@ -3563,11 +3954,11 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
               let lname = expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
               match map_get(ctx.size_aliases, lname) {
                 Present { value: ParamSize { param: p } } =>
-                  match right.expr_data {
-                    ExprLiteral { value: LitInt { value: d } } =>
+                  match literal_int_from_expr(expr: right) {
+                    Present { value: d } =>
                       if d > 0 { Present { value: DividedSize { param: p, divisor: d } } }
                       else { none }
-                    _ => none
+                    Absent => none
                   }
                 _ => none
               }
@@ -3586,8 +3977,8 @@ fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_
       match map_get(ctx.size_aliases, aname) {
         Present { value: DividedSize { param: p, divisor: d } } =>
           if p == param_name {
-            match lit_expr.expr_data {
-              ExprLiteral { value: LitInt { value: k } } =>
+            match literal_int_from_expr(expr: lit_expr) {
+              Present { value: k } =>
                 if k > 0 {
                   match proportional_divisor_from_int_at_least_two(k: d) {
                     Present { value: div_w } =>
@@ -3596,7 +3987,7 @@ fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_
                     Absent => none
                   }
                 } else { none }
-              _ => none
+              Absent => none
             }
           } else { none }
         _ => none
@@ -3619,8 +4010,8 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
               match args |> first {
                 Present { value: arg_node } =>
                   let arg_val = arg_value(n: arg_node)
-                  match arg_val.expr_data {
-                    ExprLiteral { value: LitInt { value: k } } =>
+                  match literal_int_from_expr(expr: arg_val) {
+                    Present { value: k } =>
                       if k > 0 && mname == "skip" {
                         match positive_descent_amount_from_positive_int(k: k) {
                           Present { value: steps } =>
@@ -3629,6 +4020,8 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           Absent => SubValueUnknown
                         }
                       } else { SubValueUnknown }
+                    Absent =>
+                      match arg_val.expr_data {
                     ExprVar { binding_kind: _ } =>
                       let aname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
                       match map_get(ctx.size_aliases, aname) {
@@ -3663,6 +4056,7 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                         _ => SubValueUnknown
                       }
                     _ => SubValueUnknown
+                      }
                   }
                 Absent => SubValueUnknown
               }
@@ -3981,14 +4375,14 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             ExprVar { binding_kind: _ } =>
               let lname = expr_var_name_at(texpr: left, source_indices: ctx.type_env.source_indices)
               if map_get(ctx.param_names, lname) != none || map_get(ctx.sub_value_vars, lname) != none {
-                match right.expr_data {
-                  ExprLiteral { value: LitInt { value: k } } =>
+                match literal_int_from_expr(expr: right) {
+                  Present { value: k } =>
                     match positive_descent_amount_from_positive_int(k: k) {
                       Present { value: steps } =>
                         Present { value: ArithmeticDescent { param: lname, factor: ConstantShrink { steps: steps } } }
                       Absent => none
                     }
-                  _ => none
+                  Absent => none
                 }
               } else { none }
             _ => none
@@ -4009,14 +4403,14 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             _ => ""
           }
           if left_name != "" {
-            match right.expr_data {
-              ExprLiteral { value: LitInt { value: k } } =>
+            match literal_int_from_expr(expr: right) {
+              Present { value: k } =>
                 match proportional_divisor_from_int_at_least_two(k: k) {
                   Present { value: div_w } =>
                     Present { value: ArithmeticDescent { param: left_name, factor: ProportionalShrink { divisor: div_w } } }
                   Absent => none
                 }
-              _ => none
+              Absent => none
             }
           } else { none }
         Add =>
@@ -4036,9 +4430,9 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
               let skip_args = method_arg_nodes(texpr: val)
               let skip_amount = match skip_args |> first {
                 Present { value: a } =>
-                  match arg_value(n: a).expr_data {
-                    ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
-                    _ => 0
+                  match literal_int_from_expr(expr: arg_value(n: a)) {
+                    Present { value: k } => if k > 0 { k } else { 0 }
+                    Absent => 0
                   }
                 Absent => 0
               }
@@ -4213,14 +4607,14 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             _ => false
           }
           if left_is_param {
-            match right.expr_data {
-              ExprLiteral { value: LitInt { value: k } } =>
+            match literal_int_from_expr(expr: right) {
+              Present { value: k } =>
                 match positive_descent_amount_from_positive_int(k: k) {
                   Present { value: steps } =>
                     ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: steps } }
                   Absent => SubValueUnknown
                 }
-              _ => SubValueUnknown
+              Absent => SubValueUnknown
             }
           } else {
 
@@ -4238,14 +4632,14 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             _ => false
           }
           if left_is_param {
-            match right.expr_data {
-              ExprLiteral { value: LitInt { value: k } } =>
+            match literal_int_from_expr(expr: right) {
+              Present { value: k } =>
                 match proportional_divisor_from_int_at_least_two(k: k) {
                   Present { value: div_w } =>
                     ArithmeticDescent { param: param_name, factor: ProportionalShrink { divisor: div_w } }
                   Absent => SubValueUnknown
                 }
-              _ => SubValueUnknown
+              Absent => SubValueUnknown
             }
           } else { SubValueUnknown }
         Add =>
@@ -4979,9 +5373,9 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
         if is_shrink
           && match method_arg_nodes(texpr: expr) |> first {
             Present { value: arg_node } =>
-              match arg_value(n: arg_node).expr_data {
-                ExprLiteral { value: LitInt { value: n } } => n > 0
-                _ => false
+              match literal_int_from_expr(expr: arg_value(n: arg_node)) {
+                Present { value: n } => n > 0
+                Absent => false
               }
             Absent => false
           }

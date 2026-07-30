@@ -163,6 +163,7 @@ type CompilerDiagnostic
   | ParseError         { message: String, span: SourceSpan }
   | InternalError      { message: String, span: SourceSpan }
   | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
+  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
   | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
   | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
   | SoleConstructorViolation { type_name: String, span: SourceSpan }
@@ -250,6 +251,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ParseError         { message: _, span: s }                 => s
     InternalError      { message: _, span: s }                 => s
     ComplexityUnknown  { func_name: _, reason: _, span: s }    => s
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: _, span: s } => s
     OwnershipViolation   { binding: _, fn_name: _, consumers: _, span: s } => s
     VariantCollision { variant: _, enum1: _, enum2: _, span: s } => s
     SoleConstructorViolation { type_name: _, span: s } => s
@@ -277,6 +279,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ParseError         { message: m, span: _ }                    => m
     InternalError      { message: m, span: _ }                    => m
     ComplexityUnknown  { func_name: f, reason: r, span: _ }      => concat("complexity: ", f, ": ", r)
+    WhereRefinementUnenforced { predicate: p, formal_type: t, reason: r, span: _ } =>
+      concat("where-refinement unenforced: predicate '", p, "' on '", t, "' — ", r)
     OwnershipViolation   { binding: b, fn_name: f, consumers: c, span: _ } => concat("ownership: binding '", b, "' in '", f, "' has ", to_string(value: c), " consumers")
     VariantCollision { variant: v, enum1: e1, enum2: e2, span: _ } => concat("variant '", v, "' appears in both '", e1, "' and '", e2, "'")
     SoleConstructorViolation { type_name: t, span: _ } => concat("sole_constructor type '", t, "' cannot be constructed outside its defining module")
@@ -297,6 +301,11 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
+      r == "predicate not enforced at compile time"
+        || r == "int predicate not implemented"
+        || r == "string predicate not implemented"
+        || r == "predicate argument is not an int literal"
     UnlistedImportUse { name: _, span: _ } => false
     _ => true
   }
@@ -305,6 +314,12 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
+    WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
+      r == "predicate deferred at compile time"
+        || r == "non-literal value at refined position"
+        || r == "predicate argument is not an int literal"
+        || r == "literal kind mismatch: expected int predicate value"
+        || r == "literal kind mismatch: expected string predicate value"
     _ => false
   }
 }
@@ -1321,7 +1336,7 @@ data tuple_type_name: String = "Tuple"
 data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
 fn make_span(start: Int, end: Int) -> SourceSpan {
-  SourceSpan { file: "", start: start, end: end }
+  SourceSpan { file: "<synthetic>", start: start, end: end }
 }
 
 fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {

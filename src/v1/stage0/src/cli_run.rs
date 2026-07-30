@@ -2194,6 +2194,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+                | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
         )
 }
 
@@ -3726,6 +3727,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
         CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
+        CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
@@ -3751,6 +3753,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             compile_clean_internal_error_histogram_name(message)
         }
         CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
+        CompilerDiagnostic::WhereRefinementUnenforced { predicate, .. } => predicate.clone(),
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),

@@ -1,0 +1,170 @@
+module test.claim.where_refinement_enforcement_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement construction wall witnesses: compile_dag_rust_emit_check on inline virtual sources — hard diagnostic refusal at every infer_expr expected-type site (literals, vars, record fields, call args, annotated lets, fn/data initializers, direct returns). Centralized via with_expected_where_refinement_diags (review 44949). Dissolves when the v1 compile-clean witness layer can import compile_multi diagnostic-shape assertions without the seed host bin (docs/plans/witness-realization-plan.md P0 lane)."
+
+fn w_positive_int_direct_return_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_direct_return_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn bad() -> PositiveInt { 0 }\n",
+    "src/whereref_direct_return_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_record_field_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_record_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      type Box { n: PositiveInt }\n\
+      data b: Box = Box { n: 0 }\n",
+    "src/whereref_record_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_record_field_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_record_green\n\
+      type PositiveInt = Nat where gt_zero\n\
+      type Box { n: PositiveInt }\n\
+      data b: Box = Box { n: 1 }\n",
+    "src/whereref_record_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_record_field_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_red\n\
+      import std.types { NonEmptyStr }\n\
+      type Box { s: NonEmptyStr }\n\
+      data b: Box = Box { s: \"\" }\n",
+    "src/whereref_nonempty_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_record_field_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_green\n\
+      import std.types { NonEmptyStr }\n\
+      type Box { s: NonEmptyStr }\n\
+      data b: Box = Box { s: \"x\" }\n",
+    "src/whereref_nonempty_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_non_literal_var_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_var_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      type Box { n: PositiveInt }\n\
+      fn f() -> Box {\n\
+        let n: Int = 0\n\
+        Box { n: n }\n\
+      }\n",
+    "src/whereref_var_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_range_predicate_args_must_match_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_range_red\n\
+      type Port = Int where range(min: 1, max: 46)\n\
+      type WidePort = Int where range(min: 48, max: 255)\n\
+      fn f(w: WidePort) -> Int {\n\
+        let p: Port = w\n\
+        0\n\
+      }\n",
+    "src/whereref_range_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_declaration_ref_empty_bind_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_declref_red\n\
+      import std.decl_ref { DeclarationRef, WholeDeclaration }\n\
+      data r: DeclarationRef = DeclarationRef { module_path: \"\", decl_name: \"\", field: WholeDeclaration }\n",
+    "src/whereref_declref_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_direct_var_return_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_var_return_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn bad(n: Nat) -> PositiveInt { n }\n",
+    "src/whereref_var_return_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_data_init_non_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_data_init_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn nat_src() -> Nat { 0 }\n\
+      data d: PositiveInt = nat_src()\n",
+    "src/whereref_data_init_red.rs",
+    [],
+    []
+  )
+}
+
+test fn where_refinement_direct_return_var_refuses() -> Bool {
+  !w_positive_int_direct_var_return_red()
+}
+
+test fn where_refinement_data_init_non_literal_refuses() -> Bool {
+  !w_positive_int_data_init_non_literal_red()
+}
+
+test fn where_refinement_direct_return_literal_refuses() -> Bool {
+  !w_positive_int_direct_return_red()
+}
+
+test fn where_refinement_record_field_literal_refuses() -> Bool {
+  !w_positive_int_record_field_red()
+}
+
+test fn where_refinement_record_field_literal_accepts() -> Bool {
+  w_positive_int_record_field_green()
+}
+
+test fn where_refinement_non_empty_string_literal_refuses() -> Bool {
+  !w_non_empty_string_record_field_red()
+}
+
+test fn where_refinement_non_empty_string_literal_accepts() -> Bool {
+  w_non_empty_string_record_field_green()
+}
+
+test fn where_refinement_non_literal_int_var_refuses() -> Bool {
+  !w_positive_int_non_literal_var_red()
+}
+
+test fn where_refinement_range_args_must_match_refuses() -> Bool {
+  !w_range_predicate_args_must_match_red()
+}
+
+test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {
+  !w_declaration_ref_empty_bind_red()
+}

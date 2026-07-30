@@ -429,6 +429,12 @@ pub enum CompilerDiagnostic {
         reason: String,
         span: Rc<SourceSpan>,
     },
+    WhereRefinementUnenforced {
+        predicate: String,
+        formal_type: String,
+        reason: String,
+        span: Rc<SourceSpan>,
+    },
     OwnershipViolation {
         binding: String,
         fn_name: String,
@@ -521,6 +527,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
         CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
         CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
+        CompilerDiagnostic::WhereRefinementUnenforced { span: s, .. } => s.clone(),
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
@@ -686,6 +693,27 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             ),
             r.clone(),
         ),
+        CompilerDiagnostic::WhereRefinementUnenforced {
+            predicate: p,
+            formal_type: t,
+            reason: r,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "where-refinement unenforced: predicate '".to_string(),
+                            p.clone(),
+                        ),
+                        "' on '".to_string(),
+                    ),
+                    t.clone(),
+                ),
+                "' — ".to_string(),
+            ),
+            r.clone(),
+        ),
         CompilerDiagnostic::OwnershipViolation {
             binding: b,
             fn_name: f,
@@ -772,6 +800,12 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            ((((r.clone() == "predicate not enforced at compile time".to_string())
+                || (r.clone() == "int predicate not implemented".to_string()))
+                || (r.clone() == "string predicate not implemented".to_string()))
+                || (r.clone() == "predicate argument is not an int literal".to_string()))
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         _ => true,
     }
@@ -780,6 +814,15 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            (((((r.clone() == "predicate deferred at compile time".to_string())
+                || (r.clone() == "non-literal value at refined position".to_string()))
+                || (r.clone() == "predicate argument is not an int literal".to_string()))
+                || (r.clone()
+                    == "literal kind mismatch: expected int predicate value".to_string()))
+                || (r.clone()
+                    == "literal kind mismatch: expected string predicate value".to_string()))
+        }
         _ => false,
     }
 }
@@ -3584,7 +3627,7 @@ pub fn error_type() -> Rc<Node> {
 
 pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
-        file: "".to_string(),
+        file: "<synthetic>".to_string(),
         start: start.clone(),
         end: end.clone(),
     })

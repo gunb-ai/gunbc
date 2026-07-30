@@ -2002,7 +2002,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         let max_fields = if r2.max_val != none {
           [make_field_init_node(name: "max", value: make_expr_node(expr_data: ExprLiteral { value: LitInt { value: r2.max_val.value } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span)]
         } else { [] }
-        PredResult { predicate: make_field_init_node(name: "Range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: r3.tokens, ctx: r2.ctx, err: none }
+        PredResult { predicate: make_field_init_node(name: "range", value: make_expr_node(expr_data: ExprRecordLit { parent_enum: none }, children: concat(min_fields, max_fields), inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: r3.tokens, ctx: r2.ctx, err: none }
       }
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: token_stream_first(stream: tokens))) } }
@@ -2010,7 +2010,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
   EatUnchanged { tokens: __eu } =>
     match pred_name {
       "non_empty" =>
-        PredResult { predicate: make_field_init_node(name: "NonEmpty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
+        PredResult { predicate: make_field_init_node(name: "non_empty", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
       _ =>
         PredResult { predicate: make_field_init_node(name: pred_name, value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: zero_span), span: zero_span, name_span: zero_span), tokens: tokens, ctx: ctx, err: none }
     }
