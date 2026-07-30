@@ -37,12 +37,8 @@ import extdeps.filesystem.linux {
   linux_synchronized_rename_replace_publication,
 }
 import gunbc.bmc_fan_projection {
-  AdmittedConfigDigestKnown,
-  AdmittedConfigDigestUnavailable,
-  BmcAdmittedConfigDigest,
   BmcFanPolicyProjectionCapability,
 }
-import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
 import gunbc.fleet_intent {
   srv3_baseboard,
   srv4_baseboard,
@@ -265,14 +261,6 @@ data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersio
 }
 
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
-
-fn bmc_fan_admitted_config_digest(curve: BmcFanCurve) -> BmcAdmittedConfigDigest {
-  if curve == fleet_quiet_temp_soc_fan_curve {
-    AdmittedConfigDigestKnown { digest: srv4_bmc_fan_active_config_digest }
-  } else {
-    AdmittedConfigDigestUnavailable
-  }
-}
 
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
