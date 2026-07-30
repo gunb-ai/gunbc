@@ -15234,7 +15234,13 @@ pub fn measure_selected_entry_closure_overlap(
         github_event_name: std::env::var("GITHUB_EVENT_NAME").ok(),
         github_base_ref: std::env::var("GITHUB_BASE_REF").ok(),
         changed_paths,
-        departed_paths: departed_paths.into_iter().collect(),
+        // Sorted: a HashSet iteration order would make the receipt non-reproducible for
+        // the same subject, which is the one property a named subject has to have.
+        departed_paths: {
+            let mut v: Vec<String> = departed_paths.into_iter().collect();
+            v.sort();
+            v
+        },
         roster_entries: entries.len(),
         selected_entries,
         skipped_entries,
@@ -33476,6 +33482,244 @@ mod compile_clean_loader_closure_fork_regression {
             diags_fixed.is_empty(),
             "fix regressed: patterns.dag scoped compile must be clean under the both-closure loader, got: {diags_fixed:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod exclusive_cost_partition_law {
+    //! Discriminating controls for the accounting law (entry-graph-union slice 1).
+    //!
+    //! The law itself holds by construction, so the tests that matter are the ones that
+    //! make it FAIL: each refusal arm has an input that reaches it, and a share is
+    //! unquotable in every refused state. Without these the partition would be exactly
+    //! the "specification without execution" DESIGN §5 names — a type that looks
+    //! fail-closed and has never been shown to refuse anything.
+
+    use super::*;
+
+    fn stage(load: u128, typecheck: u128) -> ResolveStageNanos {
+        ResolveStageNanos {
+            load,
+            typecheck_compute: typecheck,
+            ..ResolveStageNanos::default()
+        }
+    }
+
+    #[test]
+    fn reconciles_and_derives_a_nonnegative_remainder() {
+        let p =
+            exclusive_cost_partition_from(&stage(600, 300), "test_basis", 1_000, 1, 0, Vec::new());
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Reconciled {
+                residual_nanos: 0,
+                tolerance_nanos: 0
+            }
+        ));
+        assert_eq!(p.sum_exclusive_nanos(), 900);
+        assert_eq!(p.remainder_nanos, 100);
+        // The law, asserted rather than assumed.
+        assert_eq!(
+            p.parent_span_nanos,
+            p.sum_exclusive_nanos() + p.remainder_nanos
+        );
+        assert_eq!(p.share_of_parent("load"), Some(0.6));
+    }
+
+    #[test]
+    fn refuses_over_attribution_instead_of_clamping_to_zero() {
+        // The condition observed in the field: rows summed over a larger universe than
+        // the parent. `saturating_sub` would report remainder=0 and look healthy.
+        let p = exclusive_cost_partition_from(
+            &stage(48_468, 18_194),
+            "test_basis",
+            45_308,
+            1,
+            0,
+            Vec::new(),
+        );
+        match p.verdict {
+            CostAccountingVerdict::Refused {
+                cause:
+                    CostAccountingRefusal::OverAttributed {
+                        sum_exclusive_nanos,
+                        parent_span_nanos,
+                    },
+            } => {
+                assert_eq!(sum_exclusive_nanos, 66_662);
+                assert_eq!(parent_span_nanos, 45_308);
+            }
+            other => panic!("expected OverAttributed, got {other:?}"),
+        }
+        assert_eq!(p.remainder_nanos, 0);
+        // The whole point: no share is quotable off a non-partition.
+        assert_eq!(p.share_of_parent("load"), None);
+    }
+
+    #[test]
+    fn refuses_when_a_nested_span_corrupted_the_slot() {
+        let p =
+            exclusive_cost_partition_from(&stage(10, 10), "test_basis", 1_000, 2, 1, Vec::new());
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NestedSpanAttribution { nested_spans: 1 }
+            }
+        ));
+        assert_eq!(p.share_of_parent("load"), None);
+    }
+
+    #[test]
+    fn refuses_when_no_span_ran() {
+        // The `measure_whole_tree_resolve` shape: a probe whose parent work never opens a
+        // resolve span carries no stage attribution at all.
+        let p = exclusive_cost_partition_from(
+            &ResolveStageNanos::default(),
+            "test_basis",
+            0,
+            0,
+            0,
+            Vec::new(),
+        );
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NoSpans
+            }
+        ));
+        assert_eq!(p.share_of_parent("load"), None);
+    }
+
+    #[test]
+    fn rewire_sub_rows_are_inclusive_and_never_enter_the_exclusive_sum() {
+        // Double-counting control: the three rewire sub-passes are contained in
+        // `assembly_rewire`. Adding them to the sum would over-attribute by their total.
+        let st = ResolveStageNanos {
+            assembly_rewire: 300,
+            assembly_rewire_type_env: 100,
+            assembly_rewire_import_str: 150,
+            assembly_rewire_func_env: 50,
+            ..ResolveStageNanos::default()
+        };
+        let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
+        assert_eq!(p.sum_exclusive_nanos(), 300);
+        assert_eq!(p.remainder_nanos, 700);
+        assert_eq!(p.inclusive.len(), 3);
+        assert!(p
+            .inclusive
+            .iter()
+            .all(|r| r.contained_in == "assembly_rewire"));
+    }
+
+    #[test]
+    fn json_marks_a_refused_partition_unquotable() {
+        let p =
+            exclusive_cost_partition_from(&stage(2_000, 0), "test_basis", 1_000, 1, 0, Vec::new());
+        let json = render_exclusive_cost_partition_json(&p, &[("elapsed_wall_nanos", 5_000)]);
+        assert!(json.contains("\"state\":\"Refused\""));
+        assert!(json.contains("\"shares_quotable\":false"));
+        assert!(json.contains("\"kind\":\"OverAttributed\""));
+        assert!(json.contains("\"excess_nanos\":1000"));
+        // Elapsed wall is carried, never partitioned.
+        assert!(json.contains("\"observations\":{\"elapsed_wall_nanos\":5000}"));
+    }
+}
+
+#[cfg(test)]
+mod selected_entry_closure_overlap_arithmetic {
+    //! Controls for the overlap arithmetic. The measurement's inputs come from live
+    //! production machinery, so these pin the derivations that turn those inputs into the
+    //! reported quantities — including the degenerate poles a real corpus rarely hits.
+
+    use super::*;
+
+    fn overlap(closures: Vec<(&str, Vec<&str>)>) -> SelectedEntryClosureOverlap {
+        let mut fanout: HashMap<String, usize> = HashMap::new();
+        let mut sum = 0usize;
+        let mut sizes = Vec::new();
+        for (entry, members) in &closures {
+            sizes.push((entry.to_string(), members.len()));
+            sum += members.len();
+            for m in members {
+                *fanout.entry((*m).to_string()).or_insert(0) += 1;
+            }
+        }
+        let union_modules = fanout.len();
+        let mut fanout_by_module: Vec<(String, usize)> = fanout.into_iter().collect();
+        fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        SelectedEntryClosureOverlap {
+            source_roots: vec!["dag".to_string()],
+            scan_dirs: vec!["dag/test/claim".to_string()],
+            head_sha: "0".repeat(40),
+            diff_base_override: None,
+            github_event_name: None,
+            github_base_ref: None,
+            changed_paths: Vec::new(),
+            departed_paths: Vec::new(),
+            roster_entries: closures.len(),
+            selected_entries: closures.iter().map(|(e, _)| e.to_string()).collect(),
+            skipped_entries: Vec::new(),
+            closure_sizes: sizes,
+            sum_closure_memberships: sum,
+            union_modules,
+            fanout_by_module,
+        }
+    }
+
+    #[test]
+    fn fully_disjoint_closures_have_no_displaceable_membership() {
+        // The pole that would CLOSE the union program: nothing is shared, so a union
+        // graph collapses nothing.
+        let m = overlap(vec![("a", vec!["m1", "m2"]), ("b", vec!["m3", "m4"])]);
+        assert_eq!(m.sum_closure_memberships, 4);
+        assert_eq!(m.union_modules, 4);
+        assert_eq!(m.duplication_factor(), Some(1.0));
+        assert_eq!(m.membership_upper_bound(), 0);
+        assert_eq!(m.fanout_percentile(99.0), Some(1));
+    }
+
+    #[test]
+    fn identical_closures_duplicate_by_the_entry_count() {
+        let m = overlap(vec![
+            ("a", vec!["m1", "m2"]),
+            ("b", vec!["m1", "m2"]),
+            ("c", vec!["m1", "m2"]),
+        ]);
+        assert_eq!(m.sum_closure_memberships, 6);
+        assert_eq!(m.union_modules, 2);
+        assert_eq!(m.duplication_factor(), Some(3.0));
+        assert_eq!(m.membership_upper_bound(), 4);
+        assert_eq!(m.fanout_by_module[0].1, 3);
+    }
+
+    #[test]
+    fn percentiles_are_nearest_rank_over_per_module_fanout() {
+        // m1 in all four, m2 in two, m3/m4 in one each → sorted fanout [1,1,2,4].
+        let m = overlap(vec![
+            ("a", vec!["m1", "m2", "m3"]),
+            ("b", vec!["m1", "m2"]),
+            ("c", vec!["m1"]),
+            ("d", vec!["m1", "m4"]),
+        ]);
+        assert_eq!(m.union_modules, 4);
+        assert_eq!(m.sum_closure_memberships, 8); // 3 + 2 + 1 + 2
+        assert_eq!(m.membership_upper_bound(), 4); // 8 - 4
+        assert_eq!(m.fanout_percentile(50.0), Some(1));
+        assert_eq!(m.fanout_percentile(99.0), Some(4));
+        assert_eq!(m.fanout_percentile(100.0), Some(4));
+    }
+
+    #[test]
+    fn empty_selection_reports_no_factor_rather_than_a_fabricated_one() {
+        // A diff that selects nothing is a real outcome; 0/0 must not become 1.0.
+        let m = overlap(Vec::new());
+        assert_eq!(m.union_modules, 0);
+        assert_eq!(m.duplication_factor(), None);
+        assert_eq!(m.membership_upper_bound(), 0);
+        assert_eq!(m.fanout_percentile(50.0), None);
+        let json = render_selected_entry_closure_overlap_json(&m);
+        assert!(json.contains("\"duplication_factor\":null"));
+        assert!(json.contains("\"max\":null"));
     }
 }
 
