@@ -112,7 +112,18 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
   } else {
     match map_get(type_env.symbol_index.global_bare, name) {
       Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+        if name_resolution_policy_is_namespace_only() {
+          match global_bare_unique_chain_candidate(
+            env_module_path: type_env.module_path,
+            candidates: [GlobalBareCandidate { module_path: mp, binding: b }],
+          ) {
+            Present { value: cand } =>
+              Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+            Absent => none
+          }
+        } else {
+          Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+        }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
         match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
           Present { value: cand } =>

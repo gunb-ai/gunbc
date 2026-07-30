@@ -615,9 +615,23 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
-        true => Present { value: mp }
-        false => Absent
+      if name_resolution_policy_is_namespace_only() {
+        match global_bare_unique_chain_candidate(
+          env_module_path: owner_module_path,
+          candidates: [GlobalBareCandidate { module_path: mp, binding: b }],
+        ) {
+          Present { value: cand } =>
+            match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+              true => Present { value: cand.module_path }
+              false => Absent
+            }
+          Absent => Absent
+        }
+      } else {
+        match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+          true => Present { value: mp }
+          false => Absent
+        }
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
@@ -765,7 +779,18 @@ fn record_global_bare_ambiguous_silent_pick(
 
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: binding } } =>
+      if name_resolution_policy_is_namespace_only() {
+        match global_bare_unique_chain_candidate(
+          env_module_path: env.module_path,
+          candidates: [GlobalBareCandidate { module_path: mp, binding: binding }],
+        ) {
+          Present { value: cand } => Present { value: cand.binding }
+          Absent => Absent
+        }
+      } else {
+        Present { value: binding }
+      }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
