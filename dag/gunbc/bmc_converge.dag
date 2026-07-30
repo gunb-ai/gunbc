@@ -409,8 +409,92 @@ fn bmc_fan_durability_refusal_reason(
           after: _,
         } =>
           "bmc fan readback digest does not match the admitted desired state"
-        _ =>
-          "bmc fan realizer does not satisfy the declared state lifetime"
+        DurabilityRequirementDuplicate { boundary: _, count: count } =>
+          concat(
+            "bmc fan durability requirement duplicated for boundary (count ",
+            count as String,
+            ")",
+          )
+        DurabilityPerturbationTargetMismatch {
+          expected: expected,
+          observed: observed,
+        } =>
+          concat(
+            "bmc fan durability perturbation target mismatch: expected ",
+            expected as String,
+            ", observed ",
+            observed as String,
+          )
+        DurabilityPerturbationBoundaryMismatch {
+          expected: _,
+          observed: _,
+        } =>
+          "bmc fan durability perturbation boundary mismatch"
+        DurabilityPerturbationGenerationMismatch {
+          expected: expected,
+          observed: observed,
+        } =>
+          concat(
+            "bmc fan durability perturbation generation mismatch: expected ",
+            expected as String,
+            ", observed ",
+            observed as String,
+          )
+        DurabilityReadbackReceiptLinkMismatch {
+          position: _,
+          expected_receipt_id: expected_receipt_id,
+          observed_receipt_id: observed_receipt_id,
+        } =>
+          concat(
+            concat(
+              "bmc fan durability readback receipt link mismatch: expected ",
+              expected_receipt_id as String,
+            ),
+            concat(", observed ", observed_receipt_id as String),
+          )
+        DurabilityReadbackTargetMismatch {
+          position: _,
+          expected: expected,
+          observed: observed,
+        } =>
+          concat(
+            "bmc fan durability readback target mismatch: expected ",
+            concat(expected as String, concat(", observed ", observed as String)),
+          )
+        DurabilityReadbackSubjectMismatch {
+          position: _,
+          expected: expected,
+          observed: observed,
+        } =>
+          concat(
+            "bmc fan durability readback subject mismatch: expected ",
+            concat(
+              expected.config_path as String,
+              concat(", observed ", observed.config_path as String),
+            ),
+          )
+        DurabilityActivationReceiptLinkMismatch {
+          expected_receipt_id: expected_receipt_id,
+          observed_receipt_id: observed_receipt_id,
+        } =>
+          concat(
+            concat(
+              "bmc fan durability activation receipt link mismatch: expected ",
+              expected_receipt_id as String,
+            ),
+            concat(", observed ", observed_receipt_id as String),
+          )
+        DurabilityActivationScopeMismatch {
+          expected: _,
+          observed: _,
+        } =>
+          "bmc fan durability activation scope mismatch"
+        DurabilityActivationUnverified { reason: reason } =>
+          concat("bmc fan durability activation unverified: ", reason)
+        DurabilityStateLost { before: _, after: _, reason: reason } =>
+          concat("bmc fan durable state lost across boundary: ", reason)
+        DurabilityObservationRefused { reason: reason } =>
+          concat("bmc fan durability observation refused: ", reason)
       }
   }
 }

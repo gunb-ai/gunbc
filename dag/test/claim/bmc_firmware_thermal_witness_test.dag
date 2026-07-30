@@ -83,7 +83,9 @@ import gunbc.bmc_fan_projection {
 }
 import std.state_durability {
   CallerAssertedDefinitionLinkage,
+  DurabilityPerturbationGenerationMismatch,
   StateDurabilityCapabilityVersion,
+  StateDurabilityRefused,
 }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocolUnsynchronized,
@@ -94,6 +96,7 @@ import extdeps.filesystem.linux {
 }
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
+  bmc_fan_durability_refusal_reason,
   bmc_fan_policy_classification,
   bmc_firmware_classification,
 }
@@ -526,6 +529,24 @@ test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
     && bmc_fan_policy_projection_live_digest_matches(
       capability: srv4_bmc_fan_projection_capability,
       observation: srv4_bmc_fan_converged_policy_observation,
+    )
+}
+
+test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool {
+  let reason = bmc_fan_durability_refusal_reason(
+    verdict: StateDurabilityRefused {
+      cause: DurabilityPerturbationGenerationMismatch {
+        expected: 1,
+        observed: 2,
+      },
+    },
+  )
+  string_contains(s: reason, pattern: "perturbation generation mismatch")
+    && string_contains(s: reason, pattern: "expected 1")
+    && string_contains(s: reason, pattern: "observed 2")
+    && !string_contains(
+      s: reason,
+      pattern: "does not satisfy the declared state lifetime",
     )
 }
 
