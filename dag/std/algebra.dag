@@ -122,6 +122,24 @@ type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: FreeMonoid<T> }
 
+data free_monoid_prefix_query_note: String = "Canonical FreeMonoid prefix query (DESIGN §2/§3): is_prefix_of is the single Empty|Cons walker for prefix tests. Domain surfaces (occurrence containment, path grants) consume this — they do not re-walk storage shape."
+
+fn is_prefix_of<T>(
+  prefix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
+  }
+}
+
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
   empty: PartialFunction<K, V>
