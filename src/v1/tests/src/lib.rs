@@ -103,6 +103,8 @@ mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_literal_string_key_test;
 #[cfg(test)]
+mod materialization_provider_resolved_graph_consumer_test;
+#[cfg(test)]
 mod measure_alias_ctor_test;
 #[cfg(test)]
 mod measure_field_access_test;

@@ -227,7 +227,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
 
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
-data v1_lane_binding_survey_note: String = "TWO OF SEVEN STARTABLE ROOTS ARE BINDABLE, and the other five are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it; and caret-parse-smoke-seed-growth-justification declares no red control at all, being a justification row.\n\nSo those five stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those five is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
+data v1_lane_binding_survey_note: String = "TWO OF SIX STARTABLE ROOTS ARE BINDABLE, and the other four are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; and pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it.\n\nSo those four stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those four is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -386,15 +386,6 @@ fn observation_scoped_run_seed_growth_justification() -> SeedGrowthJustification
   }
 }
 
-fn caret_parse_smoke_seed_growth_justification() -> SeedGrowthJustification {
-  SeedGrowthJustification {
-    reason: "This old hand-written parser test predates a later change that added fields to a structure it builds. It was updated only enough to keep compiling — no new behaviour — but it is still a hand-written Rust file, so it needs to be counted rather than forgotten.",
-    owning_dissolution_lane: nid(s: "v1-zero-hand-maintained-rust"),
-    trigger: "Either regenerate this test from a description, or delete it once equivalent coverage exists that would still catch the same bug; then remove this row.",
-    current_boundary: "src/v1/stage0/tests/caret_parse_smoke.rs",
-  }
-}
-
 fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
   fields(
     headline: "Account for the five hand-written files that progress output still needs",
@@ -414,30 +405,6 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
     out_of_scope: "Not a general list of hand-written files, not new progress features, and not a status report.",
     handback: concat(
       "Show that the five files are still the only ones, and carry this exact plan into ",
-      j.owning_dissolution_lane as String,
-    ),
-  )
-}
-
-fn caret_parse_smoke_seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
-  fields(
-    headline: "Regenerate or delete one leftover hand-written parser test",
-    boundary: concat(
-      "Exactly one hand-written file is kept for now: ",
-      concat(j.current_boundary, ". This adds no new test behaviour and no second hand-written file."),
-    ),
-    displaced_cost: concat("Why it is still here: ", j.reason),
-    first_slice: concat("Do what the owning item's plan says: ", j.trigger),
-    red_control: concat(
-      "If the file stays hand-written without exactly one item owned by ",
-      concat(
-        j.owning_dissolution_lane as String,
-        " tracking it, or if a second file joins it, this is refused.",
-      ),
-    ),
-    out_of_scope: "No changes to what the test checks, to the parser, or to other hand-written files; no separate written-down list.",
-    handback: concat(
-      "Show the file regenerated or deleted, with equivalent coverage in place if its behaviour moved, then remove this row from ",
       j.owning_dissolution_lane as String,
     ),
   )
@@ -1104,13 +1071,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The builds, the product runs, and the list of anything deliberately kept."
       )
     ),
-    active_small(
-      identity: "rn_VK5TWKCDCMR1G8PQY0GK9TKSRR",
-      id: "caret-parse-smoke-seed-growth-justification",
-      owner: "self-host",
-      path: "dag/gunbc/v1_deletion_plan.dag",
-      t: caret_parse_smoke_seed_growth_fields(j: caret_parse_smoke_seed_growth_justification())
-    ),
     active_large(
       identity: "rn_RSBHA36N72JKQ0NAVKJ5AV153R",
       id: "v1-zero-hand-maintained-rust",
@@ -1349,13 +1309,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "toolchain",
       path: "docs/plans/hermetic-tool-provisioning-design.md",
       t: fields(
-        headline: "Model pinned tool identity and its refresh policy",
-        boundary: "A carrier exists in which a mechanical tool declares an exact version and content digest, selection is either an authored pin or a tracked channel, and execution never resolves a moving reference; existing tool rows are untouched by this row.",
+        headline: "Model pinned dependency identity as a dimension over subjects",
+        boundary: "A carrier exists in which a dependency declares an exact version and content digest, selection is either an authored pin or a tracked channel, and execution never resolves a moving reference; pinning is a dimension parameterized by its subject rather than a property of any one subject kind, and existing rows are untouched by this row.",
         displaced_cost: "Supplies the vocabulary the resolver collapse needs; per-host binary variance is removed when consumers migrate onto it, not by this row.",
-        first_slice: "Land a ToolPin carrier alongside CliTool with an exact version identity, an expected content digest, and a selection policy; CliTool and SourceGitHubRelease are unchanged until their real upstream digests are sourced.",
-        red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match.",
+        first_slice: "Land a generic Pin<Subject> carrier owning the pinning dimension, plus one per-subject instantiation binding it to CliTool; the subject is carried by value, never re-spelled as a name string. Existing rows are unchanged until their real upstream digests are sourced.",
+        red_control: "A range-only or digest-less pin refuses; a pin whose currency cannot be established refuses rather than being admitted on a caller's assertion or a coincidental digest match; and a structurally different second subject instantiates the dimension with zero edits to it, so the genericity is proven by a second consumer rather than asserted.",
         out_of_scope: "No consumer migrates in this row; the model lands before any resolver reads it.",
-        handback: "Return the pin carrier, the refresh-policy arms, and the refusing controls."
+        handback: "Return the generic pin carrier, one subject instantiation, the refresh-policy arms, the refusing controls, and the second-subject composition proof."
       )
     ),
     active_large(
@@ -1367,8 +1327,8 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Ensure tools through one membership reconcile",
         boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
-        first_slice: "Surface observe_tool's per-argv result as a named per-tool observed identity and re-express toolchain_identity as the derived fold over those rows; only then instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. The reconcile cannot be written before that naming: toolchain_identity is an aggregate over every build argv, so comparing one per-tool pin against it is a grain mismatch, not a reconcile (review 44388).",
-        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile attempted against the aggregate toolchain_identity rather than a per-tool observed identity refuses as a grain mismatch.",
+        first_slice: "The per-tool observed identity is NAMED as of #7444, so this row's blocker is discharged and its slice is now the reconcile itself: instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. Two obligations on whoever writes it, both consequences of what #7444 landed rather than fresh policy — read every observed value through observed_tool_identity rather than re-deriving a digest beside observe_tool_identity (that would be the section 3 fork this lane removes), and answer its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms explicitly, since collapsing either into a match failure or a widened rerun is the absorbing fallback section 5 forbids and would discard exactly the precision #7444 bought. The original grain finding is retained on the carrier at extdeps.pin pin_observed_grain_prerequisite_note, which owns that history; this row does not restate it (review 44910 — one fact, one home).",
+        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
         out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
         handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
       )
@@ -1471,7 +1431,6 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-products-v1-free", parent: "v1-interpreter-delete"),
     edge(child: "v1-products-v1-free", parent: "v1-hand-queue-drain"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-products-v1-free"),
-    edge(child: "v1-zero-hand-maintained-rust", parent: "caret-parse-smoke-seed-growth-justification"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
@@ -1671,6 +1630,96 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
+data acceptance_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
+
+fn projected_roadmap_nodes() -> List<RoadmapNode> {
+  concat(active_roadmap_nodes(), acceptance_task_nodes())
+}
+
+fn projected_roadmap_edges() -> List<RoadmapEdge> {
+  concat(active_roadmap_edges(), acceptance_task_edges())
+}
+
+data acceptance_task_derivation_note: String = "ACCEPTANCE TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing an acceptance task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. An acceptance task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
+
+fn node_is_startable(n: RoadmapNode) -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  all(
+    roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
+    p => accepted |> any(a => a == (p as String)),
+  )
+}
+
+fn node_lacks_closing_validation(n: RoadmapNode) -> Bool {
+  match n.execution {
+    ExecutionContractUnspecified => true
+    ExecutionContract { validations: _, extra_capabilities: _ } => false
+  }
+}
+
+fn ticket_headline_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.headline
+    Absent => n.node as String
+  }
+}
+
+fn ticket_red_control_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.red_control
+    Absent => "the node states no red control"
+  }
+}
+
+fn nodes_needing_acceptance() -> List<RoadmapNode> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_nodes()
+    |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_lacks_closing_validation(n: n))
+    |> filter(n => node_is_startable(n: n))
+}
+
+fn acceptance_task_for(n: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat(n.identity as String, "-acceptance") as RoadmapNodeIdentity,
+    node: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+    line: TicketLine {
+      done: false,
+      ticket: fields(
+        headline: concat("Write the acceptance check for: ", ticket_headline_of(n: n)),
+        boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
+        displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
+        first_slice: "Write the check and prove each refusal arm fires on a planted input.",
+        red_control: concat("The check must fail when the condition fails: ", ticket_red_control_of(n: n)),
+        out_of_scope: "Write the statement of done; do not do the work it gates.",
+        handback: "Return the executable check, each arm firing on a planted input, and the gated node bound to it."
+      ),
+    },
+    carriers: n.carriers,
+    sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: n.owner,
+    signoff: Unsigned,
+  }
+}
+
+fn acceptance_task_nodes() -> List<RoadmapNode> {
+  nodes_needing_acceptance() |> map(n => acceptance_task_for(n: n))
+}
+
+fn acceptance_task_edges() -> List<RoadmapEdge> {
+  nodes_needing_acceptance()
+    |> map(n => RoadmapEdge {
+      child: n.node,
+      parent: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+    })
+}
+
 fn active_roadmap_edges() -> List<RoadmapEdge> {
   let accepted = accepted_roadmap_node_ids()
   declared_roadmap_edges() |> filter(e =>
@@ -1689,7 +1738,7 @@ fn preamble() -> List<MarkdownBlock> {
 data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It is set to the v1 exit lane because that is the sustained effort under way (the v1 → v2 emitter exit plan); the other lanes remain real work, they are simply not on the page while this one is being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 → v2 emitter exit lane",
+  label: "the v1 deletion lane",
   owners: ["self-host"],
 }
 
@@ -1718,8 +1767,8 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
         if focus_is_active(focus: focus) {
           [section_prose(content: focus_notice(
             focus: focus,
-            nodes: active_roadmap_nodes(),
-            edges: active_roadmap_edges(),
+            nodes: projected_roadmap_nodes(),
+            edges: projected_roadmap_edges(),
           ))]
         } else {
           []
@@ -1729,13 +1778,13 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
             label: "",
             nodes: focus_visible_nodes(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             ),
             edges: focus_visible_edges(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             )
           ),
         ],

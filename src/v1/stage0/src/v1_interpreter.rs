@@ -744,6 +744,19 @@ pub enum InterpError {
         limit_bytes: usize,
         argv0: String,
     },
+    /// A host-tool program could not be resolved to an existing executable path.
+    /// `probed` carries every candidate location examined so the refusal is located
+    /// and countable by class rather than by grepping a format string.
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
+    },
+    /// A slash-containing tool name that is not an absolute path. Refused because
+    /// `is_file()` is cwd-relative while emit-host spawns set `.current_dir(workspace)`,
+    /// so a relative path would mean different things at check vs spawn time.
+    HostToolRelativePathAmbiguous {
+        name: String,
+    },
     /// Application-site contract mismatch: the caller's argument list does not match the
     /// callee's declared parameter list. Typed and located (callee + the offending label)
     /// so the line stops at the application site instead of surfacing later as a
@@ -812,6 +825,17 @@ impl fmt::Display for InterpError {
                 f,
                 "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.exec.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
                 argv0, actual_bytes, limit_bytes
+            ),
+            InterpError::HostToolUnresolved { name, probed } => write!(
+                f,
+                "host tool unresolved: {:?} (probed: {})",
+                name,
+                probed.join(", ")
+            ),
+            InterpError::HostToolRelativePathAmbiguous { name } => write!(
+                f,
+                "host tool relative path ambiguous at cwd-dependent boundary: {:?}",
+                name
             ),
         }
     }
@@ -8409,33 +8433,83 @@ fn eval_emit_host_run_transport_cached_builtin(
 /// steps get it via the CI prelude, but the transport spawns from an emitted
 /// workspace with only the process env). Resolution order: bare name if it
 /// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
-/// else the bare name (spawn then fails with the existing typed error — refuse,
-/// never fabricate).
-fn resolve_host_tool_program(name: &str) -> String {
+/// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH
+/// at spawn time — the absorbing fallback hermetic-tool-provisioning-design.md
+/// §1 names).
+///
+/// HAND-RUST GATE explicit deferral (review 44883): this function is seed
+/// retained, not a new resolver authority. Its lane is ROADMAP
+/// `toolchain-single-resolver` (gunbc.roadmap_authority,
+/// docs/plans/hermetic-tool-provisioning-design.md P2 — "one resolver",
+/// handback: delete `resolve_host_tool_program` and the bash ladder). This PR
+/// repairs only the fail-open terminal arm; it does not admit a parallel key or
+/// grow the census. Delete the whole function when P2's `membership_reconcile`
+/// instantiation routes emit-host spawns and the P2 RED control (unpinned tool
+/// refuses before spawn) is witnessed in `.dag`.
+///
+/// A name containing `/` is treated as one of three cases:
+/// - **`./<rel>`** — the `ProducedProgram` wire format from
+///   `emit_host.dag` `process_program_name`; passed through because emit-host
+///   spawns set `.current_dir(workspace)` and the path is workspace-relative.
+/// - **Absolute path** — caller-declared executable; must exist as a file.
+/// - **Other relative paths** (e.g. `target/release/foo`) — refused as
+///   `HostToolRelativePathAmbiguous`: `is_file()` is process-cwd-relative but
+///   spawn uses the workspace, so check and spawn would disagree.
+/// Bare names are ambient divination; absolute paths are declared intent, but a
+/// nonexistent path still refuses before `Command::new`.
+fn resolve_host_tool_program(name: &str) -> InterpResult<String> {
     if name.contains('/') {
-        return name.to_string();
+        if name.starts_with("./") {
+            return Ok(name.to_string());
+        }
+        let path = std::path::Path::new(name);
+        if !path.is_absolute() {
+            return Err(InterpError::HostToolRelativePathAmbiguous {
+                name: name.to_string(),
+            });
+        }
+        if path.is_file() {
+            return Ok(name.to_string());
+        }
+        return Err(InterpError::HostToolUnresolved {
+            name: name.to_string(),
+            probed: vec![name.to_string()],
+        });
     }
+    let mut probed = Vec::new();
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
+            if dir.is_empty() {
+                continue;
+            }
             let candidate = std::path::Path::new(dir).join(name);
-            if !dir.is_empty() && candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
+            let candidate_str = candidate.to_string_lossy().into_owned();
+            probed.push(candidate_str.clone());
+            if candidate.is_file() {
+                return Ok(candidate_str);
             }
         }
     }
     if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
         let candidate = std::path::Path::new(&cargo_home).join("bin").join(name);
+        let candidate_str = candidate.to_string_lossy().into_owned();
+        probed.push(candidate_str.clone());
         if candidate.is_file() {
-            return candidate.to_string_lossy().into_owned();
+            return Ok(candidate_str);
         }
     }
     if let Ok(home) = std::env::var("HOME") {
         let candidate = std::path::Path::new(&home).join(".cargo/bin").join(name);
+        let candidate_str = candidate.to_string_lossy().into_owned();
+        probed.push(candidate_str.clone());
         if candidate.is_file() {
-            return candidate.to_string_lossy().into_owned();
+            return Ok(candidate_str);
         }
     }
-    name.to_string()
+    Err(InterpError::HostToolUnresolved {
+        name: name.to_string(),
+        probed,
+    })
 }
 
 #[derive(Clone)]
@@ -8589,84 +8663,82 @@ fn emit_host_cargo_configuration_digest(
 /// paired with the rustc selected by the same process environment. The transport
 /// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
 /// intentionally not part of this identity.
+#[derive(Debug, Clone)]
+struct ObservedToolIdentity {
+    tool_name: String,
+    observed_identity: String,
+}
+
+fn observe_tool_identity(
+    requested: &str,
+    version_args: &[&str],
+    probe_workspace: &std::path::Path,
+    environment: &EmitHostBuildEnvironment,
+) -> InterpResult<ObservedToolIdentity> {
+    let resolved = resolve_host_tool_program(requested)?;
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
+        msg: format!(
+            "emit_host_run_transport_cached: resolve build tool {requested:?} \
+                 ({resolved:?}) failed: {e}"
+        ),
+    })?;
+    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
+        msg: format!(
+            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
+            canonical.display()
+        ),
+    })?;
+    let mut command = std::process::Command::new(&resolved);
+    command.args(version_args).current_dir(probe_workspace);
+    emit_host_apply_build_environment(&mut command, environment);
+    let output = command.output().map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    })?;
+    if !output.status.success() {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: version probe for {requested:?} \
+                 exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        });
+    }
+
+    let logical_name = std::path::Path::new(requested)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(requested);
+    let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
+    for field in [
+        v1_rt::atom_identity_hash(logical_name.to_string()),
+        v1_rt::bytes_identity_hash(&executable),
+        v1_rt::bytes_identity_hash(&output.stdout),
+        v1_rt::bytes_identity_hash(&output.stderr),
+    ] {
+        digest = v1_rt::hash_combine(digest, field);
+    }
+    Ok(ObservedToolIdentity {
+        tool_name: logical_name.to_string(),
+        observed_identity: digest,
+    })
+}
+
+fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
+    debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
+    rows.iter().fold(
+        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
+        |acc, observed_tool_identity| {
+            v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
+        },
+    )
+}
+
 fn emit_host_resolved_build_context_identity(
     build_argvs: &[Vec<String>],
     probe_workspace: &std::path::Path,
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<String> {
-    #[derive(Debug, Clone)]
-    struct ObservedToolIdentity {
-        tool_name: String,
-        observed_identity: String,
-    }
-
-    fn observe_tool(
-        requested: &str,
-        version_args: &[&str],
-        probe_workspace: &std::path::Path,
-        environment: &EmitHostBuildEnvironment,
-    ) -> InterpResult<ObservedToolIdentity> {
-        let resolved = resolve_host_tool_program(requested);
-        let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                     ({resolved:?}) failed: {e}"
-            ),
-        })?;
-        let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-                canonical.display()
-            ),
-        })?;
-        let mut command = std::process::Command::new(&resolved);
-        command.args(version_args).current_dir(probe_workspace);
-        emit_host_apply_build_environment(&mut command, environment);
-        let output = command.output().map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
-            ),
-        })?;
-        if !output.status.success() {
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: version probe for {requested:?} \
-                     exited {}: {}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            });
-        }
-
-        let logical_name = std::path::Path::new(requested)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(requested);
-        let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
-        for field in [
-            v1_rt::atom_identity_hash(logical_name.to_string()),
-            v1_rt::bytes_identity_hash(&executable),
-            v1_rt::bytes_identity_hash(&output.stdout),
-            v1_rt::bytes_identity_hash(&output.stderr),
-        ] {
-            digest = v1_rt::hash_combine(digest, field);
-        }
-        Ok(ObservedToolIdentity {
-            tool_name: logical_name.to_string(),
-            observed_identity: digest,
-        })
-    }
-
-    fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
-        debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
-        rows.iter().fold(
-            v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
-            |acc, observed_tool_identity| {
-                v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
-            },
-        )
-    }
-
     let cargo_configuration_identity =
         emit_host_cargo_configuration_digest(environment, probe_workspace)?;
     let mut observed_tool_identities = Vec::new();
@@ -8683,7 +8755,7 @@ fn emit_host_resolved_build_context_identity(
         } else {
             &["--version"]
         };
-        observed_tool_identities.push(observe_tool(
+        observed_tool_identities.push(observe_tool_identity(
             requested,
             version_args,
             probe_workspace,
@@ -8692,7 +8764,7 @@ fn emit_host_resolved_build_context_identity(
 
         if requested_name == "cargo" {
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            observed_tool_identities.push(observe_tool(
+            observed_tool_identities.push(observe_tool_identity(
                 &rustc,
                 &["-vV"],
                 probe_workspace,
@@ -8811,7 +8883,7 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0]));
+        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0])?);
         command.args(&argv[1..]).current_dir(workspace);
         emit_host_apply_build_environment(&mut command, build_environment);
         command.env("CARGO_TARGET_DIR", &target_dir);
@@ -8914,7 +8986,8 @@ fn emit_host_run_transport_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(resolve_host_tool_program(&argv[0]))
+        let program = resolve_host_tool_program(&argv[0])?;
+        std::process::Command::new(&program)
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
@@ -11852,6 +11925,150 @@ mod argv_arg_limit_test {
                 panic!("small argv must not trip the arg-size wall")
             }
             Ok(_) | Err(_) => {}
+        }
+    }
+}
+
+/// Interim seed witnesses for the fail-closed arms above. HAND-RUST GATE
+/// explicit deferral (review 44883): not a permanent test surface — delete with
+/// `resolve_host_tool_program` when ROADMAP `toolchain-single-resolver` lands
+/// (hermetic-tool-provisioning-design.md P2 RED: unpinned tool refuses before
+/// spawn, witnessed in `.dag`).
+#[cfg(test)]
+mod resolve_host_tool_program_tests {
+    use super::resolve_host_tool_program;
+    use super::InterpError;
+    use std::path::PathBuf;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        path: Option<String>,
+        cargo_home: Option<String>,
+        home: Option<String>,
+        _guard: MutexGuard<'static, ()>,
+    }
+
+    impl EnvRestore {
+        fn capture() -> Self {
+            let guard = ENV_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            Self {
+                path: std::env::var("PATH").ok(),
+                cargo_home: std::env::var("CARGO_HOME").ok(),
+                home: std::env::var("HOME").ok(),
+                _guard: guard,
+            }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            restore_env("PATH", self.path.as_deref());
+            restore_env("CARGO_HOME", self.cargo_home.as_deref());
+            restore_env("HOME", self.home.as_deref());
+        }
+    }
+
+    fn restore_env(name: &str, value: Option<&str>) {
+        match value {
+            Some(v) => std::env::set_var(name, v),
+            None => std::env::remove_var(name),
+        }
+    }
+
+    fn isolated_probe_root(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc_resolve_host_tool_{label}"))
+    }
+
+    #[test]
+    fn resolve_host_tool_program_refuses_missing_bare_name() {
+        let _env = EnvRestore::capture();
+        let root = isolated_probe_root("refuse");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("cargo_home/bin")).expect("cargo_home/bin");
+        std::fs::create_dir_all(&root.join("home")).expect("home");
+
+        std::env::set_var("PATH", root.join("empty_path"));
+        std::env::set_var("CARGO_HOME", root.join("cargo_home"));
+        std::env::set_var("HOME", root.join("home"));
+
+        let missing = "__gunbc_resolve_host_tool_missing__";
+        match resolve_host_tool_program(missing) {
+            Err(InterpError::HostToolUnresolved { name, probed }) => {
+                assert_eq!(name, missing);
+                assert!(!probed.is_empty());
+            }
+            Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
+            Err(other) => panic!("expected HostToolUnresolved refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_host_tool_program_returns_resolved_path_from_path_probe() {
+        let _env = EnvRestore::capture();
+        let root = isolated_probe_root("path_hit");
+        let _ = std::fs::remove_dir_all(&root);
+        let bin_dir = root.join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("bin dir");
+        let tool_name = "__gunbc_resolve_host_tool_present__";
+        let tool_path = bin_dir.join(tool_name);
+        std::fs::write(&tool_path, b"").expect("tool file");
+
+        std::env::set_var("PATH", &bin_dir);
+        std::env::set_var("CARGO_HOME", root.join("unused_cargo_home"));
+        std::env::set_var("HOME", root.join("unused_home"));
+
+        let resolved = resolve_host_tool_program(tool_name)
+            .unwrap_or_else(|e| panic!("expected PATH resolution, got {e:?}"));
+        assert_eq!(resolved, tool_path.to_string_lossy());
+        assert_ne!(resolved, tool_name);
+    }
+
+    #[test]
+    fn resolve_host_tool_program_accepts_produced_program_wire_path() {
+        let resolved = resolve_host_tool_program("./fixture")
+            .unwrap_or_else(|e| panic!("ProducedProgram wire path must pass through, got {e:?}"));
+        assert_eq!(resolved, "./fixture");
+    }
+
+    #[test]
+    fn resolve_host_tool_program_refuses_relative_explicit_path() {
+        match resolve_host_tool_program("target/release/foo") {
+            Err(InterpError::HostToolRelativePathAmbiguous { name }) => {
+                assert_eq!(name, "target/release/foo");
+            }
+            Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
+            Err(other) => panic!("expected HostToolRelativePathAmbiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_host_tool_program_resolves_existing_explicit_path() {
+        let root = isolated_probe_root("explicit_hit");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("explicit root");
+        let tool_path = root.join("__gunbc_resolve_host_tool_explicit__");
+        std::fs::write(&tool_path, b"").expect("tool file");
+        let absolute = tool_path.to_string_lossy().into_owned();
+
+        let resolved = resolve_host_tool_program(&absolute)
+            .unwrap_or_else(|e| panic!("existing explicit path must resolve, got {e:?}"));
+        assert_eq!(resolved, absolute);
+    }
+
+    #[test]
+    fn resolve_host_tool_program_refuses_missing_explicit_path() {
+        let missing = "/tmp/__gunbc_resolve_host_tool_explicit_missing__";
+        match resolve_host_tool_program(missing) {
+            Err(InterpError::HostToolUnresolved { name, probed }) => {
+                assert_eq!(name, missing);
+                assert_eq!(probed, vec![missing.to_string()]);
+            }
+            Ok(path) => panic!("expected refusal, got resolved path {path:?}"),
+            Err(other) => panic!("expected HostToolUnresolved refusal, got {other:?}"),
         }
     }
 }
