@@ -1,10 +1,8 @@
 module gunbc.srv3_seeded_install_media
-
-import extdeps.os.ubuntu_seeded_install_media_toolchain {
+import extdeps.provisioning.ubuntu_seeded_install_media_toolchain {
   install_media_remaster_toolchain_requirement,
   install_media_remaster_toolchain_is_complete,
 }
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.srv3_seeded_install_media_artifact {
   srv3_seeded_install_media_artifact,
@@ -19,16 +17,23 @@ import gunbc.srv3_host_effect_apply {
   srv3_reconciliation_to_process_exit,
   srv3_seeded_install_media_toolchain_unprivileged_fixture_denied,
 }
-import gunbc.host_effect_realize {
-  srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated,
-}
+import gunbc.host_effect_realize { srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
+import gunbc.fleet_intent {
+  srv1_host,
+  ComputeHost,
+}
+import std.disposition { Disposition }
+import std.decl_ref { DeclarationRef }
+import std.process {
+  ProcessExit,
+  exit_failure,
+}
+import std.types {
+  NonEmptyStr,
+  Bool,
+}
+import std.string_type { String }
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."

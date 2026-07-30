@@ -1,12 +1,15 @@
 module test.claim.os_free_witness
-
-import extdeps.os.free {
+import extdeps.tools.free {
   FreeOutput,
   MemoryStats,
   SwapStats,
 }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+}
+import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,9 +1,11 @@
 module test.claim.extdeps_version_base
-
-import extdeps.version { VersionIdentity, VersionConstraint }
-import extdeps.gnu_coreutils { min_coreutils_version }
-import std.algebra { Ordering, Less, Equal, Greater }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.version {
+  VersionIdentity,
+  VersionConstraint,
+}
+import extdeps.tools.gnu_coreutils { min_coreutils_version }
+import std.algebra { Ordering }
+import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
