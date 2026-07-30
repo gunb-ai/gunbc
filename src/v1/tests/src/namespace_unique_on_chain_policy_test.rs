@@ -1,16 +1,8 @@
-//! §8-step-4 discriminating witness (namespace-resolution-design.md §13, operator-ratified
-//! 2026-07-21): the executing v1 seed resolver carries a NameResolutionPolicy gate —
-//! default ON = NamespaceOnlyY strict unique-on-chain with typed `AmbiguousReference`
-//! refusals, OFF (host-bracketed) = ImportScoped (nearest-wins / first-hit, byte-for-byte).
-//!
-//! The homonym fixtures below are the discriminating inputs: the SAME sources compile
-//! clean under ImportScoped and refuse (typed, located, full candidate list) under
-//! NamespaceOnlyY — on both the type/value path (ancestor-chain homonym resolved by
-//! nearest-wins today) and the fn path (first-hit over `func_env.parents`, the
-//! `fn_parent_first_hit` silent-pick class, which had NO refusal arm at all).
-//! Controls pin the boundary: a chain-unique homonym still resolves under the strict
-//! policy, and a genuinely-unbound name stays `UnresolvedType` — the refusal is typed,
-//! never a blanket.
+//! Canonical binding witness (namespace-canonical-binding / namespace-resolution-design.md §13):
+//! production global-bare and fn-parent cardinality always routes through the one
+//! `module_path_owner_binding_decide` fold on chain-filtered populations — no policy
+//! bracket may re-enable nearest-wins or first-hit silent picks on these paths
+//! (roadmap `namespace-canonical-binding` out_of_scope: no configuration switch).
 
 use std::rc::Rc;
 
@@ -21,8 +13,8 @@ use v1_compiler::v1_rt::{
 };
 use v1_compiler::v1_std_core::{diagnostic_to_message, is_error_diagnostic};
 
-/// Panic-safe policy bracket: save/restore the thread-local gate so ImportScoped cases
-/// bracket `false` explicitly and drop always restores the pre-test default.
+/// Panic-safe policy bracket: retained only to prove the host gate no longer bypasses
+/// canonical binding on the production paths this PR routes.
 struct ResolutionPolicyGuard(bool);
 
 impl ResolutionPolicyGuard {
@@ -56,12 +48,9 @@ fn error_diag_messages(sources: Vec<Rc<SourceFile>>) -> Vec<String> {
         .collect()
 }
 
-/// Chain homonym on BOTH paths. `fixchain` and `fixchain.mid` are both ancestors of the
-/// referencing module `fixchain.mid.leaf`:
-/// - type/value path: bare `Homonym` — ImportScoped resolves nearest (`fixchain.mid`),
-///   NamespaceOnlyY sees 2 binders on the chain and refuses;
-/// - fn path: bare `pick()` with two glob imports both providing it — ImportScoped
-///   first-hits over the flat parent closure, NamespaceOnlyY refuses on 2 matches.
+/// Chain homonym on BOTH paths under `fixchain.mid.leaf`:
+/// - type/value path: bare `Homonym` — 2 binders on the chain → AmbiguousReference;
+/// - fn path: bare `pick()` with two glob imports → AmbiguousReference.
 fn homonym_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src(
@@ -87,9 +76,6 @@ fn homonym_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-/// Control fixture: homonym whose candidates put EXACTLY ONE binder on the referencing
-/// chain (`Duo` in ancestor `fixchain.mid` vs non-ancestor `fixother`) — must resolve
-/// under BOTH policies (the strict rule is unique-on-chain, not no-homonyms-anywhere).
 fn unique_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src(
@@ -104,10 +90,6 @@ fn unique_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-/// Control fixture: whole-pool homonym with ZERO binders on the referencing chain
-/// (`Stray` declared only in two non-ancestor siblings). ImportScoped already refuses
-/// (all-disjoint LCP tie) as `UnresolvedType`; NamespaceOnlyY also refuses as
-/// `UnresolvedType` — an empty on-chain population never authorizes a whole-corpus search.
 fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src("fixother.dag", "module fixother\ntype Stray { a: Int }\n"),
@@ -119,10 +101,6 @@ fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-/// Control fixture: corpus-unique name whose sole declaration is OFF the referencing
-/// chain (`Solo` only in `fixother`, referenced from `fixchain.mid.leaf`). ImportScoped
-/// resolves via GlobalBareUniqueBinding; NamespaceOnlyY must refuse as UnresolvedType —
-/// the canonical decision path must not bypass the chain filter for unique index rows.
 fn single_off_chain_unique_fixture() -> Vec<Rc<SourceFile>> {
     vec![
         src("fixother.dag", "module fixother\ntype Solo { a: Int }\n"),
@@ -133,7 +111,6 @@ fn single_off_chain_unique_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
-/// Control fixture: a genuinely-unbound name (declared nowhere).
 fn unbound_fixture() -> Vec<Rc<SourceFile>> {
     vec![src(
         "leaf.dag",
@@ -142,18 +119,21 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 }
 
 #[test]
-fn import_scoped_default_resolves_homonym_fixture_clean() {
+fn policy_bracket_does_not_bypass_canonical_homonym_refusal() {
     let _guard = ResolutionPolicyGuard::set(false);
     let diags = error_diag_messages(homonym_fixture());
     assert!(
-        diags.is_empty(),
-        "ImportScoped policy (host bracket false) must preserve today's behavior verbatim \
-         (nearest-wins type resolution + first-hit fn resolution); got {diags:?}"
+        diags.iter().any(|m| m.contains("ambiguous reference 'Homonym'")),
+        "host policy bracket false must not restore nearest-wins for on-chain homonyms; got {diags:?}"
+    );
+    assert!(
+        diags.iter().any(|m| m.contains("ambiguous reference 'pick'")),
+        "host policy bracket false must not restore first-hit fn resolution; got {diags:?}"
     );
 }
 
 #[test]
-fn namespace_only_refuses_chain_homonym_on_type_path() {
+fn canonical_refuses_chain_homonym_on_type_path() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let homonym_refusals: Vec<&String> = diags
@@ -162,18 +142,17 @@ fn namespace_only_refuses_chain_homonym_on_type_path() {
         .collect();
     assert!(
         !homonym_refusals.is_empty(),
-        "NamespaceOnlyY must refuse the 2-binders-on-chain type homonym with a typed \
-         AmbiguousReference; got {diags:?}"
+        "2-binders-on-chain type homonym must refuse with AmbiguousReference; got {diags:?}"
     );
     let listing = homonym_refusals[0];
     assert!(
         listing.contains("fixchain.Homonym") && listing.contains("fixchain.mid.Homonym"),
-        "the refusal must carry the FULL candidate list (fix menu, §13); got {listing}"
+        "the refusal must carry the FULL candidate list; got {listing}"
     );
 }
 
 #[test]
-fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
+fn canonical_refuses_fn_parent_homonym_at_call_site() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());
     let pick_refusals: Vec<&String> = diags
@@ -182,8 +161,7 @@ fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
         .collect();
     assert!(
         !pick_refusals.is_empty(),
-        "NamespaceOnlyY must refuse the 2-parent-matches fn homonym (the \
-         fn_parent_first_hit silent-pick class) with a typed AmbiguousReference; got {diags:?}"
+        "2-parent-matches fn homonym must refuse with AmbiguousReference; got {diags:?}"
     );
     let listing = pick_refusals[0];
     assert!(
@@ -193,46 +171,29 @@ fn namespace_only_refuses_fn_parent_homonym_at_call_site() {
 }
 
 #[test]
-fn namespace_only_unique_on_chain_still_resolves() {
+fn unique_on_chain_still_resolves() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unique_on_chain_fixture());
     assert!(
         diags.is_empty(),
-        "exactly-one-binder-on-chain must RESOLVE under NamespaceOnlyY (the strict rule \
-         is unique-on-chain, not no-homonyms-anywhere); got {diags:?}"
+        "exactly-one-binder-on-chain must resolve; got {diags:?}"
     );
 }
 
 #[test]
-fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
-    let import_scoped = {
-        let _guard = ResolutionPolicyGuard::set(false);
-        error_diag_messages(zero_on_chain_fixture())
-    };
-    assert!(
-        import_scoped
-            .iter()
-            .any(|m| m.contains("unresolved type 'Stray'")),
-        "ImportScoped all-disjoint LCP tie refuses as UnresolvedType today; got {import_scoped:?}"
-    );
-    assert!(
-        !import_scoped.iter().any(|m| m.contains("ambiguous")),
-        "ImportScoped bracket must not mint AmbiguousReference; got {import_scoped:?}"
-    );
-
-    let strict = {
-        let _guard = ResolutionPolicyGuard::set(true);
-        error_diag_messages(zero_on_chain_fixture())
-    };
-    assert!(
-        strict.iter().any(|m| m.contains("unresolved type 'Stray'")),
-        "NamespaceOnlyY labels the zero-on-chain whole-pool homonym as UnresolvedType \
-         (empty chain never authorizes whole-corpus search); got {strict:?}"
-    );
-    assert!(
-        !strict.iter().any(|m| m.contains("ambiguous")),
-        "zero on-chain candidates must not widen into AmbiguousReference; got {strict:?}"
-    );
+fn zero_on_chain_homonym_is_unresolved_not_ambiguous() {
+    for namespace_only in [false, true] {
+        let _guard = ResolutionPolicyGuard::set(namespace_only);
+        let diags = error_diag_messages(zero_on_chain_fixture());
+        assert!(
+            diags.iter().any(|m| m.contains("unresolved type 'Stray'")),
+            "zero on-chain homonym must be UnresolvedType (policy={namespace_only}); got {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|m| m.contains("ambiguous")),
+            "zero on-chain must not widen to AmbiguousReference (policy={namespace_only}); got {diags:?}"
+        );
+    }
 }
 
 #[test]
@@ -254,36 +215,24 @@ fn zero_on_chain_containment_census_matches_inference_unresolved() {
     );
     assert!(
         matches!(containment, ContainmentResolve::Unresolved),
-        "containment census must mirror inference: zero on-chain homonym is Unresolved, \
-         not Ambiguous; got {containment:?}"
+        "containment census must mirror inference for zero on-chain homonym; got {containment:?}"
     );
 }
 
 #[test]
-fn single_off_chain_unique_refuses_under_namespace_only() {
-    let import_scoped = {
-        let _guard = ResolutionPolicyGuard::set(false);
-        error_diag_messages(single_off_chain_unique_fixture())
-    };
-    assert!(
-        import_scoped.is_empty(),
-        "ImportScoped resolves a corpus-unique off-chain name via GlobalBareUniqueBinding; \
-         got {import_scoped:?}"
-    );
-
-    let strict = {
-        let _guard = ResolutionPolicyGuard::set(true);
-        error_diag_messages(single_off_chain_unique_fixture())
-    };
-    assert!(
-        strict.iter().any(|m| m.contains("unresolved type 'Solo'")),
-        "NamespaceOnlyY must refuse a corpus-unique off-chain name as UnresolvedType \
-         (chain filter, not GlobalBareUniqueBinding bypass); got {strict:?}"
-    );
-    assert!(
-        !strict.iter().any(|m| m.contains("ambiguous")),
-        "single off-chain candidate is Unresolved, not Ambiguous; got {strict:?}"
-    );
+fn single_off_chain_unique_refuses_regardless_of_policy_bracket() {
+    for namespace_only in [false, true] {
+        let _guard = ResolutionPolicyGuard::set(namespace_only);
+        let diags = error_diag_messages(single_off_chain_unique_fixture());
+        assert!(
+            diags.iter().any(|m| m.contains("unresolved type 'Solo'")),
+            "corpus-unique off-chain name must refuse as UnresolvedType (policy={namespace_only}); got {diags:?}"
+        );
+        assert!(
+            !diags.iter().any(|m| m.contains("ambiguous")),
+            "single off-chain candidate is Unresolved, not Ambiguous (policy={namespace_only}); got {diags:?}"
+        );
+    }
 }
 
 #[test]
@@ -305,21 +254,19 @@ fn single_off_chain_unique_containment_census_matches_inference() {
     );
     assert!(
         matches!(containment, ContainmentResolve::Unresolved),
-        "containment census must mirror inference for corpus-unique off-chain name; \
-         got {containment:?}"
+        "containment census must mirror inference for corpus-unique off-chain name; got {containment:?}"
     );
 }
 
 #[test]
-fn namespace_only_keeps_genuinely_unbound_as_unresolved_not_ambiguous() {
+fn genuinely_unbound_stays_unresolved_not_ambiguous() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(unbound_fixture());
     assert!(
         diags
             .iter()
             .any(|m| m.contains("unresolved type 'NoSuchTypeAnywhere'")),
-        "a name bound NOWHERE stays UnresolvedType under the strict policy \
-         (Ambiguous and Unresolved are distinct states, §5); got {diags:?}"
+        "unbound name stays UnresolvedType; got {diags:?}"
     );
     assert!(
         !diags.iter().any(|m| m.contains("ambiguous")),

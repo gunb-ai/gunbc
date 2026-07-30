@@ -143,25 +143,7 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   match map_get(env.local, name) {
     Present { value: sig } => FuncSigResolved { sig: sig }
-    Absent =>
-      if name_resolution_policy_is_namespace_only() {
-        lookup_resolved_sig_unique_across_parents(env: env, name: name)
-      } else {
-        let first_hit = if resolution_silent_pick_is_enabled() {
-          lookup_resolved_sig_with_telemetry(env: env, name: name)
-        } else {
-          fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
-            match acc {
-              Present { value: sig } => Present { value: sig }
-              Absent => map_get(p.local, name)
-            }
-          )
-        }
-        match first_hit {
-          Present { value: sig } => FuncSigResolved { sig: sig }
-          Absent => FuncSigUnresolved
-        }
-      }
+    Absent => lookup_resolved_sig_unique_across_parents(env: env, name: name)
   }
 }
 

@@ -559,7 +559,7 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
   }
 }
 
-data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType — never a whole-corpus search (namespace-unique-on-chain operational plan lines 290-291, 408). Cardinality for chain and func-parent populations routes through std.occurrence_binding_resolve.occurrence_binding_decide."
+data unique_on_chain_policy_note: String = "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), namespace-canonical-binding: bare homonym cardinality on chain-filtered populations routes through module_path_owner_binding_decide (0 → Unresolved, 1 → bind, 2+ → Ambiguous with full chain population). A candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Zero on-chain never authorizes whole-corpus search. The host NameResolutionPolicy gate no longer selects parallel nearest-wins/first-hit paths on these production surfaces (roadmap out_of_scope: no configuration switch between old and new behaviour)."
 
 fn global_bare_chain_candidates(env_module_path: String, candidates: List<GlobalBareCandidate>) -> List<GlobalBareCandidate> {
   let env_segs = module_path_segments(path: env_module_path)
@@ -581,17 +581,10 @@ fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<
 }
 
 fn global_bare_policy_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
-  if name_resolution_policy_is_namespace_only() {
-    global_bare_unique_chain_candidate(env_module_path: env_module_path, candidates: candidates)
-  } else {
-    global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates)
-  }
+  global_bare_unique_chain_candidate(env_module_path: env_module_path, candidates: candidates)
 }
 
 fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<String> {
-  if name_resolution_policy_is_namespace_only() == false {
-    return []
-  }
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
@@ -615,23 +608,16 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      if name_resolution_policy_is_namespace_only() {
-        match global_bare_unique_chain_candidate(
-          env_module_path: owner_module_path,
-          candidates: [GlobalBareCandidate { module_path: mp, binding: b }],
-        ) {
-          Present { value: cand } =>
-            match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
-              true => Present { value: cand.module_path }
-              false => Absent
-            }
-          Absent => Absent
-        }
-      } else {
-        match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
-          true => Present { value: mp }
-          false => Absent
-        }
+      match global_bare_unique_chain_candidate(
+        env_module_path: owner_module_path,
+        candidates: [GlobalBareCandidate { module_path: mp, binding: b }],
+      ) {
+        Present { value: cand } =>
+          match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+            true => Present { value: cand.module_path }
+            false => Absent
+          }
+        Absent => Absent
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
@@ -780,30 +766,18 @@ fn record_global_bare_ambiguous_silent_pick(
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { module_path: mp, binding: binding } } =>
-      if name_resolution_policy_is_namespace_only() {
-        match global_bare_unique_chain_candidate(
-          env_module_path: env.module_path,
-          candidates: [GlobalBareCandidate { module_path: mp, binding: binding }],
-        ) {
-          Present { value: cand } => Present { value: cand.binding }
-          Absent => Absent
-        }
-      } else {
-        Present { value: binding }
+      match global_bare_unique_chain_candidate(
+        env_module_path: env.module_path,
+        candidates: [GlobalBareCandidate { module_path: mp, binding: binding }],
+      ) {
+        Present { value: cand } => Present { value: cand.binding }
+        Absent => Absent
       }
-    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
-      if name_resolution_policy_is_namespace_only() {
-        match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
-          Present { value: cand } => Present { value: cand.binding }
-          Absent => Absent
-        }
-      } else {
-        if resolution_silent_pick_is_enabled() && (cands |> count) >= 2 {
-          record_global_bare_ambiguous_silent_pick(env_module_path: env.module_path, name: name, cands: cands)
-        }
-        global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
+        Present { value: cand } => Present { value: cand.binding }
+        Absent => Absent
       }
-    }
     Absent => Absent
   }
 }
@@ -811,14 +785,10 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      if name_resolution_policy_is_namespace_only() {
-        let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
-        global_bare_chain_is_ambiguous_from_decide(
-          owners: chain |> map(c => c.module_path),
-        )
-      } else {
-        global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
-      }
+      let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
+      global_bare_chain_is_ambiguous_from_decide(
+        owners: chain |> map(c => c.module_path),
+      )
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
     Absent => false
   }
