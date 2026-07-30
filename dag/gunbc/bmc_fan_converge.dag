@@ -774,7 +774,6 @@ fn bmc_fan_observe_tach_health(
 
 fn bmc_fan_observe_typed_parts(
   session: PasswordSshSession,
-  identity: BmcFanLiveIdentity,
   plan: BmcFanTypedObservationPlan,
 ) -> BmcFanObservedPartsResult {
   let selected = openbmc_resolve_path(
@@ -1019,40 +1018,12 @@ fn bmc_fan_build_live_observation(
   tach_health: List<OpenBmcTachHealth>,
   temperatures: List<BmcFanTemperatureObservation>,
 ) -> BmcFanLiveObservationResult {
-  let firmware = identity.firmware.version as String
-  let machine = identity.machine as String
-  let selected_path = selected_config_path as String
-  let board_path = board_config_path as String
-  let service = controller_service as String
-  let binary = controller_binary as String
-  let zone_path = zone_control_path as String
-  if firmware == "" {
+  if identity.machine != "altrad8ud-1l2t" {
     BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted firmware",
-    }
-  } else if selected_path == "" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted selected config path",
-    }
-  } else if board_path == "" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted resolved board config path",
-    }
-  } else if service == "" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted controller service",
-    }
-  } else if binary == "" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted controller binary",
-    }
-  } else if zone_path == "" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted zone control path",
-    }
-  } else if machine != "altrad8ud-1l2t" {
-    BmcFanLiveObservationRefused {
-      reason: concat("BMC target machine is not altrad8ud-1l2t: ", machine),
+      reason: concat(
+        "BMC target machine is not altrad8ud-1l2t: ",
+        identity.machine as String,
+      ),
     }
   } else {
           match bmc_fan_parse_curve(config: config) {
@@ -1068,27 +1039,23 @@ fn bmc_fan_build_live_observation(
                       reason: "persistent overlay free-space observation is absent",
                     }
                   } else {
-                    let firmware_version = BmcFirmwareVersion {
-                      family: OpenBmc,
-                      version: firmware as NonEmptyStr,
-                    }
                     BmcFanLiveObserved {
                       observation: BmcFanLiveObservation {
                         policy: BmcFanPolicyObservation {
-                          firmware: firmware_version,
+                          firmware: identity.firmware,
                           evidence_scope: CurrentEvidenceUnclaimed,
                           curve: curve,
                           active_config_digest: config_digest,
-                          selected_config_path: selected_path as NonEmptyStr,
-                          board_config_path: board_path as NonEmptyStr,
-                          controller_service: service as NonEmptyStr,
-                          controller_binary: binary as NonEmptyStr,
+                          selected_config_path: selected_config_path,
+                          board_config_path: board_config_path,
+                          controller_service: controller_service,
+                          controller_binary: controller_binary,
                           controller_shape: shape,
                           observed_at: observed_at,
                         },
                         persistence: BmcOverlayConfigObserved {
-                          firmware: firmware_version,
-                          config_path: board_path as NonEmptyStr,
+                          firmware: identity.firmware,
+                          config_path: board_config_path,
                           overlay: overlay,
                           writable: writable,
                           upper_override_present: upper_override_present,
@@ -1096,7 +1063,7 @@ fn bmc_fan_build_live_observation(
                           evidence_scope: CurrentEvidenceUnclaimed,
                           observed_at: observed_at,
                         },
-                        zone_control_path: zone_path as NonEmptyStr,
+                        zone_control_path: zone_control_path,
                         zone_failsafe_active: zone_failsafe_active,
                         active_config_digest: config_digest,
                         tach_health: tach_health,
@@ -1452,7 +1419,6 @@ fn bmc_fan_observe_with_credential(
             } else {
               match bmc_fan_observe_typed_parts(
                 session: session,
-                identity: identity,
                 plan: bmc_fan_typed_observation_plan(
                   projection: projection,
                   intent: fleet_bmc_valid_state,
