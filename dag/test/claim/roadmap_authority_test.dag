@@ -589,12 +589,17 @@ test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
     && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
 }
 
-test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
-  count(nodes()
+test fn witness_execution_contract_frontier_is_the_declared_bound_set() -> Bool {
+  let bound = nodes()
     |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
         ExecutionContract { validations: _, extra_capabilities: _ } => true
-      })) == 4
+      })
+    |> map(n => n.node as String)
+  count(bound) == 3
+    && (bound |> any(b => b == "observation-raw-print-retirement"))
+    && (bound |> any(b => b == "shell-typed-invocation"))
+    && (bound |> any(b => b == "v2-emitter-producer-provenance"))
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
