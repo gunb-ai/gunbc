@@ -16,7 +16,7 @@ import extdeps.auth.jwt {
   jwt_string_or_uri_of_wire,
 }
 
-data oidc_core_external_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "openid.net/specs/openid-connect-core-1_0.html"

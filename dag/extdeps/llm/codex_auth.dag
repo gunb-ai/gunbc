@@ -9,7 +9,7 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.auth.jwt { JwtCompactSerialization, NumericDate }
 import extdeps.auth.oidc { OidcIdTokenClaims }
 
-data codex_auth_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "github.com/openai/codex"

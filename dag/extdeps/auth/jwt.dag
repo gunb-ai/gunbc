@@ -5,7 +5,7 @@ import std.measure { Second, second }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data jwt_external_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc7519"
