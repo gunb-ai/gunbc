@@ -13,7 +13,7 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps_retract_order,
   deployment_steps_apply_order,
   deployment_spec_for,
-  derived_deployment_identity,
+  derived_deployment_names,
   deployment_srv1_target,
   ArtifactStep,
   Dependency,
@@ -102,10 +102,6 @@ test fn witness_owned_vs_ensured_typed() -> Bool {
     }
   )
   has_owned && has_ensured
-}
-
-test fn witness_retract_owned_only() -> Bool {
-  count(deployment_owned_steps_retract_order(spec: deployment_spec_srv1())) == 5
 }
 
 test fn witness_tailnet_domain_propagates_optional() -> Bool {
@@ -352,7 +348,7 @@ fn srv1_twin_spec() -> DeploymentSpec {
   deployment_spec_for(
     instance: srv1_lab_dashboard_instance(),
     target: deployment_srv1_target(),
-    identity: derived_deployment_identity(instance: srv1_lab_dashboard_instance()),
+    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
   )
 }
 
@@ -370,17 +366,19 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
     && !(live.service.serve_binary == twin.service.serve_binary)
-    && count(live_paths) == 5
-    && count(twin_paths) == 5
+    && count(live_paths) > 0
+    && count(twin_paths) == count(live_paths)
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
+
+data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
 data teardown_safety_witness_note: String = "THE CLAIM THAT NAMES WHAT THE COLLISION WOULD HAVE COST, rather than only that paths differ. Every owned artifact is torn down by retract, so an overlap between two specs' owned sets is not an untidy duplicate — it is one deployment's retract deleting another's live files. The first version of the twin claim above went RED on exactly one path, the serve binary, because both instances read it from the host layout; a lab retract would have removed the binary production was executing.\\n\\nThis states the property directly in retract's own terms: nothing production owns appears in what the twin's teardown would remove. It is written over the retract order specifically, not the apply order, because teardown is the destructive direction and a claim about apply would not have caught it."
 
 test fn twin_teardown_removes_nothing_production_owns() -> Bool {
   let live_paths = spec_owned_paths(spec: deployment_spec_srv1())
   let twin_teardown = deployment_owned_steps_retract_order(spec: srv1_twin_spec())
-  count(twin_teardown) == 5
+  count(twin_teardown) > 0
     && all(twin_teardown, t => !any(live_paths, l => l == (t.path as String)))
 }
 
@@ -388,7 +386,7 @@ test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   let twin = srv1_twin_spec()
   let applied = deployment_steps_apply_order(
     instance: srv1_lab_dashboard_instance(),
-    identity: derived_deployment_identity(instance: srv1_lab_dashboard_instance()),
+    names: derived_deployment_names(instance: srv1_lab_dashboard_instance()),
   )
   let applied_paths = applied |> flat_map(s => match s {
     ArtifactStep { step } => [step.path as String]

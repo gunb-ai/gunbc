@@ -108,23 +108,23 @@ type DeploymentServiceConfig {
   listen: HttpServerListenConfig
 }
 
-data deployment_placement_axis_note: String = "A DEPLOYMENT IS (WHAT × WHERE), AND THIS MODULE USED TO FUSE THEM. deployment_owned_steps and deployment_service_config were NULLARY — zero arguments — so they returned THE deployment rather than A deployment, and gunbc_roadmap_unit_name was a single value naming the only unit that could ever exist. The consequence is sharper than 'srv1 is hardcoded': a second deployment was not hard to add, it was UNEXPRESSIBLE. A twin on srv1 would have collided on the unit name, the unit path, the binary path, the repo root and port 8080, every one of them a lone data row.\\n\\nThat framing hid the real axis. Host is not what varies — INSTANCE is, and host is one of its fields. Deploying twice on one machine and once on each of two machines are the same operation with different arguments, and any model where the first is impossible has picked the wrong parameter.\\n\\nThe correct placement model already existed and this module referenced it zero times. HostDashboardInstance carries instance_root, repo_root, serve_binary, dispatch_worktree_root, listen_host, listen_port, serve_function and instance_id, and it already proves the point: srv1_live on 8080 and srv1_lab on 18081 are two instances on ONE host with disjoint roots and distinct named tmux servers. So this is a de-fork onto an existing authority, not new modeling — two placement models existed, one was right, and the deploy path consumed neither.\\n\\nUnit and tailscale-mapping names travel together as DeploymentIdentity, supplied by the caller. deployment_unit_naming_note explains why they are passed rather than derived, and why that is a deliberate stop short of the stronger model rather than the model itself."
+data deployment_placement_axis_note: String = "A DEPLOYMENT IS (WHAT × WHERE), AND THIS MODULE USED TO FUSE THEM. deployment_owned_steps and deployment_service_config were NULLARY — zero arguments — so they returned THE deployment rather than A deployment, and gunbc_roadmap_unit_name was a single value naming the only unit that could ever exist. The consequence is sharper than 'srv1 is hardcoded': a second deployment was not hard to add, it was UNEXPRESSIBLE. A twin on srv1 would have collided on the unit name, the unit path, the binary path, the repo root and port 8080, every one of them a lone data row.\\n\\nThat framing hid the real axis. Host is not what varies — INSTANCE is, and host is one of its fields. Deploying twice on one machine and once on each of two machines are the same operation with different arguments, and any model where the first is impossible has picked the wrong parameter.\\n\\nThe correct placement model already existed and this module referenced it zero times. HostDashboardInstance carries instance_root, repo_root, serve_binary, dispatch_worktree_root, listen_host, listen_port, serve_function and instance_id, and it already proves the point: srv1_live on 8080 and srv1_lab on 18081 are two instances on ONE host with disjoint roots and distinct named tmux servers. So this is a de-fork onto an existing authority, not new modeling — two placement models existed, one was right, and the deploy path consumed neither.\\n\\nUnit and tailscale-mapping names travel together as DeploymentNames, supplied by the caller. deployment_unit_naming_note explains why they are passed rather than derived, and why that is a deliberate stop short of the stronger model rather than the model itself."
 
-data deployment_unit_naming_note: String = "THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL. Deriving it from instance_id is what this module should eventually do — it is what dashboard_instance_service_session_name already does for the tmux session, and derivation is what makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving here would rename a live unit as a side effect of an abstraction change: the next apply installs the new unit while the old one keeps serving, and retract then targets the new path and orphans the running process.\\n\\nSo the caller states them. srv1_live_deployment_identity preserves production byte-identically and carries the reason with it; derived_deployment_identity is the shape new instances use, and it is a real function rather than a comment so the second deployment does not re-litigate the question. Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.\\n\\nDISSOLVES ON: a scheduled unit rename for srv1-live (stop old, install derived, verify health, remove old), after which srv1 passes derived_deployment_identity like everyone else and this row deletes. Until then the collision guard is the witness that every declared spec has a distinct unit name, path and port — validation standing where a construction wall belongs, and marked as such rather than presented as the wall."
+data deployment_unit_naming_note: String = "THE UNIT NAME IS PASSED, NOT DERIVED, AND THAT IS A DELIBERATE STOP RATHER THAN THE WEAKER MODEL. Deriving it from instance_id is what this module should eventually do — it is what dashboard_instance_service_session_name already does for the tmux session, and derivation is what makes a collision unwritable instead of merely unlikely. But srv1-live is RUNNING as gunbc-roadmap.service right now, and instance_id srv1-live derives gunbc-srv1-live.service. Deriving here would rename a live unit as a side effect of an abstraction change: the next apply installs the new unit while the old one keeps serving, and retract then targets the new path and orphans the running process.\\n\\nSo the caller states them. srv1_live_deployment_names preserves production byte-identically and carries the reason with it; derived_deployment_names is the shape new instances use, and it is a real function rather than a comment so the second deployment does not re-litigate the question. Nothing inherits a default silently — deployment_spec_for takes identity as a required parameter.\\n\\nDISSOLVES ON: a scheduled unit rename for srv1-live (stop old, install derived, verify health, remove old), after which srv1 passes derived_deployment_names like everyone else and this row deletes. Until then the collision guard is the witness that every declared spec has a distinct unit name, path and port — validation standing where a construction wall belongs, and marked as such rather than presented as the wall."
 
-type DeploymentIdentity {
+type DeploymentNames {
   unit_name: NonEmptyStr
   tailscale_serve_path: NonEmptyStr
   tree_sync_unit_name: NonEmptyStr
   tree_sync_env_path: NonEmptyStr
 }
 
-fn deployment_systemd_unit_path(identity: DeploymentIdentity) -> NonEmptyStr {
-  join(["/etc/systemd/system/", identity.unit_name as String], "") as NonEmptyStr
+fn deployment_systemd_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", names.unit_name as String], "") as NonEmptyStr
 }
 
-fn derived_deployment_identity(instance: HostDashboardInstance) -> DeploymentIdentity {
-  DeploymentIdentity {
+fn derived_deployment_names(instance: HostDashboardInstance) -> DeploymentNames {
+  DeploymentNames {
     unit_name: join(["gunbc-", instance.instance_id as String, ".service"], "") as NonEmptyStr,
     tailscale_serve_path: join(["tailscale-serve-", instance.instance_id as String], "") as NonEmptyStr,
     tree_sync_unit_name: join(["gunbc-", instance.instance_id as String, "-tree-sync.service"], "") as NonEmptyStr,
@@ -132,12 +132,12 @@ fn derived_deployment_identity(instance: HostDashboardInstance) -> DeploymentIde
   }
 }
 
-data srv1_live_deployment_identity_note: String = "PRODUCTION'S NAMES AS THEY ACTUALLY ARE ON THE MACHINE, not as the derivation would mint them. srv1-live runs as gunbc-roadmap.service and owns the tailscale mapping named tailscale-serve; the derivation produces gunbc-srv1-live.service and tailscale-serve-srv1-live. Both differences would be silent renames — the apply installs under the new name while the old unit keeps serving, and retract then removes the new one and orphans the running process. Neither belongs in a change whose purpose is to make placement a parameter."
+data srv1_live_deployment_names_note: String = "PRODUCTION'S NAMES AS THEY ACTUALLY ARE ON THE MACHINE, not as the derivation would mint them. srv1-live runs as gunbc-roadmap.service and owns the tailscale mapping named tailscale-serve; the derivation produces gunbc-srv1-live.service and tailscale-serve-srv1-live. Both differences would be silent renames — the apply installs under the new name while the old unit keeps serving, and retract then removes the new one and orphans the running process. Neither belongs in a change whose purpose is to make placement a parameter."
 
 data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
 data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
 
-data srv1_live_deployment_identity: DeploymentIdentity = DeploymentIdentity {
+data srv1_live_deployment_names: DeploymentNames = DeploymentNames {
   unit_name: gunbc_roadmap_unit_name,
   tailscale_serve_path: tailscale_serve_owned_path,
   tree_sync_unit_name: gunbc_tree_sync_unit_name,
@@ -150,10 +150,10 @@ data tree_sync_was_a_host_singleton_note: String = "THE SYNC TRANSPORT WAS ONE S
 data gunbc_tree_sync_unit_name: NonEmptyStr = "gunbc-tree-sync.service"
 data gunbc_tree_sync_env_path: NonEmptyStr = "/etc/gunbc-tree-sync.env"
 
-fn tree_sync_unit_path(identity: DeploymentIdentity) -> NonEmptyStr {
+fn tree_sync_unit_path(names: DeploymentNames) -> NonEmptyStr {
   join([
     "/etc/systemd/system/",
-    identity.tree_sync_unit_name as String,
+    names.tree_sync_unit_name as String,
   ], "") as NonEmptyStr
 }
 
@@ -167,19 +167,19 @@ type DeploymentSpec {
   target: DeploymentHostTarget
   steps: List<DeploymentStep>
   service: DeploymentServiceConfig
-  identity: DeploymentIdentity
+  names: DeploymentNames
 }
 
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
-  identity: DeploymentIdentity,
+  names: DeploymentNames,
 ) -> List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: instance.dispatch_worktree_root as String as NonEmptyStr },
-    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(identity: identity) },
-    DeploymentArtifactStep { kind: TailscaleServeMapping, path: identity.tailscale_serve_path },
+    DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: names.tailscale_serve_path },
   ]
 }
 
@@ -192,12 +192,12 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
 
 fn deployment_steps_apply_order(
   instance: HostDashboardInstance,
-  identity: DeploymentIdentity,
+  names: DeploymentNames,
 ) -> List<DeploymentStep> {
   concat(
     map(deployment_ensured_steps(), s => Dependency { step: s }),
     map(
-      deployment_owned_steps(instance: instance, identity: identity),
+      deployment_owned_steps(instance: instance, names: names),
       s => ArtifactStep { step: s },
     )
   )
@@ -226,10 +226,10 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 
 fn deployment_service_config(
   instance: HostDashboardInstance,
-  identity: DeploymentIdentity,
+  names: DeploymentNames,
 ) -> DeploymentServiceConfig {
   DeploymentServiceConfig {
-    unit_name: identity.unit_name,
+    unit_name: names.unit_name,
     serve_binary: instance.serve_binary as String as NonEmptyStr,
     serve_function: instance.serve_function,
     repo_root: instance.repo_root as String as NonEmptyStr,
@@ -246,13 +246,13 @@ data deployment_spec_for_note: String = "THE CONSTRUCTOR THE MODULE WAS MISSING.
 fn deployment_spec_for(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
-  identity: DeploymentIdentity,
+  names: DeploymentNames,
 ) -> DeploymentSpec {
   DeploymentSpec {
     target: target,
-    steps: deployment_steps_apply_order(instance: instance, identity: identity),
-    service: deployment_service_config(instance: instance, identity: identity),
-    identity: identity,
+    steps: deployment_steps_apply_order(instance: instance, names: names),
+    service: deployment_service_config(instance: instance, names: names),
+    names: names,
   }
 }
 
@@ -260,7 +260,7 @@ fn deployment_spec_srv1() -> DeploymentSpec {
   deployment_spec_for(
     instance: srv1_live_dashboard_instance(),
     target: deployment_srv1_target(),
-    identity: srv1_live_deployment_identity,
+    names: srv1_live_deployment_names,
   )
 }
 
