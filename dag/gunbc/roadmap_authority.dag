@@ -227,7 +227,7 @@ fn observation_raw_print_retirement_execution_contract() -> WorkItemExecutionCon
 
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
-data v1_lane_binding_survey_note: String = "TWO OF SIX STARTABLE ROOTS ARE BINDABLE, and the other four are the finding. A binding names the validation that CLOSES a node, so it can only be authored when that validation exists. Surveying the v1 deletion lane's startable roots against the tree: v1-materialization-kernel wants cold-start, warm-reuse, corruption and eviction demonstrated, and the materialization witnesses present assert scaffold dispositions rather than kernel behaviour; v1-test-hygiene-producer-retirement wants identical-behaviour-then-deletion, which no witness states; v1-hand-queue-drain wants a product-reachability census that does not exist; and pderive-typesafe-nullary-reflection's unrepresentability claim has no witness carrying it.\n\nSo those four stay ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses on them with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make the lane look dispatchable would produce exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The real prerequisite for those four is that their acceptance witness is written as part of their first slice; the contract follows the witness, never precedes it."
+data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nOne bound node was removed rather than added by this correction: see v1_test_migration_unbound_note. A contract whose validation cannot fail on zero progress is worse than no contract, because it reports done over undone work."
 
 fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContract {
   gunbc_claim_execution_contract(
@@ -238,14 +238,7 @@ fn v2_emitter_producer_provenance_execution_contract() -> WorkItemExecutionContr
 
 data v2_emitter_producer_provenance_contract_note: String = "The validation is this node's red control stated almost verbatim. The ticket demands that 'a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write', and witness_restored_binding_without_executed_receipt_does_not_authorize_reds asserts exactly that: a restored binding without an executed receipt does not authorize an emitter-produced claim. It is chosen over the suite's other twenty-six claims because it is the one that fails if the unrepresentability itself lapses, rather than one that checks a roster stayed in step."
 
-fn v1_test_migration_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "src/v2/test/claim/manual/test_migration_debt_test.dag" as FilePath,
-    function: "test_migration_delete_guard_holds" as NonEmptyStr,
-  )
-}
-
-data v1_test_migration_contract_note: String = "test_migration_delete_guard_holds is this node's red control verbatim — 'any old test file with nothing covering it keeps deletion blocked'. The guard is the deletion wall itself rather than a report about it, so Verify runs the thing that would actually stop an unsafe deletion. NOTE ON ITS HOME: the witness lives under test/claim/manual/, excluded from per-PR discovery at dir grain. That does not weaken the contract — a WorkItemExecutionContract invokes its validation DIRECTLY through the claim runner rather than through discovery, so the exclusion governs the corpus cadence and not this call. It does mean the guard's own regressions are caught by Verify on dispatch rather than by the floor, which is worth knowing when the node is worked."
+data v1_test_migration_unbound_note: String = "v1-test-migration IS DELIBERATELY UNBOUND, and rebinding it to test_migration_delete_guard_holds would restore a false green. That binding existed and was removed here after reading what the guard actually computes.\n\nThe guard is DIFF-SCOPED. cli_run.rs test_migration_delete_guard_uncovered_deletes_inner resolves a (base, head) pair, returns an empty violation list when base_rev == head_rev, returns an empty list again when neither rev resolves and GUNBC_CI_DIFF_BASE is unset, and otherwise inspects only the v1 test paths DELETED between those revs. Violations are empty whenever a change deletes no uncovered legacy test file, so the guard answers true. Measured on the tree that carried it: the guard passes today while test_migration_debt_live_module_count() is 81, so a dispatched agent could do no migration work at all and Verify would still go green. A validation that cannot fail on zero progress cannot close a node (DESIGN 5 — a wrong answer must be loud, and 'done' asserted over undone work is exactly the silent wrong answer).\n\nThe guard is KEPT, unchanged, as what it actually is: a per-change deletion wall, wired through test_migration_delete_guard_holds in the debt witness module, refusing an unsafe deletion in the diff that attempts it. That role is correct and load-bearing. It simply does not authorize completion.\n\nThe node's own bar — 'the per-file coverage mapping with nothing unmatched' — needs a closing validation at the grain of legacy test BEHAVIOR, not modules: an admitted typed disposition for every discovered legacy test function, with unclassified as the derived set difference reaching zero. The module count is a trend metric that overstates debt by construction, because classification is exact-stem filename matching (chosen fail-closed after fuzzy matching wrongly reported an unrelated witness as covering `pipeline`), so a real witness under a different name still reads as debt. Until that behavioral disposition graph exists, this node is honestly ClosingContractMissing and appears in startable_nodes_missing_closing_contract, which is where a node whose completion nothing can check belongs."
 
 fn with_execution(rn: RoadmapNode, e: WorkItemExecutionContract) -> RoadmapNode {
   RoadmapNode {
@@ -495,6 +488,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
       )
     ),
+    active_sized(
+      identity: "rn_026DCFC306A7B44B061483AA71",
+      id: "2-scm-p0-landing-spine",
+      owner: "source-intent",
+      path: "docs/plans/dag-scm-design.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Make submit → landed the default source-control journey",
+        boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
+        displaced_cost: "Without the complete spine, each later solver or storage slice can leak its own vocabulary and repair ritual into the interface. This fixes the product boundary before the proof kernel and write transport make it expensive to change.",
+        first_slice: "Carry the proposal contract, full-claim P−1 readiness receipts, all seven semantic closure receipts, zero/one/many/unclosed result space, admission, transition, projection status, 50-agent/10-overlap stress profile, and timestamp non-authority through one executing scenario corpus.",
+        red_control: "Removing any closure receipt leaves the operation running inside the system; blocking evidence does not become a user question; both displayed answers resume automatically; unauthorized, self-amending, exhausted-bound, and permanent-effect cases retain typed refusals and plain explanations; a stale target retries internally; projection failure after a committed and independently read-back transition stays landed; primary messages contain neither internal theory words nor manual Git repair commands; an ordinary Git compatibility projection remains attached.",
+        out_of_scope: "No P1 proof kernel, source parser or edit lens, effect transport, command-line product, hosted service, writable Mercurial/Pijul target, or claim that a modeled transition has executed.",
+        handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
+      )
+    ),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -735,6 +745,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
+      id: "frontend-escape-scan-construction",
+      owner: "ci-cost",
+      path: "docs/plans/inner-cost-lanes-scoping.md",
+      t: fields(
+        headline: "Stop re-walking the string to read one character",
+        boundary: "One function in the tokenizer still reads a string by counting from the start each time, while the rest of its file was already moved onto a pre-decoded form. Move it too, and collect its result into one buffer instead of a list of one-character pieces.",
+        displaced_cost: "For text that is entirely plain ASCII this costs one allocation per character. For text containing any non-ASCII character at all, reading position N costs N steps and asking how long the string is re-counts the whole thing, on every pass — so the work grows with the square of the literal's length, and a single accented character anywhere flips the whole literal onto that path.",
+        first_slice: "Move the one function onto the pre-decoded form its own file already builds, and replace its accumulator with a single buffer.",
+        red_control: "Identical output over the corpus is the equivalence half and is satisfied by changing nothing, so it does not stand alone: a long literal mixing non-ASCII text with escapes must separate the two implementations by cost, and a deliberately wrong escape decode must change the output.",
+        out_of_scope: "No general cursor or token-builder abstraction is introduced here. That generalization is worth what a second measured instance says it is worth, and the audit that would find one has not run.",
+        handback: "The migrated function, the cost separation on the discriminating literal, and the corpus showing identical tokens."
+      )
+    ),
+    active_large(
+      identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
+      id: "entry-graph-union-construction",
+      owner: "ci-cost",
+      path: "docs/plans/inner-cost-lanes-scoping.md",
+      t: fields(
+        headline: "Build the shared entry graph once instead of once per entry",
+        boundary: "Hundreds of selected entries are prepared independently even though their dependency closures overlap almost entirely. The end state prepares the union once and serves each entry from it. This row opens with a measurement, not a change.",
+        displaced_cost: "One entry measured at 107 seconds over 528 modules. The name of this lane is misleading in a way that costs time: the step actually called resolve is 0.2 percent of that, while typechecking is 69 percent and loading is 36 percent, so anyone optimizing by the name will optimize the wrong thing.",
+        first_slice: "Measure how much of the per-entry cost is genuinely shared across the selected set, so the prize is known before any architecture moves. If the overlap is smaller than assumed, this row shrinks or closes on that receipt.",
+        red_control: "Acceptance is fleet memory rather than wall time: identical verdicts, and no material increase in peak, hard backoff, or throttle wall at the real slot budget. A dev container has a different memory regime, so a local timing win is not evidence for this row.",
+        out_of_scope: "No eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention, which is the axis the floor already fails on.",
+        handback: "The overlap measurement first; the architecture only if that measurement justifies it."
+      )
+    ),
+    active_small(
       identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
       id: "placement-live-roster-preflight",
       owner: "ci-placement",
@@ -822,7 +862,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "Every result says which generator made it and how far it got, as two separate facts. Claiming the new generator made something, without the evidence that it did, has to be impossible to write down.",
         displaced_cost: "Right now everything is made by the old generator, and the count we track reads as if the new one made it. We are measuring the wrong thing, so we cannot tell how far along we are.",
         first_slice: "Relabel the existing rows as made by the old generator, and replace the single count with separate counts per generator in the same change.",
-        red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. All six existing rows are recorded as made by the old generator, because that is what made them. Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
+        red_control: "Where a file sits is not evidence of what made it: a result recorded as made by the new generator, with no receipt from a run that actually produced it, has to be impossible to write down rather than caught afterwards. Every row in the frontier roster is recorded as made by the old generator, because that is what made them — stated without a count on purpose, since the roster grows and a transcribed number goes stale (it read 'six' while the live roster held twenty-seven). Taking the old generator away proves nothing at this step, because nothing the new generator made exists yet — that check belongs to the two steps below, where there is finally something to compare.",
         out_of_scope: "Nothing changes which generator makes it here, and no check gets loosened to keep a number looking good.",
         handback: "The relabelled list, the retired count, and a demonstration that recording a result as made by the new generator, with no receipt from the run that made it, is refused outright rather than accepted and corrected later."
       )
@@ -963,9 +1003,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shorter queue, the replacements running, and the reasons for whatever stays."
       )
     ),
-    with_execution(
-      e: v1_test_migration_execution_contract(),
-      rn: active(
+    active(
       identity: "rn_0X0GRWB1KQ6KR0SAK1HDKEDGPR",
       id: "v1-test-migration",
       owner: "self-host",
@@ -979,7 +1017,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No line-by-line rewriting of the old tests.",
         handback: "The per-file coverage mapping with nothing unmatched."
       )
-    )
     ),
     active_small(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
@@ -1327,10 +1364,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Ensure tools through one membership reconcile",
         boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
-        first_slice: "The per-tool observed identity is NAMED as of #7444, so this row's blocker is discharged and its slice is now the reconcile itself: instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. Two obligations on whoever writes it, both consequences of what #7444 landed rather than fresh policy — read every observed value through observed_tool_identity rather than re-deriving a digest beside observe_tool_identity (that would be the section 3 fork this lane removes), and answer its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms explicitly, since collapsing either into a match failure or a widened rerun is the absorbing fallback section 5 forbids and would discard exactly the precision #7444 bought. The original grain finding is retained on the carrier at extdeps.pin pin_observed_grain_prerequisite_note, which owns that history; this row does not restate it (review 44910 — one fact, one home).",
-        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
+        first_slice: "The per-tool observed identity is NAMED as of #7444, so instantiate membership_reconcile with the tool bundle and expose the typed readiness decision in .dag. Live integrity admission is gated on toolchain-rust-hermetic: observe_tool_identity currently fingerprints host-specific executable bytes and version output, so authoring that value as a corpus Pin before hermetic provisioning would invert the dependency and fail across hosts. Until provisioning supplies a stable expected identity, retain the rustfmt host-effect realization through one declared per-tool UnpinnedFrontier row with a reason and migration trigger; it is never a default, zero rows refuses, multiple rows refuses, and a supplied mismatching pin cannot fall back to it. Every observed value is read through observed_tool_identity rather than re-derived beside observe_tool_identity, and its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms refuse distinctly, located and counted. This first slice is explicitly witness-consumed rather than production-gating: the retained shell cannot call the decision until a host observation transport supplies ResolvedBuildContext, and it must not fabricate one. The original grain finding remains owned by extdeps.pin pin_observed_grain_prerequisite_note.",
+        red_control: "An undeclared unpinned tool or a digest-mismatched pin refuses before spawn, never after; a declared UnpinnedFrontier row is explicit migration state, not integrity admission; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
         out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
-        handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
+        handback: "First-slice handback: the instantiation, closed declared frontier, and executing decision witnesses, with the absence of a live ResolvedBuildContext consumer stated plainly. The row remains active until hermetic provisioning permits the final handback: migrated call sites and deleted forked resolvers."
       )
     ),
     active(
@@ -1388,6 +1425,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
+    edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
 
     edge(child: "namespace-canonical-binding", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-bound-only-consumers", parent: "namespace-canonical-binding"),
@@ -1461,7 +1500,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
 
 data criteria_digest_reword_note: String = "Both digests below moved on 2026-07-29 because every row was rewritten in plain language, and the digest covers the brief, the pass/fail test, and what gets handed back. Worth being blunt about the limit this exposes: the digest cannot tell a rewording from a genuine change to the bar — it only knows the words moved. Nothing about what these two rows had to prove changed, and the evidence each names is the same run and the same files as before, so re-pinning is correct here. But that judgement was a person's, not the mechanism's, and a reviewer should treat any digest change as a prompt to re-read the row rather than as a formality. This is the same gap roadmap_acceptance_receipt_note already names: until a row's pass/fail test points at the test that discharges it, the link between words and evidence is asserted rather than derived."
 
-data scm_prerequisite_acceptance_note: String = "The operator explicitly advanced the source-intent lane to R1 after merging the Git, Mercurial, Pijul, and claim-indexed-evidence slices. These receipts preserve those four declared prerequisite facts and their executed handbacks; R1 depends on all four in declared_roadmap_edges. Replacing the rows with R1 would erase accepted history and violate roadmap_acceptance_receipt_note."
+data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction. R1 depends only on the three R0 receipts; P0 is the first source-intent slice that consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
 
 fn chash(s: String) -> ContentHash { s }
 
@@ -1536,6 +1575,26 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
           "dag/gunbc/os_install_claim_evidence.dag",
           "dag/gunbc/source_integration_claim_evidence.dag",
           "dag/test/claim/claim_indexed_evidence_witness_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "2-scm-compatibility-shape"),
+      criteria_digest: chash(s: "f023bb4e862d9e27"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.scm_compatibility_shape_witness",
+        witness_fn: "witness_r1_acceptance_contract_holds",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/gunbc/scm_compatibility_shape.dag",
+        further_artifacts: [
+          "dag/gunbc/scm_compatibility/git.dag",
+          "dag/gunbc/scm_compatibility/mercurial.dag",
+          "dag/gunbc/scm_compatibility/pijul.dag",
+          "dag/test/claim/scm_compatibility_shape_witness_test.dag",
         ],
       },
       accepted_by: "operator",
@@ -1630,17 +1689,19 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
-data acceptance_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
+data closing_contract_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
 
 fn projected_roadmap_nodes() -> List<RoadmapNode> {
-  concat(active_roadmap_nodes(), acceptance_task_nodes())
+  concat(active_roadmap_nodes(), closing_contract_task_nodes())
 }
 
 fn projected_roadmap_edges() -> List<RoadmapEdge> {
-  concat(active_roadmap_edges(), acceptance_task_edges())
+  concat(active_roadmap_edges(), closing_contract_task_edges())
 }
 
-data acceptance_task_derivation_note: String = "ACCEPTANCE TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing an acceptance task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. An acceptance task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
+data closing_contract_task_naming_correction_note: String = "THESE ARE CLOSING-CONTRACT TASKS, NOT ACCEPTANCE TASKS, and the earlier name caused a real category error. The projection computes active AND ExecutionContractUnspecified AND every-prerequisite-accepted, which is the set of nodes whose completion nothing can yet CHECK. Authoring that check is contract work. Acceptance is a separate, later, operator act on work already done and verified.\n\nThe old name made those two look like one state, and a node can be in any of several: blocked on unaccepted prerequisites; missing a closing contract; dispatchable; implemented but verification-red; implemented and green, awaiting operator acceptance; accepted. v2-emitter-producer-provenance is the specimen that exposed it — it is BOUND, so it never appears in this projection, while what it actually needs is acceptance of landed work. A projection named for acceptance that structurally cannot surface the thing needing acceptance is misnamed, so it was renamed to startable_nodes_missing_closing_contract.\n\nKNOWN GAP, recorded rather than papered over: a derived task is itself built with ExecutionContractUnspecified, and dispatch refuses an unspecified contract. So the belt cannot dispatch these rows — the target waits on a contract, and the contract-authoring row has no contract of its own. Manual child spawning works around it; end-to-end dispatch does not. Closing it wants ONE parameterized ClosingContractAuthoring kind whose completion predicate is reusable across every target (target now carries exactly one contract, with at least one validation, every referenced validation resolves, a planted failure shows the validation can reject, and the contract names the same target identity) rather than ten bespoke meta-witnesses. Not landed here; this note is its trigger."
+
+data closing_contract_task_derivation_note: String = "CLOSING-CONTRACT TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing a closing-contract task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. A closing-contract task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
 
 fn node_is_startable(n: RoadmapNode) -> Bool {
   let accepted = accepted_roadmap_node_ids()
@@ -1670,7 +1731,9 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
   }
 }
 
-fn nodes_needing_acceptance() -> List<RoadmapNode> {
+data roadmap_identity_prefix_is_cosmetic_note: String = "DO NOT 'FIX' 2-scm-compatibility-shape's rnfx_ IDENTITY PREFIX. It reads as a test-fixture prefix where every other declared node uses rn_, and that asymmetry is real but it is COSMETIC: no witness asserts any prefix, and roadmap_node_identity_law constrains what may not be an identity INPUT (slug, title, criteria digest, containment position, dependency neighbourhood, declaration order, file position), never the alphabet of the minted value.\n\nRewriting it would be the actual violation. The law's whole persistence argument is that an identity must survive edits, reordering, regeneration and independent branches; mutating a live identity for tidiness is precisely the churn it exists to forbid, and it would silently break anything holding the old value. The prefix carries no meaning to any mechanism, so the honest disposition is to leave it and record why — which is what this row is for. A prefix convention worth enforcing would be enforced at MINT time by construction, not by editing identities already in the graph."
+
+fn startable_nodes_missing_closing_contract() -> List<RoadmapNode> {
   let accepted = accepted_roadmap_node_ids()
   declared_roadmap_nodes()
     |> filter(n => !(accepted |> any(a => a == n.node)))
@@ -1678,14 +1741,14 @@ fn nodes_needing_acceptance() -> List<RoadmapNode> {
     |> filter(n => node_is_startable(n: n))
 }
 
-fn acceptance_task_for(n: RoadmapNode) -> RoadmapNode {
+fn closing_contract_task_for(n: RoadmapNode) -> RoadmapNode {
   RoadmapNode {
-    identity: concat(n.identity as String, "-acceptance") as RoadmapNodeIdentity,
-    node: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+    identity: concat(n.identity as String, "-closing-contract") as RoadmapNodeIdentity,
+    node: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
     line: TicketLine {
       done: false,
       ticket: fields(
-        headline: concat("Write the acceptance check for: ", ticket_headline_of(n: n)),
+        headline: concat("Write the closing check for: ", ticket_headline_of(n: n)),
         boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
         displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
         first_slice: "Write the check and prove each refusal arm fires on a planted input.",
@@ -1707,15 +1770,15 @@ fn acceptance_task_for(n: RoadmapNode) -> RoadmapNode {
   }
 }
 
-fn acceptance_task_nodes() -> List<RoadmapNode> {
-  nodes_needing_acceptance() |> map(n => acceptance_task_for(n: n))
+fn closing_contract_task_nodes() -> List<RoadmapNode> {
+  startable_nodes_missing_closing_contract() |> map(n => closing_contract_task_for(n: n))
 }
 
-fn acceptance_task_edges() -> List<RoadmapEdge> {
-  nodes_needing_acceptance()
+fn closing_contract_task_edges() -> List<RoadmapEdge> {
+  startable_nodes_missing_closing_contract()
     |> map(n => RoadmapEdge {
       child: n.node,
-      parent: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+      parent: concat(n.node as String, "-closing-contract") as RoadmapNodeId,
     })
 }
 
@@ -1760,7 +1823,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
     title: "Active deliverables — dependency order",
     elements: concat(
       [
-        section_prose(content: "The graph has ten lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three independent SCM R0 models and P−1 evidence carrier are landed prerequisites; R1 compatibility-shape extraction is the active SCM slice, while semantic-kernel and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
+        section_prose(content: "The graph has ten lanes: SCM compatibility · namespace · P-derive · observation · placement · v1 exit (four finish lines: compiler fixed point, interpreter deleted, products v1-free, zero hand-maintained Rust) · shell · roadmap runtime · fleet/hygiene · hermetic toolchain. The three independent SCM R0 models, the separate P−1 evidence carrier, and R1 compatibility-shape extraction are landed prerequisites; P0's user-contract and layered landing spine is the active SCM slice, while the P1 semantic kernel and later product lanes remain parked. The toolchain pin model is an independent root. The P-derive receipt feeds the emitter fixed point, so the v1 chain nests under it. Node fields define boundary, first slice, RED control, exclusions, owner, and handback."),
       ],
       concat(
         if focus_is_active(focus: focus) {

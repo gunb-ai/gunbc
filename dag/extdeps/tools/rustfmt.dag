@@ -1,0 +1,18 @@
+module extdeps.tools.rustfmt
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceRustup }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/stable/edition-guide/rust-2018/rustfmt.html"
+  }
+}
+
+data rustfmt_cli_tool: CliTool = CliTool {
+  name: "rustfmt",
+  min_version: Absent,
+  installable_via: [SourceRustup],
+}

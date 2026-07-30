@@ -182,7 +182,8 @@ right, and the evidence was already in the tree:
   single site in that namespace joining to a modelled type through a **string**,
   putting tool identity in two places (§2 anemic leaf).
 - Other pinnable subjects already exist and are **not** `CliTool`:
-  `SccacheBinaryRelease`, `extdeps/docker` and `extdeps/container/docker_ce`
+  `SccacheBinaryArtifact` (release × published musl arch — `extdeps.cache.pin`),
+  `ActionRef`, `extdeps/docker` and `extdeps/container/docker_ce`
   images, apt packages, GitHub releases. A type per pinnable thing is the
   ten-integer-types mistake before `Compose<Int, MachineWidth<N>>`.
 
@@ -267,14 +268,16 @@ Three corrections recorded with it:
   `review 44422` on this PR, where a correction was accepted by *adding* a note
   while the contradicted sentence stood; the rule it produced is that a
   superseded claim is edited at its source, never annotated in place.
-- **Multi-artifact grain, kept as a finding.** For subjects that publish several
-  artifacts the pin subject is the *artifact* (release × platform), not the release.
-  That observation stands on the corpus rather than on the witness, and it is why
-  sccache was *rejected* as the proof subject. Recorded as
-  `feature:pin-artifact-grain`. Related and unfixed, belonging to no lane here:
-  `extdeps.crypto.hash.Digest` and `std.types.ContentHash` are two digest concepts
-  in one corpus — the sccache route would have needed a conversion between them,
-  which is exactly where that fork would have been laundered into this witness.
+- **Multi-artifact grain, LANDED (`feature:pin-artifact-grain`).** For subjects that
+  publish several artifacts the pin subject is the *artifact* (release × platform),
+  not the release. That observation stood on the corpus rather than on this witness,
+  which is why sccache was *rejected* as the second-consumer proof here. The discharge
+  is `SccacheBinaryArtifact` + `extdeps.cache.pin` + `sccache_pin_witness_test.dag`,
+  with `sha256_digest_content_hash` bridging cited `Digest` to `ContentHash` so the
+  artifact pin does not launder a second digest concept into a witness. Remaining
+  unfixed, belonging to no lane here: `SourceGitHubRelease` still carries
+  `asset_aarch64` / `asset_x86_64` at release grain — a future GitHub-release
+  artifact projection would follow the same pattern, not a fork of `extdeps.pin`.
 
 Two census entries #7388 adds rather than removes:
 

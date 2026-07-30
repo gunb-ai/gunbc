@@ -1,0 +1,274 @@
+module test.claim.floor_component_receipt_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.nat { Nat }
+import std.measure { Millisecond, millisecond }
+import gunbc.floor_component_receipt {
+  FloorComponentRow,
+  FloorControlState,
+  ControlConcluded,
+  ControlAbsent,
+  ControlAmbiguous,
+  floor_component_row,
+  floor_component_row_of_failure_mode,
+  floor_component_row_is_done,
+  floor_affected_set_control_state,
+  floor_unsuccessful_component_rows,
+  floor_component_receipt_document,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fcr_witness_note: String = "Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built from run 30509024051's real component states must report the affected-set cold control VERIFIED (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed component — and the same projection must report NOT verified when that control itself is red, absent, or ambiguous. Either direction alone is satisfiable by a broken projection: always-verified reproduces the alert defect this module exists to kill, always-unverified reproduces the hardcoded 'cold control is dark' story it replaces."
+
+data fcr_run_id: NonEmptyStr = "30509024051" as NonEmptyStr
+
+fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+  floor_component_row(
+    run_id: fcr_run_id,
+    index: 1,
+    label: "discovery-corpus predict-only" as NonEmptyStr,
+    selection_tag: "predict_only" as NonEmptyStr,
+    witnesses: 5217,
+    outcome_tag: outcome_tag,
+    detail: detail,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 1170401)
+  )
+}
+
+data fcr_silent_pick_diagnostic: NonEmptyStr = "resolution_divergence_silent_pick_gate_keystone_holds: witness receipt wall budget exceeded: 900001ms elapsed > 900000ms whole-receipt budget" as NonEmptyStr
+
+fn fcr_silent_pick_row() -> FloorComponentRow? {
+  floor_component_row(
+    run_id: fcr_run_id,
+    index: 4,
+    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    witnesses: 1,
+    outcome_tag: "refused" as NonEmptyStr,
+    detail: fcr_silent_pick_diagnostic,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 905745)
+  )
+}
+
+fn fcr_timed_out_row() -> FloorComponentRow? {
+  floor_component_row(
+    run_id: fcr_run_id,
+    index: 4,
+    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    witnesses: 1,
+    outcome_tag: "timed_out" as NonEmptyStr,
+    detail: "unused by the TimedOut arm" as NonEmptyStr,
+    budget: millisecond(count: 900000),
+    elapsed: millisecond(count: 900766),
+    shown_failures: 0,
+    wall: millisecond(count: 905745)
+  )
+}
+
+fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
+  floor_component_row(
+    run_id: fcr_run_id,
+    index: index,
+    label: "discovery-corpus expect_red" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    witnesses: 6,
+    outcome_tag: "done" as NonEmptyStr,
+    detail: "expect_red still-red OK" as NonEmptyStr,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 1974836)
+  )
+}
+
+fn fcr_rows_of(opts: List<FloorComponentRow?>) -> List<FloorComponentRow> {
+  fold(opts, init: [], f: (acc, o) =>
+    match o {
+      Absent => acc
+      Present { value: r } => concat(acc, [r])
+    })
+}
+
+fn fcr_all_present(opts: List<FloorComponentRow?>) -> Bool {
+  count(fcr_rows_of(opts: opts)) == count(opts)
+}
+
+fn fcr_real_run_rows() -> List<FloorComponentRow> {
+  fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "5217 witnesses" as NonEmptyStr),
+    fcr_expect_red_row(index: 2),
+    fcr_expect_red_row(index: 3),
+    fcr_silent_pick_row()
+  ])
+}
+
+fn fcr_control_verified(rows: List<FloorComponentRow>) -> Bool {
+  match floor_affected_set_control_state(rows: rows) {
+    ControlConcluded { row: r } => floor_component_row_is_done(row: r)
+    ControlAbsent { cause: _ } => false
+    ControlAmbiguous { cause: _, matched: _ } => false
+  }
+}
+
+test fn fcr_real_run_reports_control_verified_and_names_silent_pick() -> Bool {
+  let rows = fcr_real_run_rows()
+  let failed = floor_unsuccessful_component_rows(rows: rows)
+  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  count(rows) == 4
+    && fcr_control_verified(rows: rows)
+    && count(failed) == 1
+    && string_contains(s: doc, pattern: "\"schema\": \"floor-component-receipt/v1\"")
+    && string_contains(s: doc, pattern: "\"state\": \"present\"")
+    && string_contains(s: doc, pattern: "\"verified\": true")
+    && string_contains(s: doc, pattern: "resolution_divergence_silent_pick_gate_keystone_holds")
+    && string_contains(s: doc, pattern: "900000ms whole-receipt budget")
+    && string_contains(s: doc, pattern: "\"outcome\": \"refused\"")
+    && string_contains(s: doc, pattern: "\"witnesses\": 5217")
+}
+
+test fn fcr_timed_out_arm_projects_budget_and_elapsed() -> Bool {
+  let rows = fcr_rows_of(opts: [fcr_timed_out_row()])
+  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  count(rows) == 1
+    && string_contains(s: doc, pattern: "\"outcome\": \"timed_out\"")
+    && string_contains(s: doc, pattern: "\"budget_ms\": 900000")
+    && string_contains(s: doc, pattern: "\"elapsed_ms\": 900766")
+}
+
+test fn fcr_red_control_control_itself_failed_is_not_verified() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(
+      outcome_tag: "failed" as NonEmptyStr,
+      detail: "predict-only corpus red" as NonEmptyStr
+    ),
+    fcr_silent_pick_row()
+  ])
+  count(rows) == 2 && !fcr_control_verified(rows: rows)
+}
+
+test fn fcr_red_control_absent_control_is_not_silently_verified() -> Bool {
+  let rows = fcr_rows_of(opts: [fcr_silent_pick_row()])
+  let doc = floor_component_receipt_document(run_id: fcr_run_id, rows: rows)
+  count(rows) == 1
+    && !fcr_control_verified(rows: rows)
+    && (match floor_affected_set_control_state(rows: rows) {
+         ControlConcluded { row: _ } => false
+         ControlAbsent { cause: _ } => true
+         ControlAmbiguous { cause: _, matched: _ } => false
+       })
+    && string_contains(s: doc, pattern: "\"state\": \"absent\"")
+    && string_contains(s: doc, pattern: "\"verified\": false")
+}
+
+test fn fcr_red_control_ambiguous_control_refuses() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "first" as NonEmptyStr),
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "second" as NonEmptyStr)
+  ])
+  count(rows) == 2
+    && !fcr_control_verified(rows: rows)
+    && (match floor_affected_set_control_state(rows: rows) {
+         ControlConcluded { row: _ } => false
+         ControlAbsent { cause: _ } => false
+         ControlAmbiguous { cause: _, matched: m } => m == 2
+       })
+}
+
+test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
+  let bad_outcome = floor_component_row(
+    run_id: fcr_run_id,
+    index: 1,
+    label: "x" as NonEmptyStr,
+    selection_tag: "predict_only" as NonEmptyStr,
+    witnesses: 1,
+    outcome_tag: "probably_fine" as NonEmptyStr,
+    detail: "d" as NonEmptyStr,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 1)
+  )
+  let bad_selection = floor_component_row(
+    run_id: fcr_run_id,
+    index: 1,
+    label: "x" as NonEmptyStr,
+    selection_tag: "whatever" as NonEmptyStr,
+    witnesses: 1,
+    outcome_tag: "done" as NonEmptyStr,
+    detail: "d" as NonEmptyStr,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 1)
+  )
+  (match bad_outcome { Absent => true  Present { value: _ } => false })
+    && (match bad_selection { Absent => true  Present { value: _ } => false })
+    && fcr_all_present(opts: [
+         fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "ok" as NonEmptyStr)
+       ])
+}
+
+test fn fcr_refused_is_distinct_from_failed() -> Bool {
+  let refused_rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "refused" as NonEmptyStr, detail: "provenance gap" as NonEmptyStr)
+  ])
+  let failed_rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "failed" as NonEmptyStr, detail: "provenance gap" as NonEmptyStr)
+  ])
+  let refused_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: refused_rows)
+  let failed_doc = floor_component_receipt_document(run_id: fcr_run_id, rows: failed_rows)
+  string_contains(s: refused_doc, pattern: "\"outcome\": \"refused\"")
+    && string_contains(s: refused_doc, pattern: "\"diagnostic\"")
+    && string_contains(s: failed_doc, pattern: "\"outcome\": \"failed\"")
+    && string_contains(s: failed_doc, pattern: "\"error\"")
+    && !(refused_doc == failed_doc)
+}
+
+fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
+  floor_component_row_of_failure_mode(
+    run_id: fcr_run_id,
+    index: 4,
+    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    witnesses: 1,
+    failure_mode: mode,
+    detail: fcr_silent_pick_diagnostic,
+    wall: millisecond(count: 905745)
+  )
+}
+
+fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
+  let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
+  count(rows) == 1
+    && string_contains(
+         s: floor_component_receipt_document(run_id: fcr_run_id, rows: rows),
+         pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
+       )
+}
+
+test fn fcr_failure_mode_maps_to_the_distinguishing_outcomes() -> Bool {
+  fcr_mode_outcome_is(mode: "none" as NonEmptyStr, expected_outcome: "done")
+    && fcr_mode_outcome_is(mode: "BudgetExceeded" as NonEmptyStr, expected_outcome: "refused")
+    && fcr_mode_outcome_is(mode: "Infra" as NonEmptyStr, expected_outcome: "failed")
+    && fcr_mode_outcome_is(mode: "WitnessRed" as NonEmptyStr, expected_outcome: "failed")
+}
+
+test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
+  fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
+}
+
+test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
+  let unknown = fcr_mode_row(mode: "SomeNewModeAddedLater" as NonEmptyStr)
+  let budget = fcr_mode_row(mode: "BudgetExceeded" as NonEmptyStr)
+  (match unknown { Absent => true  Present { value: _ } => false })
+    && (match budget { Absent => false  Present { value: _ } => true })
+}

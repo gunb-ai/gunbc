@@ -12,10 +12,12 @@ import gunbc.scm_compatibility_shape {
   compatibility_projection_from_handler,
 }
 import gunbc.native_scm_interaction_contract {
-  TwoIndependentChangesLand,
-  native_scm_receipt_for,
   native_scm_primary_label,
   native_scm_attach_projection,
+}
+import test.claim.native_scm_interaction_scenario_fixture {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
 }
 import gunbc.scm_compatibility.git {
   GitCompatibilityBound,
@@ -34,12 +36,16 @@ import gunbc.scm_compatibility.pijul {
 }
 import test.claim.scm_compatibility_git_witness {
   git_fixture_binding,
+  witness_git_modeled_advance_refuses_different_guarantee,
+  witness_git_readback_mismatch_refuses_binding,
 }
 import test.claim.scm_compatibility_mercurial_witness {
   mercurial_fixture_binding,
+  witness_mercurial_missing_advance_refuses_required_capability,
 }
 import test.claim.scm_compatibility_pijul_witness {
   pijul_fixture_binding,
+  witness_pijul_missing_advance_refuses_required_capability,
 }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -216,4 +222,13 @@ test fn witness_one_c0_fixture_accepts_three_realization_receipts() -> Bool {
       }
     }
   }
+}
+
+test fn witness_r1_acceptance_contract_holds() -> Bool {
+  witness_one_c0_fixture_accepts_three_realization_receipts()
+    && witness_git_modeled_advance_refuses_different_guarantee()
+    && witness_mercurial_missing_advance_refuses_required_capability()
+    && witness_pijul_missing_advance_refuses_required_capability()
+    && witness_git_readback_mismatch_refuses_binding()
+    && witness_fourth_realization_adds_handler_without_primary_edit()
 }
