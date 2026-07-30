@@ -839,7 +839,34 @@ fn landing_admitted_result(
           admission: receipt,
         },
       }
-    _ => LandingAdmissionNotAdvanced { decision: admission }
+    LandingApprovalRequired { semantic, continuation } =>
+      LandingAdmissionNotAdvanced {
+        decision: LandingApprovalRequired {
+          semantic: semantic,
+          continuation: continuation,
+        },
+      }
+    LandingUnauthorized { semantic, refusal } =>
+      LandingAdmissionNotAdvanced {
+        decision: LandingUnauthorized {
+          semantic: semantic,
+          refusal: refusal,
+        },
+      }
+    LandingPolicyRefused { semantic, refusal } =>
+      LandingAdmissionNotAdvanced {
+        decision: LandingPolicyRefused {
+          semantic: semantic,
+          refusal: refusal,
+        },
+      }
+    LandingSelfAmendmentRefused { semantic, refusal } =>
+      LandingAdmissionNotAdvanced {
+        decision: LandingSelfAmendmentRefused {
+          semantic: semantic,
+          refusal: refusal,
+        },
+      }
   }
 }
 
