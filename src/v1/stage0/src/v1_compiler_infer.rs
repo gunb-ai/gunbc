@@ -1566,51 +1566,74 @@ pub fn where_predicate_optional_int_args_match(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let min_ok = match where_predicate_named_int_arg(
+        let min_ok = where_predicate_int_bound_args_equivalent(
             left.clone(),
+            right.clone(),
             "min".to_string(),
             source_indices.clone(),
-        ) {
-            Some(a) => match where_predicate_named_int_arg(
-                right.clone(),
-                "min".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(b) => (a.clone() == b.clone()),
-                None => false,
-            },
-            None => match where_predicate_named_int_arg(
-                right.clone(),
-                "min".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(_) => false,
-                None => true,
-            },
-        };
-        let max_ok = match where_predicate_named_int_arg(
+        );
+        let max_ok = where_predicate_int_bound_args_equivalent(
             left.clone(),
+            right.clone(),
             "max".to_string(),
             source_indices.clone(),
-        ) {
-            Some(a) => match where_predicate_named_int_arg(
-                right.clone(),
-                "max".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(b) => (a.clone() == b.clone()),
-                None => false,
-            },
-            None => match where_predicate_named_int_arg(
-                right.clone(),
-                "max".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(_) => false,
-                None => true,
-            },
-        };
+        );
         (min_ok.clone() && max_ok.clone())
+    }
+}
+
+pub fn where_predicate_int_bound_args_equivalent(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let left_present = where_predicate_named_int_field_present(
+            left.clone(),
+            field.clone(),
+            source_indices.clone(),
+        );
+        let right_present = where_predicate_named_int_field_present(
+            right.clone(),
+            field.clone(),
+            source_indices.clone(),
+        );
+        if (!left_present.clone() && !right_present.clone()) {
+            true
+        } else {
+            if (left_present.clone() != right_present.clone()) {
+                false
+            } else {
+                if (where_predicate_has_non_literal_int_bound_arg(
+                    left.clone(),
+                    field.clone(),
+                    source_indices.clone(),
+                ) || where_predicate_has_non_literal_int_bound_arg(
+                    right.clone(),
+                    field.clone(),
+                    source_indices.clone(),
+                )) {
+                    false
+                } else {
+                    match where_predicate_named_int_arg(
+                        left.clone(),
+                        field.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Some(a) => match where_predicate_named_int_arg(
+                            right.clone(),
+                            field.clone(),
+                            source_indices.clone(),
+                        ) {
+                            Some(b) => (a.clone() == b.clone()),
+                            None => false,
+                        },
+                        None => false,
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1709,45 +1732,57 @@ pub fn decidable_where_int_predicate_holds(
         Some((value.clone() > 0))
     } else {
         if (pred_name.clone() == "range".to_string()) {
-            {
-                let passes_min = if where_predicate_named_int_field_present(
-                    pred.clone(),
-                    "min".to_string(),
-                    source_indices.clone(),
-                ) {
-                    match where_predicate_named_int_arg(
+            if (where_predicate_has_non_literal_int_bound_arg(
+                pred.clone(),
+                "min".to_string(),
+                source_indices.clone(),
+            ) || where_predicate_has_non_literal_int_bound_arg(
+                pred.clone(),
+                "max".to_string(),
+                source_indices.clone(),
+            )) {
+                None
+            } else {
+                {
+                    let passes_min = if where_predicate_named_int_field_present(
                         pred.clone(),
                         "min".to_string(),
                         source_indices.clone(),
                     ) {
-                        Some(lo) => Some((value.clone() >= lo.clone())),
-                        None => None,
-                    }
-                } else {
-                    Some(true)
-                };
-                let passes_max = if where_predicate_named_int_field_present(
-                    pred.clone(),
-                    "max".to_string(),
-                    source_indices.clone(),
-                ) {
-                    match where_predicate_named_int_arg(
+                        match where_predicate_named_int_arg(
+                            pred.clone(),
+                            "min".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            Some(lo) => Some((value.clone() >= lo.clone())),
+                            None => None,
+                        }
+                    } else {
+                        Some(true)
+                    };
+                    let passes_max = if where_predicate_named_int_field_present(
                         pred.clone(),
                         "max".to_string(),
                         source_indices.clone(),
                     ) {
-                        Some(hi) => Some((value.clone() <= hi.clone())),
+                        match where_predicate_named_int_arg(
+                            pred.clone(),
+                            "max".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            Some(hi) => Some((value.clone() <= hi.clone())),
+                            None => None,
+                        }
+                    } else {
+                        Some(true)
+                    };
+                    match passes_min.clone() {
+                        Some(min_ok) => match passes_max.clone() {
+                            Some(max_ok) => Some((min_ok.clone() && max_ok.clone())),
+                            None => None,
+                        },
                         None => None,
                     }
-                } else {
-                    Some(true)
-                };
-                match passes_min.clone() {
-                    Some(min_ok) => match passes_max.clone() {
-                        Some(max_ok) => Some((min_ok.clone() && max_ok.clone())),
-                        None => None,
-                    },
-                    None => None,
                 }
             }
         } else {

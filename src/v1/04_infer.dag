@@ -914,31 +914,40 @@ fn where_predicate_optional_int_args_match(
   right: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  let min_ok = match where_predicate_named_int_arg(pred: left, field: "min", source_indices: source_indices) {
-    Present { value: a } =>
-      match where_predicate_named_int_arg(pred: right, field: "min", source_indices: source_indices) {
-        Present { value: b } => a == b
-        Absent => false
-      }
-    Absent =>
-      match where_predicate_named_int_arg(pred: right, field: "min", source_indices: source_indices) {
-        Present { value: _ } => false
-        Absent => true
-      }
-  }
-  let max_ok = match where_predicate_named_int_arg(pred: left, field: "max", source_indices: source_indices) {
-    Present { value: a } =>
-      match where_predicate_named_int_arg(pred: right, field: "max", source_indices: source_indices) {
-        Present { value: b } => a == b
-        Absent => false
-      }
-    Absent =>
-      match where_predicate_named_int_arg(pred: right, field: "max", source_indices: source_indices) {
-        Present { value: _ } => false
-        Absent => true
-      }
-  }
+  let min_ok = where_predicate_int_bound_args_equivalent(
+    left: left, right: right, field: "min", source_indices: source_indices
+  )
+  let max_ok = where_predicate_int_bound_args_equivalent(
+    left: left, right: right, field: "max", source_indices: source_indices
+  )
   min_ok && max_ok
+}
+
+fn where_predicate_int_bound_args_equivalent(
+  left: Node,
+  right: Node,
+  field: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  let left_present = where_predicate_named_int_field_present(pred: left, field: field, source_indices: source_indices)
+  let right_present = where_predicate_named_int_field_present(pred: right, field: field, source_indices: source_indices)
+  if !left_present && !right_present {
+    true
+  } else if left_present != right_present {
+    false
+  } else if where_predicate_has_non_literal_int_bound_arg(pred: left, field: field, source_indices: source_indices)
+    || where_predicate_has_non_literal_int_bound_arg(pred: right, field: field, source_indices: source_indices) {
+    false
+  } else {
+    match where_predicate_named_int_arg(pred: left, field: field, source_indices: source_indices) {
+      Present { value: a } =>
+        match where_predicate_named_int_arg(pred: right, field: field, source_indices: source_indices) {
+          Present { value: b } => a == b
+          Absent => false
+        }
+      Absent => false
+    }
+  }
 }
 
 fn where_predicate_literal_string_args_match(left: Node, right: Node) -> Bool {
@@ -1002,29 +1011,34 @@ fn decidable_where_int_predicate_holds(pred_name: String, pred: Node, value: Int
   if pred_name == "gt_zero" {
     Present { value: value > 0 }
   } else if pred_name == "range" {
-    let passes_min = if where_predicate_named_int_field_present(pred: pred, field: "min", source_indices: source_indices) {
-      match where_predicate_named_int_arg(pred: pred, field: "min", source_indices: source_indices) {
-        Present { value: lo } => Present { value: value >= lo }
-        Absent => none
-      }
+    if where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "min", source_indices: source_indices)
+      || where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "max", source_indices: source_indices) {
+      none
     } else {
-      Present { value: true }
-    }
-    let passes_max = if where_predicate_named_int_field_present(pred: pred, field: "max", source_indices: source_indices) {
-      match where_predicate_named_int_arg(pred: pred, field: "max", source_indices: source_indices) {
-        Present { value: hi } => Present { value: value <= hi }
-        Absent => none
-      }
-    } else {
-      Present { value: true }
-    }
-    match passes_min {
-      Present { value: min_ok } =>
-        match passes_max {
-          Present { value: max_ok } => Present { value: min_ok && max_ok }
+      let passes_min = if where_predicate_named_int_field_present(pred: pred, field: "min", source_indices: source_indices) {
+        match where_predicate_named_int_arg(pred: pred, field: "min", source_indices: source_indices) {
+          Present { value: lo } => Present { value: value >= lo }
           Absent => none
         }
-      Absent => none
+      } else {
+        Present { value: true }
+      }
+      let passes_max = if where_predicate_named_int_field_present(pred: pred, field: "max", source_indices: source_indices) {
+        match where_predicate_named_int_arg(pred: pred, field: "max", source_indices: source_indices) {
+          Present { value: hi } => Present { value: value <= hi }
+          Absent => none
+        }
+      } else {
+        Present { value: true }
+      }
+      match passes_min {
+        Present { value: min_ok } =>
+          match passes_max {
+            Present { value: max_ok } => Present { value: min_ok && max_ok }
+            Absent => none
+          }
+        Absent => none
+      }
     }
   } else {
     none

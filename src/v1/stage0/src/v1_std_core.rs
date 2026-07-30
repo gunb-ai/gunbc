@@ -801,9 +801,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
-            (((r.clone() == "predicate not enforced at compile time".to_string())
-                || (r.clone() == "int predicate not implemented".to_string()))
-                || (r.clone() == "string predicate not implemented".to_string()))
+            (r.clone() == "predicate not enforced at compile time".to_string())
         }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         _ => true,
@@ -817,10 +815,8 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
             (((((r.clone() == "predicate deferred at compile time".to_string())
                 || (r.clone() == "non-literal value at refined position".to_string()))
                 || (r.clone() == "predicate argument is not an int literal".to_string()))
-                || (r.clone()
-                    == "literal kind mismatch: expected int predicate value".to_string()))
-                || (r.clone()
-                    == "literal kind mismatch: expected string predicate value".to_string()))
+                || (r.clone() == "int predicate not implemented".to_string()))
+                || (r.clone() == "string predicate not implemented".to_string()))
         }
         _ => false,
     }

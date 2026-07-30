@@ -303,8 +303,6 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       r == "predicate not enforced at compile time"
-        || r == "int predicate not implemented"
-        || r == "string predicate not implemented"
     UnlistedImportUse { name: _, span: _ } => false
     _ => true
   }
@@ -317,8 +315,8 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
       r == "predicate deferred at compile time"
         || r == "non-literal value at refined position"
         || r == "predicate argument is not an int literal"
-        || r == "literal kind mismatch: expected int predicate value"
-        || r == "literal kind mismatch: expected string predicate value"
+        || r == "int predicate not implemented"
+        || r == "string predicate not implemented"
     _ => false
   }
 }
