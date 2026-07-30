@@ -298,11 +298,19 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
+fn is_where_refinement_unenforced_advisory_reason(reason: String) -> Bool {
+  reason == "predicate deferred at compile time"
+    || reason == "non-literal value at refined position"
+    || reason == "predicate argument is not an int literal"
+    || reason == "int predicate not implemented"
+    || reason == "string predicate not implemented"
+}
+
 fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
-      r == "predicate not enforced at compile time"
+      !is_where_refinement_unenforced_advisory_reason(reason: r)
     UnlistedImportUse { name: _, span: _ } => false
     _ => true
   }
@@ -312,11 +320,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
   match d {
     UnlistedImportUse { name: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
-      r == "predicate deferred at compile time"
-        || r == "non-literal value at refined position"
-        || r == "predicate argument is not an int literal"
-        || r == "int predicate not implemented"
-        || r == "string predicate not implemented"
+      is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
   }
 }
