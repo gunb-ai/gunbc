@@ -190,28 +190,34 @@ fn state_durability_definition_linkage_verdicts<Target, ReadbackSubject>(
   ]
 }
 
+fn state_durability_definition_linkage_unavailable_assertions(
+  verdicts: List<StateDefinitionLinkageVerdict>,
+) -> List<StateDefinitionCallerAssertion> {
+  fold(
+    verdicts,
+    init: [],
+    f: (assertions, verdict) =>
+      match verdict {
+        StateDefinitionLinkageUnavailable { assertion: assertion } =>
+          append(assertions, items: [assertion])
+        StateDefinitionLinkageEvidence { role: _ } => assertions
+      },
+  )
+}
+
 fn state_durability_definition_linkage_admission_verdict(
   verdicts: List<StateDefinitionLinkageVerdict>,
 ) -> StateDefinitionLinkageAdmissionVerdict {
-  fold(
-    verdicts,
-    init: StateDefinitionLinkageAdmissionBlocked {
-      assertions: [],
-    },
-    f: (acc, verdict) =>
-      match acc {
-        StateDefinitionLinkageAdmissionPermitted => StateDefinitionLinkageAdmissionPermitted
-        StateDefinitionLinkageAdmissionBlocked { assertions: assertions } =>
-          match verdict {
-            StateDefinitionLinkageUnavailable { assertion: assertion } =>
-              StateDefinitionLinkageAdmissionBlocked {
-                assertions: append(assertions, items: [assertion]),
-              }
-            StateDefinitionLinkageEvidence { role: _ } =>
-              StateDefinitionLinkageAdmissionPermitted
-          }
-      },
+  let unavailable = state_durability_definition_linkage_unavailable_assertions(
+    verdicts: verdicts,
   )
+  if list_length(unavailable) > 0 {
+    StateDefinitionLinkageAdmissionBlocked {
+      assertions: unavailable,
+    }
+  } else {
+    StateDefinitionLinkageAdmissionPermitted
+  }
 }
 
 fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(

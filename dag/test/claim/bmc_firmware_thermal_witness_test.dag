@@ -70,16 +70,16 @@ import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
   ProjectedConfigDigestKnown,
   ProjectedConfigDigestUnavailable,
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_curve,
   altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
   altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   bmc_fan_admitted_config_digest,
-  bmc_fan_curve_step_fingerprint,
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_policy_projection_live_digest_matches,
   bmc_fan_projected_config_digest,
   bmc_fan_projected_config_digest_sha256_hex,
   bmc_fan_witness_digest_mismatch_sentinel,
-  fleet_quiet_projected_config_curve_fingerprint_pin,
 }
 import std.state_durability {
   CallerAssertedDefinitionLinkage,
@@ -520,6 +520,7 @@ test fn srv4_durability_admission_binds_projection_derived_digest() -> Bool {
       intent_curve: fleet_quiet_temp_soc_fan_curve,
       realization: srv4_bmc_fan_projection_capability.realization,
       config_path: srv4_bmc_fan_observed_config_path,
+      content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
     ) {
       ProjectedConfigDigestKnown { digest: digest } =>
         digest == capability.projected_config_digest
@@ -584,6 +585,7 @@ test fn fleet_quiet_projected_config_digest_sha256_equality_executes() -> Bool {
     intent_curve: fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
     config_path: srv4_bmc_fan_observed_config_path,
+    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     ProjectedConfigDigestKnown { digest: digest } =>
       digest == sha256_digest(hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
@@ -597,6 +599,7 @@ test fn fleet_quiet_projected_config_digest_hex_authority_executes() -> Bool {
     intent_curve: fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
     config_path: srv4_bmc_fan_observed_config_path,
+    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     Present { value: hex } =>
       hex == altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex
@@ -605,8 +608,8 @@ test fn fleet_quiet_projected_config_digest_hex_authority_executes() -> Bool {
   }
 }
 
-test fn fleet_quiet_projected_config_curve_fingerprint_matches_pin() -> Bool {
-  bmc_fan_curve_step_fingerprint(curve: fleet_quiet_temp_soc_fan_curve) == fleet_quiet_projected_config_curve_fingerprint_pin
+test fn fleet_quiet_temp_soc_curve_matches_projected_config_content_identity() -> Bool {
+  fleet_quiet_temp_soc_fan_curve == altrad8ud_openbmc_322_fleet_quiet_projected_config_curve
 }
 
 test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
@@ -615,6 +618,7 @@ test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
     intent_curve: fleet_quiet_temp_soc_fan_curve,
     realization: srv4_bmc_fan_projection_capability.realization,
     config_path: srv4_bmc_fan_observed_config_path,
+    content_identity: altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity,
   ) {
     ProjectedConfigDigestKnown { digest: _ } => false
     ProjectedConfigDigestUnavailable => true

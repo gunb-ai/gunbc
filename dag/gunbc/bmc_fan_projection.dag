@@ -4,14 +4,18 @@ import extdeps.bmc.capability { BmcFirmwareVersion }
 import extdeps.bmc.types {
   BmcFanAggregatedControllerTopology,
   BmcFanCurve,
+  BmcFanCurveStep,
   BmcFanPolicyObservation,
   bmc_fan_controller_shape_aggregated_topology,
 }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
-import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
-import std.measure { celsius_count, percent_count }
-import std.nat { Nat }
+import std.measure {
+  celsius,
+  percent,
+  positive_celsius_delta,
+  positive_measure_count,
+}
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   LinuxFilePublicationProtocolUnsynchronized,
@@ -71,26 +75,48 @@ data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481"
 
-data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying fleet_quiet_temp_soc_fan_curve through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated read-only BMC SSH probe 2026-07-27 (srv4_bmc_fan_projection_probe_note). altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex is the single cited authority for that byte digest; projection and observation both consume it through sha256_digest(hex: …) and witnesses execute the equality."
+type BmcProjectedConfigContentIdentity {
+  realization_id: NonEmptyStr
+  config_path: NonEmptyStr
+  projected_curve: BmcFanCurve
+  projected_config_sha256_hex: NonEmptyStr
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
+  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
+  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
+  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+]
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(75),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 1),
+  ),
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity: BmcProjectedConfigContentIdentity = BmcProjectedConfigContentIdentity {
+  realization_id: altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id,
+  config_path: altrad8ud_openbmc_322_swampd_config_asrr_path,
+  projected_curve: altrad8ud_openbmc_322_fleet_quiet_projected_config_curve,
+  projected_config_sha256_hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+}
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying altrad8ud_openbmc_322_fleet_quiet_projected_config_curve through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated read-only BMC SSH probe 2026-07-27 (srv4_bmc_fan_projection_probe_note). altrad8ud_openbmc_322_fleet_quiet_projected_config_content_identity is the immutable content identity binding realization, config path, probed curve bytes, and cited sha256 hex; bmc_fan_projected_config_digest admits that hex only when every input matches that row exactly. Live intent curves must be witnessed against the frozen probed curve before projection can qualify new bytes."
 
 data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
   hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
-)
-
-fn bmc_fan_curve_step_fingerprint(curve: BmcFanCurve) -> Nat {
-  fold(
-    curve.steps,
-    init: 0,
-    f: (acc, step) => acc + percent_count(step.duty) + celsius_count(step.at_or_above),
-  )
-}
-
-data fleet_quiet_projected_config_curve_fingerprint_pin: Nat = bmc_fan_curve_step_fingerprint(
-  curve: fleet_quiet_temp_soc_fan_curve,
-)
-
-data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
-  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
 fn bmc_fan_projected_config_digest_sha256_hex(
@@ -98,13 +124,13 @@ fn bmc_fan_projected_config_digest_sha256_hex(
   intent_curve: BmcFanCurve,
   realization: StateRealizationIdentity,
   config_path: NonEmptyStr,
+  content_identity: BmcProjectedConfigContentIdentity,
 ) -> NonEmptyStr? {
   if curve == intent_curve
-    && curve == fleet_quiet_temp_soc_fan_curve
-    && bmc_fan_curve_step_fingerprint(curve: curve) == fleet_quiet_projected_config_curve_fingerprint_pin
-    && realization.realization_id == altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id
-    && config_path == altrad8ud_openbmc_322_swampd_config_asrr_path {
-    Present { value: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex }
+    && curve == content_identity.projected_curve
+    && realization.realization_id == content_identity.realization_id
+    && config_path == content_identity.config_path {
+    Present { value: content_identity.projected_config_sha256_hex }
   } else {
     none
   }
@@ -115,12 +141,14 @@ fn bmc_fan_projected_config_digest(
   intent_curve: BmcFanCurve,
   realization: StateRealizationIdentity,
   config_path: NonEmptyStr,
+  content_identity: BmcProjectedConfigContentIdentity,
 ) -> BmcProjectedConfigDigest {
   match bmc_fan_projected_config_digest_sha256_hex(
     curve: curve,
     intent_curve: intent_curve,
     realization: realization,
     config_path: config_path,
+    content_identity: content_identity,
   ) {
     Present { value: hex } =>
       ProjectedConfigDigestKnown {
@@ -129,6 +157,10 @@ fn bmc_fan_projected_config_digest(
     Absent => ProjectedConfigDigestUnavailable
   }
 }
+
+data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
+  hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+)
 
 fn bmc_fan_admitted_config_digest(
   curve: BmcFanCurve,
@@ -266,4 +298,4 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve and realization, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest from intent curve plus realization identity and config path; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, a BmcProjectedConfigContentIdentity row binding probed curve bytes to cited sha256 hex, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest only when curve, intent curve, realization, config path, and content_identity match exactly; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
