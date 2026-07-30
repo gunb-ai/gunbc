@@ -6,7 +6,6 @@ import gunbc.ci_workflow {
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_floor_step_timeout_minutes,
-  gunbc_ci_selection_control_step_timeout_minutes,
   gunbc_ci_prelude_allowance_minutes,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -14,13 +13,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn ci_job_backstop_is_step_sum_plus_prelude() -> Bool {
-  gunbc_ci_job_backstop_timeout_minutes() == (gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+  gunbc_ci_job_backstop_timeout_minutes() == (gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
 }
 
-fn ci_job_backstop_equals_one_hundred_fifteen_minutes() -> Bool {
-  gunbc_ci_job_backstop_timeout_minutes() == 115
+fn ci_job_backstop_equals_one_hundred_minutes() -> Bool {
+  gunbc_ci_job_backstop_timeout_minutes() == 100
+}
+
+fn ci_job_backstop_dropped_the_selection_control_term() -> Bool {
+  !(gunbc_ci_job_backstop_timeout_minutes() == 115)
 }
 
 test fn ci_workflow_witness_holds() -> Bool {
-  ci_job_backstop_is_step_sum_plus_prelude() && ci_job_backstop_equals_one_hundred_fifteen_minutes()
+  ci_job_backstop_is_step_sum_plus_prelude()
+    && ci_job_backstop_equals_one_hundred_minutes()
+    && ci_job_backstop_dropped_the_selection_control_term()
 }
