@@ -4,11 +4,7 @@ import std.types { NonEmptyStr, String, Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool }
-<<<<<<< HEAD
 import extdeps.pin { Pin, PinAdmission, PinRefused, ConstraintIsNotIdentity, PinAbsent }
-=======
-import extdeps.pin { pin_authority_note }
->>>>>>> origin/main
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -19,13 +15,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data cli_tool_pin_citation_note: String = "Cites the GNU Coding Standards' command-line interface conventions, which is what makes a CliTool a distinct pin SUBJECT rather than a generic artifact: a command-line program is identified by an invocable name and reports its own version through a conventional --version surface, and those two facts are exactly what a pin over this subject has to project. The pinning DISCIPLINE itself is cited once, subject-agnostically, at extdeps.pin — this module deliberately does not re-spell that anchor (DESIGN section 3: one fact, one authority)."
 
-<<<<<<< HEAD
 data cli_tool_pin_instantiation_note: String = "THE INSTANTIATION, and the whole point of the split. extdeps.pin owns the pinning DIMENSION as Pin<Subject>; this module binds that dimension to ONE subject, CliTool, and owns only what is genuinely subject-specific: how to project an identity out of a CliTool, and what ingesting the existing roster means. Adding a second pinnable subject — SccacheBinaryRelease, a container image, a GitHub release — is a new sibling instantiation, NOT an edit to extdeps.pin and NOT a second pin type (DESIGN section 2 horizontal: one concept, every breadth; the Vendor<Domain> shape). If a future change to extdeps.pin is needed to admit a new subject, that is the signal the dimension was modeled too narrowly, and the fix belongs there rather than in a fork here."
 
 data cli_tool_pin_subject_by_value_note: String = "The subject is carried BY VALUE, which is the defect the operator caught in the first shape (2026-07-29). That version declared tool_name: NonEmptyStr and joined to the tool through string equality — the single site in extdeps.tools doing so, against that module's own established convention: resolve(tool: CliTool), ResolvedTool { tool: CliTool }, NotFound { tool: CliTool } all pass the modeled row. A string foreign key into a type that is sitting right there is the anemic-leaf failure of DESIGN section 2, and it put tool identity in two places. Pin<CliTool> carries the CliTool itself, so cli_tool_pin_key_of PROJECTS the name from the row rather than trusting a copy of it."
-=======
-data tool_pin_authority_note: String = pin_authority_note
->>>>>>> origin/main
 
 fn cli_tool_pin_key_of(pin: Pin<CliTool>) -> NonEmptyStr {
   pin.subject.name
@@ -37,33 +29,7 @@ data legacy_ingest_none_spelling_blocker_note: String = "DISCOVERED BY EXECUTION
 
 data legacy_cli_tool_ingest_note: String = "The discriminating RED, and the migration frontier made countable. EVERY CliTool row in the corpus today refuses conversion to a pin, and that is the correct answer rather than a gap: min_version is a RANGE brand ('>= 7.68') and a range is not an identity. Two hosts satisfying one range run two different binaries, which is precisely the variance a pin exists to remove, so widening the range into a fabricated identity here would be the absorbing fallback DESIGN section 5 forbids. Absent refuses for the same reason with a DISTINCT cause: no version stated at all is a different deficit from a stated range, and collapsing the two would be a state-space conflation. Each refusal names its subject and is countable, so the migration burns down visibly instead of being silently assumed complete. Note what this fn does NOT do: it does not invent a digest. A pin also requires expected_identity, and there is no real upstream digest anywhere in the corpus today, so ingest cannot be completed by this fn alone even for a row that stated an exact version — sourcing genuine upstream checksums is separate, deliberate work, and fabricating them would make a fail-closed carrier assert something false."
 
-<<<<<<< HEAD
 fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission<CliTool> {
-=======
-fn pin_currency_gap(pin: ToolPin) -> CurrencyGap {
-  match pin.selection {
-    ExactPin => AuthoredPinHasNoReviewDate
-    TrackedChannel { channel: c, refresh_window_days: _ } =>
-      TrackedPinHasNoResolutionDate { channel: c }
-  }
-}
-
-type PinRefusalCause
-  = ConstraintIsNotIdentity { constraint: VersionConstraint }
-  | PinAbsent
-  | TrackedResolutionUnrecorded { channel: NonEmptyStr }
-  | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
-
-type PinAdmission
-  = PinIntegrityAdmitted { pin: ToolPin }
-  | PinRefused { tool_name: NonEmptyStr, cause: PinRefusalCause }
-
-data legacy_ingest_none_spelling_blocker_note: String = "DISCOVERED BY EXECUTION while witnessing admit_legacy_cli_tool, and declared rather than dodged (DESIGN section 5: noticing a workaround IS the line-stop signal). The Absent arm below does NOT match a field written with the `none` literal: a `none`-valued optional evaluates to Value::Null and the match reports `non-exhaustive pattern match on: null`, while a field written `Absent` matches fine. This is a live instance of the documented Value::Null open thread — Value::Null is the overloaded None/Absent/miss sentinel — surfaced here by a new consumer. It MATTERS because the corpus overwhelmingly uses the `none` spelling: roughly 568 `: none,` fields against 98 `: Absent,` in dag/ at authoring, and every shipped CliTool row with no version (extdeps.tools.jq, .grep, .sed, .sha256sum, .sleep) is spelled `none`. So this fn is correct on the model and CANNOT yet be run against the real rows: the witness beside it exercises the Absent spelling only, and that limit is stated rather than papered over — a green witness here does not claim corpus coverage. P2 BLOCKER, not P1 debt: ingesting the actual roster needs the Value::Null carrier split (docs/plans/value-null-split.md) or an equivalent grounding of the two spellings onto one representation. Dissolve-on: that split lands, at which point the witness extends to a `none`-spelled row and this note deletes."
-
-data legacy_cli_tool_ingest_note: String = "The discriminating RED for P1, and the migration frontier made countable. EVERY CliTool row in the corpus today refuses conversion to a Pin<CliTool>, and that is the correct answer rather than a gap: min_version is extdeps.version.VersionConstraint — a RANGE brand ('>= 7.68') — and a range is not an identity. Two hosts satisfying one range run two different binaries, which is precisely the variance a pin exists to remove, so widening the range into a fabricated identity here would be the absorbing fallback DESIGN section 5 forbids. Absent refuses for the same reason with a distinct cause: no version stated at all is a different deficit from a stated range, and collapsing the two would be a state-space conflation. Each refusal is typed, names its tool, and is countable, so the migration burns down visibly under P4 instead of being silently assumed complete."
-
-fn admit_legacy_cli_tool(tool: CliTool) -> PinAdmission {
->>>>>>> origin/main
   match tool.min_version {
     Present { value: c } =>
       PinRefused {

@@ -122,7 +122,7 @@ exactly the §3 fork this lane exists to remove). `Pin<Subject>` declares the
 *expected* `ContentHash` per subject, and P1 reuses `ContentHash` and
 `observe_tool`'s digest discipline rather than defining its own.
 
-**The grains do not yet meet, and P2 is gated on closing that (`review 44388`).**
+**The grains did not meet; #7444 closed that, and the gate is discharged** (`review 44388` raised it, merged 2026-07-29).
 The earlier draft of this section claimed `resolved_build_context_identity`
 already supplies the observed side and that ensure is simply `value_eq` between
 the two. That was wrong, and the code says so: `toolchain_identity`
@@ -140,13 +140,32 @@ folded away without ever being named. So the missing piece is a *naming*, not a
 new probe — and naming it is the §3-correct move, because minting a second
 per-tool digest beside `observe_tool` would be the fork this lane removes.
 
-P2 therefore carries a prerequisite, before any reconcile is written:
+P2 carried a prerequisite before any reconcile could be written:
 
 > Surface `observe_tool`'s per-argv result as a named per-tool observed identity,
 > and re-express `toolchain_identity` as the *derived* fold over those rows
 > rather than the authority. Only then is `Pin.expected_identity` comparable
 > to an observed value at the same grain, and only then does
 > `membership_reconcile`'s `value_eq` mean what this lane needs it to mean.
+
+**That prerequisite is discharged.** #7444 landed it in
+`extdeps/realization/emit_on_demand_host.dag`: `ResolvedBuildContext` now carries
+`observed_tool_identities: List<ObservedToolIdentity>` as its first field,
+`toolchain_identity` is the *derived fold* over those rows rather than a stored
+aggregate, and the per-tool read is `observed_tool_identity_for` with three arms —
+`ObservedToolIdentityFound`, `ObservedToolIdentityMissing { tool_name }`,
+`ObservedToolIdentityDuplicate { tool_name, count }`. Miss and duplicate are
+*distinct typed answers* rather than one `Option`, which is what makes the lookup
+usable at a fail-closed boundary at all. No second per-subject digest was minted
+beside `observe_tool`, so the §3 fork this lane exists to remove was avoided.
+
+What P2 still owes is the reconcile *itself* — the `membership_reconcile`
+instantiation whose `value_eq` is `pin_value_eq` and whose `key_of` is the
+per-subject projection. Two obligations on whoever writes it: route every read
+through `observed_tool_identity_for` rather than re-deriving a digest, and answer
+its `Missing` and `Duplicate` arms explicitly. Collapsing either into a match
+failure or a widened rerun is the absorbing fallback §5 forbids, and would waste
+precisely the precision #7444 bought.
 
 Until that lands, treat #7388 as the *aggregate cache-key* consumer it is, not
 as the observed half of this lane's ensure.
