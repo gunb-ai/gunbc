@@ -282,7 +282,7 @@ fn occurrence_containment_paths_equal(
   left.terminal.value == right.terminal.value
 }
 
-data occurrence_containment_path_query_note: String = "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — ancestor prefix consumes std.types.is_prefix_of (review 45014), not a parallel Empty|Cons walker."
+data occurrence_containment_path_query_note: String = "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath. Prefix flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y)."
 
 fn occurrence_containment_path_contains_ancestor(
   ancestors: FreeMonoid<OccurrenceId>,
@@ -295,24 +295,21 @@ fn occurrence_containment_path_contains_ancestor(
   )
 }
 
+fn occurrence_containment_path_id_sequence(
+  path: OccurrenceContainmentPath
+) -> List<OccurrenceId> {
+  path.ancestors |> list_push(path.terminal)
+}
+
 fn occurrence_containment_path_is_prefix_of(
   prefix: OccurrenceContainmentPath,
   path: OccurrenceContainmentPath
 ) -> Bool {
-  if occurrence_containment_paths_equal(left: prefix, right: path) {
-    true
-  } else if prefix.terminal.value == path.terminal.value {
-    is_prefix_of(
-      prefix: prefix.ancestors,
-      xs: path.ancestors,
-      eq: occurrence_id_eq,
-    )
-  } else {
-    occurrence_containment_path_contains_ancestor(
-      ancestors: path.ancestors,
-      target: prefix.terminal,
-    )
-  }
+  is_prefix_of(
+    prefix: occurrence_containment_path_id_sequence(path: prefix),
+    xs: occurrence_containment_path_id_sequence(path: path),
+    eq: occurrence_id_eq,
+  )
 }
 
 type OccurrenceTransportIndexBuild {

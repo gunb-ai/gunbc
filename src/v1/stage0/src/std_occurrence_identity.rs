@@ -444,7 +444,7 @@ pub fn occurrence_containment_paths_equal(
 pub fn occurrence_containment_path_query_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — ancestor prefix consumes std.types.is_prefix_of (review 45014), not a parallel Empty|Cons walker.".to_string()
+            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath. Prefix flattens ancestors++terminal and consumes std.types.is_prefix_of (review 45014 / review 45081) — never ancestor-membership alone (that admitted [A]→X as a prefix of [B,X]→Y).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -463,26 +463,21 @@ pub fn occurrence_containment_path_contains_ancestor(
         })
 }
 
+pub fn occurrence_containment_path_id_sequence(
+    path: Rc<OccurrenceContainmentPath>,
+) -> Rc<Vec<OccurrenceId>> {
+    v1_rt::rc_list_push(path.ancestors.clone(), path.terminal.clone())
+}
+
 pub fn occurrence_containment_path_is_prefix_of(
     prefix: Rc<OccurrenceContainmentPath>,
     path: Rc<OccurrenceContainmentPath>,
 ) -> bool {
-    if occurrence_containment_paths_equal(prefix.clone(), path.clone()) {
-        true
-    } else {
-        if (prefix.terminal.clone().value.clone() == path.terminal.clone().value.clone()) {
-            is_prefix_of(
-                prefix.ancestors.clone(),
-                path.ancestors.clone(),
-                occurrence_id_eq,
-            )
-        } else {
-            occurrence_containment_path_contains_ancestor(
-                path.ancestors.clone(),
-                prefix.terminal.clone(),
-            )
-        }
-    }
+    is_prefix_of(
+        occurrence_containment_path_id_sequence(prefix.clone()),
+        occurrence_containment_path_id_sequence(path.clone()),
+        occurrence_id_eq,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
