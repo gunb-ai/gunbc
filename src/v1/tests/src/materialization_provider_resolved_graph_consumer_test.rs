@@ -4,6 +4,8 @@
 //! disk probe is unavailable, and that refusal must not boot the provider
 //! context. This module owns that witness so the consumer seam has a floor
 //! anchor instead of living as an unbound stub.
+//!
+//! Checkable receipt: `dag/test/retirement/materialization_provider_resolved_graph_consumer_retained.dag`.
 
 use v1_compiler::cli_run::{
     materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
