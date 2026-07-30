@@ -140,7 +140,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (f.path.clone() != "".to_string()) {
+                if (v1_rt::string_length(&f.content.clone()) > 0) {
                     __result.push(f);
                 }
             }
@@ -283,7 +283,7 @@ pub fn emit_py_test_file(
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
         Rc::new(TextFile {
-            path: "".to_string(),
+            path: "<none>".to_string(),
             content: "".to_string(),
         })
     } else {

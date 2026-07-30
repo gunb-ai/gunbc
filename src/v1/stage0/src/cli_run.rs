@@ -1238,10 +1238,11 @@ fn resolve_virtual_source_with_imports(
 
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
-/// `includes` and none of `excludes`, with zero non-`complexity:` diagnostics. A real,
-/// green-by-execution consumer of the v1 Rust emitter (DESIGN §5 spec-without-execution) —
-/// not a re-derivation of the emitter's own formula, so it can go red on a real emission
-/// regression.
+/// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
+/// (`compile_clean_diagnostic_is_hard` — the same authority as the CI compile-clean gate).
+/// Advisory diagnostics (including `WhereRefinementUnenforced` deferrals) do not fail this
+/// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
+/// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 pub fn compile_dag_rust_emit_check(
     source: &str,
     file_path: &str,
@@ -1257,7 +1258,7 @@ pub fn compile_dag_rust_emit_check(
     let hard_diagnostics = result
         .diagnostics
         .iter()
-        .filter(|d| !diagnostic_to_message(d.diagnostic.clone()).starts_with("complexity: "))
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
         return false;
@@ -2198,6 +2199,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
             d.diagnostic.as_ref(),
             crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+                | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
         )
 }
 
@@ -3730,6 +3732,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ParseError { .. } => "ParseError",
         CompilerDiagnostic::InternalError { .. } => "InternalError",
         CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
+        CompilerDiagnostic::WhereRefinementUnenforced { .. } => "WhereRefinementUnenforced",
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
@@ -3755,6 +3758,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             compile_clean_internal_error_histogram_name(message)
         }
         CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
+        CompilerDiagnostic::WhereRefinementUnenforced { predicate, .. } => predicate.clone(),
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),

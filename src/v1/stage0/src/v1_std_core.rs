@@ -429,6 +429,12 @@ pub enum CompilerDiagnostic {
         reason: String,
         span: Rc<SourceSpan>,
     },
+    WhereRefinementUnenforced {
+        predicate: String,
+        formal_type: String,
+        reason: String,
+        span: Rc<SourceSpan>,
+    },
     OwnershipViolation {
         binding: String,
         fn_name: String,
@@ -523,6 +529,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
         CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
         CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
+        CompilerDiagnostic::WhereRefinementUnenforced { span: s, .. } => s.clone(),
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
@@ -711,6 +718,27 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             ),
             r.clone(),
         ),
+        CompilerDiagnostic::WhereRefinementUnenforced {
+            predicate: p,
+            formal_type: t,
+            reason: r,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "where-refinement unenforced: predicate '".to_string(),
+                            p.clone(),
+                        ),
+                        "' on '".to_string(),
+                    ),
+                    t.clone(),
+                ),
+                "' — ".to_string(),
+            ),
+            r.clone(),
+        ),
         CompilerDiagnostic::OwnershipViolation {
             binding: b,
             fn_name: f,
@@ -787,16 +815,39 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     }
 }
 
+pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
+    (((((reason.clone() == "predicate deferred at compile time".to_string())
+        || (reason.clone() == "non-literal value at refined position".to_string()))
+        || (reason.clone() == "predicate argument is not an int literal".to_string()))
+        || (reason.clone() == "int predicate not implemented".to_string()))
+        || (reason.clone() == "string predicate not implemented".to_string()))
+}
+
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            !is_where_refinement_unenforced_advisory_reason(r.clone())
+        }
         _ => true,
     }
+}
+
+pub fn where_refinement_deferral_reason_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            !is_where_refinement_unenforced_advisory_reason(r.clone())
+        }
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         _ => true,
     }
@@ -805,6 +856,9 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d.clone()).clone() {
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
+        CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
+            is_where_refinement_unenforced_advisory_reason(r.clone())
+        }
         _ => false,
     }
 }
@@ -2470,14 +2524,67 @@ pub fn find_property_string(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
-        Some(n) => match (*n.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
+        Some(n) => expr_literal_string_optional(n.clone()),
+        None => None,
+    }
+}
+
+pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+                _ => None,
+            },
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
+                Some(v) => Some((0 - v.clone())),
+                None => None,
+            },
             _ => None,
+        }
+    })
+}
+
+pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+            LiteralValue::LitStr { value: v, .. } => Some(v.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => Some(expr.clone()),
+        _ => None,
+    }
+}
+
+pub fn record_lit_named_field_value_optional(
+    record_expr: Rc<Node>,
+    field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match record_lit_expr_optional(record_expr.clone()) {
+        Some(record) => match Rc::new({
+            let mut __result = Vec::new();
+            for fi in record.children.clone().iter().cloned() {
+                if (field_init_node_name_at(fi.clone(), source_indices.clone()) == field.clone()) {
+                    __result.push(fi);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(fi) => Some(field_init_node_value(fi.clone())),
+            None => None,
         },
         None => None,
     }
@@ -3609,7 +3716,7 @@ pub fn error_type() -> Rc<Node> {
 
 pub fn make_span(start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
-        file: "".to_string(),
+        file: "<synthetic>".to_string(),
         start: start.clone(),
         end: end.clone(),
     })

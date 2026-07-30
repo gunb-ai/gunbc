@@ -149,7 +149,8 @@ fn multiple_parent_resolve_refuses_holds() -> Bool {
     )
   ]
   match project_witness_cost_receipt(events: events) {
-    WitnessCostProjectionRefused { cause: c } => c != ("" as NonEmptyStr)
+    WitnessCostProjectionRefused { cause: c } =>
+      c == ("multiple parent resolve-phase events for an entry (refuse; never silently pick)" as NonEmptyStr)
     WitnessCostProjectionComplete { rows: _ } => false
   }
 }

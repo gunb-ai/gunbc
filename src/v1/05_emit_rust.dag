@@ -2139,7 +2139,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
       projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)),
       corpus_repr: emit_info.corpus_repr))
-    |> filter(f => f.path != "")
+    |> filter(f => string_length(s: f.content) > 0)
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
@@ -10041,7 +10041,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus
   let test_fns = projections
     |> map(p => emit_operation_test(projection: p, depth: depth + 1, corpus_repr: corpus_repr))
   if test_fns |> count == 0 {
-    TextFile { path: "", content: "" }
+    TextFile { path: "<none>", content: "" }
   } else {
     let filename = module_to_filename(name: module_name)
     let tests_str = test_fns |> join(separator: "\n\n")
