@@ -488,27 +488,38 @@ fn landing_unique_candidate(
 
 type LandingAdmissionDecision
   = LandingAdmitted {
+      semantic: LandingClosedOneReceipt,
       receipt: ContentHash,
     }
   | LandingApprovalRequired {
+      semantic: LandingClosedOneReceipt,
       continuation: LandingMachineContinuation,
     }
   | LandingUnauthorized {
+      semantic: LandingClosedOneReceipt,
       refusal: LandingRefusal,
     }
   | LandingPolicyRefused {
+      semantic: LandingClosedOneReceipt,
       refusal: LandingRefusal,
     }
   | LandingSelfAmendmentRefused {
+      semantic: LandingClosedOneReceipt,
       refusal: LandingRefusal,
     }
 
 type LandingAdmissionDecisionFold<R> {
-  admitted: fn(ContentHash) -> R
-  approval_required: fn(LandingMachineContinuation) -> R
-  unauthorized: fn(LandingRefusal) -> R
-  policy_refused: fn(LandingRefusal) -> R
-  self_amendment_refused: fn(LandingRefusal) -> R
+  admitted: fn(LandingClosedOneReceipt, ContentHash) -> R
+  approval_required: fn(
+    LandingClosedOneReceipt,
+    LandingMachineContinuation,
+  ) -> R
+  unauthorized: fn(LandingClosedOneReceipt, LandingRefusal) -> R
+  policy_refused: fn(LandingClosedOneReceipt, LandingRefusal) -> R
+  self_amendment_refused: fn(
+    LandingClosedOneReceipt,
+    LandingRefusal,
+  ) -> R
 }
 
 fn landing_admission_decision_fold<R>(
@@ -516,15 +527,16 @@ fn landing_admission_decision_fold<R>(
   fold: LandingAdmissionDecisionFold<R>,
 ) -> R {
   match admission {
-    LandingAdmitted { receipt } => fold.admitted(receipt)
-    LandingApprovalRequired { continuation } =>
-      fold.approval_required(continuation)
-    LandingUnauthorized { refusal } =>
-      fold.unauthorized(refusal)
-    LandingPolicyRefused { refusal } =>
-      fold.policy_refused(refusal)
-    LandingSelfAmendmentRefused { refusal } =>
-      fold.self_amendment_refused(refusal)
+    LandingAdmitted { semantic, receipt } =>
+      fold.admitted(semantic, receipt)
+    LandingApprovalRequired { semantic, continuation } =>
+      fold.approval_required(semantic, continuation)
+    LandingUnauthorized { semantic, refusal } =>
+      fold.unauthorized(semantic, refusal)
+    LandingPolicyRefused { semantic, refusal } =>
+      fold.policy_refused(semantic, refusal)
+    LandingSelfAmendmentRefused { semantic, refusal } =>
+      fold.self_amendment_refused(semantic, refusal)
   }
 }
 
@@ -533,14 +545,42 @@ type LandingAdmittedResult {
   admission_receipt: ContentHash
 }
 
+type LandingAdmissionAdvance
+  = LandingAdmissionAdvanced {
+      admitted: LandingAdmittedResult,
+    }
+  | LandingAdmissionNotAdvanced {
+      decision: LandingAdmissionDecision,
+    }
+
 fn landing_admitted_result(
-  semantic: LandingClosedOneReceipt,
-  admission_receipt: ContentHash,
-) -> LandingAdmittedResult {
-  LandingAdmittedResult {
-    semantic: semantic,
-    admission_receipt: admission_receipt,
-  }
+  admission: LandingAdmissionDecision,
+) -> LandingAdmissionAdvance {
+  landing_admission_decision_fold(
+    admission: admission,
+    fold: LandingAdmissionDecisionFold {
+      admitted: fn(semantic, receipt) {
+        LandingAdmissionAdvanced {
+          admitted: LandingAdmittedResult {
+            semantic: semantic,
+            admission_receipt: receipt,
+          },
+        }
+      },
+      approval_required: fn(_, _) {
+        LandingAdmissionNotAdvanced { decision: admission }
+      },
+      unauthorized: fn(_, _) {
+        LandingAdmissionNotAdvanced { decision: admission }
+      },
+      policy_refused: fn(_, _) {
+        LandingAdmissionNotAdvanced { decision: admission }
+      },
+      self_amendment_refused: fn(_, _) {
+        LandingAdmissionNotAdvanced { decision: admission }
+      },
+    },
+  )
 }
 
 type LandingProjectionStatus
@@ -560,29 +600,40 @@ type LandingProjectionStatus
 
 type LandingTransitionOutcome
   = LandingCommittedAndReadBack {
+      admitted: LandingAdmittedResult,
       transition_receipt: ContentHash,
       independent_read_back: ContentHash,
       projections: List<LandingProjectionStatus>,
     }
   | LandingRetryStaleParent {
+      admitted: LandingAdmittedResult,
       continuation: LandingMachineContinuation,
     }
   | LandingEffectRetryPending {
+      admitted: LandingAdmittedResult,
       continuation: LandingMachineContinuation,
     }
   | LandingEffectFailed {
+      admitted: LandingAdmittedResult,
       refusal: LandingRefusal,
     }
 
 type LandingTransitionOutcomeFold<R> {
   committed: fn(
+    LandingAdmittedResult,
     ContentHash,
     ContentHash,
     List<LandingProjectionStatus>,
   ) -> R
-  retry_stale_parent: fn(LandingMachineContinuation) -> R
-  effect_retry_pending: fn(LandingMachineContinuation) -> R
-  effect_failed: fn(LandingRefusal) -> R
+  retry_stale_parent: fn(
+    LandingAdmittedResult,
+    LandingMachineContinuation,
+  ) -> R
+  effect_retry_pending: fn(
+    LandingAdmittedResult,
+    LandingMachineContinuation,
+  ) -> R
+  effect_failed: fn(LandingAdmittedResult, LandingRefusal) -> R
 }
 
 fn landing_transition_outcome_fold<R>(
@@ -591,21 +642,23 @@ fn landing_transition_outcome_fold<R>(
 ) -> R {
   match transition {
     LandingCommittedAndReadBack {
+      admitted,
       transition_receipt,
       independent_read_back,
       projections,
     } =>
       fold.committed(
+        admitted,
         transition_receipt,
         independent_read_back,
         projections,
       )
-    LandingRetryStaleParent { continuation } =>
-      fold.retry_stale_parent(continuation)
-    LandingEffectRetryPending { continuation } =>
-      fold.effect_retry_pending(continuation)
-    LandingEffectFailed { refusal } =>
-      fold.effect_failed(refusal)
+    LandingRetryStaleParent { admitted, continuation } =>
+      fold.retry_stale_parent(admitted, continuation)
+    LandingEffectRetryPending { admitted, continuation } =>
+      fold.effect_retry_pending(admitted, continuation)
+    LandingEffectFailed { admitted, refusal } =>
+      fold.effect_failed(admitted, refusal)
   }
 }
 
@@ -614,24 +667,16 @@ type LandingSpineReceipt
       result: LandingSemanticResultSpace,
     }
   | LandingAdmissionSpine {
-      semantic: LandingClosedOneReceipt,
       admission: LandingAdmissionDecision,
     }
   | LandingTransitionSpine {
-      admitted: LandingAdmittedResult,
       transition: LandingTransitionOutcome,
     }
 
 type LandingSpineReceiptFold<R> {
   semantic: fn(LandingSemanticResultSpace) -> R
-  admission: fn(
-    LandingClosedOneReceipt,
-    LandingAdmissionDecision,
-  ) -> R
-  transition: fn(
-    LandingAdmittedResult,
-    LandingTransitionOutcome,
-  ) -> R
+  admission: fn(LandingAdmissionDecision) -> R
+  transition: fn(LandingTransitionOutcome) -> R
 }
 
 fn landing_spine_receipt_fold<R>(
@@ -644,15 +689,13 @@ fn landing_spine_receipt_fold<R>(
     } =>
       fold.semantic(result)
     LandingAdmissionSpine {
-      semantic,
       admission,
     } =>
-      fold.admission(semantic, admission)
+      fold.admission(admission)
     LandingTransitionSpine {
-      admitted,
       transition,
     } =>
-      fold.transition(admitted, transition)
+      fold.transition(transition)
   }
 }
 
@@ -761,7 +804,7 @@ fn landing_admission_user_boundary(
   landing_admission_decision_fold(
     admission: admission,
     fold: LandingAdmissionDecisionFold {
-      admitted: fn(_) {
+      admitted: fn(_, _) {
         landing_machine_owned(
           continuation: LandingMachineContinuation {
             handle: "landing-prepare-transition",
@@ -770,16 +813,16 @@ fn landing_admission_user_boundary(
           },
         )
       },
-      approval_required: fn(continuation) {
+      approval_required: fn(_, continuation) {
         landing_machine_owned(continuation: continuation)
       },
-      unauthorized: fn(refusal) {
+      unauthorized: fn(_, refusal) {
         landing_user_refusal(refusal: refusal)
       },
-      policy_refused: fn(refusal) {
+      policy_refused: fn(_, refusal) {
         landing_user_refusal(refusal: refusal)
       },
-      self_amendment_refused: fn(refusal) {
+      self_amendment_refused: fn(_, refusal) {
         landing_user_refusal(refusal: refusal)
       },
     },
@@ -787,26 +830,25 @@ fn landing_admission_user_boundary(
 }
 
 fn landing_transition_user_boundary(
-  admitted: LandingAdmittedResult,
   transition: LandingTransitionOutcome,
 ) -> LandingUserBoundary {
   landing_transition_outcome_fold(
     transition: transition,
     fold: LandingTransitionOutcomeFold {
-      committed: fn(_, _, _) {
+      committed: fn(admitted, _, _, _) {
         LandingUserOutcome {
           outcome: Landed {
             result_preview: admitted.semantic.unique.preview as String,
           },
         }
       },
-      retry_stale_parent: fn(continuation) {
+      retry_stale_parent: fn(_, continuation) {
         landing_machine_owned(continuation: continuation)
       },
-      effect_retry_pending: fn(continuation) {
+      effect_retry_pending: fn(_, continuation) {
         landing_machine_owned(continuation: continuation)
       },
-      effect_failed: fn(refusal) {
+      effect_failed: fn(_, refusal) {
         landing_user_refusal(refusal: refusal)
       },
     },
@@ -822,12 +864,11 @@ fn landing_user_boundary(
       semantic: fn(result) {
         landing_semantic_user_boundary(semantic: result)
       },
-      admission: fn(_, admission) {
+      admission: fn(admission) {
         landing_admission_user_boundary(admission: admission)
       },
-      transition: fn(admitted, transition) {
+      transition: fn(transition) {
         landing_transition_user_boundary(
-          admitted: admitted,
           transition: transition,
         )
       },
