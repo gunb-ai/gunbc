@@ -60,7 +60,7 @@ import std.state_durability {
   SynchronizedCommit,
   state_durability_verdict,
 }
-import std.types { Bool, List, NonEmptyStr, String, string_length }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.upsert_decision {
   Apply,
   Conflict,
