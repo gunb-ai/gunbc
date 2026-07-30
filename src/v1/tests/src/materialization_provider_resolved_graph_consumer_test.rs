@@ -6,8 +6,7 @@
 //! anchor instead of living as an unbound stub.
 
 use v1_compiler::cli_run::{
-    materialization_provider_ctx_build_count_for_test,
-    reset_materialization_provider_ctx_for_test,
+    materialization_provider_ctx_build_count_for_test, reset_materialization_provider_ctx_for_test,
     serve_resolved_graph_v1_disk_probe_for_test,
 };
 
