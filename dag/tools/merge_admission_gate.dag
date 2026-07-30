@@ -1,6 +1,7 @@
 module tools.merge_admission_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import tools.ci_gates { exit_ok }
 import std.types { GitRef }
 import extdeps.git
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -31,6 +32,10 @@ fn verdict_reason(v: MergeAdmissionVerdict) -> String {
     MergeDeniedStaleRoster => "stale gate roster — re-run CI after criteria change"
     MergeDeniedNotSuccess => "receipt conclusion is not success"
   }
+}
+
+func merge_admission_gate_claim() -> Bool {
+  exit_ok(e: main())
 }
 
 func main() -> ProcessExit {

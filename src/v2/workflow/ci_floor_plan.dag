@@ -1142,6 +1142,27 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   )
 }
 
+data floor_stamp_entry: String = "dag/tools/merge_admission_stamp.dag"
+
+data floor_admission_gate_entry: String = "dag/tools/merge_admission_gate.dag"
+
+data gunbc_ci_floor_finalizers_note: String = "OnWalkSuccess finalizers: work claim_executor runs ONLY when every batch of gunbc_ci_floor_batches passed. run_walk appends this list as a trailing batch and refuses to ENTER it when any batch failed — a check deliberately independent of FloorBatchStopPolicy, because FullLedger's whole contract is 'record the failure and keep going' (the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23) and a plain trailing batch would therefore still be reached after a red batch. Merge admission cannot tolerate that: it would stamp a Success receipt for a red floor on exactly the events where superseded runs are not cancelled. WHY THESE TWO ROWS: both were separate COLD `gunbc run` processes in the ci job — the stamp in the floor step's shell tail (measured at ~72s of process startup to perform ~0.09s of stamping, and it ran even when the floor had already failed) and the gate as its own step. Fused here they execute warm inside the walk that just proved the floor green, so the ci job loses two whole-corpus resolves. ORDER IS LOAD-BEARING: the stamp must precede the gate, because the gate reads the receipt the stamp writes — a single ordered list, not a set. BOTH ARE WET: they shell out to git, mkdir, and write .gunbc/, so they declare execution_mode Wet; a Hermetic declaration would be a false envelope, and the profile is otherwise negligible (no whole-tree resolve, no host compiler). ci.yml consequence: the floor step collapses to the bare claim_executor invocation with no `set +e`/FLOOR_EXIT capture and no CI_FLOOR_EXIT export, and the separate merge-admission gate step is deleted."
+
+fn gunbc_ci_floor_finalizers() -> List<Runnable> {
+  [
+    RunnableSingleClaim {
+      entry: floor_stamp_entry,
+      function: "merge_admission_stamp_claim",
+      profile: gate_profile_negligible_wet_declared()
+    },
+    RunnableSingleClaim {
+      entry: floor_admission_gate_entry,
+      function: "merge_admission_gate_claim",
+      profile: gate_profile_negligible_wet_declared()
+    }
+  ]
+}
+
 data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_batches, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
 
 fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {

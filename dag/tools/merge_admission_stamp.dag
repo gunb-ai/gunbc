@@ -5,6 +5,8 @@ import std.types { NonEmptyStr, GitRef }
 import extdeps.git
 import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
+import extdeps.github.checks { Success }
+import tools.ci_gates { exit_ok }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { FilePath }
 import gunbc.merge_admission_produce {
@@ -13,13 +15,12 @@ import gunbc.merge_admission_produce {
   stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
   shell_stdout_line,
-  floor_exit_to_check_conclusion,
   observe_merge_target_tree_hash,
   merge_target_tree_hash_refusal_reason,
   MergeTargetTreeHashOk,
   MergeTargetTreeHashRefused,
 }
-data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
+data merge_admission_stamp_green_only_by_reachability: String = "THE CONCLUSION IS `Success` WITH NO EXIT-CODE TERM, AND THAT IS THE WHOLE POINT. This stamp is declared in gunbc_ci_floor_finalizers, so claim_executor's run_walk refuses to ENTER its batch unless every preceding batch passed (the finalizer_index check, deliberately independent of FloorBatchStopPolicy). Reaching this code therefore PROVES the floor was green, so the conclusion is DERIVED FROM REACHABILITY rather than validated from a value the producer had to be trusted to forward — DESIGN §5, construction over validation. WHAT IT REPLACES: the ci.yml floor tail ran `set +e`, captured FLOOR_EXIT, and invoked `CI_FLOOR_EXIT=$FLOOR_EXIT gunbc run --entry ... --function main` UNCONDITIONALLY — a second cold process (~72s of startup to do ~0.09s of stamping, measured) that also stamped a receipt when the floor had already failed. The retired `floor_exit_code_from_env` read CI_FLOOR_EXIT and treated unset as Failure; that fail-closed default is now unrepresentable rather than defaulted, which is strictly stronger. WHY DELETING FAILURE-STAMPING IS NOT A BEHAVIOR LOSS: the merge-admission gate step carries no `if: always()`, so a failed floor step skipped it and the Failure receipt was written but never read. It DOES delete a real fail-open: under FullLedger (push to main, falsifier) a failed batch does not stop the walk, so a plain trailing BATCH would have stamped Success for a red floor on exactly the events where superseded runs are not cancelled. ALIGNMENT: merge_admission_gate's missing-receipt diagnostic already reads 'CI floor must stamp a receipt on green', so green-only was the stated contract and the always-stamp producer was the deviation. FAIL-CLOSED SHAPE: a red floor now writes NO receipt and the gate refuses on absence, so the block is by absence rather than by a Failure verdict. MergeDeniedNotSuccess stays live and covered — merge_admission_actuator_witness_test exercises it against synthetic conclusion:Failure receipts, so the arm keeps its discriminating control even though CI no longer produces that input."
 
 data merge_admission_stamp_non_pr_omits_pr_number: String = "non-PR CI events (push to main, workflow_dispatch) omit pr_number from the receipt wire — jq requires .pull_request.number be a JSON number; absent field, not fabricated 0"
 
@@ -51,12 +52,8 @@ fn pr_number_from_event() -> Int? {
   parse_int(s: shell_stdout_line(raw: line))
 }
 
-fn floor_exit_code_from_env() -> Int {
-  match env_var(name: "CI_FLOOR_EXIT") {
-    Present { value: raw } =>
-      if raw == "0" { 0 } else { 1 }
-    Absent => 1
-  }
+func merge_admission_stamp_claim() -> Bool {
+  exit_ok(e: main())
 }
 
 func main() -> ProcessExit {
@@ -79,7 +76,7 @@ func main() -> ProcessExit {
     pr_number: pr_number_from_event(),
     head_sha: head.sha,
     base_tree_hash: base_tree,
-    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env()),
+    conclusion: Success,
   )
   let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)

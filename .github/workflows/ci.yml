@@ -209,14 +209,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. The isolated pre-executor skip-label binary and its unreachable persistent disposition transport retired afterward; compile-clean docs-universe scoping remains independently exercised on the live floor path.
           git fetch --no-tags origin main 2>/dev/null || true
-          set +e
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
-          FLOOR_EXIT=$?
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
-          STAMP_EXIT=$?
-          if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
-          exit "$STAMP_EXIT"
         timeout-minutes: 55
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
@@ -244,10 +237,6 @@ jobs:
           if test -z "$d"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
           if test "$k" -eq 0; then echo "floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed"; exit 1; fi
           echo "floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (disclosure gate; count pins retracted 2026-07-10 — schedule-jittered per-ctx grain + diff-dependent affected-set denominator; walls forward: unkeyed==0 on closure identity, duplicated on structural frame grain)"
-        timeout-minutes: 5
-      - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
-        run: |
-          'git' 'fetch' '--no-tags' 'origin' 'main' && 'env' '-C' '.' 'target/release/gunbc' 'run' '--source-root' 'dag' '--entry' 'dag/tools/merge_admission_gate.dag' '--function' 'main'
         timeout-minutes: 5
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]

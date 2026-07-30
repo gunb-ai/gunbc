@@ -1529,6 +1529,54 @@ fn eval_plan_in_ctx(
     Ok(batches)
 }
 
+/// The plan function that declares a plan's `OnWalkSuccess` finalizers, if it has any.
+///
+/// Only the full floor plan declares finalizers today. Every other plan — regen, the
+/// plan-artifact shortcut, the falsifier — resolves to `None` and is byte-for-byte
+/// unaffected, which is the property that keeps this change scoped to admission.
+fn finalizer_function_for(plan_function: &str) -> Option<&'static str> {
+    match plan_function {
+        "gunbc_ci_floor_batches" => Some("gunbc_ci_floor_finalizers"),
+        _ => None,
+    }
+}
+
+/// Read a plan's `OnWalkSuccess` finalizer list as a flat `List<Runnable>` (one batch).
+///
+/// A finalizer is an ordinary `Runnable` read through the same `runnable_from_value` the
+/// batch reader uses, so this introduces no second kind of work — only a second place a
+/// runnable may be declared, with a different admission rule.
+///
+/// Fail-closed on a declared-but-broken list: when `finalizer_function_for` names a
+/// function, evaluating it is REQUIRED to succeed. A plan that says it has finalizers
+/// and cannot produce them is a hard error, never an empty list — silently returning
+/// none would skip merge-admission stamping and look like an ordinary green floor.
+fn finalizers_from_plan(
+    plan_ctx: &InterpContext,
+    plan_entry: &str,
+    plan_function: &str,
+) -> Result<Vec<Runnable>, String> {
+    let Some(fin_function) = finalizer_function_for(plan_function) else {
+        return Ok(Vec::new());
+    };
+    let plan_value = run_value(plan_ctx, fin_function).map_err(|msg| {
+        format!(
+            "finalizer plan eval failed ({}::{}): {}",
+            plan_entry, fin_function, msg
+        )
+    })?;
+    let mut finalizers = Vec::new();
+    for elem in free_monoid_elems(&plan_value, plan_ctx)
+        .map_err(|msg| format!("malformed finalizer list ({}): {}", fin_function, msg))?
+    {
+        finalizers.push(
+            runnable_from_value(elem, plan_ctx)
+                .map_err(|msg| format!("malformed finalizer ({}): {}", fin_function, msg))?,
+        );
+    }
+    Ok(finalizers)
+}
+
 fn eval_plan(
     source_roots: &[String],
     plan_entry: &str,
@@ -2606,9 +2654,31 @@ fn batch_unit_lane(
     }
 }
 
+/// `OnWalkSuccess` finalizers: work that may run ONLY if every batch passed.
+///
+/// A plain trailing batch cannot express this. Under `FullLedger` — the policy on
+/// `push` (main) and `schedule` (falsifier) — a failed batch does NOT stop the walk
+/// (see the `stop_policy` match at the end of the batch loop), so a trailing batch is
+/// still reached after a failure. For merge admission that is a fail-open: the stamp
+/// would write a `Success` receipt for a red floor, and the merge-admission gate reads
+/// that receipt. Gating here makes "the finalizer ran" EQUIVALENT to "every batch
+/// passed" on every event, so the stamped conclusion is derived from reachability
+/// rather than from an out-of-band `CI_FLOOR_EXIT` the producer has to be trusted to
+/// pass through correctly (DESIGN §5 — construction over validation).
+///
+/// The gate is deliberately read BEFORE the receipt writes below, so `any_failed` here
+/// means "a batch failed", not "a batch failed or a receipt could not be written".
+/// A receipt-write failure still reds the walk through `WalkOutcome`, but it is not a
+/// reason to withhold a stamp for work that actually passed.
+///
+/// Finalizers run as an ordinary appended batch so they reuse the whole execution path
+/// — unit partition, governor admission, memo sharing, per-batch receipts — rather than
+/// introducing a second executor. Running `run_walk` twice was rejected: it would write
+/// every receipt file a second time and clobber the first walk's rows.
 fn run_walk(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
+    finalizers: &[Runnable],
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
@@ -2623,6 +2693,16 @@ fn run_walk(
     let mut failure_details: Vec<String> = Vec::new();
     let walk_start = Instant::now();
     let mut batch_records: Vec<BatchRecord> = Vec::new();
+    // Append the finalizers as a trailing batch; `finalizer_index` marks it so the loop
+    // can refuse to enter it when any batch failed, independent of stop policy.
+    let mut walk_batches: Vec<Vec<Runnable>> = batches.to_vec();
+    let finalizer_index = if finalizers.is_empty() {
+        None
+    } else {
+        walk_batches.push(finalizers.to_vec());
+        Some(walk_batches.len() - 1)
+    };
+    let batches: &[Vec<Runnable>] = &walk_batches;
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
     // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
@@ -2635,6 +2715,19 @@ fn run_walk(
         std::collections::HashMap::new();
     let memo_path_entries = memo_path_entry_keys(batches);
     for (bi, batch) in batches.iter().enumerate() {
+        // Green-only gate for the finalizer batch. Checked here rather than through
+        // `stop_policy` precisely because FullLedger's contract is "keep going" — the
+        // full per-batch ledger on main is bisection evidence and must be preserved,
+        // while admission stamping must still not happen. Those two are only compatible
+        // if the finalizer batch has its own refusal, so this is not a second stop policy.
+        if Some(bi) == finalizer_index && any_failed {
+            eprintln!(
+                "claim_executor: walk had failures — {} OnWalkSuccess finalizer(s) NOT run \
+                 (green-only by construction; no admission receipt is written for a red floor)",
+                batch.len()
+            );
+            break;
+        }
         batches_run = bi + 1;
         let units = group_batch_units(batch);
         // Arm the observation heartbeat feed at batch-enter: discovery leaves
@@ -3089,6 +3182,9 @@ fn run_perturb_check(
     let outcome = run_walk(
         &[temp_root],
         &remapped,
+        // --perturb-check proves the gating batch fails closed and halts; it declares no
+        // finalizers, so the perturbed walk exercises the batch path exactly as before.
+        &[],
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
@@ -3301,6 +3397,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    // OnWalkSuccess finalizers, read from the same already-resolved plan context so they
+    // cost no extra resolve. Empty for every plan that declares none.
+    let finalizers = match finalizers_from_plan(&plan_ctx, &plan_entry, &plan_function) {
+        Ok(f) => f,
+        Err(msg) => {
+            eprintln!("claim_executor: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
@@ -3505,6 +3610,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let outcome = run_walk(
         &source_roots,
         &batches,
+        &finalizers,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
