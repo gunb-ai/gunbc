@@ -264,10 +264,11 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  count(accepted) == 7
+  count(accepted) == 8
     && (accepted |> any(a => a == "namespace-occurrence-transport"))
     && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
     && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
+    && (accepted |> any(a => a == "v1-test-hygiene-producer-retirement"))
     && (accepted |> any(a => a == "2-scm-git-upstream-model"))
     && (accepted |> any(a => a == "2-scm-mercurial-upstream-model"))
     && (accepted |> any(a => a == "2-scm-pijul-upstream-model"))
@@ -504,6 +505,13 @@ test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision")
     && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement")
+}
+
+test fn witness_import_deletion_gates_zero_hand_maintained_rust() -> Bool {
+  id_exists(id: "namespace-import-deletion")
+    && active_id_exists(id: "namespace-import-deletion")
+    && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
+    && edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion")
 }
 
 test fn witness_shell_roadmap_and_fleet_chains_are_explicit() -> Bool {
