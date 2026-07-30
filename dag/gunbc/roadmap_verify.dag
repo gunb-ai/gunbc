@@ -1,0 +1,209 @@
+module gunbc.roadmap_verify
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_execution_contract {
+  WorkItemExecutionContract,
+  ExecutionContractUnspecified,
+  ExecutionContract,
+  ValidationOperation,
+  ModeledValidationCommand,
+  validation_operation_command,
+}
+import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
+  srv1_lab_dashboard_instance,
+  srv2_lab_dashboard_instance,
+}
+import gunbc.roadmap_dispatch_actuator { HostExecArgv }
+import gunbc.roadmap_belt_actuate {
+  BeltExecOutcome,
+  ExecOk,
+  ExecFailed,
+  ExecRefused,
+  belt_exec,
+  BeltNodeLookup,
+  NodeFound,
+  NodeMissing,
+  belt_lookup_node,
+}
+
+data verification_producer_note: String = "THE SEGMENT THAT WAS DECLARED AND NEVER GROUNDED. roadmap_attempt_workflow_stage_note states it plainly: Environment, Workspace and Agent are grounded execution facts while Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. This is Verification's producer.\\n\\nWhy it matters more than the ordering suggests: without it a dispatch ends at 'agent turn completed' and a human goes and checks by hand, which is the loop the belt exists to close. The page renders a desired obligation identically to a grounded one, so an unimplemented stage reads as a stalled one — the operator sees a row stuck on Agent and cannot tell whether the work is incomplete or the mechanism is.\\n\\nTHE CASE THAT PROVED IT, 2026-07-30. The first srv2 dispatch spent a full provider turn to report that its node was 'already implemented in ancestor commit f67a0c644ea; no new edits were needed'. That conclusion is exactly what this node's declared validation decides, deterministically, in one command, with no provider involved. An agent was spent discovering something a claim run establishes."
+
+data verification_precedes_dispatch_note: String = "VERIFY FIRST, DISPATCH ONLY ON FAILURE, and the ordering is the point rather than an optimization. A node's contract already names the validation that decides whether its obligation holds; running it is a pure host effect with a deterministic answer. Dispatching a provider to reach the same conclusion costs a turn, introduces nondeterminism into a question that has none, and produces prose where a verdict was available.\\n\\nSo an agent becomes conditional. Verification passing means the obligation is already satisfied and the correct next action is acceptance, not work — which is precisely the state most of the current board is in, since the roadmap's problem is missing receipts rather than missing implementations. Verification failing is what makes an agent worth spending.\\n\\nThis also inverts what a green result MEANS. Under agent-always, a completed turn says a provider believes it is done; under verify-first, a pass says the declared control actually held when executed. The second is evidence and the first is testimony."
+
+type VerificationOutcome
+  = VerificationUnbound {
+      node_id: String,
+    }
+  | VerificationPassed {
+      node_id: String,
+      validations_run: Int,
+    }
+  | VerificationFailed {
+      node_id: String,
+      label: NonEmptyStr,
+      detail: String,
+    }
+  | VerificationRefused {
+      node_id: String,
+      label: NonEmptyStr,
+      reason: String,
+    }
+  | VerificationNodeNotFound {
+      node_id: String,
+    }
+
+data verification_outcome_arms_note: String = "FIVE ARMS BECAUSE FIVE REMEDIES. Unbound means the node names no validation — nothing failed, there is simply nothing to run, and the fix is to author a contract; this is the state most of the board is in and collapsing it into a failure would report fifty imaginary regressions. Failed means the validation ran and answered no: the work is genuinely incomplete. Refused means it could not run at all — a missing binary, an unrealized capability — which is an environment problem and never evidence about the work. Passed carries the count so a contract that silently lost its validations cannot report success from an empty list. NotFound is a caller error, distinct from every state of a real node.\\n\\nThe pair that must never merge is Failed and Refused. A refusal reported as a failure sends someone to debug code that was never executed, and it is the exact shape of the fabricated verdicts this repository keeps finding — a missing cargo reported as rustfmt drift, an idle socket reported as a malformed request. An empty validations list is Unbound rather than Passed for the same reason: zero checks passing is not a green result."
+
+fn verification_run_one(
+  node_id: String,
+  instance: HostDashboardInstance,
+  validation: ValidationOperation,
+) -> VerificationOutcome {
+  match validation_operation_command(
+    validation: validation,
+    environment: instance.execution_environment,
+  ) {
+    Absent =>
+      VerificationRefused {
+        node_id: node_id,
+        label: "unrealized-capability" as NonEmptyStr,
+        reason: "the instance environment realizes no executable for this validation's capability",
+      }
+    Present { value: cmd } =>
+      match belt_exec(
+        cmd: HostExecArgv { program: cmd.program as String, args: cmd.args },
+        workdir: instance.repo_root as String,
+      ) {
+        ExecOk { stdout: _ } =>
+          VerificationPassed { node_id: node_id, validations_run: 1 }
+        ExecFailed { program: _, exit_code, stderr } =>
+          VerificationFailed {
+            node_id: node_id,
+            label: cmd.label,
+            detail: join([
+              "validation exited ",
+              to_string(exit_code),
+              ": ",
+              stderr,
+            ], ""),
+          }
+        ExecRefused { program, reason } =>
+          VerificationRefused {
+            node_id: node_id,
+            label: cmd.label,
+            reason: join([program, ": ", reason], ""),
+          }
+      }
+  }
+}
+
+data verification_short_circuit_note: String = "The fold SHORT-CIRCUITS on the first non-passing outcome, mirroring belt_exec_all's sequencing rule. Continuing after a failure would run later validations against a tree the first one already reported broken, and the resulting outcome would name whichever check happened to be last rather than the one that actually decided. The count in the passed arm accumulates only across validations that genuinely ran and passed."
+
+fn verification_fold(
+  node_id: String,
+  instance: HostDashboardInstance,
+  validations: List<ValidationOperation>,
+) -> VerificationOutcome {
+  fold(
+    validations,
+    init: VerificationPassed { node_id: node_id, validations_run: 0 },
+    f: fn(acc, validation) {
+      match acc {
+        VerificationPassed { node_id: n, validations_run: ran } =>
+          match verification_run_one(
+            node_id: n,
+            instance: instance,
+            validation: validation,
+          ) {
+            VerificationPassed { node_id: _, validations_run: _ } =>
+              VerificationPassed { node_id: n, validations_run: ran + 1 }
+            other => other
+          }
+        other => other
+      }
+    },
+  )
+}
+
+fn verify_contract(
+  node_id: String,
+  instance: HostDashboardInstance,
+  contract: WorkItemExecutionContract,
+) -> VerificationOutcome {
+  match contract {
+    ExecutionContractUnspecified => VerificationUnbound { node_id: node_id }
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      if count(validations) == 0 {
+        VerificationUnbound { node_id: node_id }
+      } else {
+        verification_fold(
+          node_id: node_id,
+          instance: instance,
+          validations: validations,
+        )
+      }
+  }
+}
+
+fn verify_node(
+  instance: HostDashboardInstance,
+  node_id: String,
+) -> VerificationOutcome {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing => VerificationNodeNotFound { node_id: node_id }
+    NodeFound { node: node } =>
+      verify_contract(
+        node_id: node_id,
+        instance: instance,
+        contract: node.execution,
+      )
+  }
+}
+
+data verification_dispatch_disposition_note: String = "WHAT THE BELT SHOULD DO NEXT, derived from the outcome rather than decided at the call site. A pass means the obligation holds and the right next action is ACCEPTANCE — not another agent, and not silence. A failure is the only state where spending a provider is justified, because there is now a specific thing to fix. Unbound needs a contract authored before any of this applies, which is work of a different kind and belongs to the acceptance tasks the frontier already derives.\\n\\nA refusal dispatches NOTHING. The environment could not run the check, so nothing is known about the work, and sending an agent at that point asks it to fix code on the strength of a broken toolchain — the failure mode where a provider dutifully edits something in response to evidence that never existed."
+
+type VerifiedDispatchDisposition
+  = ReadyForAcceptance { node_id: String, validations_run: Int }
+  | DispatchWarranted { node_id: String, because: String }
+  | ContractNeededFirst { node_id: String }
+  | EnvironmentBlocked { node_id: String, reason: String }
+
+fn dispatch_disposition_for(outcome: VerificationOutcome) -> VerifiedDispatchDisposition {
+  match outcome {
+    VerificationPassed { node_id, validations_run } =>
+      ReadyForAcceptance { node_id: node_id, validations_run: validations_run }
+    VerificationFailed { node_id, label, detail } =>
+      DispatchWarranted {
+        node_id: node_id,
+        because: join([label as String, " failed: ", detail], ""),
+      }
+    VerificationUnbound { node_id } => ContractNeededFirst { node_id: node_id }
+    VerificationRefused { node_id, label: _, reason } =>
+      EnvironmentBlocked { node_id: node_id, reason: reason }
+    VerificationNodeNotFound { node_id } =>
+      EnvironmentBlocked {
+        node_id: node_id,
+        reason: "node id is not declared in the roadmap authority",
+      }
+  }
+}
+
+fn verification_outcome_label(outcome: VerificationOutcome) -> String {
+  match outcome {
+    VerificationUnbound { node_id: _ } => "unbound"
+    VerificationPassed { node_id: _, validations_run: _ } => "passed"
+    VerificationFailed { node_id: _, label: _, detail: _ } => "failed"
+    VerificationRefused { node_id: _, label: _, reason: _ } => "refused"
+    VerificationNodeNotFound { node_id: _ } => "node-not-found"
+  }
+}
+
+func verify_srv2_lab_node_wet(node_id: String) -> VerificationOutcome {
+  verify_node(instance: srv2_lab_dashboard_instance(), node_id: node_id)
+}
+
+func verify_srv1_lab_node_wet(node_id: String) -> VerificationOutcome {
+  verify_node(instance: srv1_lab_dashboard_instance(), node_id: node_id)
+}

@@ -1,0 +1,122 @@
+module extdeps.llm.cursor_cli
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data cursor_cli_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.cursor.com/en/cli/overview"
+  }
+}
+
+data cursor_cli_program_note: String = "The one program-token authority for the Cursor agent CLI, the sibling of codex_cli_program and claude_cli_program. Observed installed on srv2 at ~/.local/bin/cursor-agent; every surface below was read from that binary's own --help and --list-models output on 2026-07-30 rather than from documentation, so the rows describe the interface actually present on the host."
+
+data cursor_cli_program: String = "cursor-agent"
+
+data cursor_auth_is_a_bare_key_note: String = "CURSOR AUTHENTICATES WITH A VALUE, WHICH MAKES IT THE EASY ONE. --api-key takes the key directly and CURSOR_API_KEY is the environment equivalent, so there is no interactive flow, no device code, no perishable artifact and no state root that must be minted before first use. A key placed in a secret store and materialized at the point of invocation is the whole mechanism.\\n\\nThat is a genuine structural difference from codex rather than a convenience. codex authenticates into a DIRECTORY — CODEX_HOME selects an isolated store containing tokens with an hour-long access lifetime and an opaque durable root — so switching accounts means switching state roots. Cursor carries the credential per invocation, so switching accounts is an argument. A model that assumed one isolation mechanism across providers would have to force one of them into the other's shape.\\n\\nA login subcommand also exists and writes into ~/.cursor, which is the interactive alternative. It is deliberately NOT modeled as the automation path: it produces host state that cannot be replicated from a secret store, which is exactly the property that makes codex's credential awkward to fleet-provision."
+
+type CursorAuth
+  = CursorApiKeyArgument { key: NonEmptyStr }
+  | CursorApiKeyEnvironment { key: NonEmptyStr }
+
+data cursor_api_key_env_var: NonEmptyStr = "CURSOR_API_KEY" as NonEmptyStr
+
+data cursor_account_isolation_note: String = "THERE IS NO CURSOR_CONFIG_DIR, and the absence is the fact worth recording. codex isolates accounts by state root and this CLI has no equivalent environment variable — ~/.cursor holds agent-cli-state.json, cli-config.json and a chats directory for whichever account last logged in, with no way to point the process at a different one.\\n\\nSo cursor's account axis is the API KEY, not a directory. Two accounts are two keys passed to two invocations, sharing one ~/.cursor for non-credential state. That means concurrent sessions under different accounts are possible in a way codex's directory model does not require any care about, while concurrent sessions writing chat history to one shared directory is a contention question this module cannot answer and has not observed.\\n\\nRecorded rather than papered over: gunbc.provider_account's @label suffix scheme is a CODEX convention and does not transfer here. A cursor account selection is a secret reference, and forcing it into a state-root shape would invent a directory the tool does not read."
+
+data cursor_headless_note: String = "--print is the non-interactive surface and it is the only mode that reaches the automation flags. Its own help states that print mode has access to all tools including write and shell, so it is the analogue of codex exec rather than a read-only dump. --output-format admits text, json or stream-json, and stream-json is the JSONL progress stream this repository already consumes from codex — so provider events are available on the same shape, from a different vendor.\\n\\n--trust is bound to the same mode: 'Trust the current workspace without prompting (only works with --print/headless mode)'. That is the same class of first-launch obstacle claude_workspace_trust_seeded already models for claude code, where an unseeded workspace blocks interactively and no permission flag covers it. Cursor exposes it as a flag rather than as config state, which is strictly easier — but it must be passed, and omitting it is how an unattended run hangs waiting for a human."
+
+type CursorOutputFormat
+  = CursorText
+  | CursorJson
+  | CursorStreamJson
+
+fn cursor_output_format_wire(f: CursorOutputFormat) -> String {
+  match f {
+    CursorText => "text"
+    CursorJson => "json"
+    CursorStreamJson => "stream-json"
+  }
+}
+
+data cursor_execution_mode_note: String = "The mode axis is a CLOSED choice on the CLI's own surface: --mode admits plan (read-only, proposes without editing) and ask (read-only Q&A), while omitting it leaves the default editing behaviour. Modeled with an explicit default arm rather than an Optional, because 'no mode flag' is a real third behaviour and not the absence of information.\\n\\nSeparately, --force (aliased --yolo) allows commands unless explicitly denied, and --sandbox admits enabled or disabled while overriding config. Force and sandbox are ORTHOGONAL to mode and to each other, so they are separate fields: a read-only plan run needs neither, and an unattended editing run needs a deliberate decision about both. Fusing them into one permission enum would make the sensible combinations unrepresentable."
+
+type CursorExecutionMode
+  = CursorDefaultEditMode
+  | CursorPlanMode
+  | CursorAskMode
+
+type CursorSandboxChoice
+  = CursorSandboxFromConfig
+  | CursorSandboxEnabled
+  | CursorSandboxDisabled
+
+fn cursor_mode_args(mode: CursorExecutionMode) -> List<String> {
+  match mode {
+    CursorDefaultEditMode => []
+    CursorPlanMode => ["--mode", "plan"]
+    CursorAskMode => ["--mode", "ask"]
+  }
+}
+
+fn cursor_sandbox_args(choice: CursorSandboxChoice) -> List<String> {
+  match choice {
+    CursorSandboxFromConfig => []
+    CursorSandboxEnabled => ["--sandbox", "enabled"]
+    CursorSandboxDisabled => ["--sandbox", "disabled"]
+  }
+}
+
+data cursor_model_selection_note: String = "MODEL IS A PER-INVOCATION ARGUMENT AND THE ROSTER IS AN ACCOUNT FACT. --model takes an identifier and --list-models prints what THIS ACCOUNT may use — the subcommand is literally documented as 'List available models for this account' — so the set is entitlement-scoped and cannot be modeled as a fixed closed enum without going wrong the moment a plan changes.\\n\\n193 identifiers were listed on srv2 on 2026-07-30, spanning several vendors' models behind one CLI. Enumerating them here would be a snapshot pretending to be a specification, so the type stays an identifier and the rows below name only the ones this repository has a reason to select, each recorded as OBSERVED AVAILABLE rather than as guaranteed.\\n\\ncursor_model_grok_high answers a direct operator question: Cursor Grok 4.5 is available on this account as cursor-grok-4.5-high, with a -fast sibling. The -fast variants throughout the roster are a latency tier on the same model, which is a selection axis rather than a different capability."
+
+type CursorModelId = NonEmptyStr where brand("CursorModelId")
+
+data cursor_model_auto: CursorModelId = "auto" as CursorModelId
+data cursor_model_grok_high: CursorModelId = "cursor-grok-4.5-high" as CursorModelId
+data cursor_model_grok_high_fast: CursorModelId = "cursor-grok-4.5-high-fast" as CursorModelId
+data cursor_observed_model_roster_size: Int = 193
+
+data cursor_worktree_flag_note: String = "DELIBERATELY NOT USED: -w/--worktree starts the agent in an isolated git worktree the CLI creates under ~/.cursor/worktrees/<repo>/<name>. This repository's belt already creates and owns attempt worktrees under the dashboard instance's own attempts root, with the branch name and attempt identity bound to the roadmap node.\\n\\nAccepting the CLI's worktree would hand that ownership to the provider: the location would move outside the instance root the model treats as owned, the naming would stop deriving from the attempt, and teardown would belong to a directory nobody declared. The flag is recorded so the choice is visible rather than looking like an oversight — a later reader finding two worktree mechanisms should know only one is ours."
+
+type CursorInvocation {
+  auth: CursorAuth
+  model: CursorModelId
+  mode: CursorExecutionMode
+  sandbox: CursorSandboxChoice
+  output_format: CursorOutputFormat
+  force: Bool
+  trust_workspace: Bool
+  workspace: FilePath
+  prompt: NonEmptyStr
+}
+
+fn shape_cursor_agent_argv(inv: CursorInvocation) -> List<String> {
+  concat(
+    [cursor_cli_program, "--print"],
+    concat(
+      ["--output-format", cursor_output_format_wire(f: inv.output_format)],
+      concat(
+        ["--model", inv.model as String],
+        concat(
+          cursor_mode_args(mode: inv.mode),
+          concat(
+            cursor_sandbox_args(choice: inv.sandbox),
+            concat(
+              if inv.force { ["--force"] } else { [] },
+              concat(
+                if inv.trust_workspace { ["--trust"] } else { [] },
+                concat(
+                  ["--workspace", inv.workspace as String],
+                  [inv.prompt as String],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+data cursor_key_never_in_argv_note: String = "THE KEY IS NOT IN THE ARGV THIS FUNCTION BUILDS, and that omission is deliberate. --api-key would place a live credential in a process argument, where it is readable from /proc by any process the same user can inspect and captured by every ps, audit log and crash report that records a command line. CURSOR_API_KEY carries the same value through the environment, which is meaningfully narrower.\\n\\nSo shape_cursor_agent_argv emits no credential at all and CursorApiKeyArgument exists in the type only because the CLI offers it — representing the surface honestly is not the same as recommending it. A caller choosing that arm is choosing to leak, and the type makes that a visible decision instead of an accident of which field happened to be set."

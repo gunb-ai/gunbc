@@ -1221,6 +1221,8 @@ fn dashboard_source_preflight_decision(
   }
 }
 
+data required_executables_are_preconditions_not_deliverables_note: String = "THE SERVE BINARY LEFT THIS ROSTER BECAUSE IT STOPPED BEING A PRECONDITION. This list is what must ALREADY EXIST on the target for provisioning to be possible — git to clone, tmux to run the service, mkdir and mv and cp to place things, the provider executable to preflight auth. The serve binary used to qualify because instances borrowed production's, which was installed by a different mechanism and always present.\\n\\nMaking it instance-owned turned it into an OUTPUT of the very plan this preflight gates, and the two facts together are a deadlock: preflight refuses because the binary is absent, and the only thing that installs it is the apply preflight is refusing to admit. Observed exactly that way on srv2 — a refusal naming a path that nothing but the blocked apply could ever create.\\n\\nThe distinction the roster now holds is precondition versus deliverable, and it is worth stating because the deadlock is invisible while every path happens to pre-exist. dirname and chmod join for the same reason the binary leaves: the install step runs them, so they are genuinely required beforehand. Whether the binary landed is answered AFTER apply by the readback, which is where an output belongs."
+
 fn dashboard_required_target_executables(
   instance: HostDashboardInstance,
 ) -> List<FilePath> {
@@ -1234,7 +1236,8 @@ fn dashboard_required_target_executables(
         "/usr/bin/touch" as FilePath,
         "/usr/bin/mv" as FilePath,
         "/usr/bin/nc" as FilePath,
-        instance.serve_binary,
+        "/usr/bin/dirname" as FilePath,
+        "/usr/bin/chmod" as FilePath,
         dashboard_instance_provider_executable(instance: instance),
       ],
       dashboard_instance_dispatch_platform_executables(instance: instance),
