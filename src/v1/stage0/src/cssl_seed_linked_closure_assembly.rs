@@ -606,14 +606,23 @@ mod tests {
                 String::from_utf8_lossy(&assemble_status.stderr)
             );
         }
-        for entry in fs::read_dir(&shim_dir).expect("shim dir") {
-            let entry = entry.expect("entry");
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if name == "lib.rs" || name == "witness_main.rs" {
-                continue;
+        // Mirror the roster row's shim writes: the shared std surface comes from the
+        // std-bridge (one authority, not one copy per transport), the rest from this
+        // transport's own shim dir. Copying only shim_dir would leave the emitted std
+        // stubs in place and the control would then refuse for the wrong reason —
+        // non-discriminating, since the assertion below is about the dropped
+        // `pub mod v2_compiler_namespace_graft`, not about a broken std surface.
+        let std_bridge_dir = root.join("dag/tools/self_host_std_bridge_shims");
+        for dir in [&std_bridge_dir, &shim_dir] {
+            for entry in fs::read_dir(dir).expect("shim dir") {
+                let entry = entry.expect("entry");
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name == "lib.rs" || name == "witness_main.rs" {
+                    continue;
+                }
+                fs::copy(entry.path(), out.join("src").join(name.as_ref())).expect("copy shim");
             }
-            fs::copy(entry.path(), out.join("src").join(name.as_ref())).expect("copy shim");
         }
         let stale_lib = "// stale RED control — namespace_graft pub mod deliberately dropped\n\
             #![allow(clippy::all, dead_code, unused_imports)]\n\
