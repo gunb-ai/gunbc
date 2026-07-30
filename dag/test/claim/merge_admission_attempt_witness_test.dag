@@ -1,0 +1,197 @@
+module test.claim.merge_admission_attempt_witness
+
+import std.types { NonEmptyStr, ContentHash, CommitSha }
+import extdeps.github.checks { Success, Failure }
+import gunbc.merge_admission {
+  TestedSubject,
+  MergeAdmissionReceiptV2,
+  MergeAdmissionVerdict,
+  MergeAdmitted,
+  MergeDeniedStaleBase,
+  MergeDeniedStaleRoster,
+  MergeDeniedNotSuccess,
+  MergeDeniedWrongAttempt,
+  classify_merge_admission_verdict_v2,
+  merge_admission_verdict_would_block,
+}
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_schema_v2,
+  merge_admission_tested_subject_schema,
+  merge_admission_tested_subject_path,
+  merge_admission_floor_receipt_path,
+  compose_walk_attempt_id,
+  compose_explicit_walk_attempt_id,
+  render_tested_subject_wire,
+  parse_tested_subject_wire,
+  render_receipt_wire_v2,
+  parse_receipt_wire_v2,
+  render_receipt_wire,
+  stamp_floor_receipt_with_conclusion,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data attempt_a: NonEmptyStr = "12345-1-ci"
+data attempt_b: NonEmptyStr = "12345-2-ci"
+data head_sha_fx: CommitSha = "abc1234def5678901234567890abcd1234567890"
+data base_tree_fx: ContentHash = "tree-base-current"
+data base_tree_stale_fx: ContentHash = "tree-base-stale"
+data roster_fx: ContentHash = "roster-current"
+
+fn receipt_fx(attempt: NonEmptyStr, base: ContentHash) -> MergeAdmissionReceiptV2 {
+  MergeAdmissionReceiptV2 {
+    attempt_id: attempt,
+    pr_number: Present { value: 7470 },
+    tested_head_sha: head_sha_fx,
+    tested_base_tree_hash: base,
+    gate_roster_hash: roster_fx,
+    conclusion: Success,
+  }
+}
+
+test fn matching_attempt_fresh_base_admits() -> Bool {
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a,
+    receipt: receipt_fx(attempt: attempt_a, base: base_tree_fx),
+    merge_target_tree_hash: base_tree_fx,
+    current_roster_hash: roster_fx,
+  ) { MergeAdmitted => true  _ => false }
+}
+
+test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
+  let v = classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a,
+    receipt: receipt_fx(attempt: attempt_b, base: base_tree_fx),
+    merge_target_tree_hash: base_tree_fx,
+    current_roster_hash: roster_fx,
+  )
+  match v { MergeDeniedWrongAttempt => merge_admission_verdict_would_block(v: v)  _ => false }
+}
+
+test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
+  let r = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_b,
+    pr_number: none,
+    tested_head_sha: head_sha_fx,
+    tested_base_tree_hash: base_tree_stale_fx,
+    gate_roster_hash: "roster-stale",
+    conclusion: Failure,
+  }
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a,
+    receipt: r,
+    merge_target_tree_hash: base_tree_fx,
+    current_roster_hash: roster_fx,
+  ) { MergeDeniedWrongAttempt => true  _ => false }
+}
+
+test fn matching_attempt_stale_base_is_stale_not_wrong_attempt() -> Bool {
+  match classify_merge_admission_verdict_v2(
+    current_attempt_id: attempt_a,
+    receipt: receipt_fx(attempt: attempt_a, base: base_tree_stale_fx),
+    merge_target_tree_hash: base_tree_fx,
+    current_roster_hash: roster_fx,
+  ) { MergeDeniedStaleBase => true  _ => false }
+}
+
+test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
+  let r = receipt_fx(attempt: attempt_a, base: base_tree_fx)
+  match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
+    Present { value: parsed } =>
+      ((parsed.attempt_id as String) == (attempt_a as String))
+        && (parsed.tested_head_sha == head_sha_fx)
+        && (parsed.tested_base_tree_hash == base_tree_fx)
+        && (parsed.gate_roster_hash == roster_fx)
+        && match parsed.pr_number { Present { value: n } => n == 7470  Absent => false }
+        && match parsed.conclusion { Success => true  _ => false }
+    Absent => false
+  }
+}
+
+test fn wire_v2_roundtrips_without_pr() -> Bool {
+  let r = MergeAdmissionReceiptV2 {
+    attempt_id: attempt_a,
+    pr_number: none,
+    tested_head_sha: head_sha_fx,
+    tested_base_tree_hash: base_tree_fx,
+    gate_roster_hash: roster_fx,
+    conclusion: Success,
+  }
+  match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: r)) {
+    Present { value: parsed } =>
+      match parsed.pr_number { Absent => (parsed.attempt_id as String) == (attempt_a as String)  Present { value: _ } => false }
+    Absent => false
+  }
+}
+
+test fn v1_wire_refused_by_v2_parser() -> Bool {
+  let v1 = render_receipt_wire(receipt: stamp_floor_receipt_with_conclusion(
+    pr_number: Present { value: 7470 },
+    head_sha: head_sha_fx,
+    base_tree_hash: base_tree_fx,
+    conclusion: Success,
+  ))
+  match parse_receipt_wire_v2(text: v1) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn tested_subject_wire_roundtrips() -> Bool {
+  let subj = TestedSubject {
+    attempt_id: attempt_a,
+    head_sha: head_sha_fx,
+    base_ref: "origin/main",
+    base_tree_hash: base_tree_fx,
+  }
+  match parse_tested_subject_wire(text: render_tested_subject_wire(subject: subj)) {
+    Present { value: parsed } =>
+      ((parsed.attempt_id as String) == (attempt_a as String))
+        && (parsed.head_sha == head_sha_fx)
+        && (parsed.base_ref == "origin/main")
+        && (parsed.base_tree_hash == base_tree_fx)
+    Absent => false
+  }
+}
+
+test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
+  let subj = render_tested_subject_wire(subject: TestedSubject {
+    attempt_id: attempt_a,
+    head_sha: head_sha_fx,
+    base_ref: "origin/main",
+    base_tree_hash: base_tree_fx,
+  })
+  let rec = render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a, base: base_tree_fx))
+  match parse_receipt_wire_v2(text: subj) { Present { value: _ } => false  Absent => true }
+    && match parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }
+}
+
+test fn attempt_id_composes_from_nonempty_parts() -> Bool {
+  match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "ci") {
+    Present { value: id } => (id as String) == "12345-1-ci"
+    Absent => false
+  }
+}
+
+test fn attempt_id_refuses_any_empty_part() -> Bool {
+  match compose_walk_attempt_id(run_id: "", run_attempt: "1", job: "ci") { Present { value: _ } => false  Absent => true }
+    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "", job: "ci") { Present { value: _ } => false  Absent => true }
+    && match compose_walk_attempt_id(run_id: "12345", run_attempt: "1", job: "") { Present { value: _ } => false  Absent => true }
+    && match compose_explicit_walk_attempt_id(explicit: "") { Present { value: _ } => false  Absent => true }
+}
+
+test fn attempt_paths_are_attempt_scoped_and_distinct() -> Bool {
+  let subj = merge_admission_tested_subject_path(root: "/repo", attempt_id: attempt_a)
+  let rec_a = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_a)
+  let rec_b = merge_admission_floor_receipt_path(root: "/repo", attempt_id: attempt_b)
+  string_contains(s: subj, pattern: "/.gunbc/merge-admission/12345-1-ci/")
+    && string_contains(s: rec_a, pattern: "/12345-1-ci/")
+    && !(rec_a == rec_b)
+    && !(subj == rec_a)
+}
+
+test fn schemas_are_distinct_and_versioned() -> Bool {
+  !(merge_admission_receipt_schema_v2 == merge_admission_tested_subject_schema)
+    && string_contains(s: merge_admission_receipt_schema_v2, pattern: ".v2")
+}
