@@ -31,6 +31,12 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
 data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "inner-cost-lanes-scoping",
+    work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "both lanes have landed or been retired: Lane A when process_escapes_loop is migrated onto source_chars with its discriminating non-ASCII receipt, Lane B when the shared-overlap measurement it asks for exists and either opens the program or prices it down. The note is scoping for two roadmap nodes, so it dissolves when those nodes close, not into a gunbc.plan.Plan row." },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "accelerator-demo-roundtrip",
     work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
     dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row; §6 item 2 execution lane lands on the simd handler" },
