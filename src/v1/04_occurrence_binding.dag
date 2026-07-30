@@ -25,16 +25,6 @@ fn module_path_owner_binding_decide(
   }
 }
 
-fn global_bare_chain_owner_path_from_decide(
-  owners: List<String>
-) -> String? {
-  match module_path_owner_binding_decide(owners: owners) {
-    ModulePathBindingHit { owner: owner } => Present { value: owner }
-    ModulePathBindingMiss => Absent
-    ModulePathBindingAmbiguous { owners: _ } => Absent
-  }
-}
-
 fn global_bare_chain_ambiguity_labels_from_decide(
   owners: List<String>,
   name: String

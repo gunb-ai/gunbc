@@ -15,8 +15,7 @@ use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
 };
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_owner_path_from_decide,
-    module_path_owner_binding_decide,
+    global_bare_chain_ambiguity_labels_from_decide, module_path_owner_binding_decide,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1000,14 +999,16 @@ pub fn global_bare_unique_chain_candidate(
 ) -> Option<Rc<GlobalBareCandidate>> {
     {
         let chain = global_bare_chain_candidates(env_module_path.clone(), candidates.clone());
-        match global_bare_chain_owner_path_from_decide(Rc::new({
+        match (*module_path_owner_binding_decide(Rc::new({
             let mut __result = Vec::new();
             for c in chain.clone().iter().cloned() {
                 __result.push(c.module_path.clone());
             }
             __result
-        })) {
-            Some(owner) => Rc::new({
+        })))
+        .clone()
+        {
+            ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => Rc::new({
                 let mut __result = Vec::new();
                 for c in chain.clone().iter().cloned() {
                     if (c.module_path.clone() == owner.clone()) {
@@ -1018,7 +1019,8 @@ pub fn global_bare_unique_chain_candidate(
             })
             .first()
             .cloned(),
-            None => None,
+            ModulePathBindingProjection::ModulePathBindingMiss => None,
+            ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => None,
         }
     }
 }

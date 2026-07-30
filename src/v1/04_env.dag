@@ -12,7 +12,6 @@ import v1.compiler.infer_occurrence_binding {
   ModulePathBindingAmbiguous,
   ModulePathBindingHit,
   ModulePathBindingMiss,
-  global_bare_chain_owner_path_from_decide,
   global_bare_chain_ambiguity_labels_from_decide,
 }
 
@@ -574,12 +573,11 @@ fn global_bare_chain_candidates(env_module_path: String, candidates: List<Global
 
 fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
   let chain = global_bare_chain_candidates(env_module_path: env_module_path, candidates: candidates)
-  match global_bare_chain_owner_path_from_decide(
-    owners: chain |> map(c => c.module_path),
-  ) {
-    Present { value: owner } =>
+  match module_path_owner_binding_decide(owners: chain |> map(c => c.module_path)) {
+    ModulePathBindingHit { owner: owner } =>
       chain |> filter(c => c.module_path == owner) |> first
-    Absent => Absent
+    ModulePathBindingMiss => Absent
+    ModulePathBindingAmbiguous { owners: _ } => Absent
   }
 }
 

@@ -50,16 +50,6 @@ pub fn module_path_owner_binding_decide(
     }
 }
 
-pub fn global_bare_chain_owner_path_from_decide(owners: Rc<Vec<String>>) -> Option<String> {
-    match (*module_path_owner_binding_decide(owners.clone())).clone() {
-        ModulePathBindingProjection::ModulePathBindingHit { owner: owner, .. } => {
-            Some(owner.clone())
-        }
-        ModulePathBindingProjection::ModulePathBindingMiss => None,
-        ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => None,
-    }
-}
-
 pub fn global_bare_chain_ambiguity_labels_from_decide(
     owners: Rc<Vec<String>>,
     name: String,
