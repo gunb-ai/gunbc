@@ -60,13 +60,6 @@ pub fn global_bare_chain_owner_path_from_decide(owners: Rc<Vec<String>>) -> Opti
     }
 }
 
-pub fn global_bare_chain_is_ambiguous_from_decide(owners: Rc<Vec<String>>) -> bool {
-    match (*module_path_owner_binding_decide(owners.clone())).clone() {
-        ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
-        _ => false,
-    }
-}
-
 pub fn global_bare_chain_ambiguity_labels_from_decide(
     owners: Rc<Vec<String>>,
     name: String,

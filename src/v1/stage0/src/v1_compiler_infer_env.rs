@@ -10,9 +10,13 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
+use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
+    ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
+};
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_is_ambiguous_from_decide,
-    global_bare_chain_owner_path_from_decide,
+    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_owner_path_from_decide,
+    module_path_owner_binding_decide,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1428,13 +1432,19 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
             candidates: cands, ..
         }) => {
             let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-            global_bare_chain_is_ambiguous_from_decide(Rc::new({
+            match (*module_path_owner_binding_decide(Rc::new({
                 let mut __result = Vec::new();
                 for c in chain.clone().iter().cloned() {
                     __result.push(c.module_path.clone());
                 }
                 __result
-            }))
+            })))
+            .clone()
+            {
+                ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
+                ModulePathBindingProjection::ModulePathBindingHit { owner: _, .. } => false,
+                ModulePathBindingProjection::ModulePathBindingMiss => false,
+            }
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
         None => false,

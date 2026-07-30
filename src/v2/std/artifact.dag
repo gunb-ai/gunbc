@@ -2,6 +2,7 @@ module v2.std.artifact
 
 import v2.std.node { Symbol }
 import std.types { String, Bool }
+import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected }
 
 type ArtifactKind
   = SourceFile
