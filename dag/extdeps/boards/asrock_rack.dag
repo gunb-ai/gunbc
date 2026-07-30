@@ -3,6 +3,7 @@ module extdeps.boards.asrock_rack
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
+import extdeps.bmc.fan_control { FanControlZoneProfile, StepwiseFanCurve, FanCurvePoint }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -88,6 +89,51 @@ data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRo
 data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
 
 data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<BmcwebNbdProxyEndpointVariant> = [NbdSlotEndpoint]
+
+data altrad8ud_fan_profile_observation_note: NonEmptyStr = "OpenBMC phosphor-pid-control fan profiles per firmware line, live-read from each host's /usr/share/swampd/config.json (-> config-asrr.json) on 2026-07-30. altrad8ud_openbmc_2_07_00_fan_profile is srv3's ORIGINAL vendor config (config-asrr.json mtime 2018). altrad8ud_srv4_asfound_stripped_fan_profile was srv4's config-asrr.json (mtime 2026-07-27, an onboarding overwrite of the vendor file, not the 2018 original); srv4 was remediated 2026-07-30 by writing the 2.07.00 curve."
+
+data altrad8ud_openbmc_2_07_00_fan_profile: FanControlZoneProfile = FanControlZoneProfile {
+  min_thermal_output: percent(30),
+  failsafe: percent(30),
+  curve: StepwiseFanCurve {
+    sensor: "TEMP_SOC",
+    failsafe: percent(75),
+    points: [
+      FanCurvePoint { reading: celsius(40), output: percent(30) },
+      FanCurvePoint { reading: celsius(55), output: percent(40) },
+      FanCurvePoint { reading: celsius(65), output: percent(50) },
+      FanCurvePoint { reading: celsius(75), output: percent(75) },
+      FanCurvePoint { reading: celsius(85), output: percent(100) },
+    ],
+  },
+}
+
+data altrad8ud_srv4_asfound_stripped_fan_profile: FanControlZoneProfile = FanControlZoneProfile {
+  min_thermal_output: percent(30),
+  failsafe: percent(75),
+  curve: StepwiseFanCurve {
+    sensor: "TEMP_SOC",
+    failsafe: percent(75),
+    points: [
+      FanCurvePoint { reading: celsius(40), output: percent(30) },
+      FanCurvePoint { reading: celsius(75), output: percent(30) },
+      FanCurvePoint { reading: celsius(90), output: percent(30) },
+      FanCurvePoint { reading: celsius(93), output: percent(55) },
+      FanCurvePoint { reading: celsius(95), output: percent(70) },
+      FanCurvePoint { reading: celsius(97), output: percent(85) },
+      FanCurvePoint { reading: celsius(98), output: percent(100) },
+    ],
+  },
+}
+
+data altrad8ud_fleet_fan_profile: FanControlZoneProfile = altrad8ud_openbmc_2_07_00_fan_profile
+
+data altrad8ud_known_good_fan_bmc_version: BmcFirmwareVersion = BmcFirmwareVersion {
+  family: OpenBmc,
+  version: "2.07.00",
+}
+
+data altrad8ud_bmc_upgrade_fan_regression_note: NonEmptyStr = "BMC 'newer is better' does NOT hold for fan control on ALTRAD8UD-1L2T: srv3 (OpenBMC 2.07.00) carries the original vendor phosphor-pid-control curve (ramps from 40C, SoC ~65C, ~4800 RPM inaudible); the 3.x-era srv4 was found 2026-07-30 with a stripped config-asrr.json (mtime 2026-07-27, an onboarding overwrite of the vendor file) that idled fans at 30% until 90C then panic-ramped, letting the SoC ride ~90C hot+loud. OPEN ITEM: whether the 3.x FIRMWARE IMAGE itself ships a degraded config-asrr.json is UNCONFIRMED — srv4's had been overwritten, obscuring the shipped default. Policy: pin altrad8ud_fleet_fan_profile on every BMC and gate any BMC firmware upgrade on re-applying + re-verifying it — do not upgrade fleet BMCs off 2.07.00 for its own sake."
 
 type BmcReadOnlyProbeVerdict = ProbePresent | ProbeAbsent | ProbeInconclusive
 

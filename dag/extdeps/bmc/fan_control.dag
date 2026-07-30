@@ -1,0 +1,28 @@
+module extdeps.bmc.fan_control
+
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/phosphor-pid-control"
+  }
+}
+
+data fan_control_model_note: NonEmptyStr = "phosphor-pid-control 'stepwise' fan model. A FanControlZoneProfile is the BEHAVIORAL fan policy of a zone: the always-on floor (min_thermal_output), the zone failsafe, and a temperature->output curve. FanCurvePoint list is ordered; the daemon holds the lower step between points (with hysteresis), so the point list IS the curve. Grounded in real magnitudes (Celsius, Percent) never bare Int. Per-rotor fan PID plumbing and tach-sensor enumeration are board/firmware TOPOLOGY (which sensors physically exist) and are deliberately excluded, so a profile is portable across firmware lines (DESIGN 3: the curve is the fact; sensor wiring is each BMC build's realization)."
+
+type FanCurvePoint {
+  reading: Celsius
+  output: Percent
+}
+
+type StepwiseFanCurve {
+  sensor: NonEmptyStr
+  failsafe: Percent
+  points: List<FanCurvePoint>
+}
+
+type FanControlZoneProfile {
+  min_thermal_output: Percent
+  failsafe: Percent
+  curve: StepwiseFanCurve
+}
