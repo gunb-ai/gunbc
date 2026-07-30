@@ -109,7 +109,7 @@ import gunbc.bmc_intent {
   BmcControlPlaneIntent,
   fleet_bmc_valid_state,
 }
-import gunbc.bmc_fan_monitor { BmcFanMonitoringCompletedReceipt }
+import gunbc.bmc_fan_monitor { BmcFanMonitoringReceipt }
 import gunbc.bmc_onboarding {
   BmcOnboardingPlan,
   srv3_onboarding_plan,
@@ -441,14 +441,14 @@ type BmcFanAppliedReceipt {
   projected_digest: Digest
   post_publication_active_digest: Digest
   post_restart_active_digest: Digest
-  monitoring: BmcFanMonitoringCompletedReceipt
+  monitoring: BmcFanMonitoringReceipt
 }
 
 type BmcFanRestoredReceipt {
   backup_manifest: BmcFanBackupManifest
   restored_digest: Digest
   post_restart_active_digest: Digest
-  monitoring: BmcFanMonitoringCompletedReceipt
+  monitoring: BmcFanMonitoringReceipt
 }
 
 fn bmc_fan_backup_manifest_matches_request(

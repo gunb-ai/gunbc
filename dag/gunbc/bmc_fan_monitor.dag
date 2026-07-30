@@ -14,14 +14,8 @@ type BmcFanMonitoringReceipt {
   required_elapsed: Second
 }
 
-type BmcFanMonitoringCompletedReceipt {
-  sample_count: Int
-  elapsed: Second
-  required_elapsed: Second
-}
-
 type BmcFanMonitoringResult
-  = BmcFanMonitoringCompleted { receipt: BmcFanMonitoringCompletedReceipt }
+  = BmcFanMonitoringCompleted { receipt: BmcFanMonitoringReceipt }
   | BmcFanMonitoringRefused {
       reason: String,
       receipt: BmcFanMonitoringReceipt,
@@ -46,11 +40,7 @@ fn bmc_fan_assess_monitoring_samples_rec(
       }
     } else if second_count(previous_elapsed) >= second_count(required_elapsed) {
       BmcFanMonitoringCompleted {
-        receipt: BmcFanMonitoringCompletedReceipt {
-          sample_count: receipt.sample_count,
-          elapsed: receipt.elapsed,
-          required_elapsed: receipt.required_elapsed,
-        },
+        receipt: receipt,
       }
     } else {
       BmcFanMonitoringRefused {

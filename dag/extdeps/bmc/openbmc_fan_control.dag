@@ -17,6 +17,7 @@ import extdeps.languages.json.emit {
   serialize_json,
 }
 import extdeps.tools.jq { jq_authority }
+import extdeps.systemd.systemctl { systemctl_authority }
 import extdeps.bmc.openbmc_operation {
   OpenBmcCopyFilePreservingMetadata,
   OpenBmcDiskUsageKib,
@@ -97,14 +98,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
-data openbmc_systemctl_is_active_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html",
-  },
-}
-
 data openbmc_systemctl_is_active_authority_note: String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
+
+data openbmc_systemctl_is_active_authority: ExternalAuthority = systemctl_authority
 
 data openbmc_json_projection_authority: ExternalAuthority = jq_authority
 

@@ -32,7 +32,7 @@ import gunbc.bmc_fan_converge {
 }
 import gunbc.bmc_fan_monitor {
   BmcFanMonitoringCompleted,
-  BmcFanMonitoringCompletedReceipt,
+  BmcFanMonitoringReceipt,
   BmcFanMonitoringRefused,
   BmcFanMonitoringSample,
   bmc_fan_assess_monitoring_samples,
@@ -63,7 +63,7 @@ data cleanup_debt_test_applied_receipt: BmcFanAppliedReceipt = BmcFanAppliedRece
   projected_digest: cleanup_debt_test_digest,
   post_publication_active_digest: cleanup_debt_test_digest,
   post_restart_active_digest: cleanup_debt_test_digest,
-  monitoring: BmcFanMonitoringCompletedReceipt {
+  monitoring: BmcFanMonitoringReceipt {
     sample_count: 12,
     elapsed: second(360),
     required_elapsed: second(360),
