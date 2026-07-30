@@ -62,22 +62,27 @@ data gcloud_auth_print_access_token_deficit_patterns: List<GcloudAuthDeficitPatt
   },
 ]
 
-fn gcloud_stderr_auth_deficit(stderr: String) -> GcloudAuthDeficit? {
-  if string_contains(s: stderr, pattern: "Reauthentication") {
-    Present { value: GcloudReauthenticationRequired }
-  } else if string_contains(s: stderr, pattern: "not currently have an active account") {
-    Present { value: GcloudNoActiveAccountSelected }
-  } else if string_contains(s: stderr, pattern: "Could not load the default credentials") {
-    Present { value: GcloudAdcLoadFailure }
-  } else if string_contains(s: stderr, pattern: "default credentials were not found") {
-    Present { value: GcloudAdcMissing }
-  } else if string_contains(s: stderr, pattern: "invalid_grant") {
-    Present { value: GcloudInvalidGrant }
-  } else if string_contains(s: stderr, pattern: "RefreshError") {
-    Present { value: GcloudRefreshError }
-  } else if string_contains(s: stderr, pattern: "not logged in") {
-    Present { value: GcloudNotLoggedIn }
+data gcloud_auth_stderr_substring_classifier_dissolve_on: String = "🟡 dissolve-on: a cited structured gcloud auth-status surface (for example `gcloud auth print-access-token --format=json` with a typed exit-status / error envelope, or an SDK row that exposes machine-readable auth deficit codes) replaces English-locale stderr substring matching in gcloud_stderr_auth_deficit. Until then this classifier is a declared heuristic over unstable prose: unmatched stderr correctly routes to UnknownRefused via gunbc.auth.access_token_source (fail-closed, not fail-open), but gcloud wording or locale drift is counted debt. Pattern inventory authority: gcloud_auth_print_access_token_deficit_patterns."
+
+fn gcloud_auth_deficit_for_pattern(
+  stderr: String,
+  row: GcloudAuthDeficitPatternRow,
+) -> GcloudAuthDeficit? {
+  if string_contains(s: stderr, pattern: row.stderr_substring) {
+    Present { value: row.deficit }
   } else {
     none
   }
+}
+
+fn gcloud_stderr_auth_deficit(stderr: String) -> GcloudAuthDeficit? {
+  fold(
+    gcloud_auth_print_access_token_deficit_patterns,
+    init: none,
+    f: (selected, row) =>
+      match selected {
+        Present { value: _ } => selected
+        Absent => gcloud_auth_deficit_for_pattern(stderr: stderr, row: row)
+      },
+  )
 }
