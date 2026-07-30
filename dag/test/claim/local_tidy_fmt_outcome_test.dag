@@ -95,6 +95,20 @@ test fn witness_unavailable_recipe_proposes_no_cargo_remedy() -> Bool {
     && has(s: recipe, p: "DID NOT RUN")
 }
 
+test fn witness_unavailable_recipe_advertises_no_bypass() -> Bool {
+  let recipe = unavailable_recipe(status: 127)
+  !has(s: recipe, p: "--no-verify")
+    && !has(s: recipe, p: "skip")
+    && !has(s: recipe, p: "override")
+}
+
+test fn witness_hooks_end_the_unavailable_message_at_the_remedy() -> Bool {
+  let push = expected_githooks_pre_push_sh()
+  let commit = expected_githooks_pre_commit_sh()
+  has(s: push, p: "then re-run.\" >&2")
+    && has(s: commit, p: "then re-run.\" >&2")
+}
+
 test fn witness_unavailable_recipe_is_reachable_for_the_pre_commit_surface_too() -> Bool {
   let recipe = local_tidy_fmt_outcome_recipe(
     outcome: FmtToolUnavailable { program: "cargo", cause: "exit status 127" },

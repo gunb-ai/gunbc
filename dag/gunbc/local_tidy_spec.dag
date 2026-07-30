@@ -89,12 +89,14 @@ data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust 
 
 data local_tidy_fmt_drift_recipe_defork_note: String = "local_tidy_fmt_pre_push_drift_recipe was authored byte-identically in BOTH gunbc.githooks_pre_push_emit and gunbc.githooks_pre_push_plan — one string, two authorities, free to drift (DESIGN section 3). Both now import this row. The pre-commit and pre-push drift recipes stay two rows because they are two genuinely different remedies (git add -u then re-commit, versus commit and re-push), not one concept spelled twice."
 
+data local_tidy_fmt_unavailable_advertises_no_bypass_note: String = "The could-not-run message deliberately advertises NO bypass (review 45175). An earlier draft closed it with 'git's --no-verify skips this hook', which is an escape hatch in exactly the arm that has the least information: a toggle whose only effect is to proceed as if the refusal had not fired, offered at the moment the check could not determine anything (DESIGN section 5, operator ruling 2026-07-05). The only remedy this arm may propose is the one that makes the check able to report — install the toolchain. The DRIFT recipe keeps its pre-existing --no-verify mention untouched, and that asymmetry is the point rather than an oversight: on drift the developer has been told the actual state of the tree and is choosing to skip a known finding, whereas on could-not-run there is no finding to weigh, so advertising the bypass would convert a refusal into a documented default. witness_unavailable_recipe_advertises_no_bypass is the RED control."
+
 fn local_tidy_fmt_tool_unavailable_recipe(program: String, cause: String) -> String {
   concat(
     concat(program, " could not be run ("),
     concat(
       cause,
-      ") — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run; git's --no-verify skips this hook."
+      ") — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run."
     )
   )
 }
