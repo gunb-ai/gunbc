@@ -83,6 +83,7 @@ import gunbc.bmc_fan_projection {
 }
 import std.state_durability {
   CallerAssertedDefinitionLinkage,
+  DurabilityDefinitionLinkageUnavailable,
   DurabilityPerturbationGenerationMismatch,
   StateDurabilityCapabilityVersion,
   StateDurabilityRefused,
@@ -96,8 +97,11 @@ import extdeps.filesystem.linux {
 }
 import gunbc.bmc_converge {
   ApprovedBmcFirmwareArtifact,
+  BmcFanPolicyDurabilityQualified,
+  BmcFanPolicyDurabilityVerdictRefused,
   bmc_fan_durability_refusal_reason,
   bmc_fan_policy_classification,
+  bmc_fan_policy_durability_gate,
   bmc_firmware_classification,
 }
 import gunbc.bmc_intent {
@@ -116,7 +120,7 @@ import gunbc.fleet_intent {
 }
 import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
 import std.nat { Nat }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, list_length }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
@@ -548,6 +552,31 @@ test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool
       s: reason,
       pattern: "does not satisfy the declared state lifetime",
     )
+}
+
+test fn srv4_durability_gate_preserves_typed_linkage_refusal_verdict() -> Bool {
+  match bmc_fan_policy_durability_gate(
+    intent: fleet_bmc_valid_state,
+    host: srv4_host.identity,
+    projection: srv4_bmc_fan_projection_capability,
+    durability_generation: srv4_bmc_fan_perturbation_generation,
+    durability_evidence_construction: Present {
+      value: srv4_bmc_fan_durability_evidence_construction,
+    },
+    durability_evidence: [],
+  ) {
+    BmcFanPolicyDurabilityVerdictRefused {
+      verdict: StateDurabilityRefused {
+        cause: DurabilityDefinitionLinkageUnavailable {
+          count: count,
+          assertions: assertions,
+          realization: _,
+          capability: _,
+        },
+      },
+    } => count == 6 && list_length(items: assertions) == 6
+    BmcFanPolicyDurabilityQualified { qualification: _ } => false
+  }
 }
 
 test fn fleet_quiet_projected_config_digest_sha256_equality_executes() -> Bool {

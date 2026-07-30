@@ -186,6 +186,57 @@ fn state_durability_definition_assertions<Target, ReadbackSubject>(
   )
 }
 
+fn state_definition_linkage_is_caller_asserted(
+  linkage: StateDefinitionLinkage,
+) -> Bool {
+  match linkage {
+    CallerAssertedDefinitionLinkage { reason: _, dissolve_on: _ } => true
+  }
+}
+
+fn state_durability_definition_linkage_gate_is_closed<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> Bool {
+  state_definition_linkage_is_caller_asserted(
+    linkage: admission.realization.definition_linkages.projection,
+  )
+    && state_definition_linkage_is_caller_asserted(
+      linkage: admission.realization.definition_linkages.verifier,
+    )
+    && state_definition_linkage_is_caller_asserted(
+      linkage: admission.realization.definition_linkages.observer,
+    )
+    && state_definition_linkage_is_caller_asserted(
+      linkage: admission.realization.definition_linkages.transport,
+    )
+    && state_definition_linkage_is_caller_asserted(
+      linkage: admission.realization.definition_linkages.actuator,
+    )
+    && state_definition_linkage_is_caller_asserted(
+      linkage: admission.capability_version.definition_linkage,
+    )
+}
+
+fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> StateDurabilityRefusal<Target, ReadbackSubject>? {
+  if state_durability_definition_linkage_gate_is_closed(admission: admission) {
+    let assertions = state_durability_definition_assertions(
+      admission: admission,
+    )
+    Present {
+      value: DurabilityDefinitionLinkageUnavailable {
+        realization: admission.realization,
+        capability: admission.capability_version,
+        assertions: assertions,
+        count: list_length(assertions),
+      },
+    }
+  } else {
+    none
+  }
+}
+
 type StateDurabilityCapabilityVersion {
   version: NonEmptyStr
   definition_linkage: StateDefinitionLinkage
@@ -878,19 +929,34 @@ fn state_durability_verdict<Target, ReadbackSubject>(
                         realization: realizer.realization,
                       },
                     }
-                  SynchronizedCommit => {
-                    let assertions = state_durability_definition_assertions(
+                  SynchronizedCommit =>
+                    match state_durability_definition_linkage_refusal(
                       admission: admission,
-                    )
-                    StateDurabilityRefused {
-                      cause: DurabilityDefinitionLinkageUnavailable {
-                        realization: admission.realization,
-                        capability: admission.capability_version,
-                        assertions: assertions,
-                        count: list_length(assertions),
-                      },
+                    ) {
+                      Present { value: cause } =>
+                        StateDurabilityRefused { cause: cause }
+                      Absent =>
+                        match state_durability_boundaries_evidence_verdict(
+                          required: boundaries,
+                          admission: admission,
+                          capability: realizer,
+                          evidence: evidence,
+                        ) {
+                          StateDurabilityEvidenceRefused { cause: cause } =>
+                            StateDurabilityRefused { cause: cause }
+                          StateDurabilityEvidenceAccepted {
+                            evidence: accepted,
+                          } =>
+                            StateDurabilityQualified {
+                              qualification: DurableLifetimeQualification {
+                                admission: admission,
+                                capability: realizer,
+                                boundaries: boundaries,
+                                evidence: accepted,
+                              },
+                            }
+                        }
                     }
-                  }
                 }
               }
           }

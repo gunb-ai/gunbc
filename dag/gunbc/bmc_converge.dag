@@ -52,6 +52,7 @@ import std.state_durability {
   DurabilityEvidenceAmbiguous,
   DurabilityEvidenceMissing,
   NoDurabilityCommitBarrier,
+  StateDurabilityQualification,
   StateDurabilityQualified,
   StateDurabilityRefused,
   StateDurabilityVerdict,
@@ -97,6 +98,14 @@ type BmcFanPolicyApplyPlan {
 type BmcFanPolicySuitability
   = FanPolicySuitable
   | FanPolicySuitabilityRefused { reason: String }
+
+type BmcFanPolicyDurabilityGate
+  = BmcFanPolicyDurabilityQualified {
+      qualification: StateDurabilityQualification<HostIdentity, BmcFanConfigReadbackSubject>,
+    }
+  | BmcFanPolicyDurabilityVerdictRefused {
+      verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+    }
 
 type BmcFanConfigPersistenceApplySuitability
   = BmcFanConfigPersistenceApplySuitable
@@ -570,16 +579,14 @@ fn bmc_fan_policy_ordinary_convergence(
   }
 }
 
-fn bmc_fan_policy_durability_gated_convergence(
+fn bmc_fan_policy_durability_gate(
   intent: BmcControlPlaneIntent,
   host: HostIdentity,
-  observed: BmcFanPolicyObservation,
-  desired_curve: BmcFanCurve,
   projection: BmcFanPolicyProjectionCapability,
   durability_generation: StatePerturbationGeneration,
   durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
   durability_evidence: List<BmcFanDurabilityEvidence>,
-) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+) -> BmcFanPolicyDurabilityGate {
   let qualification_evidence = match durability_evidence_construction {
     Present {
       value: BmcFanDurabilityEvidenceBuilt { evidence: evidence },
@@ -599,16 +606,31 @@ fn bmc_fan_policy_durability_gated_convergence(
   )
   match durability {
     StateDurabilityRefused { cause: _ } =>
+      BmcFanPolicyDurabilityVerdictRefused { verdict: durability }
+    StateDurabilityQualified { qualification: qualification } =>
+      BmcFanPolicyDurabilityQualified { qualification: qualification }
+  }
+}
+
+fn bmc_fan_policy_durability_gated_convergence(
+  host: HostIdentity,
+  observed: BmcFanPolicyObservation,
+  desired_curve: BmcFanCurve,
+  projection: BmcFanPolicyProjectionCapability,
+  durability_gate: BmcFanPolicyDurabilityGate,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  match durability_gate {
+    BmcFanPolicyDurabilityVerdictRefused { verdict: verdict } =>
       UpsertClassification {
         verdict: UnknownRefused,
         decision: Refuse {
           reason: concat(
             "bmc fan realizer does not satisfy the declared state lifetime: ",
-            bmc_fan_durability_refusal_reason(verdict: durability),
+            bmc_fan_durability_refusal_reason(verdict: verdict),
           ),
         },
       }
-    StateDurabilityQualified { qualification: _ } =>
+    BmcFanPolicyDurabilityQualified { qualification: _ } =>
       if !bmc_fan_policy_projection_live_digest_matches(
         capability: projection,
         observation: observed,
@@ -628,6 +650,32 @@ fn bmc_fan_policy_durability_gated_convergence(
         )
       }
   }
+}
+
+fn bmc_fan_policy_durability_gated_convergence_from_inputs(
+  intent: BmcControlPlaneIntent,
+  host: HostIdentity,
+  observed: BmcFanPolicyObservation,
+  desired_curve: BmcFanCurve,
+  projection: BmcFanPolicyProjectionCapability,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  bmc_fan_policy_durability_gated_convergence(
+    host: host,
+    observed: observed,
+    desired_curve: desired_curve,
+    projection: projection,
+    durability_gate: bmc_fan_policy_durability_gate(
+      intent: intent,
+      host: host,
+      projection: projection,
+      durability_generation: durability_generation,
+      durability_evidence_construction: durability_evidence_construction,
+      durability_evidence: durability_evidence,
+    ),
+  )
 }
 
 fn bmc_fan_policy_classification(
@@ -723,7 +771,7 @@ fn bmc_fan_policy_classification(
                               },
                             }
                           _ =>
-                            bmc_fan_policy_durability_gated_convergence(
+                            bmc_fan_policy_durability_gated_convergence_from_inputs(
                               intent: intent,
                               host: host,
                               observed: observed,
