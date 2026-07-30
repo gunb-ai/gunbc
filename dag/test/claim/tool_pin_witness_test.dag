@@ -24,9 +24,7 @@ import extdeps.pin {
   pin_value_eq,
 }
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
-import extdeps.container.oci.descriptor { OciDescriptor }
-import extdeps.container.oci.pin { oci_descriptor_pin }
-import extdeps.container.oci.types { OciMediaType, OciImageLayerV1TarGzip }
+import extdeps.github.actions { ActionRef, checkout_action }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -221,48 +219,72 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     && (tracked_pin.selection == same.selection)
 }
 
-data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. OciDescriptor is that subject and it is deliberately unlike CliTool: no name field, no software-version field, and its own mediaType and size instead. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a descriptor with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes. Content-addressed subjects carry version: Absent; selection identity is expected_identity alone (review 44953)."
+data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. ActionRef is that subject and it is deliberately unlike CliTool: three plain String fields (owner, repo, ref) against CliTool's NonEmptyStr name, optional VersionConstraint and List<InstallSource> — no name, no version field, no optional, no list. It instantiates Pin, pin_value_eq and admit_pin_integrity unchanged: extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable, because the carrier demanded a tool_name string, so an action reference would have been given a fabricated name or a second pin type would have been minted — the N-types-for-one-axis failure the re-model removes. The subject is CONSUMED, not minted: checkout_action is the live row already in dag/extdeps/github/actions.dag, so this witness re-spells no fact that has a home (DESIGN section 3). It is also the lane's own documented next step rather than a synthetic exercise — hermetic-tool-provisioning-design.md section 2 records that GHA actions are tag-pinned and that a mutable tag makes SHA-pinning the hermetic form, which is exactly Pin<ActionRef>."
 
-data pin_second_subject_soundness_note: String = "review 44662, and the reviewer was right twice about my first attempt. The original second-subject proof instantiated Pin<SccacheBinaryRelease>, which was unsound in two independent ways. (1) GRAIN: one SccacheBinaryRelease carries TWO architecture-specific digests while Pin carries ONE expected_identity, so the model could associate either artifact's digest with the undifferentiated release — an ambiguous substrate state. I had recorded that as a tracked dissolve-on and treated the deferral as sufficient; it is not, and the reason is specific to what this witness IS. A trigger-only deferral is a legitimate way to carry a known gap on a PRODUCTION row, but this row's entire job is to PROVE the dimension composes, and a proof built on an ambiguous instantiation demonstrates ambiguity rather than composition. (2) PARALLEL AUTHORITY: it re-minted the aarch64 hex already owned by dag/extdeps/cache/sccache.dag and re-spelled the release version as a second literal, so two independent copies of one fact could drift — the consume-never-fork violation this whole lane exists to remove, committed inside the witness meant to demonstrate the lane. Both are fixed by CHOOSING A SOUND SUBJECT rather than defending the unsound one: OciDescriptor describes exactly ONE blob by construction, so the grain question cannot arise, and it carries digest: ContentHash natively, so expected_identity is DERIVED from the subject below rather than copied — one fact, one home. The sccache multi-artifact case is now modeled separately at SccacheBinaryArtifact + dag/test/claim/sccache_pin_witness_test.dag (feature:pin-artifact-grain); Digest to ContentHash crosses through extdeps.crypto.hash.sha256_digest_content_hash rather than a silent cast."
+data pin_subject_soundness_pointer_note: String = "review 44850. The soundness condition this proof has to satisfy — A PIN SUBJECT MUST NOT DETERMINE ITS OWN IDENTITY — is stated in full at extdeps.pin pin_subject_must_not_be_self_identifying_note, because it is a fact about the DIMENSION rather than about any one proof of it. It is named here only to say which condition ActionRef was chosen to satisfy: an ActionRef declares no ContentHash, so expected_identity is new information with exactly one home, and the two-writable-authorities divergence the reviewer found in the previous OciDescriptor version cannot be written."
 
-data oci_layer_descriptor: OciDescriptor = OciDescriptor {
-  mediaType: OciImageLayerV1TarGzip
-  digest: "sha256:5b0bcabd1ed22e9fb1310cf6c2dec7cdef19f0ad69efa1f392e94a4333501270" as ContentHash
-  size: 32654
+data pin_second_subject_soundness_note: String = "review 44662, the FIRST unsound attempt at this same proof, kept because the failure repeated and the pattern is the lesson. That version instantiated Pin<SccacheBinaryRelease> and was unsound two ways. (1) GRAIN: one release carries TWO architecture-specific digests while Pin carries ONE expected_identity, so the model could associate either artifact's digest with the undifferentiated release. I had recorded that as a dissolve-on trigger and treated the deferral as sufficient; it is not, and the reason is specific to what this row IS — a trigger-only deferral is legitimate on a PRODUCTION row, but this row's whole job is to prove the dimension composes, and a proof built on an ambiguous instantiation demonstrates ambiguity. (2) PARALLEL AUTHORITY: it re-minted the aarch64 hex already owned by dag/extdeps/cache/sccache.dag and re-spelled the release version as a second literal. Note that SourceGitHubRelease in extdeps.tools carries the SAME two-artifact grain (asset_aarch64 and asset_x86_64), so it was rejected here for reason (1) as well rather than reached for as the obvious neighbour. Both attempts were fixed by CHOOSING A SOUND SUBJECT instead of defending an unsound one, and the third choice is sound on the condition the note above states: an ActionRef declares no identity of its own, so there is one authority by construction, and it describes exactly one commit so the grain question cannot arise. One consequence of not routing through sccache is worth keeping: extdeps.crypto.hash.Digest and std.types.ContentHash are two digest concepts in this corpus and that route would have needed a conversion between them, laundering the fork into this witness. That fork is an unfixed section 3 candidate belonging to no lane here."
+
+data multi_artifact_pin_grain_finding_note: String = "A REAL FINDING kept even though its specimen is no longer instantiated above — the observation stands on the corpus, not on the witness. extdeps.cache.sccache SccacheBinaryRelease carries TWO digests because one release publishes two artifacts, and extdeps.tools SourceGitHubRelease carries asset_aarch64 and asset_x86_64 for the same reason, while Pin.expected_identity is one ContentHash. So for multi-artifact subjects the pin subject is the ARTIFACT (release x platform), NOT the release, and any future Pin over such a subject must model that product first. This is why both were rejected as the second-consumer proof rather than pinned with a declared caveat. dissolve-on: feature:pin-artifact-grain — a release x platform artifact projection exists at its own authority, at which point Pin over an sccache or GitHub-release artifact becomes sound and this note deletes."
+
+data second_subject_double_bound_row_finding_note: String = "review 44886, and it surfaced a live CORPUS defect that has nothing to do with pinning. The first version of this proof consumed upload_artifact_action, and the reviewer reported its ref as v4 while I had read v2. Both readings are correct, which is the defect: dag/extdeps/github/actions.dag declares upload_artifact_action TWICE at module top level — ref v2 and ref v4 — and download_artifact_action twice likewise. A double-bound name in one module is an ERROR under the namespace-resolution authority (unbound/double-bound = error), but nothing refuses it today; resolution is silently last-wins, which is why actions/upload-artifact@v4 is what reaches the emitted .github/workflows/ci.yml while the v2 rows sit dead and shadowed. Introduced 2026-07-11 by #6472. It has a PRODUCTION consumer, dag/gunbc/ci_workflow.dag, so the workflow that runs this repo's CI is generated from an ambiguously bound name and no reader of the source can tell which binding won. That is reported separately rather than fixed here: it is a different lane, ci_workflow.dag is load-bearing, and a witness PR is the wrong vehicle for it. What this witness owes is only to not REST on the ambiguity, so it consumes checkout_action instead — grep-verified as the single binding of that name, along with setup_rust_action, cache_action and google_auth_action."
+
+data pin_channel_restates_subject_reference_finding_note: String = "THE FINDING THIS SECOND SUBJECT EARNED, which is the actual argument for having one. A generic's second consumer is supposed to expose where the dimension was shaped around its first consumer, and it did. ActionRef.ref is a moving GitHub major tag (v5 tracks the latest 5.x), so it is a CONSTRAINT-like reference, not an identity — which is why Pin<ActionRef> is sound where Pin<OciDescriptor> was not, and why version 5.0.1 above is a SELECTION satisfying that reference rather than a restatement of it. That is the same requirement-versus-selection distinction already defended for CliTool.min_version, and it holds here for the same reason. But it does NOT extend to the selection axis: had this pin been written with TrackedChannel { channel: \"v5\" }, the channel string would RESTATE subject.ref, two writable fields holding one fact — the same duplication shape review 44850 rejected on the identity axis, one axis over. The tell is that PinSelection.TrackedChannel.channel is subject-agnostic while the channel it names may already live ON the subject: for a CliTool the channel is external (latest), for an ActionRef it IS subject.ref. So channel is arguably a subject PROJECTION wearing the shape of a generic field. Not fixed here, and deliberately not papered over with a caveat: the fix is either a projection on each instantiation (the cli_tool_pin_key_of shape, which is where subject-specific projections already belong) or a selection variant that names no channel of its own, and choosing between those is dimension surgery that wants its own review rather than a rider on a witness. dissolve-on: feature:pin-selection-channel-projection. Until then this witness uses ExactPin, which has no channel field and therefore cannot exhibit the duplication."
+
+data action_ref_pinned_identity: ContentHash = "sha256-checkout-v5-commit" as ContentHash
+
+data action_ref_other_identity: ContentHash = "sha256-checkout-v5-other-commit" as ContentHash
+
+data action_ref_synthetic_identity_note: String = "The two identities above are OBVIOUSLY synthetic and deliberately so, in the same style as cargo_identity at the top of this module. Writing a real 40-hex commit SHA here and calling it actions/upload-artifact@v2 would fabricate an upstream fact inside a fail-closed carrier — the failure admit_legacy_cli_tool's own note forbids — and it would ALSO create a second authority for that SHA the day the lane pins the action for real. What this witness proves is structural (the dimension admits the subject, and refuses on mismatch); it makes no claim about upstream truth, so a value that could never be mistaken for a real digest is the honest fixture."
+
+data checkout_pin: Pin<ActionRef> = Pin {
+  subject: checkout_action,
+  version: Present { value: "5.0.1" as VersionIdentity },
+  expected_identity: action_ref_pinned_identity,
+  selection: ExactPin,
 }
 
-data oci_descriptor_pin: Pin<OciDescriptor> = oci_descriptor_pin(descriptor: oci_layer_descriptor)
-
-test fn oci_descriptor_pin_has_no_software_version_axis() -> Bool {
-  match oci_descriptor_pin.version {
-    Absent => true
-    Present { value: _ } => false
-  }
+data checkout_pin_disagreeing: Pin<ActionRef> = Pin {
+  subject: checkout_action,
+  version: Present { value: "5.0.1" as VersionIdentity },
+  expected_identity: action_ref_other_identity,
+  selection: ExactPin,
 }
 
 test fn pin_composes_over_a_structurally_different_subject() -> Bool {
   match admit_pin_integrity(
-    pin: oci_descriptor_pin,
-    observed_identity: oci_layer_descriptor.digest,
+    pin: checkout_pin,
+    observed_identity: action_ref_pinned_identity,
   ) {
-    PinIntegrityAdmitted { pin: p } => p.subject.size == 32654
+    PinIntegrityAdmitted { pin: p } =>
+      (p.subject.repo == "checkout") && (p.subject.owner == "actions")
     PinRefused { subject: _, cause: _ } => false
   }
 }
 
-test fn second_subject_expected_identity_is_derived_not_reminted() -> Bool {
-  (oci_descriptor_pin.expected_identity as String) == (oci_layer_descriptor.digest as String)
+test fn second_subject_identity_is_the_pins_own_fact_not_the_subjects() -> Bool {
+  ((checkout_pin.subject.ref as String) == (checkout_pin_disagreeing.subject.ref as String))
+    && (pin_value_eq(a: checkout_pin, b: checkout_pin_disagreeing) == false)
+    && match admit_pin_integrity(
+         pin: checkout_pin_disagreeing,
+         observed_identity: action_ref_pinned_identity,
+       ) {
+         PinIntegrityAdmitted { pin: _ } => false
+         PinRefused { subject: _, cause: _ } => true
+       }
 }
 
-test fn second_subject_refuses_on_digest_mismatch_too() -> Bool {
-  match admit_pin_integrity(pin: oci_descriptor_pin, observed_identity: other_identity) {
+data second_subject_identity_test_rationale_note: String = "WHAT THE TEST ABOVE REPLACED, and why the replacement discriminates where the original did not. The previous version asserted that Pin.expected_identity equalled the subject's own digest — a check that could only fail if someone edited the literal beside it, so it validated a value this file hand-wrote rather than any behavior of the dimension. Worse, it asserted the very duplication review 44850 identified as the defect. The test above instead pins two DIFFERENT identities to the SAME subject value and shows three things at once: the subject halves are identical (same mutable ref), the pins are nevertheless not value-equal, and admission REFUSES the disagreeing pin against the first identity. So expected_identity is load-bearing and independent — the pin supplies what the subject lacks — and there is no shadow copy inside the subject for admission to fall back on. This goes red on a real change (drop expected_identity from pin_value_eq, or make admission read a subject field, and it fails), which the original could not."
+
+test fn second_subject_refuses_on_identity_mismatch_too() -> Bool {
+  match admit_pin_integrity(pin: checkout_pin, observed_identity: action_ref_other_identity) {
     PinIntegrityAdmitted { pin: _ } => false
     PinRefused { subject: subj, cause: c } =>
-      (subj.size == 32654)
+      (subj.repo == "checkout")
         && match c {
              ObservedIdentityMismatch { expected: e, observed: o } =>
-               ((e as String) == (oci_layer_descriptor.digest as String))
-                 && ((o as String) == (other_identity as String))
+               ((e as String) == (action_ref_pinned_identity as String))
+                 && ((o as String) == (action_ref_other_identity as String))
              ConstraintIsNotIdentity { constraint: _ } => false
              PinAbsent => false
              TrackedResolutionUnrecorded { channel: _ } => false
