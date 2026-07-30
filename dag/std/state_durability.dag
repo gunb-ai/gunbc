@@ -186,6 +186,7 @@ fn state_durability_definition_assertions<Target, ReadbackSubject>(
   )
 }
 
+<<<<<<< HEAD
 fn state_definition_linkage_is_caller_asserted(
   linkage: StateDefinitionLinkage,
 ) -> Bool {
@@ -237,6 +238,8 @@ fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
   }
 }
 
+=======
+>>>>>>> origin/main
 type StateDurabilityCapabilityVersion {
   version: NonEmptyStr
   definition_linkage: StateDefinitionLinkage
@@ -929,6 +932,7 @@ fn state_durability_verdict<Target, ReadbackSubject>(
                         realization: realizer.realization,
                       },
                     }
+<<<<<<< HEAD
                   SynchronizedCommit =>
                     match state_durability_definition_linkage_refusal(
                       admission: admission,
@@ -957,6 +961,21 @@ fn state_durability_verdict<Target, ReadbackSubject>(
                             }
                         }
                     }
+=======
+                  SynchronizedCommit => {
+                    let assertions = state_durability_definition_assertions(
+                      admission: admission,
+                    )
+                    StateDurabilityRefused {
+                      cause: DurabilityDefinitionLinkageUnavailable {
+                        realization: admission.realization,
+                        capability: admission.capability_version,
+                        assertions: assertions,
+                        count: list_length(assertions),
+                      },
+                    }
+                  }
+>>>>>>> origin/main
                 }
               }
           }

@@ -121,27 +121,43 @@ fn bmc_firmware_version_matches_track(
     && firmware.version.major == track.major_version
 }
 
+<<<<<<< HEAD
 fn bmc_firmware_version_intent_verdict(
   firmware: BmcFirmwareVersion,
   intent: BmcFirmwareIntent,
+=======
+fn bmc_firmware_observation_intent_verdict(
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation
+>>>>>>> origin/main
 ) -> BmcFirmwareIntentObservationVerdict {
   match intent {
     BmcFirmwareUnpinned => BmcFirmwareIntentSatisfied
     BmcFirmwareTrackRequired { track: required } =>
       if bmc_firmware_version_matches_track(
+<<<<<<< HEAD
         firmware: firmware,
         track: required,
+=======
+        firmware: observation.firmware,
+        track: required
+>>>>>>> origin/main
       ) {
         BmcFirmwareIntentSatisfied
       } else {
         BmcFirmwareIntentMismatch {
           required: required,
+<<<<<<< HEAD
           observed: firmware,
+=======
+          observed: observation.firmware,
+>>>>>>> origin/main
         }
       }
   }
 }
 
+<<<<<<< HEAD
 fn bmc_firmware_observation_intent_verdict(
   intent: BmcFirmwareIntent,
   observation: BmcFirmwareObservation
@@ -152,6 +168,8 @@ fn bmc_firmware_observation_intent_verdict(
   )
 }
 
+=======
+>>>>>>> origin/main
 fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) -> Bool {
   row.capabilities |> any(c => c == cap)
 }

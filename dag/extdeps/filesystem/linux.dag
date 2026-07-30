@@ -99,6 +99,7 @@ type LinuxFilesystemSynchronization
   = NoExplicitFilesystemSynchronization
   | SyncAllFilesystemsAfterReplacement
 
+<<<<<<< HEAD
 type LinuxFilePublicationProtocol
   = LinuxSynchronizedRenameReplacePublication
   | LinuxFilePublicationProtocolUnsynchronized {
@@ -109,6 +110,14 @@ type LinuxFilePublicationProtocol
     }
 
 data linux_synchronized_rename_replace_publication: LinuxFilePublicationProtocol = LinuxSynchronizedRenameReplacePublication
+=======
+type LinuxFilePublicationProtocol {
+  stage_in_target_directory: Bool
+  staged_content_validated: Bool
+  replacement: LinuxFileReplacement
+  synchronization: LinuxFilesystemSynchronization
+}
+>>>>>>> origin/main
 
 fn linux_filesystem_kind_from_mount_type(
   mount_type: NonEmptyStr,
@@ -487,4 +496,8 @@ fn linux_overlay_observation_is_flash_backed(
     )
 }
 
+<<<<<<< HEAD
 data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. Synchronized durability commit is admitted only through the LinuxSynchronizedRenameReplacePublication unit variant; partial protocol records remain explicitly unsynchronized. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
+=======
+data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
+>>>>>>> origin/main

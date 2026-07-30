@@ -17,6 +17,7 @@ data csi_end: String = "m"
 data ansi_escape: String = "\x1b"
 data ansi_carriage_return: String = "\x0d"
 data ansi_line_feed: String = "\n"
+data ansi_horizontal_tab: String = "\x09"
 
 data ansi_c0_controls: List<String> = [
   "\x00",
@@ -28,7 +29,7 @@ data ansi_c0_controls: List<String> = [
   "\x06",
   "\x07",
   "\x08",
-  "\x09",
+  ansi_horizontal_tab,
   ansi_line_feed,
   "\x0b",
   "\x0c",
@@ -98,11 +99,26 @@ fn ansi_erase_entire_line() -> String {
   concat(csi_esc, "2K")
 }
 
-fn ansi_text_contains_terminal_control(text: String) -> Bool {
+data ansi_content_admissible_control_note: String = "LF and TAB are C0 controls but they are not CURSOR controls, and conflating the two cost a located diagnosis. The predicate this replaces (ansi_text_contains_terminal_control, deleted with its last consumer rather than left dead) refused on ANY roster member, so it refused on any multi-line or tab-bearing text — and a captured `systemctl status` diagnostic is multi-line by construction. The srv1 deploy refusal of 2026-07-29 therefore rendered as 'rendered text cannot contain terminal cursor-control bytes' INSTEAD of the ServiceNotReady it had located, which reads as corrupt output rather than as a stale deployment (diagnosed in docs/plans/srv1-deploy-serialization-and-false-greens.md §3.3). The roster is NOT edited — it is the cited ECMA-48 C0/C1 set and stays whole, one authority — so the exclusion is expressed as a predicate over it rather than as a second list, which would fork the citation (§3). TAB is admissible everywhere: it moves the cursor horizontally within a line and cannot escape the erase-line invariant. LF is admissible CONDITIONALLY, and the condition is derived rather than chosen — see terminal.dag's admit-against-projection rule."
+
+fn ansi_control_is_content_admissible(c: String) -> Bool {
+  c == ansi_horizontal_tab || c == ansi_line_feed
+}
+
+fn ansi_text_contains_cursor_control(text: String) -> Bool {
   fold(ansi_terminal_controls, init: false, f: (found, control) =>
-    found || string_contains(s: text, pattern: control)
+    if ansi_control_is_content_admissible(c: control) {
+      found
+    } else {
+      found || string_contains(s: text, pattern: control)
+    }
   )
 }
+
+fn ansi_text_contains_line_feed(text: String) -> Bool {
+  string_contains(s: text, pattern: ansi_line_feed)
+}
+
 
 type PaletteIndex = Int
 

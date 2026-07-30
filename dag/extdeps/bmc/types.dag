@@ -5,7 +5,10 @@ import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
 }
+<<<<<<< HEAD
 import extdeps.crypto.hash { Digest }
+=======
+>>>>>>> origin/main
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -371,6 +374,7 @@ fn bmc_fan_duty_decision(
   }
 }
 
+<<<<<<< HEAD
 fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
   match decision {
     BmcFanDutyFromCurve { reading: _, duty: duty } => Present { value: duty }
@@ -416,6 +420,8 @@ fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> Percent? {
   }
 }
 
+=======
+>>>>>>> origin/main
 type BmcFanControllerShape
   = FanPidIndependentEntries { entry_names: List<NonEmptyStr> }
   | FanPidAggregatedEntry {
@@ -423,6 +429,7 @@ type BmcFanControllerShape
       tach_inputs: List<NonEmptyStr>,
     }
 
+<<<<<<< HEAD
 type BmcFanAggregatedControllerTopology {
   entry_name: NonEmptyStr
   tach_inputs: List<NonEmptyStr>
@@ -456,11 +463,16 @@ fn bmc_fan_controller_shape_independent_entry_names(
   }
 }
 
+=======
+>>>>>>> origin/main
 type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
   evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
+<<<<<<< HEAD
   active_config_digest: Digest
+=======
+>>>>>>> origin/main
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr

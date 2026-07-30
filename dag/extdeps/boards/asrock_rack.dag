@@ -131,15 +131,21 @@ data asrock_altrad8ud_factory_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   ),
 }
 
+<<<<<<< HEAD
 data asrock_altrad8ud_factory_fan_config_digest: Digest = sha256_digest(
   hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
 )
 
+=======
+>>>>>>> origin/main
 data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+<<<<<<< HEAD
   active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
+=======
+>>>>>>> origin/main
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
@@ -165,7 +171,10 @@ data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: BmcFanPolicyObserv
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+<<<<<<< HEAD
   active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
+=======
+>>>>>>> origin/main
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
