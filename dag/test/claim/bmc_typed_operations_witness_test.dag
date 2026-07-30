@@ -279,6 +279,21 @@ test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
   }
 }
 
+test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "test: /usr/share/swampd/config.json: permission denied",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "test: /usr/share/swampd/config.json: permission denied"
+    _ => false
+  }
+}
+
 test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
   match openbmc_path_probe_result(
     remote: PasswordSshExecResult {
@@ -318,6 +333,21 @@ test fn inactive_service_is_observed_not_transport_refused() -> Bool {
     },
   ) {
     OpenBmcBoolObserved { value } => !value
+    _ => false
+  }
+}
+
+test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "inactive\n",
+      stderr: "systemctl: failed to query unit state",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "systemctl: failed to query unit state"
     _ => false
   }
 }

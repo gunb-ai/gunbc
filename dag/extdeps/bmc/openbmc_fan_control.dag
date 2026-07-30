@@ -247,10 +247,18 @@ fn openbmc_path_probe_result(
 ) -> OpenBmcBoolResult {
   if remote.exit_code == 0 && remote.success {
     OpenBmcBoolObserved { value: true }
-  } else if remote.exit_code == 1 && !remote.success {
+  } else if remote.exit_code == 1
+    && !remote.success
+    && trim(remote.stdout) == ""
+    && trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: false }
   } else {
-    OpenBmcBoolRefused { reason: remote.stderr }
+    let reason = if trim(remote.stderr) == "" {
+      "path predicate response is not the expected positive or negative shape"
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
   }
 }
 
@@ -259,10 +267,18 @@ fn openbmc_service_active_result(
 ) -> OpenBmcBoolResult {
   if remote.exit_code == 0 && remote.success {
     OpenBmcBoolObserved { value: true }
-  } else if remote.exit_code == 3 && !remote.success {
+  } else if remote.exit_code == 3
+    && !remote.success
+    && trim(remote.stdout) == "inactive"
+    && trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: false }
   } else {
-    OpenBmcBoolRefused { reason: remote.stderr }
+    let reason = if trim(remote.stderr) == "" {
+      "service-active response is not the expected active or inactive shape"
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
   }
 }
 
