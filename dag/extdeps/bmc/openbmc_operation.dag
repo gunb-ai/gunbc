@@ -10,14 +10,14 @@ import std.measure {
 }
 import std.types { Bool, Int, List, NonEmptyStr }
 
-data openbmc_busctl_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = openbmc_busctl_authority
+data openbmc_busctl_authority: ExternalAuthority = extdeps_external_authority_anchor
 
 type OpenBmcOperation
   = OpenBmcReadFile { path: NonEmptyStr }
