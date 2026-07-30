@@ -263,7 +263,7 @@ test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
 
 test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   let accepted = accepted_roadmap_node_ids()
-  count(accepted) == 8
+  count(accepted) == 9
     && (accepted |> any(a => a == "namespace-occurrence-transport"))
     && (accepted |> any(a => a == "pderive-typesafe-nullary-reflection"))
     && (accepted |> any(a => a == "pderive-static-supplemental-contract"))
