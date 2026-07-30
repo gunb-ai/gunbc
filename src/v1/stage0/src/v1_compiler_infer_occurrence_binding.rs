@@ -70,6 +70,16 @@ pub fn global_bare_chain_owner_path_from_decide(
     }
 }
 
+pub fn global_bare_chain_is_ambiguous_from_decide(
+    env_module_path: String,
+    owners: Rc<Vec<String>>,
+) -> bool {
+    match (*project_module_path_binding_decide(env_module_path.clone(), owners.clone())).clone() {
+        ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => true,
+        _ => false,
+    }
+}
+
 pub fn global_bare_chain_ambiguity_labels_from_decide(
     env_module_path: String,
     owners: Rc<Vec<String>>,

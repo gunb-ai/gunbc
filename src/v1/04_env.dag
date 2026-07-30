@@ -10,6 +10,7 @@ import std.algebra { FreeMonoid, Empty, Cons }
 import v1.compiler.infer_occurrence_binding {
   global_bare_chain_owner_path_from_decide,
   global_bare_chain_ambiguity_labels_from_decide,
+  global_bare_chain_is_ambiguous_from_decide,
 }
 
 
@@ -789,7 +790,10 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       if name_resolution_policy_is_namespace_only() {
         let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
-        (chain |> count) >= 2
+        global_bare_chain_is_ambiguous_from_decide(
+          env_module_path: env.module_path,
+          owners: chain |> map(c => c.module_path),
+        )
       } else {
         global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
       }

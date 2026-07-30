@@ -11,7 +11,8 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_owner_path_from_decide,
+    global_bare_chain_ambiguity_labels_from_decide, global_bare_chain_is_ambiguous_from_decide,
+    global_bare_chain_owner_path_from_decide,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1442,7 +1443,16 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
                 {
                     let chain =
                         global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                    ((chain.clone().len() as i64) >= 2)
+                    global_bare_chain_is_ambiguous_from_decide(
+                        env.module_path.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for c in chain.clone().iter().cloned() {
+                                __result.push(c.module_path.clone());
+                            }
+                            __result
+                        }),
+                    )
                 }
             } else {
                 (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)

@@ -15,13 +15,17 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
-    lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
-    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
+    global_bare_chain_candidates, global_bare_unique_chain_candidate, lookup_binding_by_name,
+    lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
+    GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_lookup::func_sig_if_resolved;
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
+use crate::v1_compiler_infer_occurrence_binding::{
+    module_path_owner_binding_decide, ModulePathBindingProjection,
+};
 use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -23828,9 +23832,13 @@ pub fn containment_resolve_fn_v1_for_module(
                     module_path.to_string(),
                     candidates.clone(),
                 );
-                match chain.len() {
-                    0 => ContainmentResolve::Unresolved,
-                    1 => {
+                let owners: Rc<im::Vector<String>> =
+                    Rc::new(chain.iter().map(|cand| cand.module_path.clone()).collect());
+                match (*module_path_owner_binding_decide(owners)).clone() {
+                    ModulePathBindingProjection::ModulePathBindingMiss => {
+                        ContainmentResolve::Unresolved
+                    }
+                    ModulePathBindingProjection::ModulePathBindingHit { .. } => {
                         if let Some(cand) =
                             crate::v1_compiler_infer_env::global_bare_unique_chain_candidate(
                                 module_path.to_string(),
@@ -23857,7 +23865,9 @@ pub fn containment_resolve_fn_v1_for_module(
                         }
                         ContainmentResolve::Unresolved
                     }
-                    _ => ContainmentResolve::Ambiguous,
+                    ModulePathBindingProjection::ModulePathBindingAmbiguous { .. } => {
+                        ContainmentResolve::Ambiguous
+                    }
                 }
             } else {
                 ContainmentResolve::Ambiguous

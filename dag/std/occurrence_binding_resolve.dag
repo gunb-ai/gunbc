@@ -13,18 +13,12 @@ import std.occurrence_identity {
   OccurrenceId,
   OccurrenceContainmentPath,
   OccurrenceTransport,
-  OccurrenceCategory,
+  OccurrenceCategoryBindingVerdict,
   OccurrenceIndexEntry,
   DeclarationOccurrence,
   ReferenceOccurrence,
-  TypeOccurrence,
-  LexicalValueOccurrence,
-  CallableOccurrence,
-  ConstructorOccurrence,
-  FieldOccurrence,
-  MethodOccurrence,
-  NamespaceSegmentOccurrence,
   occurrence_containment_paths_equal,
+  occurrence_category_binding_verdict,
 }
 
 data occurrence_binding_resolve_authority_note: String = "THE one name-decision function for namespace canonical binding. Every type, value, and callee resolution path routes candidate populations through occurrence_binding_decide, which calls occurrence_binding_from_candidates exactly once. Candidate producers enumerate structurally admissible declarations; cardinality is never decided elsewhere."
@@ -92,51 +86,6 @@ fn list_to_free_monoid<T>(items: List<T>) -> FreeMonoid<T> {
     init: Empty,
     f: (acc, item) => free_monoid_append(acc: acc, item: item),
   )
-}
-
-fn occurrence_category_admissible(
-  reference: OccurrenceCategory,
-  declaration: OccurrenceCategory
-) -> Bool {
-  match reference {
-    TypeOccurrence =>
-      match declaration {
-        TypeOccurrence => true
-        _ => false
-      }
-    LexicalValueOccurrence =>
-      match declaration {
-        LexicalValueOccurrence => true
-        CallableOccurrence => true
-        ConstructorOccurrence => true
-        _ => false
-      }
-    CallableOccurrence =>
-      match declaration {
-        CallableOccurrence => true
-        _ => false
-      }
-    ConstructorOccurrence =>
-      match declaration {
-        ConstructorOccurrence => true
-        _ => false
-      }
-    FieldOccurrence =>
-      match declaration {
-        FieldOccurrence => true
-        _ => false
-      }
-    MethodOccurrence =>
-      match declaration {
-        MethodOccurrence => true
-        _ => false
-      }
-    NamespaceSegmentOccurrence =>
-      match declaration {
-        NamespaceSegmentOccurrence => true
-        _ => false
-      }
-  }
 }
 
 fn occurrence_index_entry_for_declaration(
@@ -231,10 +180,13 @@ fn declaration_matches_reference_segment(
   ) {
     Present { value: entry } =>
       entry.projection.authored_name == segment
-        && occurrence_category_admissible(
+        && match occurrence_category_binding_verdict(
           reference: reference.category,
           declaration: declaration.category,
-        )
+        ) {
+          OccurrenceCategoryBindingAdmissible => true
+          OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => false
+        }
         && declaration_exposed_on_reference_chain(
           declaration: declaration,
           reference: reference,

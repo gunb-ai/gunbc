@@ -41,6 +41,81 @@ type OccurrenceCategory
   | FieldOccurrence
   | MethodOccurrence
 
+type OccurrenceCategoryBindingVerdict
+  = OccurrenceCategoryBindingAdmissible
+  | OccurrenceCategoryBindingInadmissible {
+      reference: OccurrenceCategory,
+      declaration: OccurrenceCategory,
+    }
+
+data occurrence_category_binding_verdict_note: String = "Canonical reference×declaration category compatibility surface (review 44773 predicate-dissolution): consumers match OccurrenceCategoryBindingVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct."
+
+fn occurrence_category_binding_verdict(
+  reference: OccurrenceCategory,
+  declaration: OccurrenceCategory
+) -> OccurrenceCategoryBindingVerdict {
+  match reference {
+    TypeOccurrence =>
+      match declaration {
+        TypeOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    LexicalValueOccurrence =>
+      match declaration {
+        LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
+        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    CallableOccurrence =>
+      match declaration {
+        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    ConstructorOccurrence =>
+      match declaration {
+        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    FieldOccurrence =>
+      match declaration {
+        FieldOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    MethodOccurrence =>
+      match declaration {
+        MethodOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    NamespaceSegmentOccurrence =>
+      match declaration {
+        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+  }
+}
+
 type OccurrenceProjection {
   occurrence: OccurrenceId
   authored_name: String
