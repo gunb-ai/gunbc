@@ -2047,19 +2047,22 @@ pub fn with_expected_where_refinement_diags(
     scope: Rc<InferScope>,
 ) -> Rc<InferResult> {
     match expected.clone() {
-        Some(expected_ty) => Rc::new(InferResult {
-            typed: result.typed.clone(),
-            diagnostics: v1_rt::concat(
-                result.diagnostics.clone(),
-                where_refinement_mismatch_diags(
-                    expected_ty.clone(),
-                    result.typed.clone(),
-                    result.typed.clone().span.clone(),
-                    scope.module_name.clone(),
-                    scope.type_env.clone(),
+        Some(expected_ty) => match (*result.typed.clone().expr_data.clone()).clone() {
+            ExprData::ExprCast => result.clone(),
+            _ => Rc::new(InferResult {
+                typed: result.typed.clone(),
+                diagnostics: v1_rt::concat(
+                    result.diagnostics.clone(),
+                    where_refinement_mismatch_diags(
+                        expected_ty.clone(),
+                        result.typed.clone(),
+                        result.typed.clone().span.clone(),
+                        scope.module_name.clone(),
+                        scope.type_env.clone(),
+                    ),
                 ),
-            ),
-        }),
+            }),
+        },
         None => result.clone(),
     }
 }
@@ -6304,6 +6307,13 @@ match bare_s.clone() {
                 Some(d) => Rc::new(vec![d.clone()]),
                 None => Rc::new(vec![]),
             };
+            let cast_refinement_diags = where_refinement_mismatch_diags(
+                target_type.clone(),
+                inner_typed.clone(),
+                span.clone(),
+                scope.module_name.clone(),
+                scope.type_env.clone(),
+            );
             let cast_texpr = make_expr_node(
                 Rc::new(ExprData::ExprCast),
                 Rc::new(vec![inner_typed.clone(), target_type.clone()]),
@@ -6314,7 +6324,10 @@ match bare_s.clone() {
             );
             Rc::new(InferResult {
                 typed: cast_texpr.clone(),
-                diagnostics: v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                diagnostics: v1_rt::concat(
+                    v1_rt::concat(inner_diags.clone(), cast_diags.clone()),
+                    cast_refinement_diags.clone(),
+                ),
             })
         }
         ExprData::ExprForEach => {

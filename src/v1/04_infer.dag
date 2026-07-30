@@ -1216,18 +1216,22 @@ fn where_refinement_mismatch_diags(
 fn with_expected_where_refinement_diags(result: InferResult, expected: Node?, scope: InferScope) -> InferResult {
   match expected {
     Present { value: expected_ty } =>
-      InferResult {
-        typed: result.typed,
-        diagnostics: concat(
-          result.diagnostics,
-          where_refinement_mismatch_diags(
-            formal: expected_ty,
-            value_expr: result.typed,
-            span: result.typed.span,
-            module_name: scope.module_name,
-            type_env: scope.type_env
-          )
-        )
+      match result.typed.expr_data {
+        ExprCast => result
+        _ =>
+          InferResult {
+            typed: result.typed,
+            diagnostics: concat(
+              result.diagnostics,
+              where_refinement_mismatch_diags(
+                formal: expected_ty,
+                value_expr: result.typed,
+                span: result.typed.span,
+                module_name: scope.module_name,
+                type_env: scope.type_env
+              )
+            )
+          }
       }
     Absent => result
   }
@@ -3193,10 +3197,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: d } => [d]
         Absent => []
       }
+      let cast_refinement_diags = where_refinement_mismatch_diags(
+        formal: target_type,
+        value_expr: inner_typed,
+        span: span,
+        module_name: scope.module_name,
+        type_env: scope.type_env
+      )
       let cast_texpr = make_expr_node(expr_data: ExprCast, children: [inner_typed, target_type], inferred: Present { value: Resolved { node: target_type } }, span: span)
       InferResult {
         typed: cast_texpr,
-        diagnostics: concat(inner_diags, cast_diags)
+        diagnostics: concat(concat(inner_diags, cast_diags), cast_refinement_diags)
       }
 
     ExprForEach =>

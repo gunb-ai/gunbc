@@ -105,6 +105,15 @@ fn w_positive_int_cast_literal_green() -> Bool {
   )
 }
 
+fn w_positive_int_cast_literal_discard_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_discard_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn f() -> Unit { 0 as PositiveInt }\n",
+    "src/whereref_cast_discard_red.rs",
+    [],
+    []
+  )
+}
+
 fn w_non_empty_string_cast_literal_red() -> Bool {
   compile_dag_rust_emit_check(
     "module whereref_nonempty_cast_red\nimport std.types { NonEmptyStr }\nfn bad() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
@@ -165,6 +174,10 @@ test fn where_refinement_cast_literal_positive_int_refuses() -> Bool {
 
 test fn where_refinement_cast_literal_positive_int_accepts() -> Bool {
   w_positive_int_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_discard_refuses() -> Bool {
+  !w_positive_int_cast_literal_discard_red()
 }
 
 test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool {
