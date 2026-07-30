@@ -351,3 +351,18 @@ test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
     _ => false
   }
 }
+
+test fn failed_service_state_is_preserved_in_refusal() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "failed\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "service-active response is not the expected active or inactive shape; observed stdout: failed"
+    _ => false
+  }
+}
