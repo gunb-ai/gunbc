@@ -6,6 +6,7 @@ import extdeps.boards.types { BaseboardModel, AsrockRackAltrad8ud1l2t }
 import extdeps.boards.asrock_rack { altrad8ud_fleet_fan_profile }
 import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, command_over_transport }
 import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
+import extdeps.bmc.fan_control_emit { fan_profile_stepwise_json }
 
 data bmc_fan_converge_authority_note: NonEmptyStr = "Durable/uniform fleet fan-control convergence. Every ALTRAD8UD BMC must run altrad8ud_fleet_fan_profile (the 2.07.00 vendor curve); this module is the single authority that pairs each fleet BMC with that desired profile and defines the fail-closed convergence verdict. It exists so the good curve survives BMC reboots/reflashes and no BMC drifts back to a lazy curve (as srv4 had). The profile is topology-agnostic by construction (curve + floor + failsafe, no per-rotor PID / tach enumeration), so the apply is a read-modify-write PATCH of the TEMP_SOC stepwise curve into each BMC's existing config-asrr.json — preserving that BMC's own sensor/fan topology — never a whole-file overwrite."
 
@@ -71,6 +72,10 @@ fn bmc_fan_converge_verdict(target: BmcFanConvergeTarget, observation: BmcFanObs
     FanObserveUnavailable { reason: r } =>
       FanConvergeRefused { bmc_host: target.bmc_host, reason: concat("fan-curve observation unavailable — ", r) }
   }
+}
+
+fn fleet_fan_desired_stepwise_json() -> String {
+  fan_profile_stepwise_json(profile: altrad8ud_fleet_fan_profile)
 }
 
 fn bmc_fan_restart_command(target: BmcFanConvergeTarget) -> ArgvCommand {

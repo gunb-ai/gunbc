@@ -1,0 +1,64 @@
+module test.claim.fan_control_emit_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fan_emit_sample_2_07_00_curve() -> StepwiseFanCurve {
+  StepwiseFanCurve {
+    sensor: "TEMP_SOC",
+    failsafe: percent(75),
+    points: [
+      FanCurvePoint { reading: celsius(40), output: percent(30) },
+      FanCurvePoint { reading: celsius(55), output: percent(40) },
+      FanCurvePoint { reading: celsius(65), output: percent(50) },
+      FanCurvePoint { reading: celsius(75), output: percent(75) },
+      FanCurvePoint { reading: celsius(85), output: percent(100) },
+    ],
+  }
+}
+
+fn fan_emit_expected_2_07_00_json() -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "reading", value: json_object(members: [
+      json_kv(key: "0", value: json_int(n: 40)),
+      json_kv(key: "1", value: json_int(n: 55)),
+      json_kv(key: "2", value: json_int(n: 65)),
+      json_kv(key: "3", value: json_int(n: 75)),
+      json_kv(key: "4", value: json_int(n: 85)),
+    ])),
+    json_kv(key: "output", value: json_object(members: [
+      json_kv(key: "0", value: json_int(n: 30)),
+      json_kv(key: "1", value: json_int(n: 40)),
+      json_kv(key: "2", value: json_int(n: 50)),
+      json_kv(key: "3", value: json_int(n: 75)),
+      json_kv(key: "4", value: json_int(n: 100)),
+    ])),
+  ]))
+}
+
+fn witness_fan_curve_stepwise_json_matches_2_07_00() -> Bool {
+  fan_curve_stepwise_json(curve: fan_emit_sample_2_07_00_curve()) == fan_emit_expected_2_07_00_json()
+}
+
+fn fan_emit_mutated_curve() -> StepwiseFanCurve {
+  StepwiseFanCurve {
+    sensor: "TEMP_SOC",
+    failsafe: percent(75),
+    points: [
+      FanCurvePoint { reading: celsius(40), output: percent(30) },
+      FanCurvePoint { reading: celsius(55), output: percent(40) },
+      FanCurvePoint { reading: celsius(65), output: percent(99) },
+      FanCurvePoint { reading: celsius(75), output: percent(75) },
+      FanCurvePoint { reading: celsius(85), output: percent(100) },
+    ],
+  }
+}
+
+fn witness_fan_curve_mutation_changes_emission() -> Bool {
+  !(fan_curve_stepwise_json(curve: fan_emit_mutated_curve()) == fan_emit_expected_2_07_00_json())
+}
+
+test fn fan_control_emit_witnesses() -> Bool {
+  witness_fan_curve_stepwise_json_matches_2_07_00()
+    && witness_fan_curve_mutation_changes_emission()
+}

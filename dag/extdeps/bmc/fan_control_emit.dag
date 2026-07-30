@@ -1,0 +1,42 @@
+module extdeps.bmc.fan_control_emit
+
+import std.types { String, List, Int }
+import std.measure { celsius_count, percent_count }
+import extdeps.bmc.fan_control { StepwiseFanCurve, FanCurvePoint, FanControlZoneProfile }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_object, serialize_json }
+
+data fan_control_emit_note: String = "Emit the phosphor-pid-control 'stepwise' reading/output objects for a fan curve — the exact fragment swampd's TEMP_SOC controller consumes, e.g. {\"reading\": {\"0\": 40, ...}, \"output\": {\"0\": 30, ...}}. This is the backward reading of the same StepwiseFanCurve the model carries (DESIGN 4, one grammar both directions): the fleet profile serialized to the bytes a BMC runs. It is the WRITE CONTENT; splicing it into a BMC's live config-asrr.json (topology-preserving) is the transport step, which awaits a JSON parser / modeled BMC-file read-modify-write effect (see gunbc.bmc_fan_converge)."
+
+type StepwiseEmitFold {
+  index: Int
+  reading_members: List<JsonKeyValue>
+  output_members: List<JsonKeyValue>
+}
+
+fn stepwise_emit_fold(points: List<FanCurvePoint>) -> StepwiseEmitFold {
+  fold(
+    points,
+    init: StepwiseEmitFold { index: 0, reading_members: [], output_members: [] },
+    f: fn(acc, point) {
+      StepwiseEmitFold {
+        index: acc.index + 1,
+        reading_members: acc.reading_members
+          |> list_push(json_kv(key: to_string(acc.index), value: json_int(n: celsius_count(c: point.reading)))),
+        output_members: acc.output_members
+          |> list_push(json_kv(key: to_string(acc.index), value: json_int(n: percent_count(p: point.output) as Int))),
+      }
+    }
+  )
+}
+
+fn fan_curve_stepwise_json(curve: StepwiseFanCurve) -> String {
+  let folded = stepwise_emit_fold(points: curve.points)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "reading", value: json_object(members: folded.reading_members)),
+    json_kv(key: "output", value: json_object(members: folded.output_members)),
+  ]))
+}
+
+fn fan_profile_stepwise_json(profile: FanControlZoneProfile) -> String {
+  fan_curve_stepwise_json(curve: profile.curve)
+}
