@@ -249,7 +249,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     home: PlanDoc,
     slug: "ci-invocation-fixed-tax-attribution",
     work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_selection_control_step_note", field: WholeDeclaration },
-    dissolution: HasTrigger { text: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's return trigger (selection control back per-PR when the suite runs in seconds) consumes its measurements" },
+    dissolution: HasTrigger { text: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's outcome-based return trigger (selection control back per-PR once a named receipt shows the whole control step consistently below a seconds-scale ceiling on the CI fleet across a full falsifier window) consumes its measurements" },
   },
 ]
 
