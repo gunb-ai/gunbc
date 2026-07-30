@@ -23,6 +23,7 @@ sudo -n tailscale serve reset || true
 sudo -n systemctl disable --now gunbc-roadmap.service 2>/dev/null || true
 sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service
 sudo -n systemctl daemon-reload
+sudo -n rm -d /opt/gunbc/attempt-state
 sudo -n rm -d /opt/gunbc/dispatch-worktrees
 sudo -n rm -f /opt/gunbc/bin/gunbc
 sudo -n rm -f /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env
