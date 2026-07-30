@@ -2040,15 +2040,14 @@ fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
     }
 }
 
-/// One batch's observation outcome, in the tag vocabulary
-/// `gunbc.floor_component_receipt.floor_component_outcome_of_tag` admits.
-/// A wall-budget kill maps to `refused` rather than `failed`: it is the deliberate,
-/// located stop at a declared ceiling that `observation_refused_distinct_note` defines
-/// `Refused` to mean. It does NOT map to the more specific `timed_out` because the
-/// typed budget/elapsed pair does not survive `ClaimOutcome::RuntimeError`'s
-/// stringification, and inventing 0/0 to reach that arm would fabricate a measurement
-/// (see `floor_component_receipt_timed_out_frontier_note` for the dissolve-on).
-fn batch_outcome_tag_and_detail(rec: &BatchRecord) -> (&'static str, String) {
+/// One batch's failure MODE and detail — the seed's existing `falsifier_failure_mode`
+/// vocabulary verbatim, with `"none"` for a clean batch. This function deliberately
+/// makes NO judgment: the mode-to-`ObservationOutcome` mapping lives in
+/// `gunbc.floor_component_receipt.floor_component_outcome_of_failure_mode`, under a
+/// witness, and refuses an unmodelled mode. An earlier version of this mapped the mode
+/// to an outcome tag here with a `_ => "failed"` arm, which would have absorbed a newly
+/// added mode into `failed` with no diagnostic — a silent widen (DESIGN §5).
+fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
     let details: Vec<String> = rec
         .results
         .iter()
@@ -2056,14 +2055,13 @@ fn batch_outcome_tag_and_detail(rec: &BatchRecord) -> (&'static str, String) {
         .map(|r| format!("fn={} detail={}", r.function, r.detail))
         .collect();
     if details.is_empty() {
-        return ("done", "no failures recorded".to_string());
+        return ("none", "no failures recorded".to_string());
     }
-    let tag = match falsifier_failure_mode(&details) {
-        "BudgetExceeded" => "refused",
-        _ => "failed",
-    };
     let joined = details.join(" | ");
-    (tag, joined.chars().take(600).collect::<String>())
+    (
+        falsifier_failure_mode(&details),
+        joined.chars().take(600).collect::<String>(),
+    )
 }
 
 fn batch_witness_count(rec: &BatchRecord) -> u128 {
@@ -2112,15 +2110,17 @@ fn write_floor_component_receipt_at(
 
     let mut rows: Vec<Value> = Vec::new();
     for rec in batch_records {
-        let (outcome_tag, detail) = batch_outcome_tag_and_detail(rec);
+        let (failure_mode, detail) = batch_failure_mode_and_detail(rec);
         match floor_component_row_value(
             &ctx,
+            "floor_component_row_of_failure_mode",
+            "failure_mode",
             &run_id,
             rec.batch_index as i64 + 1,
             &rec.label,
             rec.selection_tag,
             batch_witness_count(rec) as i64,
-            outcome_tag,
+            failure_mode,
             &detail,
             (rec.wall_nanos / 1_000_000) as i64,
         ) {
@@ -2133,6 +2133,8 @@ fn write_floor_component_receipt_at(
     for bi in batch_records.len()..total_batches {
         match floor_component_row_value(
             &ctx,
+            "floor_component_row",
+            "outcome_tag",
             &run_id,
             bi as i64 + 1,
             "not reached",
@@ -2203,39 +2205,41 @@ fn write_floor_component_receipt_at(
 #[allow(clippy::too_many_arguments)]
 fn floor_component_row_value(
     ctx: &InterpContext,
+    constructor: &str,
+    outcome_arg: &str,
     run_id: &str,
     index: i64,
     label: &str,
     selection_tag: &str,
     witnesses: i64,
-    outcome_tag: &str,
+    outcome_value: &str,
     detail: &str,
     wall_ms: i64,
 ) -> Option<Value> {
-    let out = run_in_context_with_args(
-        ctx,
-        "floor_component_row",
-        &[
-            (Some("run_id".to_string()), Value::Str(run_id.to_string())),
-            (Some("index".to_string()), Value::Int(index)),
-            (Some("label".to_string()), Value::Str(label.to_string())),
-            (
-                Some("selection_tag".to_string()),
-                Value::Str(selection_tag.to_string()),
-            ),
-            (Some("witnesses".to_string()), Value::Int(witnesses)),
-            (
-                Some("outcome_tag".to_string()),
-                Value::Str(outcome_tag.to_string()),
-            ),
-            (Some("detail".to_string()), Value::Str(detail.to_string())),
-            (Some("budget_ms".to_string()), Value::Int(0)),
-            (Some("elapsed_ms".to_string()), Value::Int(0)),
-            (Some("shown_failures".to_string()), Value::Int(0)),
-            (Some("wall_ms".to_string()), Value::Int(wall_ms)),
-        ],
-        false,
-    );
+    let mut args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), Value::Str(label.to_string())),
+        (
+            Some("selection_tag".to_string()),
+            Value::Str(selection_tag.to_string()),
+        ),
+        (Some("witnesses".to_string()), Value::Int(witnesses)),
+        (
+            Some(outcome_arg.to_string()),
+            Value::Str(outcome_value.to_string()),
+        ),
+        (Some("detail".to_string()), Value::Str(detail.to_string())),
+    ];
+    // The outcome-tag constructor also takes the measure arguments its TimedOut and
+    // Final arms read; the failure-mode constructor has no such arms.
+    if outcome_arg == "outcome_tag" {
+        args.push((Some("budget_ms".to_string()), Value::Int(0)));
+        args.push((Some("elapsed_ms".to_string()), Value::Int(0)));
+        args.push((Some("shown_failures".to_string()), Value::Int(0)));
+    }
+    args.push((Some("wall_ms".to_string()), Value::Int(wall_ms)));
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
     match out {
         Ok(Value::Variant {
             ref variant_name,
@@ -2254,23 +2258,21 @@ fn floor_component_row_value(
             }),
         Ok(Value::Null) => {
             eprintln!(
-                "claim_executor: floor component receipt REFUSED — floor_component_row returned \
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
                  absent for batch {index}: selection_tag={selection_tag:?} \
-                 outcome_tag={outcome_tag:?} are outside the .dag vocabulary"
+                 {outcome_arg}={outcome_value:?} are outside the .dag vocabulary"
             );
             None
         }
         Ok(other) => {
             eprintln!(
-                "claim_executor: floor component receipt REFUSED — floor_component_row returned \
-                 {other:?} for batch {index}"
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
             );
             None
         }
         Err(e) => {
             eprintln!(
-                "claim_executor: floor component receipt REFUSED — floor_component_row eval for \
-                 batch {index}: {e}"
+                "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
             );
             None
         }

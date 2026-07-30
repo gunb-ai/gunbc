@@ -62,6 +62,8 @@ data floor_component_receipt_role_note: String = "Components are identified by S
 
 data floor_component_receipt_timed_out_frontier_note: String = "TimedOut is MODELLED and PROJECTED here but the floor does not yet emit it, and that gap is declared rather than papered over. A whole-receipt wall-budget kill carries its numbers structurally at the point it is raised — v1_interpreter InterpError::WitnessWallBudgetExceeded { elapsed_ms, budget_ms } — but ClaimOutcome::RuntimeError flattens them to a formatted String before the walk sees them, so the executor cannot fill TimedOut's budget and elapsed without re-parsing its own prose. It therefore emits Refused with the interpreter's own located diagnostic, which is not a downgrade: a kill at a declared ceiling IS the deliberate, located stop that observation_refused_distinct_note defines Refused to mean. Fabricating 0 for budget and elapsed to reach the more specific arm would be the fabricated-plausible-output DESIGN section 5 forbids. Dissolve-on: ClaimOutcome carries the typed WitnessWallBudgetExceeded pair through to ClaimResult, at which point the budget arm becomes TimedOut { budget, elapsed } and this note deletes. The projection side needs no change then — floor_component_outcome_of_tag already admits the tag and floor_component_outcome_members already renders both fields, proven by execution today."
 
+data floor_component_receipt_seed_transport_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side transport this module is consumed by (review 45058 asked for it, correctly — new hand-Rust owes a named deferral, not a description). WHAT IS ADDED: no new Rust file and no parallel authority — functions inside the existing claim_executor bin that locate this module, resolve it, call floor_component_row_of_failure_mode / floor_component_receipt_document, and write the returned bytes. WHAT IS NOT IN RUST: the receipt's shape, its schema, the failure-mode-to-outcome mapping, the role identification, and every judgment about success — all of that is here, under dag/test/claim/floor_component_receipt_witness_test.dag. The seed side carries no classification of its own; its `_ => failed` catch-all was removed in favour of floor_component_outcome_of_failure_mode's refusal arm. PRECEDENT for the boundary shape: gunbc.observation_seed_render is the same seed-to-dag seam with the same primitive-arguments-in contract, called the same way from the same bin (render_phase_concluded_line). DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION: the transport deletes when the floor's receipt write is issued from .dag as a typed host effect (Filesystem.Write through host_effect_apply, the shell-to-intent Phase 2 routing for runtime-present sites) instead of std::fs::write in the seed — at that point the resolve-and-call marshalling has no reason to exist and this module's document function is invoked directly by the emitted walk."
+
 data floor_component_receipt_schema: String = "floor-component-receipt/v1"
 
 data floor_component_receipt_path: String = "target/floor-component-receipt.json"
@@ -126,6 +128,16 @@ fn floor_component_outcome_of_tag(
   else { none }
 }
 
+data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
+
+fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptyStr) -> ObservationOutcome? {
+  if (mode as String) == "none" { Present { value: Done } }
+  else if (mode as String) == "BudgetExceeded" { Present { value: Refused { diagnostic: detail } } }
+  else if (mode as String) == "Infra" { Present { value: Failed { error: detail, output: "" } } }
+  else if (mode as String) == "WitnessRed" { Present { value: Failed { error: detail, output: "" } } }
+  else { none }
+}
+
 fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
   match o {
     Done => "done"
@@ -162,6 +174,27 @@ fn floor_component_transition_outcome(t: ObservationTransition) -> ObservationOu
   }
 }
 
+fn floor_component_row_of(
+  run_id: NonEmptyStr,
+  index: Nat,
+  label: NonEmptyStr,
+  selection: NodeFrontierSelection,
+  witnesses: Nat,
+  outcome: ObservationOutcome,
+  wall_ms: Nat
+) -> FloorComponentRow {
+  FloorComponentRow {
+    event: ObservationEvent {
+      subject: floor_component_subject(run_id: run_id, index: index, label: label),
+      transition: Concluded { outcome: outcome },
+      wall: MeasuredValue { value: millisecond_to_nanosecond(m: millisecond(count: wall_ms)) },
+      rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
+    },
+    selection: selection,
+    witnesses: witnesses
+  }
+}
+
 fn floor_component_row(
   run_id: NonEmptyStr,
   index: Nat,
@@ -187,16 +220,45 @@ fn floor_component_row(
       ) {
         Absent => none
         Present { value: outcome } => Present {
-          value: FloorComponentRow {
-            event: ObservationEvent {
-              subject: floor_component_subject(run_id: run_id, index: index, label: label),
-              transition: Concluded { outcome: outcome },
-              wall: MeasuredValue { value: millisecond_to_nanosecond(m: millisecond(count: wall_ms)) },
-              rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
-            },
+          value: floor_component_row_of(
+            run_id: run_id,
+            index: index,
+            label: label,
             selection: sel,
-            witnesses: witnesses
-          }
+            witnesses: witnesses,
+            outcome: outcome,
+            wall_ms: wall_ms
+          )
+        }
+      }
+  }
+}
+
+fn floor_component_row_of_failure_mode(
+  run_id: NonEmptyStr,
+  index: Nat,
+  label: NonEmptyStr,
+  selection_tag: NonEmptyStr,
+  witnesses: Nat,
+  failure_mode: NonEmptyStr,
+  detail: NonEmptyStr,
+  wall_ms: Nat
+) -> FloorComponentRow? {
+  match floor_component_selection_of_tag(tag: selection_tag) {
+    Absent => none
+    Present { value: sel } =>
+      match floor_component_outcome_of_failure_mode(mode: failure_mode, detail: detail) {
+        Absent => none
+        Present { value: outcome } => Present {
+          value: floor_component_row_of(
+            run_id: run_id,
+            index: index,
+            label: label,
+            selection: sel,
+            witnesses: witnesses,
+            outcome: outcome,
+            wall_ms: wall_ms
+          )
         }
       }
   }
@@ -237,6 +299,8 @@ fn floor_component_wall_members(w: Measured<Nanosecond>) -> List<JsonKeyValue> {
     ]
   }
 }
+
+data floor_component_is_done_locality_note: String = "Why this predicate is LOCAL and not a std.observation addition (review 45058 asked for the canonical fold/query surface instead). Checked: std.observation exposes observation_outcome_class and observation_outcome_is_anomaly, and BOTH are themselves total hand-written matches over ObservationOutcome — there is no fold or query surface over that coproduct to consume, so sibling-style matching IS the canonical shape at the authority. It is also not a fork of is_anomaly, which answers a different question and disagrees on two arms: Skipped is NOT an anomaly (nothing broke) yet is plainly not Done, and Final is not an anomaly either. So !observation_outcome_is_anomaly would report a skipped batch as successful — the exact conflation this receipt exists to prevent. Routing through observation_outcome_class would replace 6 arms with 10 and still lose the Final { shown_failures } reading. Kept local under second-consumer discipline (DESIGN section 6, model just-in-time): it has exactly one consumer today. Dissolve-on: a SECOND consumer needs a component-success predicate, at which point it lifts to std.observation beside observation_outcome_is_anomaly and this row deletes."
 
 fn floor_component_row_is_done(row: FloorComponentRow) -> Bool {
   match floor_component_transition_outcome(t: row.event.transition) {
