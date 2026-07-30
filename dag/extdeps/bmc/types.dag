@@ -18,7 +18,9 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, Secret }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
