@@ -25,28 +25,20 @@ import extdeps.bmc.types {
   ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
-<<<<<<< HEAD
 import extdeps.boards.asrock_rack { asrock_altrad8ud_factory_fan_config_digest }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
-=======
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.filesystem.linux {
->>>>>>> origin/main
   LinuxJffs2,
   LinuxMountObservation,
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
-<<<<<<< HEAD
   linux_synchronized_rename_replace_publication,
 }
 import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
   altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
-=======
->>>>>>> origin/main
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -69,16 +61,12 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.state_durability {
-<<<<<<< HEAD
   CallerAssertedDefinitionLinkage,
   StateDurabilityCapabilityVersion,
   StateDefinitionLinkage,
   StatePerturbationGeneration,
   StateRealizationDefinitionLinkages,
   StateRealizationIdentity,
-=======
-  StatePerturbationGeneration,
->>>>>>> origin/main
 }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
@@ -111,10 +99,7 @@ type BmcFanRebootPersistenceReceipt {
   host: HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
-<<<<<<< HEAD
   perturbation_capability: BmcFanPolicyProjectionCapability
-=======
->>>>>>> origin/main
   before: BmcFanConvergenceReceipt
   post_reboot_policy: BmcFanPolicyObservation
   reset: RedfishManagerResetObservation
@@ -226,7 +211,6 @@ data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
-<<<<<<< HEAD
   hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
 
@@ -277,21 +261,13 @@ data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersio
   ),
 }
 
-=======
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
-)
-
->>>>>>> origin/main
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
-<<<<<<< HEAD
   active_config_digest: srv4_bmc_fan_active_config_digest,
-=======
->>>>>>> origin/main
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -340,13 +316,7 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
   active_config_digest: srv4_bmc_fan_active_config_digest,
-<<<<<<< HEAD
   previous_config_digest: asrock_altrad8ud_factory_fan_config_digest,
-=======
-  previous_config_digest: sha256_digest(
-    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
-  ),
->>>>>>> origin/main
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
@@ -368,10 +338,7 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
-<<<<<<< HEAD
   active_config_digest: srv4_bmc_fan_active_config_digest,
-=======
->>>>>>> origin/main
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -383,53 +350,6 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   observed_at: 1785194085000,
 }
 
-<<<<<<< HEAD
-=======
-data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
-  host: srv4_host.identity,
-  perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
-  perturbation_generation: srv4_bmc_fan_perturbation_generation,
-  before: srv4_bmc_fan_convergence_receipt,
-  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
-  reset: RedfishManagerResetObservation {
-    action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
-    reset_type: ResetGracefulRestart,
-    http_status: 200,
-    accepted: true,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    observed_at: 1785193782000,
-  },
-  bmc_down_observed: true,
-  bmc_returned: true,
-  bmc_down_observed_at: 1785193789000,
-  bmc_returned_at: 1785193946000,
-  host_power_before: On,
-  host_power_after: On,
-  host_os_ssh_reachable_throughout: true,
-  pre_reboot_temp_soc: celsius(85),
-  post_reboot_temp_soc: celsius(83),
-  pre_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3676) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(960) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(948) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(896) },
-  ],
-  post_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3659) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(961) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(944) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(906) },
-  ],
-  post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
-  post_reboot_controller_active: true,
-  post_reboot_zone_failsafe_active: false,
-  post_reboot_observer_exit_success: true,
-  post_reboot_converge_noop_exit_success: true,
-  observed_at: 1785194085000,
-}
-
->>>>>>> origin/main
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
 
 data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
