@@ -638,59 +638,17 @@ fn bmc_fan_policy_classification(
                                 ),
                               },
                             }
-                          _ => {
-                            let qualification_evidence =
-                              match durability_evidence_construction {
-                                Present {
-                                  value: BmcFanDurabilityEvidenceBuilt {
-                                    evidence: evidence,
-                                  },
-                                } =>
-                                  append(
-                                    [evidence],
-                                    items: durability_evidence,
-                                  )
-                                Absent => durability_evidence
-                              }
-                            let durability = bmc_fan_policy_durability_qualification(
+                          _ =>
+                            bmc_fan_policy_durability_gated_convergence(
                               intent: intent,
                               host: host,
+                              observed: observed,
+                              desired_curve: desired,
                               projection: projector,
                               durability_generation: durability_generation,
-                              durability_evidence: qualification_evidence,
+                              durability_evidence_construction: durability_evidence_construction,
+                              durability_evidence: durability_evidence,
                             )
-                            match durability {
-                              StateDurabilityRefused { cause: _ } =>
-                                UpsertClassification {
-                                  verdict: UnknownRefused,
-                                  decision: Refuse {
-                                    reason: concat(
-                                      "bmc fan realizer does not satisfy the declared state lifetime: ",
-                                      bmc_fan_durability_refusal_reason(verdict: durability),
-                                    ),
-                                  },
-                                }
-                              StateDurabilityQualified { qualification: _ } =>
-                                if !bmc_fan_policy_projection_live_digest_matches(
-                                  capability: projector,
-                                  observation: observed,
-                                ) {
-                                  UpsertClassification {
-                                    verdict: UnknownRefused,
-                                    decision: Refuse {
-                                      reason: "bmc fan live canonical config digest does not equal the admitted digest",
-                                    },
-                                  }
-                                } else {
-                                  bmc_fan_policy_ordinary_convergence(
-                                    host: host,
-                                    observation: observed,
-                                    desired_curve: desired,
-                                    projection: projector,
-                                  )
-                                }
-                            }
-                          }
                         }
                       }
                   }
