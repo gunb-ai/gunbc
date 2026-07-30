@@ -10,6 +10,7 @@ import gunbc.live_deploy.spec {
   deployment_spec_srv1,
   deployment_plan_host_identity,
   deployment_plan_listen_port,
+  deployment_owned_steps,
   deployment_owned_steps_retract_order,
   deployment_steps_apply_order,
   deployment_spec_for,
@@ -29,6 +30,13 @@ import gunbc.live_deploy.spec {
   TeardownWouldExceedOwnership,
   owned_artifact_teardown_disposition,
   deployment_step_teardown_disposition,
+  gunbc_service_user,
+}
+import gunbc.host_layout { srv1_dispatch_attempt_state_root }
+import gunbc.managed_directory {
+  managed_directory_mode_octal,
+  managed_directory_permissions,
+  srv1_attempt_state_directory,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.exec.command { shell_quote }
@@ -102,6 +110,36 @@ test fn witness_owned_vs_ensured_typed() -> Bool {
     }
   )
   has_owned && has_ensured
+}
+
+data attempt_state_mode_derivation_witness_note: String = "This asserts the DERIVED mode, not a chosen one. srv1_attempt_state_directory declares exactly one dependent — the service principal, needing read, write, and execute — so managed_directory_permissions computes owner rwx and nothing for group or other, which serializes 0700. The witness compares against managed_directory_mode_octal rather than the literal `0700` on purpose: pinning the string would let the derivation break while the test stayed green by agreeing with itself in the wrong place, and it would also red for the RIGHT reason (a genuine new dependent widening the mode) as if it were a regression. What is actually being witnessed is that the emitted argv carries whatever the dependents imply — so this stays green when a dependent is legitimately added, and reds when emission stops consuming the derivation at all."
+
+test fn witness_apply_provisions_attempt_state_root_owned() -> Bool {
+  string_contains(
+    s: expected_live_deploy_apply_script(),
+    pattern: join([
+      "install -d -m ", managed_directory_mode_octal(d: srv1_attempt_state_directory()),
+      " -o ", gunbc_service_user as String,
+      " -g ", gunbc_service_user as String,
+      " ", srv1_dispatch_attempt_state_root as String,
+    ], ""),
+  )
+}
+
+test fn witness_attempt_state_mode_derives_to_owner_only() -> Bool {
+  let perms = managed_directory_permissions(d: srv1_attempt_state_directory())
+  let owner_full = perms.mode.owner.read && perms.mode.owner.write && perms.mode.owner.execute
+  let group_none = !perms.mode.group.read && !perms.mode.group.write && !perms.mode.group.execute
+  let other_none = !perms.mode.other.read && !perms.mode.other.write && !perms.mode.other.execute
+  owner_full && group_none && other_none
+}
+
+test fn witness_retract_attempt_state_root_refuses_when_nonempty() -> Bool {
+  let script = expected_live_deploy_retract_script()
+  let path = srv1_dispatch_attempt_state_root as String
+  let empty_dir_removal = string_contains(s: script, pattern: join(["rm -d ", path], ""))
+  let recursive_removal = string_contains(s: script, pattern: join(["rm -rf ", path], ""))
+  empty_dir_removal && !recursive_removal
 }
 
 test fn witness_tailnet_domain_propagates_optional() -> Bool {
@@ -381,6 +419,8 @@ test fn twin_teardown_removes_nothing_production_owns() -> Bool {
   count(twin_teardown) > 0
     && all(twin_teardown, t => !any(live_paths, l => l == (t.path as String)))
 }
+
+data two_lanes_converged_on_one_claim_note: String = "MAIN AND THIS BRANCH INDEPENDENTLY DELETED THE SAME COUNT TRANSCRIPTION AND WROTE THE SAME REPLACEMENT, which is worth recording because the merge resolution DROPPED one of them. #7478 replaced `count(deployment_owned_steps_retract_order()) == 5` with witness_retract_order_is_apply_order_reversed, citing the 2026-07-30 live-state-count ruling; this branch replaced it with the claim below, citing the same ruling. Same defect, same diagnosis, two lanes, no coordination.\\n\\nThis one is kept because it is strictly stronger, not because it was here first. #7478's version reads the NULLARY rosters this PR removed, and it compares the fixed production roster against its own reverse. This one takes a spec and asserts the retract order is the reverse of what THAT SPEC ACTUALLY APPLIED — so it holds for the twin as well as production, and it catches the case a fixed-roster comparison cannot: a spec constructed with a non-standard order, which is exactly when a hand-mirrored list goes wrong. It is exercised on the twin spec for that reason.\\n\\nThe coverage #7478 added around AttemptStateRoot is kept in full above; only the duplicated ordering claim was dropped."
 
 test fn retract_is_the_reverse_of_what_this_spec_applies() -> Bool {
   let twin = srv1_twin_spec()

@@ -6,13 +6,13 @@ import v2.workflow.ci_floor_plan { cheap_floor_gate_step_labels }
 fn witness_batches_are_plan_schedule() -> Bool {
   schedule_generates_identical_schedule(
     plan: gunbc_ci_floor_realization_plan(),
-    schedule: gunbc_ci_floor_batches()
+    schedule: gunbc_ci_floor_ordinary_batches()
   )
 }
 
 fn witness_batches_identical_to_inner_schedule() -> Bool {
   schedule_eq(
-    left: gunbc_ci_floor_batches(),
+    left: gunbc_ci_floor_ordinary_batches(),
     right: gunbc_ci_floor_schedule_inner()
   )
 }
