@@ -340,7 +340,6 @@ type BmcFanObservedPartsResult
   | BmcFanObservedPartsRefused { reason: String }
 
 type BmcFanBackupManifest {
-  manifest_identity: ContentHash
   target: HostIdentity
   stable_bmc_identity: NonEmptyStr
   firmware: BmcFirmwareVersion
@@ -352,45 +351,38 @@ type BmcFanBackupManifest {
 }
 
 fn bmc_fan_backup_manifest_identity(
-  target: HostIdentity,
-  stable_bmc_identity: NonEmptyStr,
-  firmware: BmcFirmwareVersion,
-  config_path: NonEmptyStr,
-  before_digest: Digest,
-  backup_digest: Digest,
-  creation_generation: StatePerturbationGeneration,
-  created_at: EpochMs,
+  manifest: BmcFanBackupManifest,
 ) -> ContentHash {
   content_hash_tagged(
     tag: "BmcFanBackupManifest",
     payload: content_hash_combine(
-      content_hash_atom(value: target as NonEmptyStr),
+      content_hash_atom(value: manifest.target as NonEmptyStr),
       content_hash_combine(
-        content_hash_atom(value: stable_bmc_identity),
+        content_hash_atom(value: manifest.stable_bmc_identity),
         content_hash_combine(
           content_hash_atom(
-            value: to_string(firmware.version.major) as NonEmptyStr,
+            value: to_string(manifest.firmware.version.major) as NonEmptyStr,
           ),
           content_hash_combine(
             content_hash_atom(
-              value: to_string(firmware.version.minor) as NonEmptyStr,
+              value: to_string(manifest.firmware.version.minor) as NonEmptyStr,
             ),
             content_hash_combine(
               content_hash_atom(
-                value: to_string(firmware.version.patch) as NonEmptyStr,
+                value: to_string(manifest.firmware.version.patch) as NonEmptyStr,
               ),
               content_hash_combine(
-                content_hash_atom(value: config_path),
+                content_hash_atom(value: manifest.config_path),
                 content_hash_combine(
-                  content_hash_atom(value: before_digest.hex),
+                  content_hash_atom(value: manifest.before_digest.hex),
                   content_hash_combine(
-                    content_hash_atom(value: backup_digest.hex),
+                    content_hash_atom(value: manifest.backup_digest.hex),
                     content_hash_combine(
                       content_hash_atom(
-                        value: to_string(creation_generation) as NonEmptyStr,
+                        value: to_string(manifest.creation_generation) as NonEmptyStr,
                       ),
                       content_hash_atom(
-                        value: to_string(created_at) as NonEmptyStr,
+                        value: to_string(manifest.created_at) as NonEmptyStr,
                       ),
                     ),
                   ),
@@ -415,16 +407,6 @@ fn bmc_fan_backup_manifest(
   created_at: EpochMs,
 ) -> BmcFanBackupManifest {
   BmcFanBackupManifest {
-    manifest_identity: bmc_fan_backup_manifest_identity(
-      target: target,
-      stable_bmc_identity: stable_bmc_identity,
-      firmware: firmware,
-      config_path: config_path,
-      before_digest: before_digest,
-      backup_digest: backup_digest,
-      creation_generation: creation_generation,
-      created_at: created_at,
-    ),
     target: target,
     stable_bmc_identity: stable_bmc_identity,
     firmware: firmware,
@@ -460,17 +442,7 @@ fn bmc_fan_backup_manifest_matches_request(
   before_digest: Digest,
   creation_generation: StatePerturbationGeneration,
 ) -> Bool {
-  manifest.manifest_identity == bmc_fan_backup_manifest_identity(
-      target: manifest.target,
-      stable_bmc_identity: manifest.stable_bmc_identity,
-      firmware: manifest.firmware,
-      config_path: manifest.config_path,
-      before_digest: manifest.before_digest,
-      backup_digest: manifest.backup_digest,
-      creation_generation: manifest.creation_generation,
-      created_at: manifest.created_at,
-    )
-    && manifest.target == target
+  manifest.target == target
     && manifest.stable_bmc_identity == stable_bmc_identity
     && manifest.firmware == firmware
     && manifest.config_path == config_path
