@@ -8,6 +8,7 @@ import extdeps.pin {
   PinAdmission,
   PinIntegrityAdmitted,
   PinRefused,
+  PinRefusalCause,
   ObservedIdentityMismatch,
   TrackedResolutionUnrecorded,
   ConstraintIsNotIdentity,
@@ -39,7 +40,7 @@ data validation_oracle_authority_note: String = "The single authority for WHAT a
 
 data validation_oracle_grain_note: String = "WHY THE PINNED IDENTITY IS THE ENTRY FILE AND NOT THE NAMED DECLARATION ALONE, recorded because the narrower grain is the intuitive choice and it is UNSOUND for this purpose. A declared validation is `gunbc run --claim-run --entry E --function F`. Pinning only F's declaration text would leave every helper, data row, and fixture in E editable by the agent whose work F judges — and a witness is overwhelmingly assertions ABOUT values declared beside it, so weakening a fixture weakens the oracle just as effectively as weakening the assertion. The digest is therefore over the whole entry file. Going FURTHER — pinning the entry's whole import closure — is equally wrong in the opposite direction: the subject under test is IN that closure (a frontier witness imports the frontier it tests), so a closure pin would refuse the very diff the node exists to produce. The entry file is the boundary that separates oracle from subject, and it is not an arbitrary one: the corpus already enforces it structurally, because a `test fn` outside a `*_test.dag` file is a naming-hygiene violation at the floor. So the pin's grain rides an existing wall rather than inventing a line. RESIDUE, stated because it is real and this note is where it stays countable: a witness that imports a SHARED test helper from another file can still be weakened by editing that helper, which is outside the entry file and therefore outside this pin. dissolve-on: feature:validation-oracle-closure-partition — the claim runner's loaded closure is partitioned into oracle-side and subject-side modules from the containment tree, and the pin covers the oracle side entire; at that point the entry-file grain becomes a projection of the partition rather than a proxy for it."
 
-data validation_oracle_declaration_scan_note: String = "The declaration count is a LINE-START scan over the entry source, and its limits are stated rather than discovered. A top-level .dag declaration is unindented, so requiring the line to BEGIN with `fn <name>(` or `fn <name><` excludes the common false positive — the same identifier appearing inside one of this corpus's large note strings — without pretending to be a parse. It is used for exactly one decision, how MANY declarations answer to the contract's name, because that count is what separates three genuinely different states with three different remedies: none is a missing oracle, one is the oracle, and more than one means the contract does not determine which declaration the claim runner will pick. That last state is not hypothetical here — this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped — so the arm has a real producer rather than being coverage by illusion. dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when identifiers resolve against the containment tree, this scan is replaced by that resolution and the ambiguity arm is answered structurally instead of textually."
+data validation_oracle_declaration_scan_note: String = "The declaration count is a LINE-START scan over the entry source, and its limits are stated rather than discovered. A top-level .dag declaration is unindented, so requiring the line to BEGIN with a declaration keyword followed by `<name>(` or `<name><` excludes the common false positive — the same identifier appearing inside one of this corpus's large note strings — without pretending to be a parse. Both keywords are enumerated because a claim entry point is overwhelmingly `test fn` while its helpers are `fn`, and either may be the function a contract names; matching only the bare keyword reported every witness entry as a missing oracle, which is how this was found — the paired green/red controls went red together, which a scanner that recognised nothing would also produce, and that is precisely why the non-vacuity control sits beside them. It is used for exactly one decision, how MANY declarations answer to the contract's name, because that count is what separates three genuinely different states with three different remedies: none is a missing oracle, one is the oracle, and more than one means the contract does not determine which declaration the claim runner will pick. That last state is not hypothetical here — this substrate accepts a duplicate top-level declaration silently and fn names are not module-scoped — so the arm has a real producer rather than being coverage by illusion. dissolve-on: feature:cited-symbol-resolution — the same trigger extdeps.pin already names; when identifiers resolve against the containment tree, this scan is replaced by that resolution and the ambiguity arm is answered structurally instead of textually."
 
 type ValidationOracleRef {
   entry: FilePath
@@ -73,16 +74,21 @@ fn validation_oracle_source_identity(source: String) -> ContentHash {
   )
 }
 
+data validation_oracle_declaration_keywords: List<String> = ["fn ", "test fn "]
+
 fn validation_oracle_declaration_line_matches(
   line: String,
   function: NonEmptyStr,
 ) -> Bool {
-  starts_with(
-    s: line,
-    prefix: join(["fn ", function as String, "("], ""),
-  ) || starts_with(
-    s: line,
-    prefix: join(["fn ", function as String, "<"], ""),
+  any(
+    validation_oracle_declaration_keywords,
+    keyword => starts_with(
+      s: line,
+      prefix: join([keyword, function as String, "("], ""),
+    ) || starts_with(
+      s: line,
+      prefix: join([keyword, function as String, "<"], ""),
+    ),
   )
 }
 
@@ -207,6 +213,22 @@ fn validation_oracle_observation_identity(
   }
 }
 
+fn validation_oracle_observation_ref(
+  observation: OracleObservation,
+) -> ValidationOracleRef {
+  match observation {
+    OracleFound { oracle, identity: _ } => oracle
+    OracleMissing { oracle, detail: _ } => oracle
+    OracleAmbiguous { oracle, declaration_count: _ } => oracle
+  }
+}
+
+fn validation_oracle_refs(
+  observations: List<OracleObservation>,
+) -> List<ValidationOracleRef> {
+  map(observations, o => validation_oracle_observation_ref(observation: o))
+}
+
 fn validation_oracle_first_incomplete(
   observations: List<OracleObservation>,
 ) -> OracleObservation? {
@@ -313,12 +335,12 @@ fn validation_oracle_incomplete_cause(
 data validation_oracle_pin_admission_note: String = "The pin adjudication is extdeps.pin's admit_pin_integrity and nothing else — this module builds the Pin and reads its answer, so expected-versus-observed has one home. Only expected_identity crosses the disk seam between dispatch and verification, because it is the only fact that cannot be re-derived at verification time: the subject comes from the node's own execution contract, the selection is ExactPin by construction (a dispatch pin records an identity OBSERVED from the freshly created worktree, never one resolved from a moving reference), and the version is the revision that worktree was created at, which is captured beside the identity for the same reason. Re-deriving the subject rather than persisting it is deliberate and it fails closed: if the contract changed between dispatch and verification, the re-derived oracle no longer matches the stored identity and the run refuses, which is the correct answer — the pin recorded at dispatch is no longer the pin the contract now names."
 
 fn validation_oracle_pin(
-  oracle_count: Int,
+  oracles: List<ValidationOracleRef>,
   expected_identity: ContentHash,
   revision: VersionIdentity,
-) -> Pin<Int> {
+) -> Pin<List<ValidationOracleRef>> {
   Pin {
-    subject: oracle_count,
+    subject: oracles,
     version: revision,
     expected_identity: expected_identity,
     selection: ExactPin,
@@ -326,7 +348,7 @@ fn validation_oracle_pin(
 }
 
 fn validation_oracle_pin_refusal_cause(
-  cause: extdeps.pin.PinRefusalCause,
+  cause: PinRefusalCause,
 ) -> ValidationRefusalCause {
   match cause {
     ObservedIdentityMismatch { expected, observed } =>
@@ -391,24 +413,26 @@ fn validation_oracle_gate(
               }
           }
         Absent =>
-          if !pin_recorded {
-            ValidationOracleGateRefused {
-              cause: ValidationPinReceiptUnreadable {
-                detail: pin_read_detail,
-              },
-            }
-          } else {
-            match validation_oracle_set_observe(observations: observations) {
-              OracleSetIncomplete { blocking, observations: _ } =>
+          match validation_oracle_set_observe(observations: observations) {
+            OracleSetIncomplete { blocking, observations: _ } =>
+              ValidationOracleGateRefused {
+                cause: validation_oracle_incomplete_cause(
+                  observation: blocking,
+                ),
+              }
+            OracleSetObserved { identity, observations: _ } =>
+              if !pin_recorded {
                 ValidationOracleGateRefused {
-                  cause: validation_oracle_incomplete_cause(
-                    observation: blocking,
-                  ),
+                  cause: ValidationPinReceiptUnreadable {
+                    detail: pin_read_detail,
+                  },
                 }
-              OracleSetObserved { identity, observations: _ } =>
+              } else {
                 match admit_pin_integrity(
                   pin: validation_oracle_pin(
-                    oracle_count: count(observations),
+                    oracles: validation_oracle_refs(
+                      observations: observations,
+                    ),
                     expected_identity: expected_identity,
                     revision: revision,
                   ),

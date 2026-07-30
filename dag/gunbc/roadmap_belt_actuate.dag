@@ -42,6 +42,14 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_admission_path_for_instance,
   dispatch_attempt_events_path_for_instance,
   dispatch_attempt_spawn_failure_path_for_instance,
+  dispatch_attempt_oracle_identity_path_for_instance,
+  dispatch_attempt_oracle_revision_path_for_instance,
+  dispatch_attempt_oracle_pin_refusal_path_for_instance,
+  dispatch_current_attempt_oracle_identity_path_for_instance,
+  dispatch_current_attempt_oracle_revision_path_for_instance,
+  dispatch_current_attempt_oracle_pin_refusal_path_for_instance,
+  dispatch_current_attempt_validation_receipt_path_for_instance,
+  dispatch_worktree_path_for_instance,
   dispatch_current_attempt_key_path_for_instance,
   dispatch_current_attempt_admission_path_for_instance,
   dispatch_current_attempt_events_projection_argv_for_instance,
@@ -110,8 +118,46 @@ import gunbc.roadmap_dispatch_environment {
 }
 import gunbc.roadmap_execution_contract {
   EnvironmentBindingCapability,
+  GunbcClaimRunnerCapability,
+  WorkItemExecutionContract,
+  ExecutionContract,
+  ExecutionContractUnspecified,
+  ValidationOperation,
+  ModeledValidationCommand,
+  validation_operation_command,
+  modeled_validation_command_wire,
   execution_contract_validation_summary,
 }
+import gunbc.roadmap_validation_oracle {
+  ValidationOracleRef,
+  OracleObservation,
+  OraclePinScope,
+  OraclePinnable,
+  OracleNotPinnable,
+  OracleSetObservation,
+  OracleSetObserved,
+  OracleSetIncomplete,
+  ValidationOracleGate,
+  ValidationOracleAdmitted,
+  ValidationOracleGateRefused,
+  ValidationVerdict,
+  ValidationPassed,
+  ValidationFailed,
+  ValidationRefused,
+  ValidationCommandUnrealized,
+  ValidationCommandRefused,
+  validation_oracle_scopes,
+  validation_oracle_observe_from_source,
+  validation_oracle_set_observe,
+  validation_oracle_gate,
+  validation_verdict_key,
+  validation_verdict_detail,
+  validation_receipt_json,
+}
+import extdeps.git { shape_git_rev_parse_head_args }
+import gunbc.roadmap_provider_events { ProviderCompleted }
+import extdeps.version { VersionIdentity }
+import std.types { ContentHash }
 import gunbc.roadmap_workflow_progress {
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
@@ -288,13 +334,183 @@ fn belt_attempt_state_initialize_for_instance(
         content: "",
       )
       if events_write.success {
-        AttemptStateInitialized
+        let pin_persisted = belt_persist_oracle_pin_for_instance(
+          instance: instance,
+          node: node,
+          attempt_key: attempt_key,
+          capture: belt_attempt_oracle_pin_capture_for_instance(
+            instance: instance,
+            node: node,
+            attempt_key: attempt_key,
+          ),
+        )
+        if pin_persisted {
+          AttemptStateInitialized
+        } else {
+          AttemptStateInitializationFailed {
+            step: "attempt-oracle-pin-persist",
+            detail: "the validation oracle pin could not be written beside the attempt; an attempt whose oracle is unrecorded can never be verified, and the write itself failing is a state-directory fault rather than a verification-side deficit",
+          }
+        }
       } else {
         AttemptStateInitializationFailed {
           step: "attempt-events-initialize",
           detail: events_write.error,
         }
       }
+    }
+  }
+}
+
+data belt_oracle_pin_capture_note: String = "The pin is captured from the FRESHLY CREATED WORKTREE, before the provider is spawned, because that is the only moment the oracle is known to be the base revision's oracle and not the attempt's. Reading it from the controller repo instead would be a different tree that nothing ties to this attempt; reading it after the agent runs is the fail-open this whole lane closes. Ordering is therefore load-bearing and it is already the ordering the staged spawn establishes: worktree-add and attempt-state-prepare run first, this capture runs inside state initialization, and tmux-session-create runs only after. A capture failure does NOT fail the spawn — the agent's work is still worth doing and a dispatch that refuses on a verification-side deficit would trade a whole attempt for a receipt — but it is never silent either: the reason is persisted to its own file, so verification reports a located cause instead of an absent pin, and the deficit stays countable at the Verify lamp rather than having its frequency zeroed."
+
+type AttemptOraclePinCapture
+  = OraclePinRecorded {
+      identity: ContentHash,
+      revision: String,
+    }
+  | OraclePinNotRecorded { reason: String }
+
+fn belt_oracle_refs_for_contract(
+  contract: WorkItemExecutionContract,
+) -> List<ValidationOracleRef> {
+  validation_oracle_scopes(contract: contract)
+    |> filter_map(scope => match scope {
+      OraclePinnable { oracle } => Present { value: oracle }
+      OracleNotPinnable { validation_label: _, reason: _ } => none
+    })
+}
+
+fn belt_oracle_observe_in_worktree(
+  worktree: String,
+  oracle: ValidationOracleRef,
+) -> OracleObservation {
+  let read = Filesystem.Read(
+    path: join([worktree, "/", oracle.entry as String], ""),
+  )
+  validation_oracle_observe_from_source(
+    oracle: oracle,
+    source_readable: read.success,
+    source: read.content,
+    read_error: read.error,
+  )
+}
+
+fn belt_oracle_observations_in_worktree(
+  contract: WorkItemExecutionContract,
+  worktree: String,
+) -> List<OracleObservation> {
+  belt_oracle_refs_for_contract(contract: contract)
+    |> map(oracle => belt_oracle_observe_in_worktree(
+      worktree: worktree,
+      oracle: oracle,
+    ))
+}
+
+fn belt_worktree_head_revision(
+  instance: HostDashboardInstance,
+  worktree: String,
+) -> String {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: shape_git_rev_parse_head_args(),
+    ),
+    workdir: worktree,
+  ) {
+    ExecOk { stdout } => trim(stdout)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+    ExecRefused { program: _, reason: _ } => ""
+  }
+}
+
+fn belt_attempt_oracle_pin_capture_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+) -> AttemptOraclePinCapture {
+  let worktree = dispatch_worktree_path_for_instance(
+    instance: instance,
+    node_id: node.node,
+    attempt_key: attempt_key,
+  )
+  let refs = belt_oracle_refs_for_contract(contract: node.execution)
+  if count(refs) == 0 {
+    OraclePinNotRecorded {
+      reason: "this node's execution contract declares no validation whose oracle can be pinned",
+    }
+  } else {
+    match validation_oracle_set_observe(
+      observations: belt_oracle_observations_in_worktree(
+        contract: node.execution,
+        worktree: worktree,
+      ),
+    ) {
+      OracleSetIncomplete { blocking: _, observations: _ } =>
+        OraclePinNotRecorded {
+          reason: join([
+            "the declared validation oracle was not observable in the attempt worktree at ",
+            worktree,
+            " when the attempt was created",
+          ], ""),
+        }
+      OracleSetObserved { identity, observations: _ } => {
+        let revision = belt_worktree_head_revision(
+          instance: instance,
+          worktree: worktree,
+        )
+        if revision == "" {
+          OraclePinNotRecorded {
+            reason: "the attempt worktree's head revision could not be read, so the pinned oracle could not be attributed to a revision",
+          }
+        } else {
+          OraclePinRecorded {
+            identity: identity,
+            revision: revision,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn belt_persist_oracle_pin_for_instance(
+  instance: HostDashboardInstance,
+  node: RoadmapNode,
+  attempt_key: String,
+  capture: AttemptOraclePinCapture,
+) -> Bool {
+  match capture {
+    OraclePinNotRecorded { reason } =>
+      Filesystem.Write(
+        path: dispatch_attempt_oracle_pin_refusal_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: reason,
+      ).success
+    OraclePinRecorded { identity, revision } => {
+      let identity_write = Filesystem.Write(
+        path: dispatch_attempt_oracle_identity_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: identity as String,
+      )
+      let revision_write = Filesystem.Write(
+        path: dispatch_attempt_oracle_revision_path_for_instance(
+          instance: instance,
+          node_id: node.node,
+          attempt_key: attempt_key,
+        ),
+        content: revision,
+      )
+      identity_write.success && revision_write.success
     }
   }
 }
@@ -1500,6 +1716,8 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
+      validation_receipt_readable: false,
+      validation_receipt: "",
     })
   } else {
     let current_key = trim(key_read.content)
@@ -1516,6 +1734,12 @@ fn belt_workflow_progress_for_attempt_ref(
     )
     let spawn_failure = Filesystem.Read(
       path: dispatch_current_attempt_spawn_failure_path_for_instance(
+        instance: instance,
+        node_id: node_id,
+      ),
+    )
+    let validation_receipt = Filesystem.Read(
+      path: dispatch_current_attempt_validation_receipt_path_for_instance(
         instance: instance,
         node_id: node_id,
       ),
@@ -1549,8 +1773,236 @@ fn belt_workflow_progress_for_attempt_ref(
         instance: instance,
         node_id: attempt.node_id,
       ),
+      validation_receipt_readable: validation_receipt.success,
+      validation_receipt: validation_receipt.content,
     })
   }
+}
+
+data belt_verify_pass_note: String = "The workflow's own verification actuation, and the reason it lives on the belt rather than in the /workflow.json handler: running a declared validation is an EFFECT that takes as long as the validation takes, while the progress route is a synchronous read that the browser polls every two seconds. Producing the verdict on the read path would make the lamp's own observation the thing that runs cargo. So the belt produces the receipt and the projection reads it — the same split the environment-admission receipt already uses, and the reason Verify can move without the observer changing shape. Idempotence comes from the receipt's presence, exactly as spawn idempotence comes from the observed session: a recorded verdict is not recomputed, so re-ticking neither re-runs the validation nor overwrites a verdict with a later one taken against a tree the agent has since touched. Agent completion is read from the reconciled provider state, so a turn that completed while its pane still runs, or completed with a nonzero exit, does not reach verification at all — the obligation order is preserved rather than restated."
+
+type BeltVerifyOutcome
+  = VerifyDeferred { node_id: String, reason: String }
+  | VerifyRecorded {
+      node_id: String,
+      verdict_key: String,
+      detail: String,
+    }
+  | VerifyWriteFailed { node_id: String, detail: String }
+
+fn belt_read_or_empty(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { trim(read.content) } else { "" }
+}
+
+fn belt_validation_commands_for_contract(
+  instance: HostDashboardInstance,
+  contract: WorkItemExecutionContract,
+) -> List<ModeledValidationCommand?> {
+  match contract {
+    ExecutionContractUnspecified => []
+    ExecutionContract { validations, extra_capabilities: _ } =>
+      map(validations, v => validation_operation_command(
+        validation: v,
+        environment: instance.execution_environment,
+      ))
+  }
+}
+
+fn belt_run_validation_commands(
+  commands: List<ModeledValidationCommand?>,
+  worktree: String,
+  oracle_identity: ContentHash,
+) -> ValidationVerdict {
+  fold(
+    commands,
+    init: ValidationPassed {
+      command: "",
+      oracle_identity: oracle_identity,
+    },
+    f: fn(acc, maybe_command) {
+      match acc {
+        ValidationFailed { command: _, exit_code: _, detail: _ } => acc
+        ValidationRefused { cause: _ } => acc
+        ValidationPassed { command: prior, oracle_identity: _ } =>
+          match maybe_command {
+            Absent =>
+              ValidationRefused { cause: ValidationCommandUnrealized }
+            Present { value: command } => {
+              let wire = modeled_validation_command_wire(command: command)
+              match belt_exec(
+                cmd: host_exec_argv(
+                  program: command.program as String,
+                  args: command.args,
+                ),
+                workdir: worktree,
+              ) {
+                ExecOk { stdout: _ } =>
+                  ValidationPassed {
+                    command: if prior == "" {
+                      wire
+                    } else {
+                      join([prior, "; ", wire], "")
+                    },
+                    oracle_identity: oracle_identity,
+                  }
+                ExecFailed { program: _, exit_code, stderr } =>
+                  ValidationFailed {
+                    command: wire,
+                    exit_code: exit_code,
+                    detail: stderr,
+                  }
+                ExecRefused { program, reason } =>
+                  ValidationRefused {
+                    cause: ValidationCommandRefused {
+                      program: program,
+                      reason: reason,
+                    },
+                  }
+              }
+            }
+          }
+      }
+    },
+  )
+}
+
+fn belt_verify_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltVerifyOutcome {
+  let node_id = progress.node_id as gunbc.roadmap_model.RoadmapNodeId
+  match progress.provider {
+    ProviderCompleted { activity: _ } =>
+      if belt_read_or_empty(
+        path: dispatch_current_attempt_validation_receipt_path_for_instance(
+          instance: instance,
+          node_id: node_id,
+        ),
+      ) != "" {
+        VerifyDeferred {
+          node_id: progress.node_id,
+          reason: "a validation receipt is already recorded for this attempt",
+        }
+      } else {
+        match belt_lookup_node(node_id: progress.node_id) {
+          NodeMissing =>
+            VerifyDeferred {
+              node_id: progress.node_id,
+              reason: "the roadmap authority declares no node with this id, so there is no contract to verify against",
+            }
+          NodeFound { node } => {
+            let worktree = dispatch_worktree_path_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: progress.attempt_key,
+            )
+            let observations = belt_oracle_observations_in_worktree(
+              contract: node.execution,
+              worktree: worktree,
+            )
+            let pinned_identity = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_identity_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pinned_revision = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_revision_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pin_refusal = belt_read_or_empty(
+              path: dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+            )
+            let pin_recorded = pinned_identity != "" && pinned_revision != ""
+            let verdict = match validation_oracle_gate(
+              contract: node.execution,
+              observations: observations,
+              pin_recorded: pin_recorded,
+              expected_identity: pinned_identity as ContentHash,
+              revision: pinned_revision as VersionIdentity,
+              pin_read_detail: if pin_refusal == "" {
+                "no oracle identity was recorded for this attempt at dispatch"
+              } else {
+                pin_refusal
+              },
+            ) {
+              ValidationOracleGateRefused { cause } =>
+                ValidationRefused { cause: cause }
+              ValidationOracleAdmitted { identity } =>
+                belt_run_validation_commands(
+                  commands: belt_validation_commands_for_contract(
+                    instance: instance,
+                    contract: node.execution,
+                  ),
+                  worktree: worktree,
+                  oracle_identity: identity,
+                )
+            }
+            let write = Filesystem.Write(
+              path: dispatch_current_attempt_validation_receipt_path_for_instance(
+                instance: instance,
+                node_id: node_id,
+              ),
+              content: validation_receipt_json(
+                verdict: verdict,
+                observations: observations,
+              ),
+            )
+            if write.success {
+              VerifyRecorded {
+                node_id: progress.node_id,
+                verdict_key: validation_verdict_key(verdict: verdict),
+                detail: validation_verdict_detail(verdict: verdict),
+              }
+            } else {
+              VerifyWriteFailed {
+                node_id: progress.node_id,
+                detail: write.error,
+              }
+            }
+          }
+        }
+      }
+    _ =>
+      VerifyDeferred {
+        node_id: progress.node_id,
+        reason: "the agent obligation is not satisfied, so there is nothing to verify yet",
+      }
+  }
+}
+
+fn belt_verify_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<BeltVerifyOutcome> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [
+        VerifyDeferred {
+          node_id: "",
+          reason: join([
+            "the attempts ledger is unobservable, so no attempt can be verified: ",
+            reason,
+          ], ""),
+        },
+      ]
+    WorkflowAttemptsObserved { attempts } =>
+      map(attempts, progress => belt_verify_attempt_for_instance(
+        instance: instance,
+        progress: progress,
+      ))
+  }
+}
+
+fn belt_verify_attempts() -> List<BeltVerifyOutcome> {
+  belt_verify_attempts_for_instance(
+    instance: srv1_live_dashboard_instance(),
+  )
 }
 
 fn belt_workflow_attempts_observe_for_instance(

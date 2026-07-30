@@ -455,6 +455,105 @@ fn dispatch_attempt_spawn_failure_path_for_instance(
   ], "")
 }
 
+data dispatch_attempt_oracle_pin_layout_note: String = "The oracle pin is TWO one-fact files beside the attempt's other evidence, not one record needing a grammar. That follows the directory's existing shape — attempt-key, spawn-failure.txt and provider-events.jsonl are each one fact in one file — and it is what lets the verification side read a value back without a JSON parser, which this seam does not have. Only these two facts cross the disk seam because they are the only two that cannot be re-derived at verification time: what the oracle's content WAS before the agent started, and which revision that content came from. The subject, the selection, and the declared command are all re-derived from the node's own execution contract, so persisting them would be a second home for a fact that already has one."
+
+fn dispatch_attempt_oracle_identity_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/validation-oracle-identity",
+  ], "")
+}
+
+fn dispatch_attempt_oracle_revision_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/validation-oracle-revision",
+  ], "")
+}
+
+fn dispatch_attempt_oracle_pin_refusal_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+  attempt_key: String,
+) -> String {
+  join([
+    dispatch_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+      attempt_key: attempt_key,
+    ),
+    "/validation-oracle-pin-refused",
+  ], "")
+}
+
+fn dispatch_current_attempt_oracle_pin_refusal_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/validation-oracle-pin-refused",
+  ], "")
+}
+
+fn dispatch_current_attempt_oracle_identity_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/validation-oracle-identity",
+  ], "")
+}
+
+fn dispatch_current_attempt_oracle_revision_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/validation-oracle-revision",
+  ], "")
+}
+
+fn dispatch_current_attempt_validation_receipt_path_for_instance(
+  instance: HostDashboardInstance,
+  node_id: RoadmapNodeId,
+) -> String {
+  join([
+    dispatch_current_attempt_state_path_for_instance(
+      instance: instance,
+      node_id: node_id,
+    ),
+    "/validation-receipt.json",
+  ], "")
+}
+
 fn dispatch_current_attempt_state_path_for_instance(
   instance: HostDashboardInstance,
   node_id: RoadmapNodeId,

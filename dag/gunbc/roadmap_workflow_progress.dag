@@ -68,6 +68,12 @@ import gunbc.workflow_reconcile {
   workflow_reconcile_report,
   workflow_reconcile_status_key,
 }
+import gunbc.roadmap_validation_oracle {
+  ValidationReceiptDecode,
+  ValidationReceiptDecoded,
+  ValidationReceiptUndecodable,
+  validation_receipt_decode,
+}
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence,
   WorkerProcessUnobserved,
@@ -90,6 +96,8 @@ type WorkflowAttemptEvidence {
   provider_events_error: String
   process: WorkerProcessEvidence
   validation_summary: String
+  validation_receipt_readable: Bool
+  validation_receipt: String
 }
 
 type WorkflowAttemptProgress {
@@ -298,10 +306,44 @@ fn provider_workflow_segment(
   }
 }
 
+data verification_segment_receipt_note: String = "Verify moves on ITS OWN receipt and on nothing else. The lamp used to be hardcoded pending, which was honest while no producer existed but stopped being honest the moment one did. What it must never become is a projection of the Agent obligation: a provider that completed has produced a diff, not a verified one, and painting Verify from provider completion would fabricate the very fact the receipt exists to establish. So the receipt's ABSENCE is still pending — the same answer as before — and only a decodable receipt moves the lamp. The three verdicts land on three different segment states because they mean three different things to whoever reads the row: a pass satisfies the obligation, a failure is the subject's problem, and a refusal is the mechanism declining to answer, which is not a red and must not be shown as one. An undecodable document is refused rather than ignored, because a receipt this reader cannot decode at the attempt's own path is a fact about that attempt, not an absence."
+
+fn verification_receipt_segment(receipt: String) -> WorkflowSegment {
+  match validation_receipt_decode(receipt: receipt) {
+    ValidationReceiptUndecodable { reason } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: WorkflowSegmentRefused,
+        detail: reason,
+      }
+    ValidationReceiptDecoded { verdict_key } =>
+      WorkflowSegment {
+        kind: VerificationWorkflowSegment,
+        state: if verdict_key == "passed" {
+          WorkflowSegmentComplete
+        } else if verdict_key == "failed" {
+          WorkflowSegmentFailed
+        } else {
+          WorkflowSegmentRefused
+        },
+        detail: join([
+          "declared validation ",
+          verdict_key,
+          " against the oracle pinned at dispatch",
+        ], ""),
+      }
+  }
+}
+
 fn verification_segment(
   provider: ProviderExecutionState,
   validation_summary: String,
+  validation_receipt_readable: Bool,
+  validation_receipt: String,
 ) -> WorkflowSegment {
+  if validation_receipt_readable && trim(validation_receipt) != "" {
+    verification_receipt_segment(receipt: validation_receipt)
+  } else {
   match provider {
     ProviderCompleted { activity: _ } =>
       WorkflowSegment {
@@ -334,6 +376,7 @@ fn verification_segment(
         state: WorkflowSegmentPending,
         detail: "waits for a terminal agent event",
       }
+  }
   }
 }
 
@@ -380,6 +423,8 @@ fn workflow_segment_from_evidence(
       verification_segment(
         provider: provider,
         validation_summary: evidence.validation_summary,
+        validation_receipt_readable: evidence.validation_receipt_readable,
+        validation_receipt: evidence.validation_receipt,
       )
     PublicationWorkflowSegment =>
       WorkflowSegment {
