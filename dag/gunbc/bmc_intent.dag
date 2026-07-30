@@ -2,8 +2,7 @@ module gunbc.bmc_intent
 
 import extdeps.bmc.capability {
   BmcFirmwareIntent,
-  BmcFirmwareTrack,
-  BmcFirmwareTrackRequired,
+  BmcFirmwareUnpinned,
 }
 import extdeps.bmc.types {
   BmcFanCurve,
@@ -11,7 +10,6 @@ import extdeps.bmc.types {
 }
 import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
 import extdeps.cpu.types { ProcessorThermalLimits }
-import std.bmc { OpenBmc }
 import std.measure {
   Celsius,
   Percent,
@@ -200,12 +198,7 @@ fn fleet_fan_policy_is_thermally_bounded() -> Bool {
 }
 
 data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
-  firmware: BmcFirmwareTrackRequired {
-    track: BmcFirmwareTrack {
-      family: OpenBmc,
-      major_version: 3,
-    },
-  },
+  firmware: BmcFirmwareUnpinned,
   fan_policy: BmcFanPolicyIntent {
     durability: fleet_bmc_fan_durability_intent,
     curve: fleet_quiet_temp_soc_fan_curve,
@@ -216,4 +209,4 @@ data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
   },
 }
 
-data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired fan state for the ALTRAD8UD/M128-30 fleet: the vendor stock TEMP_SOC curve carried by srv3's OpenBMC 2.07.00 factory config. The curve engages cooling progressively — 30 percent at/below 40C, 40 at 55C, 50 at 65C, 75 at 75C, and full 100 percent at 85C — with the cited controller's 1C rising and falling hysteresis. It holds the SoC steady-moderate (about 4800 RPM at the 50 percent step, inaudible, roughly 65C under load) rather than idling until a late panic ramp: the empirically loud outcome (fleet incident 2026-07-30) came from a stripped onboarding overwrite that minimized duty — 30 percent held through 90C — on a hot chip, which then drove the controller to maximum. Sensor loss requests the stepwise controller's 75 percent; a zone-controller loss requests the vendor's 30 percent zone failsafe, with the independent thermal guard (host rollback at 100C junction / 90C component) as the backstop. Full cooling is effectively selected below the processor's cited 100C maximum-continuous junction temperature. This is desired policy, not a factory observation and not an acoustic measurement: inaudibility is a live acceptance criterion because different fan models produce different sound at one PWM duty. The same curve is validated on both the 2.07.00 stock realization (srv3) and the 3.22.00 realization (srv4), so a fan change never requires a BMC firmware track change; the firmware track is still pinned to major track 3 here, but the operator's keep-2.x decision (do not force srv3 off its known-good 2.07.00 for fan reasons) is a separate pending change to BmcFirmwareUnpinned that touches the firmware-management tests and is intentionally not bundled with this curve reconciliation. Its declared lifetime currently requires preservation across a graceful BMC control-plane restart; power loss, forced restart, firmware replacement, and factory reset are different boundaries and remain unclaimed until separately qualified. Firmware application still requires an exact approved release artifact."
+data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired fan state for the ALTRAD8UD/M128-30 fleet: the vendor stock TEMP_SOC curve carried by srv3's OpenBMC 2.07.00 factory config. The curve engages cooling progressively — 30 percent at/below 40C, 40 at 55C, 50 at 65C, 75 at 75C, and full 100 percent at 85C — with the cited controller's 1C rising and falling hysteresis. It holds the SoC steady-moderate (about 4800 RPM at the 50 percent step, inaudible, roughly 65C under load) rather than idling until a late panic ramp: the empirically loud outcome (fleet incident 2026-07-30) came from a stripped onboarding overwrite that minimized duty — 30 percent held through 90C — on a hot chip, which then drove the controller to maximum. Sensor loss requests the stepwise controller's 75 percent; a zone-controller loss requests the vendor's 30 percent zone failsafe, with the independent thermal guard (host rollback at 100C junction / 90C component) as the backstop. Full cooling is effectively selected below the processor's cited 100C maximum-continuous junction temperature. This is desired policy, not a factory observation and not an acoustic measurement: inaudibility is a live acceptance criterion because different fan models produce different sound at one PWM duty. The same curve is validated on both the 2.07.00 stock realization (srv3) and the 3.22.00 realization (srv4), so a fan change never requires a BMC firmware track change. Firmware is therefore unpinned (BmcFirmwareUnpinned): srv3 is not forced off its known-good 2.07.00 and srv4 is not forced off 3.22.00 for fan reasons, and the heterogeneous fleet (2.07.00 + 3.22.00) both satisfy the intent. The fan realizer admits an unpinned intent and qualifies each host against a projection whose firmware matches that host (bmc_fan_firmware_blocks_realizer); it still refuses to realize fans on a host that has not yet converged to a PINNED track, because a firmware update would replace the flash and wipe the fan config. A specific track, if ever required, is a separate non-fan intent, and the firmware-classification machinery still detects drift and builds typed update plans for a pinned intent. Its declared lifetime currently requires preservation across a graceful BMC control-plane restart; power loss, forced restart, firmware replacement, and factory reset are different boundaries and remain unclaimed until separately qualified. Firmware application still requires an exact approved release artifact."
