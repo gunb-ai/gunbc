@@ -1,0 +1,190 @@
+module extdeps.tools.reconcile
+
+import std.types { NonEmptyStr, String, List, Bool, ContentHash, Int }
+import std.collection { Present, Absent }
+import std.content_hash { content_hash_atom, content_hash_combine }
+import extdeps.version { VersionIdentity }
+import extdeps.tools.pin {
+  ToolPin,
+  ExactPin,
+  PinSelection,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  PinRefusalCause,
+  ObservedIdentityMismatch,
+  AggregateGrainMismatch,
+  ToolNotPinned,
+  ObservedGrain,
+  PerTool,
+  AggregateToolchainIdentity,
+  admit_pin_integrity,
+  admit_pin_at_observed_grain,
+  pin_key_of,
+  pin_value_eq,
+}
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+  membership_upsert_count,
+  membership_teardown_count,
+  membership_refusal_count,
+  membership_effects,
+  EffectsOrRefusal,
+  EffectsReady,
+  ApplyRefused,
+}
+
+data tool_reconcile_authority_note: String = "P2 of the hermetic tool-provisioning lane (docs/plans/hermetic-tool-provisioning-design.md). Tools are ONE membership_reconcile instantiation: desired pins vs per-tool observed identities from observe_tool (v1_interpreter.rs, #7435), keyed by tool name with pin_value_eq as value_eq. toolchain_identity in ResolvedBuildContext is the DERIVED fold over ObservedToolIdentity rows (fold_observed_toolchain_identity below) — never the observed half of a per-tool reconcile; comparing one ToolPin against the aggregate is a grain mismatch refused at admit_pin_at_observed_grain (review 44388 RED). Ownership follows provision tier: RepoLocal -> Owned (teardown-eligible), SystemRequired -> Ensured (R5 wall). Legacy CliTool ingest with the `none` optional spelling remains blocked at extdeps.tools.pin — Value::Null carrier split is a declared P2 blocker, not dodged here."
+
+type ObservedToolIdentity {
+  tool_name: NonEmptyStr
+  observed_identity: ContentHash
+}
+
+type ToolProvisionTier
+  = RepoLocal
+  | SystemRequired
+
+type ToolReconcileMember {
+  tool_name: NonEmptyStr
+  version: VersionIdentity
+  expected_identity: ContentHash
+  selection: PinSelection
+  tier: ToolProvisionTier
+}
+
+fn tool_member_from_pin(pin: ToolPin, tier: ToolProvisionTier) -> ToolReconcileMember {
+  ToolReconcileMember {
+    tool_name: pin.tool_name,
+    version: pin.version,
+    expected_identity: pin.expected_identity,
+    selection: pin.selection,
+    tier: tier,
+  }
+}
+
+fn tool_member_from_observed(
+  row: ObservedToolIdentity,
+  version: VersionIdentity,
+  tier: ToolProvisionTier,
+) -> ToolReconcileMember {
+  ToolReconcileMember {
+    tool_name: row.tool_name,
+    version: version,
+    expected_identity: row.observed_identity,
+    selection: ExactPin,
+    tier: tier,
+  }
+}
+
+fn tool_member_key(m: ToolReconcileMember) -> NonEmptyStr {
+  m.tool_name
+}
+
+fn tool_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn tool_member_pin_view(m: ToolReconcileMember) -> ToolPin {
+  ToolPin {
+    tool_name: m.tool_name,
+    version: m.version,
+    expected_identity: m.expected_identity,
+    selection: m.selection,
+  }
+}
+
+fn tool_member_value_eq(a: ToolReconcileMember, b: ToolReconcileMember) -> Bool {
+  pin_value_eq(a: tool_member_pin_view(m: a), b: tool_member_pin_view(m: b))
+}
+
+fn tool_member_ownership(m: ToolReconcileMember) -> Ownership? {
+  match m.tier {
+    RepoLocal => Present { value: Owned }
+    SystemRequired => Present { value: Ensured }
+  }
+}
+
+fn tool_pins_reconcile(
+  desired: List<ToolReconcileMember>,
+  observed: List<ToolReconcileMember>,
+) -> MembershipPlan<ToolReconcileMember> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: tool_member_key,
+    key_eq: tool_member_key_eq,
+    value_eq: tool_member_value_eq,
+    ownership_of: tool_member_ownership,
+  )
+}
+
+fn tool_pins_effects(
+  desired: List<ToolReconcileMember>,
+  observed: List<ToolReconcileMember>,
+) -> EffectsOrRefusal<ToolReconcileMember> {
+  membership_effects(plan: tool_pins_reconcile(desired: desired, observed: observed))
+}
+
+fn tool_pins_upsert_count(
+  desired: List<ToolReconcileMember>,
+  observed: List<ToolReconcileMember>,
+) -> Int {
+  membership_upsert_count(plan: tool_pins_reconcile(desired: desired, observed: observed))
+}
+
+fn tool_pins_teardown_count(
+  desired: List<ToolReconcileMember>,
+  observed: List<ToolReconcileMember>,
+) -> Int {
+  membership_teardown_count(plan: tool_pins_reconcile(desired: desired, observed: observed))
+}
+
+fn tool_pins_refusal_count(
+  desired: List<ToolReconcileMember>,
+  observed: List<ToolReconcileMember>,
+) -> Int {
+  membership_refusal_count(plan: tool_pins_reconcile(desired: desired, observed: observed))
+}
+
+data fold_observed_toolchain_identity_seed: ContentHash =
+  content_hash_atom(value: "emit-host-resolved-build-toolchain-v1")
+
+fn fold_observed_toolchain_identity(rows: List<ObservedToolIdentity>) -> ContentHash {
+  fold(
+    rows,
+    init: fold_observed_toolchain_identity_seed,
+    f: (acc, row) => content_hash_combine(left: acc, right: row.observed_identity),
+  )
+}
+
+fn find_pin_for_tool(desired: List<ToolPin>, tool_name: NonEmptyStr) -> ToolPin? {
+  fold(
+    desired,
+    init: Absent,
+    f: (acc, pin) =>
+      if (pin.tool_name as String) == (tool_name as String) {
+        Present { value: pin }
+      } else {
+        acc
+      },
+  )
+}
+
+fn ensure_tool_before_spawn(
+  tool_name: NonEmptyStr,
+  desired_pins: List<ToolPin>,
+  observed_row: ObservedToolIdentity,
+) -> PinAdmission {
+  match find_pin_for_tool(desired: desired_pins, tool_name: tool_name) {
+    Present { value: pin } =>
+      admit_pin_at_observed_grain(
+        pin: pin,
+        observed: PerTool { identity: observed_row.observed_identity },
+      )
+    Absent =>
+      PinRefused { tool_name: tool_name, cause: ToolNotPinned }
+  }
+}

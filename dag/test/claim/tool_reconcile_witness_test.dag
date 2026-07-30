@@ -1,0 +1,239 @@
+module test.claim.tool_reconcile_witness
+
+import std.types { NonEmptyStr, String, Bool, Int, ContentHash, List, list_length }
+import extdeps.version { VersionIdentity }
+import extdeps.tools.pin {
+  ToolPin,
+  ExactPin,
+  PinSelection,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  PinRefusalCause,
+  ObservedIdentityMismatch,
+  AggregateGrainMismatch,
+  ToolNotPinned,
+  ConstraintIsNotIdentity,
+  TrackedResolutionUnrecorded,
+  PinAbsent,
+  ObservedGrain,
+  PerTool,
+  AggregateToolchainIdentity,
+  admit_pin_at_observed_grain,
+}
+import extdeps.tools.reconcile {
+  ObservedToolIdentity,
+  ToolProvisionTier,
+  RepoLocal,
+  SystemRequired,
+  ToolReconcileMember,
+  tool_member_from_pin,
+  tool_member_from_observed,
+  tool_pins_reconcile,
+  tool_pins_upsert_count,
+  tool_pins_teardown_count,
+  tool_pins_refusal_count,
+  tool_pins_effects,
+  fold_observed_toolchain_identity,
+  ensure_tool_before_spawn,
+}
+import gunbc.membership_reconcile {
+  MemberAction,
+  MemberUpsert,
+  MemberTeardown,
+  MemberTeardownRefused,
+  EffectsReady,
+  ApplyRefused,
+}
+import gunbc.ownership { Owned, Ensured }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data cargo_identity: ContentHash = "sha256-cargo-1930-aarch64" as ContentHash
+data other_identity: ContentHash = "sha256-cargo-1920-aarch64" as ContentHash
+data rustc_identity: ContentHash = "sha256-rustc-1930-aarch64" as ContentHash
+data aggregate_identity: ContentHash = "sha256-whole-build-toolchain-aggregate" as ContentHash
+
+data cargo_pin: ToolPin = ToolPin {
+  tool_name: "cargo",
+  version: "1.93.0" as VersionIdentity,
+  expected_identity: cargo_identity,
+  selection: ExactPin,
+}
+
+data rustc_pin: ToolPin = ToolPin {
+  tool_name: "rustc",
+  version: "1.93.0" as VersionIdentity,
+  expected_identity: rustc_identity,
+  selection: ExactPin,
+}
+
+data cargo_observed_match: ObservedToolIdentity = ObservedToolIdentity {
+  tool_name: "cargo",
+  observed_identity: cargo_identity,
+}
+
+data cargo_observed_mismatch: ObservedToolIdentity = ObservedToolIdentity {
+  tool_name: "cargo",
+  observed_identity: other_identity,
+}
+
+fn desired_cargo_rustc() -> List<ToolReconcileMember> {
+  [
+    tool_member_from_pin(pin: cargo_pin, tier: RepoLocal),
+    tool_member_from_pin(pin: rustc_pin, tier: RepoLocal),
+  ]
+}
+
+test fn reconcile_idempotent_when_pins_match_observed() -> Bool {
+  let d = desired_cargo_rustc()
+  let o = [
+    tool_member_from_observed(
+      row: cargo_observed_match,
+      version: "1.93.0" as VersionIdentity,
+      tier: RepoLocal,
+    ),
+    tool_member_from_observed(
+      row: ObservedToolIdentity { tool_name: "rustc", observed_identity: rustc_identity },
+      version: "1.93.0" as VersionIdentity,
+      tier: RepoLocal,
+    ),
+  ]
+  tool_pins_upsert_count(desired: d, observed: o) == 0
+    && tool_pins_teardown_count(desired: d, observed: o) == 0
+    && tool_pins_refusal_count(desired: d, observed: o) == 0
+}
+
+test fn reconcile_digest_mismatch_produces_upsert_not_silent_proceed() -> Bool {
+  let d = desired_cargo_rustc()
+  let o = [
+    tool_member_from_observed(
+      row: cargo_observed_mismatch,
+      version: "1.93.0" as VersionIdentity,
+      tier: RepoLocal,
+    ),
+    tool_member_from_observed(
+      row: ObservedToolIdentity { tool_name: "rustc", observed_identity: rustc_identity },
+      version: "1.93.0" as VersionIdentity,
+      tier: RepoLocal,
+    ),
+  ]
+  tool_pins_upsert_count(desired: d, observed: o) == 1
+    && tool_pins_teardown_count(desired: d, observed: o) == 0
+}
+
+test fn reconcile_added_pin_upserts_when_unobserved() -> Bool {
+  let d = desired_cargo_rustc()
+  let o = [
+    tool_member_from_observed(
+      row: cargo_observed_match,
+      version: "1.93.0" as VersionIdentity,
+      tier: RepoLocal,
+    ),
+  ]
+  tool_pins_upsert_count(desired: d, observed: o) == 1
+}
+
+test fn reconcile_system_tool_teardown_refuses() -> Bool {
+  let d = []
+  let o = [
+    tool_member_from_observed(
+      row: cargo_observed_match,
+      version: "1.93.0" as VersionIdentity,
+      tier: SystemRequired,
+    ),
+  ]
+  tool_pins_teardown_count(desired: d, observed: o) == 0
+    && tool_pins_refusal_count(desired: d, observed: o) == 1
+    && match tool_pins_effects(desired: d, observed: o) {
+         ApplyRefused { refusals: r } => list_length(items: r) == 1
+         EffectsReady { effects: _ } => false
+       }
+}
+
+test fn aggregate_grain_refuses_not_mismatch() -> Bool {
+  match admit_pin_at_observed_grain(
+    pin: cargo_pin,
+    observed: AggregateToolchainIdentity { digest: aggregate_identity },
+  ) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "cargo") && match c {
+        AggregateGrainMismatch { digest: d } => d == aggregate_identity
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+        ToolNotPinned => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+test fn per_tool_grain_admits_matching_integrity() -> Bool {
+  match admit_pin_at_observed_grain(
+    pin: cargo_pin,
+    observed: PerTool { identity: cargo_identity },
+  ) {
+    PinIntegrityAdmitted { pin: p } => (p.tool_name as String) == "cargo"
+    PinRefused { tool_name: _, cause: _ } => false
+  }
+}
+
+test fn unpinned_tool_refuses_before_spawn() -> Bool {
+  match ensure_tool_before_spawn(
+    tool_name: "git",
+    desired_pins: [cargo_pin],
+    observed_row: ObservedToolIdentity {
+      tool_name: "git",
+      observed_identity: cargo_identity,
+    },
+  ) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "git") && match c {
+        ToolNotPinned => true
+        ObservedIdentityMismatch { expected: _, observed: _ } => false
+        AggregateGrainMismatch { digest: _ } => false
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}
+
+test fn fold_observed_toolchain_identity_is_derived_not_authority() -> Bool {
+  let rows = [
+    cargo_observed_match,
+    ObservedToolIdentity { tool_name: "rustc", observed_identity: rustc_identity },
+  ]
+  let folded = fold_observed_toolchain_identity(rows: rows)
+  let reordered = [
+    ObservedToolIdentity { tool_name: "rustc", observed_identity: rustc_identity },
+    cargo_observed_match,
+  ]
+  fold_observed_toolchain_identity(rows: rows)
+    == fold_observed_toolchain_identity(rows: reordered)
+    && folded != cargo_identity
+    && folded != aggregate_identity
+}
+
+test fn digest_mismatch_refuses_at_integrity_before_spawn() -> Bool {
+  match ensure_tool_before_spawn(
+    tool_name: "cargo",
+    desired_pins: [cargo_pin],
+    observed_row: cargo_observed_mismatch,
+  ) {
+    PinRefused { tool_name: n, cause: c } =>
+      ((n as String) == "cargo") && match c {
+        ObservedIdentityMismatch { expected: e, observed: o } =>
+          (e == cargo_identity) && (o == other_identity)
+        ToolNotPinned => false
+        AggregateGrainMismatch { digest: _ } => false
+        ConstraintIsNotIdentity { constraint: _ } => false
+        PinAbsent => false
+        TrackedResolutionUnrecorded { channel: _ } => false
+      }
+    PinIntegrityAdmitted { pin: _ } => false
+  }
+}

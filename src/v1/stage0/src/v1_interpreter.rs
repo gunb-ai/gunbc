@@ -8409,33 +8409,38 @@ fn eval_emit_host_run_transport_cached_builtin(
 /// steps get it via the CI prelude, but the transport spawns from an emitted
 /// workspace with only the process env). Resolution order: bare name if it
 /// resolves on PATH; else $CARGO_HOME/bin/<name>; else $HOME/.cargo/bin/<name>;
-/// else the bare name (spawn then fails with the existing typed error — refuse,
-/// never fabricate).
-fn resolve_host_tool_program(name: &str) -> String {
+/// else refuse (DESIGN §5: never return the bare name and widen to ambient PATH
+/// at spawn time — that was the absorbing fallback this lane removes in P2).
+fn resolve_host_tool_program(name: &str) -> InterpResult<String> {
     if name.contains('/') {
-        return name.to_string();
+        return Ok(name.to_string());
     }
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
             let candidate = std::path::Path::new(dir).join(name);
             if !dir.is_empty() && candidate.is_file() {
-                return candidate.to_string_lossy().into_owned();
+                return Ok(candidate.to_string_lossy().into_owned());
             }
         }
     }
     if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
         let candidate = std::path::Path::new(&cargo_home).join("bin").join(name);
         if candidate.is_file() {
-            return candidate.to_string_lossy().into_owned();
+            return Ok(candidate.to_string_lossy().into_owned());
         }
     }
     if let Ok(home) = std::env::var("HOME") {
         let candidate = std::path::Path::new(&home).join(".cargo/bin").join(name);
         if candidate.is_file() {
-            return candidate.to_string_lossy().into_owned();
+            return Ok(candidate.to_string_lossy().into_owned());
         }
     }
-    name.to_string()
+    Err(InterpError::TypeError {
+        msg: format!(
+            "resolve_host_tool_program: {name:?} not found on PATH, $CARGO_HOME/bin, \
+             or $HOME/.cargo/bin — refusing to spawn bare name"
+        ),
+    })
 }
 
 #[derive(Clone)]
@@ -8606,7 +8611,7 @@ fn emit_host_resolved_build_context_identity(
         probe_workspace: &std::path::Path,
         environment: &EmitHostBuildEnvironment,
     ) -> InterpResult<ObservedToolIdentity> {
-        let resolved = resolve_host_tool_program(requested);
+        let resolved = resolve_host_tool_program(requested)?;
         let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
             msg: format!(
                 "emit_host_run_transport_cached: resolve build tool {requested:?} \
@@ -8811,7 +8816,7 @@ fn emit_host_run_transport_cached_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0]));
+        let mut command = std::process::Command::new(resolve_host_tool_program(&argv[0])?);
         command.args(&argv[1..]).current_dir(workspace);
         emit_host_apply_build_environment(&mut command, build_environment);
         command.env("CARGO_TARGET_DIR", &target_dir);
@@ -8914,7 +8919,8 @@ fn emit_host_run_transport_in_workspace(
 
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
-        std::process::Command::new(resolve_host_tool_program(&argv[0]))
+        let program = resolve_host_tool_program(&argv[0])?;
+        std::process::Command::new(&program)
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)

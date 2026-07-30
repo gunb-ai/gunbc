@@ -18,7 +18,7 @@ data tool_pin_citation_note: String = "Cites the Reproducible Builds definition,
 
 data tool_pin_authority_note: String = "P1 of the hermetic tool-provisioning lane (docs/plans/hermetic-tool-provisioning-design.md). A mechanical tool dependency is a PIN — an exact version identity plus the expected content identity of the binary — never a location and never a range. Both fields are REQUIRED, so a digest-less or range-only pin is unwritable rather than validated (DESIGN section 5 construction, not a post-check). This module deliberately mints NO new digest concept: expected_identity is the same std.types.ContentHash that extdeps.realization.emit_on_demand_host's ResolvedBuildContext.toolchain_identity already carries for the OBSERVED side (#7388, which digests logical name + executable bytes + version-probe output). Pin declares expected and #7388 observes actual, so this is one identity concept with two ends rather than a second authority. It is NOT yet a reconcile: #7388's ResolvedBuildContext.toolchain_identity is a whole-build AGGREGATE, not a per-tool identity, so P2 may not compare a ToolPin against it. The prerequisite that has to land first is stated in full at tool_pin_observed_grain_prerequisite_note below (review 44388) — read that before writing any P2 comparison. No consumer reads this module yet; P1 is model-before-implement."
 
-data tool_pin_observed_grain_prerequisite_note: String = "review 44388, corrected: the expected and observed sides are NOT yet at the same grain, and P2 may not be written until they are. expected_identity above is PER TOOL. The value the authority note points at, ResolvedBuildContext.toolchain_identity (v1_interpreter.rs:8649-8677), is NOT per tool — it is seeded from a constant and hash_combined over EVERY argv in build_argvs, plus a second observe_tool call for rustc whenever the argv is cargo. It is an aggregate over the whole build command set, so it moves when an unrelated tool in the same build moves and cannot say WHICH tool drifted; comparing one ToolPin against it would be a grain mismatch wearing the shape of a reconcile. The per-tool observed value already exists — it is exactly observe_tool's per-argv return, computed and then folded away unnamed — so the fix is to NAME it and re-express toolchain_identity as the derived fold over those rows, never to mint a second per-tool digest beside observe_tool (that would be the section 3 fork this lane exists to remove). P2 prerequisite, blocking: surface the per-tool observed identity first; only then does value_eq mean what this lane needs. dissolve-on: feature:per-tool-observed-identity-surfaced."
+data tool_pin_observed_grain_prerequisite_note: String = "LANDED (#7435): observe_tool's per-argv return is ObservedToolIdentity in v1_interpreter.rs and extdeps.tools.reconcile; toolchain_identity is fold_observed_toolchain_identity over those rows, never the observed half of a per-tool reconcile. admit_pin_at_observed_grain refuses AggregateToolchainIdentity at the integrity boundary (review 44388 RED). dissolve-on: this note deletes when P2 reconcile is witnessed green."
 
 data tool_pin_selection_note: String = "The refresh axis, which keeps a pin from being a freeze. Execution ALWAYS resolves an exact identity — there is no moving reference at run time, because resolving 'latest' at execution is nondeterminism at the substrate boundary (v2.std.determinism) and would make two runs of one spec disagree. How the exact identity was CHOSEN is the separable fact: ExactPin is authored directly; TrackedChannel records that the identity was resolved FROM a moving reference (a release channel, 'latest', a semver range), with a declared refresh window. It does NOT record the resolution DATE: no such field exists on the carrier today, and an earlier version of this sentence claimed one did — an absent fact described as modeled, which is the section 5 specification-without-execution trap (review 44422). The missing date is exactly what makes the refresh window undecidable today; it is tracked at tool_pin_tracked_freshness_evidence_dissolve_on and detailed at tracked_channel_resolution_date_absent_note. Re-resolution is an explicit action producing a reviewable diff — the Cargo.lock / flake.lock shape. That is the INTENT of this axis; P1 records the policy but cannot yet decide it for either variant — see integrity_versus_currency_note, and the two tracked dissolve-on rows above for the flat-scalar unit and the missing resolution evidence. Nothing here reports a pin current."
 
@@ -65,6 +65,12 @@ type PinRefusalCause
   | PinAbsent
   | TrackedResolutionUnrecorded { channel: NonEmptyStr }
   | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
+  | AggregateGrainMismatch { digest: ContentHash }
+  | ToolNotPinned
+
+type ObservedGrain
+  = PerTool { identity: ContentHash }
+  | AggregateToolchainIdentity { digest: ContentHash }
 
 type PinAdmission
   = PinIntegrityAdmitted { pin: ToolPin }
@@ -120,4 +126,17 @@ fn pin_value_eq(a: ToolPin, b: ToolPin) -> Bool {
 
 fn pin_key_of(pin: ToolPin) -> NonEmptyStr {
   pin.tool_name
+}
+
+data admit_pin_at_observed_grain_note: String = "Integrity admission at the correct grain. PerTool delegates to admit_pin_integrity; AggregateToolchainIdentity refuses with AggregateGrainMismatch — comparing one ToolPin against ResolvedBuildContext.toolchain_identity is a category error (review 44388), not an ObservedIdentityMismatch that could be misread as a stale binary."
+
+fn admit_pin_at_observed_grain(pin: ToolPin, observed: ObservedGrain) -> PinAdmission {
+  match observed {
+    PerTool { identity: id } => admit_pin_integrity(pin: pin, observed_identity: id)
+    AggregateToolchainIdentity { digest: d } =>
+      PinRefused {
+        tool_name: pin.tool_name,
+        cause: AggregateGrainMismatch { digest: d },
+      }
+  }
 }
