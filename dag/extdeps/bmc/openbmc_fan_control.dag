@@ -208,7 +208,7 @@ fn openbmc_zone_failsafe_result(
   } else {
     let tokens = split(s: trim(remote.stdout), delimiter: " ")
       |> filter(token => trim(token) != "")
-    if tokens.length() != 2 {
+    if tokens.length() != 2 || trim(tokens.first()) != "b" {
       OpenBmcBoolRefused {
         reason: "zone failsafe response does not have one typed boolean payload",
       }
@@ -228,9 +228,9 @@ fn openbmc_zone_failsafe_result(
 fn openbmc_path_probe_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcBoolResult {
-  if remote.exit_code == 0 {
+  if remote.exit_code == 0 && remote.success {
     OpenBmcBoolObserved { value: true }
-  } else if remote.exit_code == 1 {
+  } else if remote.exit_code == 1 && !remote.success {
     OpenBmcBoolObserved { value: false }
   } else {
     OpenBmcBoolRefused { reason: remote.stderr }
@@ -240,9 +240,9 @@ fn openbmc_path_probe_result(
 fn openbmc_service_active_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcBoolResult {
-  if remote.exit_code == 0 {
+  if remote.exit_code == 0 && remote.success {
     OpenBmcBoolObserved { value: true }
-  } else if remote.exit_code == 3 {
+  } else if remote.exit_code == 3 && !remote.success {
     OpenBmcBoolObserved { value: false }
   } else {
     OpenBmcBoolRefused { reason: remote.stderr }

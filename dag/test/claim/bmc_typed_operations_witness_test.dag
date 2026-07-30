@@ -181,6 +181,20 @@ test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
   }
 }
 
+test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "s true\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason: _ } => true
+    _ => false
+  }
+}
+
 test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
   match openbmc_disk_usage_result(
     remote: PasswordSshExecResult {
@@ -234,6 +248,20 @@ test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
   ) {
     OpenBmcBoolRefused { reason } =>
       reason == "SSH host identity verification failed"
+    _ => false
+  }
+}
+
+test fn inconsistent_success_projection_is_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: false,
+      stdout: "",
+      stderr: "inconsistent transport projection",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } => reason == "inconsistent transport projection"
     _ => false
   }
 }
