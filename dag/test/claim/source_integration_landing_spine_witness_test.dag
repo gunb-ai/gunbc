@@ -71,7 +71,6 @@ import gunbc.source_integration_landing_spine {
   LandingClosedOne,
   LandingClosedMany,
   LandingUnclosed,
-  LandingAdmissionDecision,
   LandingAdmitted,
   LandingUnauthorized,
   LandingSelfAmendmentRefused,
@@ -555,6 +554,48 @@ test fn witness_p0_refused_admission_cannot_advance() -> Bool {
       semantic.proposal.occurrence == expected.proposal.occurrence
     LandingAdmissionNotAdvanced { decision: _ } => false
     LandingAdmissionAdvanced { admitted: _ } => false
+  }
+}
+
+test fn witness_p0_transition_uses_its_admitted_semantic_receipt() -> Bool {
+  let admitted_semantic = LandingClosedOneReceipt {
+    proposal: p0_proposal_at(
+      submitted_at: "2026-07-29T09:00:00Z",
+    ),
+    unique: LandingUniqueResult {
+      result: "second-unique-result",
+      preview: "The second admitted proposal landed.",
+      closure: p0_complete_closure(),
+      ready_obligations: LandingReadyEvidenceProfile {
+        first_required: "builds",
+        remaining_required: ["preserves-public-behavior"],
+      },
+    },
+  }
+  match landing_admitted_result(
+    admission: LandingAdmitted {
+      semantic: admitted_semantic,
+      receipt: "second-admission-receipt",
+    },
+  ) {
+    LandingAdmissionAdvanced { admitted } =>
+      match landing_user_boundary(
+        receipt: LandingTransitionSpine {
+          transition: LandingCommittedAndReadBack {
+            admitted: admitted,
+            transition_receipt: "second-transition-receipt",
+            independent_read_back: "second-read-back",
+            projections: [],
+          },
+        },
+      ) {
+        LandingUserOutcome {
+          outcome: Landed { result_preview },
+        } =>
+          result_preview == "The second admitted proposal landed."
+        _ => false
+      }
+    LandingAdmissionNotAdvanced { decision: _ } => false
   }
 }
 

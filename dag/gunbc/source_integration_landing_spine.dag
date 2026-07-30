@@ -829,6 +829,16 @@ fn landing_admission_user_boundary(
   )
 }
 
+fn landing_committed_user_boundary(
+  admitted: LandingAdmittedResult,
+) -> LandingUserBoundary {
+  LandingUserOutcome {
+    outcome: Landed {
+      result_preview: admitted.semantic.unique.preview as String,
+    },
+  }
+}
+
 fn landing_transition_user_boundary(
   transition: LandingTransitionOutcome,
 ) -> LandingUserBoundary {
@@ -836,11 +846,7 @@ fn landing_transition_user_boundary(
     transition: transition,
     fold: LandingTransitionOutcomeFold {
       committed: fn(admitted, _, _, _) {
-        LandingUserOutcome {
-          outcome: Landed {
-            result_preview: admitted.semantic.unique.preview as String,
-          },
-        }
+        landing_committed_user_boundary(admitted: admitted)
       },
       retry_stale_parent: fn(_, continuation) {
         landing_machine_owned(continuation: continuation)
