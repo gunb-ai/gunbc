@@ -262,6 +262,56 @@ restarts (deploys the files, not the service). Neither is caught by a type; both
 §6 binary-only control, which is why that control is the acceptance bar for item 3 rather than a
 nicety.
 
+#### Operator direction (2026-07-30): deploy is a reconcile toward intent, minimal items
+
+> *"i think i'd like deploy to use our existing apply/delete/reconcile type process (i.e. bmc/srvN
+> apply) — my point is, i want to deploy the minimal possible items to update to intent."*
+
+This **resolves §7 q3 and re-prioritises the ticket**: item 3 is not an optional scope reducer to be
+dropped if expensive — it is the deployment ask, and "minimal possible items to update to intent" is
+exactly the spine's `Unchanged → noop`. The vocabulary already lines up one-to-one: **apply** =
+`MemberUpsert`, **delete** = `MemberTeardown` (owned-only, else a typed refusal), **reconcile** =
+the diff itself, with unchanged members producing no hunk and therefore no effect.
+
+The good news is that this is **instantiation, not invention**. `live_deploy` is the *only*
+degenerate consumer of a spine that several siblings already drive non-degenerately, and both halves
+of the missing machinery have working precedent:
+
+- **The comparable value (2a) — precedent `gunbc.host_authorized_keys_reconcile`.** Its
+  `authorized_key_value_eq` compares *content* (algorithm + material + comment) while `key_of`
+  returns *identity* (the key material), so a content drift is `Modified → re-upsert` rather than
+  `Remove + Add` — the spine's note calls this out as the reason identity and value must differ.
+  That is precisely the split `DeploymentArtifactStep` lacks: it has identity (`path`) and no value.
+- **The observation (2c) — precedent `gunbc.tool_readiness`, live today.** It reconciles a desired
+  `Pin<CliTool>` against an observed one derived from
+  `extdeps.realization.emit_on_demand_host.observed_tool_identity`, which reads a real per-tool
+  digest off the host and returns **three typed outcomes** — `Found` / `Missing` / `Duplicate`. Its
+  `observed_pin_projection_note` also solves the exact projection problem deploy has: the
+  observation carries only a digest, so the observed member is built by taking the desired member
+  and replacing *only* the observed field. Deploy wants the same move — observe the artifact's
+  content identity, keep everything else from desired.
+- **The apply site — `gunbc.host_effect_realize`** already runs reconciles inside srvN apply
+  (`:990`, `:1076`), which is the "bmc/srvN apply" process named in the direction.
+
+So 2a and 2c are **patterned work**, not new mechanism. **2b remains the genuinely new modelling**
+— no sibling has an artifact whose *realization is a running process*, so de-fusing the service from
+the unit file is the part with no precedent to copy, and it is where the design attention belongs.
+
+**Two decisions this direction surfaces, which the precedents deliberately leave to a human:**
+
+1. **Observed scope, and therefore delete semantics.** `host_authorized_keys_reconcile` explicitly
+   declines to fix apply-grain policy because authorized_keys is an *everything-on-host* scope where
+   foreign keys are normal, so a foreign member's refusal must not block an owned upsert. Deploy is
+   the opposite: its members are a **closed set of owned artifacts at known paths**, so the observed
+   scope is bounded and today's wholesale-refuse policy is defensible. But it must be *stated*: with
+   a real observed set, `Removed → teardown` becomes reachable on the apply path for the first time,
+   where today teardown only exists in the retract pole.
+2. **What `Missing` means.** An artifact absent from the host is `Added → upsert` (correct — install
+   it). An observation that *could not be taken* is **not** that, and must refuse typed/located/
+   counted rather than degrade to "assume absent, reinstall everything" — which would be the
+   absorbing fallback wearing this ticket's own clothes, and would silently restore today's
+   always-apply behaviour while looking like a reconcile.
+
 Two consequences worth stating up front, both good:
 
 - The spine's `ownership_of` refusal arms (`OwnershipUnknown`, `MemberNotOwned`) are today exercised
