@@ -22,6 +22,13 @@ correction recorded rather than silently restated:
 - *Item 2* was framed as a §3 de-fork of one readiness fact. There are **two** facts; the tree's own
   `service_ready_means_serving_this_tree_note` and the dated 2026-07-24 incident say so. The digest
   check is irreducible and must survive slice 3 (§2 Concept B).
+**Operator direction, 2026-07-30** — deploy should use the existing apply/delete/reconcile process
+(bmc/srvN apply) and deploy the minimal items needed to reach intent. This answers §7 q3: item 3 is
+**in scope and not droppable**, and it is instantiation of a spine several siblings already drive,
+not new mechanism (§2 Concept C).
+
+Earlier corrections, retained:
+
 - *Item 4's dependency* was stated inconsistently (review 45241) — one section had handover
   downstream of both readiness and reconciliation, while two others said item 3 is unnecessary for
   the headline. The single authoritative statement is now the dependency graph in §5: **slice 4
@@ -435,7 +442,13 @@ needs a trustworthy "the replacement has bound" signal. Everything else is indep
 particular **slice 2 (item 3) gates nothing** — it is a scope reducer that changes how often a
 handover runs, never whether it works (§2, *Item 4 is downstream of B only*).
 
-**Recommended order — headline first, cost last:**
+**Recommended order — revised 2026-07-30 by operator direction.** An earlier version ordered this
+headline-first/cost-last and offered to drop item 3. That is superseded: deploy reconciling to
+intent with minimal items is an explicit ask (§2 Concept C), so slice 2 is **in scope and not
+droppable**. It still gates nothing — the graph above is unchanged, and slices 1/3/4 need not wait
+for it — but it is no longer the item to cut under pressure. Slice 1 stays first because it is
+hours of work and independently correct; slice 2 can proceed in parallel with 3/4 since they share
+no seam.
 
 1. **Slice 1 — de-conflate the observation outcome (item 1).** Give the transport arm its own
    sentence, stating what was observed and not asserting a cause. No timing change, no deployment
@@ -504,16 +517,18 @@ Adopting the brief's, and adding the ones the analysis surfaced:
    `Type=simple` wrongly asserts F1 and `sd_notify` fixes *that*, while F2 (serving this deploy's
    tree) is irreducible and the digest check survives untouched? The practical consequence is that
    item 2 buys the handover prerequisite, not a smaller poll.
-3. **Item 3's cost** (revised twice — reviews 45229, 45232). The fix is *supply the observed set*
-   (construction, not a changed-predicate), but it is gated on two prior modelling changes: content
-   identity on `DeploymentArtifactStep`, **and** de-fusing the running service from the unit file so
-   a restart derives from its inputs. Both touch load-bearing deploy carriers. This is no longer a
-   cheap slice, and it is the item whose *partial* implementations are dangerous rather than merely
-   incomplete. **Confirm those carrier changes are in scope for this ticket** — if they are not,
-   item 3 should be dropped from the ticket entirely rather than attempted in any partial order,
-   since every partial order typechecks and silently under-deploys. Item 3 is also the one item that
-   is *not* required for the headline outcome: slices 1, 3, and 4 make deploys invisible; item 3
-   only makes them rarer.
+3. ~~**Item 3's cost** — is it in scope?~~ **ANSWERED 2026-07-30 (operator).** Deploy should use the
+   existing apply/delete/reconcile process (bmc/srvN apply) and deploy the minimal items needed to
+   reach intent. So item 3 is **in scope and not droppable**, and the two carrier changes it needs
+   are authorised. Recorded in §2 Concept C with the two sibling precedents it should follow
+   (`host_authorized_keys_reconcile` for the comparable value, `tool_readiness` for the live
+   observation), which reduces 2a and 2c to patterned work and leaves **2b — de-fusing the running
+   service from the unit file — as the only part with no precedent.**
+
+   *Two sub-decisions this raises, both deliberately left to a human by the sibling modules
+   (§2 Concept C):* whether deploy's bounded owned-artifact scope keeps today's wholesale-refuse
+   policy now that `Removed → teardown` becomes reachable on the apply path, and confirmation that a
+   *failed observation* refuses rather than degrading to reinstall-everything.
 4. **The seed change.** Is `listener acquisition as a §2 Realization` (SelfBound | Inherited, with
    `sd_notify` on the same seam) an acceptable way to touch the seed for slices 3–4? If the answer
    is that the seed should not grow host integration at all, slice 4 needs a different candidate and
