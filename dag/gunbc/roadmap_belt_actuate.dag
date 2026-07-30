@@ -1246,12 +1246,15 @@ fn belt_observe() -> BeltObserve {
   belt_observe_for_instance(instance: srv1_live_dashboard_instance())
 }
 
+data belt_tick_verify_pass_note: String = "Verification runs on the SAME tick that spawns and reaps, because it is the same kind of fact: a desired obligation reconciled against an observed one. Putting it here rather than behind its own trigger is what makes the mechanism the thing the operator was doing by hand — the belt already runs, so an attempt whose turn completed gets its receipts run on the next tick without anyone noticing it finished. It runs AFTER the reconcile's actuations and reads its own evidence, so a session spawned by this same tick has no completed turn to verify and is simply deferred. An unknowable session set short-circuits the whole tick before verification, exactly as it does for spawn and teardown: no observation, no actuation."
+
 type BeltTickResult {
   observe_refused: Bool,
   observe_refusal_reason: String,
   reconcile: BeltReconcile,
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
+  verify_outcomes: List<BeltVerifyOutcome>,
 }
 
 fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
@@ -1282,6 +1285,7 @@ fn belt_tick(
         reconcile: belt_tick_empty_reconcile(state: state),
         spawn_outcomes: [],
         teardown_outcomes: [],
+        verify_outcomes: [],
       }
     Observed { live: live } => {
       let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
@@ -1291,6 +1295,7 @@ fn belt_tick(
         reconcile: r,
         spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
         teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
+        verify_outcomes: belt_verify_attempts(),
       }
     }
   }
@@ -1389,7 +1394,51 @@ fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
     json_kv(key: "reaped", value: json_int(n: belt_tick_teardown_ok_count(t: t))),
     json_kv(key: "spawn_outcomes", value: json_array(elements: t.spawn_outcomes |> map(o => belt_spawn_outcome_json(o: o)))),
     json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
+    json_kv(key: "verified", value: json_int(n: belt_tick_verify_recorded_count(t: t))),
+    json_kv(key: "verify_outcomes", value: json_array(elements: t.verify_outcomes |> map(o => belt_verify_outcome_json(o: o)))),
   ])
+}
+
+fn belt_verify_outcome_json(o: BeltVerifyOutcome) -> JsonValue {
+  match o {
+    VerifyDeferred { node_id, reason } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "deferred")),
+        json_kv(key: "detail", value: json_string(s: reason)),
+      ])
+    VerifyRecorded { node_id, verdict_key, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "recorded")),
+        json_kv(key: "verdict", value: json_string(s: verdict_key)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+    VerifyWriteFailed { node_id, detail } =>
+      json_object(members: [
+        json_kv(key: "node", value: json_string(s: node_id)),
+        json_kv(key: "outcome", value: json_string(s: "write-failed")),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ])
+  }
+}
+
+data belt_tick_verify_counts_note: String = "The tick counts verdicts RECORDED, never verdicts passed. A tick that records four refusals did its job exactly as well as one that records four passes — the belt's obligation is to produce the receipt, not to produce a green — so counting passes here would make the belt's own receipt read as a quality metric and give a later reader a reason to want fewer refusals. Write failures are counted separately because they are the belt failing, not the validation."
+
+fn belt_tick_verify_recorded_count(t: BeltTickResult) -> Int {
+  count(t.verify_outcomes |> filter(o => match o {
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => true
+    VerifyDeferred { node_id: _, reason: _ } => false
+    VerifyWriteFailed { node_id: _, detail: _ } => false
+  }))
+}
+
+fn belt_tick_verify_write_failed_count(t: BeltTickResult) -> Int {
+  count(t.verify_outcomes |> filter(o => match o {
+    VerifyWriteFailed { node_id: _, detail: _ } => true
+    VerifyRecorded { node_id: _, verdict_key: _, detail: _ } => false
+    VerifyDeferred { node_id: _, reason: _ } => false
+  }))
 }
 
 type BeltAttempts
@@ -2303,7 +2352,7 @@ fn belt_run_once_json() -> String {
   serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
 }
 
-data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
+data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. A verify outcome that could not be WRITTEN flips the exit for the same reason a spawn failure does — the belt failed to produce a receipt it was obliged to produce — while a recorded refusal or a recorded red does NOT, because those are the receipt working: the belt's obligation is to produce a verdict, never to produce a green, and flipping the exit on a refusal would make the tick's own success depend on what the validation said. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
 
 fn belt_run_once_cli() -> ProcessExit {
   let t = belt_run_once()
@@ -2312,6 +2361,8 @@ fn belt_run_once_cli() -> ProcessExit {
     exit_failure(reason: receipt)
   } else {
     if belt_tick_spawn_failed_count(t: t) > 0 {
+      exit_failure(reason: receipt)
+    } else if belt_tick_verify_write_failed_count(t: t) > 0 {
       exit_failure(reason: receipt)
     } else {
       ExitSuccess
