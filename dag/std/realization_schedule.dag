@@ -205,6 +205,13 @@ type Runnable
     }
   | RunnableKernelWorkload { fused_op_count: Int }
 
+data walk_plan_note: String = "A walk is TWO populations with DIFFERENT ordering laws, and the type says so where a bare List<List<Runnable>> could not. `batches` are the ordinary floor: batch boundaries order them, and a failure's consequence is the walk's FloorBatchStopPolicy (StopBeforeDependents on pull_request, FullLedger on push/schedule — where a failed batch deliberately does NOT stop the walk, because the per-batch ledger on main is bisection evidence, operator ruling 2026-07-23). `on_success_stages` run ONLY when the ordinary floor completed AND its receipts finalized and validated; each stage is a barrier — stage N fully joins with zero failures and a written stage receipt before stage N+1 starts — and stage-to-stage execution is ALWAYS fail-fast, regardless of the ordinary stop policy: FullLedger is an ordinary-floor policy and never applies between stages. WHY THE SECOND POPULATION EXISTS: work whose correctness is conditional on the whole floor being green (the merge-admission stamp is the first occupant — stamping Success is only true if reaching it proves green) cannot be an ordinary trailing batch, because under FullLedger a trailing batch is still reached after a red batch. The prior attempt encoded exactly that and shipped a fail-open; a second attempt then declared stamp-then-gate as one stage and rediscovered the SIBLING defect — members WITHIN a stage run concurrently (distinct entries become distinct spawned units), so intra-stage order does not exist and anything sequential must be ONE claim whose body sequences its steps, or two singleton stages. Both defects are why this is a named type with a note rather than a convention (operator design ruling 2026-07-30). Every plan function returns WalkPlan — a plan with no postconditions returns on_success_stages: [] — and the executor has ONE strict parser: a malformed or missing field is a hard error, never a fallback to a bare-list reading."
+
+type WalkPlan {
+  batches: List<List<Runnable>>
+  on_success_stages: List<List<Runnable>>
+}
+
 fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
   match sel {
     SelectionApplied => true

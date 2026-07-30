@@ -66,7 +66,8 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
   runnable_selection_applied,
-  runnable_step_label
+  runnable_step_label,
+  WalkPlan,
 }
 import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
@@ -388,14 +389,14 @@ fn witness_no_corpus_batch_contains_cheap_gate(batches: List<List<Runnable>>) ->
 }
 
 fn witness_cheap_gates_precede_all_corpus_batches() -> Bool {
-  let batches = gunbc_ci_floor_batches()
+  let batches = gunbc_ci_floor_ordinary_batches()
   witness_cheap_gates_only_in_early_batch(batches: batches)
     && witness_no_corpus_batch_contains_cheap_gate(batches: batches)
 }
 
 fn witness_non_cheap_gate_absent_from_early_batch() -> Bool {
   !floor_batch_contains_function(
-    batch: gunbc_ci_floor_batches().first(),
+    batch: gunbc_ci_floor_ordinary_batches().first(),
     target: ci_floor_compile_gate_fn
   )
 }
@@ -451,7 +452,7 @@ fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
 }
 
 fn witness_floor_batch_clamp_params_cover_schedule() -> Bool {
-  length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: gunbc_ci_floor_batches())
+  length(xs: gunbc_ci_floor_batch_clamp_params) == length(xs: gunbc_ci_floor_ordinary_batches())
 }
 
 fn witness_floor_batch_clamp_overhead_all_positive() -> Bool {
@@ -1024,7 +1025,7 @@ fn gunbc_falsifier_substrate_long_lane_batch() -> Runnable {
   }
 }
 
-fn gunbc_falsifier_batches() -> List<List<Runnable>> {
+fn gunbc_falsifier_ordinary_batches() -> List<List<Runnable>> {
   let base = [[gunbc_falsifier_predict_only_batch()]]
   let with_wet = falsifier_batches_append_if_enrolled(
     acc: base,
@@ -1134,7 +1135,7 @@ fn gunbc_pr_native_batch() -> Runnable {
   }
 }
 
-fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
+fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
   falsifier_batches_append_if_enrolled(
     acc: gunbc_ci_floor_realization_plan().schedule,
     enrolled: gunbc_pr_native_batch_enrolled(),
@@ -1142,7 +1143,7 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   )
 }
 
-data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_batches, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
+data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL): a diff-observation / provenance gap REFUSES with a typed, located diagnostic — it never widens to the whole corpus and never silently skips (DESIGN §5: refuse, never widen)."
 
 fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
   [[corpus_runnable_for(spec: gunbc_ci_spec)]]
@@ -1194,7 +1195,7 @@ fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
   length(xs: corpus_plan_nodes(spec: gunbc_ci_regen_spec)) == 0
 }
 
-fn gunbc_ci_regen_floor_batches() -> List<List<Runnable>> {
+fn gunbc_ci_regen_floor_ordinary_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
 }
 
@@ -1226,8 +1227,38 @@ fn floor_compile_clean_batch(batches: List<List<Runnable>>) -> List<List<Runnabl
 
 data gunbc_ci_plan_artifact_batches_note: String = "The docs-only / plan-artifact-only CI shortcut (ci_spec.ci_plan_artifact_compile_clean_invoke): the compile-clean anchor batch of the floor schedule (batch 1 after the cheap-gate early batch — see gunbc_ci_cheap_floor_gate_membership_note) runs alone through the SAME executor path, never a parallel gate runner. The gate must run inside claim_executor because it consumes the executor's in-run whole-tree --target dag compile receipt (standalone gunbc-run invocation refuses, by execution 2026-07-11); the pre-fix invoke passed gunbc-run-style --entry/--function flags claim_executor does not parse, so the shortcut arm died with exit 2 on the first plan-artifact-only diff to reach it."
 
-fn gunbc_ci_plan_artifact_batches() -> List<List<Runnable>> {
-  floor_compile_clean_batch(batches: gunbc_ci_floor_batches())
+fn gunbc_ci_plan_artifact_ordinary_batches() -> List<List<Runnable>> {
+  floor_compile_clean_batch(batches: gunbc_ci_floor_ordinary_batches())
+}
+
+data walk_plan_uniformity_note: String = "EVERY plan function returns WalkPlan, including the three with no postconditions — on_success_stages: [] is a declared empty set, not an omission the executor papers over. The executor has ONE strict parser for the record shape; there is deliberately NO fallback from a failed record parse to a bare-List<List<Runnable>> reading, because that fallback would let a malformed plan silently run with its success stages dropped — the exact silent-widen shape §5 forbids. The `_plan` names replace the `_batches` names in the same motion (operator ruling 2026-07-30): a function whose value now carries postcondition stages must not keep a name that says it returns only batches, or the next author reasonably assumes the stages are not part of the value. The four argv/step consumers follow automatically because they derive from the floor_plan_function / plan_artifact_plan_function / regen_floor_plan_function / falsifier_plan_function constants (gunbc.ci_spec, gunbc.falsifier_workflow) — those constants are the single naming authority, renamed with the functions."
+
+fn gunbc_ci_floor_plan() -> WalkPlan {
+  WalkPlan {
+    batches: gunbc_ci_floor_ordinary_batches(),
+    on_success_stages: [],
+  }
+}
+
+fn gunbc_ci_regen_floor_plan() -> WalkPlan {
+  WalkPlan {
+    batches: gunbc_ci_regen_floor_ordinary_batches(),
+    on_success_stages: [],
+  }
+}
+
+fn gunbc_ci_plan_artifact_plan() -> WalkPlan {
+  WalkPlan {
+    batches: gunbc_ci_plan_artifact_ordinary_batches(),
+    on_success_stages: [],
+  }
+}
+
+fn gunbc_falsifier_plan() -> WalkPlan {
+  WalkPlan {
+    batches: gunbc_falsifier_ordinary_batches(),
+    on_success_stages: [],
+  }
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
@@ -1283,7 +1314,7 @@ fn floor_plan_co_runs_heavy_without_serialization_for(spec: CiSpec) -> Bool {
 }
 
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
-  floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_ordinary_batches())
 }
 
 fn witness_floor_corpus_exclusion_edges_exist(spec: CiSpec) -> Bool {
@@ -1326,7 +1357,7 @@ fn witness_string_lists_have_same_members(a: List<String>, b: List<String>) -> B
 fn witness_floor_schedule_preserves_enrolled_set() -> Bool {
   witness_string_lists_have_same_members(
     a: gunbc_ci_floor_enrolled_runnable_labels_for(spec: gunbc_ci_spec),
-    b: gunbc_ci_floor_schedule_runnable_labels(batches: gunbc_ci_floor_batches())
+    b: gunbc_ci_floor_schedule_runnable_labels(batches: gunbc_ci_floor_ordinary_batches())
   )
 }
 

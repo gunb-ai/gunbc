@@ -153,7 +153,7 @@ test fn witness_run_script_invokes_scheduler() -> Bool {
   let floor_script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: git_fetch_script(policy: gunbc_ci_spec.diff_policy)) &&
     string_contains(s: script, pattern: scheduler_invoke(spec: gunbc_ci_spec)) &&
-    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches") &&
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_plan") &&
     !string_contains(s: floor_script, pattern: "--bin claim_batch") &&
     !string_contains(s: floor_script, pattern: "cargo build") &&
     !string_contains(s: script, pattern: "cargo run -p v1-compiler --release --bin claim_executor")
@@ -256,7 +256,7 @@ test fn witness_documentation_only_floor_shortcut_retired() -> Bool {
     !string_contains(s: script, pattern: "if [ \"$_ci_floor_skip\" = \"documentation_only_skip\" ]; then") &&
     !string_contains(s: script, pattern: "floor skipped (CI_FLOOR_DISPOSITION=") &&
     !string_contains(s: script, pattern: "CI_FLOOR_DISPOSITION=documentation_only_skipped") &&
-    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_batches")
+    string_contains(s: script, pattern: "--plan-function gunbc_ci_floor_plan")
 }
 
 test fn witness_merge_base_ref_single_authority() -> Bool {

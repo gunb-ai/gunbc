@@ -3270,7 +3270,7 @@ enum FloorCompileCleanReceipt {
 
 static FLOOR_COMPILE_CLEAN_RECEIPT: Mutex<Option<FloorCompileCleanReceipt>> = Mutex::new(None);
 
-/// When set by `claim_executor` for `gunbc_ci_floor_batches`, the first gate consume installs
+/// When set by `claim_executor` for `gunbc_ci_floor_plan`, the first gate consume installs
 /// the one whole-tree receipt (after plan resolve has warmed the module-graph facts cache).
 static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
 /// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some

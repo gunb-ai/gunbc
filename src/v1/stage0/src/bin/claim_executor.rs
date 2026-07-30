@@ -571,6 +571,50 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
+/// The parsed form of `std.realization_schedule.WalkPlan` — the ONE plan shape every
+/// plan function returns (see `walk_plan_note` on the carrier). Two populations with
+/// different ordering laws: `batches` are the ordinary floor under the walk's
+/// `FloorBatchStopPolicy`; `on_success_stages` run only after the ordinary floor
+/// completed AND its receipts wrote, each stage a barrier, always fail-fast between
+/// stages regardless of the ordinary stop policy.
+struct ParsedWalkPlan {
+    batches: Vec<Vec<Runnable>>,
+    on_success_stages: Vec<Vec<Runnable>>,
+}
+
+/// Strict WalkPlan parser. Deliberately NO fallback from a failed record parse to a
+/// bare-`List<List<Runnable>>` reading: that fallback would let a malformed plan run
+/// with its success stages silently dropped — the silent-widen arm §5 forbids. A plan
+/// with no postconditions declares `on_success_stages: []`; it never omits the field.
+fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPlan, String> {
+    let fields = match plan {
+        Value::Record { fields, .. } => fields,
+        Value::Variant { fields, .. } => fields,
+        other => {
+            return Err(format!(
+                "expected a WalkPlan record {{ batches, on_success_stages }}, got {} — \
+                 every plan function returns WalkPlan (std.realization_schedule \
+                 walk_plan_note); there is deliberately no bare-list fallback",
+                ctx.format_value(other)
+            ))
+        }
+    };
+    let batches_val = ctx
+        .field(fields, "batches")
+        .ok_or_else(|| "WalkPlan missing field `batches`".to_string())?;
+    let stages_val = ctx.field(fields, "on_success_stages").ok_or_else(|| {
+        "WalkPlan missing field `on_success_stages` — a plan with no postconditions \
+         declares an empty list, never omits the field"
+            .to_string()
+    })?;
+    Ok(ParsedWalkPlan {
+        batches: batches_from_plan(batches_val, ctx)
+            .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
+        on_success_stages: batches_from_plan(stages_val, ctx)
+            .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
+    })
+}
+
 struct ClaimResult {
     function: String,
     ok: bool,
@@ -1516,7 +1560,7 @@ fn eval_plan_in_ctx(
     plan_ctx: &InterpContext,
     plan_entry: &str,
     plan_function: &str,
-) -> Result<Vec<Vec<Runnable>>, String> {
+) -> Result<ParsedWalkPlan, String> {
     set_phase(FloorPhase::Gate, &format!("{plan_entry}::{plan_function}"));
     let plan_value = run_value(plan_ctx, plan_function).map_err(|msg| {
         format!(
@@ -1524,16 +1568,15 @@ fn eval_plan_in_ctx(
             plan_entry, plan_function, msg
         )
     })?;
-    let batches = batches_from_plan(&plan_value, plan_ctx)
-        .map_err(|msg| format!("malformed plan value: {}", msg))?;
-    Ok(batches)
+    walk_plan_from_plan(&plan_value, plan_ctx)
+        .map_err(|msg| format!("malformed plan value ({plan_function}): {msg}"))
 }
 
 fn eval_plan(
     source_roots: &[String],
     plan_entry: &str,
     plan_function: &str,
-) -> Result<Vec<Vec<Runnable>>, String> {
+) -> Result<ParsedWalkPlan, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
@@ -2371,6 +2414,54 @@ fn write_witness_row_cost_drift_receipt_at(
     true
 }
 
+/// The on-success stage receipt — a SEPARATE receipt class from the ordinary floor
+/// receipts, by lifecycle (ruling 2026-07-30): stages run only after the ordinary
+/// receipts finalized, so their resolves and walls are not part of the population
+/// `ci_floor_declared_resolve_count` measures, and folding them in would re-open the
+/// count-collision this separation exists to close. On a skip (ordinary floor failed)
+/// the receipt still writes, LOUDLY, with skipped=ordinary_floor_failed and zero
+/// stages run — a typed diagnostic, never an admission artifact.
+fn write_on_success_receipt(
+    stage_rows: &[(usize, bool)],
+    resolves_total: u64,
+    skipped_ordinary_failed: bool,
+    declared_stage_count: usize,
+) -> bool {
+    let mut body = String::new();
+    if skipped_ordinary_failed {
+        body.push_str("skipped=ordinary_floor_failed\n");
+    }
+    body.push_str(&format!(
+        "on_success_stages_declared={declared_stage_count}\n"
+    ));
+    body.push_str(&format!("on_success_stages_run={}\n", stage_rows.len()));
+    body.push_str(&format!("on_success_resolves_total={resolves_total}\n"));
+    for (stage_index, passed) in stage_rows {
+        body.push_str(&format!(
+            "on_success_stage_{}={}\n",
+            stage_index + 1,
+            if *passed { "passed" } else { "failed" }
+        ));
+    }
+    let base = std::path::Path::new("target");
+    let path = base.join("floor-on-success-receipt.txt");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write on-success receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] on-success stages: {} of {} run, {} resolve(s) (receipt: {})",
+        stage_rows.len(),
+        declared_stage_count,
+        resolves_total,
+        path.display()
+    );
+    true
+}
+
 fn write_resolve_receipt_at(base: &std::path::Path, batch_records: &[BatchRecord]) -> bool {
     let mut resolves_total: u64 = 0;
     let mut resolve_ms_total: u128 = 0;
@@ -2609,6 +2700,7 @@ fn batch_unit_lane(
 fn run_walk(
     source_roots: &[String],
     batches: &[Vec<Runnable>],
+    on_success_stages: &[Vec<Runnable>],
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
     falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
@@ -2883,14 +2975,132 @@ fn run_walk(
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
     let materialization_receipt_ok = write_materialization_receipt();
+    // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
+    // is an ordinary-floor failure, so success stages are gated on the whole floor
+    // contract this process owns, not just the batch verdicts (ruling 2026-07-30).
+    let ordinary_failed = any_failed
+        || !resolve_receipt_ok
+        || !batch_wall_receipt_ok
+        || !gate_warm_cost_receipt_ok
+        || !witness_row_cost_receipt_ok
+        || !witness_row_cost_drift_receipt_ok
+        || !materialization_receipt_ok;
+    // On-success stages: run only on a fully-green ordinary floor; each stage is a
+    // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
+    // is an ordinary-floor policy and never applies between stages. Members execute
+    // serially in-process (run_memo_shared_claims) with a stage-local memo, so one
+    // entry shared by several stages resolves once and is reused; intra-stage order is
+    // NOT part of the contract (walk_plan_note) — anything sequential must be one
+    // claim, and serial execution here merely provides more order than is promised.
+    // Their memo contexts drop AFTER write_materialization_receipt above, so stage
+    // materialization is structurally NOT folded into the floor receipt.
+    let mut on_success_failed = false;
+    if !on_success_stages.is_empty() {
+        if ordinary_failed {
+            eprintln!(
+                "claim_executor: ordinary floor failed — {} on-success stage(s) NOT run \
+                 (green-only by construction)",
+                on_success_stages.len()
+            );
+            let _ = write_on_success_receipt(&[], 0, true, on_success_stages.len());
+        } else {
+            let mut stage_rows: Vec<(usize, bool)> = Vec::new();
+            let mut stage_resolves: u64 = 0;
+            let mut stage_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
+                std::collections::HashMap::new();
+            for (si, stage) in on_success_stages.iter().enumerate() {
+                let mut stage_failed = false;
+                for runnable in stage {
+                    match runnable {
+                        Runnable::SingleClaim {
+                            entry,
+                            function,
+                            execution_mode,
+                            ..
+                        } => {
+                            let results = run_memo_shared_claims(
+                                source_roots,
+                                entry,
+                                std::slice::from_ref(function),
+                                *execution_mode,
+                                &mut stage_memo,
+                            );
+                            for r in results {
+                                if r.resolve_nanos > 0 {
+                                    stage_resolves += 1;
+                                }
+                                if r.ok {
+                                    eprintln!(
+                                        "{}",
+                                        format_args!(
+                                            "\u{2713} PASS [on-success stage {}] {}",
+                                            si + 1,
+                                            r.function
+                                        )
+                                    );
+                                } else {
+                                    stage_failed = true;
+                                    eprintln!(
+                                        "\u{2717} FAIL [on-success stage {}] {} ({})",
+                                        si + 1,
+                                        r.function,
+                                        r.detail
+                                    );
+                                    failure_details.push(format!(
+                                        "on-success stage {} fn={} detail={}",
+                                        si + 1,
+                                        r.function,
+                                        r.detail
+                                    ));
+                                }
+                            }
+                        }
+                        other => {
+                            // Typed refusal, never a widen: stages admit single claims
+                            // only. A discovery batch in a postcondition position has
+                            // no defined green-only meaning.
+                            stage_failed = true;
+                            let label = match other {
+                                Runnable::DiscoveryBatch { .. } => "RunnableDiscoveryBatch",
+                                Runnable::SingleClaim { .. } => unreachable!(),
+                            };
+                            eprintln!(
+                                "\u{2717} FAIL [on-success stage {}] {} refused: on-success \
+                                 stages admit RunnableSingleClaim only",
+                                si + 1,
+                                label
+                            );
+                            failure_details.push(format!(
+                                "on-success stage {} refused non-claim runnable {}",
+                                si + 1,
+                                label
+                            ));
+                        }
+                    }
+                }
+                stage_rows.push((si, !stage_failed));
+                if stage_failed {
+                    on_success_failed = true;
+                    eprintln!(
+                        "claim_executor: on-success stage {} failed — remaining stage(s) NOT run \
+                         (stages are fail-fast regardless of the ordinary stop policy)",
+                        si + 1
+                    );
+                    break;
+                }
+            }
+            if !write_on_success_receipt(
+                &stage_rows,
+                stage_resolves,
+                false,
+                on_success_stages.len(),
+            ) {
+                on_success_failed = true;
+            }
+        }
+    }
     WalkOutcome {
-        any_failed: any_failed
-            || !resolve_receipt_ok
-            || !batch_wall_receipt_ok
-            || !gate_warm_cost_receipt_ok
-            || !witness_row_cost_receipt_ok
-            || !witness_row_cost_drift_receipt_ok
-            || !materialization_receipt_ok,
+        any_failed: ordinary_failed || on_success_failed,
         batches_run,
         failure_details,
     }
@@ -2970,9 +3180,9 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
 /// plan functions whose schedule is a floor walk and therefore subject to arm-time
 /// `FloorBudgetBelowMinimumFootprint` refusal in claim_executor.
 const FLOOR_ARM_TIME_BUDGET_REFUSAL_PLAN_FUNCTIONS: &[&str] = &[
-    "gunbc_ci_floor_batches",
-    "gunbc_ci_plan_artifact_batches",
-    "gunbc_falsifier_batches",
+    "gunbc_ci_floor_plan",
+    "gunbc_ci_plan_artifact_plan",
+    "gunbc_falsifier_plan",
 ];
 
 fn plan_requires_floor_arm_time_budget_refusal(plan_function: &str) -> bool {
@@ -2984,13 +3194,16 @@ fn run_perturb_check(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<ExitCode, ExitCode> {
-    let batches = match eval_plan(source_roots, plan_entry, plan_function) {
+    let walk_plan = match eval_plan(source_roots, plan_entry, plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: --perturb-check: {msg}");
             return Err(ExitCode::from(2));
         }
     };
+    // --perturb-check exercises the ordinary gating batch only; success stages are
+    // out of its subject (they cannot run when the planted gate fails, by construction).
+    let batches = walk_plan.batches;
     if batches.len() < 2 {
         eprintln!(
             "claim_executor: --perturb-check needs a plan with >= 2 batches to witness the \
@@ -3089,6 +3302,7 @@ fn run_perturb_check(
     let outcome = run_walk(
         &[temp_root],
         &remapped,
+        &[],
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
         FalsifierSelfHostWetBudgets::default(),
@@ -3294,13 +3508,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     phase_mark("plan resolve");
 
     let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
-    let batches = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
+    let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     };
+    let batches = walk_plan.batches;
+    let on_success_stages = walk_plan.on_success_stages;
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
@@ -3327,7 +3543,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_batches" {
+    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
                 &plan_ctx,
@@ -3428,8 +3644,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
     // carries its own receipt budgets, so neither reads these lists.
-    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_batches"
-    {
+    let batch_clamp_params: Option<Vec<(u128, u128)>> = if plan_function == "gunbc_ci_floor_plan" {
         match read_floor_batch_clamp_params(&plan_ctx, batches.len()) {
             Ok(v) => Some(v),
             Err(msg) => {
@@ -3483,11 +3698,9 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Plans whose schedule carries the compile-clean gate node: the gate only CONSUMES the
     // in-run whole-tree compile receipt, so these plans must arm the lazy install.
-    // `gunbc_ci_plan_artifact_batches` is batch 1 of the floor schedule (the docs-only
+    // `gunbc_ci_plan_artifact_plan` is batch 1 of the floor schedule (the docs-only
     // shortcut) — same gate node, same receipt dependency.
-    if plan_function == "gunbc_ci_floor_batches"
-        || plan_function == "gunbc_ci_plan_artifact_batches"
-    {
+    if plan_function == "gunbc_ci_floor_plan" || plan_function == "gunbc_ci_plan_artifact_plan" {
         enable_floor_compile_clean_lazy_install(&source_roots);
         // Eager install on the MAIN thread (lever 1, PR #6766): the receipt compile
         // rides this thread's `process_shared_index` — the same thread-local universe
@@ -3505,13 +3718,14 @@ fn run() -> Result<ExitCode, ExitCode> {
     let outcome = run_walk(
         &source_roots,
         &batches,
+        &on_success_stages,
         &governor,
         fast_lane_eval_budget_ms,
         falsifier_self_host_wet_budgets,
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
-        plan_function == "gunbc_falsifier_batches",
+        plan_function == "gunbc_falsifier_plan",
         Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
     );
     // Floor receipts block — data, not outcomes. One named group; pulse glyphs only
