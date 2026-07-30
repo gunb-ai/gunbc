@@ -60,7 +60,7 @@ import std.state_durability {
   SynchronizedCommit,
   state_durability_verdict,
 }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, string_length }
 import std.upsert_decision {
   Apply,
   Conflict,
@@ -95,9 +95,23 @@ type BmcFanPolicyApplyPlan {
   projection: BmcFanPolicyProjectionCapability
 }
 
+type BmcFanConfigPersistenceApplyRefusalCause
+  = BmcFanConfigPersistenceSubstrateNotGrounded
+  | BmcFanConfigPersistenceSubstrateUnsupported { detail: NonEmptyStr }
+
+type FanPolicySuitabilityRefusalCause
+  = FanPolicyFirmwareMustConvergeBeforeRealizer
+  | FanPolicyInstalledTachTopologyDiffersFromIntent
+  | FanPolicyProjectionCapabilityMismatch
+  | FanPolicyRealizerSubstrateUnobserved
+  | FanPolicyPersistenceApplyRefused {
+      cause: BmcFanConfigPersistenceApplyRefusalCause,
+    }
+  | FanPolicyDurabilityCommitBarrierMissing
+
 type BmcFanPolicySuitability
   = FanPolicySuitable
-  | FanPolicySuitabilityRefused { reason: String }
+  | FanPolicySuitabilityRefused { cause: FanPolicySuitabilityRefusalCause }
 
 type BmcFanPolicyDurabilityGate
   = BmcFanPolicyDurabilityQualified {
@@ -109,7 +123,47 @@ type BmcFanPolicyDurabilityGate
 
 type BmcFanConfigPersistenceApplySuitability
   = BmcFanConfigPersistenceApplySuitable
-  | BmcFanConfigPersistenceApplyRefused { reason: String }
+  | BmcFanConfigPersistenceApplyRefused {
+      cause: BmcFanConfigPersistenceApplyRefusalCause,
+    }
+
+fn bmc_fan_config_persistence_unsupported_detail(reason: String) -> NonEmptyStr {
+  if string_length(s: reason) > 0 {
+    reason as NonEmptyStr
+  } else {
+    "bmc config persistence unsupported without detail" as NonEmptyStr
+  }
+}
+
+fn bmc_fan_config_persistence_apply_refusal_reason(
+  cause: BmcFanConfigPersistenceApplyRefusalCause,
+) -> String {
+  match cause {
+    BmcFanConfigPersistenceSubstrateNotGrounded =>
+      "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path"
+    BmcFanConfigPersistenceSubstrateUnsupported { detail: detail } =>
+      concat("bmc config persistence unsupported: ", detail as String)
+  }
+}
+
+fn bmc_fan_policy_suitability_refusal_reason(
+  cause: FanPolicySuitabilityRefusalCause,
+) -> String {
+  match cause {
+    FanPolicyFirmwareMustConvergeBeforeRealizer =>
+      "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer"
+    FanPolicyInstalledTachTopologyDiffersFromIntent =>
+      "bmc fan projection installed-tach topology differs from fleet intent"
+    FanPolicyProjectionCapabilityMismatch =>
+      "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service"
+    FanPolicyRealizerSubstrateUnobserved =>
+      "bmc fan realizer lifetime cannot be evaluated because its current filesystem substrate has not been observed"
+    FanPolicyPersistenceApplyRefused { cause: cause } =>
+      bmc_fan_config_persistence_apply_refusal_reason(cause: cause)
+    FanPolicyDurabilityCommitBarrierMissing =>
+      "bmc fan projection lacks a synchronized durability commit barrier"
+  }
+}
 
 data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
 
@@ -278,7 +332,7 @@ fn bmc_fan_config_persistence_apply_suitability(
         BmcFanConfigPersistenceApplySuitable
       } else {
         BmcFanConfigPersistenceApplyRefused {
-          reason: "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path",
+          cause: BmcFanConfigPersistenceSubstrateNotGrounded,
         }
       }
     BmcConfigPersistenceUnsupported {
@@ -288,7 +342,9 @@ fn bmc_fan_config_persistence_apply_suitability(
       observed_at: _,
     } =>
       BmcFanConfigPersistenceApplyRefused {
-        reason: concat("bmc config persistence unsupported: ", reason),
+        cause: BmcFanConfigPersistenceSubstrateUnsupported {
+          detail: bmc_fan_config_persistence_unsupported_detail(reason: reason),
+        },
       }
   }
 }
@@ -304,7 +360,7 @@ fn bmc_fan_policy_apply_suitability(
   match intent.firmware {
     BmcFirmwareUnpinned =>
       FanPolicySuitabilityRefused {
-        reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+        cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
       }
     BmcFirmwareTrackRequired { track: _ } =>
       match bmc_firmware_version_intent_verdict(
@@ -313,12 +369,12 @@ fn bmc_fan_policy_apply_suitability(
       ) {
         BmcFirmwareIntentMismatch { required: _, observed: _ } =>
           FanPolicySuitabilityRefused {
-            reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+            cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
           }
         BmcFirmwareIntentSatisfied =>
           if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
             FanPolicySuitabilityRefused {
-              reason: "bmc fan projection installed-tach topology differs from fleet intent",
+              cause: FanPolicyInstalledTachTopologyDiffersFromIntent,
             }
           } else if !bmc_fan_policy_projection_apply_suitability(
             capability: projection,
@@ -327,13 +383,13 @@ fn bmc_fan_policy_apply_suitability(
             observation: observation,
           ) {
             FanPolicySuitabilityRefused {
-              reason: "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service",
+              cause: FanPolicyProjectionCapabilityMismatch,
             }
           } else {
             match persistence {
               Absent =>
                 FanPolicySuitabilityRefused {
-                  reason: "bmc fan realizer lifetime cannot be evaluated because its current filesystem substrate has not been observed",
+                  cause: FanPolicyRealizerSubstrateUnobserved,
                 }
               Present { value: storage } =>
                 match bmc_fan_config_persistence_apply_suitability(
@@ -341,15 +397,17 @@ fn bmc_fan_policy_apply_suitability(
                   expected_firmware: observation.firmware,
                   config_path: observation.board_config_path,
                 ) {
-                  BmcFanConfigPersistenceApplyRefused { reason: reason } =>
-                    FanPolicySuitabilityRefused { reason: reason }
+                  BmcFanConfigPersistenceApplyRefused { cause: cause } =>
+                    FanPolicySuitabilityRefused {
+                      cause: FanPolicyPersistenceApplyRefused { cause: cause },
+                    }
                   BmcFanConfigPersistenceApplySuitable =>
                     match bmc_fan_policy_projection_durability_capability(
                       capability: projection,
                     ).commit_barrier {
                       NoDurabilityCommitBarrier =>
                         FanPolicySuitabilityRefused {
-                          reason: "bmc fan projection lacks a synchronized durability commit barrier",
+                          cause: FanPolicyDurabilityCommitBarrierMissing,
                         }
                       SynchronizedCommit => FanPolicySuitable
                     }
@@ -737,10 +795,14 @@ fn bmc_fan_policy_classification(
                     persistence: persistence,
                     projection: projector,
                   ) {
-                    FanPolicySuitabilityRefused { reason: reason } =>
+                    FanPolicySuitabilityRefused { cause: cause } =>
                       UpsertClassification {
                         verdict: UnknownRefused,
-                        decision: Refuse { reason: reason },
+                        decision: Refuse {
+                          reason: bmc_fan_policy_suitability_refusal_reason(
+                            cause: cause,
+                          ),
+                        },
                       }
                     FanPolicySuitable =>
                       if bmc_fan_policy_needs_apply(
