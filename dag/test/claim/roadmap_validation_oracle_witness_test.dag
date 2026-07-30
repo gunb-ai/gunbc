@@ -51,6 +51,7 @@ import gunbc.roadmap_validation_oracle {
   validation_verdict_detail,
   validation_refusal_cause_key,
   validation_receipt_json,
+  validation_receipt_identity_prefix,
   validation_receipt_decode,
   ValidationReceiptDecoded,
   ValidationReceiptUndecodable,
@@ -393,6 +394,27 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
     }
 }
 
+data truncated_receipt_note: String = "Self-review catch, mirroring the control the admission receipt already carries: a prefix match alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed while writing it — carries the passed prefix verbatim and is still not a passed receipt, because the document does not parse. Without the parse guard this fixture decodes as passed, which is a fabricated green produced by an interrupted write rather than by any validation."
+
+test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
+  let genuine = receipt_for(verdict: ValidationPassed {
+    command: "gunbc run --claim-run",
+    oracle_identity: pinned_identity(),
+  })
+  let truncated = substring(
+    s: genuine,
+    start: 0,
+    end: string_length(s: genuine) - 12,
+  )
+  starts_with(
+    s: truncated,
+    prefix: validation_receipt_identity_prefix(verdict_key: "passed"),
+  ) && match validation_receipt_decode(receipt: truncated) {
+    ValidationReceiptDecoded { verdict_key: _ } => false
+    ValidationReceiptUndecodable { reason: _ } => true
+  }
+}
+
 test fn foreign_receipt_document_is_undecodable() -> Bool {
   match validation_receipt_decode(
     receipt: "{\"schema\": \"something-else/v1\", \"verdict\": \"passed\"}",
@@ -514,6 +536,7 @@ test fn roadmap_validation_oracle_keystone_holds() -> Bool {
     && attempt_without_a_recorded_pin_refuses()
     && refused_and_failed_verdicts_are_distinct_on_the_wire()
     && refusal_quoting_passed_does_not_decode_as_passed()
+    && truncated_receipt_with_passed_prefix_is_not_passed()
     && foreign_receipt_document_is_undecodable()
     && moved_oracle_detail_locates_both_identities()
     && verify_lamp_stays_pending_without_a_receipt()

@@ -25,6 +25,7 @@ import gunbc.roadmap_execution_contract {
   ExecutionContract,
   ExecutionContractUnspecified,
 }
+import extdeps.languages.json.grammar { json_text_parseable }
 import extdeps.languages.json.emit {
   JsonValue,
   json_string,
@@ -614,7 +615,11 @@ type ValidationReceiptDecode
   | ValidationReceiptUndecodable { reason: String }
 
 fn validation_receipt_decode(receipt: String) -> ValidationReceiptDecode {
-  if starts_with(
+  if !json_text_parseable(s: receipt) {
+    ValidationReceiptUndecodable {
+      reason: "validation receipt is not one well-formed JSON value",
+    }
+  } else if starts_with(
     s: receipt,
     prefix: validation_receipt_identity_prefix(verdict_key: "passed"),
   ) {
