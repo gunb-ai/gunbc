@@ -10,11 +10,11 @@ import extdeps.bmc.capability {
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceUnsupported,
+  BmcFanAggregatedControllerTopology,
   BmcFanCurve,
   BmcFanPolicyObservation,
   BmcOverlayConfigObserved,
   FanPidAggregatedEntry,
-  FanPidIndependentEntries,
   On,
   RedfishFanControlResourceAbsent,
   RedfishInitialDutyControlResource,
@@ -23,6 +23,8 @@ import extdeps.bmc.types {
   RedfishThermalQueryRefused,
   RedfishThermalSubsystemSensorCollection,
   ResetGracefulRestart,
+  bmc_fan_controller_shape_aggregated_topology,
+  bmc_fan_controller_shape_independent_entry_names,
   bmc_fan_curve_curve_duty_at_temperature,
   bmc_fan_curve_sensor_unavailable_duty,
   redfish_thermal_query_verdict,
@@ -327,15 +329,22 @@ test fn sensors_http_success_alone_is_incomplete_red_control() -> Bool {
 test fn firmware_versions_share_curve_but_not_controller_shape() -> Bool {
   asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
     && asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.curve == asrock_altrad8ud_factory_temp_soc_fan_curve
-    && match asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.controller_shape {
-      FanPidIndependentEntries { entry_names: names } =>
-        list_length(items: names) == 10
-      FanPidAggregatedEntry { entry_name: _, tach_inputs: _ } => false
+    && match bmc_fan_controller_shape_independent_entry_names(
+      shape: asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation.controller_shape,
+    ) {
+      Present { value: names } => list_length(items: names) == 10
+      Absent => false
     }
-    && match asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape {
-      FanPidAggregatedEntry { entry_name: name, tach_inputs: inputs } =>
-        name == "FAN1" && list_length(items: inputs) == 5
-      FanPidIndependentEntries { entry_names: _ } => false
+    && match bmc_fan_controller_shape_aggregated_topology(
+      shape: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.controller_shape,
+    ) {
+      Present {
+        value: BmcFanAggregatedControllerTopology {
+          entry_name: name,
+          tach_inputs: inputs,
+        },
+      } => name == "FAN1" && list_length(items: inputs) == 5
+      Absent => false
     }
 }
 

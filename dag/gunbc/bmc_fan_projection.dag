@@ -2,10 +2,10 @@ module gunbc.bmc_fan_projection
 
 import extdeps.bmc.capability { BmcFirmwareVersion }
 import extdeps.bmc.types {
+  BmcFanAggregatedControllerTopology,
   BmcFanCurve,
   BmcFanPolicyObservation,
-  FanPidAggregatedEntry,
-  FanPidIndependentEntries,
+  bmc_fan_controller_shape_aggregated_topology,
 }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
@@ -251,14 +251,18 @@ fn bmc_fan_policy_projection_topology_matches(
   capability: BmcFanPolicyProjectionCapability,
   observation: BmcFanPolicyObservation,
 ) -> Bool {
-  match observation.controller_shape {
-    FanPidAggregatedEntry {
-      entry_name: entry_name,
-      tach_inputs: tach_inputs,
+  match bmc_fan_controller_shape_aggregated_topology(
+    shape: observation.controller_shape,
+  ) {
+    Present {
+      value: BmcFanAggregatedControllerTopology {
+        entry_name: entry_name,
+        tach_inputs: tach_inputs,
+      },
     } =>
       entry_name == capability.aggregate_fan_pid_entry
         && tach_inputs == capability.required_tach_inputs
-    FanPidIndependentEntries { entry_names: _ } => false
+    Absent => false
   }
 }
 
