@@ -462,6 +462,10 @@ fn dashboard_instances_have_disjoint_owned_paths(
   )
 }
 
+data serve_binary_ensure_note: String = "NOTHING INSTALLED A LAB'S BINARY, BECAUSE LABS USED TO BORROW PRODUCTION'S. Before serve_binary became instance-derived, every isolated instance resolved it to the host layout's /opt/gunbc/bin/gunbc — the file production is executing. That is why the plan had no install step: there was nothing to install, only something to point at. It is also exactly the hazard the twin witness caught, since ServeBinary is an Owned deployment artifact and a lab retract would have removed the binary out from under the running service.\\n\\nSo closing that hazard opened this gap, and the two belong in one change. An instance that owns its binary needs a step that puts one there, or the dashboard apply refuses at target-dependencies against a path only it was ever going to create — a chain that terminates in nobody's responsibility.\\n\\nIt copies rather than builds. The controller's already-built target/release/gunbc is the source, staged and moved into place through the same atomic copy the source bundle uses, so a half-written binary is never observable at the destination. Building is deliberately NOT modeled here: a provisioner that silently compiled would make apply's duration and its toolchain requirements invisible, and a stale or missing build should refuse with the path it looked for rather than quietly producing one that differs from what the operator tested."
+
+data provider_state_root_ensure_note: String = "THE MODEL VERIFIED AUTH AGAINST A DIRECTORY IT NEVER CREATED. DashboardVerifyProviderRuntime and DashboardVerifyProviderAuth both read the provider state root, and nothing in the plan brought it into existence — so on a fresh host the only command that can populate it fails first: `CODEX_HOME=... codex login` exits with 'that path does not exist' before any OAuth begins. The operator hits a CLI error in their own terminal instead of a typed refusal telling them what to do, which is the gap this variant closes (operator, 2026-07-30: 'i think this stuff needs to be in the workflow').\\n\\nIT IS A SEPARATE VARIANT BECAUSE ITS OWNERSHIP AND TEARDOWN DIFFER, and reusing DashboardEnsureDirectory would state neither. The state root lives OUTSIDE the instance root, so it can never be an owned path — dashboard_instance_paths_are_owned requires containment, and the roster it checks deliberately excludes this. And it must never be torn down: the directory holds user-authored OAuth state, so removing it on retract would destroy credentials the deploy is forbidden to carry in the first place. dashboard_retract_preserves_recovery_anchor_and_provider_state already asserts that preservation; the type now says it too.\\n\\nWhat this creates is a DIRECTORY, never a credential. dashboard_instance_note's rule stands unchanged — provider credentials remain pre-existing user-authored state, referenced and never copied into a deployment payload. An empty state root is infrastructure; the secret inside it is not, and this op cannot produce one."
+
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
       controller_repo: FilePath,
@@ -476,6 +480,12 @@ type DashboardInstanceProvisionOp
       staged_bundle: FilePath,
     }
   | DashboardEnsureDirectory { path: FilePath }
+  | DashboardEnsureProviderStateRoot { path: FilePath }
+  | DashboardEnsureServeBinary {
+      controller_repo: FilePath,
+      built_binary: FilePath,
+      path: FilePath,
+    }
   | DashboardEnsureOwnershipMarker {
       path: FilePath,
       instance_id: NonEmptyStr,
@@ -533,6 +543,17 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     DashboardEnsureDirectory { path: instance.instance_root },
     DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
     DashboardEnsureDirectory { path: instance.dispatch_attempt_state_root },
+    DashboardEnsureProviderStateRoot {
+      path: dashboard_instance_provider_state_root(instance: instance),
+    },
+    DashboardEnsureServeBinary {
+      controller_repo: dashboard_instance_controller_workdir(instance: instance),
+      built_binary: dashboard_instance_child(
+        root: dashboard_instance_controller_workdir(instance: instance),
+        child: "target/release/gunbc",
+      ),
+      path: instance.serve_binary,
+    },
     DashboardEnsureOwnershipMarker {
       path: dashboard_instance_ownership_marker_path(instance: instance),
       instance_id: instance.instance_id,
@@ -628,6 +649,22 @@ fn dashboard_instance_provision_op_row(
         kind: "ensure-directory" as NonEmptyStr,
         target: path as String,
         detail: "mkdir parents; idempotent",
+      }
+    DashboardEnsureProviderStateRoot { path } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-provider-state-root" as NonEmptyStr,
+        target: path as String,
+        detail: "mkdir parents so the provider login has somewhere to write; never torn down, never populated by the deploy",
+      }
+    DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-serve-binary" as NonEmptyStr,
+        target: path as String,
+        detail: join([
+          "copy the controller's built seed from ",
+          built_binary as String,
+          "; atomic move, never a build",
+        ], ""),
       }
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       DashboardInstanceProvisionPlanRow {

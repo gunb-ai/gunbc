@@ -17,6 +17,8 @@ import gunbc.roadmap_dashboard_instance {
   DashboardPrepareGitBundle,
   DashboardStageGitBundle,
   DashboardEnsureDirectory,
+  DashboardEnsureProviderStateRoot,
+  DashboardEnsureServeBinary,
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
@@ -194,7 +196,7 @@ fn plan_binds_source_ref_translation(
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 16
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
@@ -573,13 +575,15 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 14
+  count(plan) == 16
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
 }
 
 test fn dashboard_instance_model_keystone_holds() -> Bool {
   isolated_instance_carries_the_layout_it_was_given()
+    && the_plan_creates_every_path_it_later_verifies()
+    && each_instance_ensures_its_own_binary_not_a_shared_one()
     && source_anchor_is_per_instance_not_one_shared_literal()
     && srv2_lab_is_actuating_unlike_its_preview_sibling()
     && srv2_lab_owns_paths_disjoint_from_preview_and_production()
@@ -600,4 +604,47 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
     && dashboard_reconcile_refuses_unmarked_existing_source()
     && dashboard_retract_preserves_recovery_anchor_and_provider_state()
     && dashboard_retract_refuses_production_existing_repo()
+}
+
+data provisioner_closes_its_own_prerequisites_note: String = "TWO PATHS THE PLAN VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began — an operator hitting a CLI error instead of a typed refusal. The serve binary: instances used to BORROW production's, which is why no install step existed; making each instance own its own closed a retract hazard and left the install with no owner.\\n\\nBoth claims are stated as containment in the plan rather than as a count, because a count says the plan has sixteen things and nothing about whether the right two are among them. Each asserts the op targets the INSTANCE's own path — a plan that ensured some other instance's binary would satisfy a count and fail here."
+
+fn plan_ensures_provider_state_root(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  any(plan, op => match op {
+    DashboardEnsureProviderStateRoot { path } =>
+      path == dashboard_instance_provider_state_root(instance: instance)
+    _ => false
+  })
+}
+
+fn plan_ensures_serve_binary(
+  plan: List<DashboardInstanceProvisionOp>,
+  instance: HostDashboardInstance,
+) -> Bool {
+  any(plan, op => match op {
+    DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
+      path == instance.serve_binary
+    _ => false
+  })
+}
+
+test fn the_plan_creates_every_path_it_later_verifies() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let srv2 = srv2_lab_dashboard_instance()
+  let lab_plan = dashboard_instance_provision_plan(instance: lab)
+  let srv2_plan = dashboard_instance_provision_plan(instance: srv2)
+  plan_ensures_provider_state_root(plan: lab_plan, instance: lab)
+    && plan_ensures_serve_binary(plan: lab_plan, instance: lab)
+    && plan_ensures_provider_state_root(plan: srv2_plan, instance: srv2)
+    && plan_ensures_serve_binary(plan: srv2_plan, instance: srv2)
+}
+
+test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let srv2 = srv2_lab_dashboard_instance()
+  !(lab.serve_binary == srv2.serve_binary)
+    && !(lab.serve_binary == srv1_live_dashboard_instance().serve_binary)
+    && !(srv2.serve_binary == srv1_live_dashboard_instance().serve_binary)
 }

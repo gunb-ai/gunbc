@@ -386,6 +386,62 @@ fn dashboard_stage_bundle(
   )
 }
 
+data serve_binary_copy_refusal_note: String = "THE SOURCE IS CHECKED BEFORE THE COPY so a missing build refuses by its own path rather than through cp's error. An absent target/release/gunbc is the ordinary state of a fresh controller checkout — nobody has built yet — and it is the single most likely reason this step fails, so it earns a refusal that names the file it looked for instead of a generic copy failure the reader has to decode.\\n\\nThe destination directory is created first because the instance's bin/ has no other creator: serve_binary is derived as a child of the instance root, and every other ensured directory in the plan is a sibling. Relying on the copy to imply its parent would fail on a fresh instance in a way that reads like a permissions problem.\\n\\nThe executable bit is set explicitly rather than inherited. cp preserves mode from the source, which is correct today and silently wrong the moment the build lands non-executable or the copy path changes — and a serve binary that exists but cannot execute produces a service that fails to start with no indication the provisioner is why."
+
+fn dashboard_ensure_serve_binary(
+  instance: HostDashboardInstance,
+  controller_repo: FilePath,
+  built_binary: FilePath,
+  path: FilePath,
+) -> DashboardExecResult {
+  let present = dashboard_local_exec(
+    workdir: controller_repo,
+    program: "/usr/bin/test" as FilePath,
+    args: ["-f", built_binary as String],
+  )
+  if !present.success {
+    dashboard_exec_refused(detail: join([
+      "controller seed binary absent: ",
+      built_binary as String,
+      " — build it before apply; this step copies, it never builds",
+    ], ""))
+  } else {
+    let parent = dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/dirname" as FilePath,
+      args: [path as String],
+    )
+    if !parent.success {
+      parent
+    } else {
+      let made = dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/mkdir" as FilePath,
+        args: ["-p", trim(parent.stdout)],
+      )
+      if !made.success {
+        made
+      } else {
+        let copied = dashboard_copy_to_target_atomically(
+          instance: instance,
+          controller_workdir: controller_repo,
+          local_path: built_binary,
+          remote_path: path,
+        )
+        if !copied.success {
+          copied
+        } else {
+          dashboard_target_exec(
+            instance: instance,
+            program: "/usr/bin/chmod" as FilePath,
+            args: ["0755", path as String],
+          )
+        }
+      }
+    }
+  }
+}
+
 fn dashboard_ensure_local_origin(
   instance: HostDashboardInstance,
   bundle: FilePath,
@@ -640,6 +696,19 @@ fn dashboard_apply_provision_op(
         instance: instance,
         program: "/usr/bin/mkdir" as FilePath,
         args: ["-p", path as String],
+      )
+    DashboardEnsureProviderStateRoot { path } =>
+      dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/mkdir" as FilePath,
+        args: ["-p", path as String],
+      )
+    DashboardEnsureServeBinary { controller_repo, built_binary, path } =>
+      dashboard_ensure_serve_binary(
+        instance: instance,
+        controller_repo: controller_repo,
+        built_binary: built_binary,
+        path: path,
       )
     DashboardEnsureOwnershipMarker { path, instance_id: _ } =>
       dashboard_target_exec(
@@ -1756,4 +1825,129 @@ func srv2_lab_dashboard_apply_wet() -> ProcessExit {
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }
+}
+
+data provider_readiness_readback_note: String = "THE PAGE SHOWED WHAT WAS DESIRED AND NEVER WHAT WAS TRUE. /instance.json renders desired_provision_plan, which INCLUDES the verify-provider-auth row — so a reader saw that authentication is required and nothing about whether it holds. The first anyone learned of a missing login was a shell error in an operator's terminal, which is the observation gap DESIGN 5 calls specification-without-execution: the check existed, was correct, and was bound to no surface (operator, 2026-07-30: 'the roadmap website can just send me the status/details to log in').\\n\\nTHE THREE STATES ARE SEPARATE BECAUSE THEIR REMEDIES ARE. An absent state root is fixed by creating a directory; an unavailable runtime is a packaging or PATH problem; an unauthenticated runtime needs an interactive OAuth flow only a human can complete. Collapsing them into one ready: Bool would report 'not ready' for all three and leave the reader to guess which — the state-space conflation this repository names, and the reason the apply already keeps runtime and auth as independent probes so a broken npm launcher cannot masquerade as an auth refusal.\\n\\nTHE REMEDIATION COMMAND IS DERIVED FROM THE SAME SHAPE THE PROBE RUNS, never spelled a second time. A hand-written instruction string is a parallel representation of the invocation: it drifts the moment the env var, the program path, or the state root changes, and it drifts silently because nothing executes prose. Building it from shape_codex_login_status_env_args_for_program's own inputs means the line the page prints and the line the model checks cannot disagree about where the credentials live."
+
+data codex_probe_stream_note: String = "codex SPLITS ITS VERDICTS ACROSS STREAMS, and reading one of them reported a ready provider with no evidence attached. `codex --version` writes codex-cli 0.145.0 to stdout; `codex login status` writes 'Logged in using ChatGPT' to STDERR. Verified per-stream on srv2 by redirecting each independently: stdout alone is empty for login status, stderr alone carries the line.\\n\\nThe way this hid is worth recording, because it is the same error twice in one session. The first check of the login ran `login status 2>&1 | tail -3`, which MERGES the streams — so the verdict appeared, the probe looked correct, and which stream it came from was exactly the fact the merge destroyed. A verification that erases the distinction the code depends on cannot detect the code getting it wrong; the same shape as confirming an HTTP fix with a client that never exercises the failing path.\\n\\nSo the detail is read from whichever stream carried it, and an empty result stays visibly empty rather than being reported as a successful probe with nothing to show. This is not leniency about failure — success is still decided by the exit status alone, exactly as before; only the human-readable evidence is gathered from both places, which is what dashboard_instance_apply_note already requires when it says successful stderr is retained rather than dropped."
+
+fn codex_probe_detail(out: String, err: String) -> String {
+  let o = trim(out)
+  let e = trim(err)
+  if o == "" { e } else if e == "" { o } else { join([o, e], " | ") }
+}
+
+type DashboardProviderReadiness
+  = ProviderReady {
+      runtime_detail: String,
+      auth_detail: String,
+    }
+  | ProviderStateRootAbsent {
+      state_root: FilePath,
+      remediation: String,
+    }
+  | ProviderRuntimeUnavailable {
+      executable: FilePath,
+      detail: String,
+    }
+  | ProviderUnauthenticated {
+      state_root: FilePath,
+      detail: String,
+      remediation: String,
+    }
+
+fn dashboard_provider_login_command(instance: HostDashboardInstance) -> String {
+  join([
+    "CODEX_HOME=",
+    dashboard_instance_provider_state_root(instance: instance) as String,
+    " ",
+    dashboard_instance_provider_executable(instance: instance) as String,
+    " login",
+  ], "")
+}
+
+fn dashboard_provider_state_root_remediation(instance: HostDashboardInstance) -> String {
+  join([
+    "mkdir -p ",
+    dashboard_instance_provider_state_root(instance: instance) as String,
+    " && ",
+    dashboard_provider_login_command(instance: instance),
+  ], "")
+}
+
+fn dashboard_provider_readiness(
+  instance: HostDashboardInstance,
+) -> DashboardProviderReadiness {
+  let state_root = dashboard_instance_provider_state_root(instance: instance)
+  if !dashboard_target_directory_present(instance: instance, path: state_root) {
+    ProviderStateRootAbsent {
+      state_root: state_root,
+      remediation: dashboard_provider_state_root_remediation(instance: instance),
+    }
+  } else {
+    let runtime = dashboard_target_probe(
+      instance: instance,
+      program: dashboard_environment_binding_executable,
+      args: shape_codex_version_env_args_for_program(
+        program: dashboard_instance_provider_executable(instance: instance) as String,
+        codex_home: state_root as String,
+      ),
+    )
+    if !runtime.success {
+      ProviderRuntimeUnavailable {
+        executable: dashboard_instance_provider_executable(instance: instance),
+        detail: trim(runtime.stderr),
+      }
+    } else {
+      let auth = dashboard_target_probe(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_login_status_env_args_for_program(
+          program: dashboard_instance_provider_executable(instance: instance) as String,
+          codex_home: state_root as String,
+        ),
+      )
+      if !auth.success {
+        ProviderUnauthenticated {
+          state_root: state_root,
+          detail: trim(auth.stderr),
+          remediation: dashboard_provider_login_command(instance: instance),
+        }
+      } else {
+        ProviderReady {
+          runtime_detail: codex_probe_detail(out: runtime.stdout, err: runtime.stderr),
+          auth_detail: codex_probe_detail(out: auth.stdout, err: auth.stderr),
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v1"))],
+    match dashboard_provider_readiness(instance: instance) {
+      ProviderReady { runtime_detail, auth_detail } => [
+        json_kv(key: "status", value: json_string(s: "ready")),
+        json_kv(key: "runtime_detail", value: json_string(s: runtime_detail)),
+        json_kv(key: "auth_detail", value: json_string(s: auth_detail)),
+      ]
+      ProviderStateRootAbsent { state_root, remediation } => [
+        json_kv(key: "status", value: json_string(s: "state-root-absent")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+      ProviderRuntimeUnavailable { executable, detail } => [
+        json_kv(key: "status", value: json_string(s: "runtime-unavailable")),
+        json_kv(key: "executable", value: json_string(s: executable as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ]
+      ProviderUnauthenticated { state_root, detail, remediation } => [
+        json_kv(key: "status", value: json_string(s: "unauthenticated")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+    }
+  )))
 }
