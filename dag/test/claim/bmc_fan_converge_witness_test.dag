@@ -38,6 +38,7 @@ import gunbc.bmc_fan_monitor {
   bmc_fan_assess_monitoring_samples,
 }
 import gunbc.fleet_intent { srv3_host, srv4_host }
+import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -139,6 +140,29 @@ test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
     config_path: "/usr/share/swampd/config-asrr.json",
     before_digest: cleanup_debt_test_digest,
     creation_generation: 2,
+  )
+}
+
+test fn forged_backup_manifest_identity_is_not_admitted() -> Bool {
+  let forged = BmcFanBackupManifest {
+    manifest_identity: content_hash_atom(value: "forged-manifest"),
+    target: cleanup_debt_test_manifest.target,
+    stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+    firmware: cleanup_debt_test_manifest.firmware,
+    config_path: cleanup_debt_test_manifest.config_path,
+    before_digest: cleanup_debt_test_manifest.before_digest,
+    backup_digest: cleanup_debt_test_manifest.backup_digest,
+    creation_generation: cleanup_debt_test_manifest.creation_generation,
+    created_at: cleanup_debt_test_manifest.created_at,
+  }
+  !bmc_fan_backup_manifest_matches_request(
+    manifest: forged,
+    target: srv4_host.identity,
+    stable_bmc_identity: "srv4-bmc-machine-id",
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+    config_path: "/usr/share/swampd/config-asrr.json",
+    before_digest: cleanup_debt_test_digest,
+    creation_generation: 1,
   )
 }
 
