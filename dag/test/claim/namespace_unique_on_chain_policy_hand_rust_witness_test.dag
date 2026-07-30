@@ -11,6 +11,24 @@ import gunbc.namespace_unique_on_chain_policy_scaffold {
   namespace_unique_on_chain_policy_zero_on_chain_test_discriminator,
   namespace_unique_on_chain_policy_single_off_chain_test_discriminator,
   namespace_unique_on_chain_policy_loc_delta_net,
+  namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net,
+  namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+}
+
+test fn namespace_unique_on_chain_policy_cli_run_growth_is_censused() -> Bool {
+  namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net > 0 &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+      pattern: "cli_run.rs",
+    ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+      pattern: "DISSOLVE-ON",
+    ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+      pattern: "namespace-canonical-binding",
+    )
 }
 
 test fn namespace_unique_on_chain_policy_hand_rust_scaffold_is_seed_retained() -> Bool {
