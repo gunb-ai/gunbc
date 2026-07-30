@@ -4,9 +4,13 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.bmc.fan_control { FanControlZoneProfile }
 import extdeps.boards.types { BaseboardModel, AsrockRackAltrad8ud1l2t }
 import extdeps.boards.asrock_rack { altrad8ud_fleet_fan_profile }
-import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, command_over_transport }
+import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, command_over_transport, shell_command_render, scp_command }
 import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
-import extdeps.bmc.fan_control_emit { fan_profile_stepwise_json, patch_fan_config_json }
+import extdeps.bmc.fan_control_emit { fan_profile_stepwise_json, patch_fan_config_json, fan_config_normalized }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import std.resources { Network }
 
 data bmc_fan_converge_authority_note: NonEmptyStr = "Durable/uniform fleet fan-control convergence. Every ALTRAD8UD BMC must run altrad8ud_fleet_fan_profile (the 2.07.00 vendor curve); this module is the single authority that pairs each fleet BMC with that desired profile and defines the fail-closed convergence verdict. It exists so the good curve survives BMC reboots/reflashes and no BMC drifts back to a lazy curve (as srv4 had). The profile is topology-agnostic by construction (curve + floor + failsafe, no per-rotor PID / tach enumeration), so the apply is a read-modify-write PATCH of the TEMP_SOC stepwise curve into each BMC's existing config-asrr.json — preserving that BMC's own sensor/fan topology — never a whole-file overwrite."
 
@@ -89,4 +93,78 @@ fn bmc_fan_restart_command(target: BmcFanConvergeTarget) -> ArgvCommand {
   )
 }
 
-data bmc_fan_curve_patch_realization_note: NonEmptyStr = "REALIZATION: applying a drifted target is (1) fetch the BMC's live config-asrr.json, (2) bmc_fan_converge_patched_config — parse it and replace ONLY the TEMP_SOC stepwise curve with the desired one, preserving that BMC's sensor/fan-PID topology (extdeps.bmc.fan_control_emit.patch_fan_config_json; pure, witness-tested, fail-closed on unparseable / no-stepwise), (3) write the patched text back, (4) bmc_fan_restart_command. Steps (2) and (4) are MODELED and green-by-execution — the JSON parser (extdeps.languages.json.parse, emit^-1) unblocked the read-modify-write MODIFY. The remaining gap is only the I/O transport at (1)/(3): capturing `ssh root@bmc cat <path>` stdout into a String and writing a String back over the SshExec transport — the command-I/O effect boundary. DISSOLVES WHEN that fetch/write is wired (an observe-then-write effect over the BMC SshExec transport, or the patch fn emitted to a stdin->stdout filter binary piped between two ssh calls). Interim: proven live on srv4 2026-07-30 (backup config-asrr.json.bak-precurve, patch, restart)."
+type BmcFanApplyOutcome =
+    FanApplyWrote { bmc_host: NonEmptyStr }
+  | FanApplyAlreadyConverged { bmc_host: NonEmptyStr }
+  | FanApplyRefused { bmc_host: NonEmptyStr, reason: String }
+
+fn bmc_fan_fetch_command(target: BmcFanConvergeTarget) -> ArgvCommand {
+  command_over_transport(
+    command: ArgvCommand { argv: ["cat", target.config_path as String] },
+    transport: SshExec { ssh_target: target.ssh_target },
+  )
+}
+
+fn bmc_fan_local_temp_path() -> NonEmptyStr {
+  "/tmp/gunbc-bmc-fan-config.json"
+}
+
+fn bmc_fan_put_command(target: BmcFanConvergeTarget, local: NonEmptyStr) -> ArgvCommand {
+  scp_command(
+    local_path: local,
+    remote_target: join([target.ssh_target as String, ":", target.config_path as String], "") as NonEmptyStr,
+  )
+}
+
+func bmc_fan_write_and_restart(target: BmcFanConvergeTarget, patched: String) -> BmcFanApplyOutcome
+  uses net: Network
+{
+  let w = Filesystem.Write(path: bmc_fan_local_temp_path() as String, content: patched)
+  if w.success == false {
+    FanApplyRefused { bmc_host: target.bmc_host, reason: "local temp write failed" }
+  } else {
+    let put = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: bmc_fan_put_command(target: target, local: bmc_fan_local_temp_path()))))
+    if put.success == false {
+      FanApplyRefused { bmc_host: target.bmc_host, reason: concat("scp to bmc failed: ", put.stderr) }
+    } else {
+      let restart = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: bmc_fan_restart_command(target: target))))
+      if restart.success {
+        FanApplyWrote { bmc_host: target.bmc_host }
+      } else {
+        FanApplyRefused { bmc_host: target.bmc_host, reason: concat("phosphor-pid-control restart failed: ", restart.stderr) }
+      }
+    }
+  }
+}
+
+func bmc_fan_apply_dispatch(target: BmcFanConvergeTarget, fetched: String, patched: String) -> BmcFanApplyOutcome
+  uses net: Network
+{
+  if fan_config_normalized(config_text: fetched) == patched {
+    FanApplyAlreadyConverged { bmc_host: target.bmc_host }
+  } else {
+    bmc_fan_write_and_restart(target: target, patched: patched)
+  }
+}
+
+func bmc_fan_apply(target: BmcFanConvergeTarget) -> BmcFanApplyOutcome
+  uses net: Network
+{
+  let fetch = shell.Exec.Run(script: shell_exec_via_bash(body: shell_command_render(command: bmc_fan_fetch_command(target: target))))
+  if fetch.success == false {
+    FanApplyRefused { bmc_host: target.bmc_host, reason: concat("fetch config failed: ", fetch.stderr) }
+  } else {
+    match patch_fan_config_json(config_text: fetch.stdout, curve: target.desired.curve) {
+      Absent => FanApplyRefused { bmc_host: target.bmc_host, reason: "config unparseable or no stepwise controller" }
+      Present { value: patched } => bmc_fan_apply_dispatch(target: target, fetched: fetch.stdout, patched: patched)
+    }
+  }
+}
+
+func bmc_fan_apply_host(bmc_host: NonEmptyStr) -> BmcFanApplyOutcome
+  uses net: Network
+{
+  bmc_fan_apply(target: altrad8ud_bmc_fan_target(bmc_host: bmc_host))
+}
+
+data bmc_fan_curve_patch_realization_note: NonEmptyStr = "REALIZATION — LANDED end-to-end: bmc_fan_apply(target) is the full observe-then-write over the BMC SshExec transport. (1) fetch config-asrr.json via shell.Exec.Run of `cat` over SshExec, capturing stdout; (2) patch_fan_config_json parses it and replaces ONLY the TEMP_SOC stepwise curve, preserving that BMC's sensor/fan-PID topology (fail-closed on unparseable / no-stepwise); (3) idempotent drift check — fan_config_normalized(fetched) == patched yields FanApplyAlreadyConverged with NO write or restart; (4) on drift, Filesystem.Write the patched config to a temp then scp it to the BMC then shell.Exec.Run the restart. Every arm is a typed BmcFanApplyOutcome (FanApplyWrote | FanApplyAlreadyConverged | FanApplyRefused{reason}); any fetch/write/restart failure Refuses, never silently proceeds. Mirrors the bmc_netboot_serve write pattern; the parse side is the emit^-1 JSON parser (extdeps.languages.json.parse). Execution binds SSHPASS to the BMC credential — the materialized-secret lifecycle fleet_subsumption_manual_gaps tracks for every fleet ssh, the one remaining item and NOT a modeling gap. Proven live on srv4 2026-07-30."

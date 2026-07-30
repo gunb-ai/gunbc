@@ -125,6 +125,13 @@ fn some_patched_config(config: String) -> String? {
   Present { value: config }
 }
 
+fn fan_config_normalized(config_text: String) -> String {
+  match parse_json(s: config_text) {
+    Present { value: v } => serialize_json(v: v)
+    Absent => config_text
+  }
+}
+
 fn patch_fan_config_json(config_text: String, curve: StepwiseFanCurve) -> String? {
   match parse_json(s: config_text) {
     Absent => none
