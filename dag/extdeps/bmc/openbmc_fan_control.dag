@@ -201,10 +201,19 @@ fn openbmc_path_result(
 ) -> OpenBmcPathResult {
   if !remote.success {
     OpenBmcPathRefused { reason: remote.stderr }
-  } else if trim(remote.stdout) == "" {
-    OpenBmcPathRefused { reason: "path response is empty" }
   } else {
-    OpenBmcPathObserved { path: trim(remote.stdout) as NonEmptyStr }
+    let paths = split(s: remote.stdout, delimiter: "\n")
+      |> map(path => trim(path))
+      |> filter(path => path != "")
+    if paths.length() == 0 {
+      OpenBmcPathRefused { reason: "path response is empty" }
+    } else if paths.length() == 1 {
+      OpenBmcPathObserved { path: paths.first() as NonEmptyStr }
+    } else {
+      OpenBmcPathRefused {
+        reason: "path response contains more than one non-empty path",
+      }
+    }
   }
 }
 

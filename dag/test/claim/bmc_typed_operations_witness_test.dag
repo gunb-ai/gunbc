@@ -154,6 +154,20 @@ test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
   }
 }
 
+test fn multiple_nonempty_paths_are_refused() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "/usr/share/swampd/config.json\n/usr/share/swampd/config-asrr.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason: _ } => true
+    _ => false
+  }
+}
+
 test fn empty_path_transport_is_refused() -> Bool {
   match openbmc_path_result(
     remote: PasswordSshExecResult {

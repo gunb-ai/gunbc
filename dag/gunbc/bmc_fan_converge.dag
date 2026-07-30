@@ -3,10 +3,12 @@ module gunbc.bmc_fan_converge
 import extdeps.bmc.capability {
   CurrentEvidenceUnclaimed,
   BmcFirmwareIntent,
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   BmcFirmwareVersion,
-  bmc_firmware_version_matches_track,
+  bmc_firmware_version_intent_verdict,
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceObservation,
@@ -609,20 +611,6 @@ fn bmc_fan_observe_live_identity(
       content: os_release.stdout,
       stable_machine_id: trim(remote_machine_id.stdout) as NonEmptyStr,
     )
-  }
-}
-
-fn bmc_fan_identity_matches_firmware_intent(
-  identity: BmcFanLiveIdentity,
-  intent: BmcFirmwareIntent,
-) -> Bool {
-  match intent {
-    BmcFirmwareUnpinned => false
-    BmcFirmwareTrackRequired { track: track } =>
-      bmc_firmware_version_matches_track(
-        firmware: identity.firmware,
-        track: track,
-      )
   }
 }
 
@@ -1375,93 +1363,96 @@ fn bmc_fan_observe_with_credential(
             identity.machine as String,
           ),
         }
-      } else if !bmc_fan_identity_matches_firmware_intent(
-        identity: identity,
-        intent: fleet_bmc_valid_state.firmware,
-      ) {
-        BmcFanLiveObservationRefused {
-          reason: concat(
-            concat(
-              "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
-              identity.firmware.version as String,
-            ),
-            concat(
-              "; fleet valid state requires ",
-              bmc_fan_firmware_intent_requirement(
-                intent: fleet_bmc_valid_state.firmware,
-              ),
-            ),
-          ),
-        }
       } else {
-        match target.projection {
-          Absent =>
+        match bmc_firmware_version_intent_verdict(
+          firmware: identity.firmware,
+          intent: fleet_bmc_valid_state.firmware,
+        ) {
+          BmcFirmwareIntentMismatch { required: _, observed: _ } =>
             BmcFanLiveObservationRefused {
               reason: concat(
-                "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
-                identity.firmware.version as String,
+                concat(
+                  "BMC fan convergence refused before version-specific config observation: observed OpenBMC ",
+                  identity.firmware.version as String,
+                ),
+                concat(
+                  "; fleet valid state requires ",
+                  bmc_fan_firmware_intent_requirement(
+                    intent: fleet_bmc_valid_state.firmware,
+                  ),
+                ),
               ),
             }
-          Present { value: projection } =>
-            if projection.firmware != identity.firmware {
-              BmcFanLiveObservationRefused {
-                reason: concat(
-                  concat(
-                    "BMC fan convergence has no exact config projection for observed OpenBMC ",
+          BmcFirmwareIntentSatisfied =>
+            match target.projection {
+              Absent =>
+                BmcFanLiveObservationRefused {
+                  reason: concat(
+                    "BMC fan convergence has no exact board-and-firmware projection for observed OpenBMC ",
                     identity.firmware.version as String,
                   ),
-                  concat(
-                    "; available projection is ",
-                    projection.firmware.version as String,
-                  ),
-                ),
-              }
-            } else {
-              match bmc_fan_observe_typed_parts(
-                session: session,
-                plan: bmc_fan_typed_observation_plan(
-                  projection: projection,
-                  intent: fleet_bmc_valid_state,
-                ),
-              ) {
-                BmcFanObservedPartsRefused { reason: reason } =>
-                  BmcFanLiveObservationRefused { reason: reason }
-                BmcFanObservedParts {
-                  selected_config_path,
-                  board_config_path,
-                  controller_service,
-                  controller_binary,
-                  zone_control_path,
-                  zone_failsafe_active,
-                  writable,
-                  upper_override_present,
-                  available_bytes,
-                  observed_at,
-                  overlay: overlay,
-                  config: config,
-                  config_digest: config_digest,
-                  tach_health: tach_health,
-                  temperatures,
-                } =>
-                  bmc_fan_build_live_observation(
-                    identity: identity,
-                    selected_config_path: selected_config_path,
-                    board_config_path: board_config_path,
-                    controller_service: controller_service,
-                    controller_binary: controller_binary,
-                    zone_control_path: zone_control_path,
-                    zone_failsafe_active: zone_failsafe_active,
-                    writable: writable,
-                    upper_override_present: upper_override_present,
-                    available_bytes: available_bytes,
-                    observed_at: observed_at,
-                    overlay: overlay,
-                    config: config,
-                    config_digest: config_digest,
-                    tach_health: tach_health,
-                    temperatures: temperatures,
-                  )
-              }
+                }
+              Present { value: projection } =>
+                if projection.firmware != identity.firmware {
+                  BmcFanLiveObservationRefused {
+                    reason: concat(
+                      concat(
+                        "BMC fan convergence has no exact config projection for observed OpenBMC ",
+                        identity.firmware.version as String,
+                      ),
+                      concat(
+                        "; available projection is ",
+                        projection.firmware.version as String,
+                      ),
+                    ),
+                  }
+                } else {
+                  match bmc_fan_observe_typed_parts(
+                    session: session,
+                    plan: bmc_fan_typed_observation_plan(
+                      projection: projection,
+                      intent: fleet_bmc_valid_state,
+                    ),
+                  ) {
+                    BmcFanObservedPartsRefused { reason: reason } =>
+                      BmcFanLiveObservationRefused { reason: reason }
+                    BmcFanObservedParts {
+                      selected_config_path,
+                      board_config_path,
+                      controller_service,
+                      controller_binary,
+                      zone_control_path,
+                      zone_failsafe_active,
+                      writable,
+                      upper_override_present,
+                      available_bytes,
+                      observed_at,
+                      overlay: overlay,
+                      config: config,
+                      config_digest: config_digest,
+                      tach_health: tach_health,
+                      temperatures,
+                    } =>
+                      bmc_fan_build_live_observation(
+                        identity: identity,
+                        selected_config_path: selected_config_path,
+                        board_config_path: board_config_path,
+                        controller_service: controller_service,
+                        controller_binary: controller_binary,
+                        zone_control_path: zone_control_path,
+                        zone_failsafe_active: zone_failsafe_active,
+                        writable: writable,
+                        upper_override_present: upper_override_present,
+                        available_bytes: available_bytes,
+                        observed_at: observed_at,
+                        overlay: overlay,
+                        config: config,
+                        config_digest: config_digest,
+                        tach_health: tach_health,
+                        temperatures: temperatures,
+                      )
+                  }
+                }
             }
         }
   }
