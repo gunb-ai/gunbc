@@ -305,7 +305,6 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
       r == "predicate not enforced at compile time"
         || r == "int predicate not implemented"
         || r == "string predicate not implemented"
-        || r == "predicate argument is not an int literal"
     UnlistedImportUse { name: _, span: _ } => false
     _ => true
   }
