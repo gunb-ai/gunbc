@@ -8589,84 +8589,82 @@ fn emit_host_cargo_configuration_digest(
 /// paired with the rustc selected by the same process environment. The transport
 /// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
 /// intentionally not part of this identity.
+#[derive(Debug, Clone)]
+struct ObservedToolIdentity {
+    tool_name: String,
+    observed_identity: String,
+}
+
+fn observe_tool_identity(
+    requested: &str,
+    version_args: &[&str],
+    probe_workspace: &std::path::Path,
+    environment: &EmitHostBuildEnvironment,
+) -> InterpResult<ObservedToolIdentity> {
+    let resolved = resolve_host_tool_program(requested);
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
+        msg: format!(
+            "emit_host_run_transport_cached: resolve build tool {requested:?} \
+                 ({resolved:?}) failed: {e}"
+        ),
+    })?;
+    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
+        msg: format!(
+            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
+            canonical.display()
+        ),
+    })?;
+    let mut command = std::process::Command::new(&resolved);
+    command.args(version_args).current_dir(probe_workspace);
+    emit_host_apply_build_environment(&mut command, environment);
+    let output = command.output().map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    })?;
+    if !output.status.success() {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: version probe for {requested:?} \
+                 exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        });
+    }
+
+    let logical_name = std::path::Path::new(requested)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(requested);
+    let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
+    for field in [
+        v1_rt::atom_identity_hash(logical_name.to_string()),
+        v1_rt::bytes_identity_hash(&executable),
+        v1_rt::bytes_identity_hash(&output.stdout),
+        v1_rt::bytes_identity_hash(&output.stderr),
+    ] {
+        digest = v1_rt::hash_combine(digest, field);
+    }
+    Ok(ObservedToolIdentity {
+        tool_name: logical_name.to_string(),
+        observed_identity: digest,
+    })
+}
+
+fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
+    debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
+    rows.iter().fold(
+        v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
+        |acc, observed_tool_identity| {
+            v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
+        },
+    )
+}
+
 fn emit_host_resolved_build_context_identity(
     build_argvs: &[Vec<String>],
     probe_workspace: &std::path::Path,
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<String> {
-    #[derive(Debug, Clone)]
-    struct ObservedToolIdentity {
-        tool_name: String,
-        observed_identity: String,
-    }
-
-    fn observe_tool(
-        requested: &str,
-        version_args: &[&str],
-        probe_workspace: &std::path::Path,
-        environment: &EmitHostBuildEnvironment,
-    ) -> InterpResult<ObservedToolIdentity> {
-        let resolved = resolve_host_tool_program(requested);
-        let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                     ({resolved:?}) failed: {e}"
-            ),
-        })?;
-        let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-                canonical.display()
-            ),
-        })?;
-        let mut command = std::process::Command::new(&resolved);
-        command.args(version_args).current_dir(probe_workspace);
-        emit_host_apply_build_environment(&mut command, environment);
-        let output = command.output().map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"
-            ),
-        })?;
-        if !output.status.success() {
-            return Err(InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: version probe for {requested:?} \
-                     exited {}: {}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            });
-        }
-
-        let logical_name = std::path::Path::new(requested)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(requested);
-        let mut digest = v1_rt::atom_identity_hash("emit-host-resolved-build-tool-v1".to_string());
-        for field in [
-            v1_rt::atom_identity_hash(logical_name.to_string()),
-            v1_rt::bytes_identity_hash(&executable),
-            v1_rt::bytes_identity_hash(&output.stdout),
-            v1_rt::bytes_identity_hash(&output.stderr),
-        ] {
-            digest = v1_rt::hash_combine(digest, field);
-        }
-        Ok(ObservedToolIdentity {
-            tool_name: logical_name.to_string(),
-            observed_identity: digest,
-        })
-    }
-
-    fn fold_observed_toolchain_identity(rows: &[ObservedToolIdentity]) -> String {
-        debug_assert!(rows.iter().all(|row| !row.tool_name.is_empty()));
-        rows.iter().fold(
-            v1_rt::atom_identity_hash("emit-host-resolved-build-toolchain-v1".to_string()),
-            |acc, observed_tool_identity| {
-                v1_rt::hash_combine(acc, observed_tool_identity.observed_identity.clone())
-            },
-        )
-    }
-
     let cargo_configuration_identity =
         emit_host_cargo_configuration_digest(environment, probe_workspace)?;
     let mut observed_tool_identities = Vec::new();
@@ -8683,7 +8681,7 @@ fn emit_host_resolved_build_context_identity(
         } else {
             &["--version"]
         };
-        observed_tool_identities.push(observe_tool(
+        observed_tool_identities.push(observe_tool_identity(
             requested,
             version_args,
             probe_workspace,
@@ -8692,7 +8690,7 @@ fn emit_host_resolved_build_context_identity(
 
         if requested_name == "cargo" {
             let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
-            observed_tool_identities.push(observe_tool(
+            observed_tool_identities.push(observe_tool_identity(
                 &rustc,
                 &["-vV"],
                 probe_workspace,

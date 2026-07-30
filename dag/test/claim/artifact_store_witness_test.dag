@@ -1,8 +1,8 @@
 module test.claim.artifact_store_witness
 
 import std.logic { Bool }
-import std.types { ContentHash, List, Int }
-import std.content_hash { content_hash_atom }
+import std.types { ContentHash, List }
+import std.content_hash { content_hash_atom, content_hash_combine }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
@@ -16,10 +16,14 @@ import std.artifact_store {
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
 }
 import extdeps.realization.emit_on_demand_host {
+  ObservedToolIdentity,
+  ObservedToolIdentityLookup,
   ResolvedBuildContext,
   native_cache_realization_workspace_root,
   native_cache_resolved_build_context_workspace_root,
+  observed_tool_identity,
   resolved_build_context_identity,
+  toolchain_identity,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,6 +61,26 @@ fn key_of(toolchain: String) -> ContentHash {
     target_language: "rust",
     toolchain: toolchain
   })
+}
+
+fn observed_tool(tool_name: String, observed_identity: String) -> ObservedToolIdentity {
+  ObservedToolIdentity {
+    tool_name: tool_name,
+    observed_identity: content_hash_atom(value: observed_identity)
+  }
+}
+
+fn legacy_toolchain_identity(
+  cargo_observed_identity: ContentHash,
+  rustc_observed_identity: ContentHash,
+) -> ContentHash {
+  content_hash_combine(
+    left: content_hash_combine(
+      left: content_hash_atom(value: "emit-host-resolved-build-toolchain-v1"),
+      right: cargo_observed_identity,
+    ),
+    right: rustc_observed_identity,
+  )
 }
 
 test fn store_construction_reads_eviction_holds() -> Bool {
@@ -106,16 +130,39 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     workspace_root: "/tmp/gunbc_toolchain_identity/outer-key",
     realization_digest: artifact_realization_digest(inputs: fixed_inputs)
   )
-  let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "cargo 1.93.0 + rustc 1.93.0"),
+  let before_resolved_context = ResolvedBuildContext {
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
+      observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
+    ],
     environment_identity: content_hash_atom(value: "fixed environment"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
-  })
-  let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "cargo 1.94.0 + rustc 1.94.0"),
+  }
+  let after_resolved_context = ResolvedBuildContext {
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
+      observed_tool(tool_name: "rustc", observed_identity: "rustc 1.94.0 -vV"),
+    ],
     environment_identity: content_hash_atom(value: "fixed environment"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
-  })
+  }
+  let before_context = resolved_build_context_identity(context: before_resolved_context)
+  let after_context = resolved_build_context_identity(context: after_resolved_context)
+  let cargo_before = match observed_tool_identity(context: before_resolved_context, tool_name: "cargo") {
+    ObservedToolIdentityFound { row } => row.observed_identity == content_hash_atom(value: "cargo 1.93.0 -Vv")
+    ObservedToolIdentityMissing { tool_name: _ } => false
+    ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
+  }
+  let rustc_changed = match observed_tool_identity(context: after_resolved_context, tool_name: "rustc") {
+    ObservedToolIdentityFound { row } => row.observed_identity == content_hash_atom(value: "rustc 1.94.0 -vV")
+    ObservedToolIdentityMissing { tool_name: _ } => false
+    ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
+  }
+  let derived_receipt = legacy_toolchain_identity(
+    cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
+    rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
+  )
+  let unchanged_build_receipt = toolchain_identity(context: before_resolved_context) == derived_receipt
   let before = native_cache_resolved_build_context_workspace_root(
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: before_context
@@ -124,7 +171,52 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     realization_workspace_root: fixed_realization,
     resolved_build_context_identity: after_context
   )
-  before != after
+  cargo_before && rustc_changed && (before_context != after_context) && unchanged_build_receipt && before != after
+}
+
+test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
+  let missing_context = ResolvedBuildContext {
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
+      observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
+    ],
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  }
+  let duplicate_context = ResolvedBuildContext {
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.94.0 -Vv"),
+    ],
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  }
+  let missing = match observed_tool_identity(context: missing_context, tool_name: "clippy") {
+    ObservedToolIdentityMissing { tool_name: n } => (n as String) == "clippy"
+    ObservedToolIdentityDuplicate { tool_name: _, count: _ } => false
+    ObservedToolIdentityFound { row: _ } => false
+  }
+  let duplicate = match observed_tool_identity(context: duplicate_context, tool_name: "cargo") {
+    ObservedToolIdentityDuplicate { tool_name: n, count: _ } => (n as String) == "cargo"
+    ObservedToolIdentityMissing { tool_name: _ } => false
+    ObservedToolIdentityFound { row: _ } => false
+  }
+  missing && duplicate
+}
+
+test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool {
+  let context = ResolvedBuildContext {
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
+      observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
+    ],
+    environment_identity: content_hash_atom(value: "fixed environment"),
+    cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
+  }
+  toolchain_identity(context: context) == legacy_toolchain_identity(
+    cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
+    rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
+  )
 }
 
 test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
@@ -133,12 +225,18 @@ test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
     realization_digest: content_hash_atom(value: "fixed files and build argv")
   )
   let before_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
+      observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
+    ],
     environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=2"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
   let after_context = resolved_build_context_identity(context: ResolvedBuildContext {
-    toolchain_identity: content_hash_atom(value: "fixed cargo and rustc"),
+    observed_tool_identities: [
+      observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
+      observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
+    ],
     environment_identity: content_hash_atom(value: "RUSTFLAGS=-Copt-level=3"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   })
