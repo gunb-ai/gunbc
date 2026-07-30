@@ -1146,6 +1146,13 @@ fn where_refinement_diags_for_predicate(
   }
 }
 
+fn where_refinement_value_under_cast(value_expr: Node) -> Node {
+  match value_expr.expr_data {
+    ExprCast => where_refinement_value_under_cast(value_expr: cast_expr(texpr: value_expr))
+    _ => value_expr
+  }
+}
+
 fn where_refinement_mismatch_diags(
   formal: Node,
   value_expr: Node,
@@ -1163,7 +1170,8 @@ fn where_refinement_mismatch_diags(
   if preds |> count == 0 {
     []
   } else {
-    let actual_raw = resolved_type(n: value_expr)
+    let value_for_refinement = where_refinement_value_under_cast(value_expr: value_expr)
+    let actual_raw = resolved_type(n: value_for_refinement)
     let actual_resolved = match lookup_type_for(env: type_env, node: actual_raw) {
       Present { value: resolved } => resolved
       Absent => actual_raw
@@ -1181,7 +1189,7 @@ fn where_refinement_mismatch_diags(
         pred => where_refinement_diags_for_predicate(
           pred: pred,
           formal: formal_checked,
-          value_expr: value_expr,
+          value_expr: value_for_refinement,
           span: span,
           module_name: module_name,
           source_indices: source_indices

@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals (record fields, direct returns, data inits, call args). DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): non-literal values at refined positions and deferred predicates (brand, Pattern) — undecidable at compile time; counted, not silently widened. Centralized via with_expected_where_refinement_diags (review 44949). Dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane)."
+data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals (record fields, direct returns, data inits, call args, as-casts — review 45036). DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): non-literal values at refined positions and deferred predicates (brand, Pattern) — undecidable at compile time; counted, not silently widened. Centralized via with_expected_where_refinement_diags (review 44949). Dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane)."
 
 fn w_positive_int_direct_return_red() -> Bool {
   compile_dag_rust_emit_check(
@@ -118,6 +118,39 @@ fn w_range_predicate_non_literal_compile_clean_green() -> Bool {
   )
 }
 
+fn w_positive_int_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_red\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn bad() -> PositiveInt { 0 as PositiveInt }\n",
+    "src/whereref_cast_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_cast_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_cast_green\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn ok() -> PositiveInt { 1 as PositiveInt }\n",
+    "src/whereref_cast_green.rs",
+    [],
+    []
+  )
+}
+
+fn w_non_empty_string_cast_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_nonempty_cast_red\n\
+      import std.types { NonEmptyStr }\n\
+      fn bad() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
+    "src/whereref_nonempty_cast_red.rs",
+    [],
+    []
+  )
+}
+
 fn w_declaration_ref_empty_bind_red() -> Bool {
   compile_dag_rust_emit_check(
     "module whereref_declref_red\n\
@@ -163,6 +196,18 @@ test fn where_refinement_data_init_non_literal_compile_clean() -> Bool {
 
 test fn where_refinement_range_non_literal_compile_clean() -> Bool {
   w_range_predicate_non_literal_compile_clean_green()
+}
+
+test fn where_refinement_cast_literal_positive_int_refuses() -> Bool {
+  !w_positive_int_cast_literal_red()
+}
+
+test fn where_refinement_cast_literal_positive_int_accepts() -> Bool {
+  w_positive_int_cast_literal_green()
+}
+
+test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool {
+  !w_non_empty_string_cast_literal_red()
 }
 
 test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {

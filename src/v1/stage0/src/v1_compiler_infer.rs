@@ -1930,6 +1930,21 @@ pub fn where_refinement_diags_for_predicate(
     }
 }
 
+pub fn where_refinement_value_under_cast(mut value_expr: Rc<Node>) -> Rc<Node> {
+    loop {
+        match (*value_expr.expr_data.clone()).clone() {
+            ExprData::ExprCast => {
+                let __tco_0 = cast_expr(value_expr);
+                value_expr = __tco_0;
+                continue;
+            }
+            _ => {
+                break value_expr.clone();
+            }
+        }
+    }
+}
+
 pub fn where_refinement_mismatch_diags(
     formal: Rc<Node>,
     value_expr: Rc<Node>,
@@ -1953,7 +1968,8 @@ pub fn where_refinement_mismatch_diags(
             Rc::new(vec![])
         } else {
             {
-                let actual_raw = resolved_type(value_expr.clone());
+                let value_for_refinement = where_refinement_value_under_cast(value_expr.clone());
+                let actual_raw = resolved_type(value_for_refinement.clone());
                 let actual_resolved = match lookup_type_for(type_env.clone(), actual_raw.clone()) {
                     Some(resolved) => resolved.clone(),
                     None => actual_raw.clone(),
@@ -1973,7 +1989,7 @@ pub fn where_refinement_mismatch_diags(
                                 (*where_refinement_diags_for_predicate(
                                     pred.clone(),
                                     formal_checked.clone(),
-                                    value_expr.clone(),
+                                    value_for_refinement.clone(),
                                     span.clone(),
                                     module_name.clone(),
                                     source_indices.clone(),
