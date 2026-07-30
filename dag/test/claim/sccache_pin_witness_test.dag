@@ -1,0 +1,76 @@
+module test.claim.sccache_pin_witness
+
+import std.types { NonEmptyStr, String, Bool, ContentHash }
+import extdeps.version { VersionIdentity }
+import extdeps.pin {
+  Pin,
+  ExactPin,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  ObservedIdentityMismatch,
+  admit_pin_integrity,
+}
+import extdeps.cache.sccache {
+  SccacheBinaryArtifact,
+  Aarch64,
+  X86_64,
+  sccache_release_0_15_0,
+  sccache_binary_artifact_content_identity,
+}
+import extdeps.cache.pin { sccache_binary_artifact_pin_expected_identity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sccache_aarch64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
+  binary_release: sccache_release_0_15_0,
+  arch: Aarch64,
+}
+
+data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
+  binary_release: sccache_release_0_15_0,
+  arch: X86_64,
+}
+
+data sccache_aarch64_pin: Pin<SccacheBinaryArtifact> = Pin {
+  subject: sccache_aarch64_artifact,
+  version: "0.15.0" as VersionIdentity,
+  expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: sccache_aarch64_artifact),
+  selection: ExactPin,
+}
+
+data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. Pin<SccacheBinaryArtifact> pins ONE cited musl tarball per row; expected_identity is DERIVED from the release's named digest field via sha256_digest_content_hash, never re-minted. RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin — the whole point of release x platform grain."
+
+test fn sccache_pin_expected_identity_is_derived_from_cited_row() -> Bool {
+  sccache_aarch64_pin.expected_identity == sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact)
+}
+
+test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
+  sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) != sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact)
+}
+
+test fn sccache_aarch64_pin_admits_matching_observation() -> Bool {
+  match admit_pin_integrity(
+    pin: sccache_aarch64_pin,
+    observed_identity: sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact),
+  ) {
+    PinIntegrityAdmitted { pin: p } => p.subject.arch == Aarch64
+    PinRefused { subject: _, cause: _ } => false
+  }
+}
+
+test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
+  let x86_identity = sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact)
+  match admit_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
+    PinIntegrityAdmitted { pin: _ } => false
+    PinRefused { subject: subj, cause: c } =>
+      (subj.arch == Aarch64)
+        && match c {
+             ObservedIdentityMismatch { expected: e, observed: o } =>
+               ((e as String) == (sccache_aarch64_pin.expected_identity as String))
+                 && ((o as String) == (x86_identity as String))
+             _ => false
+           }
+  }
+}

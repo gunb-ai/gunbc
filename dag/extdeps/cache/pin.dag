@@ -26,7 +26,16 @@ fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact
 
 fn sccache_binary_artifact_pin_key_of(pin: Pin<SccacheBinaryArtifact>) -> NonEmptyStr {
   match pin.subject.arch {
-    Aarch64 => join([pin.subject.release.version as String, "-aarch64"], "") as NonEmptyStr
-    X86_64 => join([pin.subject.release.version as String, "-x86_64"], "") as NonEmptyStr
+    Aarch64 => join([pin.subject.binary_release.version as String, "-aarch64"], "") as NonEmptyStr
+    X86_64 => join([pin.subject.binary_release.version as String, "-x86_64"], "") as NonEmptyStr
+    X86 => join([pin.subject.binary_release.version as String, "-x86"], "") as NonEmptyStr
+    Arm => join([pin.subject.binary_release.version as String, "-arm"], "") as NonEmptyStr
+    Armv7 => join([pin.subject.binary_release.version as String, "-armv7"], "") as NonEmptyStr
+    Mips => join([pin.subject.binary_release.version as String, "-mips"], "") as NonEmptyStr
+    Mipsel => join([pin.subject.binary_release.version as String, "-mipsel"], "") as NonEmptyStr
+    Mips64 => join([pin.subject.binary_release.version as String, "-mips64"], "") as NonEmptyStr
+    Mips64el => join([pin.subject.binary_release.version as String, "-mips64el"], "") as NonEmptyStr
+    Riscv64 => join([pin.subject.binary_release.version as String, "-riscv64"], "") as NonEmptyStr
+    Wasm32 => join([pin.subject.binary_release.version as String, "-wasm32"], "") as NonEmptyStr
   }
 }
