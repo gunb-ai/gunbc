@@ -255,6 +255,18 @@ fn positive_measure_count(predecessor: Nat) -> PositiveMeasureCount {
   PositiveMeasureCount { predecessor: predecessor }
 }
 
+fn positive_measure_count_predecessor_from_positive_int(
+  count: Int,
+) -> Nat {
+  if count == 1 {
+    0
+  } else {
+    1 + positive_measure_count_predecessor_from_positive_int(
+      count: count - 1,
+    )
+  }
+}
+
 fn positive_measure_count_from_int(
   count: Int,
 ) -> PositiveMeasureCountBuild {
@@ -265,7 +277,9 @@ fn positive_measure_count_from_int(
   } else {
     PositiveMeasureCountBuilt {
       count: positive_measure_count(
-        predecessor: (count - 1) as Nat,
+        predecessor: positive_measure_count_predecessor_from_positive_int(
+          count: count,
+        ),
       ),
     }
   }
@@ -277,8 +291,9 @@ fn positive_measure_count_value(
   count.predecessor + 1
 }
 
-type PositiveCelsiusDelta =
-  Measure<TemperatureDifference, One, PositiveMeasureCount>
+type PositiveCelsiusDelta {
+  count: PositiveMeasureCount
+}
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
@@ -323,7 +338,7 @@ fn positive_celsius_delta(
 fn positive_celsius_delta_count(
   delta: PositiveCelsiusDelta,
 ) -> Int {
-  positive_measure_count_value(count: measure_count(delta))
+  positive_measure_count_value(count: delta.count)
 }
 
 fn rpm(count: Nat) -> RevolutionsPerMinute {
@@ -503,14 +518,16 @@ fn millisecond_count(m: Millisecond) -> Nat {
   measure_count(m)
 }
 
-type PositiveMillisecond = Measure<Time, Milli, PositiveMeasureCount>
+type PositiveMillisecond {
+  count: PositiveMeasureCount
+}
 
 fn positive_millisecond(count: PositiveMeasureCount) -> PositiveMillisecond {
   PositiveMillisecond { count: count }
 }
 
 fn positive_millisecond_count(m: PositiveMillisecond) -> Int {
-  positive_measure_count_value(count: measure_count(m))
+  positive_measure_count_value(count: m.count)
 }
 
 fn nanoseconds_per_millisecond() -> Nat {
