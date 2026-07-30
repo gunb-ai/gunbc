@@ -237,7 +237,7 @@ fn native_scm_resolve_choice(
       additional: fn(index) {
         match list_at_optional(
           xs: continuation.options.additional_options,
-          index: index as Int,
+          index: index,
         ) {
           Present { value } =>
             NativeScmContinuationChoiceMatched {

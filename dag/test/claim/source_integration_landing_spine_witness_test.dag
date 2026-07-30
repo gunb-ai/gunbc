@@ -17,6 +17,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
   NativeScmFirstContinuationOption,
   NativeScmSecondContinuationOption,
+  NativeScmAdditionalContinuationOption,
   NativeScmTerminalLanded,
   NativeScmTerminalChoiceRequired,
   NativeScmTerminalCouldNotLand,
@@ -811,6 +812,14 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
           LandingManyResultClasses { question: _, options: stored } =>
             stored.first_option.alternative != stored.second_option.alternative
           _ => false
+        }
+        && match landing_resolve_question(
+          prior: receipt,
+          choice: NativeScmAdditionalContinuationOption { index: 3 },
+        ) {
+          LandingChoiceNotOffered { prior: _, choice } =>
+            choice == NativeScmAdditionalContinuationOption { index: 3 }
+          LandingChoiceAdvanced { continuation: _ } => false
         }
     _ => false
   }

@@ -11,7 +11,7 @@ import std.types {
 }
 import std.integer { PositiveInt }
 import std.measure { Minute, minute }
-import v2.std.optional { Present, Absent }
+import v2.std.optional { Optional, Present, Absent }
 import v2.std.collection { list_at_optional }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import std.claim_evidence {
@@ -527,20 +527,17 @@ type LandingChoiceResolution
 fn landing_alternative_for_choice(
   options: LandingNormativeOptions,
   choice: NativeScmContinuationChoice,
-) -> LandingNormativeAlternative {
+) -> Optional<LandingNormativeAlternative> {
   match choice {
     NativeScmFirstContinuationOption =>
-      options.first_option.alternative
+      Present { value: options.first_option.alternative }
     NativeScmSecondContinuationOption =>
-      options.second_option.alternative
+      Present { value: options.second_option.alternative }
     NativeScmAdditionalContinuationOption { index } =>
-      match list_at_optional(
+      list_at_optional(
         xs: options.additional_options,
-        index: index as Int,
-      ) {
-        Present { value } => value.alternative
-        Absent => options.first_option.alternative
-      }
+        index: index,
+      ) |> map(option => option.alternative)
   }
 }
 
@@ -559,14 +556,22 @@ fn landing_resolve_question(
         options: question.options,
         choice: selected.identity.choice,
       )
-      LandingChoiceAdvanced {
-        continuation: LandingChoiceContinuation {
-          prior: prior,
-          selected: selected,
-          processing: landing_resume_alternative(
-            alternative: alternative,
-          ),
-        },
+      match alternative {
+        Present { value } =>
+          LandingChoiceAdvanced {
+            continuation: LandingChoiceContinuation {
+              prior: prior,
+              selected: selected,
+              processing: landing_resume_alternative(
+                alternative: value,
+              ),
+            },
+          }
+        Absent =>
+          LandingChoiceNotOffered {
+            prior: prior,
+            choice: selected.identity.choice,
+          }
       }
     }
     NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
