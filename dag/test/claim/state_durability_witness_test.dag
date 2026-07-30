@@ -35,6 +35,8 @@ import std.state_durability {
   StateDurabilityCapability,
   StateDurabilityCapabilityVersion,
   StateDurabilityEvidence,
+  StateDurabilityEvidenceAccepted,
+  StateDurabilityEvidenceRefused,
   StateDurabilityInstant,
   StateDurabilityQualified,
   StateDurabilityRefused,
@@ -48,7 +50,7 @@ import std.state_durability {
   SynchronizedCommit,
   state_durability_after_readback_at,
   state_durability_admission_evidence_cardinality,
-  state_durability_boundaries_verdict,
+  state_durability_boundaries_evidence_verdict,
   state_durability_boundary_requirements,
   state_durability_boundary_requirement_list,
   state_durability_perturbation_completed_at,
@@ -56,7 +58,7 @@ import std.state_durability {
   state_durability_evidence_refusal,
   state_durability_verdict,
 }
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -569,8 +571,8 @@ test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
   }
 }
 
-test fn boundary_fold_qualifies_matching_evidence_behind_linkage_frontier() -> Bool {
-  match state_durability_boundaries_verdict(
+test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
+  match state_durability_boundaries_evidence_verdict(
     required: state_durability_boundary_requirements(
       first: fixture_boundary,
       additional: [],
@@ -579,13 +581,14 @@ test fn boundary_fold_qualifies_matching_evidence_behind_linkage_frontier() -> B
     capability: current_capability(),
     evidence: [matching_evidence()],
   ) {
-    StateDurabilityQualified { qualification: _ } => true
-    StateDurabilityRefused { cause: _ } => false
+    StateDurabilityEvidenceAccepted { evidence: accepted } =>
+      list_length(accepted) == 1
+    StateDurabilityEvidenceRefused { cause: _ } => false
   }
 }
 
 test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bool {
-  match state_durability_boundaries_verdict(
+  match state_durability_boundaries_evidence_verdict(
     required: state_durability_boundary_requirements(
       first: fixture_boundary,
       additional: [],
@@ -594,7 +597,7 @@ test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bo
     capability: current_capability(),
     evidence: [matching_evidence(), matching_evidence()],
   ) {
-    StateDurabilityRefused {
+    StateDurabilityEvidenceRefused {
       cause: DurabilityEvidenceAmbiguous {
         admission: _,
         boundary: boundary,

@@ -422,6 +422,14 @@ type StateDurabilityEvidenceCardinality<Target, ReadbackSubject>
     }
   | MultipleMatchingDurabilityEvidence { count: Int }
 
+type StateDurabilityEvidenceVerdict<Target, ReadbackSubject>
+  = StateDurabilityEvidenceAccepted {
+      evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
+    }
+  | StateDurabilityEvidenceRefused {
+      cause: StateDurabilityRefusal<Target, ReadbackSubject>,
+    }
+
 type StateDurabilityBoundaryUniquenessFold {
   seen: List<StateDurabilityBoundary>
   duplicate: StateDurabilityBoundary?
@@ -695,17 +703,17 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
   }
 }
 
-fn state_durability_boundary_verdict<Target, ReadbackSubject>(
+fn state_durability_boundary_evidence_verdict<Target, ReadbackSubject>(
   boundary: StateDurabilityBoundary,
   admission: StateDurabilityAdmission<Target, ReadbackSubject>,
   capability: StateDurabilityCapability,
   evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
-) -> StateDurabilityVerdict<Target, ReadbackSubject> {
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
   if !any(
     capability.supported_boundaries,
     supported => supported == boundary,
   ) {
-    StateDurabilityRefused {
+    StateDurabilityEvidenceRefused {
       cause: DurabilityBoundaryUnsupported {
         realization: capability.realization,
         boundary: boundary,
@@ -729,9 +737,9 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
               evidence: mismatched,
             ) {
               Present { value: cause } =>
-                StateDurabilityRefused { cause: cause }
+                StateDurabilityEvidenceRefused { cause: cause }
               Absent =>
-                StateDurabilityRefused {
+                StateDurabilityEvidenceRefused {
                   cause: DurabilityEvidenceMissing {
                     admission: admission,
                     boundary: boundary,
@@ -739,7 +747,7 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
                 }
             }
           _ =>
-            StateDurabilityRefused {
+            StateDurabilityEvidenceRefused {
               cause: DurabilityEvidenceMissing {
                 admission: admission,
                 boundary: boundary,
@@ -747,7 +755,7 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
             }
         }
       MultipleMatchingDurabilityEvidence { count: count } =>
-        StateDurabilityRefused {
+        StateDurabilityEvidenceRefused {
           cause: DurabilityEvidenceAmbiguous {
             admission: admission,
             boundary: boundary,
@@ -761,87 +769,65 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
           evidence: receipt,
         ) {
           Present { value: cause } =>
-            StateDurabilityRefused { cause: cause }
+            StateDurabilityEvidenceRefused { cause: cause }
           Absent =>
-            StateDurabilityQualified {
-              qualification: DurableLifetimeQualification {
-                admission: admission,
-                capability: capability,
-                boundaries: state_durability_boundary_requirements(
-                  first: boundary,
-                  additional: [],
-                ),
-                evidence: [receipt],
-              },
+            StateDurabilityEvidenceAccepted {
+              evidence: [receipt],
             }
         }
     }
   }
 }
 
-type StateDurabilityBoundaryFold<Target, ReadbackSubject> {
+type StateDurabilityEvidenceFold<Target, ReadbackSubject> {
   refusal: StateDurabilityRefusal<Target, ReadbackSubject>?
-  qualified: List<StateDurabilityEvidence<Target, ReadbackSubject>>
+  accepted: List<StateDurabilityEvidence<Target, ReadbackSubject>>
 }
 
-fn state_durability_boundaries_verdict<Target, ReadbackSubject>(
+fn state_durability_boundaries_evidence_verdict<Target, ReadbackSubject>(
   required: StateDurabilityBoundaryRequirements,
   admission: StateDurabilityAdmission<Target, ReadbackSubject>,
   capability: StateDurabilityCapability,
   evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
-) -> StateDurabilityVerdict<Target, ReadbackSubject> {
+) -> StateDurabilityEvidenceVerdict<Target, ReadbackSubject> {
   let required_list = state_durability_boundary_requirement_list(
     requirements: required,
   )
   let folded = fold(
     required_list,
-    init: StateDurabilityBoundaryFold {
+    init: StateDurabilityEvidenceFold {
       refusal: none,
-      qualified: [],
+      accepted: [],
     },
     f: (acc, boundary) =>
       match acc.refusal {
         Present { value: _ } => acc
         Absent =>
-          match state_durability_boundary_verdict(
+          match state_durability_boundary_evidence_verdict(
             boundary: boundary,
             admission: admission,
             capability: capability,
             evidence: evidence,
           ) {
-            StateDurabilityRefused { cause: cause } =>
-              StateDurabilityBoundaryFold {
+            StateDurabilityEvidenceRefused { cause: cause } =>
+              StateDurabilityEvidenceFold {
                 refusal: Present { value: cause },
-                qualified: acc.qualified,
+                accepted: acc.accepted,
               }
-            StateDurabilityQualified { qualification: qualification } =>
-              match qualification {
-                DurableLifetimeQualification {
-                  admission: _,
-                  capability: _,
-                  boundaries: _,
-                  evidence: matched,
-                } =>
-                  StateDurabilityBoundaryFold {
-                    refusal: none,
-                    qualified: append(acc.qualified, items: matched),
-                  }
-                RuntimeLifetimeQualification { admission: _ } => acc
+            StateDurabilityEvidenceAccepted { evidence: matched } =>
+              StateDurabilityEvidenceFold {
+                refusal: none,
+                accepted: append(acc.accepted, items: matched),
               }
           }
       },
   )
   match folded.refusal {
     Present { value: cause } =>
-      StateDurabilityRefused { cause: cause }
+      StateDurabilityEvidenceRefused { cause: cause }
     Absent =>
-      StateDurabilityQualified {
-        qualification: DurableLifetimeQualification {
-          admission: admission,
-          capability: capability,
-          boundaries: required,
-          evidence: folded.qualified,
-        },
+      StateDurabilityEvidenceAccepted {
+        evidence: folded.accepted,
       }
   }
 }
