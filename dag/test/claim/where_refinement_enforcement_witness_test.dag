@@ -8,9 +8,7 @@ data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinem
 
 fn w_positive_int_direct_return_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_direct_return_red\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn bad() -> PositiveInt { 0 }\n",
+    "module whereref_direct_return_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad() -> PositiveInt { 0 }\n",
     "src/whereref_direct_return_red.rs",
     [],
     []
@@ -19,10 +17,7 @@ fn w_positive_int_direct_return_red() -> Bool {
 
 fn w_positive_int_record_field_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_record_red\n\
-      type PositiveInt = Nat where gt_zero\n\
-      type Box { n: PositiveInt }\n\
-      data b: Box = Box { n: 0 }\n",
+    "module whereref_record_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\ndata b: Box = Box { n: 0 }\n",
     "src/whereref_record_red.rs",
     [],
     []
@@ -31,10 +26,7 @@ fn w_positive_int_record_field_red() -> Bool {
 
 fn w_positive_int_record_field_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_record_green\n\
-      type PositiveInt = Nat where gt_zero\n\
-      type Box { n: PositiveInt }\n\
-      data b: Box = Box { n: 1 }\n",
+    "module whereref_record_green\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\ndata b: Box = Box { n: 1 }\n",
     "src/whereref_record_green.rs",
     [],
     []
@@ -43,10 +35,7 @@ fn w_positive_int_record_field_green() -> Bool {
 
 fn w_non_empty_string_record_field_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_nonempty_red\n\
-      import std.types { NonEmptyStr }\n\
-      type Box { s: NonEmptyStr }\n\
-      data b: Box = Box { s: \"\" }\n",
+    "module whereref_nonempty_red\nimport std.types { NonEmptyStr }\ntype Box { s: NonEmptyStr }\ndata b: Box = Box { s: \"\" }\n",
     "src/whereref_nonempty_red.rs",
     [],
     []
@@ -55,10 +44,7 @@ fn w_non_empty_string_record_field_red() -> Bool {
 
 fn w_non_empty_string_record_field_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_nonempty_green\n\
-      import std.types { NonEmptyStr }\n\
-      type Box { s: NonEmptyStr }\n\
-      data b: Box = Box { s: \"x\" }\n",
+    "module whereref_nonempty_green\nimport std.types { NonEmptyStr }\ntype Box { s: NonEmptyStr }\ndata b: Box = Box { s: \"x\" }\n",
     "src/whereref_nonempty_green.rs",
     [],
     []
@@ -67,13 +53,7 @@ fn w_non_empty_string_record_field_green() -> Bool {
 
 fn w_positive_int_non_literal_var_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_var_advisory\n\
-      type PositiveInt = Nat where gt_zero\n\
-      type Box { n: PositiveInt }\n\
-      fn f() -> Box {\n\
-        let n: Int = 0\n\
-        Box { n: n }\n\
-      }\n",
+    "module whereref_var_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\ntype Box { n: PositiveInt }\nfn f() -> Box {\nlet n: Nat = 0\nBox { n: n }\n}\n",
     "src/whereref_var_advisory.rs",
     [],
     []
@@ -82,9 +62,7 @@ fn w_positive_int_non_literal_var_compile_clean_green() -> Bool {
 
 fn w_positive_int_direct_var_return_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_var_return_advisory\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn bad(n: Nat) -> PositiveInt { n }\n",
+    "module whereref_var_return_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad(n: Nat) -> PositiveInt { n }\n",
     "src/whereref_var_return_advisory.rs",
     [],
     []
@@ -93,10 +71,7 @@ fn w_positive_int_direct_var_return_compile_clean_green() -> Bool {
 
 fn w_positive_int_data_init_non_literal_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_data_init_advisory\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn nat_src() -> Nat { 0 }\n\
-      data d: PositiveInt = nat_src()\n",
+    "module whereref_data_init_advisory\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn nat_src() -> Nat { 0 }\ndata d: PositiveInt = nat_src()\n",
     "src/whereref_data_init_advisory.rs",
     [],
     []
@@ -105,13 +80,7 @@ fn w_positive_int_data_init_non_literal_compile_clean_green() -> Bool {
 
 fn w_range_predicate_non_literal_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_range_advisory\n\
-      type Port = Int where range(min: 1, max: 46)\n\
-      type WidePort = Int where range(min: 48, max: 255)\n\
-      fn f(w: WidePort) -> Int {\n\
-        let p: Port = w\n\
-        0\n\
-      }\n",
+    "module whereref_range_advisory\nimport std.types { Int }\ntype Port = Int where range(min: 1, max: 46)\ntype WidePort = Int where range(min: 48, max: 255)\nfn f(w: WidePort) -> Int {\nlet p: Port = w\n0\n}\n",
     "src/whereref_range_advisory.rs",
     [],
     []
@@ -120,9 +89,7 @@ fn w_range_predicate_non_literal_compile_clean_green() -> Bool {
 
 fn w_positive_int_cast_literal_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_cast_red\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn bad() -> PositiveInt { 0 as PositiveInt }\n",
+    "module whereref_cast_red\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn bad() -> PositiveInt { 0 as PositiveInt }\n",
     "src/whereref_cast_red.rs",
     [],
     []
@@ -131,9 +98,7 @@ fn w_positive_int_cast_literal_red() -> Bool {
 
 fn w_positive_int_cast_literal_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_cast_green\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn ok() -> PositiveInt { 1 as PositiveInt }\n",
+    "module whereref_cast_green\nimport std.nat { Nat }\ntype PositiveInt = Nat where gt_zero\nfn ok() -> PositiveInt { 1 as PositiveInt }\n",
     "src/whereref_cast_green.rs",
     [],
     []
@@ -142,9 +107,7 @@ fn w_positive_int_cast_literal_green() -> Bool {
 
 fn w_non_empty_string_cast_literal_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_nonempty_cast_red\n\
-      import std.types { NonEmptyStr }\n\
-      fn bad() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
+    "module whereref_nonempty_cast_red\nimport std.types { NonEmptyStr }\nfn bad() -> NonEmptyStr { \"\" as NonEmptyStr }\n",
     "src/whereref_nonempty_cast_red.rs",
     [],
     []
@@ -153,9 +116,7 @@ fn w_non_empty_string_cast_literal_red() -> Bool {
 
 fn w_declaration_ref_empty_bind_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_declref_red\n\
-      import std.decl_ref { DeclarationRef, WholeDeclaration }\n\
-      data r: DeclarationRef = DeclarationRef { module_path: \"\", decl_name: \"\", field: WholeDeclaration }\n",
+    "module whereref_declref_red\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\ndata r: DeclarationRef = DeclarationRef { module_path: \"\", decl_name: \"\", field: WholeDeclaration }\n",
     "src/whereref_declref_red.rs",
     [],
     []
