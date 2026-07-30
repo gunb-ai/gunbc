@@ -4,22 +4,38 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionMany,
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
+  OpenBmcBoolObserved,
+  OpenBmcBoolRefused,
+  OpenBmcByteSizeObserved,
+  OpenBmcByteSizeRefused,
+  OpenBmcInstantObserved,
+  OpenBmcInstantRefused,
+  OpenBmcPathObserved,
+  OpenBmcPathRefused,
   OpenBmcSensorServicesObserved,
   OpenBmcSensorValueAbsent,
   OpenBmcSensorValueRefused,
   OpenBmcTachAtOrAboveThreshold,
   OpenBmcTachBelowThreshold,
   OpenBmcTachHealthObserved,
+  OpenBmcTachThresholdUnstated,
   OpenBmcWarningLowThreshold,
   openbmc_collection_from_values,
+  openbmc_disk_usage_result,
+  openbmc_epoch_result,
   openbmc_object_mapper_services_rec,
   openbmc_sensor_integer_projection_result,
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
+  openbmc_tach_health_sensor,
+  openbmc_path_result,
+  openbmc_path_probe_result,
+  openbmc_service_active_result,
+  openbmc_zone_failsafe_result,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { rpm, rpm_count }
+import std.measure { byte_size_count, rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -123,6 +139,307 @@ test fn tach_at_controller_threshold_is_healthy() -> Bool {
         source: _,
       },
     } => sensor == "FAN4" && rpm_count(reading_rpm) == 900 && rpm_count(minimum_rpm) == 900
+    _ => false
+  }
+}
+
+test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
+  openbmc_tach_health_sensor(
+    health: OpenBmcTachThresholdUnstated {
+      sensor: "FAN1",
+      reason: "threshold absent",
+    },
+  ) == "FAN1"
+    && openbmc_tach_health_sensor(
+      health: OpenBmcTachBelowThreshold {
+        sensor: "FAN2",
+        reading_rpm: rpm(899),
+        minimum_rpm: rpm(900),
+        source: OpenBmcWarningLowThreshold,
+      },
+    ) == "FAN2"
+    && openbmc_tach_health_sensor(
+      health: OpenBmcTachAtOrAboveThreshold {
+        sensor: "FAN3",
+        reading_rpm: rpm(900),
+        minimum_rpm: rpm(900),
+        source: OpenBmcWarningLowThreshold,
+      },
+    ) == "FAN3"
+}
+
+test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "  /usr/share/swampd/config-asrr.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathObserved { path } =>
+      path == "/usr/share/swampd/config-asrr.json"
+    _ => false
+  }
+}
+
+test fn multiple_nonempty_paths_are_refused() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "/usr/share/swampd/config.json\n/usr/share/swampd/config-asrr.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn empty_path_transport_is_refused() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "b true\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => value
+    _ => false
+  }
+}
+
+test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "s true\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
+  match openbmc_disk_usage_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 10000 7500 2500 75% /\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcByteSizeObserved { value } => byte_size_count(value) == 2560000
+    _ => false
+  }
+}
+
+test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
+  match openbmc_epoch_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "1722345678\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
+    _ => false
+  }
+}
+
+test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => !value
+    _ => false
+  }
+}
+
+test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "test: /usr/share/swampd/config.json: permission denied",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "test: /usr/share/swampd/config.json: permission denied"
+    _ => false
+  }
+}
+
+test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: false,
+      stdout: "",
+      stderr: "SSH host identity verification failed",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "SSH host identity verification failed"
+    _ => false
+  }
+}
+
+test fn inconsistent_success_projection_is_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: false,
+      stdout: "",
+      stderr: "inconsistent transport projection",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } => reason == "inconsistent transport projection"
+    _ => false
+  }
+}
+
+test fn inactive_service_is_observed_not_transport_refused() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "inactive\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => !value
+    _ => false
+  }
+}
+
+test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "inactive\n",
+      stderr: "systemctl: failed to query unit state",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "systemctl: failed to query unit state"
+    _ => false
+  }
+}
+
+test fn failed_service_state_is_preserved_in_refusal() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "failed\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "service-active response is not the expected active or inactive shape; observed stdout: failed"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "/usr/share/swampd/config.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason } =>
+      reason == "path transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "b false\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "zone failsafe transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> Bool {
+  match openbmc_disk_usage_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "Filesystem 1K-blocks Used Available Use%\n/dev/root 1000 100 900 10%\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcByteSizeRefused { reason } =>
+      reason == "disk usage transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> Bool {
+  match openbmc_epoch_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "1722345678\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcInstantRefused { reason } =>
+      reason == "UTC timestamp transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "activating\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "service-active response is not the expected active or inactive shape; observed stdout: activating"
     _ => false
   }
 }

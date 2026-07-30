@@ -67,6 +67,14 @@ fn outcome_tag(o: &ClaimOutcome) -> String {
         ClaimOutcome::Fail => "FAIL".to_string(),
         ClaimOutcome::NotBool { got } => format!("NOTBOOL({got})"),
         ClaimOutcome::RuntimeError { message } => format!("RUNTIMEERR({message})"),
+        // Distinct from RUNTIMEERR on purpose: a budget kill is not a runtime fault.
+        // Both numbers are rendered so a caller comparing labels cannot mistake the
+        // elapsed ceiling for a completed duration.
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => format!("TIMEDOUT({} {elapsed_ms}ms>{budget_ms}ms)", kind.label()),
     }
 }
 
