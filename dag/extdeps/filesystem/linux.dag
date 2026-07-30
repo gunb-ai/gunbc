@@ -1,0 +1,486 @@
+module extdeps.filesystem.linux
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https, Uri }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "docs.kernel.org/filesystems/overlayfs.html",
+  },
+}
+
+data linux_rename_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/rename.2.html",
+  },
+}
+
+data linux_sync_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "man7.org/linux/man-pages/man2/sync.2.html",
+  },
+}
+
+type LinuxFilesystemKind
+  = LinuxOverlayFs
+  | LinuxSquashFs
+  | LinuxJffs2
+  | OtherLinuxFilesystem { mount_type: NonEmptyStr }
+
+data linux_filesystem_kind_axis_note: String = "LinuxFilesystemKind is the upstream /proc/mounts filesystem-type wire axis needed to distinguish an overlay mount from squashfs/JFFS2 backing storage. It is not std.os.types.FileSystemSemantics, whose Posix/Ntfs/Apfs/WslPathTranslation arms describe cross-platform path and process semantics. Linux mount-type names are an open kernel/userspace vocabulary, so OtherLinuxFilesystem preserves the exact unrecognized wire value and cannot be mistaken for any persistence-relevant known arm."
+
+type LinuxMountObservation {
+  source: NonEmptyStr
+  target: NonEmptyStr
+  filesystem: LinuxFilesystemKind
+}
+
+type LinuxOverlayObservation {
+  merged_mount: LinuxMountObservation
+  lower_directory: NonEmptyStr
+  upper_directory: NonEmptyStr
+  lower_backing_mount: LinuxMountObservation
+  upper_backing_mount: LinuxMountObservation
+}
+
+type LinuxProcMountRow {
+  mount: LinuxMountObservation
+  options: List<String>
+  dump_frequency: Int
+  fsck_pass: Int
+}
+
+type LinuxProcMountLineRefusal
+  = LinuxProcMountWrongFieldCount { count: Int }
+  | LinuxProcMountEmptyRequiredField
+  | LinuxProcMountInvalidDumpFrequency { wire: String }
+  | LinuxProcMountInvalidFsckPass { wire: String }
+
+type LinuxProcMountLineParse
+  = LinuxProcMountLineParsed { row: LinuxProcMountRow }
+  | LinuxProcMountLineRefused { cause: LinuxProcMountLineRefusal }
+
+type LinuxProcMountsParse
+  = LinuxProcMountsParsed { rows: List<LinuxProcMountRow> }
+  | LinuxProcMountsRefused {
+      line_number: Int,
+      cause: LinuxProcMountLineRefusal,
+    }
+
+data linux_proc_mounts_parser_dissolve_on: String = "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed representation."
+
+type LinuxOverlayParseRefusal
+  = LinuxOverlayProcMountsRefused {
+      line_number: Int,
+      cause: LinuxProcMountLineRefusal,
+    }
+  | LinuxOverlayRootMountMissing
+  | LinuxOverlayRootIsNotOverlay
+  | LinuxOverlayLowerDirectoryMissing
+  | LinuxOverlayUpperDirectoryMissing
+  | LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: NonEmptyStr }
+  | LinuxOverlayDirectoryNotAbsolute { path: NonEmptyStr }
+  | LinuxOverlayLowerBackingMountMissing { directory: NonEmptyStr }
+  | LinuxOverlayUpperBackingMountMissing { directory: NonEmptyStr }
+
+type LinuxOverlayParse
+  = LinuxOverlayParsed { observation: LinuxOverlayObservation }
+  | LinuxOverlayRefused { cause: LinuxOverlayParseRefusal }
+
+type LinuxFileReplacement
+  = RenameReplaceWithinTargetDirectory
+  | ReplacementAtomicityUnspecified
+
+type LinuxFilesystemSynchronization
+  = NoExplicitFilesystemSynchronization
+  | SyncAllFilesystemsAfterReplacement
+
+type LinuxFilePublicationProtocol {
+  stage_in_target_directory: Bool
+  staged_content_validated: Bool
+  replacement: LinuxFileReplacement
+  synchronization: LinuxFilesystemSynchronization
+}
+
+fn linux_filesystem_kind_from_mount_type(
+  mount_type: NonEmptyStr,
+) -> LinuxFilesystemKind {
+  if mount_type == "overlay" {
+    LinuxOverlayFs
+  } else if mount_type == "squashfs" {
+    LinuxSquashFs
+  } else if mount_type == "jffs2" {
+    LinuxJffs2
+  } else {
+    OtherLinuxFilesystem { mount_type: mount_type }
+  }
+}
+
+fn linux_nonempty_whitespace_tokens(raw: String) -> List<NonEmptyStr> {
+  split(s: trim(raw), delimiter: " ")
+    |> filter(token => trim(token) != "")
+    |> map(token => trim(token) as NonEmptyStr)
+}
+
+fn linux_proc_mount_unescape(field: String) -> String {
+  replace(
+    replace(
+      replace(
+        replace(field, "\\040", " "),
+        "\\011",
+        "\t",
+      ),
+      "\\012",
+      "\n",
+    ),
+    "\\134",
+    "\\",
+  )
+}
+
+fn linux_proc_mount_row_from_line(line: String) -> LinuxProcMountLineParse {
+  let fields = linux_nonempty_whitespace_tokens(raw: line)
+  if fields.length() != 6 {
+    LinuxProcMountLineRefused {
+      cause: LinuxProcMountWrongFieldCount { count: fields.length() },
+    }
+  } else {
+    let source = linux_proc_mount_unescape(field: fields.first() as String)
+    let target = linux_proc_mount_unescape(
+      field: fields.skip(n: 1).first() as String,
+    )
+    let mount_type = linux_proc_mount_unescape(
+      field: fields.skip(n: 2).first() as String,
+    )
+    let raw_options = fields.skip(n: 3).first() as String
+    if source == "" || target == "" || mount_type == "" {
+      LinuxProcMountLineRefused { cause: LinuxProcMountEmptyRequiredField }
+    } else {
+      match parse_int(s: fields.skip(n: 4).first() as String) {
+        Absent =>
+          LinuxProcMountLineRefused {
+            cause: LinuxProcMountInvalidDumpFrequency {
+              wire: fields.skip(n: 4).first() as String,
+            },
+          }
+        Present { value: dump_frequency } =>
+          match parse_int(s: fields.skip(n: 5).first() as String) {
+            Absent =>
+              LinuxProcMountLineRefused {
+                cause: LinuxProcMountInvalidFsckPass {
+                  wire: fields.skip(n: 5).first() as String,
+                },
+              }
+            Present { value: fsck_pass } =>
+              if dump_frequency < 0 {
+                LinuxProcMountLineRefused {
+                  cause: LinuxProcMountInvalidDumpFrequency {
+                    wire: fields.skip(n: 4).first() as String,
+                  },
+                }
+              } else if fsck_pass < 0 {
+                LinuxProcMountLineRefused {
+                  cause: LinuxProcMountInvalidFsckPass {
+                    wire: fields.skip(n: 5).first() as String,
+                  },
+                }
+              } else {
+                LinuxProcMountLineParsed {
+                  row: LinuxProcMountRow {
+                    mount: LinuxMountObservation {
+                      source: source as NonEmptyStr,
+                      target: target as NonEmptyStr,
+                      filesystem: linux_filesystem_kind_from_mount_type(
+                        mount_type: mount_type as NonEmptyStr,
+                      ),
+                    },
+                    options: split(s: raw_options, delimiter: ",")
+                      |> filter(option => trim(option) != "")
+                      |> map(option =>
+                        linux_proc_mount_unescape(field: trim(option))
+                      ),
+                    dump_frequency: dump_frequency,
+                    fsck_pass: fsck_pass,
+                  },
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+type LinuxProcMountsParseFold {
+  line_number: Int
+  parse: LinuxProcMountsParse
+}
+
+fn linux_proc_mounts_parse(proc_mounts: String) -> LinuxProcMountsParse {
+  let folded = fold(
+    split(s: proc_mounts, delimiter: "\n"),
+    init: LinuxProcMountsParseFold {
+      line_number: 1,
+      parse: LinuxProcMountsParsed { rows: [] },
+    },
+    f: (acc, line) =>
+      match acc.parse {
+        LinuxProcMountsRefused { line_number: _, cause: _ } =>
+          LinuxProcMountsParseFold {
+            line_number: acc.line_number + 1,
+            parse: acc.parse,
+          }
+        LinuxProcMountsParsed { rows: rows } =>
+          if trim(line) == "" {
+            LinuxProcMountsParseFold {
+              line_number: acc.line_number + 1,
+              parse: acc.parse,
+            }
+          } else {
+            match linux_proc_mount_row_from_line(line: line) {
+              LinuxProcMountLineRefused { cause: cause } =>
+                LinuxProcMountsParseFold {
+                  line_number: acc.line_number + 1,
+                  parse: LinuxProcMountsRefused {
+                    line_number: acc.line_number,
+                    cause: cause,
+                  },
+                }
+              LinuxProcMountLineParsed { row: row } =>
+                LinuxProcMountsParseFold {
+                  line_number: acc.line_number + 1,
+                  parse: LinuxProcMountsParsed {
+                    rows: append(rows, items: [row]),
+                  },
+                }
+            }
+          }
+      },
+  )
+  folded.parse
+}
+
+fn linux_proc_mount_row_for_target(
+  rows: List<LinuxProcMountRow>,
+  target: NonEmptyStr,
+) -> LinuxProcMountRow? {
+  rows
+    |> filter(row => row.mount.target == target)
+    |> first
+}
+
+fn linux_mount_target_contains_directory(
+  target: NonEmptyStr,
+  directory: NonEmptyStr,
+) -> Bool {
+  if target == "/" {
+    starts_with(s: directory as String, prefix: "/")
+  } else {
+    target == directory
+      || (
+        starts_with(
+          s: directory as String,
+          prefix: target as String,
+        )
+        && directory.length() > target.length()
+        && substring(
+          s: directory as String,
+          start: target.length(),
+          end: target.length() + 1,
+        ) == "/"
+      )
+  }
+}
+
+fn linux_more_specific_backing_mount(
+  current: LinuxProcMountRow?,
+  candidate: LinuxProcMountRow,
+) -> LinuxProcMountRow? {
+  match current {
+    Absent => Present { value: candidate }
+    Present { value: selected } =>
+      if string_length(s: candidate.mount.target as String) > string_length(s: selected.mount.target as String) {
+        Present { value: candidate }
+      } else {
+        current
+      }
+  }
+}
+
+fn linux_proc_mount_backing_row(
+  rows: List<LinuxProcMountRow>,
+  directory: NonEmptyStr,
+  excluded_target: NonEmptyStr,
+) -> LinuxProcMountRow? {
+  fold(
+    rows,
+    init: none,
+    f: (selected, row) =>
+      if row.mount.target != excluded_target
+        && linux_mount_target_contains_directory(
+          target: row.mount.target,
+          directory: directory,
+        ) {
+        linux_more_specific_backing_mount(
+          current: selected,
+          candidate: row,
+        )
+      } else {
+        selected
+      },
+  )
+}
+
+fn linux_mount_option_value(
+  row: LinuxProcMountRow,
+  name: NonEmptyStr,
+) -> NonEmptyStr? {
+  fold(
+    row.options,
+    init: none,
+    f: (selected, option) =>
+      match selected {
+        Present { value: _ } => selected
+        Absent =>
+          if starts_with(s: option, prefix: name as String)
+            && option.length() > name.length() + 1
+            && substring(
+              s: option,
+              start: name.length(),
+              end: name.length() + 1,
+            ) == "=" {
+            Present {
+              value: substring(
+                s: option,
+                start: name.length() + 1,
+                end: option.length(),
+              ) as NonEmptyStr,
+            }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn linux_overlay_observation_from_rows(
+  rows: List<LinuxProcMountRow>,
+) -> LinuxOverlayParse {
+  match linux_proc_mount_row_for_target(
+    rows: rows,
+    target: "/",
+  ) {
+    Absent => LinuxOverlayRefused { cause: LinuxOverlayRootMountMissing }
+    Present { value: root } =>
+      if !(root.mount.filesystem == LinuxOverlayFs) {
+        LinuxOverlayRefused { cause: LinuxOverlayRootIsNotOverlay }
+      } else {
+        match linux_mount_option_value(row: root, name: "lowerdir") {
+          Absent =>
+            LinuxOverlayRefused { cause: LinuxOverlayLowerDirectoryMissing }
+          Present { value: lower } =>
+            if string_contains(s: lower as String, pattern: ":") {
+              LinuxOverlayRefused {
+                cause: LinuxOverlayMultipleLowerDirectoriesUnsupported {
+                  wire: lower,
+                },
+              }
+            } else if !starts_with(s: lower as String, prefix: "/") {
+              LinuxOverlayRefused {
+                cause: LinuxOverlayDirectoryNotAbsolute { path: lower },
+              }
+            } else {
+              match linux_mount_option_value(row: root, name: "upperdir") {
+                Absent =>
+                  LinuxOverlayRefused {
+                    cause: LinuxOverlayUpperDirectoryMissing,
+                  }
+                Present { value: upper } =>
+                  if !starts_with(s: upper as String, prefix: "/") {
+                    LinuxOverlayRefused {
+                      cause: LinuxOverlayDirectoryNotAbsolute { path: upper },
+                    }
+                  } else {
+                    match linux_proc_mount_backing_row(
+                      rows: rows,
+                      directory: lower,
+                      excluded_target: root.mount.target,
+                    ) {
+                      Absent =>
+                        LinuxOverlayRefused {
+                          cause: LinuxOverlayLowerBackingMountMissing {
+                            directory: lower,
+                          },
+                        }
+                      Present { value: lower_row } =>
+                        match linux_proc_mount_backing_row(
+                          rows: rows,
+                          directory: upper,
+                          excluded_target: root.mount.target,
+                        ) {
+                          Absent =>
+                            LinuxOverlayRefused {
+                              cause: LinuxOverlayUpperBackingMountMissing {
+                                directory: upper,
+                              },
+                            }
+                          Present { value: upper_row } =>
+                            LinuxOverlayParsed {
+                              observation: LinuxOverlayObservation {
+                                merged_mount: root.mount,
+                                lower_directory: lower,
+                                upper_directory: upper,
+                                lower_backing_mount: lower_row.mount,
+                                upper_backing_mount: upper_row.mount,
+                              },
+                            }
+                        }
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn linux_overlay_observation_from_proc_mounts(
+  proc_mounts: String,
+) -> LinuxOverlayParse {
+  match linux_proc_mounts_parse(proc_mounts: proc_mounts) {
+    LinuxProcMountsRefused {
+      line_number: line_number,
+      cause: cause,
+    } =>
+      LinuxOverlayRefused {
+        cause: LinuxOverlayProcMountsRefused {
+          line_number: line_number,
+          cause: cause,
+        },
+      }
+    LinuxProcMountsParsed { rows: rows } =>
+      linux_overlay_observation_from_rows(rows: rows)
+  }
+}
+
+fn linux_overlay_observation_is_flash_backed(
+  observation: LinuxOverlayObservation,
+) -> Bool {
+  observation.merged_mount.target == "/"
+    && observation.merged_mount.filesystem == LinuxOverlayFs
+    && observation.lower_backing_mount.filesystem == LinuxSquashFs
+    && observation.upper_backing_mount.filesystem == LinuxJffs2
+    && linux_mount_target_contains_directory(
+      target: observation.lower_backing_mount.target,
+      directory: observation.lower_directory,
+    )
+    && linux_mount_target_contains_directory(
+      target: observation.upper_backing_mount.target,
+      directory: observation.upper_directory,
+    )
+}
+
+data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
