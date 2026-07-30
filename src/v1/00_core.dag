@@ -19,6 +19,7 @@ import std.occurrence_identity {
   DuplicateAuthoredOccurrenceIdentity,
   InconsistentOccurrenceContainment,
   WrongOccurrenceCategory,
+  UnknownOccurrenceIdentity,
 }
 
 type Token {
@@ -181,23 +182,24 @@ type ErrorDAG {
 
 fn occurrence_transport_refusal_diagnostic_span(
   refusal: OccurrenceTransportRefusal
-) -> SourceSpan {
+) -> SourceSpan? {
   match refusal {
-    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => span
+    MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
     DuplicateAuthoredOccurrenceIdentity {
       occurrence: _,
       diagnostic_span: span,
-    } => span
+    } => Present { value: span }
     InconsistentOccurrenceContainment {
       occurrence: _,
       diagnostic_span: span,
-    } => span
+    } => Present { value: span }
     WrongOccurrenceCategory {
       occurrence: _,
       expected: _,
       observed: _,
       diagnostic_span: span,
-    } => span
+    } => Present { value: span }
+    UnknownOccurrenceIdentity { occurrence: _ } => Absent
   }
 }
 
@@ -230,6 +232,11 @@ fn occurrence_transport_refusal_diagnostic_message(
       "occurrence transport refused: wrong category for authored occurrence identity ",
       to_string(value: occurrence.value)
     )
+    UnknownOccurrenceIdentity { occurrence: occurrence } =>
+      concat(
+        "occurrence transport refused: unknown occurrence identity ",
+        to_string(value: occurrence.value)
+      )
   }
 }
 
@@ -256,7 +263,28 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     OccurrenceTransportViolation { refusal: refusal } =>
-      occurrence_transport_refusal_diagnostic_span(refusal: refusal)
+      match occurrence_transport_refusal_diagnostic_span(refusal: refusal) {
+        Present { value: span } => span
+        Absent =>
+          match refusal {
+            UnknownOccurrenceIdentity { occurrence: occurrence } =>
+              SourceSpan {
+                file: concat(
+                  "<unknown-occurrence:",
+                  to_string(value: occurrence.value),
+                  ">"
+                ),
+                start: 0,
+                end: 0,
+              }
+            _ =>
+              SourceSpan {
+                file: "<occurrence-transport-refusal>",
+                start: 0,
+                end: 0,
+              }
+          }
+      }
   }
 }
 

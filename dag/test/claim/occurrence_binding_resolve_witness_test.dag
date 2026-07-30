@@ -15,6 +15,7 @@ import std.occurrence_identity {
   TypeOccurrence,
   DuplicateAuthoredOccurrenceIdentity,
   MissingAuthoredOccurrenceIdentity,
+  UnknownOccurrenceIdentity,
 }
 import std.occurrence_binding {
   OccurrenceBound,
@@ -434,8 +435,10 @@ test fn occurrence_binding_resolve_unknown_occurrence_refuses_holds() -> Bool {
     occurrence: OccurrenceId { value: 999 },
   ) {
     OccurrenceReferenceBindingTransportRefused {
-      refusal: MissingAuthoredOccurrenceIdentity { diagnostic_span: _ },
-    } => true
+      refusal: UnknownOccurrenceIdentity {
+        occurrence: observed,
+      },
+    } => observed.value == 999
     OccurrenceReferenceBindingDecided { result: _ } => false
   }
 }

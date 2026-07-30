@@ -26,7 +26,7 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, InconsistentOccurrenceContainment,
-    MissingAuthoredOccurrenceIdentity, WrongOccurrenceCategory,
+    MissingAuthoredOccurrenceIdentity, UnknownOccurrenceIdentity, WrongOccurrenceCategory,
 };
 pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
@@ -472,24 +472,25 @@ pub struct ErrorDAG {
 
 pub fn occurrence_transport_refusal_diagnostic_span(
     refusal: Rc<OccurrenceTransportRefusal>,
-) -> Rc<SourceSpan> {
+) -> Option<Rc<SourceSpan>> {
     match (*refusal.clone()).clone() {
         OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::InconsistentOccurrenceContainment {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
         OccurrenceTransportRefusal::WrongOccurrenceCategory {
             diagnostic_span: span,
             ..
-        } => span.clone(),
+        } => Some(span.clone()),
+        OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence: _, .. } => None,
     }
 }
 
@@ -501,6 +502,7 @@ pub fn occurrence_transport_refusal_diagnostic_message(
     OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::InconsistentOccurrenceContainment { occurrence, .. } => v1_rt::concat("occurrence transport refused: inconsistent containment for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
     OccurrenceTransportRefusal::WrongOccurrenceCategory { occurrence, .. } => v1_rt::concat("occurrence transport refused: wrong category for authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
+    OccurrenceTransportRefusal::UnknownOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: unknown occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
 }
 }
 
@@ -528,7 +530,30 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
         CompilerDiagnostic::OccurrenceTransportViolation {
             refusal: refusal, ..
-        } => occurrence_transport_refusal_diagnostic_span(refusal.clone()),
+        } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
+            Some(span) => span,
+            None => match (*refusal.clone()).clone() {
+                OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
+                    occurrence: occurrence,
+                    ..
+                } => Rc::new(SourceSpan {
+                    file: v1_rt::concat(
+                        v1_rt::concat(
+                            "<unknown-occurrence:".to_string(),
+                            (occurrence.value.clone()).to_string(),
+                        ),
+                        ">".to_string(),
+                    ),
+                    start: 0,
+                    end: 0,
+                }),
+                _ => Rc::new(SourceSpan {
+                    file: "<occurrence-transport-refusal>".to_string(),
+                    start: 0,
+                    end: 0,
+                }),
+            },
+        },
     }
 }
 

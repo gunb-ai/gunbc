@@ -93,20 +93,6 @@ fn declaration_exposed_on_reference_chain(
   )
 }
 
-fn binding_candidates_append(
-  acc: FreeMonoid<BindingCandidate<OccurrenceId>>,
-  candidate: BindingCandidate<OccurrenceId>
-) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
-  match acc {
-    Empty => Cons { head: candidate, tail: Empty }
-    Cons { head: head, tail: tail } =>
-      Cons {
-        head: head,
-        tail: binding_candidates_append(acc: tail, candidate: candidate),
-      }
-  }
-}
-
 fn binding_candidates_for_reference(
   validated: ValidatedOccurrenceTransport,
   reference: ReferenceOccurrence,
@@ -135,11 +121,9 @@ fn binding_candidates_for_reference(
               declaration: declaration.category,
             ) {
               OccurrenceCategoryBindingAdmissible =>
-                binding_candidates_append(
-                  acc: acc,
-                  candidate: binding_candidate_from_declaration(
-                    declaration: declaration,
-                  ),
+                concat(
+                  acc,
+                  [binding_candidate_from_declaration(declaration: declaration)],
                 )
               OccurrenceCategoryBindingInadmissible {
                 reference: _,
@@ -183,13 +167,7 @@ fn resolve_reference_occurrence_binding_validated(
           }
         Absent =>
           OccurrenceReferenceBindingTransportRefused {
-            refusal: MissingAuthoredOccurrenceIdentity {
-              diagnostic_span: SourceSpan {
-                file: "",
-                start: 0,
-                end: 0,
-              },
-            },
+            refusal: UnknownOccurrenceIdentity { occurrence: occurrence },
           }
       }
     Present { value: entry } =>
