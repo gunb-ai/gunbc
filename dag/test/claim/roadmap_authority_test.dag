@@ -589,12 +589,17 @@ test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
     && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
 }
 
-test fn witness_execution_contract_frontier_is_exactly_two_nodes() -> Bool {
-  count(nodes()
-    |> filter(n => match n.execution {
+test fn witness_every_binding_carries_a_validation() -> Bool {
+  all(
+    nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
         ExecutionContract { validations: _, extra_capabilities: _ } => true
-      })) == 4
+      }),
+    n => match n.execution {
+        ExecutionContractUnspecified => false
+        ExecutionContract { validations, extra_capabilities: _ } => count(validations) > 0
+      },
+  )
 }
 
 test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
