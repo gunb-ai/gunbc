@@ -1,8 +1,10 @@
 module test.claim.bmc_firmware_thermal_witness
 
 import extdeps.bmc.capability {
+  BmcFirmwareIntent,
   BmcFirmwareIntentMismatch,
   BmcFirmwareIntentSatisfied,
+  BmcFirmwareTrack,
   BmcFirmwareTrackRequired,
   BmcFirmwareUnpinned,
   HistoricalEvidenceSnapshot,
@@ -132,11 +134,11 @@ import std.measure {
   rpm_count,
 }
 import std.nat { Nat }
+import std.bmc { OpenBmc }
 import std.types { List, NonEmptyStr, list_length }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
-  Conflict,
   Converged,
   Drifted,
   Noop,
@@ -159,6 +161,15 @@ data fixture_approved_openbmc_3_22_artifact: ApprovedBmcFirmwareArtifact = Appro
   ),
 }
 
+data fixture_pinned_track3_intent: BmcFirmwareIntent = BmcFirmwareTrackRequired {
+  track: BmcFirmwareTrack {
+    family: OpenBmc,
+    major_version: 3,
+  },
+}
+
+data fixture_pinned_track3_intent_note: String = "A synthetic OpenBMC track-3 firmware requirement used only to exercise the firmware-classification machinery (mismatch detection, typed update plans). The fleet intent is BmcFirmwareUnpinned so no fleet host drifts on firmware; drift and update-plan coverage is demonstrated against this pinned fixture rather than fleet policy, so the machinery stays tested after the fleet stopped pinning a track for fan reasons."
+
 fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
   match host.bmc_intent {
     Present { value: intent } => intent == fleet_bmc_valid_state
@@ -166,25 +177,38 @@ fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
   }
 }
 
-test fn every_metal_host_uses_the_single_global_openbmc_3_valid_state() -> Bool {
+test fn every_metal_host_uses_the_single_global_bmc_valid_state() -> Bool {
   host_uses_global_bmc_valid_state(host: srv1_host)
     && host_uses_global_bmc_valid_state(host: srv2_host)
     && host_uses_global_bmc_valid_state(host: srv3_host)
     && host_uses_global_bmc_valid_state(host: srv4_host)
     && match fleet_bmc_valid_state.firmware {
-      BmcFirmwareTrackRequired { track: track } =>
-        track.major_version == 3
-    BmcFirmwareUnpinned => false
-  }
+      BmcFirmwareUnpinned => true
+      BmcFirmwareTrackRequired { track: _ } => false
+    }
 }
 
-test fn current_firmware_observations_make_srv3_drift_and_srv4_converged() -> Bool {
+test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mismatch() -> Bool {
   srv3_bmc_firmware_observation.firmware.version.major == 2
     && srv3_bmc_firmware_observation.firmware.version.minor == 7
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
     && match bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
+      observation: srv3_bmc_firmware_observation,
+    ) {
+      BmcFirmwareIntentSatisfied => true
+      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+    }
+    && match bmc_firmware_observation_intent_verdict(
+      intent: fleet_bmc_valid_state.firmware,
+      observation: srv4_bmc_firmware_observation,
+    ) {
+      BmcFirmwareIntentSatisfied => true
+      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
+    }
+    && match bmc_firmware_observation_intent_verdict(
+      intent: fixture_pinned_track3_intent,
       observation: srv3_bmc_firmware_observation,
     ) {
       BmcFirmwareIntentMismatch {
@@ -194,13 +218,6 @@ test fn current_firmware_observations_make_srv3_drift_and_srv4_converged() -> Bo
         required.major_version == 3
           && observed.version.major == 2
       BmcFirmwareIntentSatisfied => false
-    }
-    && match bmc_firmware_observation_intent_verdict(
-      intent: fleet_bmc_valid_state.firmware,
-      observation: srv4_bmc_firmware_observation,
-    ) {
-      BmcFirmwareIntentSatisfied => true
-      BmcFirmwareIntentMismatch { required: _, observed: _ } => false
     }
 }
 
@@ -219,7 +236,7 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
   let srv3 = bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state.firmware,
+    intent: fixture_pinned_track3_intent,
     observation: Present { value: srv3_bmc_firmware_observation },
     artifact: none,
     update_service: none,
@@ -235,7 +252,7 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
   let unknown = bmc_firmware_classification(
     host: srv1_host.identity,
     board: srv3_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state.firmware,
+    intent: fixture_pinned_track3_intent,
     observation: none,
     artifact: none,
     update_service: none,
@@ -264,7 +281,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
   let classified = bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state.firmware,
+    intent: fixture_pinned_track3_intent,
     observation: Present { value: srv3_bmc_firmware_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: Present { value: srv3_bmc_update_service_observation },
@@ -272,7 +289,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
   let without_update_surface = bmc_firmware_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
-    intent: fleet_bmc_valid_state.firmware,
+    intent: fixture_pinned_track3_intent,
     observation: Present { value: srv3_bmc_firmware_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: none,
@@ -889,7 +906,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     }
 }
 
-test fn major_three_track_does_not_authorize_a_322_projection_on_306() -> Bool {
+test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() -> Bool {
   let observed = BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
@@ -921,7 +938,7 @@ test fn major_three_track_does_not_authorize_a_322_projection_on_306() -> Bool {
     }
 }
 
-test fn srv3_fan_realization_refuses_until_global_firmware_track_converges() -> Bool {
+test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
   let classified = bmc_fan_policy_classification(
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
@@ -935,7 +952,7 @@ test fn srv3_fan_realization_refuses_until_global_firmware_track_converges() -> 
     durability_evidence_construction: Absent,
     durability_evidence: [],
   )
-  classified.verdict == Conflict
+  classified.verdict == UnknownRefused
     && match classified.decision {
       Refuse { reason: _ } => true
       Noop => false

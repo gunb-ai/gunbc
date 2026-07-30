@@ -5471,6 +5471,52 @@ mod tests {
         );
     }
 
+    /// The committed basis file must actually load. A basis that parses to zero rows
+    /// pins `drift_exceeded` at 0 by construction and reports it as "no drift" — the
+    /// state this file spent its whole life in (`basis_absent=5344` on run 30550328673),
+    /// where the loud missing-file diagnostic never fired because the file *existed* and
+    /// was merely empty of data. So this asserts the artifact is non-vacuous, not that
+    /// the parser works in the abstract.
+    #[test]
+    fn committed_witness_row_cost_basis_loads_and_excludes_the_censored_row() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join("dag/gunbc/witness_row_cost_basis.tsv");
+        let text = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("basis file unreadable at {}: {e}", path.display()));
+
+        let mut loaded = 0usize;
+        for line in text.lines().skip(1) {
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(Some(_)) => loaded += 1,
+                Ok(None) => {}
+                // A refused row is silently skipped by the loader, so a malformed commit
+                // would degrade to BasisAbsent instead of failing. Catch it here instead.
+                Err(msg) => panic!("committed basis row refused by the loader: {msg}"),
+            }
+        }
+        assert!(
+            loaded >= 1000,
+            "committed basis loaded only {loaded} row(s) — a near-empty basis reports \
+             drift_exceeded=0 by construction, never by measurement"
+        );
+
+        // The corpus's most expensive row was KILLED at its 900000ms deadline, so its
+        // recorded 900794ms is a censored measurement, not a completed one. Seeding it
+        // would pin it WithinBasis below ~1.8M ms under the 2x comparator and enshrine a
+        // deadline ceiling as normal cost. It must stay BasisAbsent — the honest third
+        // state — until ClaimOutcome::TimedOut can distinguish killed from completed.
+        for line in text.lines() {
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            assert!(
+                !line.contains("resolution_divergence_silent_pick_gate_keystone_holds"),
+                "censored (deadline-killed) row must not be seeded as a basis: {line}"
+            );
+        }
+    }
+
     #[test]
     fn parse_witness_row_cost_basis_line_requires_srv_fleet_arm64() {
         // RED control for review 43284: wrong/missing host_class must refuse, never load.
