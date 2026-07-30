@@ -8418,6 +8418,15 @@ thread_local! {
     /// universe mismatch above makes load-bearing.
     static RESOLVE_SPAN_BY_ENTRY: std::cell::RefCell<HashMap<String, (u64, u128)>> =
         std::cell::RefCell::new(HashMap::new());
+    /// Per-entry stage rows, so a witness entry's split can be read apart from the
+    /// machinery entries that share the thread's stage totals.
+    static RESOLVE_STAGE_BY_ENTRY: std::cell::RefCell<HashMap<String, ResolveStageNanos>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Per-entry stage rows for this thread.
+pub fn resolve_stage_rows_by_entry() -> HashMap<String, ResolveStageNanos> {
+    RESOLVE_STAGE_BY_ENTRY.with(|m| m.borrow().clone())
 }
 
 /// Cumulative span account for this thread.
@@ -8426,15 +8435,438 @@ pub fn resolve_span_account() -> ResolveSpanAccount {
 }
 
 /// Per-entry span rows for this thread, descending by summed nanos.
-pub fn resolve_span_rows_by_entry() -> Vec<(String, u64, u128)> {
-    let mut rows: Vec<(String, u64, u128)> = RESOLVE_SPAN_BY_ENTRY.with(|m| {
+pub fn resolve_span_rows_by_entry() -> Vec<(String, u64, u128, ResolveStageNanos)> {
+    let stages = resolve_stage_rows_by_entry();
+    let mut rows: Vec<(String, u64, u128, ResolveStageNanos)> = RESOLVE_SPAN_BY_ENTRY.with(|m| {
         m.borrow()
             .iter()
-            .map(|(k, (n, ns))| (k.clone(), *n, *ns))
+            .map(|(k, (n, ns))| {
+                (
+                    k.clone(),
+                    *n,
+                    *ns,
+                    stages.get(k).copied().unwrap_or_default(),
+                )
+            })
             .collect()
     });
     rows.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
     rows
+}
+
+/// One row of the exclusive partition. `nanos` is denominated in the declared additive
+/// basis, never elapsed wall.
+#[derive(Debug, Clone)]
+pub struct CostPartitionRow {
+    pub name: &'static str,
+    pub nanos: u128,
+}
+
+/// A counter that is deliberately INCLUSIVE of another — carried so the receipt can print
+/// it without it ever entering the exclusive sum.
+#[derive(Debug, Clone)]
+pub struct InclusiveCostRow {
+    pub name: &'static str,
+    pub nanos: u128,
+    /// The exclusive row this one is contained in.
+    pub contained_in: &'static str,
+}
+
+/// Verdict of the accounting law. `Reconciled` is the ONLY state that licenses quoting a
+/// component share.
+#[derive(Debug, Clone)]
+pub enum CostAccountingVerdict {
+    Reconciled {
+        residual_nanos: u128,
+        tolerance_nanos: u128,
+    },
+    /// Typed, located, countable — never a silently clamped remainder.
+    Refused { cause: CostAccountingRefusal },
+}
+
+#[derive(Debug, Clone)]
+pub enum CostAccountingRefusal {
+    /// Exclusive rows summed past the span total: a non-negative remainder does not exist,
+    /// so the rows are not a partition of it.
+    OverAttributed {
+        sum_exclusive_nanos: u128,
+        parent_span_nanos: u128,
+    },
+    /// A nested resolve span corrupts the per-entry slot attribution (see
+    /// `ResolveSpanAccount::nested_spans`).
+    NestedSpanAttribution { nested_spans: u64 },
+    /// No resolve span ran on this thread — there is nothing to partition.
+    NoSpans,
+}
+
+/// An exclusive, non-overlapping accounting of the measured parent work.
+#[derive(Debug, Clone)]
+pub struct ExclusiveCostPartition {
+    /// The named additive basis. NOT elapsed wall: resolve spans run concurrently across
+    /// floor workers, so elapsed wall is not additive over them and no additive partition
+    /// of it exists to manufacture. This basis sums each top-level resolve span's own
+    /// duration, which is thread-sequential and therefore additive by construction.
+    pub basis: &'static str,
+    pub parent_span_nanos: u128,
+    pub spans: u64,
+    pub nested_spans: u64,
+    pub exclusive: Vec<CostPartitionRow>,
+    pub inclusive: Vec<InclusiveCostRow>,
+    /// Parent minus the exclusive rows: the work inside a resolve span that no row claims.
+    pub remainder_nanos: u128,
+    pub verdict: CostAccountingVerdict,
+    /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
+    /// descending by span nanos. Lets a witness entry's split be read apart from the
+    /// machinery entries that share the thread's stage totals.
+    pub span_rows_by_entry: Vec<(String, u64, u128, ResolveStageNanos)>,
+}
+
+impl ExclusiveCostPartition {
+    pub fn sum_exclusive_nanos(&self) -> u128 {
+        self.exclusive.iter().map(|r| r.nanos).sum()
+    }
+
+    /// A component's share of the parent — `None` until the accounting reconciles.
+    /// DESIGN §5: a share quoted off a non-partition is a fabricated plausible output.
+    pub fn share_of_parent(&self, name: &str) -> Option<f64> {
+        match self.verdict {
+            CostAccountingVerdict::Reconciled { .. } if self.parent_span_nanos > 0 => self
+                .exclusive
+                .iter()
+                .find(|r| r.name == name)
+                .map(|r| r.nanos as f64 / self.parent_span_nanos as f64),
+            _ => None,
+        }
+    }
+}
+
+/// Build the exclusive partition from this thread's accounts.
+///
+/// The law — `parent == Σ exclusive + remainder` — holds BY CONSTRUCTION rather than by
+/// check: `remainder` is DERIVED as `parent − Σ exclusive`, so the identity is exact and
+/// the declared tolerance is 0ns (there is no rounding step to absorb; every row is an
+/// integer nanosecond count in one basis). What makes that non-vacuous is that the
+/// derivation can FAIL, and then it refuses instead of clamping: a negative remainder
+/// means the rows are not a partition, and `saturating_sub` to zero — the shape the
+/// existing `other=` receipt uses — would hide exactly that. Nested spans refuse for the
+/// separate reason that they corrupt the slot the rows come from.
+pub fn exclusive_cost_partition() -> ExclusiveCostPartition {
+    let account = resolve_span_account();
+    exclusive_cost_partition_from(
+        &resolve_stage_totals(),
+        "summed_top_level_resolve_span_nanos",
+        account.span_nanos,
+        account.spans,
+        account.nested_spans,
+        resolve_span_rows_by_entry(),
+    )
+}
+
+/// Same law over a caller-supplied parent/children pair drawn from ONE universe.
+///
+/// `claim_executor`'s discovery corpus resolves on worker threads, so the thread-local
+/// account above would see only the pump thread. Its per-entry receipts carry both halves
+/// from the same spans (`total_resolve_nanos` and `total_stage_nanos` are summed entry by
+/// entry), which is the pairing this entry point exists to accept.
+pub fn exclusive_cost_partition_from(
+    st: &ResolveStageNanos,
+    basis: &'static str,
+    parent_span_nanos: u128,
+    spans: u64,
+    nested_spans: u64,
+    span_rows_by_entry: Vec<(String, u64, u128, ResolveStageNanos)>,
+) -> ExclusiveCostPartition {
+    let account = ResolveSpanAccount {
+        span_nanos: parent_span_nanos,
+        spans,
+        nested_spans,
+        depth: 0,
+    };
+
+    // Exclusive by construction: within one resolve span these windows are sequential and
+    // disjoint. Reconcile's interior is split into its per-module rows plus the residue
+    // the reconcile window itself derives; `assembly_rewire` stands for its three
+    // sub-passes, which are carried as inclusive rows below.
+    let exclusive = vec![
+        CostPartitionRow {
+            name: "load",
+            nanos: st.load,
+        },
+        CostPartitionRow {
+            name: "parse",
+            nanos: st.parse,
+        },
+        CostPartitionRow {
+            name: "resolve_modules",
+            nanos: st.resolve,
+        },
+        CostPartitionRow {
+            name: "normalize",
+            nanos: st.normalize,
+        },
+        CostPartitionRow {
+            name: "typecheck_compute",
+            nanos: st.typecheck_compute,
+        },
+        CostPartitionRow {
+            name: "parent_envs",
+            nanos: st.parent_envs,
+        },
+        CostPartitionRow {
+            name: "assembly_schedule",
+            nanos: st.assembly_schedule,
+        },
+        CostPartitionRow {
+            name: "assembly_probe",
+            nanos: st.assembly_probe,
+        },
+        CostPartitionRow {
+            name: "assembly_registry",
+            nanos: st.assembly_registry,
+        },
+        CostPartitionRow {
+            name: "assembly_services",
+            nanos: st.assembly_services,
+        },
+        CostPartitionRow {
+            name: "assembly_rewire",
+            nanos: st.assembly_rewire,
+        },
+        CostPartitionRow {
+            name: "assembly_emit_info",
+            nanos: st.assembly_emit_info,
+        },
+        CostPartitionRow {
+            name: "reconcile_assembly",
+            nanos: st.reconcile_assembly,
+        },
+        CostPartitionRow {
+            name: "ownership",
+            nanos: st.ownership,
+        },
+    ];
+    let inclusive = vec![
+        InclusiveCostRow {
+            name: "assembly_rewire_type_env",
+            nanos: st.assembly_rewire_type_env,
+            contained_in: "assembly_rewire",
+        },
+        InclusiveCostRow {
+            name: "assembly_rewire_import_str",
+            nanos: st.assembly_rewire_import_str,
+            contained_in: "assembly_rewire",
+        },
+        InclusiveCostRow {
+            name: "assembly_rewire_func_env",
+            nanos: st.assembly_rewire_func_env,
+            contained_in: "assembly_rewire",
+        },
+    ];
+
+    let sum_exclusive: u128 = exclusive.iter().map(|r| r.nanos).sum();
+    let (remainder_nanos, verdict) = if account.spans == 0 {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NoSpans,
+            },
+        )
+    } else if account.nested_spans > 0 {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::NestedSpanAttribution {
+                    nested_spans: account.nested_spans,
+                },
+            },
+        )
+    } else if sum_exclusive > account.span_nanos {
+        (
+            0,
+            CostAccountingVerdict::Refused {
+                cause: CostAccountingRefusal::OverAttributed {
+                    sum_exclusive_nanos: sum_exclusive,
+                    parent_span_nanos: account.span_nanos,
+                },
+            },
+        )
+    } else {
+        let remainder = account.span_nanos - sum_exclusive;
+        (
+            remainder,
+            CostAccountingVerdict::Reconciled {
+                residual_nanos: 0,
+                tolerance_nanos: 0,
+            },
+        )
+    };
+
+    ExclusiveCostPartition {
+        basis,
+        parent_span_nanos: account.span_nanos,
+        spans: account.spans,
+        nested_spans: account.nested_spans,
+        exclusive,
+        inclusive,
+        remainder_nanos,
+        verdict,
+        span_rows_by_entry,
+    }
+}
+
+fn json_num(n: u128) -> String {
+    n.to_string()
+}
+
+/// Machine-readable projection of the partition. One line, `[cost-partition] {json}`.
+pub fn render_exclusive_cost_partition_json(
+    p: &ExclusiveCostPartition,
+    observations: &[(&str, u128)],
+) -> String {
+    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
+    let mut out = String::from("{\"basis\":\"");
+    out.push_str(&esc(p.basis.to_string()));
+    out.push_str("\",\"basis_note\":\"");
+    out.push_str(&esc(
+        "additive: each top-level resolve span's own duration, thread-sequential. \
+         Elapsed wall is NOT additive over concurrent spans and is carried under \
+         `observations`, never partitioned."
+            .to_string(),
+    ));
+    out.push_str("\",\"parent_span_nanos\":");
+    out.push_str(&json_num(p.parent_span_nanos));
+    out.push_str(",\"spans\":");
+    out.push_str(&p.spans.to_string());
+    out.push_str(",\"nested_spans\":");
+    out.push_str(&p.nested_spans.to_string());
+
+    out.push_str(",\"exclusive\":{");
+    for (i, row) in p.exclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(row.nanos));
+    }
+    out.push('}');
+
+    out.push_str(",\"sum_exclusive_nanos\":");
+    out.push_str(&json_num(p.sum_exclusive_nanos()));
+    out.push_str(",\"remainder_nanos\":");
+    out.push_str(&json_num(p.remainder_nanos));
+
+    out.push_str(",\"inclusive\":{");
+    for (i, row) in p.inclusive.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc(row.name.to_string()));
+        out.push_str("\":{\"nanos\":");
+        out.push_str(&json_num(row.nanos));
+        out.push_str(",\"contained_in\":\"");
+        out.push_str(&esc(row.contained_in.to_string()));
+        out.push_str("\"}");
+    }
+    out.push('}');
+
+    out.push_str(
+        ",\"accounting_law\":\"parent_span_nanos == sum_exclusive_nanos + remainder_nanos\"",
+    );
+    out.push_str(",\"verdict\":");
+    match &p.verdict {
+        CostAccountingVerdict::Reconciled {
+            residual_nanos,
+            tolerance_nanos,
+        } => {
+            out.push_str("{\"state\":\"Reconciled\",\"residual_nanos\":");
+            out.push_str(&json_num(*residual_nanos));
+            out.push_str(",\"tolerance_nanos\":");
+            out.push_str(&json_num(*tolerance_nanos));
+            out.push('}');
+        }
+        CostAccountingVerdict::Refused { cause } => {
+            out.push_str("{\"state\":\"Refused\",\"cause\":");
+            match cause {
+                CostAccountingRefusal::OverAttributed {
+                    sum_exclusive_nanos,
+                    parent_span_nanos,
+                } => {
+                    out.push_str("{\"kind\":\"OverAttributed\",\"sum_exclusive_nanos\":");
+                    out.push_str(&json_num(*sum_exclusive_nanos));
+                    out.push_str(",\"parent_span_nanos\":");
+                    out.push_str(&json_num(*parent_span_nanos));
+                    out.push_str(",\"excess_nanos\":");
+                    out.push_str(&json_num(
+                        sum_exclusive_nanos.saturating_sub(*parent_span_nanos),
+                    ));
+                    out.push('}');
+                }
+                CostAccountingRefusal::NestedSpanAttribution { nested_spans } => {
+                    out.push_str("{\"kind\":\"NestedSpanAttribution\",\"nested_spans\":");
+                    out.push_str(&nested_spans.to_string());
+                    out.push('}');
+                }
+                CostAccountingRefusal::NoSpans => {
+                    out.push_str("{\"kind\":\"NoSpans\"}");
+                }
+            }
+            out.push_str(",\"shares_quotable\":false}");
+        }
+    }
+
+    out.push_str(",\"span_nanos_by_entry\":[");
+    for (i, (entry, spans, nanos, st)) in p.span_rows_by_entry.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"entry\":\"");
+        out.push_str(&esc(entry.clone()));
+        out.push_str("\",\"spans\":");
+        out.push_str(&spans.to_string());
+        out.push_str(",\"nanos\":");
+        out.push_str(&json_num(*nanos));
+        out.push_str(",\"exclusive\":{\"load\":");
+        out.push_str(&json_num(st.load));
+        out.push_str(",\"parse\":");
+        out.push_str(&json_num(st.parse));
+        out.push_str(",\"resolve_modules\":");
+        out.push_str(&json_num(st.resolve));
+        out.push_str(",\"normalize\":");
+        out.push_str(&json_num(st.normalize));
+        out.push_str(",\"typecheck_compute\":");
+        out.push_str(&json_num(st.typecheck_compute));
+        out.push_str(",\"parent_envs\":");
+        out.push_str(&json_num(st.parent_envs));
+        out.push_str(",\"reconcile_assembly\":");
+        out.push_str(&json_num(st.reconcile_assembly));
+        out.push_str(",\"ownership\":");
+        out.push_str(&json_num(st.ownership));
+        out.push_str("}}");
+    }
+    out.push(']');
+
+    out.push_str(",\"observations\":{");
+    for (i, (name, nanos)) in observations.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push('"');
+        out.push_str(&esc((*name).to_string()));
+        out.push_str("\":");
+        out.push_str(&json_num(*nanos));
+    }
+    out.push_str("},\"observations_note\":\"");
+    out.push_str(&esc(
+        "Elapsed-wall figures from the surrounding receipts. They measure a DIFFERENT \
+         universe than `parent_span_nanos` (witness-entry resolves only, or process wall \
+         across concurrent workers) and are reported, never partitioned."
+            .to_string(),
+    ));
+    out.push_str("\"}");
+    out
 }
 
 fn resolve_span_enter() -> u32 {
@@ -8462,11 +8894,21 @@ fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u128) {
         s.set(v);
     });
     if depth == 1 {
+        let key = workspace_relative_entry_path(entry_file);
         RESOLVE_SPAN_BY_ENTRY.with(|m| {
             let mut map = m.borrow_mut();
-            let slot = map.entry(workspace_relative_entry_path(entry_file)).or_insert((0, 0));
+            let slot = map.entry(key.clone()).or_insert((0, 0));
             slot.0 += 1;
             slot.1 += elapsed_nanos;
+        });
+        // The slot was reset at span entry and nothing has reset it since, so it holds
+        // exactly this entry's rows.
+        let this_entry = resolve_stage_slot_snapshot();
+        RESOLVE_STAGE_BY_ENTRY.with(|m| {
+            m.borrow_mut()
+                .entry(key)
+                .or_default()
+                .accumulate(&this_entry);
         });
     }
 }
@@ -14626,6 +15068,288 @@ fn apply_discovery_scope_dirs_filter(
             .any(|d| row.entry.contains(d.as_str()))
     });
     rows
+}
+
+/// Closure-overlap measurement over the PRODUCTION-selected entry set
+/// (entry-graph-union slice 1 / lane ci-cost).
+///
+/// Every input is taken from the machinery the floor actually runs — the roster from
+/// `discover_floor_witness_roster`, the diff from the same `floor_diff_observe` entry the
+/// executor observes through, the selection verdict from
+/// `entry_eligible_for_discovery_skip_before_resolve`, and each closure from
+/// `collect_both_closure_module_names_for_entry` over the pooled loader. Nothing here
+/// re-decides selection: a second hand-written selection model would measure itself
+/// rather than the floor.
+///
+/// This counts MODULE MEMBERSHIP only. It resolves and typechecks nothing, so it is an
+/// upper bound on repeated membership, never a promise of equivalent wall savings.
+#[derive(Debug, Clone)]
+pub struct SelectedEntryClosureOverlap {
+    pub source_roots: Vec<String>,
+    pub scan_dirs: Vec<String>,
+    pub head_sha: String,
+    pub diff_base_override: Option<String>,
+    pub github_event_name: Option<String>,
+    pub github_base_ref: Option<String>,
+    pub changed_paths: Vec<String>,
+    pub departed_paths: Vec<String>,
+    /// Distinct entries in the production roster, before selection.
+    pub roster_entries: usize,
+    pub selected_entries: Vec<String>,
+    pub skipped_entries: Vec<String>,
+    /// (entry, |C_i|) for each selected entry.
+    pub closure_sizes: Vec<(String, usize)>,
+    pub sum_closure_memberships: usize,
+    pub union_modules: usize,
+    /// (module, number of selected entries whose closure contains it), descending.
+    pub fanout_by_module: Vec<(String, usize)>,
+}
+
+impl SelectedEntryClosureOverlap {
+    pub fn selected_count(&self) -> usize {
+        self.selected_entries.len()
+    }
+    /// Σ|Cᵢ| / |⋃Cᵢ| — mean times a union member is re-walked across selected entries.
+    pub fn duplication_factor(&self) -> Option<f64> {
+        if self.union_modules == 0 {
+            None
+        } else {
+            Some(self.sum_closure_memberships as f64 / self.union_modules as f64)
+        }
+    }
+    /// Σ|Cᵢ| − |⋃Cᵢ| — repeated memberships a union could at most collapse.
+    pub fn membership_upper_bound(&self) -> usize {
+        self.sum_closure_memberships
+            .saturating_sub(self.union_modules)
+    }
+    /// Percentile over the per-module selected-entry fanout (nearest-rank).
+    pub fn fanout_percentile(&self, p: f64) -> Option<usize> {
+        if self.fanout_by_module.is_empty() {
+            return None;
+        }
+        let mut counts: Vec<usize> = self.fanout_by_module.iter().map(|(_, n)| *n).collect();
+        counts.sort_unstable();
+        let rank = ((p / 100.0) * counts.len() as f64).ceil().max(1.0) as usize;
+        counts.get(rank.min(counts.len()) - 1).copied()
+    }
+}
+
+pub fn measure_selected_entry_closure_overlap(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+) -> Result<SelectedEntryClosureOverlap, String> {
+    let rows = discover_floor_witness_roster(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+    )?;
+
+    // The SAME observation the executor makes — unified diff for line grain, name-status
+    // for path identity. A failure refuses; it never widens to "measure everything".
+    let diff_text = floor_git_diff_range()?;
+    let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
+    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    for path in &changed_paths {
+        line_ranges_by_file.entry(path.clone()).or_default();
+    }
+    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
+    let added_paths = parse_unified_diff_added_paths(&diff_text);
+
+    let index = process_shared_index(source_roots);
+    let diff_edits = floor_diff_edits_from_line_ranges(
+        &index,
+        &line_ranges_by_file,
+        &changed_new_lines_by_file,
+        &departed_paths,
+        &added_paths,
+    )?;
+    let declared_paths = index.module_graph_facts.declared_repo_paths();
+
+    // Distinct entries in roster order; `reads_live_tree` is entry-grain, so the first
+    // row's disposition is the entry's.
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut entries: Vec<(String, bool)> = Vec::new();
+    for row in &rows {
+        if seen.insert(row.entry.clone()) {
+            entries.push((row.entry.clone(), row.reads_live_tree));
+        }
+    }
+
+    let mut selected_entries = Vec::new();
+    let mut skipped_entries = Vec::new();
+    for (entry, reads_live_tree) in &entries {
+        if entry_eligible_for_discovery_skip_before_resolve(
+            true,
+            *reads_live_tree,
+            entry,
+            &index.module_graph_facts,
+            &declared_paths,
+            &changed_paths,
+            &diff_edits,
+        )? {
+            skipped_entries.push(entry.clone());
+        } else {
+            selected_entries.push(entry.clone());
+        }
+    }
+
+    let mut closure_sizes: Vec<(String, usize)> = Vec::new();
+    let mut sum_closure_memberships: usize = 0;
+    let mut fanout: HashMap<String, usize> = HashMap::new();
+    for entry in &selected_entries {
+        let mut members: HashSet<String> = HashSet::new();
+        collect_both_closure_module_names_for_entry(&index, entry, &mut members)?;
+        closure_sizes.push((entry.clone(), members.len()));
+        sum_closure_memberships += members.len();
+        for m in members {
+            *fanout.entry(m).or_insert(0) += 1;
+        }
+    }
+    let union_modules = fanout.len();
+    let mut fanout_by_module: Vec<(String, usize)> =
+        fanout.into_iter().map(|(k, v)| (k, v)).collect();
+    fanout_by_module.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    closure_sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    let head_sha = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("git rev-parse HEAD: {e}"))
+        .and_then(|o| {
+            if o.status.success() {
+                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                Err("git rev-parse HEAD failed".to_string())
+            }
+        })?;
+
+    Ok(SelectedEntryClosureOverlap {
+        source_roots: source_roots.to_vec(),
+        scan_dirs: scan_dirs.to_vec(),
+        head_sha,
+        diff_base_override: std::env::var("GUNBC_CI_DIFF_BASE").ok(),
+        github_event_name: std::env::var("GITHUB_EVENT_NAME").ok(),
+        github_base_ref: std::env::var("GITHUB_BASE_REF").ok(),
+        changed_paths,
+        departed_paths: departed_paths.into_iter().collect(),
+        roster_entries: entries.len(),
+        selected_entries,
+        skipped_entries,
+        closure_sizes,
+        sum_closure_memberships,
+        union_modules,
+        fanout_by_module,
+    })
+}
+
+/// Machine-readable projection of the closure-overlap measurement.
+pub fn render_selected_entry_closure_overlap_json(m: &SelectedEntryClosureOverlap) -> String {
+    let esc = crate::v1_compiler_emit_core_support::escape_json_string;
+    let str_list = |v: &[String]| {
+        let mut s = String::from("[");
+        for (i, item) in v.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            s.push('"');
+            s.push_str(&esc(item.clone()));
+            s.push('"');
+        }
+        s.push(']');
+        s
+    };
+    let opt_str = |o: &Option<String>| match o {
+        Some(v) => format!("\"{}\"", esc(v.clone())),
+        None => "null".to_string(),
+    };
+
+    let mut out = String::from("{\"subject\":{\"source_roots\":");
+    out.push_str(&str_list(&m.source_roots));
+    out.push_str(",\"scan_dirs\":");
+    out.push_str(&str_list(&m.scan_dirs));
+    out.push_str(",\"head_sha\":\"");
+    out.push_str(&esc(m.head_sha.clone()));
+    out.push_str("\",\"diff_base_override\":");
+    out.push_str(&opt_str(&m.diff_base_override));
+    out.push_str(",\"github_event_name\":");
+    out.push_str(&opt_str(&m.github_event_name));
+    out.push_str(",\"github_base_ref\":");
+    out.push_str(&opt_str(&m.github_base_ref));
+    out.push_str(",\"changed_path_count\":");
+    out.push_str(&m.changed_paths.len().to_string());
+    out.push_str(",\"changed_paths\":");
+    out.push_str(&str_list(&m.changed_paths));
+    out.push_str(",\"departed_paths\":");
+    out.push_str(&str_list(&m.departed_paths));
+    out.push_str("},\"selection\":{\"roster_entries\":");
+    out.push_str(&m.roster_entries.to_string());
+    out.push_str(",\"selected_entries\":");
+    out.push_str(&m.selected_count().to_string());
+    out.push_str(",\"skipped_entries\":");
+    out.push_str(&m.skipped_entries.len().to_string());
+    out.push_str("},\"overlap\":{\"N\":");
+    out.push_str(&m.selected_count().to_string());
+    out.push_str(",\"sum_closure_memberships\":");
+    out.push_str(&m.sum_closure_memberships.to_string());
+    out.push_str(",\"union_modules\":");
+    out.push_str(&m.union_modules.to_string());
+    out.push_str(",\"duplication_factor\":");
+    match m.duplication_factor() {
+        Some(f) => out.push_str(&format!("{f:.4}")),
+        None => out.push_str("null"),
+    }
+    out.push_str(",\"membership_upper_bound\":");
+    out.push_str(&m.membership_upper_bound().to_string());
+    out.push_str("},\"fanout\":{");
+    for (i, p) in [50.0_f64, 90.0, 99.0].iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!("\"p{}\":", *p as u32));
+        match m.fanout_percentile(*p) {
+            Some(v) => out.push_str(&v.to_string()),
+            None => out.push_str("null"),
+        }
+    }
+    out.push_str(",\"max\":");
+    match m.fanout_by_module.first() {
+        Some((_, n)) => out.push_str(&n.to_string()),
+        None => out.push_str("null"),
+    }
+    out.push_str(",\"highest_fanout_modules\":[");
+    for (i, (name, n)) in m.fanout_by_module.iter().take(25).enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"module\":\"");
+        out.push_str(&esc(name.clone()));
+        out.push_str("\",\"selected_entry_fanout\":");
+        out.push_str(&n.to_string());
+        out.push('}');
+    }
+    out.push_str("]},\"largest_closures\":[");
+    for (i, (entry, n)) in m.closure_sizes.iter().take(25).enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"entry\":\"");
+        out.push_str(&esc(entry.clone()));
+        out.push_str("\",\"closure_modules\":");
+        out.push_str(&n.to_string());
+        out.push('}');
+    }
+    out.push_str("],\"interpretation_bound\":\"");
+    out.push_str(&esc(
+        "Module-membership counts from the loader's both-closure walk; nothing is resolved \
+         or typechecked. membership_upper_bound is an UPPER BOUND on repeated module \
+         membership, not a wall-time saving."
+            .to_string(),
+    ));
+    out.push_str("\"}");
+    out
 }
 
 pub fn discover_floor_witness_roster(
