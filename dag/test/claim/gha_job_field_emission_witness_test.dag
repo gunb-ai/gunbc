@@ -1,0 +1,121 @@
+module test.claim.gha_job_field_emission_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { String, Bool }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { job_yaml, concurrency_yaml }
+import extdeps.github.actions {
+  Job,
+  SelfHosted,
+  ConcurrencySpec,
+  ConcurrencyMappingQueueMax,
+  ConcurrencyMappingQueueNotMax,
+  CancelInProgressBool,
+  QueueMaxCancelInProgressFalse,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data gha_job_field_emission_note: String = "The discriminating REDs for the two job_yaml drops diagnosed in docs/plans/srv1-deploy-serialization-and-false-greens.md §4. Both defects were invisible to every existing witness because the corpus sets none of the affected fields, so the generated ci.yml was byte-identical whether or not the serializer honoured them — the drop could only be caught by a Job that DOES set them, which is what this module supplies. That is also why these witnesses are synthetic rather than assertions over the live workflows: a test over ci.yml cannot distinguish 'emitted correctly' from 'never set', and the drift gate already covers the live artifacts. Each fact is paired with its own negative control on a Job that leaves the field Absent, so a serializer that unconditionally emitted the key would red too."
+
+fn bare_job() -> Job {
+  Job {
+    id: "probe",
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted"] },
+    steps: [],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+fn job_with_concurrency(spec: ConcurrencySpec) -> Job {
+  Job {
+    id: "probe",
+    name: none,
+    runner: SelfHosted { labels: ["self-hosted"] },
+    steps: [],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: Present { value: spec },
+    permissions: none,
+  }
+}
+
+fn job_with_name(n: String) -> Job {
+  Job {
+    id: "probe",
+    name: Present { value: n },
+    runner: SelfHosted { labels: ["self-hosted"] },
+    steps: [],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+fn emitted(job: Job) -> String {
+  serialize_yaml(v: job_yaml(job: job))
+}
+
+data queue_not_max_group: String = "deploy-srv1"
+
+fn queue_not_max_spec() -> ConcurrencySpec {
+  ConcurrencyMappingQueueNotMax {
+    group: queue_not_max_group,
+    cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+    explicit_single: none,
+  }
+}
+
+fn queue_max_spec() -> ConcurrencySpec {
+  ConcurrencyMappingQueueMax {
+    group: queue_not_max_group,
+    cancel_in_progress: Present { value: QueueMaxCancelInProgressFalse },
+  }
+}
+
+test fn w_job_concurrency_is_emitted() -> Bool {
+  let with_spec = emitted(job: job_with_concurrency(spec: queue_not_max_spec()))
+  string_contains(s: with_spec, pattern: "concurrency:") &&
+  string_contains(s: with_spec, pattern: queue_not_max_group) &&
+  string_contains(s: with_spec, pattern: "cancel-in-progress: false") &&
+  !string_contains(s: emitted(job: bare_job()), pattern: "concurrency:")
+}
+
+test fn w_queue_max_emits_the_queue_key() -> Bool {
+  let max_yaml = serialize_yaml(v: concurrency_yaml(spec: queue_max_spec()))
+  let not_max_yaml = serialize_yaml(v: concurrency_yaml(spec: queue_not_max_spec()))
+  string_contains(s: max_yaml, pattern: "queue: max") &&
+  !string_contains(s: not_max_yaml, pattern: "queue:") &&
+  max_yaml != not_max_yaml
+}
+
+test fn w_queue_max_and_not_max_no_longer_serialize_identically() -> Bool {
+  let max_yaml = serialize_yaml(v: concurrency_yaml(spec: queue_max_spec()))
+  let not_max_yaml = serialize_yaml(v: concurrency_yaml(spec: queue_not_max_spec()))
+  max_yaml != not_max_yaml
+}
+
+test fn w_job_name_is_emitted() -> Bool {
+  string_contains(s: emitted(job: job_with_name(n: "deploy dashboard")), pattern: "name: deploy dashboard") &&
+  !string_contains(s: emitted(job: bare_job()), pattern: "name:")
+}
