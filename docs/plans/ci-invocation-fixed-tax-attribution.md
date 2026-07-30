@@ -422,3 +422,84 @@ un-migrated interface reds instead of being measured a year later.
 
 This does not touch §4's two whole-corpus passes — the corpus is still parsed twice per
 invocation. It removes the super-linear term; levers 3 and 4 remain.
+
+---
+
+## 12. The complexity lens: drivable per-file, infeasible corpus-wide
+
+Asked whether the repo's own complexity lens can be run manually over `src/v1` and `src/v2`
+entirely. Mechanically yes; at current cost, no.
+
+### Driving it
+
+`v2.lens.complexity_accumulator_copy.roster_gate` accepts an arbitrary live-tree path:
+
+```
+file_gate(path, refusal_ceiling)   file_suspect_count(path)   file_refusal_count(path)
+```
+
+driven per the recipe already recorded in `offline_roster_gate_claim_batch_recipe`:
+
+```bash
+claim_batch --source-root dag --source-root src/v2 \
+  --entry <a *_test.dag naming a test fn over file_suspect_count> \
+  --functions <csv> --claim-run --wet
+```
+
+The probe module used here was **deliberately not committed**: any `*_test.dag` under a source
+root is picked up by CI's discovery walk, so landing it would add live-tree witnesses at
+~3 min each to every PR.
+
+### Result (execution)
+
+`file_suspect_count(path: "src/v2/compiler/01_tokenize.dag") == 0` → **FAIL**.
+
+The lens finds copied-accumulator suspects in the v2 tokenizer, confirming §11's static reading of
+`lex_repeat_step` / `lex_delimited_step` (`list_append(left: state.lexeme, right: consumed)` once
+per character ⇒ O(L²)). **Not obtained:** exact suspect/refusal counts, and the corresponding
+`src/v1/01_tokenize.dag` figures — the bracketing run was stopped before completion. Re-run with
+the recipe above to pin them.
+
+### Cost, and why the roster is two files
+
+Measured on `src/v2/compiler/01_tokenize.dag` (556 lines): resolve 34,208 ms, **witness
+184,828 ms (3 m 05 s)**, total wall 4 m 42 s — to analyze **one** file.
+
+| scope | files | serial extrapolation |
+|---|---:|---:|
+| `src/v1` + `src/v2` | 1,298 | **~67 h (2.8 days)** |
+| whole corpus | 2,726 | ~140 h (5.8 days) |
+| `src/v1` + `src/v2`, 16-way | 1,298 | ~4.2 h |
+
+Linear extrapolation **understates** it: cost is superlinear in file size, the mean file is 237
+lines, and the largest is `src/v2/std/compilers/target_model.dag` at 12,961 lines — ~500× the
+measured file under quadratic scaling.
+
+This is the unstated reason the roster gate is operator-ruled **OFFLINE** with a two-file roster
+(`dag/std/change.dag` ceiling 13, `dag/std/render_repeat_string_bootstrap.dag` ceiling 0). Two
+files out of 2,726. The scope was cut to what the cost allowed, and that reduction is not
+legible as a coverage gap anywhere in the tree.
+
+### The self-referential finding
+
+`ingest_findings(path)` parses its target with the **v2 parser, interpreted under v1** — so every
+file the lens audits pays *both* quadratics at once: v1's `char_at` ordinal indexing (§11) and
+v2's `list_append` accumulator. **The complexity lens cannot be run over the corpus because of the
+complexity defect it exists to detect.**
+
+That settles sequencing. Fixing the two parser quadratics is not only a CI-time win; it is what
+makes whole-corpus complexity enforcement affordable, which is what then polices everything else.
+The lens is currently pinned at two files by a cost it is itself designed to flag.
+
+### Two coverage gaps, named
+
+1. **`Unclassifiable` does not gate.** `accumulator_copy_compile_gate` rejects on `Poly2Suspect`,
+   but routes `Unclassifiable` refusal causes through the **Accepted** diagnostics channel —
+   typed, located, counted, never gating (by design, as the undecidable residue). If
+   `list_append(left: acc, …)` is not a registered combiner it lands there, which would explain
+   how the v2 tokenizer compiles today while the lens still finds something in it. Which bucket
+   it falls in is exactly what the stopped bracketing run would have shown.
+2. **`src/v1/*.dag` never reaches the gate.** The gate is enrolled in v2's
+   `always_required_root_lenses`, but the v1 seed is compiled by v1 to Rust via `regen_stage0`,
+   not through v2's compile door — so `src/v1/01_tokenize.dag`, which carries the §11 quadratic,
+   is structurally outside enforcement. Hypothesis from module topology, not yet executed.
