@@ -1,0 +1,72 @@
+module v2.test.manual.a4_opacity
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.compile { compile_ingest_staging }
+import v2.extdeps.languages.rust {
+  rust_binding_spellings,
+  rust_fn_add_lex,
+  rust_target_model_node
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.logic { Bool }
+
+data a4_opacity_authority_source_text: String = "a4_opacity_test"
+
+data a4_opacity_target_model: TargetModel = TargetModel {
+  bundle: rust_target_model_node(),
+  lex: rust_fn_add_lex(),
+  binding_spellings: rust_binding_spellings(),
+  token_class_emit_transforms: target_model_emit_transforms_empty,
+  authority_source_text: a4_opacity_authority_source_text,
+  runtime_row: target_emit_host_runtime_row_unconfigured
+}
+
+data a4_opacity_charoffset_for_byteoffset_source: Medium<String> = Medium {
+  carried: "module a4opacity.refined_twin\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\ntype CharOffset = Refined<Int>\n\nfn at_byte(b: ByteOffset) -> String {\n  \"\"\n}\n\nfn caller(c: CharOffset) -> String {\n  at_byte(c)\n}\n",
+  fidelity: Lossless
+}
+
+data a4_opacity_byteoffset_for_charoffset_source: Medium<String> = Medium {
+  carried: "module a4opacity.refined_twin_reverse\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\ntype CharOffset = Refined<Int>\n\nfn at_char(c: CharOffset) -> String {\n  \"\"\n}\n\nfn caller(b: ByteOffset) -> String {\n  at_char(b)\n}\n",
+  fidelity: Lossless
+}
+
+data a4_opacity_same_brand_source: Medium<String> = Medium {
+  carried: "module a4opacity.same_brand\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\n\nfn at_byte(b: ByteOffset) -> String {\n  \"\"\n}\n\nfn caller(b: ByteOffset) -> String {\n  at_byte(b)\n}\n",
+  fidelity: Lossless
+}
+
+fn a4_opacity_compile(source: Medium<String>) -> Outcome<Medium<String>> {
+  compile_ingest_staging(source: source, target: a4_opacity_target_model)
+}
+
+fn a4_opacity_rejects(source: Medium<String>) -> Bool {
+  match a4_opacity_compile(source: source) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn a4_opacity_accepts_clean(source: Medium<String>) -> Bool {
+  match a4_opacity_compile(source: source) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn a4_opacity_charoffset_for_byteoffset_rejects() -> Bool {
+  a4_opacity_rejects(source: a4_opacity_charoffset_for_byteoffset_source)
+}
+
+test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool {
+  a4_opacity_rejects(source: a4_opacity_byteoffset_for_charoffset_source)
+}
+
+test fn a4_opacity_same_brand_accepts() -> Bool {
+  a4_opacity_accepts_clean(source: a4_opacity_same_brand_source)
+}
