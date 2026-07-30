@@ -335,6 +335,8 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
 
 data isolated_instance_layout_parameter_note: String = "host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host expressible without making it representable. Serve binary, provider state root, and source-seed controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced a value reading host_identity srv2 while describing srv1's binary, srv1's Codex home, and srv1's controller worktree. Nothing caught it because every consumer that would disagree — preflight, apply, the git and tmux observations — needs the host to actually be actuated, and that instance was declared observe-only and never provisioned.\\n\\nTaking the whole layout row instead of a bare host_identity makes the mismatch unwritable: there is no longer a way to name a host without also supplying the three facts that belong to it, because the name IS a field of the row that carries them. gunbc.host_layout owns those rows."
 
+data isolated_instance_own_binary_note: String = "EACH INSTANCE OWNS ITS BINARY, BECAUSE THE PROCESSES ARE MUTUALLY EXCLUSIVE (operator ruling, 2026-07-30). The serve binary used to come from the host layout, so every isolated instance on one machine resolved to the same /opt/gunbc/bin/gunbc that production declares. dashboard_instance_owned_paths does not cover serve_binary — it checks origin, source, attempts and attempt-state — so the existing disjointness check passed while the DEPLOYMENT's owned-artifact set overlapped production on exactly that path.\\n\\nThe consequence was not a stale read. ServeBinary is an Owned artifact and retract tears Owned members down, so retracting a lab would have deleted the binary production is executing. That could not fire before deployments became expressible per instance, which is why it surfaced the moment the twin witness was written and not one commit earlier: the hazard is created by the capability, so it has to be closed in the same change that grants it.\\n\\nDeriving from the instance root rather than the layout also states the isolation the labs exist for — a lab testing a new seed must not overwrite the binary production is running. srv1-live is untouched: it declares /opt/gunbc/bin/gunbc directly rather than through this constructor, which is why its emitted apply and retract scripts stay byte-identical. GunbcHostLayout.gunbc_serve_binary keeps only srv1-live's own declaration as a consumer; it is a per-INSTANCE fact wearing a per-host name, and it dissolves when srv1-live is expressed as an instance row like the rest."
+
 data isolated_instance_anchor_parameter_note: String = "WHICH REF A LAB SERVES IS THE LAB'S OWN FACT, and it was the fourth srv1-preview literal hiding in this constructor — found by probing the served endpoints after the other three were lifted, not by reading the diff. Every isolated instance inherited anchor_ref refs/heads/session/codex-provider-feedback-v0, so a newly added lab would have provisioned itself from a stale feedback branch belonging to a different lane while its page, its instance id, and its posture all read correctly. Nothing would have refused; it would simply have served the wrong source.\\n\\nThat is worse than the host-fact defect above, which produced identical values and no wrong output. This one produces a plausible page from unintended content — the failure that looks like success. It is a parameter rather than a layout field because two labs on ONE host may legitimately serve different refs; the ref belongs to the instance, not the machine."
 
 fn isolated_dashboard_instance(
@@ -359,13 +361,13 @@ fn isolated_dashboard_instance(
     dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
     dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     execution_environment: dashboard_execution_environment(
-      serve_binary: layout.gunbc_serve_binary,
+      serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     ),
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
     },
-    serve_binary: layout.gunbc_serve_binary,
+    serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     serve_function: serve_function,
     listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: listen_port,
