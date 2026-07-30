@@ -52,8 +52,10 @@ test fn witness_no_tree_mutation() -> Bool {
     && !has(s: sh, p: "git commit")
 }
 
+data pre_push_line_budget_note: String = "The budget exists to catch RE-HEAVYING — a roster edit that puts a corpus run, an in-hook cargo build, or a claim_batch exec back on the push path (gunbc.githooks_pre_push_emit pre_push_fmt_only_note). It is a proxy for that property, and the four witnesses above assert the property directly, which is why raising the ceiling here does not weaken the gate. It moved 700 -> 1000 when the fmt failure arm was split three ways: the could-not-run branch carries a ~230-character diagnostic that names cargo and proposes no cargo-dependent remedy, which is the whole point of the split and is not weight on the push path (it is a message, not work). A hook that re-acquires actual work still trips the structural witnesses regardless of this number."
+
 test fn witness_line_budget() -> Bool {
   let sh = expected_githooks_pre_push_sh()
-  length(sh) < 700
+  length(sh) < 1000
 }
 

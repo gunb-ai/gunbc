@@ -10,6 +10,12 @@ import gunbc.commit_workflow {
 import gunbc.local_tidy_spec {
   local_tidy_trigger_globs,
   local_tidy_path_matches_glob,
+  LocalTidyFmtOutcome,
+  FmtToolUnavailable,
+  local_tidy_fmt_outcome_recipe,
+  local_tidy_fmt_outcome_of_exit_status,
+  local_tidy_fmt_outcome_blocks,
+  local_tidy_fmt_pre_push_drift_recipe,
 }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.rust_stage0_gates { path_is_rust_monolith }
@@ -17,7 +23,7 @@ import extdeps.git.hooks { pre_push_zero_sha }
 
 type PrePushGateKind
   = DocWitnessRun { entry: String, function: String }
-  | CargoFmtCheck { fail_recipe: String }
+  | CargoFmtCheck
   | WitnessCorpusRun { fail_recipe: String }
 
 type PrePushGateBinding {
@@ -25,9 +31,31 @@ type PrePushGateBinding {
   trigger_globs: List<String>
 }
 
-data pre_push_fmt_fail_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
-
 data pre_push_check_only_note: String = "Pre-push gates refuse with a fix recipe on drift (no auto-commit / auto-stage). Aligns with commit-hook check-only policy: failure arms refuse instead of mutating the tree silently."
+
+data pre_push_fmt_recipe_defork_note: String = "CargoFmtCheck previously carried a pre-baked fail_recipe field holding a byte-identical copy of the row in gunbc.githooks_pre_push_emit — one string, two authorities (DESIGN section 3). The payload is deleted rather than repointed: a failure message is not a property of WHICH gate fired, it is a projection of the outcome that gate OBSERVED, so pre_push_fmt_outcome_recipe derives it from the exit status through the single authority in gunbc.local_tidy_spec. A pre-baked recipe on the binding is precisely what let a could-not-run outcome render a drift remedy."
+
+fn pre_push_fmt_outcome(status: Int) -> LocalTidyFmtOutcome {
+  local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status)
+}
+
+fn pre_push_fmt_outcome_recipe(status: Int) -> String {
+  local_tidy_fmt_outcome_recipe(
+    outcome: pre_push_fmt_outcome(status: status),
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  )
+}
+
+fn pre_push_fmt_outcome_blocks(status: Int) -> Bool {
+  local_tidy_fmt_outcome_blocks(outcome: pre_push_fmt_outcome(status: status))
+}
+
+fn pre_push_fmt_spawn_refusal_recipe(cause: String) -> String {
+  local_tidy_fmt_outcome_recipe(
+    outcome: FmtToolUnavailable { program: "cargo", cause: cause },
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  )
+}
 
 data pre_push_witness_fail_recipe: String = "affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates)."
 
@@ -45,7 +73,7 @@ fn pre_push_path_hits_globs(path: String, globs: List<String>) -> Bool {
 
 fn pre_push_path_hits_binding(path: String, binding: PrePushGateBinding) -> Bool {
   match binding.kind {
-    CargoFmtCheck { fail_recipe: _ } => path_is_rust_monolith(path: path)
+    CargoFmtCheck => path_is_rust_monolith(path: path)
     _ => pre_push_path_hits_globs(path: path, globs: binding.trigger_globs)
   }
 }
@@ -77,7 +105,7 @@ fn pre_push_bindings() -> List<PrePushGateBinding> {
         })
       LocalTidyCargoFmtCheck =>
         concat(acc, [PrePushGateBinding {
-          kind: CargoFmtCheck { fail_recipe: pre_push_fmt_fail_recipe },
+          kind: CargoFmtCheck,
           trigger_globs: local_tidy_trigger_globs(check: check)
         }])
     }
