@@ -1,7 +1,7 @@
 module std.occurrence_binding_resolve
 
-import std.algebra { FreeMonoid, Empty, Cons }
-import std.types { String, Bool, SourceSpan }
+import std.algebra { FreeMonoid, Empty }
+import std.types { String, Bool }
 import std.occurrence_binding {
   ContainmentPath,
   BindingOccurrence,
@@ -17,6 +17,7 @@ import std.occurrence_identity {
   OccurrenceTransportValidated,
   OccurrenceTransportRefused,
   MissingAuthoredOccurrenceIdentity,
+  UnknownOccurrenceIdentity,
   ValidatedOccurrenceTransport,
   OccurrenceIndexEntry,
   DeclarationOccurrence,

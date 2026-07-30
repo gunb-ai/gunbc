@@ -210,6 +210,7 @@ type OccurrenceTransportRefusal
       observed: OccurrenceCategory,
       diagnostic_span: SourceSpan,
     }
+  | UnknownOccurrenceIdentity { occurrence: OccurrenceId }
 
 data occurrence_identity_constructor_spelling_note: String = "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global: the legacy v2 SyntheticOccurrence/MintedOccurrence facade and identically named shared constructors cannot coexist in one conversion closure. The constructor spelling is representation; this shared carrier and its allocator remain the semantic authority."
 
