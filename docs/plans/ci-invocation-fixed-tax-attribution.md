@@ -323,3 +323,102 @@ Recorded rather than silently edited, because two of them were load-bearing:
    briefly appeared to show "comments are cheap" and "non-ASCII is free". Every timing in §4.1
    is guarded by an explicit parsed/PARSE-ABORT check. Any future probe here must assert the
    parse succeeded before its wall clock means anything.
+
+---
+
+## 11. Root cause: the `.dag` migration is right, one function did not come along
+
+§4.1's "linear, not quadratic; non-ASCII costs ~7%" is **superseded**. Those probes used generated
+files containing *no string literals*, which exercises only the migrated scan path. Re-measured
+with one string literal per file, 20 files, warmed:
+
+| literal len | bytes | ASCII | KB/s | non-ASCII | KB/s |
+|---:|---:|---:|---:|---:|---:|
+| 4,000 | 80,953 | 0.126s | 627 | 0.184s | 430 |
+| 8,000 | 160,953 | 0.304s | 517 | 0.506s | 311 |
+| 16,000 | 320,953 | 0.851s | 368 | 1.422s | 220 |
+| 32,000 | 640,953 | 2.605s | 240 | 5.462s | 115 |
+| 64,000 | 1,280,953 | 9.360s | 134 | 19.705s | 63 |
+
+Per-doubling ratios approach 4× (2.41 → 2.80 → 3.06 → 3.59): **quadratic in string-literal
+length**, with non-ASCII a consistent **~2.1×** on top. Throughput collapses 627 → 134 KB/s.
+
+### The model is not the problem
+
+`src/v1/01_tokenize.dag` (483 lines, `module v1.compiler.tokenize`) carries `SourceRef` with a
+**pre-decoded code-point array**, and the entire main scan indexes it directly:
+
+```
+fn source_code_point(source: SourceRef, pos: Int) -> Int { source.source_chars[pos] }
+fn source_len(source: SourceRef) -> Int { count(source.source_chars) }
+fn source_substring(source: SourceRef, start: Int, end: Int) -> String { chars_to_string(...) }
+fn source_scan_while(source: SourceRef, start: Int, pred: fn(Int) -> Bool) -> Int { ... }
+```
+
+That is the cursor-style, encoding-agnostic design — O(1) per step, no ASCII special case. **The
+`.dag` move landed and is correct.** Emission is faithful: the model's 6 `char_at` sites map
+one-to-one onto the generated `.rs`.
+
+### One function stayed on the old interface
+
+```
+fn process_escapes(raw: String) -> String { process_escapes_loop(source: raw, pos: 0, acc: []) }
+
+fn process_escapes_loop(source: String, pos: Int, acc: List<String>) -> String {
+  if pos >= string_length(s: source) { join(acc, separator: "") }
+  else { let ch = char_at(s: source, pos: pos) ... list_push(acc, ch) ... }
+}
+```
+
+It takes `source: String`, **not** `SourceRef`/`source_chars`. Two defects, per character:
+
+1. `string_length(s: source)` and `char_at(s: source, pos)` each rescan the whole literal
+   (`s.is_ascii()`, then either byte index or `chars().nth(pos)`) ⇒ **O(L²) per literal**, and the
+   non-ASCII arm is `chars().nth(pos)` — O(pos), no SIMD — which is the measured 2.1×.
+2. `list_push(acc, ch)` appends into an `im::Vector` (`v1_rt.rs` line 6 aliases
+   `Vector as Vec`), so each push is copy-on-write through `Arc::make_mut` — the allocator and
+   `Arc::make_mut` frames in §4.1's sampling.
+
+It is called **unconditionally on every string literal**, from all six `scan_string` arms.
+
+### Why this corpus loads that one path so hard
+
+**30% of corpus bytes (5,841,277 of 19,732,620) sit inside string literals.** 38 files carry a
+literal over 2,000 chars. Worst offenders — all non-ASCII, because they are prose notes with
+em-dashes:
+
+| literal | file bytes | file |
+|---:|---:|---|
+| 14,178 | 96,843 | `dag/gunbc/design_document.dag` |
+| 10,813 | 60,549 | `dag/gunbc/ci_spec.dag` |
+| 7,752 | 29,352 | `dag/gunbc/ci_materialization.dag` |
+| 6,968 | 97,919 | `dag/gunbc/ci_layer_roots.dag` |
+| 5,963 | 44,209 | `dag/gunbc/ci_workflow.dag` |
+
+15 of the 20 largest files contain non-ASCII. The repo's documentation-as-`data ..._note: String`
+convention is precisely what feeds the unmigrated path, and every whole-corpus pass (§4) pays it
+again.
+
+### Why no wall caught it
+
+- `01_tokenize.dag` **appears in no lens roster** — it surfaces only as a `NameResolutionGap`
+  frontier row in a plan doc. A recursive `list_push` accumulator is exactly the
+  `complexity_accumulator_copy` class, and the lens does not reach this module.
+- The `text_lookup_work_counter` instrumentation **exists and is itself emitted from `.dag`**
+  (`rt_text_lookup_work_counter`), and its cost model is honest — it records `take_len` for ASCII
+  and `start + take_len` for non-ASCII, naming the quadratic directly. But it is behind a cargo
+  feature enabled only for `src/v1/tests`, and `record_substring_chars_walked` is called from
+  **`substring` only** (`v1_rt.rs:287,291`), never from `char_at`. **The counter watches the
+  migrated path; the quadratic lives in the unmigrated one.**
+
+### Fix shape
+
+Give `process_escapes_loop` the same interface the rest of the file already uses — `SourceRef` +
+range over `source_chars`, or fold escape handling into `scan_string_body`'s existing single walk
+— and replace the `list_push` accumulator with the fold idiom. Oracle: byte-identical token
+streams over the corpus, plus a discriminating case with `\x` escapes and non-ASCII. Then point
+the counter at `char_at` and roster `01_tokenize.dag` in the complexity lens, so the next
+un-migrated interface reds instead of being measured a year later.
+
+This does not touch §4's two whole-corpus passes — the corpus is still parsed twice per
+invocation. It removes the super-linear term; levers 3 and 4 remain.
