@@ -5,6 +5,10 @@ import extdeps.bmc.types {
   On,
   RedfishManagerResetObservation,
   ResetGracefulRestart,
+  RedfishHostPowerStateContinuityVerdict,
+  RedfishHostPowerStateRemainedOn,
+  RedfishHostPowerStateChanged,
+  redfish_host_power_state_continuity_verdict,
 }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
@@ -161,19 +165,6 @@ type BmcFanRebootTimingReceipt
       cause: BmcFanDurabilityEvidenceConstructionRefusal,
     }
 
-fn bmc_fan_reboot_host_power_stayed_on(
-  receipt: BmcFanRebootPersistenceReceipt,
-) -> Bool {
-  match receipt.host_power_before {
-    On =>
-      match receipt.host_power_after {
-        On => true
-        _ => false
-      }
-    _ => false
-  }
-}
-
 fn bmc_fan_reboot_observed_outage_positive(
   receipt: BmcFanRebootPersistenceReceipt,
 ) -> Bool {
@@ -231,32 +222,41 @@ fn bmc_fan_reboot_activation_evidence(
   receipt: BmcFanRebootPersistenceReceipt,
   admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
 ) -> StateActivationEvidence<HostIdentity, BmcFanConfigReadbackSubject> {
-  if receipt.reset.reset_type == ResetGracefulRestart
-    && receipt.reset.http_status == 200
-    && receipt.reset.accepted
-    && receipt.bmc_down_observed
-    && receipt.bmc_returned
-    && bmc_fan_reboot_observed_outage_positive(receipt: receipt)
-    && bmc_fan_reboot_host_power_stayed_on(receipt: receipt)
-    && receipt.host_os_ssh_reachable_throughout
-    && receipt.post_reboot_controller_active
-    && !receipt.post_reboot_zone_failsafe_active
-    && receipt.post_reboot_observer_exit_success {
-    ActivationVerified {
-      receipt: StateActivationReceipt {
-        perturbation_receipt_id: receipt.perturbation_receipt_id,
-        target: admission.target,
-        subject: admission.readback_subject,
-        desired_state_digest: admission.desired_state_digest,
-        realization: admission.realization,
-        capability_version: admission.capability_version,
-        perturbation_generation: admission.perturbation_generation,
-      },
-    }
-  } else {
-    ActivationUnverified {
-      reason: "graceful BMC restart did not carry independent controller, content, and safety readbacks",
-    }
+  match redfish_host_power_state_continuity_verdict(
+    power_before: receipt.host_power_before,
+    power_after: receipt.host_power_after,
+  ) {
+    RedfishHostPowerStateChanged { power_before: _, power_after: _ } =>
+      ActivationUnverified {
+        reason: "host ComputerSystem PowerState did not remain On across BMC restart",
+      }
+    RedfishHostPowerStateRemainedOn =>
+      if receipt.reset.reset_type == ResetGracefulRestart
+        && receipt.reset.http_status == 200
+        && receipt.reset.accepted
+        && receipt.bmc_down_observed
+        && receipt.bmc_returned
+        && bmc_fan_reboot_observed_outage_positive(receipt: receipt)
+        && receipt.host_os_ssh_reachable_throughout
+        && receipt.post_reboot_controller_active
+        && !receipt.post_reboot_zone_failsafe_active
+        && receipt.post_reboot_observer_exit_success {
+        ActivationVerified {
+          receipt: StateActivationReceipt {
+            perturbation_receipt_id: receipt.perturbation_receipt_id,
+            target: admission.target,
+            subject: admission.readback_subject,
+            desired_state_digest: admission.desired_state_digest,
+            realization: admission.realization,
+            capability_version: admission.capability_version,
+            perturbation_generation: admission.perturbation_generation,
+          },
+        }
+      } else {
+        ActivationUnverified {
+          reason: "graceful BMC restart did not carry independent controller, content, and safety readbacks",
+        }
+      }
   }
 }
 
@@ -364,11 +364,33 @@ fn bmc_fan_reboot_durability_evidence(
   }
 }
 
-data srv4_bmc_fan_durability_evidence: List<BmcFanDurabilityEvidence> = match bmc_fan_reboot_durability_evidence(
-  receipt: srv4_bmc_fan_reboot_persistence_receipt,
-) {
-  BmcFanDurabilityEvidenceBuilt { evidence: evidence } => [evidence]
-  BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => []
+fn bmc_fan_durability_evidence_construction_refusal_reason(
+  cause: BmcFanDurabilityEvidenceConstructionRefusal,
+) -> String {
+  match cause {
+    DurabilityReceiptDigestMismatch =>
+      "reboot persistence receipt active config digest does not match the perturbation capability projected config digest"
+    DurabilityReceiptBoundaryMismatch =>
+      "reboot persistence receipt reset boundary is not ResetGracefulRestart"
+    DurabilityReceiptNonPositiveInterval { observed: observed } =>
+      concat(
+        "reboot persistence receipt has a non-positive timing interval: ",
+        observed as String,
+      )
+  }
 }
+
+fn bmc_fan_durability_evidence_built_items(
+  construction: BmcFanDurabilityEvidenceConstruction,
+) -> List<BmcFanDurabilityEvidence> {
+  match construction {
+    BmcFanDurabilityEvidenceBuilt { evidence: evidence } => [evidence]
+    BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => []
+  }
+}
+
+data srv4_bmc_fan_durability_evidence_construction: BmcFanDurabilityEvidenceConstruction = bmc_fan_reboot_durability_evidence(
+  receipt: srv4_bmc_fan_reboot_persistence_receipt,
+)
 
 data srv4_bmc_fan_policy_qualification_note: String = "Durability evidence is derived solely from the typed perturbation receipt, including the exact projection capability recorded at perturbation time. Admission and the graceful-restart boundary are not separately writable caller labels. Activation is established from independent controller, content, and safety readbacks; a later converge no-op is a consequence, never a premise. Ordinary convergence additionally requires the live canonical config digest to equal the admitted digest derived from the projected curve."

@@ -37,6 +37,33 @@ data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = Exte
 
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
 
+type RedfishHostPowerStateContinuityVerdict
+  = RedfishHostPowerStateRemainedOn
+  | RedfishHostPowerStateChanged {
+      power_before: RedfishPowerState,
+      power_after: RedfishPowerState,
+    }
+
+fn redfish_host_power_state_continuity_verdict(
+  power_before: RedfishPowerState,
+  power_after: RedfishPowerState,
+) -> RedfishHostPowerStateContinuityVerdict {
+  match power_before {
+    On =>
+      match power_after {
+        On => RedfishHostPowerStateRemainedOn
+        after => RedfishHostPowerStateChanged {
+          power_before: On,
+          power_after: after,
+        }
+      }
+    before => RedfishHostPowerStateChanged {
+      power_before: before,
+      power_after: power_after,
+    }
+  }
+}
+
 type RedfishProcessorSummary {
   model: NonEmptyStr
   processor_count: Int

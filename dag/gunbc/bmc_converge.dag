@@ -39,6 +39,13 @@ import gunbc.bmc_fan_projection {
   bmc_fan_policy_projection_live_digest_matches,
   bmc_fan_policy_projection_topology_matches,
 }
+import gunbc.fleet_bmc_state {
+  BmcFanDurabilityEvidenceBuilt,
+  BmcFanDurabilityEvidenceConstruction,
+  BmcFanDurabilityEvidenceConstructionRefused,
+  bmc_fan_durability_evidence_built_items,
+  bmc_fan_durability_evidence_construction_refusal_reason,
+}
 import product.placement_supply { HostIdentity }
 import std.state_durability {
   DurabilityDefinitionLinkageUnavailable,
@@ -479,6 +486,66 @@ fn bmc_fan_policy_ordinary_convergence(
   }
 }
 
+fn bmc_fan_policy_durability_gated_convergence(
+  intent: BmcControlPlaneIntent,
+  host: HostIdentity,
+  observed: BmcFanPolicyObservation,
+  desired_curve: BmcFanCurve,
+  projection: BmcFanPolicyProjectionCapability,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  let qualification_evidence = match durability_evidence_construction {
+    Present {
+      value: BmcFanDurabilityEvidenceBuilt { evidence: evidence },
+    } =>
+      append(
+        [evidence],
+        items: durability_evidence,
+      )
+    Absent => durability_evidence
+  }
+  let durability = bmc_fan_policy_durability_qualification(
+    intent: intent,
+    host: host,
+    projection: projection,
+    durability_generation: durability_generation,
+    durability_evidence: qualification_evidence,
+  )
+  match durability {
+    StateDurabilityRefused { cause: _ } =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: concat(
+            "bmc fan realizer does not satisfy the declared state lifetime: ",
+            bmc_fan_durability_refusal_reason(verdict: durability),
+          ),
+        },
+      }
+    StateDurabilityQualified { qualification: _ } =>
+      if !bmc_fan_policy_projection_live_digest_matches(
+        capability: projection,
+        observation: observed,
+      ) {
+        UpsertClassification {
+          verdict: UnknownRefused,
+          decision: Refuse {
+            reason: "bmc fan live canonical config digest does not equal the admitted digest",
+          },
+        }
+      } else {
+        bmc_fan_policy_ordinary_convergence(
+          host: host,
+          observation: observed,
+          desired_curve: desired_curve,
+          projection: projection,
+        )
+      }
+  }
+}
+
 fn bmc_fan_policy_classification(
   host: HostIdentity,
   board: BaseboardModel,
@@ -487,6 +554,7 @@ fn bmc_fan_policy_classification(
   persistence: BmcConfigPersistenceObservation?,
   projection: BmcFanPolicyProjectionCapability?,
   durability_generation: StatePerturbationGeneration,
+  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?,
   durability_evidence: List<BmcFanDurabilityEvidence>,
 ) -> UpsertClassification<BmcFanPolicyApplyPlan> {
   let desired = intent.fan_policy.curve
@@ -555,43 +623,74 @@ fn bmc_fan_policy_classification(
                           projection: projector,
                         )
                       } else {
-                        let durability = bmc_fan_policy_durability_qualification(
-                          intent: intent,
-                          host: host,
-                          projection: projector,
-                          durability_generation: durability_generation,
-                          durability_evidence: durability_evidence,
-                        )
-                        match durability {
-                          StateDurabilityRefused { cause: _ } =>
+                        match durability_evidence_construction {
+                          Present {
+                            value: BmcFanDurabilityEvidenceConstructionRefused { cause: cause },
+                          } =>
                             UpsertClassification {
                               verdict: UnknownRefused,
                               decision: Refuse {
                                 reason: concat(
-                                  "bmc fan realizer does not satisfy the declared state lifetime: ",
-                                  bmc_fan_durability_refusal_reason(verdict: durability),
+                                  "bmc fan durability evidence construction refused: ",
+                                  bmc_fan_durability_evidence_construction_refusal_reason(
+                                    cause: cause,
+                                  ),
                                 ),
                               },
                             }
-                          StateDurabilityQualified { qualification: _ } =>
-                            if !bmc_fan_policy_projection_live_digest_matches(
-                              capability: projector,
-                              observation: observed,
-                            ) {
-                              UpsertClassification {
-                                verdict: UnknownRefused,
-                                decision: Refuse {
-                                  reason: "bmc fan live canonical config digest does not equal the admitted digest",
-                                },
+                          _ => {
+                            let qualification_evidence =
+                              match durability_evidence_construction {
+                                Present {
+                                  value: BmcFanDurabilityEvidenceBuilt {
+                                    evidence: evidence,
+                                  },
+                                } =>
+                                  append(
+                                    [evidence],
+                                    items: durability_evidence,
+                                  )
+                                Absent => durability_evidence
                               }
-                            } else {
-                              bmc_fan_policy_ordinary_convergence(
-                                host: host,
-                                observation: observed,
-                                desired_curve: desired,
-                                projection: projector,
-                              )
+                            let durability = bmc_fan_policy_durability_qualification(
+                              intent: intent,
+                              host: host,
+                              projection: projector,
+                              durability_generation: durability_generation,
+                              durability_evidence: qualification_evidence,
+                            )
+                            match durability {
+                              StateDurabilityRefused { cause: _ } =>
+                                UpsertClassification {
+                                  verdict: UnknownRefused,
+                                  decision: Refuse {
+                                    reason: concat(
+                                      "bmc fan realizer does not satisfy the declared state lifetime: ",
+                                      bmc_fan_durability_refusal_reason(verdict: durability),
+                                    ),
+                                  },
+                                }
+                              StateDurabilityQualified { qualification: _ } =>
+                                if !bmc_fan_policy_projection_live_digest_matches(
+                                  capability: projector,
+                                  observation: observed,
+                                ) {
+                                  UpsertClassification {
+                                    verdict: UnknownRefused,
+                                    decision: Refuse {
+                                      reason: "bmc fan live canonical config digest does not equal the admitted digest",
+                                    },
+                                  }
+                                } else {
+                                  bmc_fan_policy_ordinary_convergence(
+                                    host: host,
+                                    observation: observed,
+                                    desired_curve: desired,
+                                    projection: projector,
+                                  )
+                                }
                             }
+                          }
                         }
                       }
                   }
