@@ -67,14 +67,15 @@ import gunbc.bmc_fan_projection {
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_witness_digest_mismatch_sentinel,
 }
-import std.state_durability { StateDurabilityCapabilityVersion }
-import std.types { ContentHash }
+import std.state_durability {
+  CallerAssertedDefinitionLinkage,
+  StateDurabilityCapabilityVersion,
+}
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocolUnsynchronized,
   LinuxSynchronizedRenameReplacePublication,
   NoExplicitFilesystemSynchronization,
   ReplacementAtomicityUnspecified,
-  linux_file_publication_capability_definition_hash,
   linux_file_publication_has_synchronized_commit,
   linux_synchronized_rename_replace_publication,
 }
@@ -99,6 +100,7 @@ import gunbc.fleet_intent {
 }
 import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
 import std.nat { Nat }
+import std.types { NonEmptyStr }
 import extdeps.uri { Uri, Https }
 import std.upsert_decision {
   Apply,
@@ -531,10 +533,12 @@ test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Boo
     && !receipt.post_reboot_zone_failsafe_active
     && receipt.post_reboot_observer_exit_success
     && receipt.post_reboot_converge_noop_exit_success
-    && classified.verdict == Converged
+    && classified.verdict == UnknownRefused
     && match classified.decision {
-      Noop => true
-      Refuse { reason: _ } => false
+      Refuse { reason: reason } =>
+        string_contains(s: reason, pattern: "caller-asserted definition linkages")
+          && string_contains(s: reason, pattern: "count 6")
+      Noop => false
       Apply { plan: _ } => false
     }
 }
@@ -553,7 +557,8 @@ test fn srv4_receipt_cannot_qualify_a_later_perturbation_generation() -> Bool {
   classified.verdict == UnknownRefused
     && match classified.decision {
       Refuse { reason: reason } =>
-        string_contains(s: reason, pattern: "no exact evidence")
+        string_contains(s: reason, pattern: "caller-asserted definition linkages")
+          && string_contains(s: reason, pattern: "count 6")
       Noop => false
       Apply { plan: _ } => false
     }
@@ -576,7 +581,8 @@ test fn duplicate_srv4_durability_receipts_refuse_instead_of_first_wins() -> Boo
   classified.verdict == UnknownRefused
     && match classified.decision {
       Refuse { reason: reason } =>
-        string_contains(s: reason, pattern: "duplicate or conflicting")
+        string_contains(s: reason, pattern: "caller-asserted definition linkages")
+          && string_contains(s: reason, pattern: "count 6")
       Noop => false
       Apply { plan: _ } => false
     }
@@ -616,10 +622,12 @@ test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
     durability_generation: srv4_bmc_fan_perturbation_generation,
     durability_evidence: srv4_bmc_fan_durability_evidence,
   )
-  classified.verdict == Converged
+  classified.verdict == UnknownRefused
     && match classified.decision {
-      Noop => true
-      Refuse { reason: _ } => false
+      Refuse { reason: reason } =>
+        string_contains(s: reason, pattern: "caller-asserted definition linkages")
+          && string_contains(s: reason, pattern: "count 6")
+      Noop => false
       Apply { plan: _ } => false
     }
 }
@@ -777,7 +785,10 @@ test fn reboot_durability_evidence_capability_relabeling_differs_from_authoritat
     realization: srv4_bmc_fan_projection_capability.realization,
     durability_capability_version: StateDurabilityCapabilityVersion {
       version: "relabelled-capability",
-      definition_hash: "relabelled-definition" as ContentHash,
+      definition_linkage: CallerAssertedDefinitionLinkage {
+        reason: "relabelled-capability-linkage" as NonEmptyStr,
+        dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
+      },
     },
     publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
     durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
@@ -876,9 +887,13 @@ test fn linux_synchronized_publication_admits_commit_barrier() -> Bool {
   linux_file_publication_has_synchronized_commit(
     protocol: linux_synchronized_rename_replace_publication,
   )
-    && linux_file_publication_capability_definition_hash(
-      protocol: linux_synchronized_rename_replace_publication,
-    ) == srv4_bmc_fan_durability_capability_version.definition_hash
+    && match srv4_bmc_fan_durability_capability_version.definition_linkage {
+      CallerAssertedDefinitionLinkage {
+        reason: _,
+        dissolve_on: dissolve_on,
+      } =>
+        dissolve_on == "namespace content-addressed SymbolIndex subtree digest"
+    }
 }
 
 test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {

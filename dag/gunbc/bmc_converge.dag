@@ -42,6 +42,7 @@ import gunbc.bmc_fan_projection {
 }
 import product.placement_supply { HostIdentity }
 import std.state_durability {
+  DurabilityDefinitionLinkageUnavailable,
   DurabilityEvidenceAmbiguous,
   DurabilityEvidenceMissing,
   StateDurabilityQualified,
@@ -347,6 +348,15 @@ fn bmc_fan_durability_refusal_reason(
     StateDurabilityQualified { qualification: _ } => ""
     StateDurabilityRefused { cause: cause } =>
       match cause {
+        DurabilityDefinitionLinkageUnavailable {
+          assertions: assertions,
+          count: count,
+        } =>
+          concat(
+            "caller-asserted definition linkages cannot qualify durable lifetime (count ",
+            count as String,
+            ")",
+          )
         DurabilityEvidenceMissing { admission: admission, boundary: _ } =>
           concat(
             "selected realization has no exact evidence for target, desired state, realization, capability version, perturbation generation, readback subject, and boundary: ",

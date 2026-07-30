@@ -249,9 +249,13 @@ pub type Mebibyte = Rc<Measure<(), (), i64>>;
 pub type Gibibyte = Rc<Measure<(), (), i64>>;
 
 pub fn mebibyte(count: Nat) -> Mebibyte {
-    Mebibyte {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn mebibyte_count(m: Mebibyte) -> Nat {
@@ -259,9 +263,13 @@ pub fn mebibyte_count(m: Mebibyte) -> Nat {
 }
 
 pub fn gibibyte(count: Nat) -> Gibibyte {
-    Gibibyte {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn gibibyte_count(g: Gibibyte) -> Nat {
@@ -302,9 +310,13 @@ pub struct PositiveMeasureCount {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PositiveMeasureCountBuild {
-    PositiveMeasureCountBuilt {
+    Rc::new(Measure {
+
         count: Rc<PositiveMeasureCount>,
-    },
+
+        _phantom: std::marker::PhantomData,
+
+    }),
     PositiveMeasureCountRefused {
         cause: PositiveMeasureCountNonPositive,
     },
@@ -330,7 +342,7 @@ pub fn positive_measure_count_from_int(count: i64) -> Rc<PositiveMeasureCountBui
         })
     } else {
         Rc::new(PositiveMeasureCountBuild::PositiveMeasureCountBuilt {
-            count: positive_measure_count(panic!("unsupported cast from i64 to Nat<Magnitude>")),
+            count: positive_measure_count((count - 1)),
         })
     }
 }
@@ -344,9 +356,13 @@ pub type PositiveCelsiusDelta = Rc<Measure<(), (), Rc<PositiveMeasureCount>>>;
 pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
 pub fn watt(count: Nat) -> Watt {
-    Watt {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn watt_count(w: Watt) -> Nat {
@@ -354,9 +370,13 @@ pub fn watt_count(w: Watt) -> Nat {
 }
 
 pub fn joule(count: Nat) -> Joule {
-    Joule {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn joule_count(j: Joule) -> Nat {
@@ -364,9 +384,13 @@ pub fn joule_count(j: Joule) -> Nat {
 }
 
 pub fn celsius(count: i64) -> Celsius {
-    Celsius {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn celsius_count(c: Celsius) -> i64 {
@@ -374,9 +398,13 @@ pub fn celsius_count(c: Celsius) -> i64 {
 }
 
 pub fn celsius_delta(count: i64) -> CelsiusDelta {
-    CelsiusDelta {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
@@ -384,9 +412,13 @@ pub fn celsius_delta_count(delta: CelsiusDelta) -> i64 {
 }
 
 pub fn positive_celsius_delta(count: Rc<PositiveMeasureCount>) -> PositiveCelsiusDelta {
-    PositiveCelsiusDelta {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn positive_celsius_delta_count(delta: PositiveCelsiusDelta) -> i64 {
@@ -394,9 +426,13 @@ pub fn positive_celsius_delta_count(delta: PositiveCelsiusDelta) -> i64 {
 }
 
 pub fn rpm(count: Nat) -> RevolutionsPerMinute {
-    RevolutionsPerMinute {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
@@ -408,9 +444,13 @@ pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
 pub type MoneyAmountMicro = MoneyAmount<()>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
-    MoneyAmount {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
@@ -523,9 +563,13 @@ pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
 }
 
 pub fn byte_size(count: Nat) -> ByteSize {
-    ByteSize {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn byte_size_count(b: ByteSize) -> Nat {
@@ -533,9 +577,13 @@ pub fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 pub fn bit_width(count: Nat) -> BitWidth {
-    BitWidth {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn bit_width_count(b: BitWidth) -> Nat {
@@ -543,9 +591,13 @@ pub fn bit_width_count(b: BitWidth) -> Nat {
 }
 
 pub fn hertz(count: Nat) -> Hertz {
-    Hertz {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn hertz_count(h: Hertz) -> Nat {
@@ -553,9 +605,13 @@ pub fn hertz_count(h: Hertz) -> Nat {
 }
 
 pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
-    HardwareThreadCount {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
@@ -572,9 +628,13 @@ pub fn character_count_note() -> String {
 }
 
 pub fn character_count(count: Nat) -> CharacterCount {
-    CharacterCount {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn character_count_value(c: CharacterCount) -> Nat {
@@ -582,9 +642,13 @@ pub fn character_count_value(c: CharacterCount) -> Nat {
 }
 
 pub fn millicore(count: Nat) -> Millicore {
-    Millicore {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn millicore_count(m: Millicore) -> Nat {
@@ -594,9 +658,13 @@ pub fn millicore_count(m: Millicore) -> Nat {
 pub type Bandwidth = Rc<Measure<(), (), i64>>;
 
 pub fn bandwidth(count: Nat) -> Bandwidth {
-    Bandwidth {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn bandwidth_count(b: Bandwidth) -> Nat {
@@ -606,9 +674,13 @@ pub fn bandwidth_count(b: Bandwidth) -> Nat {
 pub type Nanosecond = Rc<Measure<(), (), i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {
-    Nanosecond {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn nanosecond_count(n: Nanosecond) -> Nat {
@@ -618,9 +690,13 @@ pub fn nanosecond_count(n: Nanosecond) -> Nat {
 pub type Microsecond = Rc<Measure<(), (), i64>>;
 
 pub fn microsecond(count: Nat) -> Microsecond {
-    Microsecond {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn microsecond_count(m: Microsecond) -> Nat {
@@ -630,9 +706,13 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
 pub type Millisecond = Rc<Measure<(), (), i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
-    Millisecond {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn millisecond_count(m: Millisecond) -> Nat {
@@ -642,9 +722,13 @@ pub fn millisecond_count(m: Millisecond) -> Nat {
 pub type PositiveMillisecond = Rc<Measure<(), (), Rc<PositiveMeasureCount>>>;
 
 pub fn positive_millisecond(count: Rc<PositiveMeasureCount>) -> PositiveMillisecond {
-    PositiveMillisecond {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn positive_millisecond_count(m: PositiveMillisecond) -> i64 {
@@ -675,9 +759,13 @@ pub fn nanosecond_millisecond_projection_note() -> String {
 pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
-    Second {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn second_count(s: Second) -> Nat {
@@ -691,9 +779,13 @@ pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
 pub type Minute = Rc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
-    Minute {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn minute_count(m: Minute) -> Nat {
@@ -703,9 +795,13 @@ pub fn minute_count(m: Minute) -> Nat {
 pub type Percent = Rc<Measure<(), (), i64>>;
 
 pub fn percent(count: Nat) -> Percent {
-    Percent {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn percent_count(p: Percent) -> Nat {
@@ -741,9 +837,13 @@ pub fn percent_from_computed_int_frontier() -> String {
 pub type BasisPoint = Rc<Measure<(), (), i64>>;
 
 pub fn basis_point(count: Nat) -> BasisPoint {
-    BasisPoint {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn basis_point_count(bp: BasisPoint) -> Nat {
@@ -775,9 +875,13 @@ pub fn basis_point_dissolve_on() -> String {
 pub type AmortizationMonths = Rc<Measure<(), (), i64>>;
 
 pub fn amortization_months(count: Nat) -> AmortizationMonths {
-    AmortizationMonths {
+    Rc::new(Measure {
+
         count: count.clone(),
-    }
+
+        _phantom: std::marker::PhantomData,
+
+    })
 }
 
 pub fn amortization_months_count(m: AmortizationMonths) -> Nat {

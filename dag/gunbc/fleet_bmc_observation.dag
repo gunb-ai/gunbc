@@ -32,7 +32,6 @@ import extdeps.filesystem.linux {
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
-  linux_file_publication_capability_definition_hash,
   linux_synchronized_rename_replace_publication,
 }
 import gunbc.fleet_intent {
@@ -55,14 +54,15 @@ import std.measure {
   second,
 }
 import std.nat { Nat }
-import std.content_hash { content_hash_atom }
 import std.state_durability {
+  CallerAssertedDefinitionLinkage,
   StateDurabilityCapabilityVersion,
+  StateDefinitionLinkage,
   StatePerturbationGeneration,
-  StateRealizationDefinitionHashes,
+  StateRealizationDefinitionLinkages,
   StateRealizationIdentity,
 }
-import std.types { Bool, ContentHash, EpochMs, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -209,35 +209,48 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
 
 data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
-data srv4_bmc_fan_realization_definition_hashes_scaffold_note: String = "🟡 dissolve-on: swift-boar-810 actuator lane derives StateRealizationDefinitionHashes from the actual projection, verifier, observer, transport, and actuator definition bodies. Until then these rows are label-backed interim witnesses only; they must not be read as mechanical content hashes of implementation code."
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: NonEmptyStr = "namespace content-addressed SymbolIndex subtree digest"
 
-data srv4_bmc_fan_realization_definition_hashes: StateRealizationDefinitionHashes = StateRealizationDefinitionHashes {
-  projection: content_hash_atom(
-    value: "openbmc-fan-config-projection-asrr-temp-soc-jffs2-v2",
-  ),
-  verifier: content_hash_atom(
-    value: "openbmc-fan-config-verifier-asrr-temp-soc-jffs2-v2",
-  ),
-  observer: content_hash_atom(
-    value: "openbmc-fan-config-observer-asrr-temp-soc-jffs2-v2",
-  ),
-  transport: content_hash_atom(
-    value: "openbmc-fan-config-transport-ssh-jffs2-v2",
-  ),
-  actuator: content_hash_atom(
-    value: "openbmc-fan-config-actuator-publish-restart-v2",
-  ),
+fn bmc_fan_caller_asserted_definition_linkage(
+  reason: NonEmptyStr,
+) -> StateDefinitionLinkage {
+  CallerAssertedDefinitionLinkage {
+    reason: reason,
+    dissolve_on: bmc_fan_symbol_index_subtree_digest_dissolve_on,
+  }
 }
+
+fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkages {
+  StateRealizationDefinitionLinkages {
+    projection: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config projection is caller-asserted until SymbolIndex subtree digest",
+    ),
+    verifier: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config verifier is caller-asserted until SymbolIndex subtree digest",
+    ),
+    observer: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config observer is caller-asserted until SymbolIndex subtree digest",
+    ),
+    transport: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config transport is caller-asserted until SymbolIndex subtree digest",
+    ),
+    actuator: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config actuator is caller-asserted until SymbolIndex subtree digest",
+    ),
+  }
+}
+
+data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "🟡 dissolve-on: bmc_fan_symbol_index_subtree_digest_dissolve_on. Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable."
 
 data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
   realization_id: srv4_bmc_fan_realization_id,
-  definition_hashes: srv4_bmc_fan_realization_definition_hashes,
+  definition_linkages: bmc_fan_realization_definition_linkages(),
 }
 
 data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
   version: "openbmc-overlay-config-graceful-restart-v2",
-  definition_hash: linux_file_publication_capability_definition_hash(
-    protocol: linux_synchronized_rename_replace_publication,
+  definition_linkage: bmc_fan_caller_asserted_definition_linkage(
+    reason: "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest",
   ),
 }
 

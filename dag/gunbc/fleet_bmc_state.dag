@@ -39,7 +39,14 @@ import gunbc.fleet_intent {
   srv4_host,
 }
 import product.placement_supply { HostIdentity }
-import std.measure { positive_millisecond }
+import std.measure {
+  PositiveMeasureCountBuilt,
+  PositiveMeasureCountRefused,
+  PositiveMillisecond,
+  positive_measure_count,
+  positive_measure_count_from_int,
+  positive_millisecond,
+}
 import std.state_durability {
   ActivationUnverified,
   ActivationVerified,
@@ -109,6 +116,15 @@ fn bmc_fan_reboot_observed_outage_positive(
   receipt.bmc_returned_at > receipt.bmc_down_observed_at
 }
 
+fn bmc_fan_receipt_elapsed_millisecond(count: Int) -> PositiveMillisecond {
+  match positive_measure_count_from_int(count: count) {
+    PositiveMeasureCountBuilt { count: built } =>
+      positive_millisecond(count: built)
+    PositiveMeasureCountRefused { cause: _ } =>
+      positive_millisecond(count: positive_measure_count(predecessor: 0))
+  }
+}
+
 fn bmc_fan_reboot_activation_evidence(
   receipt: BmcFanRebootPersistenceReceipt,
   admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
@@ -164,7 +180,7 @@ fn bmc_fan_reboot_preservation_outcome(
           config_path: receipt.post_reboot_policy.board_config_path,
         },
         state_digest: receipt.post_reboot_active_config_digest,
-        observed_after_perturbation_completion: positive_millisecond(
+        observed_after_perturbation_completion: bmc_fan_receipt_elapsed_millisecond(
           count: receipt.observed_at - receipt.bmc_returned_at,
         ),
       },
@@ -204,10 +220,10 @@ fn bmc_fan_reboot_durability_evidence_built(
         target: receipt.host,
         boundary: fleet_bmc_fan_graceful_restart_boundary,
         generation: receipt.perturbation_generation,
-        started_after_before_readback: positive_millisecond(
+        started_after_before_readback: bmc_fan_receipt_elapsed_millisecond(
           count: receipt.reset.observed_at - receipt.before.observed_at,
         ),
-        duration: positive_millisecond(
+        duration: bmc_fan_receipt_elapsed_millisecond(
           count: receipt.bmc_returned_at - receipt.reset.observed_at,
         ),
       },
