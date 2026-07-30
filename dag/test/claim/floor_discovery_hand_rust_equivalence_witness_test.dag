@@ -23,7 +23,6 @@ import v2.workflow.floor_discovery_producer {
   FloorDiscoveryAccepted,
   FloorDiscoveryRefused,
   discover_floor_corpus_rows_from_host_facts,
-  floor_discovery_scan_test_decl_names,
   floor_discovery_content_has_wire_contract_decl,
   floor_discovery_wire_contract_sidecar_refusal_for_content,
   floor_discovery_entry_live_tree_disposition_refusal_for_content,
@@ -33,6 +32,7 @@ import v2.workflow.floor_discovery_producer {
 }
 import v2.workflow.floor_naming_hygiene {
   floor_filename_hygiene_refusal_for_paths,
+  floor_discovery_scan_test_decl_names,
   floor_test_sidecar_suffix,
   floor_wire_contract_sidecar_suffix
 }
