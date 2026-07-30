@@ -1366,13 +1366,7 @@ fn direct_call_arg_mismatch_diags(
               module_name: module_name
             )]
           } else {
-            where_refinement_mismatch_diags(
-              formal: formal_subst,
-              value_expr: arg_value(n: ta),
-              span: arg_value(n: ta).span,
-              module_name: module_name,
-              type_env: type_env
-            )
+            []
           }
         Absent => []
       }

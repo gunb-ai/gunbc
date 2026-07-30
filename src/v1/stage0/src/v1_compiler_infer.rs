@@ -2358,13 +2358,7 @@ pub fn direct_call_arg_mismatch_diags(
                                         module_name.clone(),
                                     )])
                                 } else {
-                                    where_refinement_mismatch_diags(
-                                        formal_subst.clone(),
-                                        arg_value(ta.clone()),
-                                        arg_value(ta.clone()).span.clone(),
-                                        module_name.clone(),
-                                        type_env.clone(),
-                                    )
+                                    Rc::new(vec![])
                                 }
                             }
                             None => Rc::new(vec![]),
