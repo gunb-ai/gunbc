@@ -7,7 +7,9 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcBoolObserved,
   OpenBmcBoolRefused,
   OpenBmcByteSizeObserved,
+  OpenBmcByteSizeRefused,
   OpenBmcInstantObserved,
+  OpenBmcInstantRefused,
   OpenBmcPathObserved,
   OpenBmcPathRefused,
   OpenBmcSensorServicesObserved,
@@ -363,6 +365,81 @@ test fn failed_service_state_is_preserved_in_refusal() -> Bool {
   ) {
     OpenBmcBoolRefused { reason } =>
       reason == "service-active response is not the expected active or inactive shape; observed stdout: failed"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> Bool {
+  match openbmc_path_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "/usr/share/swampd/config.json\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcPathRefused { reason } =>
+      reason == "path transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> Bool {
+  match openbmc_zone_failsafe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "b false\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "zone failsafe transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> Bool {
+  match openbmc_disk_usage_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "Filesystem 1K-blocks Used Available Use%\n/dev/root 1000 100 900 10%\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcByteSizeRefused { reason } =>
+      reason == "disk usage transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> Bool {
+  match openbmc_epoch_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: true,
+      stdout: "1722345678\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcInstantRefused { reason } =>
+      reason == "UTC timestamp transport did not report exit-zero success"
+    _ => false
+  }
+}
+
+test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 0,
+      success: true,
+      stdout: "activating\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "service-active response is not the expected active or inactive shape; observed stdout: activating"
     _ => false
   }
 }

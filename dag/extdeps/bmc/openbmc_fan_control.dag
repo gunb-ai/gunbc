@@ -204,8 +204,13 @@ type OpenBmcInstantResult
 fn openbmc_path_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcPathResult {
-  if !remote.success {
-    OpenBmcPathRefused { reason: remote.stderr }
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "path transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcPathRefused { reason: reason }
   } else {
     let paths = split(s: remote.stdout, delimiter: "\n")
       |> map(path => trim(path))
@@ -225,8 +230,13 @@ fn openbmc_path_result(
 fn openbmc_zone_failsafe_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcBoolResult {
-  if !remote.success {
-    OpenBmcBoolRefused { reason: remote.stderr }
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "zone failsafe transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcBoolRefused { reason: reason }
   } else {
     let tokens = split(s: trim(remote.stdout), delimiter: " ")
       |> filter(token => trim(token) != "")
@@ -273,7 +283,10 @@ fn openbmc_path_probe_result(
 fn openbmc_service_active_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcBoolResult {
-  if remote.exit_code == 0 && remote.success {
+  if remote.exit_code == 0
+    && remote.success
+    && trim(remote.stdout) == "active"
+    && trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: true }
   } else if remote.exit_code == 3
     && !remote.success
@@ -296,8 +309,13 @@ fn openbmc_service_active_result(
 fn openbmc_disk_usage_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcByteSizeResult {
-  if !remote.success {
-    OpenBmcByteSizeRefused { reason: remote.stderr }
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "disk usage transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcByteSizeRefused { reason: reason }
   } else {
     let lines = split(s: trim(remote.stdout), delimiter: "\n")
     if lines.length() < 2 {
@@ -334,8 +352,13 @@ fn openbmc_disk_usage_result(
 fn openbmc_epoch_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcInstantResult {
-  if !remote.success {
-    OpenBmcInstantRefused { reason: remote.stderr }
+  if remote.exit_code != 0 || !remote.success {
+    let reason = if trim(remote.stderr) == "" {
+      "UTC timestamp transport did not report exit-zero success"
+    } else {
+      remote.stderr
+    }
+    OpenBmcInstantRefused { reason: reason }
   } else {
     match parse_int(s: trim(remote.stdout)) {
       Absent =>
