@@ -579,7 +579,60 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
 /// stages regardless of the ordinary stop policy.
 struct ParsedWalkPlan {
     batches: Vec<Vec<Runnable>>,
+    finalization: Option<FloorFinalization>,
     on_success_stages: Vec<Vec<Runnable>>,
+}
+
+/// Parse `WalkFinalization` — the plan-carried policy (walk_finalization_note): the
+/// executor never selects finalization by a plan function's spelling. A missing or
+/// unrecognized variant is a hard error, so a floor plan without its law is
+/// unwritable rather than discovered at arm time.
+fn finalization_from_value(
+    v: &Value,
+    ctx: &InterpContext,
+) -> Result<Option<FloorFinalization>, String> {
+    match v {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            if ctx.sym_eq(*variant_name, "NoWalkFinalization") {
+                Ok(None)
+            } else if ctx.sym_eq(*variant_name, "FloorFinalization") {
+                let declared = match ctx.field(fields, "declared_resolve_count") {
+                    Some(Value::Int(n)) => *n,
+                    other => {
+                        return Err(format!(
+                            "FloorFinalization.declared_resolve_count must be an Int, got {other:?}"
+                        ))
+                    }
+                };
+                let disclosure = match ctx.field(fields, "require_materialization_disclosure") {
+                    Some(Value::Bool(b)) => *b,
+                    other => {
+                        return Err(format!(
+                            "FloorFinalization.require_materialization_disclosure must be a Bool, \
+                             got {other:?}"
+                        ))
+                    }
+                };
+                Ok(Some(FloorFinalization {
+                    declared_resolve_count: declared,
+                    require_materialization_disclosure: disclosure,
+                }))
+            } else {
+                Err(format!(
+                    "WalkPlan.finalization: unknown variant (expected NoWalkFinalization or \
+                     FloorFinalization)"
+                ))
+            }
+        }
+        other => Err(format!(
+            "WalkPlan.finalization must be a WalkFinalization variant, got {}",
+            ctx.format_value(other)
+        )),
+    }
 }
 
 /// Strict WalkPlan parser. Deliberately NO fallback from a failed record parse to a
@@ -607,9 +660,16 @@ fn walk_plan_from_plan(plan: &Value, ctx: &InterpContext) -> Result<ParsedWalkPl
          declares an empty list, never omits the field"
             .to_string()
     })?;
+    let finalization_val = ctx.field(fields, "finalization").ok_or_else(|| {
+        "WalkPlan missing field `finalization` — a plan with no finalization declares \
+         NoWalkFinalization, never omits the field"
+            .to_string()
+    })?;
     Ok(ParsedWalkPlan {
         batches: batches_from_plan(batches_val, ctx)
             .map_err(|msg| format!("WalkPlan.batches: {msg}"))?,
+        finalization: finalization_from_value(finalization_val, ctx)
+            .map_err(|msg| format!("WalkPlan.finalization: {msg}"))?,
         on_success_stages: batches_from_plan(stages_val, ctx)
             .map_err(|msg| format!("WalkPlan.on_success_stages: {msg}"))?,
     })
@@ -3048,6 +3108,7 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
 /// are unchanged.
 struct FloorFinalization {
     declared_resolve_count: i64,
+    require_materialization_disclosure: bool,
 }
 
 /// Validate the floor's finalization laws against the walk's own records. Returns the
@@ -3081,6 +3142,9 @@ fn validate_floor_finalization(
     // Law 2 — materialization disclosure (ci_floor_materialization_receipt_note):
     // receipt exists, keyed/unkeyed/duplicated parse, keyed nonzero. Read from the
     // file because the accumulator is process-global and already harvested into it.
+    if !fin.require_materialization_disclosure {
+        return refusals;
+    }
     let path = std::path::Path::new("target/floor-materialization-receipt.txt");
     match std::fs::read_to_string(path) {
         Err(_) => refusals.push("floor materialization receipt missing - fail closed".to_string()),
@@ -3980,33 +4044,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
-    // Floor finalization: the floor plan declares its resolve law in the plan closure
-    // (gunbc_ci_floor_declared_resolve_count, projecting the ci_materialization
-    // authority). Read fail-closed — a floor plan whose law cannot be read refuses the
-    // run rather than walking without its contract. Other plans declare none.
-    let floor_finalization: Option<FloorFinalization> = if plan_function == "gunbc_ci_floor_plan" {
-        match run_value(&plan_ctx, "gunbc_ci_floor_declared_resolve_count") {
-            Ok(Value::Int(n)) => Some(FloorFinalization {
-                declared_resolve_count: n,
-            }),
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: gunbc_ci_floor_declared_resolve_count must be an Int, got \
-                     {other:?} (fail-closed)"
-                );
-                return Err(ExitCode::from(1));
-            }
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: gunbc_ci_floor_declared_resolve_count unavailable \
-                     (fail-closed): {msg}"
-                );
-                return Err(ExitCode::from(1));
-            }
-        }
-    } else {
-        None
-    };
+    // Floor finalization is carried BY the plan value (walk_finalization_note) — the
+    // name-keyed read this replaces was the same seed-roster convention the carrier
+    // was built to remove, reintroduced and then caught in review.
+    let floor_finalization: Option<FloorFinalization> = walk_plan.finalization;
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
@@ -4402,6 +4443,7 @@ mod tests {
     fn floor_finalization_refuses_on_resolve_count_mismatch_both_directions() {
         let fin = FloorFinalization {
             declared_resolve_count: 1,
+            require_materialization_disclosure: true,
         };
         let over = [finalization_record(&[5, 7])];
         let refusals = validate_floor_finalization(&fin, &over);
@@ -4425,6 +4467,7 @@ mod tests {
     fn floor_finalization_matching_count_leaves_only_the_materialization_arm() {
         let fin = FloorFinalization {
             declared_resolve_count: 2,
+            require_materialization_disclosure: true,
         };
         let records = [finalization_record(&[3, 0, 9])];
         let refusals = validate_floor_finalization(&fin, &records);

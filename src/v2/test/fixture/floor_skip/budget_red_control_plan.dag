@@ -4,6 +4,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   WalkPlan,
+  FloorFinalization,
   runnable_resource_profile_negligible
 }
 import v2.std.collection { List }
@@ -19,15 +20,15 @@ fn budget_red_control_claim() -> Runnable {
   }
 }
 
-data budget_red_control_declared_resolve_note: String = "The fixture impersonates the floor plan BY NAME so claim_executor arms the derived clamp against it — and as of the in-executor floor finalization (ruling 2026-07-30) that name also arms the resolve law, so the fixture must declare it or the run refuses before walking (that refusal is itself the finalization read's executable RED, exercised before this row landed). Declared 1: the fixture runs exactly one single-claim batch, which pays exactly one entry resolve."
-
-fn gunbc_ci_floor_declared_resolve_count() -> Int {
-  1
-}
+data budget_red_control_declared_resolve_note: String = "The fixture DECLARES its finalization policy in its own plan value (declared 1: exactly one single-claim batch paying exactly one entry resolve) — it no longer needs a name-impersonated projection fn, because the policy is a WalkPlan FIELD (walk_finalization_note): the executor reads the parsed value, and a floor plan without its law is unwritable rather than discovered missing at arm time."
 
 fn gunbc_ci_floor_plan() -> WalkPlan {
   WalkPlan {
     batches: [[budget_red_control_claim()]],
+    finalization: FloorFinalization {
+      declared_resolve_count: 1,
+      require_materialization_disclosure: true,
+    },
     on_success_stages: [],
   }
 }
