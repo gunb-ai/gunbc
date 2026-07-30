@@ -69,12 +69,16 @@ import gunbc.bmc_fan_projection {
   BmcFanPolicyProjectionCapability,
   ProjectedConfigDigestKnown,
   ProjectedConfigDigestUnavailable,
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
   altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   bmc_fan_admitted_config_digest,
+  bmc_fan_curve_step_fingerprint,
   bmc_fan_policy_projection_durability_admission,
   bmc_fan_policy_projection_live_digest_matches,
   bmc_fan_projected_config_digest,
+  bmc_fan_projected_config_digest_sha256_hex,
   bmc_fan_witness_digest_mismatch_sentinel,
+  fleet_quiet_projected_config_curve_fingerprint_pin,
 }
 import std.state_durability {
   CallerAssertedDefinitionLinkage,
@@ -522,6 +526,49 @@ test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
       capability: srv4_bmc_fan_projection_capability,
       observation: srv4_bmc_fan_converged_policy_observation,
     )
+}
+
+test fn fleet_quiet_projected_config_digest_sha256_equality_executes() -> Bool {
+  match bmc_fan_projected_config_digest(
+    curve: fleet_quiet_temp_soc_fan_curve,
+    intent_curve: fleet_quiet_temp_soc_fan_curve,
+    realization: srv4_bmc_fan_projection_capability.realization,
+    config_path: srv4_bmc_fan_observed_config_path,
+  ) {
+    ProjectedConfigDigestKnown { digest: digest } =>
+      digest == sha256_digest(hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex)
+    ProjectedConfigDigestUnavailable => false
+  }
+}
+
+test fn fleet_quiet_projected_config_digest_hex_authority_executes() -> Bool {
+  match bmc_fan_projected_config_digest_sha256_hex(
+    curve: fleet_quiet_temp_soc_fan_curve,
+    intent_curve: fleet_quiet_temp_soc_fan_curve,
+    realization: srv4_bmc_fan_projection_capability.realization,
+    config_path: srv4_bmc_fan_observed_config_path,
+  ) {
+    Present { value: hex } =>
+      hex == altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex
+        && sha256_digest(hex: hex) == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+    Absent => false
+  }
+}
+
+test fn fleet_quiet_projected_config_curve_fingerprint_matches_pin() -> Bool {
+  bmc_fan_curve_step_fingerprint(curve: fleet_quiet_temp_soc_fan_curve) == fleet_quiet_projected_config_curve_fingerprint_pin
+}
+
+test fn non_fleet_quiet_curve_projected_config_digest_is_unavailable() -> Bool {
+  match bmc_fan_projected_config_digest(
+    curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+    intent_curve: fleet_quiet_temp_soc_fan_curve,
+    realization: srv4_bmc_fan_projection_capability.realization,
+    config_path: srv4_bmc_fan_observed_config_path,
+  ) {
+    ProjectedConfigDigestKnown { digest: _ } => false
+    ProjectedConfigDigestUnavailable => true
+  }
 }
 
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {

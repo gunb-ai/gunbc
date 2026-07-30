@@ -370,6 +370,38 @@ fn bmc_fan_durability_refusal_reason(
             "selected realization has duplicate or conflicting exact durability evidence: ",
             admission.realization.realization_id as String,
           )
+        DurabilityIntentUnspecified =>
+          "bmc fan durability intent is unspecified"
+        DurabilityCapabilityMissing =>
+          "bmc fan durability capability is missing"
+        DurabilityCapabilityAdmissionMismatch {
+          expected_realization: expected_realization,
+          observed_realization: observed_realization,
+          expected_capability_version: _,
+          observed_capability_version: _,
+        } =>
+          concat(
+            "bmc fan durability capability admission mismatch: expected ",
+            expected_realization.realization_id as String,
+            ", observed ",
+            observed_realization.realization_id as String,
+          )
+        DurabilityCommitBarrierMissing { realization: realization } =>
+          concat(
+            "bmc fan realization lacks a durability commit barrier: ",
+            realization.realization_id as String,
+          )
+        DurabilityBoundaryUnsupported { realization: realization, boundary: _ } =>
+          concat(
+            "bmc fan realization does not support the requested durability boundary: ",
+            realization.realization_id as String,
+          )
+        DurabilityDesiredStateMismatch {
+          desired: _,
+          before: _,
+          after: _,
+        } =>
+          "bmc fan readback digest does not match the admitted desired state"
         _ =>
           "bmc fan realizer does not satisfy the declared state lifetime"
       }

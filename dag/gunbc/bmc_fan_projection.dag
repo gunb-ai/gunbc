@@ -10,6 +10,8 @@ import extdeps.bmc.types {
 import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
+import std.measure { celsius_count, percent_count }
+import std.nat { Nat }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   LinuxFilePublicationProtocolUnsynchronized,
@@ -67,13 +69,46 @@ data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/sw
 
 data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
 
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481"
+
+data altrad8ud_openbmc_322_fleet_quiet_projected_config_probe_note: String = "SHA-256 of /usr/share/swampd/config-asrr.json after applying fleet_quiet_temp_soc_fan_curve through the altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1 realization, measured on srv4 by authenticated read-only BMC SSH probe 2026-07-27 (srv4_bmc_fan_projection_probe_note). altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex is the single cited authority for that byte digest; projection and observation both consume it through sha256_digest(hex: …) and witnesses execute the equality."
+
 data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
+)
+
+fn bmc_fan_curve_step_fingerprint(curve: BmcFanCurve) -> Nat {
+  fold(
+    curve.steps,
+    init: 0,
+    f: (acc, step) => acc + percent_count(step.duty) + celsius_count(step.at_or_above),
+  )
+}
+
+data fleet_quiet_projected_config_curve_fingerprint_pin: Nat = bmc_fan_curve_step_fingerprint(
+  curve: fleet_quiet_temp_soc_fan_curve,
 )
 
 data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
+
+fn bmc_fan_projected_config_digest_sha256_hex(
+  curve: BmcFanCurve,
+  intent_curve: BmcFanCurve,
+  realization: StateRealizationIdentity,
+  config_path: NonEmptyStr,
+) -> NonEmptyStr? {
+  if curve == intent_curve
+    && curve == fleet_quiet_temp_soc_fan_curve
+    && bmc_fan_curve_step_fingerprint(curve: curve) == fleet_quiet_projected_config_curve_fingerprint_pin
+    && realization.realization_id == altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id
+    && config_path == altrad8ud_openbmc_322_swampd_config_asrr_path {
+    Present { value: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex }
+  } else {
+    none
+  }
+}
 
 fn bmc_fan_projected_config_digest(
   curve: BmcFanCurve,
@@ -81,15 +116,17 @@ fn bmc_fan_projected_config_digest(
   realization: StateRealizationIdentity,
   config_path: NonEmptyStr,
 ) -> BmcProjectedConfigDigest {
-  if curve == intent_curve
-    && curve == fleet_quiet_temp_soc_fan_curve
-    && realization.realization_id == altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id
-    && config_path == altrad8ud_openbmc_322_swampd_config_asrr_path {
-    ProjectedConfigDigestKnown {
-      digest: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
-    }
-  } else {
-    ProjectedConfigDigestUnavailable
+  match bmc_fan_projected_config_digest_sha256_hex(
+    curve: curve,
+    intent_curve: intent_curve,
+    realization: realization,
+    config_path: config_path,
+  ) {
+    Present { value: hex } =>
+      ProjectedConfigDigestKnown {
+        digest: sha256_digest(hex: hex),
+      }
+    Absent => ProjectedConfigDigestUnavailable
   }
 }
 
