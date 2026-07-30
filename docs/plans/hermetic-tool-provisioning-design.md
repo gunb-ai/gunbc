@@ -32,10 +32,18 @@ Two are independently defective:
 **`resolve_host_tool_program` fails open.** After three probes miss it returns
 `name.to_string()` and hands the bare name to `Command::new`, so the failure
 arm *widens* to "try it and see" and surfaces later as an opaque spawn error —
-the absorbing fallback DESIGN §5 forbids. Its success arm is also decorative:
-it locates the file in a specific `PATH` directory and then returns the bare
-name rather than the resolved path, discarding what it learned and
-re-resolving ambiently at spawn time.
+the absorbing fallback DESIGN §5 forbids.
+
+> **Correction (2026-07-30).** An earlier version of this paragraph added that
+> "its success arm is also decorative: it locates the file in a specific `PATH`
+> directory and then returns the bare name rather than the resolved path." That
+> was **false**, and it shipped in #7398. Read against main, every success arm
+> returns `candidate.to_string_lossy().into_owned()` — the *resolved* path — for
+> the `PATH`, `CARGO_HOME/bin` and `$HOME/.cargo/bin` probes alike. Only the
+> terminal arm returns the bare name, which is the fail-open above and the whole
+> of the defect. The claim is withdrawn rather than edited silently, because a
+> census that overstates a defect is as damaging to prioritisation as one that
+> misses it: it invites a fix to a working code path.
 
 **`curated_cargo_probe_one.sh` conflates existence with freshness.** A stale
 binary is executable, so the rebuild arm never fires. This already produced a
@@ -95,7 +103,7 @@ type ResolvedBuildContext {
 }
 ```
 
-Its seed realization (`v1_interpreter.rs`, `observe_tool`) digests the tool's
+Its seed realization (`v1_interpreter.rs`, `observe_tool_identity`) digests the tool's
 **logical name + executable bytes + version-probe stdout/stderr**, probes with
 the materialized workspace as `current_dir` so `rust-toolchain.toml` selection
 is observed, and admits only `env_clear`-constructed hashed environment rows.
@@ -110,38 +118,163 @@ The relationship is complementary, and it fixes this lane's seam:
 - This lane **ensures** — get the *declared* one, or refuse.
 
 So the pin does **not** mint a second toolchain-identity concept (which would be
-exactly the §3 fork this lane exists to remove). `ToolPin` declares the
-*expected* `ContentHash` per tool, and P1 reuses `ContentHash` and
-`observe_tool`'s digest discipline rather than defining its own.
+exactly the §3 fork this lane exists to remove). `Pin<Subject>` declares the
+*expected* `ContentHash` per subject, and P1 reuses `ContentHash` and
+`observe_tool_identity`'s digest discipline rather than defining its own.
 
-**The grains do not yet meet, and P2 is gated on closing that (`review 44388`).**
+**The grains did not meet; #7444 closed that, and the gate is discharged** (`review 44388` raised it, merged 2026-07-29).
 The earlier draft of this section claimed `resolved_build_context_identity`
 already supplies the observed side and that ensure is simply `value_eq` between
 the two. That was wrong, and the code says so: `toolchain_identity`
 (`src/v1/stage0/src/v1_interpreter.rs:8649-8677`) is seeded from a constant and
 then `hash_combine`d over **every** argv in `build_argvs`, plus a second
-`observe_tool` call for `rustc` whenever the argv is `cargo`. It is an
-*aggregate over the whole build command set*, so comparing one `ToolPin`'s
+`observe_tool_identity` call for `rustc` whenever the argv is `cargo`. It is an
+*aggregate over the whole build command set*, so comparing one `Pin`'s
 `expected_identity` against it is a category error — the aggregate changes when
 an unrelated tool in the same build changes, and it cannot say *which* tool
 drifted.
 
 The per-tool observed value nonetheless already exists: it is exactly
-`observe_tool(requested, version_args, ..)`'s return, computed per argv and then
+`observe_tool_identity(requested, version_args, ..)`'s return, computed per argv and then
 folded away without ever being named. So the missing piece is a *naming*, not a
 new probe — and naming it is the §3-correct move, because minting a second
-per-tool digest beside `observe_tool` would be the fork this lane removes.
+per-tool digest beside `observe_tool_identity` would be the fork this lane removes.
 
-P2 therefore carries a prerequisite, before any reconcile is written:
+P2 carried a prerequisite before any reconcile could be written:
 
-> Surface `observe_tool`'s per-argv result as a named per-tool observed identity,
+> Surface `observe_tool_identity`'s per-argv result as a named per-tool observed identity,
 > and re-express `toolchain_identity` as the *derived* fold over those rows
-> rather than the authority. Only then is `ToolPin.expected_identity` comparable
+> rather than the authority. Only then is `Pin.expected_identity` comparable
 > to an observed value at the same grain, and only then does
 > `membership_reconcile`'s `value_eq` mean what this lane needs it to mean.
 
+**That prerequisite is discharged.** #7444 landed it in
+`extdeps/realization/emit_on_demand_host.dag`: `ResolvedBuildContext` now carries
+`observed_tool_identities: List<ObservedToolIdentity>` as its first field,
+`toolchain_identity` is the *derived fold* over those rows rather than a stored
+aggregate, and the per-tool read is `observed_tool_identity` with three arms —
+`ObservedToolIdentityFound`, `ObservedToolIdentityMissing { tool_name }`,
+`ObservedToolIdentityDuplicate { tool_name, count }`. Miss and duplicate are
+*distinct typed answers* rather than one `Option`, which is what makes the lookup
+usable at a fail-closed boundary at all. No second per-subject digest was minted
+beside `observe_tool_identity`, so the §3 fork this lane exists to remove was avoided.
+
+What P2 still owes is the reconcile *itself* — the `membership_reconcile`
+instantiation whose `value_eq` is `pin_value_eq` and whose `key_of` is the
+per-subject projection. Two obligations on whoever writes it: route every read
+through `observed_tool_identity` rather than re-deriving a digest, and answer
+its `Missing` and `Duplicate` arms explicitly. Collapsing either into a match
+failure or a widened rerun is the absorbing fallback §5 forbids, and would waste
+precisely the precision #7444 bought.
+
 Until that lands, treat #7388 as the *aggregate cache-key* consumer it is, not
 as the observed half of this lane's ensure.
+
+### Pinning is a dimension, not a property of tools (revision, 2026-07-29)
+
+P1 first landed this as a `ToolPin` record keyed by `tool_name: NonEmptyStr`. The
+operator read the shape and rejected it: pinning is a **separate dimension** that
+*composes* with a subject rather than a fact belonging to CLI tools. That is
+right, and the evidence was already in the tree:
+
+- `extdeps.tools` passes tools **by value** everywhere else — `resolve(tool: CliTool)`,
+  `ResolvedTool { tool: CliTool }`, `NotFound { tool: CliTool }`. `ToolPin` was the
+  single site in that namespace joining to a modelled type through a **string**,
+  putting tool identity in two places (§2 anemic leaf).
+- Other pinnable subjects already exist and are **not** `CliTool`:
+  `SccacheBinaryRelease`, `extdeps/docker` and `extdeps/container/docker_ce`
+  images, apt packages, GitHub releases. A type per pinnable thing is the
+  ten-integer-types mistake before `Compose<Int, MachineWidth<N>>`.
+
+So the carrier is now `Pin<Subject>` in `extdeps.pin` (the dimension), with
+`extdeps.tools.pin` holding only what is subject-specific for `CliTool`: the key
+projection and the roster ingest. A new pinnable subject is a **sibling
+instantiation**, never an edit to `extdeps.pin` — and if it ever requires one,
+that is the signal the dimension was modelled too narrowly.
+
+**Proven by a second consumer, not asserted.** A generic type earns nothing by
+existing. `ActionRef { owner, repo, ref }` (`extdeps/github/actions.dag`) is
+deliberately unlike `CliTool` — three plain `String` fields against a
+`NonEmptyStr` name, an optional `VersionConstraint` and a `List<InstallSource>` —
+and it instantiates `Pin`, `pin_value_eq` and `admit_pin_integrity` with zero
+edits to `extdeps.pin` (`pin_composes_over_a_structurally_different_subject`,
+green by execution). The subject is *consumed, not minted* — it is a live
+`ActionRef` row already in the corpus, and **which** row is a fact owned by the
+witness, not restated here (`review 44910` caught this paragraph still naming
+`upload_artifact_action` after the witness had moved to `checkout_action` to avoid
+a double-bound name; a row name with two homes drifts, so this one now has one).
+That the subject carries no version while
+the *pin* carries one is the point rather than a gap: the version is the pin's own
+declared fact, so the dimension supplies it for subjects that have none.
+
+It is also the lane's own next step rather than a synthetic exercise — §2 records
+that GHA actions are tag-pinned and that a mutable tag makes SHA-pinning the
+hermetic form. `Pin<ActionRef>` *is* that form.
+
+**The soundness condition on the dimension, which two rejected subjects taught:**
+a pin subject must not determine its own identity. If the subject already carries
+a `ContentHash` then the subject **is** a pin — an OCI descriptor is a content
+address — so `Pin` over it necessarily duplicates rather than supplies. The
+authority for this is `extdeps.pin`'s
+`pin_subject_must_not_be_self_identifying_note`, on the dimension rather than
+beside any one instantiation, because it constrains every future `Subject`. It is
+stated with its decidability: "the subject type declares no `ContentHash` field"
+is decidable by structural inspection, so it is a *wall-after-grounding* wanting a
+lens over the `Node` tree — not a permanent ratchet, and not a "never" (§5).
+
+Three corrections recorded with it:
+
+- **A claimed fork that is not one.** When proposing this revision I told the
+  operator that `CliTool.min_version` and the pin's `version` were one concept
+  forked by rigor. That was wrong. `min_version` is a `VersionConstraint` stating a
+  *requirement*; `Pin.version` is a `VersionIdentity` stating a *selection*. A
+  requirement and a selection satisfying it are different facts, and dissolving
+  them would destroy information. What they have is a checkable **relation** — a
+  pin ought to satisfy its subject's constraint — deferred behind
+  `feature:version-constraint-satisfaction` because `extdeps.version` has no
+  satisfaction fn and writing one in `extdeps/tools` would fork version semantics.
+- **The first second-consumer proof was itself unsound** (`review 44662`). It used
+  `Pin<SccacheBinaryRelease>`, which failed on both axes this lane polices. *Grain:*
+  one release carries two architecture-specific digests while `Pin` carries one
+  `expected_identity`, so either artifact's digest could be associated with the
+  undifferentiated release. I had recorded that as a tracked `dissolve-on` and
+  treated the deferral as sufficient — wrong, and the reason is specific to what a
+  proof is. A trigger-only deferral is a legitimate way to carry a known gap on a
+  *production* row; a row whose entire job is to prove the dimension composes
+  cannot rest on an ambiguous instantiation, because it then demonstrates ambiguity
+  rather than composition. *Parallel authority:* it re-minted the aarch64 hex and
+  the release version already owned by `extdeps/cache/sccache.dag`, so two copies
+  of one fact could drift — the consume-never-fork violation this lane exists to
+  remove, committed inside the witness meant to demonstrate the lane. Fixed by
+  choosing a sound subject rather than defending the unsound one.
+- **The second attempt was unsound too, and this note asserted otherwise**
+  (`review 44850`, and `review 44875` for the fact that this paragraph outlived
+  the fix). The replacement subject was `OciDescriptor`, and an earlier version of
+  the bullet above ended by recommending it: a descriptor "describes exactly one
+  blob, so the grain question cannot arise, and it carries `digest: ContentHash`
+  natively so `expected_identity` is **derived** from the subject rather than
+  copied." The first clause is true; the second was **false and is withdrawn**.
+  The construction *copied* the digest, nothing in `Pin<OciDescriptor>` forced the
+  two fields to agree, and `admit_pin_integrity` compares only
+  `expected_identity` — so a `Pin` whose halves disagreed was writable and would
+  have been admitted on the wrong one. A claim of derivation standing over a copy
+  is the §5 tell: a declaration that reads like a construction wall while the
+  realization lies. Two failures are worth separating here. The modelling failure
+  was choosing a self-identifying subject, fixed by `ActionRef` above. The
+  *documentation* failure was this bullet surviving that fix — the plan went on
+  recommending the rejected pattern after the carriers had retired it, so a reader
+  of the plan alone would have reimplemented it. That is the same defect as
+  `review 44422` on this PR, where a correction was accepted by *adding* a note
+  while the contradicted sentence stood; the rule it produced is that a
+  superseded claim is edited at its source, never annotated in place.
+- **Multi-artifact grain, kept as a finding.** For subjects that publish several
+  artifacts the pin subject is the *artifact* (release × platform), not the release.
+  That observation stands on the corpus rather than on the witness, and it is why
+  sccache was *rejected* as the proof subject. Recorded as
+  `feature:pin-artifact-grain`. Related and unfixed, belonging to no lane here:
+  `extdeps.crypto.hash.Digest` and `std.types.ContentHash` are two digest concepts
+  in one corpus — the sccache route would have needed a conversion between them,
+  which is exactly where that fork would have been laundered into this witness.
 
 Two census entries #7388 adds rather than removes:
 
@@ -301,12 +434,12 @@ Each phase names its own RED control. Model-before-implement: P1 lands with no
 consumers.
 
 - **P1 — the pin carrier, alongside `CliTool` (model-only, no consumers).**
-  Land `ToolPin` in a new `extdeps.tools.pin` module: exact version
+  Land `Pin<Subject>` in a new `extdeps.pin` module, with `extdeps.tools.pin` as its `CliTool` instantiation: exact version
   (`extdeps.version.VersionIdentity`, the exact brand — never
   `VersionConstraint`, which is a range) + expected `ContentHash` reusing
   #7388's identity, selection policy (`ExactPin | TrackedChannel`) and a
   refresh window. Both fields are required and non-optional, so a range-only or
-  digest-less **`ToolPin`** is unwritable. The RED is at the ingest boundary:
+  digest-less **`Pin`** is unwritable. The RED is at the ingest boundary:
   converting a legacy `CliTool` whose `min_version` is a `VersionConstraint`
   refuses, because a constraint is not an identity. A `TrackedChannel` pin
   refuses admission outright, since its currency cannot be established without
@@ -316,8 +449,8 @@ consumers.
   **Scope limit, stated precisely.** P1 does *not* modify `CliTool` and does
   *not* add a digest to `SourceGitHubRelease`. Both remain exactly as they are:
   `min_version: VersionConstraint?` still admits a range or nothing, and
-  `SourceGitHubRelease` is still digestless. `ToolPin` therefore constrains
-  only values built as `ToolPin` — it makes **nothing in the existing corpus
+  `SourceGitHubRelease` is still digestless. `Pin` therefore constrains
+  only values built as `Pin` — it makes **nothing in the existing corpus
   unwritable yet**. This is the add-replacement half of add-replacement →
   migrate → delete, and calling it more than that would be the
   specification-without-execution trap §5 names.
