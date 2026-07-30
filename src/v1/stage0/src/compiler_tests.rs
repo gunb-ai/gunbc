@@ -565,6 +565,14 @@ mod compiler_tests {
     }
 
     #[test]
+    fn caret_parse_smoke_native_compile_emit_witnesses() {
+        use crate::v1_tests_claim_caret_parse_smoke_test::*;
+        assert!(w_compile_to_resolved_caret_probe5b_has_no_caret_function_error());
+        assert!(w_emit_caret_ident_symbol_literal());
+        assert!(w_emit_caret_paren_discriminant_sugar());
+    }
+
+    #[test]
     fn self_parse_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
