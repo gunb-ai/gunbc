@@ -515,6 +515,15 @@ pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
     language_spec_for_target(target.clone())
 }
 
+pub fn escape_string_literal_control_chars_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The CR step used to split on the delimiter \"\\r\" and join with \"\\\\r\", which is a NO-OP: this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return. Carriage returns therefore passed through unescaped into every emitted target for as long as the function has existed — dead in practice only because no corpus string had carried one. The first that did (a path-segment safety predicate refusing CR) turned it into a hard emit failure: rustc rejected the raw control character in the emitted literal. Fixed by spelling CR the way the tokenizer can actually produce it, \\x0d, and NUL is added beside it for the same reason a segment predicate needs it. Recorded rather than quietly respelled because the class is the point: a delimiter that silently means something other than what it looks like is invisible until a value exercises it, and the escape table's gaps are where that happens.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn escape_string_literal_body(s: String) -> String {
     {
         let escaped_backslash = Rc::new(
@@ -543,13 +552,21 @@ pub fn escape_string_literal_body(s: String) -> String {
         let escaped_return = Rc::new(
             escaped_newline
                 .clone()
-                .split(&"\\r".to_string())
+                .split(&"\r".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
         .join(&"\\r".to_string());
-        Rc::new(
+        let escaped_nul = Rc::new(
             escaped_return
+                .clone()
+                .split(&"\0".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .join(&"\\0".to_string());
+        Rc::new(
+            escaped_nul
                 .clone()
                 .split(&"\t".to_string())
                 .map(|s| s.to_string())

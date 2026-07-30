@@ -1,6 +1,7 @@
 module gunbc.merge_admission_produce
 
 import std.types { NonEmptyStr, ContentHash, CommitSha, String, Int, List, Bool, GitRef }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, GitSha1Digest, GitSha256Digest }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_merge_target_ref }
@@ -22,6 +23,8 @@ import extdeps.github.checks {
 }
 import gunbc.merge_admission {
   TestedSubject,
+  WalkAttemptId,
+  walk_attempt_id,
   MergeAdmissionReceiptV2,
   MergeAdmissionReceipt,
   mint_merge_admission_receipt,
@@ -39,33 +42,64 @@ data merge_admission_receipt_schema_v2: String = "gunbc.merge_admission_receipt.
 
 data merge_admission_tested_subject_schema: String = "gunbc.merge_admission_tested_subject.v1"
 
-fn merge_admission_attempt_dir(root: String, attempt_id: NonEmptyStr) -> String {
+fn merge_admission_attempt_dir(root: String, attempt_id: WalkAttemptId) -> String {
   concat(concat(root, "/.gunbc/merge-admission/"), attempt_id as String)
 }
 
-fn merge_admission_tested_subject_path(root: String, attempt_id: NonEmptyStr) -> String {
+fn merge_admission_tested_subject_path(root: String, attempt_id: WalkAttemptId) -> String {
   concat(merge_admission_attempt_dir(root: root, attempt_id: attempt_id), "/tested-subject.wire")
 }
 
-fn merge_admission_floor_receipt_path(root: String, attempt_id: NonEmptyStr) -> String {
+fn merge_admission_floor_receipt_path(root: String, attempt_id: WalkAttemptId) -> String {
   concat(merge_admission_attempt_dir(root: root, attempt_id: attempt_id), "/floor-receipt.wire")
 }
 
 data compose_walk_attempt_id_note: String = "Pure composition of the walk-attempt identity from its parts; the ENV OBSERVATION lives with the wet entry, this fn only joins and refuses. Every part must be nonempty — an empty run id, attempt number, or job name yields Absent, and the caller REFUSES the run rather than substituting a constant: a silent local would make every non-GitHub run one attempt, so the wrong-attempt refusal could never fire off CI, which is exactly the unreachable-arm shape §5 forbids. Non-GitHub execution supplies GUNBC_WALK_ATTEMPT_ID explicitly and it passes through compose_explicit_walk_attempt_id under the same nonempty law."
 
-fn compose_walk_attempt_id(run_id: String, run_attempt: String, job: String) -> NonEmptyStr? {
+fn compose_walk_attempt_id(run_id: String, run_attempt: String, job: String) -> WalkAttemptId? {
   if (run_id == "") || (run_attempt == "") || (job == "") {
     none
   } else {
-    Present {
-      value: concat(concat(concat(concat(run_id, "-"), run_attempt), "-"), job) as NonEmptyStr
-    }
+    walk_attempt_id(raw: concat(concat(concat(concat(run_id, "-"), run_attempt), "-"), job))
   }
 }
 
-fn compose_explicit_walk_attempt_id(explicit: String) -> NonEmptyStr? {
-  if explicit == "" { none } else { Present { value: explicit as NonEmptyStr } }
+fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
+  walk_attempt_id(raw: explicit)
 }
+
+data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>, refusing anything else. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible."
+
+fn render_git_object_id_wire(oid: GitObjectId) -> String {
+  match oid {
+    GitSha1ObjectId { digest } => concat("sha1:", digest as String)
+    GitSha256ObjectId { digest } => concat("sha256:", digest as String)
+  }
+}
+
+fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
+  if !(length(split(s: raw, delimiter: ":")) == 2) {
+    none
+  } else if split(s: raw, delimiter: ":").skip(n: 1).first() == "" {
+    none
+  } else if split(s: raw, delimiter: ":").first() == "sha1" {
+    Present {
+      value: GitSha1ObjectId {
+        digest: split(s: raw, delimiter: ":").skip(n: 1).first() as GitSha1Digest
+      }
+    }
+  } else if split(s: raw, delimiter: ":").first() == "sha256" {
+    Present {
+      value: GitSha256ObjectId {
+        digest: split(s: raw, delimiter: ":").skip(n: 1).first() as GitSha256Digest
+      }
+    }
+  } else {
+    none
+  }
+}
+
+data wire_exact_arity_note: String = "BOTH v2 parsers require an EXACT line count, and every required field goes through its domain constructor (review 2026-07-30). The first cut accepted a SUPERSET — `length(lines) >= 5` — so trailing content rode along unread, and it validated only that the schema tag and attempt id were nonempty, leaving base ref, tree, and head SHA free to be empty strings that then bound into a receipt as though observed. Worse, the optional PR line converted a MALFORMED present field into an absent one: parse_int returned Absent on garbage and the receipt parsed clean with pr_number: none, which is the state-space conflation §5 forbids — `not supplied` and `supplied but unreadable` are different facts with different remedies. A seventh line that is not an integer now refuses the whole receipt. Exact arity is what makes a format extension VISIBLE: adding a field means bumping the schema tag, not silently appending a line older readers ignore."
 
 fn render_tested_subject_wire(subject: TestedSubject) -> String {
   concat(
@@ -76,27 +110,37 @@ fn render_tested_subject_wire(subject: TestedSubject) -> String {
       concat(subject.base_ref, "
 ")
     ),
-    concat(concat(subject.base_tree_hash, "
+    concat(concat(render_git_object_id_wire(oid: subject.base_tree), "
 "), subject.head_sha)
   )
 }
 
 fn parse_tested_subject_wire(text: String) -> TestedSubject? {
   let lines = receipt_wire_lines(text: text)
-  if length(lines) < 5 {
+  if !(length(lines) == 5) {
     none
   } else if !(lines.first() == merge_admission_tested_subject_schema) {
     none
-  } else if lines.skip(n: 1).first() == "" {
+  } else if lines.skip(n: 2).first() == "" {
+    none
+  } else if lines.skip(n: 4).first() == "" {
     none
   } else {
-    Present {
-      value: TestedSubject {
-        attempt_id: lines.skip(n: 1).first() as NonEmptyStr,
-        base_ref: lines.skip(n: 2).first(),
-        base_tree_hash: lines.skip(n: 3).first(),
-        head_sha: lines.skip(n: 4).first(),
-      }
+    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
+      Absent => none
+      Present { value: attempt } =>
+        match parse_git_object_id_wire(raw: lines.skip(n: 3).first()) {
+          Absent => none
+          Present { value: tree } =>
+            Present {
+              value: TestedSubject {
+                attempt_id: attempt,
+                base_ref: lines.skip(n: 2).first(),
+                base_tree: tree,
+                head_sha: lines.skip(n: 4).first(),
+              }
+            }
+        }
     }
   }
 }
@@ -109,7 +153,7 @@ fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
       concat(concat(merge_admission_receipt_schema_v2, "
 "), concat(receipt.attempt_id as String, "
 ")),
-      concat(concat(receipt.tested_base_tree_hash, "
+      concat(concat(render_git_object_id_wire(oid: receipt.tested_base_tree), "
 "), concat(receipt.gate_roster_hash, "
 "))
     ),
@@ -123,28 +167,71 @@ fn render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2) -> String {
   }
 }
 
+data wire_pr_number_three_states_note: String = "THREE states, named, because two of them are not the same absence: no seventh line at all (the receipt legitimately carries no PR number), a seventh line that parses, and a seventh line that does not. An Optional<Optional<Int>> would spell this with two Absents meaning different things — the state-space conflation DESIGN's failure list names — and the language refuses the spelling anyway, since `??` is the null-coalesce operator token and cannot appear in type position. WirePrMalformed is what makes the whole receipt refuse instead of quietly becoming a receipt with no PR number."
+
+type ReceiptWirePrNumber
+  = WirePrAbsent
+  | WirePrPresent { value: Int }
+  | WirePrMalformed
+
+fn receipt_wire_v2_pr_number(lines: List<String>) -> ReceiptWirePrNumber {
+  if length(lines) == 6 {
+    WirePrAbsent
+  } else {
+    match parse_int(s: lines.skip(n: 6).first()) {
+      Present { value: n } => WirePrPresent { value: n }
+      Absent => WirePrMalformed
+    }
+  }
+}
+
 fn parse_receipt_wire_v2(text: String) -> MergeAdmissionReceiptV2? {
   let lines = receipt_wire_lines(text: text)
-  if length(lines) < 6 {
+  if !((length(lines) == 6) || (length(lines) == 7)) {
     none
   } else if !(lines.first() == merge_admission_receipt_schema_v2) {
     none
-  } else if lines.skip(n: 1).first() == "" {
+  } else if lines.skip(n: 3).first() == "" {
+    none
+  } else if lines.skip(n: 5).first() == "" {
     none
   } else {
-    match parse_check_conclusion(raw: lines.skip(n: 4).first()) {
-      Present { value: conclusion } =>
-        Present {
-          value: MergeAdmissionReceiptV2 {
-            attempt_id: lines.skip(n: 1).first() as NonEmptyStr,
-            pr_number: if length(lines) >= 7 { parse_int(s: lines.skip(n: 6).first()) } else { none },
-            tested_head_sha: lines.skip(n: 5).first(),
-            tested_base_tree_hash: lines.skip(n: 2).first(),
-            gate_roster_hash: lines.skip(n: 3).first(),
-            conclusion: conclusion,
-          }
-        }
+    match walk_attempt_id(raw: lines.skip(n: 1).first()) {
       Absent => none
+      Present { value: attempt } =>
+        match parse_git_object_id_wire(raw: lines.skip(n: 2).first()) {
+          Absent => none
+          Present { value: tree } =>
+            match parse_check_conclusion(raw: lines.skip(n: 4).first()) {
+              Absent => none
+              Present { value: conclusion } =>
+                match receipt_wire_v2_pr_number(lines: lines) {
+                  WirePrMalformed => none
+                  WirePrAbsent =>
+                    Present {
+                      value: MergeAdmissionReceiptV2 {
+                        attempt_id: attempt,
+                        pr_number: none,
+                        tested_head_sha: lines.skip(n: 5).first(),
+                        tested_base_tree: tree,
+                        gate_roster_hash: lines.skip(n: 3).first(),
+                        conclusion: conclusion,
+                      }
+                    }
+                  WirePrPresent { value: n } =>
+                    Present {
+                      value: MergeAdmissionReceiptV2 {
+                        attempt_id: attempt,
+                        pr_number: Present { value: n },
+                        tested_head_sha: lines.skip(n: 5).first(),
+                        tested_base_tree: tree,
+                        gate_roster_hash: lines.skip(n: 3).first(),
+                        conclusion: conclusion,
+                      }
+                    }
+                }
+            }
+        }
     }
   }
 }
