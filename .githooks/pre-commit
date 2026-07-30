@@ -32,6 +32,6 @@ if [[ "$fmt_rc" == "1" ]]; then
   exit 1
 fi
 if [[ "$fmt_rc" != "0" ]]; then
-  echo "[pre-commit] cargo could not be run (exit status $fmt_rc) — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run; git's --no-verify skips this hook." >&2
+  echo "[pre-commit] cargo could not be run (exit status $fmt_rc) — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run." >&2
   exit 1
 fi
