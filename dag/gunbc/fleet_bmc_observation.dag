@@ -25,14 +25,24 @@ import extdeps.bmc.types {
   ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_factory_fan_config_digest }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
   LinuxJffs2,
   LinuxMountObservation,
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
   linux_synchronized_rename_replace_publication,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_capability,
+}
+import gunbc.bmc_intent {
+  fleet_bmc_fan_graceful_restart_boundary,
+  fleet_bmc_valid_state,
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -93,6 +103,7 @@ type BmcFanRebootPersistenceReceipt {
   host: HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
+  perturbation_capability: BmcFanPolicyProjectionCapability
   before: BmcFanConvergenceReceipt
   post_reboot_policy: BmcFanPolicyObservation
   reset: RedfishManagerResetObservation
@@ -256,6 +267,24 @@ data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersio
 
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
+data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
+
+data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
+  board: srv4_baseboard.catalog.model,
+  firmware: srv4_bmc_firmware_observation.firmware,
+  projected_curve: fleet_bmc_valid_state.fan_policy.curve,
+  projected_config_digest: srv4_bmc_fan_active_config_digest,
+  config_path: srv4_bmc_fan_observed_config_path,
+  controller_service: srv4_bmc_fan_observed_controller_service,
+  controller_zone_path: srv4_bmc_fan_observed_controller_zone_path,
+  aggregate_fan_pid_entry: srv4_bmc_fan_observed_aggregate_entry,
+  realization: srv4_bmc_fan_realization,
+  durability_capability_version: srv4_bmc_fan_durability_capability_version,
+  publication_protocol: srv4_bmc_fan_publication_protocol,
+  durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
+  required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
+)
+
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
@@ -309,9 +338,7 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
   active_config_digest: srv4_bmc_fan_active_config_digest,
-  previous_config_digest: sha256_digest(
-    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
-  ),
+  previous_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
@@ -350,6 +377,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
   host: srv4_host.identity,
   perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
   perturbation_generation: srv4_bmc_fan_perturbation_generation,
+  perturbation_capability: srv4_bmc_fan_projection_capability,
   before: srv4_bmc_fan_convergence_receipt,
   post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
   reset: RedfishManagerResetObservation {

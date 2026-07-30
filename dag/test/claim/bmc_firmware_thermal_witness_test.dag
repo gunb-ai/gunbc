@@ -47,6 +47,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_durability_capability_version,
   srv4_bmc_fan_perturbation_generation,
+  srv4_bmc_fan_projection_capability,
   srv4_bmc_fan_reboot_persistence_receipt,
   srv4_bmc_firmware_observation,
   srv4_bmc_redfish_surface_observation,
@@ -55,11 +56,11 @@ import gunbc.fleet_bmc_observation {
 import gunbc.fleet_bmc_state {
   BmcFanDurabilityEvidenceBuilt,
   BmcFanDurabilityEvidenceConstructionRefused,
+  DurabilityReceiptDigestMismatch,
   DurabilityReceiptNonPositiveInterval,
   bmc_fan_reboot_durability_evidence,
   srv4_bmc_fan_durability_admission,
   srv4_bmc_fan_durability_evidence,
-  srv4_bmc_fan_projection_capability,
 }
 import gunbc.bmc_fan_projection {
   AdmittedConfigDigestKnown,
@@ -773,35 +774,59 @@ test fn srv3_fan_realization_refuses_until_global_firmware_track_converges() -> 
     }
 }
 
-test fn reboot_durability_evidence_capability_relabeling_differs_from_authoritative_admission() -> Bool {
-  let relabeled = BmcFanPolicyProjectionCapability {
-    board: srv4_bmc_fan_projection_capability.board,
-    firmware: srv4_bmc_fan_projection_capability.firmware,
-    projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
-    projected_config_digest: srv4_bmc_fan_projection_capability.projected_config_digest,
-    config_path: srv4_bmc_fan_projection_capability.config_path,
-    controller_service: srv4_bmc_fan_projection_capability.controller_service,
-    controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
-    aggregate_fan_pid_entry: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
-    realization: srv4_bmc_fan_projection_capability.realization,
-    durability_capability_version: StateDurabilityCapabilityVersion {
-      version: "relabelled-capability",
-      definition_linkage: CallerAssertedDefinitionLinkage {
-        reason: "relabelled-capability-linkage" as NonEmptyStr,
-        dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
+test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_digest() -> Bool {
+  let relabeled_receipt = BmcFanRebootPersistenceReceipt {
+    evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
+    host: srv4_bmc_fan_reboot_persistence_receipt.host,
+    perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
+    perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    perturbation_capability: BmcFanPolicyProjectionCapability {
+      board: srv4_bmc_fan_projection_capability.board,
+      firmware: srv4_bmc_fan_projection_capability.firmware,
+      projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
+      projected_config_digest: bmc_fan_witness_digest_mismatch_sentinel,
+      config_path: srv4_bmc_fan_projection_capability.config_path,
+      controller_service: srv4_bmc_fan_projection_capability.controller_service,
+      controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
+      aggregate_fan_pid_entry: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
+      realization: srv4_bmc_fan_projection_capability.realization,
+      durability_capability_version: StateDurabilityCapabilityVersion {
+        version: "relabelled-capability",
+        definition_linkage: CallerAssertedDefinitionLinkage {
+          reason: "relabelled-capability-linkage" as NonEmptyStr,
+          dissolve_on: "namespace content-addressed SymbolIndex subtree digest",
+        },
       },
+      publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
+      durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
+      required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
     },
-    publication_protocol: srv4_bmc_fan_projection_capability.publication_protocol,
-    durability_boundaries: srv4_bmc_fan_projection_capability.durability_boundaries,
-    required_tach_inputs: srv4_bmc_fan_projection_capability.required_tach_inputs,
+    before: srv4_bmc_fan_reboot_persistence_receipt.before,
+    post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
+    reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
+    bmc_down_observed: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed,
+    bmc_returned: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned,
+    bmc_down_observed_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_down_observed_at,
+    bmc_returned_at: srv4_bmc_fan_reboot_persistence_receipt.bmc_returned_at,
+    host_power_before: srv4_bmc_fan_reboot_persistence_receipt.host_power_before,
+    host_power_after: srv4_bmc_fan_reboot_persistence_receipt.host_power_after,
+    host_os_ssh_reachable_throughout: srv4_bmc_fan_reboot_persistence_receipt.host_os_ssh_reachable_throughout,
+    pre_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_temp_soc,
+    post_reboot_temp_soc: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_temp_soc,
+    pre_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.pre_reboot_tachs,
+    post_reboot_tachs: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_tachs,
+    post_reboot_active_config_digest: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_active_config_digest,
+    post_reboot_controller_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_controller_active,
+    post_reboot_zone_failsafe_active: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_zone_failsafe_active,
+    post_reboot_observer_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_observer_exit_success,
+    post_reboot_converge_noop_exit_success: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_converge_noop_exit_success,
+    observed_at: srv4_bmc_fan_reboot_persistence_receipt.observed_at,
   }
-  match bmc_fan_reboot_durability_evidence(
-    receipt: srv4_bmc_fan_reboot_persistence_receipt,
-    capability: relabeled,
-  ) {
-    BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
-      evidence.admission.capability_version != srv4_bmc_fan_durability_capability_version
-    BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => false
+  match bmc_fan_reboot_durability_evidence(receipt: relabeled_receipt) {
+    BmcFanDurabilityEvidenceConstructionRefused {
+      cause: DurabilityReceiptDigestMismatch,
+    } => true
+    BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
   }
 }
 
@@ -860,7 +885,6 @@ test fn srv4_fixture_durability_evidence_is_constructed_not_relabelled() -> Bool
   srv4_bmc_fan_durability_evidence.length() == 1
     && match bmc_fan_reboot_durability_evidence(
       receipt: srv4_bmc_fan_reboot_persistence_receipt,
-      capability: srv4_bmc_fan_projection_capability,
     ) {
       BmcFanDurabilityEvidenceBuilt { evidence: evidence } =>
         evidence.admission == srv4_bmc_fan_durability_admission
@@ -927,6 +951,7 @@ test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
     host: srv4_bmc_fan_reboot_persistence_receipt.host,
     perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
     perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
+    perturbation_capability: srv4_bmc_fan_reboot_persistence_receipt.perturbation_capability,
     before: srv4_bmc_fan_reboot_persistence_receipt.before,
     post_reboot_policy: srv4_bmc_fan_reboot_persistence_receipt.post_reboot_policy,
     reset: srv4_bmc_fan_reboot_persistence_receipt.reset,
@@ -950,7 +975,6 @@ test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
   }
   match bmc_fan_reboot_durability_evidence(
     receipt: zero_duration_receipt,
-    capability: srv4_bmc_fan_projection_capability,
   ) {
     BmcFanDurabilityEvidenceConstructionRefused {
       cause: DurabilityReceiptNonPositiveInterval { observed: 0 },
