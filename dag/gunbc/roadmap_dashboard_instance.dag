@@ -32,6 +32,9 @@ import gunbc.host_layout {
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
   srv1_roadmap_codex_home,
+  GunbcHostLayout,
+  srv1_host_layout,
+  srv2_host_layout,
 }
 
 type DashboardActuationPosture
@@ -88,7 +91,6 @@ data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" a
 
 data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as FilePath
 data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
-data dashboard_feedback_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
 data dashboard_environment_binding_executable: FilePath = "/usr/bin/env" as FilePath
 
 fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
@@ -331,9 +333,11 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   }
 }
 
+data isolated_instance_layout_parameter_note: String = "host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host expressible without making it representable. Serve binary, provider state root, and source-seed controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced a value reading host_identity srv2 while describing srv1's binary, srv1's Codex home, and srv1's controller worktree. Nothing caught it because every consumer that would disagree — preflight, apply, the git and tmux observations — needs the host to actually be actuated, and that instance was declared observe-only and never provisioned.\\n\\nTaking the whole layout row instead of a bare host_identity makes the mismatch unwritable: there is no longer a way to name a host without also supplying the three facts that belong to it, because the name IS a field of the row that carries them. gunbc.host_layout owns those rows."
+
 fn isolated_dashboard_instance(
   instance_id: NonEmptyStr,
-  host_identity: NonEmptyStr,
+  layout: GunbcHostLayout,
   root: FilePath,
   serve_function: NonEmptyStr,
   listen_port: Port,
@@ -342,7 +346,7 @@ fn isolated_dashboard_instance(
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: instance_id,
-    host_identity: host_identity,
+    host_identity: layout.host_identity,
     provision_parent_root: "/home/briansrls/.local/share" as FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
@@ -352,13 +356,13 @@ fn isolated_dashboard_instance(
     dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
     dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     execution_environment: dashboard_execution_environment(
-      serve_binary: srv1_gunbc_serve_binary,
+      serve_binary: layout.gunbc_serve_binary,
     ),
     provider_state: DashboardExistingProviderState {
-      root: srv1_roadmap_codex_home,
+      root: layout.roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
     },
-    serve_binary: srv1_gunbc_serve_binary,
+    serve_binary: layout.gunbc_serve_binary,
     serve_function: serve_function,
     listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: listen_port,
@@ -366,7 +370,7 @@ fn isolated_dashboard_instance(
     actuation: actuation,
     provision_transport: provision_transport,
     source_seed: DashboardGitBundle {
-      controller_repo: dashboard_feedback_controller_repo,
+      controller_repo: layout.controller_repo,
       staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
       anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
       history_remote: "origin" as NonEmptyStr,
@@ -377,7 +381,7 @@ fn isolated_dashboard_instance(
 fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv1_dashboard_lab_id,
-    host_identity: "srv1" as NonEmptyStr,
+    layout: srv1_host_layout(),
     root: srv1_dashboard_lab_root,
     serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18081,
@@ -389,11 +393,29 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
 fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_preview_id,
-    host_identity: "srv2" as NonEmptyStr,
+    layout: srv2_host_layout(),
     root: srv2_dashboard_preview_root,
     serve_function: "roadmap_serve_handle_srv2_preview" as NonEmptyStr,
     listen_port: 18080,
     actuation: DashboardObserveOnly,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+data srv2_lab_instance_note: String = "THE ACTUATING srv2 INSTANCE, added because the preview one could never have worked and its failure mode was silent until someone ran it. srv2_preview above is DashboardObserveOnly, so its dispatch endpoint refuses by construction — correct, and invisible on a page whose buttons simply read disabled. It also had no entry in gunbc.roadmap_dashboard_instance_apply, which contained zero srv2 references, so nothing in the tree could provision the directories its observations refuse against. Declared, servable, and unreachable in the same value.\\n\\nThis row is the actuating peer: same isolated layout, its own root and named tmux server, DashboardActuating so dispatch is admitted, DashboardLocalProvision because srv2 provisions itself rather than over SSH. It listens on 18082 — 18080 is the preview's declared port and 18081 is srv1's lab, and a port collision resolved by passing a different --port on the command line is how the last deployment ended up serving one instance's page under another instance's identity.\\n\\nThe preview row is deliberately kept rather than repointed. It is the observe-only posture's only live specimen, several witnesses discriminate against it, and deleting a row because a better one arrived is how the 2026-07-27 authority refresh lost the only execution contract it had."
+
+data srv2_dashboard_lab_id: NonEmptyStr = "srv2-lab-v1-deletion" as NonEmptyStr
+
+data srv2_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as FilePath
+
+fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: srv2_dashboard_lab_id,
+    layout: srv2_host_layout(),
+    root: srv2_dashboard_lab_root,
+    serve_function: "roadmap_serve_handle_srv2_lab" as NonEmptyStr,
+    listen_port: 18082,
+    actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
 }

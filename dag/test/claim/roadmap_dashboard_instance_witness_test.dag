@@ -1,7 +1,13 @@
 module test.claim.roadmap_dashboard_instance_witness
 
-import std.types { Bool, String, FilePath }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.tmux { shape_tmux_ls_argv_for }
+import gunbc.host_layout {
+  GunbcHostLayout,
+  srv1_gunbc_serve_binary,
+  srv1_roadmap_codex_home,
+  srv1_dashboard_controller_repo,
+}
 import gunbc.roadmap_dashboard_instance {
   HostDashboardInstance,
   DashboardObserveOnly,
@@ -35,7 +41,11 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   srv2_preview_dashboard_instance,
-  dashboard_feedback_controller_repo,
+  srv2_lab_dashboard_instance,
+  isolated_dashboard_instance,
+  DashboardGitBundle,
+  DashboardExistingRepo,
+  DashboardLocalProvision,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_ownership_marker_path,
@@ -348,7 +358,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       controller_repo,
       history_remote,
     } =>
-      controller_repo == dashboard_feedback_controller_repo
+      controller_repo == srv1_dashboard_controller_repo
         && history_remote == "origin"
     _ => false
   })
@@ -357,7 +367,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
       controller_repo,
       anchor_ref,
     } =>
-      controller_repo == dashboard_feedback_controller_repo
+      controller_repo == srv1_dashboard_controller_repo
         && anchor_ref == "refs/heads/session/codex-provider-feedback-v0"
     _ => false
   })
@@ -366,7 +376,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
         controller_repo,
         staged_bundle,
       } =>
-        controller_repo == dashboard_feedback_controller_repo
+        controller_repo == srv1_dashboard_controller_repo
           && staged_bundle == "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle"
       _ => false
     })
@@ -457,8 +467,98 @@ test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
   }
 }
 
+data layout_propagation_discriminator_note: String = "THE CLAIM THAT GOES RED IF THE HOST FACTS ARE RE-PINNED, and it has to be built from synthetic values to say anything at all. srv1 and srv2 run the same layout convention, so their rows carry byte-identical strings; asserting that srv2's instance holds srv2's serve binary is therefore true whether the constructor reads the layout argument or ignores it and substitutes srv1's row. Every value-comparison against the real instances is blind to exactly the defect this change fixes.\\n\\nSo the layout below names paths no host row carries. If the constructor propagates its argument, the instance holds them; if anyone re-pins a literal — the state it was in before this change — that field reverts to srv1's row and this claim fails on it. The final three conjuncts assert non-equality with the srv1 rows explicitly, so the failure names which fact regressed rather than reporting a bare false."
+
+fn witness_synthetic_layout() -> GunbcHostLayout {
+  GunbcHostLayout {
+    host_identity: "witness-host" as NonEmptyStr,
+    gunbc_serve_binary: "/witness/bin/gunbc" as FilePath,
+    roadmap_codex_home: "/witness/codex-home" as FilePath,
+    controller_repo: "/witness/controller-repo" as FilePath,
+  }
+}
+
+fn witness_synthetic_instance() -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    instance_id: "witness-synthetic" as NonEmptyStr,
+    layout: witness_synthetic_layout(),
+    root: "/witness/root" as FilePath,
+    serve_function: "witness_handler" as NonEmptyStr,
+    listen_port: 19999,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+}
+
+test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
+  let i = witness_synthetic_instance()
+  i.host_identity == "witness-host"
+    && i.serve_binary == "/witness/bin/gunbc"
+    && dashboard_instance_provider_state_root(instance: i) == "/witness/codex-home"
+    && match i.source_seed {
+      DashboardGitBundle {
+        controller_repo,
+        staged_bundle: _,
+        anchor_ref: _,
+        history_remote: _,
+      } => controller_repo == "/witness/controller-repo"
+      DashboardExistingRepo { anchor_ref: _ } => false
+    }
+    && !(i.serve_binary == srv1_gunbc_serve_binary)
+    && !(dashboard_instance_provider_state_root(instance: i) == srv1_roadmap_codex_home)
+    && !(match i.source_seed {
+      DashboardGitBundle {
+        controller_repo,
+        staged_bundle: _,
+        anchor_ref: _,
+        history_remote: _,
+      } => controller_repo == srv1_dashboard_controller_repo
+      DashboardExistingRepo { anchor_ref: _ } => false
+    })
+}
+
+data srv2_lab_witness_note: String = "srv2's lab differs from its preview sibling in the two ways that made the preview unusable, and both are asserted here rather than left to the reader of a posture field. It is DashboardActuating, so the dispatch endpoint is admitted instead of refusing by construction; and it produces a non-empty provision plan bound to its own paths, which is what the preview's declaration never had an actuation entry to execute. Owned-path disjointness from BOTH the preview and production is asserted because two instances on one machine sharing a root would have them provisioning over each other — the preview's root and this one's are siblings under the same parent directory."
+
+test fn srv2_lab_is_actuating_unlike_its_preview_sibling() -> Bool {
+  let lab = srv2_lab_dashboard_instance()
+  let preview = srv2_preview_dashboard_instance()
+  lab.actuation == DashboardActuating
+    && preview.actuation == DashboardObserveOnly
+    && lab.host_identity == "srv2"
+    && preview.host_identity == "srv2"
+    && !(lab.listen_port == preview.listen_port)
+    && !(lab.serve_function == preview.serve_function)
+}
+
+test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
+  dashboard_instance_paths_are_owned(instance: srv2_lab_dashboard_instance())
+    && dashboard_instances_have_disjoint_owned_paths(
+      a: srv2_lab_dashboard_instance(),
+      b: srv2_preview_dashboard_instance(),
+    )
+    && dashboard_instances_have_disjoint_owned_paths(
+      a: srv2_lab_dashboard_instance(),
+      b: srv1_live_dashboard_instance(),
+    )
+    && shape_tmux_ls_argv_for(scope: srv2_lab_dashboard_instance().tmux_server) == [
+      "-L", "srv2-lab-v1-deletion", "ls",
+    ]
+}
+
+test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
+  let lab = srv2_lab_dashboard_instance()
+  let plan = dashboard_instance_provision_plan(instance: lab)
+  count(plan) == 14
+    && plan_binds_instance_paths(plan: plan, instance: lab)
+    && plan_binds_source_ref_translation(plan: plan, instance: lab)
+}
+
 test fn dashboard_instance_model_keystone_holds() -> Bool {
-  dashboard_instance_paths_move_as_one_owned_root()
+  isolated_instance_carries_the_layout_it_was_given()
+    && srv2_lab_is_actuating_unlike_its_preview_sibling()
+    && srv2_lab_owns_paths_disjoint_from_preview_and_production()
+    && srv2_lab_has_a_provision_plan_bound_to_itself()
+    && dashboard_instance_paths_move_as_one_owned_root()
     && dashboard_lab_and_production_owned_paths_are_disjoint()
     && dashboard_actuation_posture_is_instance_data()
     && dashboard_tmux_server_is_namespaced_off_production()

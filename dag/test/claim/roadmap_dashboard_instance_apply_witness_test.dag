@@ -1,6 +1,6 @@
 module test.claim.roadmap_dashboard_instance_apply_witness
 
-import std.types { Bool, String, FilePath, GitRef }
+import std.types { Bool, String, NonEmptyStr, FilePath, GitRef }
 import extdeps.git {
   shape_git_bundle_create_argv,
   shape_git_is_shallow_repository_argv,
@@ -34,6 +34,18 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_platform_executables,
 }
 import gunbc.roadmap_dashboard_instance_apply {
+  DashboardProductionPeer,
+  ProductionPeer,
+  NoProductionPeer,
+  DashboardProductionReading,
+  ProductionRead,
+  ProductionUnpeered,
+  DashboardProductionSnapshot,
+  dashboard_peer_isolation_ok,
+  dashboard_production_read,
+  dashboard_production_reading_refused,
+  dashboard_production_reading_detail,
+  dashboard_production_readings_equal,
   DashboardExecResult,
   DashboardProvisionStepReceipt,
   DashboardInstanceApplyResult,
@@ -519,8 +531,70 @@ test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
   ready_ok && refused_ok
 }
 
+data production_peer_witness_note: String = "THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\\n\\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason."
+
+fn witness_peered() -> DashboardProductionPeer {
+  ProductionPeer { instance: srv1_live_dashboard_instance() }
+}
+
+fn witness_unpeered() -> DashboardProductionPeer {
+  NoProductionPeer { host: "srv2" as NonEmptyStr }
+}
+
+fn witness_reading_read() -> DashboardProductionReading {
+  ProductionRead {
+    snapshot: DashboardProductionSnapshot {
+      observed: true,
+      head: "abc123",
+      health: "ok",
+      detail: "",
+    },
+  }
+}
+
+test fn production_reading_never_equates_absent_with_observed() -> Bool {
+  let read = witness_reading_read()
+  let unpeered = ProductionUnpeered { host: "srv2" as NonEmptyStr }
+  dashboard_production_readings_equal(before: read, after: read)
+    && dashboard_production_readings_equal(before: unpeered, after: unpeered)
+    && !dashboard_production_readings_equal(before: read, after: unpeered)
+    && !dashboard_production_readings_equal(before: unpeered, after: read)
+    && !dashboard_production_readings_equal(
+      before: unpeered,
+      after: ProductionUnpeered { host: "srv1" as NonEmptyStr },
+    )
+}
+
+test fn unpeered_host_refuses_nothing_and_reads_nothing() -> Bool {
+  !dashboard_production_reading_refused(reading: dashboard_production_read(peer: witness_unpeered()))
+    && string_contains(
+      s: dashboard_production_reading_detail(
+        reading: dashboard_production_read(peer: witness_unpeered()),
+      ),
+      pattern: "no production peer on srv2",
+    )
+}
+
+test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
+  dashboard_peer_isolation_ok(
+    instance: srv1_lab_dashboard_instance(),
+    peer: witness_peered(),
+  )
+    && dashboard_peer_isolation_ok(
+      instance: srv1_lab_dashboard_instance(),
+      peer: witness_unpeered(),
+    )
+    && !dashboard_peer_isolation_ok(
+      instance: srv1_live_dashboard_instance(),
+      peer: witness_peered(),
+    )
+}
+
 test fn dashboard_instance_apply_model_keystone_holds() -> Bool {
-  dashboard_source_transport_argv_is_exact_and_atomic()
+  production_reading_never_equates_absent_with_observed()
+    && unpeered_host_refuses_nothing_and_reads_nothing()
+    && peer_isolation_still_requires_the_instance_to_own_its_paths()
+    && dashboard_source_transport_argv_is_exact_and_atomic()
     && dashboard_local_origin_ref_translation_is_exact()
     && dashboard_service_is_named_and_scoped_off_production()
     && dashboard_provider_runtime_and_auth_share_one_state_binding()
