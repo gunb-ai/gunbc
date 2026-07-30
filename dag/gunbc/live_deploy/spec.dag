@@ -17,6 +17,7 @@ import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
   srv1_dispatch_worktree_root,
+  srv1_dispatch_attempt_state_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -26,10 +27,13 @@ data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc
 
 data gunbc_service_user: NonEmptyStr = "briansrls"
 
+data attempt_state_root_member_note: String = "AttemptStateRoot is an owned member for the same reason DispatchWorktreeRoot is: the belt WRITES there, under the service user, on every dispatch. It was missing until 2026-07-30, and the gap was not visible as a gap — #7368 made a published attempt state a hard precondition of dispatch while the path lived only in gunbc.roadmap_dashboard_instance's srv1 row, so this roster had nothing to add it to. The result on the live host was EACCES from `install -d` against a root-owned /opt/gunbc, AFTER the worktree had been created: an orphan branch per click and a progress row reading `legacy attempt`. Ownership is Owned, not Ensured, because the deploy creates it; teardown mirrors DispatchWorktreeRoot's empty-directory refusal rather than a recursive remove, since a non-empty attempt-state root means published attempt evidence for sessions that may still be live (teardown_worktree_rmdir_note carries the same argument for the same reason)."
+
 type OwnedArtifactKind =
     ServeBinary
   | GunbcSourceTree
   | DispatchWorktreeRoot
+  | AttemptStateRoot
   | SystemdUnit
   | TailscaleServeMapping
 
@@ -87,13 +91,14 @@ fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the worktree root (belt spawns target it), all before the unit (ExecStart references binary + tree), and the tailscale mapping last (routes to a live service). Retract is the reverse, with DispatchWorktreeRoot torn down by rmdir — LOUD failure when worktrees exist, so a retract cannot silently destroy live agent sessions (a construction-level refusal, not a check)."
+data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the two belt-spawn roots (the worktree root and the attempt-state root, which a dispatch writes in that order — worktree first, then the published attempt evidence), all before the unit (ExecStart references binary + tree), and the tailscale mapping last (routes to a live service). Retract is the reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal — LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy live agent sessions or the evidence of what they did (a construction-level refusal, not a check)."
 
 fn deployment_owned_steps() -> List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: srv1_dispatch_attempt_state_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
   ]
@@ -117,6 +122,7 @@ fn deployment_owned_steps_retract_order() -> List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
     DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentArtifactStep { kind: AttemptStateRoot, path: srv1_dispatch_attempt_state_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
     DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },

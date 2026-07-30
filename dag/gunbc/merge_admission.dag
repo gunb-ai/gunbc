@@ -1,6 +1,6 @@
 module gunbc.merge_admission
 
-import std.types { ContentHash, CommitSha, String, List, Bool, Int }
+import std.types { NonEmptyStr, ContentHash, CommitSha, String, List, Bool, Int }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_is_success,
@@ -167,6 +167,7 @@ type MergeAdmissionVerdict
   | MergeDeniedStaleBase
   | MergeDeniedStaleRoster
   | MergeDeniedNotSuccess
+  | MergeDeniedWrongAttempt
 
 data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
@@ -199,12 +200,52 @@ fn classify_merge_admission_verdict(
   }
 }
 
+data merge_admission_attempt_scope_note: String = "ATTEMPT SCOPE (ruling 2026-07-30): the receipt carries the walk-attempt identity in the PAYLOAD, not just the path, and the gate requires receipt.attempt_id == current — path identity alone is not enough, because a misrouted read must fail on the content too. A receipt from another attempt is neither stale nor fresh: it is NOT THE SUBJECT, so MergeDeniedWrongAttempt is checked FIRST, before conclusion, base, and roster — asking whether a foreign receipt's base is current would be answering a question about the wrong run. The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB on GitHub; non-GitHub execution must supply GUNBC_WALK_ATTEMPT_ID explicitly or the walk-side composition refuses — never a silent constant like a bare local, which would make every local run one attempt and the wrong-attempt refusal unreachable off CI. Deleting or recreating the attempt directory at walk start remains hygiene; correctness never depends on cleaning a shared path."
+
+type TestedSubject {
+  attempt_id: NonEmptyStr
+  head_sha: CommitSha
+  base_ref: String
+  base_tree_hash: ContentHash
+}
+
+data tested_subject_note: String = "THE SUBJECT THE FLOOR TESTED, captured as the first ordinary batch — before any substantive floor work — and bound into the receipt by the stamp. The stamp must NOT re-read HEAD or re-observe the merge target at stamp time: main can advance during a floor that runs for tens of minutes, and a receipt binding post-floor observations would claim the floor tested a tree it never saw. The gate then fetches the CURRENT target and classifies tested_base_tree_hash against it — two base facts with different jobs, never one observation doing both (the deleted single pre-floor fetch was exactly that fusion, and the freshness hole it left is what the old separate gate step's own fresh fetch existed to catch)."
+
+type MergeAdmissionReceiptV2 {
+  attempt_id: NonEmptyStr
+  pr_number: Int?
+  tested_head_sha: CommitSha
+  tested_base_tree_hash: ContentHash
+  gate_roster_hash: ContentHash
+  conclusion: CheckConclusion
+}
+
+fn classify_merge_admission_verdict_v2(
+  current_attempt_id: NonEmptyStr,
+  receipt: MergeAdmissionReceiptV2,
+  merge_target_tree_hash: ContentHash,
+  current_roster_hash: ContentHash,
+) -> MergeAdmissionVerdict {
+  if !((receipt.attempt_id as String) == (current_attempt_id as String)) {
+    MergeDeniedWrongAttempt
+  } else if !check_conclusion_admits_merge_admission_floor(c: receipt.conclusion) {
+    MergeDeniedNotSuccess
+  } else if receipt.tested_base_tree_hash != merge_target_tree_hash {
+    MergeDeniedStaleBase
+  } else if receipt.gate_roster_hash != current_roster_hash {
+    MergeDeniedStaleRoster
+  } else {
+    MergeAdmitted
+  }
+}
+
 fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
   match v {
     MergeAdmitted => false
     MergeDeniedStaleBase => true
     MergeDeniedStaleRoster => true
     MergeDeniedNotSuccess => true
+    MergeDeniedWrongAttempt => true
   }
 }
 
@@ -236,6 +277,7 @@ fn receipt_is_admissible(
     MergeDeniedStaleBase => false
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
   }
 }
 

@@ -41,6 +41,7 @@ sudo -n systemctl restart gunbc-tree-sync.service || { echo '--- gunbc-tree-sync
 sudo -n install -d -m 0755 /opt/gunbc/bin
 sudo -n install -m 0755 -o briansrls -g briansrls target/release/gunbc /opt/gunbc/bin/gunbc
 sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/dispatch-worktrees
+sudo -n install -d -m 0700 -o briansrls -g briansrls /opt/gunbc/attempt-state
 cat > "$_gunbc_stage/gunbc-roadmap.service" <<'GUNBC_UNIT_EOF'
 [Unit]
 Description=gunbc roadmap HTTP server (gunbc serve)
