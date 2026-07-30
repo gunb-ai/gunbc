@@ -4759,7 +4759,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                         };
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                "Range".to_string(),
+                                "range".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                                     v1_rt::concat(min_fields.clone(), max_fields.clone()),
@@ -4794,7 +4794,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
             EatResult::EatUnchanged { tokens: __eu, .. } => match pred_name.clone().as_str() {
                 "non_empty" => Rc::new(PredResult {
                     predicate: make_field_init_node(
-                        "NonEmpty".to_string(),
+                        "non_empty".to_string(),
                         make_expr_node(
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitBool { value: true }),

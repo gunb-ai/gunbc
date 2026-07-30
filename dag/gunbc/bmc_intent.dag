@@ -1,0 +1,219 @@
+module gunbc.bmc_intent
+
+import extdeps.bmc.capability {
+  BmcFirmwareIntent,
+  BmcFirmwareTrack,
+  BmcFirmwareTrackRequired,
+}
+import extdeps.bmc.types {
+  BmcFanCurve,
+  BmcFanCurveStep,
+}
+import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
+import extdeps.cpu.types { ProcessorThermalLimits }
+import std.bmc { OpenBmc }
+import std.measure {
+  Celsius,
+  Percent,
+  celsius,
+  celsius_count,
+  percent,
+  percent_count,
+  positive_celsius_delta,
+  positive_celsius_delta_count,
+  positive_measure_count,
+}
+import std.state_durability {
+  ControlPlaneRestartBoundary,
+  DurableAcross,
+  LifecycleGracefulRestart,
+  StateDurabilityBoundary,
+  StateDurabilityIntent,
+  state_durability_boundary_requirements,
+}
+import std.types { List, NonEmptyStr, String }
+
+type BmcFanAcousticPolicy {
+  cooling_engaged_by_temperature: Celsius
+  cooling_engaged_duty_floor: Percent
+  emergency_full_duty_at_or_below: Celsius
+}
+
+data bmc_fan_acoustic_policy_reframe_note: String = "Acoustic safety here is engage-cooling-early, not minimize-duty-until-late. The empirical basis (fleet incident 2026-07-30): holding a low duty across a wide band and only ramping near the emergency zone lets the SoC climb hot, and the controller then panics to maximum duty — the loudest outcome. So the policy asserts the curve has engaged substantial cooling (cooling_engaged_duty_floor) by a moderate control temperature (cooling_engaged_by_temperature), which keeps the chip steady-cool and inaudible, and rejects the idle-until-panic shape by construction. It is NOT a low-duty ceiling: a curve that stays quiet by staying idle fails this policy."
+
+type BmcFanThermalGuard {
+  processor_rollback_temperature: Celsius
+  component_rollback_temperature: Celsius
+  required_component_sensors: List<NonEmptyStr>
+}
+
+fn bmc_intent_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
+  fold(
+    curve.steps,
+    init: curve.minimum_duty,
+    f: (selected, step) =>
+      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+        step.duty
+      } else {
+        selected
+      },
+  )
+}
+
+fn bmc_fan_curve_engages_cooling_early(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  percent_count(
+    bmc_intent_fan_curve_duty_at(
+      curve: curve,
+      reading: policy.cooling_engaged_by_temperature,
+    ),
+  ) >= percent_count(policy.cooling_engaged_duty_floor)
+}
+
+fn bmc_fan_curve_reaches_emergency_full_duty(
+  curve: BmcFanCurve,
+  policy: BmcFanAcousticPolicy,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && celsius_count(step.at_or_above) <= celsius_count(policy.emergency_full_duty_at_or_below)
+        ),
+  )
+}
+
+fn bmc_fan_curve_effectively_reaches_full_duty_before(
+  curve: BmcFanCurve,
+  temperature: Celsius,
+) -> Bool {
+  fold(
+    curve.steps,
+    init: false,
+    f: (found, step) =>
+      found
+        || (
+          percent_count(step.duty) == 100
+            && (
+              celsius_count(step.at_or_above) + positive_celsius_delta_count(curve.positive_hysteresis)
+            ) < celsius_count(temperature)
+        ),
+  )
+}
+
+type BmcFanPolicyIntent {
+  durability: StateDurabilityIntent
+  curve: BmcFanCurve
+  required_tach_inputs: List<NonEmptyStr>
+  acoustic_policy: BmcFanAcousticPolicy
+  thermal_guard: BmcFanThermalGuard
+  processor_thermal_limits: ProcessorThermalLimits
+}
+
+type BmcControlPlaneIntent {
+  firmware: BmcFirmwareIntent
+  fan_policy: BmcFanPolicyIntent
+}
+
+data fleet_bmc_fan_graceful_restart_boundary: StateDurabilityBoundary = ControlPlaneRestartBoundary {
+  mode: LifecycleGracefulRestart,
+}
+
+data fleet_bmc_fan_durability_intent: StateDurabilityIntent = DurableAcross {
+  boundaries: state_durability_boundary_requirements(
+    first: fleet_bmc_fan_graceful_restart_boundary,
+    additional: [],
+  ),
+}
+
+data fleet_quiet_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
+  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
+]
+
+data fleet_quiet_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
+  control_sensor: "TEMP_SOC",
+  steps: fleet_quiet_temp_soc_fan_curve_steps,
+  minimum_duty: percent(30),
+  sensor_unavailable_duty: percent(75),
+  zone_failsafe_duty: percent(30),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+}
+
+data fleet_fan_acoustic_policy: BmcFanAcousticPolicy = BmcFanAcousticPolicy {
+  cooling_engaged_by_temperature: celsius(65),
+  cooling_engaged_duty_floor: percent(50),
+  emergency_full_duty_at_or_below: celsius(85),
+}
+
+data fleet_fan_thermal_guard: BmcFanThermalGuard = BmcFanThermalGuard {
+  processor_rollback_temperature: celsius(100),
+  component_rollback_temperature: celsius(90),
+  required_component_sensors: [
+    "TEMP_Core_VRD",
+    "TEMP_DIMM_A1",
+    "TEMP_DIMM_B1",
+    "TEMP_DIMM_C1",
+    "TEMP_DIMM_D1",
+    "TEMP_DIMM_E1",
+    "TEMP_DIMM_F1",
+    "TEMP_DIMM_G1",
+    "TEMP_DIMM_H1",
+    "TEMP_DIMM_VRD",
+    "TEMP_MB",
+    "TEMP_RCA_VR",
+    "TEMP_SOC_VRD",
+    "TEMP_VR",
+    "TEMP_X550",
+    "TEMP_CARD_SIDE",
+  ],
+}
+
+fn fleet_fan_policy_is_thermally_bounded() -> Bool {
+  bmc_fan_curve_engages_cooling_early(
+    curve: fleet_quiet_temp_soc_fan_curve,
+    policy: fleet_fan_acoustic_policy,
+  )
+    && bmc_fan_curve_reaches_emergency_full_duty(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      policy: fleet_fan_acoustic_policy,
+    )
+    && bmc_fan_curve_effectively_reaches_full_duty_before(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      temperature: ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature,
+    )
+    && (celsius_count(fleet_fan_acoustic_policy.cooling_engaged_by_temperature) < celsius_count(ampere_altra_max_m12830_thermal_limits.maximum_continuous_junction_temperature))
+    && (celsius_count(fleet_fan_acoustic_policy.emergency_full_duty_at_or_below) < celsius_count(ampere_altra_max_m12830_thermal_limits.thermal_throttle_temperature))
+}
+
+data fleet_bmc_valid_state: BmcControlPlaneIntent = BmcControlPlaneIntent {
+  firmware: BmcFirmwareTrackRequired {
+    track: BmcFirmwareTrack {
+      family: OpenBmc,
+      major_version: 3,
+    },
+  },
+  fan_policy: BmcFanPolicyIntent {
+    durability: fleet_bmc_fan_durability_intent,
+    curve: fleet_quiet_temp_soc_fan_curve,
+    required_tach_inputs: ["FAN1", "FAN2", "FAN3", "FAN4"],
+    acoustic_policy: fleet_fan_acoustic_policy,
+    thermal_guard: fleet_fan_thermal_guard,
+    processor_thermal_limits: ampere_altra_max_m12830_thermal_limits,
+  },
+}
+
+data fleet_bmc_valid_state_note: String = "The single fleet-wide BMC desired fan state for the ALTRAD8UD/M128-30 fleet: the vendor stock TEMP_SOC curve carried by srv3's OpenBMC 2.07.00 factory config. The curve engages cooling progressively — 30 percent at/below 40C, 40 at 55C, 50 at 65C, 75 at 75C, and full 100 percent at 85C — with the cited controller's 1C rising and falling hysteresis. It holds the SoC steady-moderate (about 4800 RPM at the 50 percent step, inaudible, roughly 65C under load) rather than idling until a late panic ramp: the empirically loud outcome (fleet incident 2026-07-30) came from a stripped onboarding overwrite that minimized duty — 30 percent held through 90C — on a hot chip, which then drove the controller to maximum. Sensor loss requests the stepwise controller's 75 percent; a zone-controller loss requests the vendor's 30 percent zone failsafe, with the independent thermal guard (host rollback at 100C junction / 90C component) as the backstop. Full cooling is effectively selected below the processor's cited 100C maximum-continuous junction temperature. This is desired policy, not a factory observation and not an acoustic measurement: inaudibility is a live acceptance criterion because different fan models produce different sound at one PWM duty. The same curve is validated on both the 2.07.00 stock realization (srv3) and the 3.22.00 realization (srv4), so a fan change never requires a BMC firmware track change; the firmware track is still pinned to major track 3 here, but the operator's keep-2.x decision (do not force srv3 off its known-good 2.07.00 for fan reasons) is a separate pending change to BmcFirmwareUnpinned that touches the firmware-management tests and is intentionally not bundled with this curve reconciliation. Its declared lifetime currently requires preservation across a graceful BMC control-plane restart; power loss, forced restart, firmware replacement, and factory reset are different boundaries and remain unclaimed until separately qualified. Firmware application still requires an exact approved release artifact."

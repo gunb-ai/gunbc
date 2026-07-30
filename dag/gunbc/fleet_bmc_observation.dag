@@ -25,13 +25,20 @@ import extdeps.bmc.types {
   ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_factory_fan_config_digest }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
   LinuxJffs2,
   LinuxMountObservation,
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
+  linux_synchronized_rename_replace_publication,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -54,7 +61,12 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.state_durability {
+  CallerAssertedDefinitionLinkage,
+  StateDurabilityCapabilityVersion,
+  StateDefinitionLinkage,
   StatePerturbationGeneration,
+  StateRealizationDefinitionLinkages,
+  StateRealizationIdentity,
 }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
@@ -87,6 +99,7 @@ type BmcFanRebootPersistenceReceipt {
   host: HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
+  perturbation_capability: BmcFanPolicyProjectionCapability
   before: BmcFanConvergenceReceipt
   post_reboot_policy: BmcFanPolicyObservation
   reset: RedfishManagerResetObservation
@@ -169,12 +182,10 @@ data srv4_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdat
 
 data srv4_bmc_fan_observed_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
-  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
-  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
-  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+  BmcFanCurveStep { at_or_above: celsius(55), duty: percent(40) },
+  BmcFanCurveStep { at_or_above: celsius(65), duty: percent(50) },
+  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(75) },
+  BmcFanCurveStep { at_or_above: celsius(85), duty: percent(100) },
 ]
 
 data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
@@ -182,12 +193,12 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   steps: srv4_bmc_fan_observed_curve_steps,
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
-  zone_failsafe_duty: percent(75),
+  zone_failsafe_duty: percent(30),
   positive_hysteresis: positive_celsius_delta(
     count: positive_measure_count(predecessor: 0),
   ),
   negative_hysteresis: positive_celsius_delta(
-    count: positive_measure_count(predecessor: 1),
+    count: positive_measure_count(predecessor: 0),
   ),
 }
 
@@ -198,8 +209,55 @@ data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
+
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: NonEmptyStr = "namespace content-addressed SymbolIndex subtree digest"
+
+fn bmc_fan_caller_asserted_definition_linkage(
+  reason: NonEmptyStr,
+) -> StateDefinitionLinkage {
+  CallerAssertedDefinitionLinkage {
+    reason: reason,
+    dissolve_on: bmc_fan_symbol_index_subtree_digest_dissolve_on,
+  }
+}
+
+fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkages {
+  StateRealizationDefinitionLinkages {
+    projection: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config projection is caller-asserted until SymbolIndex subtree digest",
+    ),
+    verifier: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config verifier is caller-asserted until SymbolIndex subtree digest",
+    ),
+    observer: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config observer is caller-asserted until SymbolIndex subtree digest",
+    ),
+    transport: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config transport is caller-asserted until SymbolIndex subtree digest",
+    ),
+    actuator: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config actuator is caller-asserted until SymbolIndex subtree digest",
+    ),
+  }
+}
+
+data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "🟡 dissolve-on: bmc_fan_symbol_index_subtree_digest_dissolve_on. Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable."
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  definition_linkages: bmc_fan_realization_definition_linkages(),
+}
+
+data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "openbmc-overlay-config-graceful-restart-v2",
+  definition_linkage: bmc_fan_caller_asserted_definition_linkage(
+    reason: "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest",
+  ),
+}
 
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
@@ -207,6 +265,7 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -215,7 +274,7 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
-  observed_at: 1785191485000,
+  observed_at: 1785432700000,
 }
 
 data srv4_bmc_root_overlay_observation: LinuxOverlayObservation = LinuxOverlayObservation {
@@ -246,7 +305,7 @@ data srv4_bmc_config_persistence_observation: BmcConfigPersistenceObservation = 
   upper_override_present: true,
   available_bytes: byte_size(20365312),
   evidence_scope: HistoricalEvidenceSnapshot,
-  observed_at: 1785191485000,
+  observed_at: 1785432700000,
 }
 
 data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConvergenceReceipt {
@@ -255,30 +314,29 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
   active_config_digest: srv4_bmc_fan_active_config_digest,
-  previous_config_digest: sha256_digest(
-    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
-  ),
+  previous_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
-  monitoring_duration: second(count: 360),
-  temp_soc_minimum: celsius(72),
-  temp_soc_maximum: celsius(77),
-  temp_soc_final: celsius(73),
+  monitoring_duration: second(count: 120),
+  temp_soc_minimum: celsius(60),
+  temp_soc_maximum: celsius(63),
+  temp_soc_final: celsius(61),
   guarded_component_maximum: celsius(69),
   final_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3616) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(943) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(933) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(889) },
+    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(4600) },
+    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(1200) },
+    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(1200) },
+    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(1200) },
   ],
-  observed_at: 1785191485000,
+  observed_at: 1785432700000,
 }
 
 data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -287,58 +345,14 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
-  observed_at: 1785194085000,
+  observed_at: 1785433000000,
 }
 
-data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
-  host: srv4_host.identity,
-  perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
-  perturbation_generation: srv4_bmc_fan_perturbation_generation,
-  before: srv4_bmc_fan_convergence_receipt,
-  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
-  reset: RedfishManagerResetObservation {
-    action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
-    reset_type: ResetGracefulRestart,
-    http_status: 200,
-    accepted: true,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    observed_at: 1785193782000,
-  },
-  bmc_down_observed: true,
-  bmc_returned: true,
-  bmc_down_observed_at: 1785193789000,
-  bmc_returned_at: 1785193946000,
-  host_power_before: On,
-  host_power_after: On,
-  host_os_ssh_reachable_throughout: true,
-  pre_reboot_temp_soc: celsius(85),
-  post_reboot_temp_soc: celsius(83),
-  pre_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3676) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(960) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(948) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(896) },
-  ],
-  post_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3659) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(961) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(944) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(906) },
-  ],
-  post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
-  post_reboot_controller_active: true,
-  post_reboot_zone_failsafe_active: false,
-  post_reboot_observer_exit_success: true,
-  post_reboot_converge_noop_exit_success: true,
-  observed_at: 1785194085000,
-}
+data srv4_bmc_fan_projection_probe_note: String = "Authenticated BMC SSH, 2026-07-30: srv4's config-asrr.json was rebuilt to the srv3 2.07.00 vendor stock aggressive curve by running the modeled TEMP_SOC jq realization on srv4's pre-onboarding base config and writing the canonical bytes back through a staged same-filesystem atomic rename; the live digest read back equal to altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex. srv4_bmc_fan_convergence_receipt is the typed live receipt of the converged state (12 samples over 120 seconds, TEMP_SOC 60-63C, guarded component max 69C, aggregate FAN1 4600 RPM). This replaces the earlier 2026-07-27 lazy-curve projection provenance."
 
-data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
+data bmc_historical_receipt_not_realization_identity_note: String = "These July 30 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
 
-data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
-
-data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
+data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-30 (aggressive stock curve): Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 170-second reachability interval while srv4's host OS remained up (ComputerSystem PowerState On). After return, OpenBMC still reported 3.22.00; the active config-asrr.json SHA-256 digest was unchanged and equal to the srv3 stock aggressive curve projection (f559aff7...); phosphor-pid-control was active; zone0 FailSafe=false. This proves the JFFS2 upper override persists the aggressive curve across one graceful BMC restart. It does not prove persistence across a firmware replacement."
 
 data fleet_bmc_surface_observation_note: String = "Authenticated read-only Redfish observations, 2026-07-27. srv3 OpenBMC 2.07.00 advertises ThermalSubsystem and its 51-member Chassis/Sensors collection includes temperature and fan readings; the legacy Chassis/Thermal URI is absent. srv4 OpenBMC 3.22.00 advertises legacy Chassis/Thermal; its Chassis/Sensors request still returns HTTP success but has only 9 power/utilization members and omits temperature/fan readings. A collection-only observer therefore fails open on srv4: transport success is not telemetry completeness. Direct known sensor URIs still resolve, but they do not make an inventory query complete."
 
