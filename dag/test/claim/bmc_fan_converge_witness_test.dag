@@ -6,6 +6,10 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcWarningLowThreshold,
 }
 import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.bmc.capability {
+  BmcFirmwareVersion,
+  bmc_firmware_semantic_version,
+}
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_22_00_capabilities,
 }
@@ -39,6 +43,7 @@ import gunbc.bmc_fan_monitor {
   bmc_fan_assess_monitoring_samples,
 }
 import gunbc.fleet_intent { srv3_host, srv4_host }
+import std.bmc { OpenBmc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -143,22 +148,107 @@ test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
   )
 }
 
-test fn backup_manifest_identity_is_derived_from_manifest_fields() -> Bool {
-  let changed = BmcFanBackupManifest {
-    target: cleanup_debt_test_manifest.target,
+fn backup_manifest_identity_differs(
+  changed: BmcFanBackupManifest,
+) -> Bool {
+  let baseline_identity = bmc_fan_backup_manifest_identity(
+    manifest: cleanup_debt_test_manifest,
+  )
+  let changed_identity = bmc_fan_backup_manifest_identity(manifest: changed)
+  baseline_identity != changed_identity
+}
+
+test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool {
+  let different_digest = sha256_digest(
+    hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  )
+  backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+    target: srv3_host.identity,
     stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
     firmware: cleanup_debt_test_manifest.firmware,
     config_path: cleanup_debt_test_manifest.config_path,
     before_digest: cleanup_debt_test_manifest.before_digest,
     backup_digest: cleanup_debt_test_manifest.backup_digest,
     creation_generation: cleanup_debt_test_manifest.creation_generation,
-    created_at: cleanup_debt_test_manifest.created_at + 1,
-  }
-  let baseline_identity = bmc_fan_backup_manifest_identity(
-    manifest: cleanup_debt_test_manifest,
-  )
-  let changed_identity = bmc_fan_backup_manifest_identity(manifest: changed)
-  baseline_identity != changed_identity
+    created_at: cleanup_debt_test_manifest.created_at,
+  ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: "different-bmc-machine-id",
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: BmcFirmwareVersion {
+        family: OpenBmc,
+        version: bmc_firmware_semantic_version(
+          major: cleanup_debt_test_manifest.firmware.version.major + 1,
+          minor: cleanup_debt_test_manifest.firmware.version.minor,
+          patch: cleanup_debt_test_manifest.firmware.version.patch,
+        ),
+      },
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: "/usr/share/swampd/different-config.json",
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: different_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: different_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation + 1,
+      created_at: cleanup_debt_test_manifest.created_at,
+    ))
+    && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
+      target: cleanup_debt_test_manifest.target,
+      stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
+      firmware: cleanup_debt_test_manifest.firmware,
+      config_path: cleanup_debt_test_manifest.config_path,
+      before_digest: cleanup_debt_test_manifest.before_digest,
+      backup_digest: cleanup_debt_test_manifest.backup_digest,
+      creation_generation: cleanup_debt_test_manifest.creation_generation,
+      created_at: cleanup_debt_test_manifest.created_at + 1,
+    ))
 }
 
 test fn identical_bmc_on_wrong_endpoint_is_not_exact_target() -> Bool {

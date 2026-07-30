@@ -131,7 +131,7 @@ import gunbc.fleet_intent {
   srv4_host,
 }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import std.bmc { OpenBmc }
+import std.bmc { BmcFirmwareFamily, OpenBmc }
 import std.content_hash {
   content_hash_atom,
   content_hash_combine,
@@ -350,6 +350,14 @@ type BmcFanBackupManifest {
   created_at: EpochMs
 }
 
+fn bmc_firmware_family_content_hash(
+  family: BmcFirmwareFamily,
+) -> ContentHash {
+  match family {
+    OpenBmc => content_hash_atom(value: "OpenBmc"),
+  }
+}
+
 fn bmc_fan_backup_manifest_identity(
   manifest: BmcFanBackupManifest,
 ) -> ContentHash {
@@ -360,29 +368,32 @@ fn bmc_fan_backup_manifest_identity(
       content_hash_combine(
         content_hash_atom(value: manifest.stable_bmc_identity),
         content_hash_combine(
-          content_hash_atom(
-            value: to_string(manifest.firmware.version.major) as NonEmptyStr,
-          ),
+          bmc_firmware_family_content_hash(family: manifest.firmware.family),
           content_hash_combine(
             content_hash_atom(
-              value: to_string(manifest.firmware.version.minor) as NonEmptyStr,
+              value: to_string(manifest.firmware.version.major) as NonEmptyStr,
             ),
             content_hash_combine(
               content_hash_atom(
-                value: to_string(manifest.firmware.version.patch) as NonEmptyStr,
+                value: to_string(manifest.firmware.version.minor) as NonEmptyStr,
               ),
               content_hash_combine(
-                content_hash_atom(value: manifest.config_path),
+                content_hash_atom(
+                  value: to_string(manifest.firmware.version.patch) as NonEmptyStr,
+                ),
                 content_hash_combine(
-                  content_hash_atom(value: manifest.before_digest.hex),
+                  content_hash_atom(value: manifest.config_path),
                   content_hash_combine(
-                    content_hash_atom(value: manifest.backup_digest.hex),
+                    content_hash_atom(value: manifest.before_digest.hex),
                     content_hash_combine(
-                      content_hash_atom(
-                        value: to_string(manifest.creation_generation) as NonEmptyStr,
-                      ),
-                      content_hash_atom(
-                        value: to_string(manifest.created_at) as NonEmptyStr,
+                      content_hash_atom(value: manifest.backup_digest.hex),
+                      content_hash_combine(
+                        content_hash_atom(
+                          value: to_string(manifest.creation_generation) as NonEmptyStr,
+                        ),
+                        content_hash_atom(
+                          value: to_string(manifest.created_at) as NonEmptyStr,
+                        ),
                       ),
                     ),
                   ),
