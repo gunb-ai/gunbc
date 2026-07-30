@@ -4436,23 +4436,26 @@ fn falsifier_failure_mode(details: &[String]) -> &'static str {
     }) {
         "BudgetExceeded"
     } else if details.iter().any(|d| {
-        // These two are TEXT THAT ARRIVES FROM OUTSIDE — an io::Error Display reaching a
-        // detail through `failed to execute '{argv0}': {e}` (EAGAIN renders as "Resource
-        // temporarily unavailable"), or a failing sccache argv. They are matched here
-        // because nothing upstream types them yet; typing them belongs at the interpreter
-        // boundary where the io::Error is caught, not here.
+        // THIS LIST IS A FORK, and that is the defect — not the individual substrings.
         //
-        // The walk's OWN infra facts are no longer matched: `infra=`/`thread_panic` were
-        // this function grepping a line the walk itself formatted from a bool it already
-        // had. That now travels as `InfraFault` and is consulted by
-        // `falsifier_failure_mode_with_faults` before this text path runs.
+        // `gunbc.ci_failure_class` already models this properly: `InfraSignature` is a
+        // closed sum whose match text is DERIVED from cited upstream authorities —
+        // `errno_strerror(EAGAIN)`, `spawn_outcome_log_fragment(SpawnFailed)`, the sccache
+        // fragments, `runner_lifecycle_log_fragment(ShutdownReceived)` — each carrying an
+        // `infra_signature_origin` naming where the text comes from. That authority has no
+        // production consumer today (`classify_failure_reason` is reached only by witness
+        // tests), while this hand-typed list is the one that actually runs.
         //
-        // `failed to spawn` was also removed: no producer reachable from this input emits
-        // it. The interpreter's spawn failure says "failed to execute", and the other
-        // producers in-tree are a different bin, test helpers, and panic messages — and a
-        // panic payload is discarded by `Err(_)` before it could become a detail. A
-        // substring its own input cannot contain is a check that only looks like coverage.
-        d.contains("Resource temporarily unavailable") || d.contains("sccache")
+        // So the fix is to make this consume `gunbc.ci_failure_class`, not to hand-edit the
+        // fork. An earlier revision of this change deleted the "failed to spawn" arm on the
+        // grounds that no producer reachable from THIS input emits it — the interpreter's
+        // spawn failure says "failed to execute". That evidence was about this surface only;
+        // the model declares `ProcessSpawnFailure` a live signature whose site is the build
+        // log. Editing one side of a fork on surface-local evidence widens the divergence
+        // instead of closing it, so the arm is restored and the fork is recorded here.
+        d.contains("Resource temporarily unavailable")
+            || d.contains("failed to spawn")
+            || d.contains("sccache")
     }) {
         "Infra"
     } else {
