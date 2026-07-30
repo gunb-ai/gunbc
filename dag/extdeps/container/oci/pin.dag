@@ -1,0 +1,34 @@
+module extdeps.container.oci.pin
+
+import std.types { ContentHash }
+import extdeps.version { VersionIdentity }
+import extdeps.pin { Pin, ExactPin }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.container.oci.descriptor { OciDescriptor }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
+  }
+}
+
+data oci_descriptor_pin_instantiation_note: String = "THE INSTANTIATION for OciDescriptor second-consumer proof (review 44662). extdeps.pin owns Pin<Subject>; this module binds the dimension to a content-addressed blob with no semver field. OCI image-spec names digest as the immutable layer identity, so Pin.version projects descriptor.digest as VersionIdentity — the subject's sole version axis — never an invented semver (review 44946). expected_identity projects the same digest as ContentHash for integrity admission; same upstream fact, two Pin-field roles (version selection vs byte identity), not a parallel semver authority."
+
+fn oci_descriptor_pin_version(descriptor: OciDescriptor) -> VersionIdentity {
+  descriptor.digest as VersionIdentity
+}
+
+fn oci_descriptor_pin_expected_identity(descriptor: OciDescriptor) -> ContentHash {
+  descriptor.digest
+}
+
+fn oci_descriptor_pin(descriptor: OciDescriptor) -> Pin<OciDescriptor> {
+  Pin {
+    subject: descriptor,
+    version: oci_descriptor_pin_version(descriptor: descriptor),
+    expected_identity: oci_descriptor_pin_expected_identity(descriptor: descriptor),
+    selection: ExactPin,
+  }
+}

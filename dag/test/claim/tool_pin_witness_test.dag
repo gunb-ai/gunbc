@@ -25,6 +25,7 @@ import extdeps.pin {
 }
 import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
 import extdeps.container.oci.descriptor { OciDescriptor }
+import extdeps.container.oci.pin { oci_descriptor_pin }
 import extdeps.container.oci.types { OciMediaType, OciImageLayerV1TarGzip }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -220,7 +221,7 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     && (tracked_pin.selection == same.selection)
 }
 
-data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. OciDescriptor is that subject and it is deliberately unlike CliTool: no name field, NO VERSION FIELD AT ALL, and its own mediaType and size instead. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a descriptor with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes. That the subject carries no version while the PIN carries one is the point rather than a gap: the version is the pin's own declared fact, not a projection of the subject, so the dimension supplies it for subjects that have none."
+data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. OciDescriptor is that subject and it is deliberately unlike CliTool: no name field, no semver field, and its own mediaType and size instead. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a descriptor with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes. For content-addressed subjects, Pin.version is DERIVED from the subject via extdeps.container.oci.pin (digest projected as VersionIdentity per image-spec), never a manufactured semver (review 44946)."
 
 data pin_second_subject_soundness_note: String = "review 44662, and the reviewer was right twice about my first attempt. The original second-subject proof instantiated Pin<SccacheBinaryRelease>, which was unsound in two independent ways. (1) GRAIN: one SccacheBinaryRelease carries TWO architecture-specific digests while Pin carries ONE expected_identity, so the model could associate either artifact's digest with the undifferentiated release — an ambiguous substrate state. I had recorded that as a tracked dissolve-on and treated the deferral as sufficient; it is not, and the reason is specific to what this witness IS. A trigger-only deferral is a legitimate way to carry a known gap on a PRODUCTION row, but this row's entire job is to PROVE the dimension composes, and a proof built on an ambiguous instantiation demonstrates ambiguity rather than composition. (2) PARALLEL AUTHORITY: it re-minted the aarch64 hex already owned by dag/extdeps/cache/sccache.dag and re-spelled the release version as a second literal, so two independent copies of one fact could drift — the consume-never-fork violation this whole lane exists to remove, committed inside the witness meant to demonstrate the lane. Both are fixed by CHOOSING A SOUND SUBJECT rather than defending the unsound one: OciDescriptor describes exactly ONE blob by construction, so the grain question cannot arise, and it carries digest: ContentHash natively, so expected_identity is DERIVED from the subject below rather than copied — one fact, one home. The sccache multi-artifact case is now modeled separately at SccacheBinaryArtifact + dag/test/claim/sccache_pin_witness_test.dag (feature:pin-artifact-grain); Digest to ContentHash crosses through extdeps.crypto.hash.sha256_digest_content_hash rather than a silent cast."
 
@@ -230,11 +231,10 @@ data oci_layer_descriptor: OciDescriptor = OciDescriptor {
   size: 32654
 }
 
-data oci_descriptor_pin: Pin<OciDescriptor> = Pin {
-  subject: oci_layer_descriptor,
-  version: "1.0.0" as VersionIdentity,
-  expected_identity: oci_layer_descriptor.digest,
-  selection: ExactPin,
+data oci_descriptor_pin: Pin<OciDescriptor> = oci_descriptor_pin(descriptor: oci_layer_descriptor)
+
+test fn oci_descriptor_pin_version_is_derived_from_subject_digest() -> Bool {
+  (oci_descriptor_pin.version as String) == (oci_layer_descriptor.digest as String)
 }
 
 test fn pin_composes_over_a_structurally_different_subject() -> Bool {
