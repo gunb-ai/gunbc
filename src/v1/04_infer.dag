@@ -847,22 +847,18 @@ fn type_expr_where_refinement_predicates(ty: Node) -> List<Node> {
   } else { [] }
 }
 
-fn type_where_refinement_predicates_transitive(
-  ty: Node,
-  type_env: TypeEnv,
-) -> List<Node> {
+fn type_where_refinement_predicates_transitive(ty: Node, type_env: TypeEnv) -> List<Node> {
   let immediate = type_expr_where_refinement_predicates(ty: ty)
-  let inherited =
-    if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
-      let base = ty.children[0]
-      let base_resolved = match lookup_type_for(env: type_env, node: base) {
-        Present { value: resolved } => resolved
-        Absent => base
-      }
-      type_where_refinement_predicates_transitive(ty: base_resolved, type_env: type_env)
-    } else {
-      []
+  let inherited = if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
+    let base = ty.children[0]
+    let base_resolved = match lookup_type_for(env: type_env, node: base) {
+      Present { value: resolved } => resolved
+      Absent => base
     }
+    type_where_refinement_predicates_transitive(ty: base_resolved, type_env: type_env)
+  } else {
+    []
+  }
   concat(immediate, inherited)
 }
 

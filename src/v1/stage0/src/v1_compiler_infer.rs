@@ -1455,24 +1455,24 @@ pub fn type_where_refinement_predicates_transitive(
     ty: Rc<Node>,
     type_env: Rc<TypeEnv>,
 ) -> Rc<Vec<Rc<Node>>> {
-    let immediate = type_expr_where_refinement_predicates(ty.clone());
-    let inherited = if (((ty.connective.clone() == Connective::Conj)
-        && (ty.type_annotation.clone() != None))
-        && ((ty.children.clone().len() as i64) == 1))
-    {
-        let base = ty.children.clone()[0].clone();
-        let base_resolved = match lookup_type_for(type_env.clone(), base.clone()) {
-            Some(resolved) => resolved.clone(),
-            None => base.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let immediate = type_expr_where_refinement_predicates(ty.clone());
+        let inherited = if (((ty.connective.clone() == Connective::Conj)
+            && (ty.type_annotation.clone() != None))
+            && ((ty.children.clone().len() as i64) == 1))
+        {
+            {
+                let base = ty.children.clone()[(0) as usize].clone();
+                let base_resolved = match lookup_type_for(type_env.clone(), base.clone().expect("fail-closed: an optional value flowed into non-optional parameter 1 of lookup_type_for (empty Optional at runtime)")) {
+    Some(resolved) => resolved.clone(),
+    None => base.clone(),
+};
+                type_where_refinement_predicates_transitive(base_resolved.clone(), type_env.clone())
+            }
+        } else {
+            Rc::new(vec![])
         };
-        type_where_refinement_predicates_transitive(base_resolved, type_env.clone())
-    } else {
-        Rc::new(vec![])
-    };
-    Rc::new({
-        let mut combined = (*immediate).clone();
-        combined.extend((*inherited).iter().cloned());
-        combined
+        v1_rt::concat(immediate.clone(), inherited.clone())
     })
 }
 
