@@ -436,3 +436,16 @@ test fn witness_retract_refusal_follows_every_teardown() -> Bool {
         && !string_contains(s: before_refusal, pattern: "verdict=converged")
   }
 }
+
+data twin_creates_its_own_bin_dir_note: String = "THE PARENT DIRECTORY WAS THE LAST srv1 LITERAL IN THE APPLY (review 45197). serve_binary became instance-derived while the step that creates its containing directory kept production's `/opt/gunbc/bin`, and `install` does not create missing parents — so a twin apply would reach the copy with nowhere to copy to and fail on what reads as a permissions problem.\\n\\nThe claim is stated in BOTH directions because only the negative half proves it. Asserting the twin creates its own bin directory passes even if the emission ALSO still creates production's; asserting production's literal is absent from the twin script is what closes it. The production conjunct pins that the derivation did not move production — /opt/gunbc/bin/gunbc has parent /opt/gunbc/bin, so its emitted command is unchanged, which the committed golden independently confirms."
+
+test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
+  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1())
+  let twin = live_deploy_apply_script_for(spec: srv1_twin_spec())
+  string_contains(s: live, pattern: "install -d -m 0755 /opt/gunbc/bin")
+    && !string_contains(s: twin, pattern: "install -d -m 0755 /opt/gunbc/bin")
+    && string_contains(
+         s: twin,
+         pattern: "install -d -m 0755 /home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin",
+       )
+}
