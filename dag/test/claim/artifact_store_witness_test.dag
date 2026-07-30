@@ -213,11 +213,10 @@ test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool
     environment_identity: content_hash_atom(value: "fixed environment"),
     cargo_configuration_identity: content_hash_atom(value: "fixed cargo configuration")
   }
-  toolchain_identity(context: context)
-    == legacy_toolchain_identity(
-      cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
-      rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
-    )
+  toolchain_identity(context: context) == legacy_toolchain_identity(
+    cargo_observed_identity: content_hash_atom(value: "cargo 1.93.0 -Vv"),
+    rustc_observed_identity: content_hash_atom(value: "rustc 1.93.0 -vV"),
+  )
 }
 
 test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
