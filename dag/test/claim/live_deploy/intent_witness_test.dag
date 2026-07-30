@@ -6,7 +6,6 @@ import gunbc.live_deploy.intent {
   live_deploy_service_ready_gate_for_spec,
 }
 import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import std.types { NonEmptyStr }
 import gunbc.live_deploy.emit {
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
@@ -32,7 +31,7 @@ test fn witness_health_url_is_localhost_on_srv1() -> Bool {
 
 test fn witness_service_ready_gate_is_required_on_readback() -> Bool {
   let gate = live_deploy_service_ready_gate_for_spec(spec: deployment_spec_srv1())
-  gate.probe.health_url != "" as NonEmptyStr
+  gate.probe.health_url == live_deploy_health_url_for_port(port: 8080)
 }
 
 test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
