@@ -145,6 +145,8 @@ mod reference_carrier_witness_test;
 #[cfg(test)]
 mod resolve_cross_process_cache_test;
 #[cfg(test)]
+mod materialization_provider_resolved_graph_consumer_test;
+#[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
 #[cfg(test)]
 mod resolve_typed_cache_equivalence_test;
