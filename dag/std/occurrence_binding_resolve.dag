@@ -89,6 +89,8 @@ fn declaration_exposed_on_reference_chain(
   )
 }
 
+data declaration_matches_reference_segment_note: String = "Candidate filter, not a refusal surface (review 45077): occurrence_category_binding_verdict is matched to admit/exclude a declaration from the candidate FreeMonoid. Inadmissible's located payload is intentionally unused here — zero candidates become OccurrenceUnbound via occurrence_binding_decide, not a parallel category-refusal arm. Sites that must name the inadmissible pair consume the verdict sum directly."
+
 fn declaration_matches_reference_segment(
   validated: ValidatedOccurrenceTransport,
   declaration: DeclarationOccurrence,
