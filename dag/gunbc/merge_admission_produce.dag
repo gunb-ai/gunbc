@@ -1,7 +1,7 @@
 module gunbc.merge_admission_produce
 
 import std.types { NonEmptyStr, ContentHash, CommitSha, String, Int, List, Bool, GitRef }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, GitSha1Digest, GitSha256Digest }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_sha1_object_id, git_sha256_object_id }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.repo_identity { gunbc_merge_target_ref }
@@ -68,7 +68,7 @@ fn compose_explicit_walk_attempt_id(explicit: String) -> WalkAttemptId? {
   walk_attempt_id(raw: explicit)
 }
 
-data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>, refusing anything else. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible."
+data git_object_id_wire_note: String = "A Git object id on the wire carries its FORMAT, because the type does: <format>:<hex>. An anonymous hex string would be exactly the defect DESIGN's ContentHash-family residue records — a value whose family the reader has to guess — and a repository mid SHA-1/SHA-256 transition is precisely when guessing wrong is possible. This fn owns ONLY the <format>:<hex> spelling; whether the hex is a well-formed object id of that family is extdeps.git.object_store's question, answered by git_sha1_object_id / git_sha256_object_id, which check exact length and canonical lowercase hex. An earlier cut cast the suffix straight into the brand, so sha1:x, sha1:not-hex and a 64-digit value labelled sha1 all parsed (review 2026-07-30) — family without length and syntax is not identification."
 
 fn render_git_object_id_wire(oid: GitObjectId) -> String {
   match oid {
@@ -80,20 +80,10 @@ fn render_git_object_id_wire(oid: GitObjectId) -> String {
 fn parse_git_object_id_wire(raw: String) -> GitObjectId? {
   if !(length(split(s: raw, delimiter: ":")) == 2) {
     none
-  } else if split(s: raw, delimiter: ":").skip(n: 1).first() == "" {
-    none
   } else if split(s: raw, delimiter: ":").first() == "sha1" {
-    Present {
-      value: GitSha1ObjectId {
-        digest: split(s: raw, delimiter: ":").skip(n: 1).first() as GitSha1Digest
-      }
-    }
+    git_sha1_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
   } else if split(s: raw, delimiter: ":").first() == "sha256" {
-    Present {
-      value: GitSha256ObjectId {
-        digest: split(s: raw, delimiter: ":").skip(n: 1).first() as GitSha256Digest
-      }
-    }
+    git_sha256_object_id(hex: split(s: raw, delimiter: ":").skip(n: 1).first())
   } else {
     none
   }

@@ -270,8 +270,8 @@ pub fn path_segment_is_safe(raw: String) -> bool {
         || v1_rt::string_contains(&raw, "/".to_string()))
         || v1_rt::string_contains(&raw, "\\".to_string()))
         || v1_rt::string_contains(&raw, "\n".to_string()))
-        || v1_rt::string_contains(&raw, "\r".to_string()))
-        || v1_rt::string_contains(&raw, "\0".to_string()))
+        || v1_rt::string_contains(&raw, "\x0d".to_string()))
+        || v1_rt::string_contains(&raw, "\x00".to_string()))
 }
 
 pub type GlobSegment = String;

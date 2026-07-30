@@ -586,8 +586,11 @@ struct ParsedWalkPlan {
 /// Parse the plan-carried finalization VALUE (walk_finalization_note). The executor
 /// never selects finalization by a plan function's spelling, and — since the carrier
 /// became `WalkPlan<F>` — it does not need to care which instantiation produced the
-/// value either: ONE parser reads both, because the wall lives in the plan function's
-/// return type, not here. An unrecognized shape is a hard error.
+/// value either: ONE parser reads both. An unrecognized shape is a hard error, and that
+/// refusal is load-bearing rather than belt-and-braces: the plan function's declared
+/// return type does NOT bound what its body returns (the typechecker does not check
+/// return position), so this parser and the enrolled value witnesses are what actually
+/// stop a plan from carrying the wrong finalization family.
 ///
 /// `Nat` reaches the interpreter as a native `Int` (the numeric tower is grounded), so
 /// a negative value cannot arrive from a well-typed plan; it is still refused rather
@@ -596,7 +599,30 @@ fn finalization_from_value(
     v: &Value,
     ctx: &InterpContext,
 ) -> Result<Option<FloorFinalization>, String> {
+    // The two inhabitants have DIFFERENT runtime shapes, and that is a consequence of
+    // the carrier split rather than an accident to paper over: FloorFinalization is a
+    // standalone record in gunbc.ci_materialization (Value::Record), while
+    // NoFinalizationDeclared is the nullary variant of std's NoWalkFinalization sum
+    // (Value::Variant). Both are matched by TYPE NAME — never by "has a field called
+    // declared_resolve_count", which would admit any record that happened to carry one.
+    let floor_from_fields =
+        |fields: &[(v1_compiler::v1_interpreter::Symbol, Value)]| -> Result<i64, String> {
+            match ctx.field(fields, "declared_resolve_count") {
+                Some(Value::Int(n)) if *n >= 0 => Ok(*n),
+                Some(Value::Int(n)) => Err(format!(
+                    "FloorFinalization.declared_resolve_count is Nat, got {n}"
+                )),
+                other => Err(format!(
+                    "FloorFinalization.declared_resolve_count must be a Nat, got {other:?}"
+                )),
+            }
+        };
     match v {
+        Value::Record {
+            type_name, fields, ..
+        } if ctx.sym_eq(*type_name, "FloorFinalization") => Ok(Some(FloorFinalization {
+            declared_resolve_count: floor_from_fields(fields)?,
+        })),
         Value::Variant {
             variant_name,
             fields,
@@ -605,21 +631,11 @@ fn finalization_from_value(
             if ctx.sym_eq(*variant_name, "NoFinalizationDeclared") {
                 Ok(None)
             } else if ctx.sym_eq(*variant_name, "FloorFinalization") {
-                let declared = match ctx.field(fields, "declared_resolve_count") {
-                    Some(Value::Int(n)) if *n >= 0 => *n,
-                    Some(Value::Int(n)) => {
-                        return Err(format!(
-                            "FloorFinalization.declared_resolve_count is Nat, got {n}"
-                        ))
-                    }
-                    other => {
-                        return Err(format!(
-                            "FloorFinalization.declared_resolve_count must be a Nat, got {other:?}"
-                        ))
-                    }
-                };
+                // Retained because the same declaration can reach the interpreter as a
+                // record OR as a variant depending on how it was constructed; refusing
+                // one spelling of a value the model does admit would be a false wall.
                 Ok(Some(FloorFinalization {
-                    declared_resolve_count: declared,
+                    declared_resolve_count: floor_from_fields(fields)?,
                 }))
             } else {
                 Err(
@@ -3110,9 +3126,11 @@ fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<Stri
 /// AND materialization disclosure. The disclosure Bool that used to sit beside the
 /// count is gone — it was a writable bypass whose `false` arm skipped the
 /// materialization check while the success line still reported that disclosure held
-/// (review 2026-07-30). A plan reaches this struct only by returning
-/// `WalkPlan<FloorFinalization>`; regen/falsifier/plan-artifact return
-/// `WalkPlan<NoWalkFinalization>` and cannot acquire these laws by picking an arm.
+/// (review 2026-07-30). A plan DECLARES that it carries these laws by returning
+/// `WalkPlan<FloorFinalization>` where regen/falsifier/plan-artifact return
+/// `WalkPlan<NoWalkFinalization>` — a declaration, not a guarantee: the typechecker
+/// does not check return position, so the value is what decides, and the enrolled
+/// witnesses in v2.test.claim.ci_floor_plan_witness are what check the value.
 struct FloorFinalization {
     declared_resolve_count: i64,
 }

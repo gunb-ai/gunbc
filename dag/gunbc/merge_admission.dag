@@ -1,7 +1,7 @@
 module gunbc.merge_admission
 
 import std.types { NonEmptyStr, ContentHash, CommitSha, String, List, Bool, Int, PathSegment, path_segment_is_safe }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_format, git_object_id_content_hash, GitObjectFormat, GitObjectFormatSha1, GitObjectFormatSha256 }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId, GitSha256ObjectId, git_object_id_eq }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_is_success,
@@ -220,22 +220,7 @@ fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
   (left as String) == (right as String)
 }
 
-data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality is format-aware by construction: two ids of different formats are never equal, so a repository mid-transition cannot produce a false match on hex alone."
-
-fn git_object_id_eq(left: GitObjectId, right: GitObjectId) -> Bool {
-  match left {
-    GitSha1ObjectId { digest: l } =>
-      match right {
-        GitSha1ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
-        GitSha256ObjectId { digest: _ } => false
-      }
-    GitSha256ObjectId { digest: l } =>
-      match right {
-        GitSha256ObjectId { digest: r } => (l as ContentHash) == (r as ContentHash)
-        GitSha1ObjectId { digest: _ } => false
-      }
-  }
-}
+data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
 
 type TestedSubject {
   attempt_id: WalkAttemptId
@@ -290,7 +275,6 @@ fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
     MergeDeniedStaleRoster => true
     MergeDeniedNotSuccess => true
     MergeDeniedWrongAttempt => true
-    MergeDeniedSubjectMismatch => true
     MergeDeniedSubjectMismatch => true
   }
 }

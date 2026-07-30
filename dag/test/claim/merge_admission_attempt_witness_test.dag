@@ -264,6 +264,19 @@ test fn subject_wire_refused_by_receipt_parser_and_vice_versa() -> Bool {
     && match parse_tested_subject_wire(text: rec) { Present { value: _ } => false  Absent => true }
 }
 
+data object_id_validation_red_note: String = "Every raw value below PARSED before the wire parser consumed a validating constructor: it checked one colon, a recognized family prefix and a nonempty suffix, then cast the suffix straight into the brand. So sha1:x was a Git object id, and so was a 64-digit value labelled sha1 — family without length and syntax is not identification, and a receipt binding such a value would compare equal to nothing real while typechecking perfectly."
+
+test fn object_id_wire_refuses_wrong_length_and_nonhex() -> Bool {
+  let sha256_hex = "3333333333333333333333333333333333333333333333333333333333333333"
+  match parse_git_object_id_wire(raw: "sha1:1111") { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: concat("sha1:", sha256_hex)) { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: "sha256:3333") { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: "sha1:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz") { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: "sha1:1111111111111111111111111111111111111111:extra") { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: "md5:1111111111111111111111111111111111111111") { Present { value: _ } => false  Absent => true }
+    && match parse_git_object_id_wire(raw: "sha1:") { Present { value: _ } => false  Absent => true }
+}
+
 test fn object_id_wire_carries_its_format_and_refuses_an_anonymous_hex() -> Bool {
   let sha1_wire = render_git_object_id_wire(oid: base_tree_fx())
   let sha256 = GitSha256ObjectId { digest: "3333333333333333333333333333333333333333333333333333333333333333" }

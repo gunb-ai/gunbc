@@ -518,7 +518,7 @@ pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
 pub fn escape_string_literal_control_chars_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The CR step used to split on the delimiter \"\\r\" and join with \"\\\\r\", which is a NO-OP: this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return. Carriage returns therefore passed through unescaped into every emitted target for as long as the function has existed — dead in practice only because no corpus string had carried one. The first that did (a path-segment safety predicate refusing CR) turned it into a hard emit failure: rustc rejected the raw control character in the emitted literal. Fixed by spelling CR the way the tokenizer can actually produce it, \\x0d, and NUL is added beside it for the same reason a segment predicate needs it. Recorded rather than quietly respelled because the class is the point: a delimiter that silently means something other than what it looks like is invisible until a value exercises it, and the escape table's gaps are where that happens.".to_string()
+            "TWO defects, one in each half of the CR step. The DELIMITER used to be \"\\r\", but this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return: carriage returns have passed through unescaped into every emitted target for as long as the function has existed, dead in practice only because no corpus string carried one. The first that did turned it into a hard emit failure. The REPLACEMENT was then briefly \\r and \\0, which is a second, subtler version of the same mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one of the four projections, and \\r emitted into a Dag literal reproduces the exact backslash-r bug the delimiter half just fixed (review 2026-07-30). The spelling is therefore \\x0d and \\x00, the hex form all four target grammars accept, and the acceptance is a round trip through every target rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than quietly respelled because the class is the point: a target-specific escape inside a target-independent function is invisible until a projection other than the one under test carries the character.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -552,19 +552,19 @@ pub fn escape_string_literal_body(s: String) -> String {
         let escaped_return = Rc::new(
             escaped_newline
                 .clone()
-                .split(&"\r".to_string())
+                .split(&"\x0d".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .join(&"\\r".to_string());
+        .join(&"\\x0d".to_string());
         let escaped_nul = Rc::new(
             escaped_return
                 .clone()
-                .split(&"\0".to_string())
+                .split(&"\x00".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .join(&"\\0".to_string());
+        .join(&"\\x00".to_string());
         Rc::new(
             escaped_nul
                 .clone()
