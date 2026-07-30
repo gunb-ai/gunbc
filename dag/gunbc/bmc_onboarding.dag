@@ -6,6 +6,7 @@ import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List }
 import std.logic { Bool }
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, AccountRoleAdministrator }
+import gunbc.auth.access_token_source { AccessEnsurePlan }
 import gunbc.os_install_mechanism { srv3_install_boot_target }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
@@ -230,12 +231,16 @@ data srv4_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(bmc_host: "
 type BmcCredentialProbeResult
   = FactoryCredentialActive
   | RotatedCredentialActive
+  | CredentialAccessUpsertRequired { plan: AccessEnsurePlan }
+  | CredentialEnsureRefused { reason: NonEmptyStr }
   | CredentialStateUnknown { reason: String }
 
 fn bmc_credential_probe_to_phase(probe: BmcCredentialProbeResult) -> BmcOnboardingPhase? {
   match probe {
     FactoryCredentialActive => Present { value: FactoryDefault }
     RotatedCredentialActive => Present { value: CredentialsRotated }
+    CredentialAccessUpsertRequired { plan: _ } => Absent
+    CredentialEnsureRefused { reason: _ } => Absent
     CredentialStateUnknown { reason: _ } => Absent
   }
 }

@@ -115,7 +115,7 @@ fn emit_python(typed: ResolvedGraph) -> EmitResult {
     |> map(tm => emit_py_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
       projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
-    |> filter(f => f.path != "")
+    |> filter(f => string_length(s: f.content) > 0)
   let init_file = emit_init_py(modules: typed.modules)
   let requirements = emit_requirements_txt(has_services: has_service_items(typed: typed))
   let files = concat([requirements, init_file], module_files, test_files)
@@ -167,7 +167,7 @@ fn python_test_signature_comment(projection: TestProjection) -> String {
 
 fn emit_py_test_file(module_name: String, projections: List<TestProjection>) -> TextFile {
   if projections |> count == 0 {
-    TextFile { path: "", content: "" }
+    TextFile { path: "<none>", content: "" }
   } else {
     let tests_str = projections
       |> map(p => emit_py_operation_test(projection: p, depth: 0))
