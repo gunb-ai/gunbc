@@ -13,11 +13,13 @@ import extdeps.pin {
 }
 import extdeps.cache.sccache {
   SccacheBinaryArtifact,
-  Aarch64,
-  X86_64,
+  SccacheMuslAarch64,
+  SccacheMuslX86_64,
   Riscv64,
   sccache_release_0_15_0,
   sccache_binary_artifact_content_identity,
+  sccache_binary_artifact_for_arch,
+  sccache_published_musl_arch_of,
 }
 import extdeps.cache.pin { sccache_binary_artifact_pin_expected_identity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -26,85 +28,64 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sccache_aarch64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
   binary_release: sccache_release_0_15_0,
-  arch: Aarch64,
+  arch: SccacheMuslAarch64,
 }
 
 data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
   binary_release: sccache_release_0_15_0,
-  arch: X86_64,
+  arch: SccacheMuslX86_64,
 }
 
-data sccache_riscv64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
-  binary_release: sccache_release_0_15_0,
-  arch: Riscv64,
+data sccache_aarch64_pin: Pin<SccacheBinaryArtifact> = Pin {
+  subject: sccache_aarch64_artifact,
+  version: "0.15.0" as VersionIdentity,
+  expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: sccache_aarch64_artifact),
+  selection: ExactPin,
 }
 
-data sccache_aarch64_pin: Pin<SccacheBinaryArtifact> = match sccache_binary_artifact_pin_expected_identity(artifact: sccache_aarch64_artifact) {
-  Present { value: expected } => Pin {
-    subject: sccache_aarch64_artifact,
-    version: "0.15.0" as VersionIdentity,
-    expected_identity: expected,
-    selection: ExactPin,
-  }
-  Absent => Pin {
-    subject: sccache_aarch64_artifact,
-    version: "0.15.0" as VersionIdentity,
-    expected_identity: "witness-unreachable-absent-identity" as ContentHash,
-    selection: ExactPin,
-  }
-}
-
-data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. Pin<SccacheBinaryArtifact> pins ONE cited musl tarball per row; expected_identity is DERIVED from the release's named digest field via sha256_digest_content_hash, never re-minted. RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin — the whole point of release x platform grain. RED CONTROL unsupported_arch_content_identity_refuses fails if identity projection substitutes aarch64 for Riscv64 (review 44843)."
+data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. Pin<SccacheBinaryArtifact> pins ONE cited musl tarball per row; expected_identity is DERIVED from the release's named digest field via sha256_digest_content_hash, never re-minted. RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin — the whole point of release x platform grain. RED CONTROL unsupported_arch_cannot_construct_artifact fails if Riscv64 can inhabit SccacheBinaryArtifact (review 44866 construction wall)."
 
 test fn sccache_pin_expected_identity_is_derived_from_cited_row() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
-    Present { value: h } => sccache_aarch64_pin.expected_identity == h
-    Absent => false
-  }
+  sccache_aarch64_pin.expected_identity == sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact)
 }
 
 test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
-    Present { value: aarch } =>
-      match sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
-        Present { value: x86 } => aarch != x86
-        Absent => false
-      }
-    Absent => false
-  }
+  sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) != sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact)
 }
 
-test fn unsupported_arch_content_identity_refuses() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_riscv64_artifact) {
+test fn unsupported_arch_cannot_construct_artifact() -> Bool {
+  match sccache_published_musl_arch_of(arch: Riscv64) {
+    Absent => true
+    Present { value: _ } => false
+  } && match sccache_binary_artifact_for_arch(
+    binary_release: sccache_release_0_15_0,
+    arch: Riscv64,
+  ) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn sccache_aarch64_pin_admits_matching_observation() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact) {
-    Present { value: observed } =>
-      match admit_pin_integrity(pin: sccache_aarch64_pin, observed_identity: observed) {
-        PinIntegrityAdmitted { pin: p } => p.subject.arch == Aarch64
-        PinRefused { subject: _, cause: _ } => false
-      }
-    Absent => false
+  match admit_pin_integrity(
+    pin: sccache_aarch64_pin,
+    observed_identity: sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact),
+  ) {
+    PinIntegrityAdmitted { pin: p } => p.subject.arch == SccacheMuslAarch64
+    PinRefused { subject: _, cause: _ } => false
   }
 }
 
 test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
-  match sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact) {
-    Present { value: x86_identity } =>
-      match admit_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
-        PinIntegrityAdmitted { pin: _ } => false
-        PinRefused { subject: subj, cause: c } =>
-          (subj.arch == Aarch64)
-            && match c {
-                 ObservedIdentityMismatch { expected: e, observed: o } =>
-                   (e == sccache_aarch64_pin.expected_identity) && (o == x86_identity)
-                 _ => false
-               }
-      }
-    Absent => false
+  let x86_identity = sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact)
+  match admit_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
+    PinIntegrityAdmitted { pin: _ } => false
+    PinRefused { subject: subj, cause: c } =>
+      (subj.arch == SccacheMuslAarch64)
+        && match c {
+             ObservedIdentityMismatch { expected: e, observed: o } =>
+               (e == sccache_aarch64_pin.expected_identity) && (o == x86_identity)
+             _ => false
+           }
   }
 }
