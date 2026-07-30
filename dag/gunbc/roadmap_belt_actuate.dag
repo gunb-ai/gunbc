@@ -371,13 +371,15 @@ type AttemptOraclePinCapture
     }
   | OraclePinNotRecorded { reason: String }
 
+data belt_oracle_refs_primitive_note: String = "This projection used filter_map, which type-checks and DOES NOT RUN: std.primitives declares a filter_map contract but the seed registers no method for it, so the call reached the interpreter as `not yet implemented` and took the dispatch route to a 500. Found by a live dispatch on the lab, not by the whole-tree compile (0 blocking errors) and not by this lane's own witnesses — which is the specification-without-execution trap in DESIGN section 5 landing one layer below where this PR was watching for it: I checked that MY functions were exercised and never checked that the PRIMITIVES they call exist. The corpus had zero filter_map call sites before this change, which is why nothing else had already surfaced it. flat_map is the same fold with a registered implementation, and returning a one-or-zero element list is exactly the Present/none the contract described."
+
 fn belt_oracle_refs_for_contract(
   contract: WorkItemExecutionContract,
 ) -> List<ValidationOracleRef> {
   validation_oracle_scopes(contract: contract)
-    |> filter_map(scope => match scope {
-      OraclePinnable { oracle } => Present { value: oracle }
-      OracleNotPinnable { validation_label: _, reason: _ } => none
+    |> flat_map(scope => match scope {
+      OraclePinnable { oracle } => [oracle]
+      OracleNotPinnable { validation_label: _, reason: _ } => []
     })
 }
 
