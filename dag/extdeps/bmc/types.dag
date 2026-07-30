@@ -5,6 +5,7 @@ import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
 }
+import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -37,6 +38,33 @@ data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = Exte
 }
 
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
+
+type RedfishHostPowerStateContinuityVerdict
+  = RedfishHostPowerStateRemainedOn
+  | RedfishHostPowerStateChanged {
+      power_before: RedfishPowerState,
+      power_after: RedfishPowerState,
+    }
+
+fn redfish_host_power_state_continuity_verdict(
+  power_before: RedfishPowerState,
+  power_after: RedfishPowerState,
+) -> RedfishHostPowerStateContinuityVerdict {
+  match power_before {
+    On =>
+      match power_after {
+        On => RedfishHostPowerStateRemainedOn
+        after => RedfishHostPowerStateChanged {
+          power_before: On,
+          power_after: after,
+        }
+      }
+    before => RedfishHostPowerStateChanged {
+      power_before: before,
+      power_after: power_after,
+    }
+  }
+}
 
 type RedfishProcessorSummary {
   model: NonEmptyStr
@@ -345,6 +373,51 @@ fn bmc_fan_duty_decision(
   }
 }
 
+fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
+  match decision {
+    BmcFanDutyFromCurve { reading: _, duty: duty } => Present { value: duty }
+    BmcFanDutyFromSensorFailsafe { duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_duty_decision_sensor_failsafe_duty(
+  decision: BmcFanDutyDecision,
+) -> Percent? {
+  match decision {
+    BmcFanDutyFromSensorFailsafe { duty: duty } => Present { value: duty }
+    BmcFanDutyFromCurve { reading: _, duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_curve_duty_at_temperature(
+  curve: BmcFanCurve,
+  reading: Celsius,
+) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_curve_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Present { value: reading },
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_sensor_failsafe_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Absent,
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
 type BmcFanControllerShape
   = FanPidIndependentEntries { entry_names: List<NonEmptyStr> }
   | FanPidAggregatedEntry {
@@ -352,10 +425,44 @@ type BmcFanControllerShape
       tach_inputs: List<NonEmptyStr>,
     }
 
+type BmcFanAggregatedControllerTopology {
+  entry_name: NonEmptyStr
+  tach_inputs: List<NonEmptyStr>
+}
+
+fn bmc_fan_controller_shape_aggregated_topology(
+  shape: BmcFanControllerShape,
+) -> BmcFanAggregatedControllerTopology? {
+  match shape {
+    FanPidAggregatedEntry {
+      entry_name: entry_name,
+      tach_inputs: tach_inputs,
+    } =>
+      Present {
+        value: BmcFanAggregatedControllerTopology {
+          entry_name: entry_name,
+          tach_inputs: tach_inputs,
+        },
+      }
+    FanPidIndependentEntries { entry_names: _ } => Absent
+  }
+}
+
+fn bmc_fan_controller_shape_independent_entry_names(
+  shape: BmcFanControllerShape,
+) -> List<NonEmptyStr>? {
+  match shape {
+    FanPidIndependentEntries { entry_names: entry_names } =>
+      Present { value: entry_names }
+    FanPidAggregatedEntry { entry_name: _, tach_inputs: _ } => Absent
+  }
+}
+
 type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
   evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
+  active_config_digest: Digest
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr

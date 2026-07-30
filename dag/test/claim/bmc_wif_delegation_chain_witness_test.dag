@@ -160,7 +160,7 @@ test fn main_ci_workflow_grants_no_id_token() -> Bool {
 
 test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Bool {
   secret_ref_credential_authority.module_path == "gunbc.auth.secret_ref_credential"
-    && secret_ref_credential_authority.decl_name == "secret_ref_credential"
+    && secret_ref_credential_authority.decl_name == "fetch_secret_ref_credential"
 }
 
 test fn bmc_smoke_workflow_scopes_id_token_write_to_its_single_designated_job() -> Bool {

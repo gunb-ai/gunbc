@@ -242,6 +242,14 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
       Present { value: _ } => false
       Absent => false
     }
+    && match bmc_credential_probe_to_phase(
+      probe: CredentialAccessUpsertRequired {
+        plan: GoogleCloudInteractiveAuthenticationRequired {},
+      },
+    ) {
+      Absent => true
+      Present { value: _ } => false
+    }
     && match bmc_credential_probe_to_phase(probe: CredentialStateUnknown { reason: "test" }) {
       Absent => true
       Present { value: _ } => false
