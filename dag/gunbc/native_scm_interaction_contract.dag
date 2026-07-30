@@ -269,12 +269,12 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
         proposal: identity,
         options: NativeScmContinuationOptions {
           first_option: NativeScmContinuationOption {
-            choice: "follow the rename",
+            label: "follow the rename",
             result_preview: "follow the rename: keep the new spelling and move the call",
             resume_token: "resume-follow-the-rename",
           },
           second_option: NativeScmContinuationOption {
-            choice: "keep a separate name",
+            label: "keep a separate name",
             result_preview: "keep a separate name: preserve the old spelling as a distinct meaning",
             resume_token: "resume-keep-separate-name",
           },
@@ -288,12 +288,12 @@ fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmPropos
         proposal: identity,
         options: NativeScmContinuationOptions {
           first_option: NativeScmContinuationOption {
-            choice: "retain goal A",
+            label: "retain goal A",
             result_preview: "retain goal A and drop goal B",
             resume_token: "resume-retain-goal-a",
           },
           second_option: NativeScmContinuationOption {
-            choice: "retain goal B",
+            label: "retain goal B",
             result_preview: "retain goal B and drop goal A",
             resume_token: "resume-retain-goal-b",
           },
@@ -548,67 +548,43 @@ fn native_scm_choice_previews(
 
 fn native_scm_continuation_option(
   continuation: NativeScmContinuation,
-  choice: String,
+  choice: NativeScmContinuationChoice,
 ) -> NativeScmContinuationChoiceLookup {
-  let state = fold(
-    native_scm_continuation_options(continuation: continuation),
-    init: NativeScmContinuationChoiceLookupZero,
-    f: fn(state, option) {
-      if option.choice != choice {
-        state
-      } else {
-        match state {
-          NativeScmContinuationChoiceLookupZero =>
-            NativeScmContinuationChoiceLookupOne {
-              first: option,
+  native_scm_continuation_choice_fold(
+    choice: choice,
+    fold: NativeScmContinuationChoiceFold {
+      first: fn() {
+        NativeScmContinuationChoiceMatched {
+          option: continuation.options.first_option,
+        }
+      },
+      second: fn() {
+        NativeScmContinuationChoiceMatched {
+          option: continuation.options.second_option,
+        }
+      },
+      additional: fn(index) {
+        match list_at_optional(
+          xs: continuation.options.additional_options,
+          index: index as Int,
+        ) {
+          Present { value } =>
+            NativeScmContinuationChoiceMatched {
+              option: value,
             }
-          NativeScmContinuationChoiceLookupOne { first } =>
-            NativeScmContinuationChoiceLookupMany {
-              first: first,
-              second: option,
-              additional_reversed: [],
-            }
-          NativeScmContinuationChoiceLookupMany {
-            first,
-            second,
-            additional_reversed,
-          } =>
-            NativeScmContinuationChoiceLookupMany {
-              first: first,
-              second: second,
-              additional_reversed: append(
-                [option],
-                items: additional_reversed,
-              ),
+          Absent =>
+            NativeScmContinuationChoiceNotOffered {
+              choice: choice,
             }
         }
-      }
+      },
     },
   )
-  match state {
-    NativeScmContinuationChoiceLookupZero =>
-      NativeScmContinuationChoiceNotOffered
-    NativeScmContinuationChoiceLookupOne { first } =>
-      NativeScmContinuationChoiceMatched {
-        option: first,
-      }
-    NativeScmContinuationChoiceLookupMany {
-      first,
-      second,
-      additional_reversed,
-    } =>
-      NativeScmContinuationChoiceAmbiguous {
-        choice: choice,
-        first: first,
-        second: second,
-        additional: reverse(additional_reversed),
-      }
-  }
 }
 
 fn native_scm_resolve_choice(
   receipt: NativeScmReceipt,
-  choice: String,
+  choice: NativeScmContinuationChoice,
 ) -> NativeScmPrimaryOutcome {
   match receipt.primary {
     ChoiceRequired { question: _, continuation } =>
@@ -621,26 +597,13 @@ fn native_scm_resolve_choice(
           matched: fn(option) {
             Landed { result_preview: option.result_preview }
           },
-          not_offered: fn() {
+          not_offered: fn(_) {
             CouldNotLand {
               refusal: NativeScmRefusal {
-                plain_reason: "the answer did not match a stored choice",
+                plain_reason: "the selected option was not offered",
                 responsible_party: "authorized decider",
-                next_action: "select one of the displayed choices",
+                next_action: "select one of the offered options",
                 refusal_receipt: continuation.proposal.attempt_key,
-              },
-            }
-          },
-          ambiguous: fn(answer, _, _, _) {
-            CouldNotLand {
-              refusal: NativeScmRefusal {
-                plain_reason: "the answer matches more than one stored choice",
-                responsible_party: "workspace owner",
-                next_action: "repair the duplicated choice labels before asking again",
-                refusal_receipt: concat(
-                  continuation.proposal.attempt_key,
-                  concat(":", answer),
-                ),
               },
             }
           },

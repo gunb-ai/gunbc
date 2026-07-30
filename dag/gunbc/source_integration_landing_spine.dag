@@ -22,6 +22,7 @@ import gunbc.native_scm_interaction_contract {
   NativeScmContinuation,
   NativeScmContinuationOption,
   NativeScmContinuationOptions,
+  NativeScmContinuationChoice,
   NativeScmContinuationChoiceLookupFold,
   NativeScmPrimaryOutcome,
   NativeScmRefusal,
@@ -37,7 +38,7 @@ import gunbc.scm_compatibility_shape {
   CompatibilityTargetHandle,
 }
 
-data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. This carrier is the first semantic consumer behind the landed C0 presentation fixture and R1 compatibility boundary. It keeps proposal contract, admitted claim assessments, bounded result-space classification, admission, transition, and projection status in separate layers, then projects them through one user boundary. Closed-one carries only a ready-evidence profile plus all eight closure receipts; admission consumes that closed-one receipt; transition consumes the admitted receipt; no later stage accepts an unrelated proposal or raw result. A normative question owns the proposal contract and derives its C0 continuation identity from that one authority; duplicate visible choice labels refuse as ambiguous rather than selecting a token. A committed result is writable only together with independent read-back. Stale-parent, approval, retryable-effect, projection-repair, and unfinished-investigation states retain machine continuations and cannot become user questions. A terminal refusal is typed, located, counted, and also carries a plain explanation. This is an executing scenario model, not the P1 reconciliation kernel, P2 source capture, P3 effect transport, or a CLI."
+data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. This carrier is the first semantic consumer behind the landed C0 presentation fixture and R1 compatibility boundary. It keeps proposal contract, admitted claim assessments, bounded result-space classification, admission, transition, and projection status in separate layers, then projects them through one user boundary. Closed-one carries only a ready-evidence profile plus all eight closure receipts; admission consumes that closed-one receipt; transition consumes the admitted receipt; no later stage accepts an unrelated proposal or raw result. A normative question owns the proposal contract and derives its C0 continuation identity from that one authority; answers select the displayed option's structural position, so equal labels cannot collapse distinct resume tokens. A committed result is writable only together with independent read-back. Stale-parent, approval, retryable-effect, projection-repair, and unfinished-investigation states retain machine continuations and cannot become user questions. A terminal refusal is typed, located, counted, and also carries a plain explanation. This is an executing scenario model, not the P1 reconciliation kernel, P2 source capture, P3 effect transport, or a CLI."
 
 type LandingProposalOccurrenceId = NonEmptyStr where brand("LandingProposalOccurrenceId")
 type LandingAttemptId = NonEmptyStr where brand("LandingAttemptId")
@@ -261,22 +262,18 @@ type LandingChoiceResolution
     }
   | LandingChoiceNotOffered {
       proposal: NativeScmProposalIdentity,
-      answer: String,
-    }
-  | LandingChoiceAmbiguous {
-      proposal: NativeScmProposalIdentity,
-      answer: String,
+      choice: NativeScmContinuationChoice,
     }
 
 fn landing_resolve_question(
   question: LandingNormativeQuestion,
-  answer: String,
+  choice: NativeScmContinuationChoice,
 ) -> LandingChoiceResolution {
   let continuation = landing_question_continuation(question: question)
   native_scm_continuation_choice_lookup_fold(
     lookup: native_scm_continuation_option(
       continuation: continuation,
-      choice: answer,
+      choice: choice,
     ),
     fold: NativeScmContinuationChoiceLookupFold {
       matched: fn(option) {
@@ -285,16 +282,10 @@ fn landing_resolve_question(
           resume_token: option.resume_token,
         }
       },
-      not_offered: fn() {
+      not_offered: fn(not_offered) {
         LandingChoiceNotOffered {
           proposal: continuation.proposal,
-          answer: answer,
-        }
-      },
-      ambiguous: fn(_, _, _, _) {
-        LandingChoiceAmbiguous {
-          proposal: continuation.proposal,
-          answer: answer,
+          choice: not_offered,
         }
       },
     },

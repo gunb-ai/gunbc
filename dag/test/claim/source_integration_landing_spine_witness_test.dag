@@ -17,6 +17,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
   NativeScmContinuationOption,
   NativeScmContinuationOptions,
+  NativeScmFirstContinuationOption,
+  NativeScmSecondContinuationOption,
   NativeScmPrimaryOutcome,
   Landed,
   ChoiceRequired,
@@ -59,7 +61,6 @@ import gunbc.source_integration_landing_spine {
   LandingNormativeQuestion,
   LandingChoiceResumed,
   LandingChoiceNotOffered,
-  LandingChoiceAmbiguous,
   LandingRequiredClaimBlocking,
   LandingClosureCertificateMissing,
   LandingSearchBoundExhausted,
@@ -233,12 +234,12 @@ fn p0_question() -> LandingNormativeQuestion {
     question: "Should the new call use the renamed function or keep a separate function?",
     options: NativeScmContinuationOptions {
       first_option: NativeScmContinuationOption {
-        choice: "use the renamed function",
+        label: "use the renamed function",
         result_preview: "The new call uses the renamed function.",
         resume_token: "resume-use-renamed-function",
       },
       second_option: NativeScmContinuationOption {
-        choice: "keep a separate function",
+        label: "keep a separate function",
         result_preview: "The original name remains as a separate function.",
         resume_token: "resume-keep-separate-function",
       },
@@ -258,7 +259,7 @@ fn p0_primary_messages(
         items: native_scm_continuation_options(
           continuation: continuation,
         ) |> flat_map(option => [
-          option.choice as String,
+          option.label as String,
           option.result_preview as String,
         ]),
       )
@@ -439,21 +440,19 @@ test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
   )) == 2
     && match landing_resolve_question(
       question: question,
-      answer: "use the renamed function",
+      choice: NativeScmFirstContinuationOption,
     ) {
       LandingChoiceResumed { proposal: _, resume_token } =>
         resume_token == "resume-use-renamed-function"
-      LandingChoiceNotOffered { proposal: _, answer: _ } => false
-      LandingChoiceAmbiguous { proposal: _, answer: _ } => false
+      LandingChoiceNotOffered { proposal: _, choice: _ } => false
     }
     && match landing_resolve_question(
       question: question,
-      answer: "keep a separate function",
+      choice: NativeScmSecondContinuationOption,
     ) {
       LandingChoiceResumed { proposal: _, resume_token } =>
         resume_token == "resume-keep-separate-function"
-      LandingChoiceNotOffered { proposal: _, answer: _ } => false
-      LandingChoiceAmbiguous { proposal: _, answer: _ } => false
+      LandingChoiceNotOffered { proposal: _, choice: _ } => false
     }
     && match boundary {
       LandingUserOutcome {
@@ -468,7 +467,7 @@ test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
     }
 }
 
-test fn witness_p0_duplicate_choice_labels_refuse_ambiguity() -> Bool {
+test fn witness_p0_equal_labels_keep_distinct_resume_tokens() -> Bool {
   let proposal = p0_proposal_at(
     submitted_at: "2026-07-29T08:00:00Z",
   )
@@ -478,12 +477,12 @@ test fn witness_p0_duplicate_choice_labels_refuse_ambiguity() -> Bool {
     question: "Which same-named result did you intend?",
     options: NativeScmContinuationOptions {
       first_option: NativeScmContinuationOption {
-        choice: "use this result",
+        label: "use this result",
         result_preview: "first result",
         resume_token: "resume-first-result",
       },
       second_option: NativeScmContinuationOption {
-        choice: "use this result",
+        label: "use this result",
         result_preview: "second result",
         resume_token: "resume-second-result",
       },
@@ -492,13 +491,12 @@ test fn witness_p0_duplicate_choice_labels_refuse_ambiguity() -> Bool {
   }
   match landing_resolve_question(
     question: question,
-    answer: "use this result",
+    choice: NativeScmSecondContinuationOption,
   ) {
-    LandingChoiceAmbiguous { proposal: identity, answer } =>
+    LandingChoiceResumed { proposal: identity, resume_token } =>
       identity.attempt_key == expected_identity.attempt_key
-        && answer == "use this result"
-    LandingChoiceResumed { proposal: _, resume_token: _ } => false
-    LandingChoiceNotOffered { proposal: _, answer: _ } => false
+        && resume_token == "resume-second-result"
+    LandingChoiceNotOffered { proposal: _, choice: _ } => false
   }
 }
 
