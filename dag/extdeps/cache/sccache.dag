@@ -8,7 +8,8 @@ import extdeps.cache.types {
   SccacheInternalEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
-import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line }
+import extdeps.crypto.hash { Digest, sha256_digest, digest_shell_verify_line, sha256_digest_content_hash }
+import std.types { ContentHash }
 import std.cache_interface {
   NativeInternalLookup,
   OverwriteAllowed,
@@ -65,6 +66,26 @@ type SccacheBinaryRelease {
   version: NonEmptyStr
   digest_aarch64: Digest
   digest_x86_64: Digest
+}
+
+data sccache_binary_artifact_grain_note: String = "For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned. SccacheBinaryArtifact is the release x published-architecture product: one cited digest per row, projected from the release's named digest_aarch64 / digest_x86_64 fields — never re-minted. SccachePublishedArch is the total subset of extdeps.toolchain.types.Architecture this cited release actually publishes (the same two arms sccache_release_digest and sccache_release_arch_token admit as Present); unsupported host architectures are refused at construction rather than absorbed into a default digest arm. CpuArchitecture and TargetArchitecture in std are byte-identical forks (DESIGN section 3) and are deliberately NOT imported here — Architecture from extdeps.toolchain.types is the single authority already consumed by sccache_release_digest."
+
+type SccachePublishedArch = Aarch64 | X86_64
+
+type SccacheBinaryArtifact {
+  release: SccacheBinaryRelease
+  arch: SccachePublishedArch
+}
+
+fn sccache_binary_artifact_authority_digest(artifact: SccacheBinaryArtifact) -> Digest {
+  match artifact.arch {
+    Aarch64 => artifact.release.digest_aarch64
+    X86_64 => artifact.release.digest_x86_64
+  }
+}
+
+fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
+  sha256_digest_content_hash(digest: sccache_binary_artifact_authority_digest(artifact: artifact))
 }
 
 data sccache_release_0_15_0: SccacheBinaryRelease = SccacheBinaryRelease {

@@ -1,0 +1,32 @@
+module extdeps.cache.pin
+
+import std.types { NonEmptyStr, String, ContentHash }
+import extdeps.pin { Pin }
+import extdeps.cache.sccache {
+  SccacheBinaryArtifact,
+  Aarch64,
+  X86_64,
+  sccache_binary_artifact_content_identity,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/mozilla/sccache/releases"
+  }
+}
+
+data sccache_pin_instantiation_note: String = "THE INSTANTIATION for extdeps.cache.sccache's multi-artifact release rows. extdeps.pin owns Pin<Subject>; this module binds that dimension to SccacheBinaryArtifact (release x published arch) and owns only subject-specific projection: how to derive expected_identity from the cited digest row and how to key reconcile membership. Pin<SccacheBinaryRelease> remains unsound — one release row carries two digests — so the subject is the artifact product modeled at sccache_binary_artifact_grain_note."
+
+fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
+  sccache_binary_artifact_content_identity(artifact: artifact)
+}
+
+fn sccache_binary_artifact_pin_key_of(pin: Pin<SccacheBinaryArtifact>) -> NonEmptyStr {
+  match pin.subject.arch {
+    Aarch64 => join([pin.subject.release.version as String, "-aarch64"], "") as NonEmptyStr
+    X86_64 => join([pin.subject.release.version as String, "-x86_64"], "") as NonEmptyStr
+  }
+}

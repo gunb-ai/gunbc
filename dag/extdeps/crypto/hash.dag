@@ -1,6 +1,6 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, ContentHash, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -28,5 +28,13 @@ fn sha256_digest(hex: NonEmptyStr) -> Digest {
 fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
   match digest.algorithm {
     Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
+  }
+}
+
+data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extdeps.crypto.hash.Digest to std.types.ContentHash for artifact pins — NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag, dag/extdeps/provisioning/ubuntu_install_media_fetch.dag install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority value; ContentHash is the branded carrier Pin and OCI descriptors use for expected_identity. sha256_digest_content_hash renders the cited hex into the OCI-style sha256:<hex> wire form already used by extdeps.container.oci.descriptor and extdeps.container.oci.ctrl_session_witness — one rendering rule, not a second digest concept and not a silent cast between unrelated hash families."
+
+fn sha256_digest_content_hash(digest: Digest) -> ContentHash {
+  match digest.algorithm {
+    Sha256 => join(["sha256:", digest.hex as String]) as ContentHash
   }
 }
