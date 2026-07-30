@@ -22,7 +22,7 @@ struct PrePushStdinRow {
 
 enum ActiveGate {
     DocWitness { entry: String, function: String },
-    CargoFmt { fail_recipe: String },
+    CargoFmt,
     WitnessCorpus { fail_recipe: String },
 }
 
@@ -161,9 +161,7 @@ fn parse_gate_kind(ctx: &v1_interpreter::InterpContext, val: &Value) -> Result<A
         });
     }
     if ctx.sym_eq(*variant_name, "CargoFmtCheck") {
-        return Ok(ActiveGate::CargoFmt {
-            fail_recipe: field_str(ctx, fields, "fail_recipe")?,
-        });
+        return Ok(ActiveGate::CargoFmt);
     }
     if ctx.sym_eq(*variant_name, "WitnessCorpusRun") {
         return Ok(ActiveGate::WitnessCorpus {
@@ -195,23 +193,82 @@ fn execute_gate(
             eprintln!("[pre-push] doc reachability: {function}");
             run_claim_batch(claim_batch, plan, entry, function, &["--claim-run"])
         }
-        ActiveGate::CargoFmt { fail_recipe } => {
-            eprintln!("[pre-push] cargo fmt --all --check");
-            let ok = Command::new("cargo")
-                .args(["fmt", "--all", "--check"])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map_err(|e| format!("cargo fmt --all --check: {e}"))?
-                .success();
-            if ok {
-                Ok(())
-            } else {
-                eprintln!("[pre-push] {fail_recipe}");
-                Err("fmt drift".to_string())
-            }
-        }
+        ActiveGate::CargoFmt => execute_cargo_fmt_gate(plan),
         ActiveGate::WitnessCorpus { fail_recipe } => run_witness_corpus(root, plan, fail_recipe),
+    }
+}
+
+/// The fmt gate's three outcomes — clean, drift, could-not-run — are partitioned
+/// by `gunbc.local_tidy_spec`, not here. This transport contributes only the
+/// observation (spawn result / exit status) and asks the plan to render it, so
+/// the rule that "only exit 1 reports drift" has one authority shared with the
+/// emitted hooks rather than a Rust restatement that can drift from them.
+fn execute_cargo_fmt_gate(plan: &PlanCtx) -> Result<(), String> {
+    eprintln!("[pre-push] cargo fmt --all --check");
+    let spawned = Command::new("cargo")
+        .args(["fmt", "--all", "--check"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    let status = match spawned {
+        Ok(status) => status,
+        Err(e) => {
+            // The binary never ran: report unavailability, never a drift finding.
+            let recipe = eval_fmt_recipe(
+                plan,
+                "pre_push_fmt_spawn_refusal_recipe",
+                "cause",
+                Value::Str(e.to_string()),
+            )?;
+            eprintln!("[pre-push] {recipe}");
+            return Err("cargo fmt could not run".to_string());
+        }
+    };
+
+    // A signal-terminated check produced no verdict either; keep it out of the
+    // drift arm by handing the plan a status it classifies as could-not-run.
+    let code = status.code().unwrap_or(-1);
+    if !fmt_status_blocks(plan, code)? {
+        return Ok(());
+    }
+    let recipe = eval_fmt_recipe(
+        plan,
+        "pre_push_fmt_outcome_recipe",
+        "status",
+        Value::Int(i64::from(code)),
+    )?;
+    eprintln!("[pre-push] {recipe}");
+    Err(format!("cargo fmt --all --check exit status {code}"))
+}
+
+fn fmt_status_blocks(plan: &PlanCtx, code: i32) -> Result<bool, String> {
+    let args = [(Some("status".to_string()), Value::Int(i64::from(code)))];
+    match v1_interpreter::run_in_context_with_args(
+        &plan.eval_ctx,
+        "pre_push_fmt_outcome_blocks",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("pre_push_fmt_outcome_blocks: {e}"))?
+    {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!("pre_push_fmt_outcome_blocks not a Bool: {other:?}")),
+    }
+}
+
+fn eval_fmt_recipe(
+    plan: &PlanCtx,
+    function: &str,
+    param: &str,
+    value: Value,
+) -> Result<String, String> {
+    let args = [(Some(param.to_string()), value)];
+    match v1_interpreter::run_in_context_with_args(&plan.eval_ctx, function, &args, false)
+        .map_err(|e| format!("{function}: {e}"))?
+    {
+        Value::Str(s) => Ok(s),
+        other => Err(format!("{function} not a String: {other:?}")),
     }
 }
 

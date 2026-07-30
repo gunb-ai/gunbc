@@ -1,0 +1,149 @@
+module test.claim.local_tidy_fmt_outcome
+
+import gunbc.local_tidy_spec {
+  LocalTidyFmtOutcome,
+  FmtClean,
+  FmtDrift,
+  FmtToolUnavailable,
+  local_tidy_fmt_outcome_recipe,
+  local_tidy_fmt_outcome_of_exit_status,
+  local_tidy_fmt_outcome_blocks,
+  local_tidy_fmt_pre_push_drift_recipe,
+  local_tidy_fmt_pre_commit_drift_recipe,
+}
+import gunbc.githooks_pre_push_plan {
+  pre_push_fmt_outcome_recipe,
+  pre_push_fmt_outcome_blocks,
+  pre_push_fmt_spawn_refusal_recipe,
+}
+import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
+import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
+
+data local_tidy_fmt_outcome_test_note: String = "The defect under witness: a tool that COULD NOT RUN was reported as a negative finding about the work, so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the very binary whose absence produced the message. The discriminating controls are the ones that go RED if the arms are collapsed back together: witness_unavailable_recipe_never_says_drift and witness_unavailable_recipe_proposes_no_cargo_remedy fail the moment FmtToolUnavailable can reach a drift recipe, and the emitted-hook witnesses fail if either hook stops branching on the exit status."
+
+fn has(s: String, p: String) -> Bool {
+  string_contains(s: s, pattern: p)
+}
+
+fn unavailable_recipe(status: Int) -> String {
+  pre_push_fmt_outcome_recipe(status: status)
+}
+
+test fn witness_exit_zero_is_clean() -> Bool {
+  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 0) {
+    FmtClean => true
+    FmtDrift => false
+    FmtToolUnavailable { program: _, cause: _ } => false
+  }
+}
+
+test fn witness_exit_one_is_drift() -> Bool {
+  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 1) {
+    FmtDrift => true
+    FmtClean => false
+    FmtToolUnavailable { program: _, cause: _ } => false
+  }
+}
+
+test fn witness_command_not_found_is_tool_unavailable() -> Bool {
+  match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 127) {
+    FmtToolUnavailable { program, cause } =>
+      program == "cargo" && has(s: cause, p: "127")
+    FmtClean => false
+    FmtDrift => false
+  }
+}
+
+test fn witness_not_executable_and_no_such_subcommand_are_tool_unavailable() -> Bool {
+  let not_executable = match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 126) {
+    FmtToolUnavailable { program: _, cause: _ } => true
+    FmtClean => false
+    FmtDrift => false
+  }
+  let no_such_subcommand = match local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: 101) {
+    FmtToolUnavailable { program: _, cause: _ } => true
+    FmtClean => false
+    FmtDrift => false
+  }
+  not_executable && no_such_subcommand
+}
+
+test fn witness_drift_recipe_is_reached_only_by_the_drift_arm() -> Bool {
+  local_tidy_fmt_outcome_recipe(
+    outcome: FmtDrift,
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  ) == local_tidy_fmt_pre_push_drift_recipe
+}
+
+test fn witness_clean_recipe_is_empty() -> Bool {
+  local_tidy_fmt_outcome_recipe(
+    outcome: FmtClean,
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  ) == ""
+}
+
+test fn witness_unavailable_recipe_never_says_drift() -> Bool {
+  let recipe = unavailable_recipe(status: 127)
+  !has(s: recipe, p: "drift")
+    && !has(s: recipe, p: local_tidy_fmt_pre_push_drift_recipe)
+}
+
+test fn witness_unavailable_recipe_proposes_no_cargo_remedy() -> Bool {
+  let recipe = unavailable_recipe(status: 127)
+  !has(s: recipe, p: "run: cargo fmt")
+    && has(s: recipe, p: "cargo")
+    && has(s: recipe, p: "DID NOT RUN")
+}
+
+test fn witness_unavailable_recipe_is_reachable_for_the_pre_commit_surface_too() -> Bool {
+  let recipe = local_tidy_fmt_outcome_recipe(
+    outcome: FmtToolUnavailable { program: "cargo", cause: "exit status 127" },
+    drift_recipe: local_tidy_fmt_pre_commit_drift_recipe
+  )
+  !has(s: recipe, p: "drift")
+    && !has(s: recipe, p: local_tidy_fmt_pre_commit_drift_recipe)
+}
+
+test fn witness_spawn_refusal_is_tool_unavailable_not_drift() -> Bool {
+  let recipe = pre_push_fmt_spawn_refusal_recipe(cause: "No such file or directory")
+  has(s: recipe, p: "No such file or directory")
+    && has(s: recipe, p: "DID NOT RUN")
+    && !has(s: recipe, p: "drift")
+}
+
+test fn witness_every_non_verdict_status_still_stops_the_line() -> Bool {
+  !local_tidy_fmt_outcome_blocks(outcome: FmtClean)
+    && pre_push_fmt_outcome_blocks(status: 1)
+    && pre_push_fmt_outcome_blocks(status: 127)
+    && pre_push_fmt_outcome_blocks(status: 126)
+    && !pre_push_fmt_outcome_blocks(status: 0)
+}
+
+test fn witness_pre_push_hook_branches_on_exit_status() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  has(s: sh, p: "fmt_rc=0")
+    && has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" != \"0\" ]]; then")
+}
+
+test fn witness_pre_push_hook_reports_tool_unavailable() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  has(s: sh, p: "could not be run (exit status $fmt_rc)")
+    && has(s: sh, p: "DID NOT RUN")
+}
+
+test fn witness_pre_commit_hook_branches_on_exit_status() -> Bool {
+  let sh = expected_githooks_pre_commit_sh()
+  has(s: sh, p: "fmt_rc=0")
+    && has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
+    && has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
+    && has(s: sh, p: "could not be run (exit status $fmt_rc)")
+}
+
+test fn witness_hooks_no_longer_conflate_absence_with_drift() -> Bool {
+  let push = expected_githooks_pre_push_sh()
+  let commit = expected_githooks_pre_commit_sh()
+  !has(s: push, p: "if ! cargo fmt --all --check; then")
+    && !has(s: commit, p: "if cargo fmt --all --check; then")
+}

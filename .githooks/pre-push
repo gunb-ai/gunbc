@@ -4,7 +4,13 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 echo "[pre-push] cargo fmt --all --check"
-if ! cargo fmt --all --check; then
+fmt_rc=0
+cargo fmt --all --check || fmt_rc=$?
+if [[ "$fmt_rc" == "1" ]]; then
   echo "[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)" >&2
+  exit 1
+fi
+if [[ "$fmt_rc" != "0" ]]; then
+  echo "[pre-push] cargo could not be run (exit status $fmt_rc) — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run; git's --no-verify skips this hook." >&2
   exit 1
 fi
