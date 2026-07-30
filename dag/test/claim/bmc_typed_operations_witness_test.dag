@@ -5,6 +5,7 @@ import extdeps.bmc.openbmc_fan_control {
   OpenBmcCollectionOne,
   OpenBmcCollectionZero,
   OpenBmcBoolObserved,
+  OpenBmcBoolRefused,
   OpenBmcByteSizeObserved,
   OpenBmcInstantObserved,
   OpenBmcPathObserved,
