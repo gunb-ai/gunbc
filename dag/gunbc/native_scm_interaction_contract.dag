@@ -1,13 +1,15 @@
 module gunbc.native_scm_interaction_contract
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.integer { NonNegativeInt }
 import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+import v2.std.collection { list_at_optional }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
   compatibility_projection_upsert,
 }
 
-data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed choice is backed by a stored resumable option, and choice lookup distinguishes zero, one, and many matching labels so an ambiguous answer cannot select the first token. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
+data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed label is backed by a stored resumable option, and selection uses the option's structural position rather than caller-authored display text. Equal labels therefore cannot collapse two resume tokens into an ambiguous identity. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 
 type NativeScmProposalIdentity {
   name: String
@@ -36,7 +38,7 @@ type NativeScmProjection {
 }
 
 type NativeScmContinuationOption {
-  choice: NonEmptyStr
+  label: NonEmptyStr
   result_preview: NonEmptyStr
   resume_token: NonEmptyStr
 }
@@ -52,27 +54,44 @@ type NativeScmContinuation {
   options: NativeScmContinuationOptions
 }
 
+type NativeScmContinuationChoice
+  = NativeScmFirstContinuationOption
+  | NativeScmSecondContinuationOption
+  | NativeScmAdditionalContinuationOption {
+      index: NonNegativeInt,
+    }
+
+type NativeScmContinuationChoiceFold<R> {
+  first: fn() -> R
+  second: fn() -> R
+  additional: fn(NonNegativeInt) -> R
+}
+
+fn native_scm_continuation_choice_fold<R>(
+  choice: NativeScmContinuationChoice,
+  fold: NativeScmContinuationChoiceFold<R>,
+) -> R {
+  match choice {
+    NativeScmFirstContinuationOption =>
+      fold.first()
+    NativeScmSecondContinuationOption =>
+      fold.second()
+    NativeScmAdditionalContinuationOption { index } =>
+      fold.additional(index)
+  }
+}
+
 type NativeScmContinuationChoiceLookup
   = NativeScmContinuationChoiceMatched {
       option: NativeScmContinuationOption,
     }
-  | NativeScmContinuationChoiceNotOffered
-  | NativeScmContinuationChoiceAmbiguous {
-      choice: String,
-      first: NativeScmContinuationOption,
-      second: NativeScmContinuationOption,
-      additional: List<NativeScmContinuationOption>,
+  | NativeScmContinuationChoiceNotOffered {
+      choice: NativeScmContinuationChoice,
     }
 
 type NativeScmContinuationChoiceLookupFold<R> {
   matched: fn(NativeScmContinuationOption) -> R
-  not_offered: fn() -> R
-  ambiguous: fn(
-    String,
-    NativeScmContinuationOption,
-    NativeScmContinuationOption,
-    List<NativeScmContinuationOption>,
-  ) -> R
+  not_offered: fn(NativeScmContinuationChoice) -> R
 }
 
 fn native_scm_continuation_choice_lookup_fold<R>(
@@ -82,28 +101,10 @@ fn native_scm_continuation_choice_lookup_fold<R>(
   match lookup {
     NativeScmContinuationChoiceMatched { option } =>
       fold.matched(option)
-    NativeScmContinuationChoiceNotOffered =>
-      fold.not_offered()
-    NativeScmContinuationChoiceAmbiguous {
-      choice,
-      first,
-      second,
-      additional,
-    } =>
-      fold.ambiguous(choice, first, second, additional)
+    NativeScmContinuationChoiceNotOffered { choice } =>
+      fold.not_offered(choice)
   }
 }
-
-type NativeScmContinuationChoiceLookupState
-  = NativeScmContinuationChoiceLookupZero
-  | NativeScmContinuationChoiceLookupOne {
-      first: NativeScmContinuationOption,
-    }
-  | NativeScmContinuationChoiceLookupMany {
-      first: NativeScmContinuationOption,
-      second: NativeScmContinuationOption,
-      additional_reversed: List<NativeScmContinuationOption>,
-    }
 
 type NativeScmRefusal {
   plain_reason: String
