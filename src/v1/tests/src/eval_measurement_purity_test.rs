@@ -10,6 +10,9 @@ fn outcome_tag(o: &ClaimOutcome) -> &'static str {
         ClaimOutcome::Fail => "FAIL",
         ClaimOutcome::NotBool { .. } => "NOTBOOL",
         ClaimOutcome::RuntimeError { .. } => "RUNTIMEERR",
+        // Distinct from RUNTIMEERR on purpose: a budget kill is not a runtime fault,
+        // and its elapsed value is a ceiling rather than a measured duration.
+        ClaimOutcome::TimedOut { .. } => "TIMEDOUT",
     }
 }
 

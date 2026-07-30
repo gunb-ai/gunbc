@@ -48,3 +48,28 @@ data posix_root_uid: Int = 0
 fn posix_user_is_root(user: PosixUser) -> Bool {
   user.uid == posix_root_uid
 }
+
+data file_mode_octal_note: String = "The octal spelling is a SERIALIZATION of FileMode, not a second representation of it — the same relation hex has to an sRGB triple. chmod's numeric mode is four octal digits, most significant first: setuid/setgid/sticky, then the owner, group, and other classes, each digit the sum read=4 + write=2 + execute=1 (Open Group sys/stat.h, the authority this module is anchored to). All four digits are rendered rather than the three this repo's callers happen to need today, because a serializer that silently dropped the special-bits digit would emit a mode that means something else the moment setgid is set — the leading digit is 0 here by computation, never by assumption. This exists because FilePermissions had no way to reach a host argv, which is a large part of why it sat modeled and unconsumed."
+
+fn permission_bits_octal_digit(bits: PermissionBits) -> Int {
+  let r = if bits.read { 4 } else { 0 }
+  let w = if bits.write { 2 } else { 0 }
+  let x = if bits.execute { 1 } else { 0 }
+  r + w + x
+}
+
+fn file_mode_special_octal_digit(mode: FileMode) -> Int {
+  let s = if mode.setuid { 4 } else { 0 }
+  let g = if mode.setgid { 2 } else { 0 }
+  let t = if mode.sticky { 1 } else { 0 }
+  s + g + t
+}
+
+fn file_mode_octal(mode: FileMode) -> String {
+  join([
+    to_string(file_mode_special_octal_digit(mode: mode)),
+    to_string(permission_bits_octal_digit(bits: mode.owner)),
+    to_string(permission_bits_octal_digit(bits: mode.group)),
+    to_string(permission_bits_octal_digit(bits: mode.other)),
+  ], "")
+}
