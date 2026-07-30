@@ -1671,6 +1671,96 @@ fn active_roadmap_nodes() -> List<RoadmapNode> {
   declared_roadmap_nodes() |> filter(n => !(accepted |> any(a => a == n.node)))
 }
 
+data acceptance_task_projection_boundary_note: String = "The derived tasks are added at the PROJECTION, not to active_roadmap_nodes. Folding them into the active set reded witness_active_set_is_declared_minus_accepted and witness_accepted_parent_discharges_active_dependency, and those witnesses are right: 'active = declared minus accepted' is a law about the AUTHORITY, and a derived projection row is not a declared deliverable. Keeping the law intact is also what makes the derivation safe — the authority stays exactly what someone authored, and the frontier view is a function of it."
+
+fn projected_roadmap_nodes() -> List<RoadmapNode> {
+  concat(active_roadmap_nodes(), acceptance_task_nodes())
+}
+
+fn projected_roadmap_edges() -> List<RoadmapEdge> {
+  concat(active_roadmap_edges(), acceptance_task_edges())
+}
+
+data acceptance_task_derivation_note: String = "ACCEPTANCE TASKS ARE DERIVED, NOT AUTHORED (operator ruling 2026-07-29: 'you shouldn't need to manually maintain that stuff — the relationship should be inferred from one side or the other'). The first cut hand-wrote four acceptance nodes and four edges, and one had to be hand-removed within minutes because pderive-typesafe-nullary-reflection was already accepted: a new prerequisite on completed work retroactively un-satisfies it, which witness_accepted_parents_precede_dependents caught. That is the hand-maintained-count failure this repository refuses everywhere else — two things that must be kept in step, drifting the moment either side moves.\n\nThe relationship is a FUNCTION of the node: startable (every prerequisite accepted) AND unbound (ExecutionContractUnspecified) means its closing validation does not exist, so authoring that validation is the work that unblocks it. Nothing else needs saying. An accepted node leaves the active set and its task disappears; a node that gains a contract stops being unbound and its task disappears; a node whose prerequisite lands becomes startable and its task appears. No cleanup step exists because there is nothing to clean.\n\nThe frontier is deliberately STARTABLE-only rather than every unbound node. A terminus like v1-zero-hand-maintained-rust is unbound too, but surfacing an acceptance task for work whose prerequisites are years out is noise that would bury the four rows that matter today.\n\nOn identity: a derived row takes a deterministic id from its target rather than a minted one, and that is consistent with the identity law rather than an exception to it. The law governs declared DELIVERABLES, which must survive rename and reordering. An acceptance task is a projection of a frontier state — it has no history to preserve, it exists exactly while its target lacks a contract, and if the target's slug changes it is honestly a different task."
+
+fn node_is_startable(n: RoadmapNode) -> Bool {
+  let accepted = accepted_roadmap_node_ids()
+  all(
+    roadmap_parent_ids(edges: declared_roadmap_edges(), node: n.node),
+    p => accepted |> any(a => a == (p as String)),
+  )
+}
+
+fn node_lacks_closing_validation(n: RoadmapNode) -> Bool {
+  match n.execution {
+    ExecutionContractUnspecified => true
+    ExecutionContract { validations: _, extra_capabilities: _ } => false
+  }
+}
+
+fn ticket_headline_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.headline
+    Absent => n.node as String
+  }
+}
+
+fn ticket_red_control_of(n: RoadmapNode) -> String {
+  match line_ticket(item: n.line) {
+    Present { value: t } => t.red_control
+    Absent => "the node states no red control"
+  }
+}
+
+fn nodes_needing_acceptance() -> List<RoadmapNode> {
+  let accepted = accepted_roadmap_node_ids()
+  declared_roadmap_nodes()
+    |> filter(n => !(accepted |> any(a => a == n.node)))
+    |> filter(n => node_lacks_closing_validation(n: n))
+    |> filter(n => node_is_startable(n: n))
+}
+
+fn acceptance_task_for(n: RoadmapNode) -> RoadmapNode {
+  RoadmapNode {
+    identity: concat(n.identity as String, "-acceptance") as RoadmapNodeIdentity,
+    node: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+    line: TicketLine {
+      done: false,
+      ticket: fields(
+        headline: concat("Write the acceptance check for: ", ticket_headline_of(n: n)),
+        boundary: concat("One executable check states when this is done, transcribed from the node's own bar: ", ticket_red_control_of(n: n)),
+        displaced_cost: "Turns a prose bar into a runnable verdict, so the node it gates can be dispatched and its completion checked rather than judged.",
+        first_slice: "Write the check and prove each refusal arm fires on a planted input.",
+        red_control: concat("The check must fail when the condition fails: ", ticket_red_control_of(n: n)),
+        out_of_scope: "Write the statement of done; do not do the work it gates.",
+        handback: "Return the executable check, each arm firing on a planted input, and the gated node bound to it."
+      ),
+    },
+    carriers: n.carriers,
+    sizing: Sized {
+      intricacy: IntricacyLow,
+      volume: VolumeSmall,
+      repo: "gunbc",
+      acceptance: ManualAcceptance,
+    },
+    execution: ExecutionContractUnspecified,
+    owner: n.owner,
+    signoff: Unsigned,
+  }
+}
+
+fn acceptance_task_nodes() -> List<RoadmapNode> {
+  nodes_needing_acceptance() |> map(n => acceptance_task_for(n: n))
+}
+
+fn acceptance_task_edges() -> List<RoadmapEdge> {
+  nodes_needing_acceptance()
+    |> map(n => RoadmapEdge {
+      child: n.node,
+      parent: concat(n.node as String, "-acceptance") as RoadmapNodeId,
+    })
+}
+
 fn active_roadmap_edges() -> List<RoadmapEdge> {
   let accepted = accepted_roadmap_node_ids()
   declared_roadmap_edges() |> filter(e =>
@@ -1689,7 +1779,7 @@ fn preamble() -> List<MarkdownBlock> {
 data roadmap_focus_selection_note: String = "THE ONE ROW THAT SETS THE VIEW. Focusing is a projection policy, not an edit — every node and edge stays declared in this file, the dispatch surface still sees the whole graph, and setting this back to NoFocus restores the full page with no recovery step. It is set to the v1 exit lane because that is the sustained effort under way (the v1 → v2 emitter exit plan); the other lanes remain real work, they are simply not on the page while this one is being ground out. The projection states how many it is hiding, derived rather than transcribed, so a focused page can never read as a shorter roadmap."
 
 data roadmap_focus_selection: RoadmapFocus = FocusOnOwners {
-  label: "the v1 → v2 emitter exit lane",
+  label: "the v1 deletion lane",
   owners: ["self-host"],
 }
 
@@ -1718,8 +1808,8 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
         if focus_is_active(focus: focus) {
           [section_prose(content: focus_notice(
             focus: focus,
-            nodes: active_roadmap_nodes(),
-            edges: active_roadmap_edges(),
+            nodes: projected_roadmap_nodes(),
+            edges: projected_roadmap_edges(),
           ))]
         } else {
           []
@@ -1729,13 +1819,13 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
             label: "",
             nodes: focus_visible_nodes(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             ),
             edges: focus_visible_edges(
               focus: focus,
-              nodes: active_roadmap_nodes(),
-              edges: active_roadmap_edges(),
+              nodes: projected_roadmap_nodes(),
+              edges: projected_roadmap_edges(),
             )
           ),
         ],
