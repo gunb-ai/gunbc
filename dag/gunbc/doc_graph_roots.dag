@@ -245,6 +245,12 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     work: DeclarationRef { module_path: "extdeps.tools", decl_name: "resolve", field: WholeDeclaration },
     dissolution: HasTrigger { text: "P1/P2 land the digest-bearing pin and the tool instantiation of gunbc.membership_reconcile — extdeps.tools.resolve gains its ensure arm and the four forked resolvers delete; the pin carrier becomes the authority and the plan registers as a gunbc.plan.Plan row" },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "ci-invocation-fixed-tax-attribution",
+    work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_selection_control_step_note", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's return trigger (selection control back per-PR when the suite runs in seconds) consumes its measurements" },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
