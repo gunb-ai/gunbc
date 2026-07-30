@@ -104,5 +104,6 @@ data pin_value_eq_note: String = "The bundle member the reconcile hands to gunbc
 
 fn pin_value_eq<Subject>(a: Pin<Subject>, b: Pin<Subject>) -> Bool {
   (a.version == b.version)
+    && (a.expected_identity == b.expected_identity)
     && (a.selection == b.selection)
 }
