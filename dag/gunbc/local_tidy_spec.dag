@@ -74,3 +74,61 @@ fn local_tidy_path_matches_trigger(path: String, check: LocalTidyCheck) -> Bool 
   }
 }
 
+type LocalTidyFmtOutcome
+  = FmtClean
+  | FmtDrift
+  | FmtToolUnavailable { program: String, cause: String }
+
+data local_tidy_fmt_outcome_note: String = "A tool that COULD NOT RUN is not a negative finding about the work. The pre-commit hook, the pre-push hook, and the pre_push.rs transport each collapsed a non-zero cargo-fmt exit into 'drift', so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the very binary whose absence caused the message (operator receipt 2026-07-30: hit three times in one session, on both hooks). This is the DESIGN section 5 absorbing fallback read on the answer lattice: 'the tree is unformatted' and 'I could not determine whether the tree is formatted' are different states whose remedies differ, and conflating them zeroes the deficit's observable frequency. The split is decidable from the exit status alone, so it is a construction wall rather than a check: only FmtDrift can reach a drift recipe, because local_tidy_fmt_outcome_recipe routes FmtToolUnavailable to a message that names the program and proposes no remedy depending on it. Resolution is a SEPARATE and independent axis owned by ROADMAP toolchain-single-resolver / toolchain-rust-hermetic (seed carrier InterpError::HostToolUnresolved, deleted at that lane's handback): even a perfectly hermetic cargo leaves this conflation wrong whenever the binary is unreadable, mid-install, or the wrong architecture, which is why the split lands here and does not fork a second resolver."
+
+data local_tidy_fmt_exit_partition_note: String = "Grounded in the observed contract of cargo fmt --all --check, pinned by execution 2026-07-30: 0 = clean, 1 = rustfmt reported diffs (the only exit that is a finding about the work), 127 = the shell could not locate cargo, 126 = located but not executable (wrong architecture, lost permission bit), 101 = cargo ran but has no fmt subcommand (rustfmt component absent mid-install). Every status other than 0 and 1 therefore says the check did not produce a verdict, so the partition is exactly clean / drift / could-not-run. The residue arm is fail-closed by refusal, never by widening: an unrecognized status still stops the line with a non-zero exit, and only the MESSAGE changes, so no unverified push is admitted."
+
+data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
+
+data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust — run: cargo fmt --all && git add -u, then re-commit."
+
+data local_tidy_fmt_drift_recipe_defork_note: String = "local_tidy_fmt_pre_push_drift_recipe was authored byte-identically in BOTH gunbc.githooks_pre_push_emit and gunbc.githooks_pre_push_plan — one string, two authorities, free to drift (DESIGN section 3). Both now import this row. The pre-commit and pre-push drift recipes stay two rows because they are two genuinely different remedies (git add -u then re-commit, versus commit and re-push), not one concept spelled twice."
+
+fn local_tidy_fmt_tool_unavailable_recipe(program: String, cause: String) -> String {
+  concat(
+    concat(program, " could not be run ("),
+    concat(
+      cause,
+      ") — the fmt check DID NOT RUN, so this is not a formatting finding. Install a Rust toolchain so this check can report, then re-run; git's --no-verify skips this hook."
+    )
+  )
+}
+
+fn local_tidy_fmt_outcome_recipe(
+  outcome: LocalTidyFmtOutcome,
+  drift_recipe: String
+) -> String {
+  match outcome {
+    FmtClean => ""
+    FmtDrift => drift_recipe
+    FmtToolUnavailable { program, cause } =>
+      local_tidy_fmt_tool_unavailable_recipe(program: program, cause: cause)
+  }
+}
+
+fn local_tidy_fmt_outcome_of_exit_status(program: String, status: Int) -> LocalTidyFmtOutcome {
+  if status == 0 {
+    FmtClean
+  } else if status == 1 {
+    FmtDrift
+  } else {
+    FmtToolUnavailable {
+      program: program,
+      cause: concat("exit status ", to_string(status))
+    }
+  }
+}
+
+fn local_tidy_fmt_outcome_blocks(outcome: LocalTidyFmtOutcome) -> Bool {
+  match outcome {
+    FmtClean => false
+    FmtDrift => true
+    FmtToolUnavailable { program: _, cause: _ } => true
+  }
+}
+
