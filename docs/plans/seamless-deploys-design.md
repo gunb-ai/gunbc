@@ -22,6 +22,10 @@ correction recorded rather than silently restated:
 - *Item 2* was framed as a §3 de-fork of one readiness fact. There are **two** facts; the tree's own
   `service_ready_means_serving_this_tree_note` and the dated 2026-07-24 incident say so. The digest
   check is irreducible and must survive slice 3 (§2 Concept B).
+- *Item 4's dependency* was stated inconsistently (review 45241) — one section had handover
+  downstream of both readiness and reconciliation, while two others said item 3 is unnecessary for
+  the headline. The single authoritative statement is now the dependency graph in §5: **slice 4
+  requires slice 3, and nothing else in this ticket gates anything.**
 
 ---
 
@@ -271,12 +275,28 @@ Two consequences worth stating up front, both good:
   answer conflated with ⊤-as-ignorance), and it would silently restore today's behaviour while
   looking like a fix. `ObservationUnavailable` should be a typed, located, **counted** refusal.
 
-### Item 4 (handover) is downstream of B and C
+### Item 4 (handover) is downstream of B **only**; C is an independent scope reducer
 
-With B (real readiness) and C (only restart when something changed), item 4's remaining scope
-shrinks a lot: the restarts that survive are the ones that genuinely need to happen, and there is a
-real signal for when the replacement is up. Socket activation (§3) is then one candidate
-realization for covering the residual window, not the whole answer.
+**Corrected (review 45241).** An earlier draft headed this section *"downstream of B and C"* and
+treated the two jointly. That contradicted two later statements in this same note — that item 2 is
+the handover prerequisite (§2 Concept B) and that item 3 is *not* required for the headline outcome
+(§7 q3) — and, read as a plan, it would have gated the cheap handover work on the expensive
+carrier changes. Stated unambiguously, once:
+
+- **B is a prerequisite.** Handover means *move traffic when the replacement is ready*, and there is
+  no trustworthy "the replacement has bound" signal without it. Item 4 cannot be built correctly
+  first.
+- **C is not a prerequisite. It is an independent scope reducer.** C changes *how often* a handover
+  runs, never *whether it works*. A handover built with C still outstanding is correct — it simply
+  performs on all ~40 deploys/day rather than on the subset that changed something. Nothing in item
+  4's design reads any reconciliation fact.
+
+So the dependency edge is **4 → B**, and C sits beside it. This matters for sequencing because C is
+now the most expensive item in the ticket (two load-bearing carrier changes, §2 Concept C) and the
+only one that does not serve the headline: gating item 4 on it would buy nothing and cost the most.
+
+Socket activation (§3) is then one candidate realization for covering the residual window, not the
+whole answer.
 
 ---
 
@@ -352,39 +372,44 @@ Two observations on that dependency:
 
 ## 5. Proposed sequencing
 
-Ordered by displaced cost per unit of risk, respecting the brief's first_slice.
+**The dependency graph, stated once and authoritatively** (slice labels are names, not an order):
 
-**Slice 1 — de-conflate the observation outcome (item 1).** Give the transport arm its own sentence,
-stating what was observed and not asserting a cause. No timing change, no deployment change, no seed
-change. Independently correct regardless of what follows.
+```
+slice 1                  — no dependencies
+slice 3  →  slice 4      — the ONLY hard edge in this ticket
+slice 2a →  2b →  2c     — internally ordered, and independent of 1, 3, 4
+```
 
-**Slice 2a — model the comparable artifact value (item 3, prerequisite).** Give
-`DeploymentArtifactStep` the content identity that makes two installations comparable. Touches a
-load-bearing deploy carrier.
+There is exactly **one** cross-item dependency: **slice 4 requires slice 3**, because a handover
+needs a trustworthy "the replacement has bound" signal. Everything else is independent. In
+particular **slice 2 (item 3) gates nothing** — it is a scope reducer that changes how often a
+handover runs, never whether it works (§2, *Item 4 is downstream of B only*).
 
-**Slice 2b — de-fuse the running service from the unit file (item 3).** Give the service a member
-whose value derives from the 2a identities, so a restart is a consequence of its inputs rather than
-a side-effect of writing a file.
+**Recommended order — headline first, cost last:**
 
-**Slice 2c — the observed provider (item 3).** Supply `observed` to the apply pole so `Unchanged →
-noop` is reached by construction. Removes the avoidable restarts. Requires the refusal arm for
-"could not observe" to be typed/located/counted, and makes the ownership refusal arms live.
+1. **Slice 1 — de-conflate the observation outcome (item 1).** Give the transport arm its own
+   sentence, stating what was observed and not asserting a cause. No timing change, no deployment
+   change, no seed change. The brief's `first_slice`, and correct regardless of what follows.
+2. **Slice 3 — correct systemd's F1 assertion (item 2)**, designed with the listener-acquisition
+   realization (§3.1). `Type=notify` + a readiness signal at the bind point, modelled as a
+   realization rather than cemented. **Does not touch the digest check** (§2 Concept B).
+3. **Slice 4 — the residual window (item 4).** Socket activation, evaluated against §3's three
+   decisions, with the staleness cue. This is where the headline outcome is actually delivered.
+4. **Slice 2a/2b/2c — item 3**, in that internal order, whenever it is worth its cost:
+   - **2a** give `DeploymentArtifactStep` the content identity that makes two installations
+     comparable (load-bearing carrier change);
+   - **2b** de-fuse the running service from the unit file, so a restart is a consequence of its
+     inputs rather than a side-effect of writing a file;
+   - **2c** supply the observed provider, with "could not observe" refusing typed/located/counted.
 
-**Order is load-bearing** (§2 Concept C): 2c without 2a never deploys; 2c without 2b deploys the
-files but not the service. Both typecheck.
+   **The internal order is load-bearing** (§2 Concept C): 2c without 2a never deploys; 2c without 2b
+   deploys the files but not the service. Both typecheck, so neither failure is caught by a type.
 
-**Slice 3 — correct systemd's F1 assertion (item 2), designed with the listener-acquisition
-realization (§3.1).** `Type=notify` + a readiness signal at the bind point, modelled as a
-realization rather than cemented. Enables item 4. **Does not touch the digest check** (§2 Concept
-B).
+Slices 1 and 3 are independent of each other; 3 should be *designed* alongside §3.1 since they share
+the seam.
 
-**Slice 4 — the residual window (item 4).** Socket activation, evaluated against §3's three
-decisions, with the staleness cue.
-
-**Depends on, does not duplicate:** `v1-materialization-kernel`.
-
-Slices 1–3 are independent of each other in implementation, though 3 should be *designed* alongside
-§3.1 since they share the seam.
+**Depends on, does not duplicate:** `v1-materialization-kernel` (§4) — for the headline outcome at
+the limit, not for any slice above.
 
 ---
 
