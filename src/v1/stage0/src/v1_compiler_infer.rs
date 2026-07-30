@@ -1865,7 +1865,14 @@ pub fn where_refinement_diags_for_predicate(
                         }
                     }
                 },
-                None => refinement_refusal,
+                None => Rc::new(vec![where_refinement_unenforced_error(
+                    pname.clone(),
+                    formal.clone(),
+                    "non-literal value at refined position".to_string(),
+                    span.clone(),
+                    module_name.clone(),
+                    source_indices.clone(),
+                )]),
             }
         } else {
             if where_refinement_is_string_literal_predicate(pname.clone()) {
