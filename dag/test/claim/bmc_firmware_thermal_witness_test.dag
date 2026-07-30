@@ -76,7 +76,9 @@ import gunbc.bmc_fan_projection {
   altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   bmc_fan_admitted_config_digest,
   bmc_fan_policy_projection_durability_admission,
-  bmc_fan_policy_projection_live_digest_matches,
+  bmc_fan_policy_projection_live_digest_suitability,
+  BmcFanProjectionLiveDigestMatches,
+  BmcFanProjectionLiveDigestRefused,
   bmc_fan_projected_config_digest,
   bmc_fan_projected_config_digest_sha256_hex,
   bmc_fan_witness_digest_mismatch_sentinel,
@@ -118,7 +120,14 @@ import gunbc.fleet_intent {
   srv4_baseboard,
   srv4_host,
 }
-import std.measure { celsius, celsius_count, percent, percent_count, rpm_count }
+import std.measure {
+  celsius,
+  celsius_count,
+  percent,
+  percent_count,
+  PositiveMeasureCountNonPositive,
+  rpm_count,
+}
 import std.nat { Nat }
 import std.types { NonEmptyStr, list_length }
 import extdeps.uri { Uri, Https }
@@ -530,10 +539,13 @@ test fn srv4_durability_admission_binds_projection_derived_digest() -> Bool {
 
 test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
   srv4_bmc_fan_active_config_digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
-    && bmc_fan_policy_projection_live_digest_matches(
+    && match bmc_fan_policy_projection_live_digest_suitability(
       capability: srv4_bmc_fan_projection_capability,
       observation: srv4_bmc_fan_converged_policy_observation,
-    )
+    ) {
+      BmcFanProjectionLiveDigestMatches => true
+      BmcFanProjectionLiveDigestRefused { cause: _ } => false
+    }
 }
 
 test fn bmc_fan_durability_refusal_reason_surfaces_generation_mismatch() -> Bool {
@@ -1201,7 +1213,9 @@ test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
     receipt: zero_duration_receipt,
   ) {
     BmcFanDurabilityEvidenceConstructionRefused {
-      cause: DurabilityReceiptNonPositiveInterval { observed: 0 },
+      cause: DurabilityReceiptNonPositiveInterval {
+        cause: PositiveMeasureCountNonPositive { observed: 0 },
+      },
     } => true
     BmcFanDurabilityEvidenceBuilt { evidence: _ } => false
   }

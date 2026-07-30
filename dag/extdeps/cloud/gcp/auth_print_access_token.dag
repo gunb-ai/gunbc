@@ -1,6 +1,6 @@
 module extdeps.cloud.gcp.auth_print_access_token
 
-import std.types { Bool, List, String }
+import std.types { List, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -9,51 +9,75 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type GcloudAuthDeficitPattern {
+type GcloudAuthDeficit
+  = GcloudReauthenticationRequired
+  | GcloudNoActiveAccountSelected
+  | GcloudAdcLoadFailure
+  | GcloudAdcMissing
+  | GcloudInvalidGrant
+  | GcloudRefreshError
+  | GcloudNotLoggedIn
+
+type GcloudAuthDeficitPatternRow {
+  deficit: GcloudAuthDeficit
   stderr_substring: String
   observation_note: String
 }
 
-data gcloud_auth_print_access_token_deficit_patterns: List<GcloudAuthDeficitPattern> = [
-  GcloudAuthDeficitPattern {
+data gcloud_auth_print_access_token_deficit_patterns: List<GcloudAuthDeficitPatternRow> = [
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudReauthenticationRequired,
     stderr_substring: "Reauthentication",
     observation_note: "gcloud auth print-access-token interactive reauthentication prompt",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudNoActiveAccountSelected,
     stderr_substring: "not currently have an active account",
     observation_note: "gcloud reports no active account selected",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudAdcLoadFailure,
     stderr_substring: "Could not load the default credentials",
     observation_note: "ADC load failure on stderr",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudAdcMissing,
     stderr_substring: "default credentials were not found",
     observation_note: "ADC missing on stderr",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudInvalidGrant,
     stderr_substring: "invalid_grant",
     observation_note: "OAuth2 invalid_grant token refresh failure",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudRefreshError,
     stderr_substring: "RefreshError",
     observation_note: "google-auth RefreshError wrapper on stderr",
   },
-  GcloudAuthDeficitPattern {
+  GcloudAuthDeficitPatternRow {
+    deficit: GcloudNotLoggedIn,
     stderr_substring: "not logged in",
     observation_note: "gcloud reports operator not logged in",
   },
 ]
 
-fn gcloud_stderr_matches_auth_deficit_pattern(stderr: String) -> Bool {
-  fold(
-    gcloud_auth_print_access_token_deficit_patterns,
-    init: false,
-    f: (matched, deficit_pattern) =>
-      matched
-        || string_contains(
-          s: stderr,
-          pattern: deficit_pattern.stderr_substring,
-        ),
-  )
+fn gcloud_stderr_auth_deficit(stderr: String) -> GcloudAuthDeficit? {
+  if string_contains(s: stderr, pattern: "Reauthentication") {
+    Present { value: GcloudReauthenticationRequired }
+  } else if string_contains(s: stderr, pattern: "not currently have an active account") {
+    Present { value: GcloudNoActiveAccountSelected }
+  } else if string_contains(s: stderr, pattern: "Could not load the default credentials") {
+    Present { value: GcloudAdcLoadFailure }
+  } else if string_contains(s: stderr, pattern: "default credentials were not found") {
+    Present { value: GcloudAdcMissing }
+  } else if string_contains(s: stderr, pattern: "invalid_grant") {
+    Present { value: GcloudInvalidGrant }
+  } else if string_contains(s: stderr, pattern: "RefreshError") {
+    Present { value: GcloudRefreshError }
+  } else if string_contains(s: stderr, pattern: "not logged in") {
+    Present { value: GcloudNotLoggedIn }
+  } else {
+    none
+  }
 }

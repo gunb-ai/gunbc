@@ -13,7 +13,7 @@ import std.upsert_decision {
 }
 import extdeps.shell
 import extdeps.cloud.gcp.auth_print_access_token {
-  gcloud_stderr_matches_auth_deficit_pattern,
+  gcloud_stderr_auth_deficit,
 }
 
 type AccessTokenSource
@@ -50,19 +50,22 @@ fn gcloud_access_ensure_classification(
       verdict: Converged,
       decision: Noop,
     }
-  } else if gcloud_stderr_matches_auth_deficit_pattern(stderr: stderr) {
-    UpsertClassification {
-      verdict: Absent,
-      decision: Apply {
-        plan: GoogleCloudInteractiveAuthenticationRequired {},
-      },
-    }
   } else {
-    UpsertClassification {
-      verdict: UnknownRefused,
-      decision: Refuse {
-        reason: gcloud_access_ensure_refusal_reason(stderr: stderr),
-      },
+    match gcloud_stderr_auth_deficit(stderr: stderr) {
+      Present { value: _ } =>
+        UpsertClassification {
+          verdict: Absent,
+          decision: Apply {
+            plan: GoogleCloudInteractiveAuthenticationRequired {},
+          },
+        }
+      Absent =>
+        UpsertClassification {
+          verdict: UnknownRefused,
+          decision: Refuse {
+            reason: gcloud_access_ensure_refusal_reason(stderr: stderr),
+          },
+        }
     }
   }
 }

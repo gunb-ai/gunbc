@@ -35,6 +35,54 @@ import std.state_durability {
 }
 import std.types { Bool, List, NonEmptyStr }
 
+type BmcFanProjectionApplyRefusalCause
+  = BmcFanProjectionBoardMismatch
+  | BmcFanProjectionFirmwareMismatch
+  | BmcFanProjectionCurveMismatch
+  | BmcFanProjectionConfigPathMismatch
+  | BmcFanProjectionControllerServiceMismatch
+
+type BmcFanProjectionApplySuitability
+  = BmcFanProjectionApplySuitable
+  | BmcFanProjectionApplyRefused {
+      cause: BmcFanProjectionApplyRefusalCause,
+    }
+
+type BmcFanProjectionLiveDigestRefusalCause {
+  observed: Digest
+  expected: Digest
+}
+
+type BmcFanProjectionLiveDigestSuitability
+  = BmcFanProjectionLiveDigestMatches
+  | BmcFanProjectionLiveDigestRefused {
+      cause: BmcFanProjectionLiveDigestRefusalCause,
+    }
+
+type BmcFanProjectionTopologyRefusalCause
+  = BmcFanProjectionAggregatedTopologyAbsent
+  | BmcFanProjectionEntryNameMismatch
+  | BmcFanProjectionTachInputsMismatch
+
+type BmcFanProjectionTopologySuitability
+  = BmcFanProjectionTopologyMatches
+  | BmcFanProjectionTopologyRefused {
+      cause: BmcFanProjectionTopologyRefusalCause,
+    }
+
+type BmcFanPolicyDriftCause
+  = BmcFanPolicyCurveDrift
+  | BmcFanPolicyTopologyDrift {
+      cause: BmcFanProjectionTopologyRefusalCause,
+    }
+  | BmcFanPolicyDigestDrift {
+      cause: BmcFanProjectionLiveDigestRefusalCause,
+    }
+
+type BmcFanPolicyDriftAssessment
+  = BmcFanPolicyConverged
+  | BmcFanPolicyDrifted { cause: BmcFanPolicyDriftCause }
+
 type BmcFanConfigReadbackSubject {
   config_path: NonEmptyStr
 }
@@ -214,19 +262,104 @@ fn bmc_fan_policy_projection_apply_suitability(
   board: BaseboardModel,
   desired_curve: BmcFanCurve,
   observation: BmcFanPolicyObservation,
-) -> Bool {
-  capability.board == board
-    && capability.firmware == observation.firmware
-    && capability.projected_curve == desired_curve
-    && capability.config_path == observation.board_config_path
-    && capability.controller_service == observation.controller_service
+) -> BmcFanProjectionApplySuitability {
+  if capability.board != board {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionBoardMismatch }
+  } else if capability.firmware != observation.firmware {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionFirmwareMismatch }
+  } else if capability.projected_curve != desired_curve {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionCurveMismatch }
+  } else if capability.config_path != observation.board_config_path {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionConfigPathMismatch }
+  } else if capability.controller_service != observation.controller_service {
+    BmcFanProjectionApplyRefused { cause: BmcFanProjectionControllerServiceMismatch }
+  } else {
+    BmcFanProjectionApplySuitable
+  }
 }
 
-fn bmc_fan_policy_projection_live_digest_matches(
+fn bmc_fan_policy_projection_live_digest_suitability(
   capability: BmcFanPolicyProjectionCapability,
   observation: BmcFanPolicyObservation,
-) -> Bool {
-  observation.active_config_digest == capability.projected_config_digest
+) -> BmcFanProjectionLiveDigestSuitability {
+  if observation.active_config_digest == capability.projected_config_digest {
+    BmcFanProjectionLiveDigestMatches
+  } else {
+    BmcFanProjectionLiveDigestRefused {
+      cause: BmcFanProjectionLiveDigestRefusalCause {
+        observed: observation.active_config_digest,
+        expected: capability.projected_config_digest,
+      },
+    }
+  }
+}
+
+fn bmc_fan_projection_live_digest_refusal_reason(
+  cause: BmcFanProjectionLiveDigestRefusalCause,
+) -> String {
+  "bmc fan live canonical config digest does not equal the admitted digest"
+}
+
+fn bmc_fan_policy_projection_topology_suitability(
+  capability: BmcFanPolicyProjectionCapability,
+  observation: BmcFanPolicyObservation,
+) -> BmcFanProjectionTopologySuitability {
+  match bmc_fan_controller_shape_aggregated_topology(
+    shape: observation.controller_shape,
+  ) {
+    Present {
+      value: BmcFanAggregatedControllerTopology {
+        entry_name: entry_name,
+        tach_inputs: tach_inputs,
+      },
+    } =>
+      if entry_name != capability.aggregate_fan_pid_entry {
+        BmcFanProjectionTopologyRefused {
+          cause: BmcFanProjectionEntryNameMismatch,
+        }
+      } else if tach_inputs != capability.required_tach_inputs {
+        BmcFanProjectionTopologyRefused {
+          cause: BmcFanProjectionTachInputsMismatch,
+        }
+      } else {
+        BmcFanProjectionTopologyMatches
+      }
+    Absent =>
+      BmcFanProjectionTopologyRefused {
+        cause: BmcFanProjectionAggregatedTopologyAbsent,
+      }
+  }
+}
+
+fn bmc_fan_policy_drift_assessment(
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+  projection: BmcFanPolicyProjectionCapability,
+) -> BmcFanPolicyDriftAssessment {
+  if observation.curve != desired_curve {
+    BmcFanPolicyDrifted { cause: BmcFanPolicyCurveDrift }
+  } else {
+    match bmc_fan_policy_projection_topology_suitability(
+      capability: projection,
+      observation: observation,
+    ) {
+      BmcFanProjectionTopologyRefused { cause: cause } =>
+        BmcFanPolicyDrifted {
+          cause: BmcFanPolicyTopologyDrift { cause: cause },
+        }
+      BmcFanProjectionTopologyMatches =>
+        match bmc_fan_policy_projection_live_digest_suitability(
+          capability: projection,
+          observation: observation,
+        ) {
+          BmcFanProjectionLiveDigestRefused { cause: cause } =>
+            BmcFanPolicyDrifted {
+              cause: BmcFanPolicyDigestDrift { cause: cause },
+            }
+          BmcFanProjectionLiveDigestMatches => BmcFanPolicyConverged
+        }
+    }
+  }
 }
 
 fn bmc_fan_state_durability_capability(
@@ -276,25 +409,6 @@ fn bmc_fan_policy_projection_durability_admission(
     readback_subject: BmcFanConfigReadbackSubject {
       config_path: capability.config_path,
     },
-  }
-}
-
-fn bmc_fan_policy_projection_topology_matches(
-  capability: BmcFanPolicyProjectionCapability,
-  observation: BmcFanPolicyObservation,
-) -> Bool {
-  match bmc_fan_controller_shape_aggregated_topology(
-    shape: observation.controller_shape,
-  ) {
-    Present {
-      value: BmcFanAggregatedControllerTopology {
-        entry_name: entry_name,
-        tach_inputs: tach_inputs,
-      },
-    } =>
-      entry_name == capability.aggregate_fan_pid_entry
-        && tach_inputs == capability.required_tach_inputs
-    Absent => false
   }
 }
 
