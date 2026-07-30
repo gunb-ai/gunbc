@@ -62,6 +62,33 @@ fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
   }
 }
 
+data teardown_disposition_note: String = "WHETHER A MEMBER CAN BE TORN DOWN IS A FACT ABOUT THE MEMBER, so it lives here beside deployment_step_ownership rather than as a predicate in the emitter (review 45217). The emitter previously classified this by hand-walking three coproducts in one Boolean — MemberEffect, then DeploymentStep, then OwnedArtifactKind — which put a fact about the deployment model inside the thing that renders it, and encoded the model's storage shape as recursion in a reusable predicate. Adding an artifact kind then meant remembering to visit the emitter, and the answer was a bare true with no way to ask WHY.\\n\\nThe two refusals are not the same refusal and the cause says so, grounded on the ownership axis this module already models rather than a fresh vocabulary. An ensured dependency is outside ownership entirely — tailscale and tmux were installed for the host, not for this deployment, so removing them is not this retract's business at any scope. The tailscale serve mapping IS owned, and the refusal is that the only removal the CLI offers is node-global: acting would exceed the ownership rather than fall outside it. One says not mine, the other says mine but the tool has no scoped verb, and they dissolve on different triggers.\\n\\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a teardown answer by omission — the match fails to compile until the new kind states its own."
+
+type TeardownRefusalCause
+  = TeardownOutsideOwnership
+  | TeardownWouldExceedOwnership
+
+type TeardownDisposition
+  = TeardownActs
+  | TeardownRefuses { cause: TeardownRefusalCause }
+
+fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDisposition {
+  match kind {
+    ServeBinary => TeardownActs
+    GunbcSourceTree => TeardownActs
+    DispatchWorktreeRoot => TeardownActs
+    SystemdUnit => TeardownActs
+    TailscaleServeMapping => TeardownRefuses { cause: TeardownWouldExceedOwnership }
+  }
+}
+
+fn deployment_step_teardown_disposition(step: DeploymentStep) -> TeardownDisposition {
+  match step {
+    ArtifactStep { step: art } => owned_artifact_teardown_disposition(kind: art.kind)
+    Dependency { step: _ } => TeardownRefuses { cause: TeardownOutsideOwnership }
+  }
+}
+
 type DeploymentHostTarget {
   host: ComputeHost
   ssh_host: NonEmptyStr

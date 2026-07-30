@@ -19,6 +19,8 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
+  deployment_step_teardown_disposition,
+  TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
 import gunbc.ownership { Ownership }
@@ -405,20 +407,15 @@ fn apply_intent_from_effects(
 
 data refusal_must_not_precede_sibling_teardowns_note: String = "A REFUSAL ON ONE ARTIFACT WAS SILENTLY BLOCKING EVERY OTHER TEARDOWN (review 45016, proven by execution: set -euo pipefail with a leading `false` aborts and no later line runs). Retract order is the reverse of apply order, and TailscaleServeMapping is applied LAST — so it was torn down FIRST, and its refusal arm ends in `false`. Under FailFast that aborted the pipeline at the first teardown, so the systemd unit, the worktree root, the serve binary, the tree-sync files and the repo tree were never removed. EVERY retract, production and twin, tore down nothing.\\n\\nThis is a DIFFERENT defect from the quoting bug fixed beside it, with the same symptom, and fixing the quoting did not fix it: a syntactically valid `false` aborts a fail-fast pipeline just as effectively as a parse error. Two independent causes of one silent outcome is exactly why the emitted artifact needs oracles beyond byte-equality with its golden.\\n\\nTHE ORDERING IS NOT HAND-EDITED, because the retract order is DERIVED — deployment_owned_steps_retract_order reverses what this spec actually applied, and re-transcribing a list here would reinstate the two-places-one-fact defect that derivation removed. Instead the effects are PARTITIONED: teardowns that can act, in their derived reverse-apply order, then teardowns that refuse. A refusal cannot be emitted before a real teardown because the partition puts it in the second group, so the class is closed by construction rather than by choosing a lucky order.\\n\\nWHY REFUSING LAST IS FAIL-CLOSED, and emitting the refusal without `false` would not be: the refusal must still stop the line, and it now does so AFTER the removable artifacts are gone and BEFORE the `verdict=converged` receipt — so the retract removes everything it legitimately can, never widens to the node-global tailscale reset, exits nonzero, and never prints a convergence receipt while the mapping is still live. Dropping the `false` to let the pipeline finish would print that receipt, which is the fabricated-success arm §5 forbids."
 
-fn deploy_teardown_refuses(effect: MemberEffect<DeploymentStep>) -> Bool {
+data teardown_ordering_projection_note: String = "THE ORDERING KEY, and deliberately nothing more. Which members refuse teardown is a modeling fact answered by gunbc.live_deploy.spec's deployment_step_teardown_disposition; what this emitter needs is the Bool that filter takes, and the only judgement it makes is that a refusal must sort after everything that acts. An upsert never stops the line, which is why it sorts with the actors.\\n\\nIt is a projection of the disposition rather than a second reading of the model (review 45217): the kinds are not enumerated here, so a new artifact kind changes exactly one match, in the module that owns the coproduct, and this function keeps working without being visited. The predecessor inlined all three coproducts here and would have gone stale silently."
+
+fn deploy_teardown_stops_the_line(effect: MemberEffect<DeploymentStep>) -> Bool {
   match effect {
     EffectUpsert { member: _ } => false
     EffectTeardown { member: step } =>
-      match step {
-        Dependency { step: _ } => true
-        ArtifactStep { step: art } =>
-          match art.kind {
-            TailscaleServeMapping => true
-            SystemdUnit => false
-            DispatchWorktreeRoot => false
-            ServeBinary => false
-            GunbcSourceTree => false
-          }
+      match deployment_step_teardown_disposition(step: step) {
+        TeardownActs => false
+        TeardownRefuses { cause: _ } => true
       }
   }
 }
@@ -427,8 +424,8 @@ fn retract_effects_acting_before_refusing(
   effects: List<MemberEffect<DeploymentStep>>,
 ) -> List<MemberEffect<DeploymentStep>> {
   concat(
-    effects |> filter(e => !deploy_teardown_refuses(effect: e)),
-    effects |> filter(e => deploy_teardown_refuses(effect: e)),
+    effects |> filter(e => !deploy_teardown_stops_the_line(effect: e)),
+    effects |> filter(e => deploy_teardown_stops_the_line(effect: e)),
   )
 }
 

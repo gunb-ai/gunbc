@@ -19,6 +19,16 @@ import gunbc.live_deploy.spec {
   Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
+  ServeBinary,
+  TailscaleServeMapping,
+  TeardownDisposition,
+  TeardownActs,
+  TeardownRefuses,
+  TeardownRefusalCause,
+  TeardownOutsideOwnership,
+  TeardownWouldExceedOwnership,
+  owned_artifact_teardown_disposition,
+  deployment_step_teardown_disposition,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.exec.command { shell_quote }
@@ -452,4 +462,34 @@ test fn twin_apply_creates_its_own_binary_parent_directory() -> Bool {
          s: twin,
          pattern: "install -d -m 0755 /home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/bin",
        )
+}
+
+data teardown_disposition_discriminates_two_causes_note: String = "WHAT THE BOOLEAN COULD NOT SAY (review 45217). The emitter's predecessor predicate answered true for both the ensured tailscale PACKAGE and the owned tailscale serve MAPPING, and those refusals have nothing in common beyond their answer: the package is not this deployment's to remove at any scope, while the mapping is its own and refuses only because the CLI's single removal verb is node-global. A model that cannot tell them apart cannot dissolve either one, because the trigger that would close the mapping refusal — a scoped per-port removal — says nothing about the package.\\n\\nSo the claim asserts the CAUSE, not merely that a refusal occurred. Swapping the two causes leaves every emitted script byte-identical and every earlier claim in this file green, which is exactly why the discrimination has to be stated here.\\n\\nThe acting arm is the ratchet half: ServeBinary must answer TeardownActs, so a change that made refusal the default — the safe-looking direction — reds instead of silently converting the retract into a no-op that still prints its receipt."
+
+test fn teardown_disposition_names_why_each_refusal_refuses() -> Bool {
+  let mapping = match owned_artifact_teardown_disposition(kind: TailscaleServeMapping) {
+    TeardownActs => false
+    TeardownRefuses { cause } =>
+      match cause {
+        TeardownWouldExceedOwnership => true
+        TeardownOutsideOwnership => false
+      }
+  }
+  let binary = match owned_artifact_teardown_disposition(kind: ServeBinary) {
+    TeardownActs => true
+    TeardownRefuses { cause: _ } => false
+  }
+  let package = match deployment_step_teardown_disposition(
+    step: Dependency {
+      step: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+    },
+  ) {
+    TeardownActs => false
+    TeardownRefuses { cause } =>
+      match cause {
+        TeardownOutsideOwnership => true
+        TeardownWouldExceedOwnership => false
+      }
+  }
+  mapping && binary && package
 }

@@ -79,7 +79,7 @@ import gunbc.roadmap_dashboard_instance_apply {
 import gunbc.roadmap_serve { dashboard_instance_json }
 import extdeps.languages.json.emit { serialize_json }
 
-data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes."
+data dashboard_target_preflight_platform_drift_note: String = "The preflight roster count is a no-silent-growth ratchet over a hand-authored base list, so it is stated as a literal. The recurring drift it must not re-absorb: adding a dispatch-platform capability (ProviderEventProjectionCapability/jq, c37e4505d2) changes the derived half of the roster and silently reds the literal. The all(platform executables are required) law states that half structurally, so a new platform capability moves the derived side and the literal only guards the base list it actually describes.\\n\\nTHE SERVE BINARY LEFT THIS ROSTER AND ITS ABSENCE IS NOW ASSERTED, which is the substantive half of the 15-to-16 move. This branch gives apply an ensure-serve-binary step, so the binary is something the deployment INSTALLS rather than a precondition it demands — and a roster that still required it would refuse every first apply to a host that does not yet have one, which is the exact bootstrap this change exists to perform. dirname and chmod entered for the same reason: they are what installing it costs.\\n\\nThe negative conjunct is the one that would catch the regression. Re-adding the binary as a required executable keeps the count at 16 by displacing something else, so the literal alone cannot see it; asserting the binary is NOT required states the precondition/product distinction directly."
 
 test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   let lab = srv1_lab_dashboard_instance()
@@ -270,12 +270,15 @@ test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> B
     dashboard_instance_dispatch_platform_executables(instance: lab),
     platform_path => any(required, path => path == platform_path),
   )
-    && count(required) == 15
+    && count(required) == 16
     && any(required, path => path == ("/usr/bin/sh" as FilePath))
     && any(required, path => path == ("/usr/bin/tee" as FilePath))
     && any(required, path => path == ("/usr/bin/env" as FilePath))
     && any(required, path => path == ("/usr/bin/install" as FilePath))
     && any(required, path => path == ("/usr/bin/ln" as FilePath))
+    && any(required, path => path == ("/usr/bin/dirname" as FilePath))
+    && any(required, path => path == ("/usr/bin/chmod" as FilePath))
+    && !any(required, path => path == lab.serve_binary)
     && !any(
       required,
       path => path == ("/home/briansrls/.cargo/bin/cargo" as FilePath),
@@ -331,7 +334,9 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
 test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
-  count(rows) == 14
+  count(rows) == 16
+    && any(rows, row => row.kind == "ensure-provider-state-root")
+    && any(rows, row => row.kind == "ensure-serve-binary")
     && any(rows, row => row.kind == "hydrate-controller-history")
     && any(rows, row => row.kind == "prepare-git-bundle")
     && any(rows, row => row.kind == "stage-git-bundle")
