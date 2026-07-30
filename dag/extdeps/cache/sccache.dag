@@ -68,22 +68,41 @@ type SccacheBinaryRelease {
   digest_x86_64: Digest
 }
 
-data sccache_binary_artifact_grain_note: String = "For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned. SccacheBinaryArtifact is the release x Architecture product: one cited digest per row, projected from the release's named digest_aarch64 / digest_x86_64 fields via sccache_release_digest — never re-minted. Only Aarch64 and X86_64 inhabit this cited release; other Architecture variants are refused by sccache_release_digest at construction time. CpuArchitecture and TargetArchitecture in std are byte-identical forks (DESIGN section 3) and are deliberately NOT imported here — extdeps.toolchain.types.Architecture is the single authority already consumed by sccache_release_digest."
+data sccache_binary_artifact_grain_note: String = "For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned. SccacheBinaryArtifact is the release x Architecture product: one cited digest per row, projected from the release via sccache_release_digest — never re-minted. Only Aarch64 and X86_64 inhabit this cited release; sccache_binary_artifact_for_arch and sccache_binary_artifact_content_identity return Absent for every other Architecture (same arms as sccache_release_digest), so identity projection REFUSES rather than substituting aarch64 (review 44843). CpuArchitecture and TargetArchitecture in std are byte-identical forks (DESIGN section 3) and are deliberately NOT imported here — extdeps.toolchain.types.Architecture is the single authority already consumed by sccache_release_digest."
 
 type SccacheBinaryArtifact {
   binary_release: SccacheBinaryRelease
   arch: Architecture
 }
 
-fn sccache_binary_artifact_authority_digest(artifact: SccacheBinaryArtifact) -> Digest {
-  match sccache_release_digest(rel: artifact.binary_release, arch: artifact.arch) {
-    Present { value: d } => d
-    Absent => artifact.binary_release.digest_aarch64
+fn sccache_binary_artifact_for_arch(
+  binary_release: SccacheBinaryRelease,
+  arch: Architecture,
+) -> SccacheBinaryArtifact? {
+  match sccache_release_digest(rel: binary_release, arch: arch) {
+    Present { value: _ } =>
+      Present {
+        value: SccacheBinaryArtifact {
+          binary_release: binary_release,
+          arch: arch,
+        }
+      }
+    Absent => none
   }
 }
 
-fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
-  sha256_digest_content_hash(digest: sccache_binary_artifact_authority_digest(artifact: artifact))
+fn sccache_binary_artifact_authority_digest(artifact: SccacheBinaryArtifact) -> Digest? {
+  match sccache_release_digest(rel: artifact.binary_release, arch: artifact.arch) {
+    Present { value: d } => Present { value: d }
+    Absent => none
+  }
+}
+
+fn sccache_binary_artifact_content_identity(artifact: SccacheBinaryArtifact) -> ContentHash? {
+  match sccache_binary_artifact_authority_digest(artifact: artifact) {
+    Present { value: d } => Present { value: sha256_digest_content_hash(digest: d) }
+    Absent => none
+  }
 }
 
 data sccache_release_0_15_0: SccacheBinaryRelease = SccacheBinaryRelease {

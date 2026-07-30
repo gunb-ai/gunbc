@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data sccache_pin_instantiation_note: String = "THE INSTANTIATION for extdeps.cache.sccache's multi-artifact release rows. extdeps.pin owns Pin<Subject>; this module binds that dimension to SccacheBinaryArtifact (release x published arch) and owns only subject-specific projection: how to derive expected_identity from the cited digest row and how to key reconcile membership. Pin<SccacheBinaryRelease> remains unsound — one release row carries two digests — so the subject is the artifact product modeled at sccache_binary_artifact_grain_note."
 
-fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
+fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact) -> ContentHash? {
   sccache_binary_artifact_content_identity(artifact: artifact)
 }
 
