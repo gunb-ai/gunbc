@@ -5,7 +5,7 @@ import extdeps.pin {
   SubjectProjectedPin,
   SubjectProjectedPinAdmission,
   SubjectProjectedPinIntegrityAdmitted,
-  PinRefused,
+  SubjectProjectedPinRefused,
   ObservedIdentityMismatch,
 }
 import extdeps.crypto.hash { sha256_digest }
@@ -90,7 +90,7 @@ test fn sccache_aarch64_pin_admits_matching_observation() -> Bool {
     observed_identity: sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact),
   ) {
     SubjectProjectedPinIntegrityAdmitted { pin: p } => p.subject.arch == SccacheMuslAarch64
-    PinRefused { subject: _, cause: _ } => false
+    SubjectProjectedPinRefused { subject: _, cause: _ } => false
   }
 }
 
@@ -99,7 +99,7 @@ test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
   let x86_identity = sccache_binary_artifact_content_identity(artifact: sccache_x86_64_artifact)
   match admit_sccache_binary_artifact_pin_integrity(pin: sccache_aarch64_pin, observed_identity: x86_identity) {
     SubjectProjectedPinIntegrityAdmitted { pin: _ } => false
-    PinRefused { subject: subj, cause: c } =>
+    SubjectProjectedPinRefused { subject: subj, cause: c } =>
       (subj.arch == SccacheMuslAarch64)
         && match c {
              ObservedIdentityMismatch { expected: e, observed: o } =>

@@ -56,7 +56,7 @@ type SubjectProjectedPin<Subject> {
 
 type SubjectProjectedPinAdmission<Subject>
   = SubjectProjectedPinIntegrityAdmitted { pin: SubjectProjectedPin<Subject> }
-  | PinRefused { subject: Subject, cause: PinRefusalCause }
+  | SubjectProjectedPinRefused { subject: Subject, cause: PinRefusalCause }
 
 fn subject_projected_pin_as_pin<Subject>(
   pin: SubjectProjectedPin<Subject>,
@@ -78,7 +78,7 @@ fn admit_subject_projected_pin_integrity<Subject>(
 ) -> SubjectProjectedPinAdmission<Subject> {
   match pin.selection {
     TrackedChannel { channel: c, refresh_window_days: _ } =>
-      PinRefused {
+      SubjectProjectedPinRefused {
         subject: pin.subject,
         cause: TrackedResolutionUnrecorded { channel: c },
       }
@@ -86,7 +86,7 @@ fn admit_subject_projected_pin_integrity<Subject>(
       if expected_identity == observed_identity {
         SubjectProjectedPinIntegrityAdmitted { pin: pin }
       } else {
-        PinRefused {
+        SubjectProjectedPinRefused {
           subject: pin.subject,
           cause: ObservedIdentityMismatch {
             expected: expected_identity,
