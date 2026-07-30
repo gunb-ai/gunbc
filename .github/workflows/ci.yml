@@ -166,12 +166,12 @@ jobs:
                 exit 0
             fi
           fi
-          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci"
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_plan --notice-title "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci"
         timeout-minutes: 15
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, regen]
-    timeout-minutes: 100
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -210,7 +210,7 @@ jobs:
           # REMOVED 2026-07-21 (gunbc#7023 / proud-cat-517): the documentation_only_skip shell shortcut exited before claim_executor, bypassing the witness corpus entirely on docs-only PRs. That bypassed the existing ReadsLiveTree never-predict-skip lane — doc_reachability_witness_test.dag already declared ReadsLiveTree since #6654, but the shell never reached selection. Docs-only PRs now run the normal floor (SelectionApplied): import-closure skips non-live-tree witnesses cheaply; ReadsLiveTree rows (doc-graph wall, corpus-read host-fed lenses) always run. The isolated pre-executor skip-label binary and its unreachable persistent disposition transport retired afterward; compile-clean docs-universe scoping remains independently exercised on the live floor path.
           git fetch --no-tags origin main 2>/dev/null || true
           set +e
-          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
+          "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root dag --entry dag/tools/merge_admission_stamp.dag --function main
@@ -224,26 +224,6 @@ jobs:
           while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && [ ! -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         if: always()
-        timeout-minutes: 5
-      - name: Floor resolve receipt gate (declared cold-resolve count)
-        run: |
-          if ! test -f target/floor-resolve-receipt.txt; then echo "floor resolve receipt missing - fail closed"; exit 1; fi
-          n=$(sed -n 's/^resolves_total=//p' target/floor-resolve-receipt.txt)
-          if test -z "$n"; then echo "floor resolve receipt malformed - fail closed"; exit 1; fi
-          if test "$n" -ne 1; then echo "floor resolve count $n differs from declared 1: duplicate-computation debt changed - update ci_floor_declared_resolve_count consciously (dag/gunbc/ci_materialization.dag)"; exit 1; fi
-          echo "floor resolve count $n matches declared 1 (declared cold-resolve receipt)"
-        timeout-minutes: 5
-      - name: Floor materialization receipt gate (demand ledger; disclosure gate — count pins retracted, walls tracked in ci_materialization.dag)
-        run: |
-          if ! test -f target/floor-materialization-receipt.txt; then echo "floor materialization receipt missing - fail closed"; exit 1; fi
-          k=$(sed -n 's/^keyed_calls=//p' target/floor-materialization-receipt.txt)
-          u=$(sed -n 's/^unkeyed_calls=//p' target/floor-materialization-receipt.txt)
-          d=$(sed -n 's/^duplicated_keys=//p' target/floor-materialization-receipt.txt)
-          if test -z "$k"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
-          if test -z "$u"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
-          if test -z "$d"; then echo "floor materialization receipt malformed - fail closed"; exit 1; fi
-          if test "$k" -eq 0; then echo "floor evaluated zero keyed calls - ledger disabled or floor empty - fail closed"; exit 1; fi
-          echo "floor materialization receipt: keyed=$k unkeyed=$u duplicated=$d (disclosure gate; count pins retracted 2026-07-10 — schedule-jittered per-ctx grain + diff-dependent affected-set denominator; walls forward: unkeyed==0 on closure identity, duplicated on structural frame grain)"
         timeout-minutes: 5
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |

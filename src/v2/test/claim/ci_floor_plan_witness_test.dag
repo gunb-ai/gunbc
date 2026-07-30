@@ -4,8 +4,8 @@ import std.realization {
   RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_falsifier_batches,
-  gunbc_ci_floor_batches,
+  gunbc_falsifier_ordinary_batches,
+  gunbc_ci_floor_ordinary_batches,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
   corpus_witness_entries, execution_witness_entries,
@@ -175,7 +175,7 @@ fn batch_index_of(batches: List<List<Runnable>>, target: String) -> Int {
 }
 
 fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
-  let live_count = schedule_discovery_batch_count(batches: gunbc_ci_floor_batches())
+  let live_count = schedule_discovery_batch_count(batches: gunbc_ci_floor_ordinary_batches())
   if length(xs: gunbc_ci_spec.witness_entries) == 0 && length(xs: gunbc_ci_spec.discovery_scan_dirs) == 0 {
     live_count == 0
   } else {
@@ -184,7 +184,7 @@ fn witness_live_floor_discovery_tracks_optin_roster() -> Bool {
 }
 
 fn witness_cheap_gates_precede_compile_root() -> Bool {
-  let batches = gunbc_ci_floor_batches()
+  let batches = gunbc_ci_floor_ordinary_batches()
   let compile_idx = batch_index_of(batches: batches, target: "dag_compile_clean_gate_passes")
   (compile_idx == 1)
     && floor_batch_has_any_cheap_gate(batch: batches.first())
@@ -200,12 +200,12 @@ fn witness_cheap_gate_membership_declared() -> Bool {
 }
 
 fn witness_corpus_not_before_compile() -> Bool {
-  let batches = gunbc_ci_floor_batches()
+  let batches = gunbc_ci_floor_ordinary_batches()
   !list_contains_str(xs: batch_functions(b: batches.first()), target: corpus_sentinel)
 }
 
 fn witness_independent_jobs_parallelize() -> Bool {
-  fold(gunbc_ci_floor_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
+  fold(gunbc_ci_floor_ordinary_batches().skip(n: 2), init: false, f: fn(found_parallel, batch) {
     found_parallel || (length(xs: batch) > 1)
   })
 }
@@ -358,7 +358,7 @@ fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
 fn witness_hermetic_floor_posture_declared() -> Bool {
   discovery_batch_declares_hermetic(r: corpus_runnable_for(spec: gunbc_ci_spec))
     && !discovery_batch_declares_hermetic(r: execution_corpus_runnable_for(spec: gunbc_ci_spec))
-    && discovery_batch_declares_hermetic(r: gunbc_falsifier_batches().first().first())
+    && discovery_batch_declares_hermetic(r: gunbc_falsifier_ordinary_batches().first().first())
 }
 
 test fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
@@ -515,7 +515,7 @@ fn falsifier_cadence_witness_batch_holds(r: Runnable) -> Bool {
 }
 
 fn falsifier_plan_structure_holds() -> Bool {
-  let batches = gunbc_falsifier_batches()
+  let batches = gunbc_falsifier_ordinary_batches()
   let predict_ok = (batches.first().length() == 1)
     && falsifier_predict_only_batch_holds(r: batches.first().first())
   let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
