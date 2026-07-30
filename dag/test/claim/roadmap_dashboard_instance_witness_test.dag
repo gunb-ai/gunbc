@@ -2,7 +2,14 @@ module test.claim.roadmap_dashboard_instance_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.tmux { shape_tmux_ls_argv_for }
+import gunbc.provider_account {
+  CodexDefaultAccount,
+  CodexLabelledAccount,
+  codex_account_state_root,
+}
 import gunbc.host_layout {
+  srv1_host_layout,
+  srv2_host_layout,
   GunbcHostLayout,
   srv1_gunbc_serve_binary,
   srv1_roadmap_codex_home,
@@ -517,10 +524,12 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
     && !(srv2_lab == srv1_lab)
 }
 
+data layout_no_longer_supplies_the_binary_note: String = "serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists. It used to assert the synthetic layout's /witness/bin/gunbc reached the instance; once binaries became instance-derived it asserts /witness/root/bin/gunbc instead — derived from the instance ROOT, not from the host row. The claim went red on the change rather than quietly continuing to pass, so the behaviour shift was visible at the point it happened instead of at the point something downstream broke.\\n\\nThe remaining conjuncts still prove the original property for the two fields the layout genuinely still supplies — provider state root and controller repo — and still assert non-equality with the srv1 rows, so re-pinning either to a host literal fails here. GunbcHostLayout.gunbc_serve_binary now has exactly one consumer left, srv1-live's own declaration, which is the dissolution trigger recorded on that row: it is a per-instance fact wearing a per-host name."
+
 test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
   let i = witness_synthetic_instance()
   i.host_identity == "witness-host"
-    && i.serve_binary == "/witness/bin/gunbc"
+    && i.serve_binary == "/witness/root/bin/gunbc"
     && dashboard_instance_provider_state_root(instance: i) == "/witness/codex-home"
     && match i.source_seed {
       DashboardGitBundle {
@@ -582,6 +591,7 @@ test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
 
 test fn dashboard_instance_model_keystone_holds() -> Bool {
   isolated_instance_carries_the_layout_it_was_given()
+    && derived_codex_home_matches_the_authenticated_directory()
     && the_plan_creates_every_path_it_later_verifies()
     && each_instance_ensures_its_own_binary_not_a_shared_one()
     && source_anchor_is_per_instance_not_one_shared_literal()
@@ -647,4 +657,16 @@ test fn each_instance_ensures_its_own_binary_not_a_shared_one() -> Bool {
   !(lab.serve_binary == srv2.serve_binary)
     && !(lab.serve_binary == srv1_live_dashboard_instance().serve_binary)
     && !(srv2.serve_binary == srv1_live_dashboard_instance().serve_binary)
+}
+
+data derived_codex_home_grounding_note: String = "THE DERIVED PATH MUST EQUAL THE DIRECTORY THAT ACTUALLY HOLDS THE CREDENTIAL, which is the only thing that makes the derivation an improvement rather than a rewrite. gunbc.provider_account composes it from three facts owned at three layers — the operator home, codex's default root name, and the @label convention — and if that composition produced anything other than /home/briansrls/.codex@gunbc-roadmap the provider would preflight against an empty directory and report unauthenticated forever while a perfectly good login sat one path away.\\n\\nThe literal here is deliberate and is not a duplicate of the derivation. It is the OBSERVED path on srv2, recorded independently so the claim compares a computation against a measurement; asserting the derivation equals itself would pass unconditionally and prove nothing. Both hosts are checked because they share the convention and a divergence between them would mean the shared label had stopped being shared."
+
+test fn derived_codex_home_matches_the_authenticated_directory() -> Bool {
+  let observed = "/home/briansrls/.codex@gunbc-roadmap"
+  (srv1_host_layout().roadmap_codex_home as String) == observed
+    && (srv2_host_layout().roadmap_codex_home as String) == observed
+    && (codex_account_state_root(
+         home: "/home/briansrls" as FilePath,
+         selection: CodexDefaultAccount,
+       ) as String) == "/home/briansrls/.codex"
 }

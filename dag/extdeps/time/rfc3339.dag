@@ -1,0 +1,18 @@
+module extdeps.time.rfc3339
+
+import std.types { String, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data rfc3339_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc3339"
+  }
+}
+
+data rfc3339_note: String = "RFC 3339 is the interchange form for a timestamp — 2026-07-30T03:10:31Z — and it is an IETF concept rather than any vendor's. std.types.Timestamp is a bare String alias, which is enough to move a value around and not enough to say what is in it: a Timestamp holding an epoch integer, a locale-formatted date and an RFC 3339 instant are all equally valid Strings and only one of them can be compared to another lexically.\\n\\nThat lexical property is the reason the distinction pays for itself. RFC 3339 timestamps at the same offset sort correctly as plain strings, so ordering two of them needs no parser — but ONLY at the same offset, because the format permits a numeric offset in place of Z and 03:10:31+01:00 sorts before 03:10:31Z while being an hour later. A model that leans on string comparison without recording the offset assumption has a bug that only appears when a producer changes its timezone.\\n\\nSub-second precision is optional and variable in practice: the codex auth file's own timestamps carry three different lengths — 25, 30 and 32 characters — across fields written by the same tool, so equality between two instants can never be string equality across producers.\\n\\nDeliberately NOT modeled: parsing, arithmetic, conversion to epoch seconds. This exists so a field can declare WHAT IT HOLDS instead of that it is textual; the operations land with the consumer that needs them, and any comparison beyond same-offset ordering needs a real parse rather than this brand."
+
+type Rfc3339Timestamp = NonEmptyStr where brand("Rfc3339Timestamp")
+
+data rfc3339_utc_designator: String = "Z"

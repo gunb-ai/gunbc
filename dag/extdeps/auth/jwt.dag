@@ -1,0 +1,41 @@
+module extdeps.auth.jwt
+
+import std.types { String, NonEmptyStr, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data jwt_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc7519"
+  }
+}
+
+data jwt_registered_claims_note: String = "RFC 7519 REGISTERED CLAIMS BELONG TO THE IETF, NOT TO WHOEVER ISSUED THE TOKEN. Every provider that emits a JWT emits iss, sub, aud, exp, iat and jti with the same meanings, so modeling them inside a vendor's module would coin the seventh copy of a concept the RFC already owns — and each copy would be subtly free to disagree about whether exp is seconds or milliseconds, or whether aud is a string or an array.\\n\\nSection 4.1 settles both of those and this row records the answers: aud is EITHER a single StringOrURI or an array of them, which is why it is modeled as a list with a one-element case rather than a String; and exp, nbf and iat are all NumericDate, defined in section 2 as seconds — not milliseconds — since 1970-01-01T00:00:00Z, ignoring leap seconds. A model that stored them as a bare Int would be right by accident and would give the next reader no way to know which unit was intended."
+
+data jwt_numeric_date_note: String = "NumericDate is RFC 7519 section 2: a JSON number of SECONDS since the UNIX epoch, explicitly not milliseconds, and explicitly ignoring leap seconds. It is branded rather than left as Int because the difference between the two units is a factor of a thousand that produces a plausible wrong answer instead of an error — a millisecond value read as seconds lands in the year 58000 and passes every not-yet-expired check forever."
+
+type NumericDate = Int where brand("NumericDate")
+
+fn numeric_date_lifetime_seconds(issued: NumericDate, expires: NumericDate) -> Int {
+  (expires as Int) - (issued as Int)
+}
+
+data jwt_compact_serialization_note: String = "RFC 7515 section 3.1: three base64url segments joined by dots — header, payload, signature. Branded so that a value carrying an opaque bearer token cannot be passed where a decodable one is expected. That distinction is load-bearing in practice rather than pedantic: an OAuth refresh token is frequently NOT a JWT, so code that decodes every token it is handed to read an expiry works on the access token and fails on the refresh token, and the failure looks like a corrupt credential rather than a category error."
+
+type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization")
+
+data jwt_string_or_uri_note: String = "RFC 7519 section 2 defines StringOrURI: any string, but one containing a colon MUST be a URI. Both iss and aud are StringOrURI, and the colon rule is what lets a private-use value be namespaced by URI without colliding with a registered short name."
+
+type JwtStringOrUri = NonEmptyStr where brand("JwtStringOrUri")
+
+type JwtRegisteredClaims {
+  issuer: JwtStringOrUri
+  subject: JwtStringOrUri
+  audience: List<JwtStringOrUri>
+  expires_at: NumericDate
+  issued_at: NumericDate
+  jwt_id: NonEmptyStr
+}
+
+data jwt_verification_boundary_note: String = "THIS MODULE DESCRIBES CLAIMS; IT DOES NOT VERIFY THEM. Decoding a JWT payload is base64url and JSON, requiring no key and proving nothing — a token whose claims decode cleanly may be entirely forged. Verification means fetching the issuer's JWKS and checking the signature over the header and payload, which is a network operation with its own failure modes and cache semantics.\\n\\nThe boundary is stated because the two are trivially confusable once claims are sitting in a typed record that looks authoritative. Reading unverified claims is legitimate for display and for deciding which account a credential names; it is NOT legitimate for authorization. Nothing here should be read as making the second safe, and a verification surface lands as its own module with the JWKS fetch it requires."
