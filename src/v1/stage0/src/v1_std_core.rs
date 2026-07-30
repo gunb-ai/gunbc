@@ -800,7 +800,7 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
 pub fn where_refinement_deferral_reason_scaffold_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WhereRefinementUnenforced.reason is an interim closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any other reason fails closed blocking. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier).".to_string()
+            "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

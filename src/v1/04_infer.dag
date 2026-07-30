@@ -881,28 +881,6 @@ fn where_predicate_named_int_arg(pred: Node, field: String, source_indices: Map<
   }
 }
 
-fn where_predicate_named_int_field_present(pred: Node, field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match record_lit_named_field_value_optional(
-    record_expr: field_init_node_value(n: pred),
-    field: field,
-    source_indices: source_indices
-  ) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn where_predicate_has_non_literal_int_bound_arg(pred: Node, field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if where_predicate_named_int_field_present(pred: pred, field: field, source_indices: source_indices) {
-    match where_predicate_named_int_arg(pred: pred, field: field, source_indices: source_indices) {
-      Present { value: _ } => false
-      Absent => true
-    }
-  } else {
-    false
-  }
-}
-
 fn where_predicate_canonical_name(pred_name: String) -> String {
   if pred_name == "brand" { "Brand" } else { pred_name }
 }
@@ -927,24 +905,37 @@ fn where_predicate_int_bound_args_equivalent(
   field: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
-  let left_present = where_predicate_named_int_field_present(pred: left, field: field, source_indices: source_indices)
-  let right_present = where_predicate_named_int_field_present(pred: right, field: field, source_indices: source_indices)
-  if !left_present && !right_present {
-    true
-  } else if left_present != right_present {
-    false
-  } else if where_predicate_has_non_literal_int_bound_arg(pred: left, field: field, source_indices: source_indices)
-    || where_predicate_has_non_literal_int_bound_arg(pred: right, field: field, source_indices: source_indices) {
-    false
-  } else {
-    match where_predicate_named_int_arg(pred: left, field: field, source_indices: source_indices) {
-      Present { value: a } =>
-        match where_predicate_named_int_arg(pred: right, field: field, source_indices: source_indices) {
-          Present { value: b } => a == b
-          Absent => false
-        }
-      Absent => false
-    }
+  match record_lit_named_field_value_optional(
+    record_expr: field_init_node_value(n: left),
+    field: field,
+    source_indices: source_indices
+  ) {
+    Absent =>
+      match record_lit_named_field_value_optional(
+        record_expr: field_init_node_value(n: right),
+        field: field,
+        source_indices: source_indices
+      ) {
+        Absent => true
+        Present { value: _ } => false
+      }
+    Present { value: left_expr } =>
+      match record_lit_named_field_value_optional(
+        record_expr: field_init_node_value(n: right),
+        field: field,
+        source_indices: source_indices
+      ) {
+        Absent => false
+        Present { value: right_expr } =>
+          match expr_literal_int_optional(expr: left_expr) {
+            Present { value: a } =>
+              match expr_literal_int_optional(expr: right_expr) {
+                Present { value: b } => a == b
+                Absent => false
+              }
+            Absent => false
+          }
+      }
   }
 }
 
@@ -1009,39 +1000,44 @@ fn decidable_where_int_predicate_holds(pred_name: String, pred: Node, value: Int
   if pred_name == "gt_zero" {
     Present { value: value > 0 }
   } else if pred_name == "range" {
-    if where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "min", source_indices: source_indices)
-      || where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "max", source_indices: source_indices) {
-      none
-    } else {
-      let passes_min = if where_predicate_named_int_field_present(pred: pred, field: "min", source_indices: source_indices) {
-        match where_predicate_named_int_arg(pred: pred, field: "min", source_indices: source_indices) {
+    let passes_min = match record_lit_named_field_value_optional(
+      record_expr: field_init_node_value(n: pred),
+      field: "min",
+      source_indices: source_indices
+    ) {
+      Absent => Present { value: true }
+      Present { value: field_expr } =>
+        match expr_literal_int_optional(expr: field_expr) {
           Present { value: lo } => Present { value: value >= lo }
           Absent => none
         }
-      } else {
-        Present { value: true }
-      }
-      let passes_max = if where_predicate_named_int_field_present(pred: pred, field: "max", source_indices: source_indices) {
-        match where_predicate_named_int_arg(pred: pred, field: "max", source_indices: source_indices) {
+    }
+    let passes_max = match record_lit_named_field_value_optional(
+      record_expr: field_init_node_value(n: pred),
+      field: "max",
+      source_indices: source_indices
+    ) {
+      Absent => Present { value: true }
+      Present { value: field_expr } =>
+        match expr_literal_int_optional(expr: field_expr) {
           Present { value: hi } => Present { value: value <= hi }
           Absent => none
         }
-      } else {
-        Present { value: true }
-      }
-      match passes_min {
-        Present { value: min_ok } =>
-          match passes_max {
-            Present { value: max_ok } => Present { value: min_ok && max_ok }
-            Absent => none
-          }
-        Absent => none
-      }
+    }
+    match passes_min {
+      Present { value: min_ok } =>
+        match passes_max {
+          Present { value: max_ok } => Present { value: min_ok && max_ok }
+          Absent => none
+        }
+      Absent => none
     }
   } else {
     none
   }
 }
+
+data where_refinement_predicate_kind_scaffold_note: String = "owner: v1.compiler.infer. lane: where_refinement_diags_for_predicate dispatch. interim: predicate kind routed via where_refinement_is_*_literal_predicate / where_refinement_is_deferred_predicate closed string sets — must stay in lockstep with decidable_*_predicate_holds and where_refinement_predicates_equivalent. bound: vocabulary changes require updating all classifier fns + eval + equivalence arms in one commit. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementPredicateKind coproduct replacing string classifiers)."
 
 fn where_refinement_is_int_literal_predicate(pred_name: String) -> Bool {
   pred_name == "gt_zero" || pred_name == "range"
@@ -1066,6 +1062,48 @@ fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> B
     Present { value: string_length(s: value) > 0 }
   } else {
     none
+  }
+}
+
+fn where_predicate_range_non_literal_bound_reason(
+  pred: Node,
+  source_indices: Map<String, NewlineIndex>
+) -> String? {
+  match record_lit_named_field_value_optional(
+    record_expr: field_init_node_value(n: pred),
+    field: "min",
+    source_indices: source_indices
+  ) {
+    Present { value: min_expr } =>
+      match expr_literal_int_optional(expr: min_expr) {
+        Present { value: _ } =>
+          match record_lit_named_field_value_optional(
+            record_expr: field_init_node_value(n: pred),
+            field: "max",
+            source_indices: source_indices
+          ) {
+            Present { value: max_expr } =>
+              match expr_literal_int_optional(expr: max_expr) {
+                Present { value: _ } => none
+                Absent => Present { value: "predicate argument is not an int literal" }
+              }
+            Absent => none
+          }
+        Absent => Present { value: "predicate argument is not an int literal" }
+      }
+    Absent =>
+      match record_lit_named_field_value_optional(
+        record_expr: field_init_node_value(n: pred),
+        field: "max",
+        source_indices: source_indices
+      ) {
+        Present { value: max_expr } =>
+          match expr_literal_int_optional(expr: max_expr) {
+            Present { value: _ } => none
+            Absent => Present { value: "predicate argument is not an int literal" }
+          }
+        Absent => none
+      }
   }
 }
 
@@ -1110,13 +1148,19 @@ fn where_refinement_diags_for_predicate(
           Present { value: holds } =>
             if !holds { refinement_refusal } else { [] }
           Absent =>
-            if pname == "range"
-              && (where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "min", source_indices: source_indices)
-                || where_predicate_has_non_literal_int_bound_arg(pred: pred, field: "max", source_indices: source_indices)) {
-              [where_refinement_unenforced_error(
-                predicate: pname, formal: formal, reason: "predicate argument is not an int literal",
-                span: span, module_name: module_name, source_indices: source_indices
-              )]
+            if pname == "range" {
+              match where_predicate_range_non_literal_bound_reason(pred: pred, source_indices: source_indices) {
+                Present { value: reason } =>
+                  [where_refinement_unenforced_error(
+                    predicate: pname, formal: formal, reason: reason,
+                    span: span, module_name: module_name, source_indices: source_indices
+                  )]
+                Absent =>
+                  [where_refinement_unenforced_error(
+                    predicate: pname, formal: formal, reason: "int predicate not implemented",
+                    span: span, module_name: module_name, source_indices: source_indices
+                  )]
+              }
             } else {
               [where_refinement_unenforced_error(
                 predicate: pname, formal: formal, reason: "int predicate not implemented",

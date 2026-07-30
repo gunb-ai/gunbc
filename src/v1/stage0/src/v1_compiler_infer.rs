@@ -1506,37 +1506,6 @@ pub fn where_predicate_named_int_arg(
     }
 }
 
-pub fn where_predicate_named_int_field_present(
-    pred: Rc<Node>,
-    field: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    match record_lit_named_field_value_optional(
-        field_init_node_value(pred.clone()),
-        field.clone(),
-        source_indices.clone(),
-    ) {
-        Some(_) => true,
-        None => false,
-    }
-}
-
-pub fn where_predicate_has_non_literal_int_bound_arg(
-    pred: Rc<Node>,
-    field: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    if where_predicate_named_int_field_present(pred.clone(), field.clone(), source_indices.clone())
-    {
-        match where_predicate_named_int_arg(pred.clone(), field.clone(), source_indices.clone()) {
-            Some(_) => false,
-            None => true,
-        }
-    } else {
-        false
-    }
-}
-
 pub fn where_predicate_canonical_name(pred_name: String) -> String {
     if (pred_name.clone() == "brand".to_string()) {
         "Brand".to_string()
@@ -1573,52 +1542,33 @@ pub fn where_predicate_int_bound_args_equivalent(
     field: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let left_present = where_predicate_named_int_field_present(
-            left.clone(),
+    match record_lit_named_field_value_optional(
+        field_init_node_value(left.clone()),
+        field.clone(),
+        source_indices.clone(),
+    ) {
+        None => match record_lit_named_field_value_optional(
+            field_init_node_value(right.clone()),
             field.clone(),
             source_indices.clone(),
-        );
-        let right_present = where_predicate_named_int_field_present(
-            right.clone(),
+        ) {
+            None => true,
+            Some(_) => false,
+        },
+        Some(left_expr) => match record_lit_named_field_value_optional(
+            field_init_node_value(right.clone()),
             field.clone(),
             source_indices.clone(),
-        );
-        if (!left_present.clone() && !right_present.clone()) {
-            true
-        } else {
-            if (left_present.clone() != right_present.clone()) {
-                false
-            } else {
-                if (where_predicate_has_non_literal_int_bound_arg(
-                    left.clone(),
-                    field.clone(),
-                    source_indices.clone(),
-                ) || where_predicate_has_non_literal_int_bound_arg(
-                    right.clone(),
-                    field.clone(),
-                    source_indices.clone(),
-                )) {
-                    false
-                } else {
-                    match where_predicate_named_int_arg(
-                        left.clone(),
-                        field.clone(),
-                        source_indices.clone(),
-                    ) {
-                        Some(a) => match where_predicate_named_int_arg(
-                            right.clone(),
-                            field.clone(),
-                            source_indices.clone(),
-                        ) {
-                            Some(b) => (a.clone() == b.clone()),
-                            None => false,
-                        },
-                        None => false,
-                    }
-                }
-            }
-        }
+        ) {
+            None => false,
+            Some(right_expr) => match expr_literal_int_optional(left_expr.clone()) {
+                Some(a) => match expr_literal_int_optional(right_expr.clone()) {
+                    Some(b) => (a.clone() == b.clone()),
+                    None => false,
+                },
+                None => false,
+            },
+        },
     }
 }
 
@@ -1717,63 +1667,50 @@ pub fn decidable_where_int_predicate_holds(
         Some((value.clone() > 0))
     } else {
         if (pred_name.clone() == "range".to_string()) {
-            if (where_predicate_has_non_literal_int_bound_arg(
-                pred.clone(),
-                "min".to_string(),
-                source_indices.clone(),
-            ) || where_predicate_has_non_literal_int_bound_arg(
-                pred.clone(),
-                "max".to_string(),
-                source_indices.clone(),
-            )) {
-                None
-            } else {
-                {
-                    let passes_min = if where_predicate_named_int_field_present(
-                        pred.clone(),
-                        "min".to_string(),
-                        source_indices.clone(),
-                    ) {
-                        match where_predicate_named_int_arg(
-                            pred.clone(),
-                            "min".to_string(),
-                            source_indices.clone(),
-                        ) {
-                            Some(lo) => Some((value.clone() >= lo.clone())),
-                            None => None,
-                        }
-                    } else {
-                        Some(true)
-                    };
-                    let passes_max = if where_predicate_named_int_field_present(
-                        pred.clone(),
-                        "max".to_string(),
-                        source_indices.clone(),
-                    ) {
-                        match where_predicate_named_int_arg(
-                            pred.clone(),
-                            "max".to_string(),
-                            source_indices.clone(),
-                        ) {
-                            Some(hi) => Some((value.clone() <= hi.clone())),
-                            None => None,
-                        }
-                    } else {
-                        Some(true)
-                    };
-                    match passes_min.clone() {
-                        Some(min_ok) => match passes_max.clone() {
-                            Some(max_ok) => Some((min_ok.clone() && max_ok.clone())),
-                            None => None,
-                        },
+            {
+                let passes_min = match record_lit_named_field_value_optional(
+                    field_init_node_value(pred.clone()),
+                    "min".to_string(),
+                    source_indices.clone(),
+                ) {
+                    None => Some(true),
+                    Some(field_expr) => match expr_literal_int_optional(field_expr.clone()) {
+                        Some(lo) => Some((value.clone() >= lo.clone())),
                         None => None,
-                    }
+                    },
+                };
+                let passes_max = match record_lit_named_field_value_optional(
+                    field_init_node_value(pred.clone()),
+                    "max".to_string(),
+                    source_indices.clone(),
+                ) {
+                    None => Some(true),
+                    Some(field_expr) => match expr_literal_int_optional(field_expr.clone()) {
+                        Some(hi) => Some((value.clone() <= hi.clone())),
+                        None => None,
+                    },
+                };
+                match passes_min.clone() {
+                    Some(min_ok) => match passes_max.clone() {
+                        Some(max_ok) => Some((min_ok.clone() && max_ok.clone())),
+                        None => None,
+                    },
+                    None => None,
                 }
             }
         } else {
             None
         }
     }
+}
+
+pub fn where_refinement_predicate_kind_scaffold_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "owner: v1.compiler.infer. lane: where_refinement_diags_for_predicate dispatch. interim: predicate kind routed via where_refinement_is_*_literal_predicate / where_refinement_is_deferred_predicate closed string sets — must stay in lockstep with decidable_*_predicate_holds and where_refinement_predicates_equivalent. bound: vocabulary changes require updating all classifier fns + eval + equivalence arms in one commit. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementPredicateKind coproduct replacing string classifiers).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
@@ -1800,6 +1737,43 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
         Some((v1_rt::string_length(&value) > 0))
     } else {
         None
+    }
+}
+
+pub fn where_predicate_range_non_literal_bound_reason(
+    pred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match record_lit_named_field_value_optional(
+        field_init_node_value(pred.clone()),
+        "min".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(min_expr) => match expr_literal_int_optional(min_expr.clone()) {
+            Some(_) => match record_lit_named_field_value_optional(
+                field_init_node_value(pred.clone()),
+                "max".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(max_expr) => match expr_literal_int_optional(max_expr.clone()) {
+                    Some(_) => None,
+                    None => Some("predicate argument is not an int literal".to_string()),
+                },
+                None => None,
+            },
+            None => Some("predicate argument is not an int literal".to_string()),
+        },
+        None => match record_lit_named_field_value_optional(
+            field_init_node_value(pred.clone()),
+            "max".to_string(),
+            source_indices.clone(),
+        ) {
+            Some(max_expr) => match expr_literal_int_optional(max_expr.clone()) {
+                Some(_) => None,
+                None => Some("predicate argument is not an int literal".to_string()),
+            },
+            None => None,
+        },
     }
 }
 
@@ -1854,25 +1828,28 @@ pub fn where_refinement_diags_for_predicate(
                         }
                     }
                     None => {
-                        if ((pname.clone() == "range".to_string())
-                            && (where_predicate_has_non_literal_int_bound_arg(
+                        if (pname.clone() == "range".to_string()) {
+                            match where_predicate_range_non_literal_bound_reason(
                                 pred.clone(),
-                                "min".to_string(),
                                 source_indices.clone(),
-                            ) || where_predicate_has_non_literal_int_bound_arg(
-                                pred.clone(),
-                                "max".to_string(),
-                                source_indices.clone(),
-                            )))
-                        {
-                            Rc::new(vec![where_refinement_unenforced_error(
-                                pname.clone(),
-                                formal.clone(),
-                                "predicate argument is not an int literal".to_string(),
-                                span.clone(),
-                                module_name.clone(),
-                                source_indices.clone(),
-                            )])
+                            ) {
+                                Some(reason) => Rc::new(vec![where_refinement_unenforced_error(
+                                    pname.clone(),
+                                    formal.clone(),
+                                    reason.clone(),
+                                    span.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                )]),
+                                None => Rc::new(vec![where_refinement_unenforced_error(
+                                    pname.clone(),
+                                    formal.clone(),
+                                    "int predicate not implemented".to_string(),
+                                    span.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                )]),
+                            }
                         } else {
                             Rc::new(vec![where_refinement_unenforced_error(
                                 pname.clone(),
