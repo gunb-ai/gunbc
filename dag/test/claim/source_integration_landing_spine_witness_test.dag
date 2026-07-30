@@ -114,9 +114,7 @@ import gunbc.source_integration_landing_spine {
   LandingProjectionBindingRefused,
   LandingProjected,
   LandingProjectionFailed,
-  LandingCommitAssembled,
-  LandingCommitRelationRefused,
-  LandingCommittedAndReadBack,
+  LandingCommitObserved,
   LandingRetryStaleParent,
   LandingEffectFailed,
   LandingSemanticSpine,
@@ -132,7 +130,6 @@ import gunbc.source_integration_landing_spine {
   landing_admitted_result,
   landing_independent_read_back,
   landing_projection_of_transition,
-  landing_committed_transition,
   landing_resolve_question,
   landing_user_boundary,
 }
@@ -1006,13 +1003,11 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
     identity: "transition-second",
     result: "state-second",
   )
-  let read_back = landing_independent_read_back(
-    observation: LandingReadBackObservation {
-      transition: first,
-      observed_state: "state-first",
-      authority: "independent-read-back",
-    },
-  )
+  let observation = LandingReadBackObservation {
+    transition: first,
+    observed_state: "state-first",
+    authority: "independent-read-back",
+  }
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } => {
@@ -1031,12 +1026,20 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
       ) {
         LandingProjectionBindingRefused { cause: _ } => false
         LandingProjectionBound { receipt: bound } =>
-          match landing_committed_transition(
-            read_back: read_back,
-            projections: [LandingProjected { receipt: bound }],
+          match landing_user_boundary(
+            receipt: LandingTransitionSpine {
+              transition: LandingCommitObserved {
+                observation: observation,
+                projections: [LandingProjected { receipt: bound }],
+                continuation: p0_continuation(
+                  kind: LandingRetryCurrentTarget,
+                  status: "rechecking transition relations",
+                ),
+              },
+            },
           ) {
-            LandingCommitRelationRefused { cause: _ } => true
-            LandingCommitAssembled { committed: _ } => false
+            LandingMachineOwned { status: _, continuation: _ } => true
+            LandingTerminal { outcome: _ } => false
           }
       }
     }
@@ -1049,13 +1052,11 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
     identity: "transition-42",
     result: "state-42",
   )
-  let read_back = landing_independent_read_back(
-    observation: LandingReadBackObservation {
-      transition: transition,
-      observed_state: "state-42",
-      authority: "independent-read-back",
-    },
-  )
+  let observation = LandingReadBackObservation {
+    transition: transition,
+    observed_state: "state-42",
+    authority: "independent-read-back",
+  }
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } => {
@@ -1074,25 +1075,23 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
       ) {
         LandingProjectionBindingRefused { cause: _ } => false
         LandingProjectionBound { receipt: bound } =>
-          match landing_committed_transition(
-            read_back: read_back,
-            projections: [LandingProjected { receipt: bound }],
+          match landing_user_boundary(
+            receipt: LandingTransitionSpine {
+              transition: LandingCommitObserved {
+                observation: observation,
+                projections: [LandingProjected { receipt: bound }],
+                continuation: p0_continuation(
+                  kind: LandingRetryCurrentTarget,
+                  status: "rechecking transition relations",
+                ),
+              },
+            },
           ) {
-            LandingCommitRelationRefused { cause: _ } => false
-            LandingCommitAssembled { committed } =>
-              match landing_user_boundary(
-                receipt: LandingTransitionSpine {
-                  transition: LandingCommittedAndReadBack {
-                    committed: committed,
-                  },
-                },
-              ) {
-                LandingTerminal {
-                  outcome: NativeScmTerminalLanded { result_preview },
-                } =>
-                  result_preview == "Worker was renamed and its callers were updated."
-                _ => false
-              }
+            LandingTerminal {
+              outcome: NativeScmTerminalLanded { result_preview },
+            } =>
+              result_preview == "Worker was renamed and its callers were updated."
+            _ => false
           }
       }
     }
@@ -1105,13 +1104,11 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     identity: "transition-42",
     result: "state-42",
   )
-  let read_back = landing_independent_read_back(
-    observation: LandingReadBackObservation {
-      transition: transition,
-      observed_state: "state-42",
-      authority: "independent-read-back",
-    },
-  )
+  let observation = LandingReadBackObservation {
+    transition: transition,
+    observed_state: "state-42",
+    authority: "independent-read-back",
+  }
   let failed = LandingProjectionFailed {
     transition: transition,
     realization: "git-r0",
@@ -1122,25 +1119,23 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     },
     cause: "the compatibility view will be retried",
   }
-  match landing_committed_transition(
-    read_back: read_back,
-    projections: [failed],
+  match landing_user_boundary(
+    receipt: LandingTransitionSpine {
+      transition: LandingCommitObserved {
+        observation: observation,
+        projections: [failed],
+        continuation: p0_continuation(
+          kind: LandingRetryCurrentTarget,
+          status: "repairing the compatibility projection",
+        ),
+      },
+    },
   ) {
-    LandingCommitRelationRefused { cause: _ } => false
-    LandingCommitAssembled { committed } =>
-      match landing_user_boundary(
-        receipt: LandingTransitionSpine {
-          transition: LandingCommittedAndReadBack {
-            committed: committed,
-          },
-        },
-      ) {
-        LandingTerminal {
-          outcome: NativeScmTerminalLanded { result_preview: _ },
-        } =>
-          true
-        _ => false
-      }
+    LandingTerminal {
+      outcome: NativeScmTerminalLanded { result_preview: _ },
+    } =>
+      true
+    _ => false
   }
 }
 

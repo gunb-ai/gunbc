@@ -1058,9 +1058,10 @@ type LandingCommitAssembly
     }
 
 fn landing_committed_transition(
-  read_back: LandingReadBackAssessment,
+  observation: LandingReadBackObservation,
   projections: List<LandingProjectionStatus>,
 ) -> LandingCommitAssembly {
+  let read_back = landing_independent_read_back(observation: observation)
   match read_back {
     LandingReadBackAuthorityRefused { observation: _ } =>
       LandingCommitRelationRefused {
@@ -1092,8 +1093,10 @@ fn landing_committed_transition(
 }
 
 type LandingTransitionOutcome
-  = LandingCommittedAndReadBack {
-      committed: LandingCommittedTransition,
+  = LandingCommitObserved {
+      observation: LandingReadBackObservation,
+      projections: List<LandingProjectionStatus>,
+      continuation: LandingMachineContinuation,
     }
   | LandingRetryStaleParent {
       admitted: LandingAdmittedResult,
@@ -1219,23 +1222,30 @@ fn landing_admission_user_boundary(
   }
 }
 
-fn landing_committed_user_boundary(
-  committed: LandingCommittedTransition,
-) -> LandingUserBoundary {
-  let preview = committed.read_back.observation.transition.admitted.admission.semantic.unique.preview
-  LandingTerminal {
-    outcome: NativeScmTerminalLanded {
-      result_preview: preview as String,
-    },
-  }
-}
-
 fn landing_transition_user_boundary(
   transition: LandingTransitionOutcome,
 ) -> LandingUserBoundary {
   match transition {
-    LandingCommittedAndReadBack { committed } =>
-      landing_committed_user_boundary(committed: committed)
+    LandingCommitObserved {
+      observation,
+      projections,
+      continuation,
+    } =>
+      match landing_committed_transition(
+        observation: observation,
+        projections: projections,
+      ) {
+        LandingCommitAssembled { committed } => {
+          let preview = committed.read_back.observation.transition.admitted.admission.semantic.unique.preview
+          LandingTerminal {
+            outcome: NativeScmTerminalLanded {
+              result_preview: preview as String,
+            },
+          }
+        }
+        LandingCommitRelationRefused { cause: _ } =>
+          landing_machine_owned(continuation: continuation)
+      }
     LandingRetryStaleParent { admitted: _, continuation } =>
       landing_machine_owned(continuation: continuation)
     LandingEffectRetryPending { admitted: _, continuation } =>
