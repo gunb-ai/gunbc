@@ -49,7 +49,7 @@ data ci_regen_rustfmt_unpinned_frontier: UnpinnedToolFrontierRow = UnpinnedToolF
   }
 }
 
-data ci_regen_rustfmt_frontier_realization_note: String = "This existing shell handler is the first frontier realization of gunbc.tool_readiness, not a second readiness decision. Every occurrence of the tool name in the emitted PATH probe derives from ci_regen_rustfmt_unpinned_frontier.tool, so the handler cannot silently resolve a tool outside the closed frontier roster. The shell still observes presence only; it does not fabricate the ResolvedBuildContext needed for PinnedAdmitted. Once toolchain-rust-hermetic supplies a stable expected identity and a host observation transport feeds that context, this frontier row and handler dissolve rather than becoming an escape hatch."
+data ci_regen_rustfmt_frontier_realization_note: String = "This existing shell handler consumes the declared frontier row only for its tool identity; it is NOT yet a live consumer of gunbc.tool_readiness because it cannot produce the ResolvedBuildContext that decision requires. Every occurrence of the tool name in the emitted PATH probe derives from ci_regen_rustfmt_unpinned_frontier.tool, so the retained handler cannot silently resolve a tool outside the closed frontier roster. The typed readiness decision is witness-consumed in this slice, plainly not production-gating. Once toolchain-rust-hermetic supplies a stable expected identity and a host observation transport feeds that context, this frontier row and handler dissolve and the live consumer calls tool_readiness rather than gaining an escape hatch."
 
 fn ci_regen_rustfmt_frontier_tool_name() -> String {
   ci_regen_rustfmt_unpinned_frontier.tool.name as String
