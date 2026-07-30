@@ -43,7 +43,6 @@ import gunbc.source_integration_landing_spine {
   LandingStressProfile,
   gunbc_landing_stress_profile,
   LandingEvidenceProfile,
-  LandingReadyEvidenceProfile,
   LandingClosureCertificate,
   LandingClosureCertificates,
   LandingClosureComplete,
@@ -66,7 +65,6 @@ import gunbc.source_integration_landing_spine {
   LandingSearchBoundExhausted,
   LandingInvestigationContinues,
   LandingUnclosedTerminal,
-  LandingUniqueResult,
   LandingClosedOneReceipt,
   LandingClosedOne,
   LandingClosedMany,
@@ -74,7 +72,7 @@ import gunbc.source_integration_landing_spine {
   LandingAdmitted,
   LandingUnauthorized,
   LandingSelfAmendmentRefused,
-  LandingAdmissionAdvance,
+  LandingAdmittedResult,
   LandingAdmissionAdvanced,
   LandingAdmissionNotAdvanced,
   LandingProjected,
@@ -184,32 +182,52 @@ fn p0_machine_continuation(
   }
 }
 
-fn p0_unique_result() -> LandingUniqueResult {
-  LandingUniqueResult {
-    result: "unique-result-42",
-    preview: "Worker was renamed and its callers were updated.",
-    closure: p0_complete_closure(),
-    ready_obligations: LandingReadyEvidenceProfile {
-      first_required: "builds",
-      remaining_required: ["preserves-public-behavior"],
-    },
-  }
-}
-
-fn p0_closed_one_receipt() -> LandingClosedOneReceipt {
-  LandingClosedOneReceipt {
+fn p0_closed_one_with_preview_holds(
+  preview: NonEmptyStr,
+  check: fn(LandingClosedOneReceipt) -> Bool,
+) -> Bool {
+  match landing_unique_candidate(
     proposal: p0_proposal_at(
       submitted_at: "2026-07-29T08:00:00Z",
     ),
-    unique: p0_unique_result(),
+    result: "unique-result-42",
+    preview: preview,
+    evidence: p0_ready_evidence(),
+    closure: LandingClosureComplete {
+      certificates: p0_complete_closure(),
+    },
+    continuation: p0_machine_continuation(
+      status: "checking the result before it lands",
+    ),
+  ) {
+    LandingClosedOne { receipt } => check(receipt)
+    _ => false
   }
 }
 
-fn p0_admission_advance() -> LandingAdmissionAdvance {
-  landing_admitted_result(
-    admission: LandingAdmitted {
-      semantic: p0_closed_one_receipt(),
-      receipt: "admission-receipt-42",
+fn p0_closed_one_holds(
+  check: fn(LandingClosedOneReceipt) -> Bool,
+) -> Bool {
+  p0_closed_one_with_preview_holds(
+    preview: "Worker was renamed and its callers were updated.",
+    check: check,
+  )
+}
+
+fn p0_admitted_holds(
+  check: fn(LandingAdmittedResult) -> Bool,
+) -> Bool {
+  p0_closed_one_holds(
+    check: fn(semantic) {
+      match landing_admitted_result(
+        admission: LandingAdmitted {
+          semantic: semantic,
+          receipt: "admission-receipt-42",
+        },
+      ) {
+        LandingAdmissionAdvanced { admitted } => check(admitted)
+        LandingAdmissionNotAdvanced { decision: _ } => false
+      }
     },
   )
 }
@@ -516,87 +534,85 @@ test fn witness_p0_unauthorized_unique_is_plain_refusal() -> Bool {
     kind: LandingAuthorizationDenied,
     reason: "You are not allowed to change this target.",
   )
-  let boundary = landing_user_boundary(
-    receipt: LandingAdmissionSpine {
-      admission: LandingUnauthorized {
-        semantic: p0_closed_one_receipt(),
-        refusal: refusal,
-      },
+  p0_closed_one_holds(
+    check: fn(semantic) {
+      let boundary = landing_user_boundary(
+        receipt: LandingAdmissionSpine {
+          admission: LandingUnauthorized {
+            semantic: semantic,
+            refusal: refusal,
+          },
+        },
+      )
+      refusal.kind == LandingAuthorizationDenied
+        && match boundary {
+          LandingUserOutcome {
+            outcome: CouldNotLand { refusal: user_refusal },
+          } =>
+            user_refusal.plain_reason == "You are not allowed to change this target."
+          _ => false
+        }
     },
   )
-  refusal.kind == LandingAuthorizationDenied
-    && match boundary {
-      LandingUserOutcome {
-        outcome: CouldNotLand { refusal: user_refusal },
-      } =>
-        user_refusal.plain_reason == "You are not allowed to change this target."
-      _ => false
-  }
 }
 
 test fn witness_p0_refused_admission_cannot_advance() -> Bool {
-  let expected = p0_closed_one_receipt()
-  match landing_admitted_result(
-    admission: LandingUnauthorized {
-      semantic: expected,
-      refusal: p0_refusal(
-        kind: LandingAuthorizationDenied,
-        reason: "You are not allowed to change this target.",
-      ),
+  p0_closed_one_holds(
+    check: fn(expected) {
+      match landing_admitted_result(
+        admission: LandingUnauthorized {
+          semantic: expected,
+          refusal: p0_refusal(
+            kind: LandingAuthorizationDenied,
+            reason: "You are not allowed to change this target.",
+          ),
+        },
+      ) {
+        LandingAdmissionNotAdvanced {
+          decision: LandingUnauthorized {
+            semantic,
+            refusal: _,
+          },
+        } =>
+          semantic.proposal.occurrence == expected.proposal.occurrence
+        LandingAdmissionNotAdvanced { decision: _ } => false
+        LandingAdmissionAdvanced { admitted: _ } => false
+      }
     },
-  ) {
-    LandingAdmissionNotAdvanced {
-      decision: LandingUnauthorized {
-        semantic,
-        refusal: _,
-      },
-    } =>
-      semantic.proposal.occurrence == expected.proposal.occurrence
-    LandingAdmissionNotAdvanced { decision: _ } => false
-    LandingAdmissionAdvanced { admitted: _ } => false
-  }
+  )
 }
 
 test fn witness_p0_transition_uses_its_admitted_semantic_receipt() -> Bool {
-  let admitted_semantic = LandingClosedOneReceipt {
-    proposal: p0_proposal_at(
-      submitted_at: "2026-07-29T09:00:00Z",
-    ),
-    unique: LandingUniqueResult {
-      result: "second-unique-result",
-      preview: "The second admitted proposal landed.",
-      closure: p0_complete_closure(),
-      ready_obligations: LandingReadyEvidenceProfile {
-        first_required: "builds",
-        remaining_required: ["preserves-public-behavior"],
-      },
-    },
-  }
-  match landing_admitted_result(
-    admission: LandingAdmitted {
-      semantic: admitted_semantic,
-      receipt: "second-admission-receipt",
-    },
-  ) {
-    LandingAdmissionAdvanced { admitted } =>
-      match landing_user_boundary(
-        receipt: LandingTransitionSpine {
-          transition: LandingCommittedAndReadBack {
-            admitted: admitted,
-            transition_receipt: "second-transition-receipt",
-            independent_read_back: "second-read-back",
-            projections: [],
-          },
+  p0_closed_one_with_preview_holds(
+    preview: "The second admitted proposal landed.",
+    check: fn(admitted_semantic) {
+      match landing_admitted_result(
+        admission: LandingAdmitted {
+          semantic: admitted_semantic,
+          receipt: "second-admission-receipt",
         },
       ) {
-        LandingUserOutcome {
-          outcome: Landed { result_preview },
-        } =>
-          result_preview == "The second admitted proposal landed."
-        _ => false
+        LandingAdmissionAdvanced { admitted } =>
+          match landing_user_boundary(
+            receipt: LandingTransitionSpine {
+              transition: LandingCommittedAndReadBack {
+                admitted: admitted,
+                transition_receipt: "second-transition-receipt",
+                independent_read_back: "second-read-back",
+                projections: [],
+              },
+            },
+          ) {
+            LandingUserOutcome {
+              outcome: Landed { result_preview },
+            } =>
+              result_preview == "The second admitted proposal landed."
+            _ => false
+          }
+        LandingAdmissionNotAdvanced { decision: _ } => false
       }
-    LandingAdmissionNotAdvanced { decision: _ } => false
-  }
+    },
+  )
 }
 
 test fn witness_p0_self_amendment_is_plain_refusal() -> Bool {
@@ -604,21 +620,25 @@ test fn witness_p0_self_amendment_is_plain_refusal() -> Bool {
     kind: LandingSelfAmendmentDenied,
     reason: "This change cannot approve itself.",
   )
-  match landing_user_boundary(
-    receipt: LandingAdmissionSpine {
-      admission: LandingSelfAmendmentRefused {
-        semantic: p0_closed_one_receipt(),
-        refusal: refusal,
-      },
+  p0_closed_one_holds(
+    check: fn(semantic) {
+      match landing_user_boundary(
+        receipt: LandingAdmissionSpine {
+          admission: LandingSelfAmendmentRefused {
+            semantic: semantic,
+            refusal: refusal,
+          },
+        },
+      ) {
+        LandingUserOutcome {
+          outcome: CouldNotLand { refusal: user_refusal },
+        } =>
+          refusal.kind == LandingSelfAmendmentDenied
+            && user_refusal.plain_reason == "This change cannot approve itself."
+        _ => false
+      }
     },
-  ) {
-    LandingUserOutcome {
-      outcome: CouldNotLand { refusal: user_refusal },
-    } =>
-      refusal.kind == LandingSelfAmendmentDenied
-        && user_refusal.plain_reason == "This change cannot approve itself."
-    _ => false
-  }
+  )
 }
 
 test fn witness_p0_exhausted_bound_is_typed_plain_refusal() -> Bool {
@@ -655,8 +675,8 @@ test fn witness_p0_permanent_effect_failure_is_typed_plain_refusal() -> Bool {
     kind: LandingPermanentEffectFailure,
     reason: "The target rejected this update.",
   )
-  match p0_admission_advance() {
-    LandingAdmissionAdvanced { admitted } =>
+  p0_admitted_holds(
+    check: fn(admitted) {
       match landing_user_boundary(
         receipt: LandingTransitionSpine {
           transition: LandingEffectFailed {
@@ -672,13 +692,13 @@ test fn witness_p0_permanent_effect_failure_is_typed_plain_refusal() -> Bool {
             && user_refusal.plain_reason == "The target rejected this update."
         _ => false
       }
-    LandingAdmissionNotAdvanced { decision: _ } => false
-  }
+    },
+  )
 }
 
 test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
-  match p0_admission_advance() {
-    LandingAdmissionAdvanced { admitted } =>
+  p0_admitted_holds(
+    check: fn(admitted) {
       match landing_user_boundary(
         receipt: LandingTransitionSpine {
           transition: LandingRetryStaleParent {
@@ -696,13 +716,13 @@ test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
             && continuation.kind == LandingRetryCurrentTarget
         LandingUserOutcome { outcome: _ } => false
       }
-    LandingAdmissionNotAdvanced { decision: _ } => false
-  }
+    },
+  )
 }
 
 test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
-  match p0_admission_advance() {
-    LandingAdmissionAdvanced { admitted } =>
+  p0_admitted_holds(
+    check: fn(admitted) {
       match landing_user_boundary(
         receipt: LandingTransitionSpine {
           transition: LandingCommittedAndReadBack {
@@ -725,8 +745,8 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
           result_preview == "Worker was renamed and its callers were updated."
         _ => false
       }
-    LandingAdmissionNotAdvanced { decision: _ } => false
-  }
+    },
+  )
 }
 
 test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {

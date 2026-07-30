@@ -15,7 +15,6 @@ import std.claim_evidence {
   ClaimReadinessAssessment,
   ClaimReadinessAssessmentFold,
   claim_readiness_assessment_fold,
-  claim_readiness_is_ready,
 }
 import gunbc.native_scm_interaction_contract {
   NativeScmProposalIdentity,
@@ -101,47 +100,93 @@ type LandingReadyEvidenceProfile {
   remaining_required: List<ClaimId>
 }
 
-fn landing_evidence_assessments(
-  profile: LandingEvidenceProfile,
-) -> List<ClaimReadinessAssessment<ClaimId>> {
-  append(
-    [profile.first_required],
-    items: profile.remaining_required,
-  )
-}
+type LandingEvidenceReadiness
+  = LandingEvidenceReady {
+      profile: LandingReadyEvidenceProfile,
+    }
+  | LandingEvidenceBlocking {
+      first_blocking: ClaimId,
+    }
 
-fn landing_evidence_profile_ready(
-  profile: LandingEvidenceProfile,
-) -> Bool {
-  claim_readiness_is_ready(
-    assessment: landing_evidence_assessments(profile: profile),
-  )
-}
-
-fn landing_assessment_claim(
+fn landing_evidence_readiness_start(
   assessment: ClaimReadinessAssessment<ClaimId>,
-) -> ClaimId {
+) -> LandingEvidenceReadiness {
   claim_readiness_assessment_fold(
     assessment: assessment,
     fold: ClaimReadinessAssessmentFold {
-      satisfied: fn(claim) { claim },
-      blocking: fn(claim) { claim },
+      satisfied: fn(claim) {
+        LandingEvidenceReady {
+          profile: LandingReadyEvidenceProfile {
+            first_required: claim,
+            remaining_required: [],
+          },
+        }
+      },
+      blocking: fn(claim) {
+        LandingEvidenceBlocking {
+          first_blocking: claim,
+        }
+      },
     },
   )
 }
 
-fn landing_ready_evidence_profile(
+fn landing_evidence_readiness_step(
+  readiness: LandingEvidenceReadiness,
+  assessment: ClaimReadinessAssessment<ClaimId>,
+) -> LandingEvidenceReadiness {
+  claim_readiness_assessment_fold(
+    assessment: assessment,
+    fold: ClaimReadinessAssessmentFold {
+      satisfied: fn(claim) {
+        match readiness {
+          LandingEvidenceReady { profile } =>
+            LandingEvidenceReady {
+              profile: LandingReadyEvidenceProfile {
+                first_required: profile.first_required,
+                remaining_required: append(
+                  profile.remaining_required,
+                  [claim],
+                ),
+              },
+            }
+          LandingEvidenceBlocking { first_blocking } =>
+            LandingEvidenceBlocking {
+              first_blocking: first_blocking,
+            }
+        }
+      },
+      blocking: fn(claim) {
+        match readiness {
+          LandingEvidenceReady { profile: _ } =>
+            LandingEvidenceBlocking {
+              first_blocking: claim,
+            }
+          LandingEvidenceBlocking { first_blocking } =>
+            LandingEvidenceBlocking {
+              first_blocking: first_blocking,
+            }
+        }
+      },
+    },
+  )
+}
+
+fn landing_evidence_readiness(
   profile: LandingEvidenceProfile,
-) -> LandingReadyEvidenceProfile {
-  LandingReadyEvidenceProfile {
-    first_required: landing_assessment_claim(
+) -> LandingEvidenceReadiness {
+  fold(
+    profile.remaining_required,
+    init: landing_evidence_readiness_start(
       assessment: profile.first_required,
     ),
-    remaining_required: profile.remaining_required
-      |> map(assessment =>
-        landing_assessment_claim(assessment: assessment)
-      ),
-  }
+    f: fn(readiness, assessment) {
+      landing_evidence_readiness_step(
+        readiness: readiness,
+        assessment: assessment,
+      )
+    },
+  )
 }
 
 type LandingClosureCertificate {
@@ -440,49 +485,48 @@ fn landing_unique_candidate(
   closure: LandingClosureAttempt,
   continuation: LandingMachineContinuation,
 ) -> LandingSemanticResultSpace {
-  if !landing_evidence_profile_ready(profile: evidence) {
-    LandingUnclosed {
-      proposal: proposal,
-      cause: LandingRequiredClaimBlocking,
-      partial_results: [result],
-      disposition: LandingInvestigationContinues {
-        continuation: continuation,
-      },
-    }
-  } else {
-    landing_closure_attempt_fold(
-      attempt: closure,
-      fold: LandingClosureAttemptFold {
-        complete: fn(certificates) {
-          LandingClosedOne {
-            receipt: LandingClosedOneReceipt {
-              proposal: proposal,
-              unique: LandingUniqueResult {
-                result: result,
-                preview: preview,
-                closure: certificates,
-                ready_obligations: landing_ready_evidence_profile(
-                  profile: evidence,
-                ),
+  match landing_evidence_readiness(profile: evidence) {
+    LandingEvidenceBlocking { first_blocking: _ } =>
+      LandingUnclosed {
+        proposal: proposal,
+        cause: LandingRequiredClaimBlocking,
+        partial_results: [result],
+        disposition: LandingInvestigationContinues {
+          continuation: continuation,
+        },
+      }
+    LandingEvidenceReady { profile } =>
+      landing_closure_attempt_fold(
+        attempt: closure,
+        fold: LandingClosureAttemptFold {
+          complete: fn(certificates) {
+            LandingClosedOne {
+              receipt: LandingClosedOneReceipt {
+                proposal: proposal,
+                unique: LandingUniqueResult {
+                  result: result,
+                  preview: preview,
+                  closure: certificates,
+                  ready_obligations: profile,
+                },
               },
-            },
-          }
+            }
+          },
+          incomplete: fn(missing, cause) {
+            LandingUnclosed {
+              proposal: proposal,
+              cause: LandingClosureCertificateMissing {
+                certificate: missing,
+                cause: cause,
+              },
+              partial_results: [result],
+              disposition: LandingInvestigationContinues {
+                continuation: continuation,
+              },
+            }
+          },
         },
-        incomplete: fn(missing, cause) {
-          LandingUnclosed {
-            proposal: proposal,
-            cause: LandingClosureCertificateMissing {
-              certificate: missing,
-              cause: cause,
-            },
-            partial_results: [result],
-            disposition: LandingInvestigationContinues {
-              continuation: continuation,
-            },
-          }
-        },
-      },
-    )
+      )
   }
 }
 
