@@ -25,13 +25,20 @@ import extdeps.bmc.types {
   ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_factory_fan_config_digest }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
+  LinuxFilePublicationProtocol,
   LinuxJffs2,
   LinuxMountObservation,
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
+  linux_synchronized_rename_replace_publication,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanPolicyProjectionCapability,
+  altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -54,7 +61,12 @@ import std.measure {
 }
 import std.nat { Nat }
 import std.state_durability {
+  CallerAssertedDefinitionLinkage,
+  StateDurabilityCapabilityVersion,
+  StateDefinitionLinkage,
   StatePerturbationGeneration,
+  StateRealizationDefinitionLinkages,
+  StateRealizationIdentity,
 }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
@@ -87,6 +99,7 @@ type BmcFanRebootPersistenceReceipt {
   host: HostIdentity
   perturbation_receipt_id: NonEmptyStr
   perturbation_generation: StatePerturbationGeneration
+  perturbation_capability: BmcFanPolicyProjectionCapability
   before: BmcFanConvergenceReceipt
   post_reboot_policy: BmcFanPolicyObservation
   reset: RedfishManagerResetObservation
@@ -198,8 +211,55 @@ data srv4_bmc_fan_observed_aggregate_entry: NonEmptyStr = "FAN1"
 data srv4_bmc_fan_observed_tach_inputs: List<NonEmptyStr> = ["FAN1", "FAN2", "FAN3", "FAN4"]
 
 data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
-  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+  hex: altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex,
 )
+
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: NonEmptyStr = "namespace content-addressed SymbolIndex subtree digest"
+
+fn bmc_fan_caller_asserted_definition_linkage(
+  reason: NonEmptyStr,
+) -> StateDefinitionLinkage {
+  CallerAssertedDefinitionLinkage {
+    reason: reason,
+    dissolve_on: bmc_fan_symbol_index_subtree_digest_dissolve_on,
+  }
+}
+
+fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkages {
+  StateRealizationDefinitionLinkages {
+    projection: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config projection is caller-asserted until SymbolIndex subtree digest",
+    ),
+    verifier: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config verifier is caller-asserted until SymbolIndex subtree digest",
+    ),
+    observer: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config observer is caller-asserted until SymbolIndex subtree digest",
+    ),
+    transport: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config transport is caller-asserted until SymbolIndex subtree digest",
+    ),
+    actuator: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config actuator is caller-asserted until SymbolIndex subtree digest",
+    ),
+  }
+}
+
+data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "🟡 dissolve-on: bmc_fan_symbol_index_subtree_digest_dissolve_on. Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable."
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  definition_linkages: bmc_fan_realization_definition_linkages(),
+}
+
+data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "openbmc-overlay-config-graceful-restart-v2",
+  definition_linkage: bmc_fan_caller_asserted_definition_linkage(
+    reason: "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest",
+  ),
+}
 
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
@@ -207,6 +267,7 @@ data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFan
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -255,9 +316,7 @@ data srv4_bmc_fan_convergence_receipt: BmcFanConvergenceReceipt = BmcFanConverge
   policy: srv4_bmc_fan_converged_policy_observation,
   persistence: srv4_bmc_config_persistence_observation,
   active_config_digest: srv4_bmc_fan_active_config_digest,
-  previous_config_digest: sha256_digest(
-    hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
-  ),
+  previous_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   zone_control_path: srv4_bmc_fan_observed_controller_zone_path,
   zone_failsafe_active: false,
   monitoring_sample_count: 12,
@@ -279,6 +338,7 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -287,50 +347,6 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
     entry_name: srv4_bmc_fan_observed_aggregate_entry,
     tach_inputs: srv4_bmc_fan_observed_tach_inputs,
   },
-  observed_at: 1785194085000,
-}
-
-data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = BmcFanRebootPersistenceReceipt {
-  evidence_scope: HistoricalEvidenceSnapshot,
-  host: srv4_host.identity,
-  perturbation_receipt_id: "srv4-bmc-graceful-restart-2026-07-27T23:09:42Z",
-  perturbation_generation: srv4_bmc_fan_perturbation_generation,
-  before: srv4_bmc_fan_convergence_receipt,
-  post_reboot_policy: srv4_bmc_fan_post_reboot_policy_observation,
-  reset: RedfishManagerResetObservation {
-    action_target: "/redfish/v1/Managers/bmc/Actions/Manager.Reset",
-    reset_type: ResetGracefulRestart,
-    http_status: 200,
-    accepted: true,
-    evidence_scope: HistoricalEvidenceSnapshot,
-    observed_at: 1785193782000,
-  },
-  bmc_down_observed: true,
-  bmc_returned: true,
-  bmc_down_observed_at: 1785193789000,
-  bmc_returned_at: 1785193946000,
-  host_power_before: On,
-  host_power_after: On,
-  host_os_ssh_reachable_throughout: true,
-  pre_reboot_temp_soc: celsius(85),
-  post_reboot_temp_soc: celsius(83),
-  pre_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3676) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(960) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(948) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(896) },
-  ],
-  post_reboot_tachs: [
-    BmcFanTachReceipt { sensor: "FAN1", reading: rpm(3659) },
-    BmcFanTachReceipt { sensor: "FAN2", reading: rpm(961) },
-    BmcFanTachReceipt { sensor: "FAN3", reading: rpm(944) },
-    BmcFanTachReceipt { sensor: "FAN4", reading: rpm(906) },
-  ],
-  post_reboot_active_config_digest: srv4_bmc_fan_active_config_digest,
-  post_reboot_controller_active: true,
-  post_reboot_zone_failsafe_active: false,
-  post_reboot_observer_exit_success: true,
-  post_reboot_converge_noop_exit_success: true,
   observed_at: 1785194085000,
 }
 

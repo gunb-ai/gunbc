@@ -12,12 +12,18 @@ import gunbc.bmc_onboarding {
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
+  CredentialAccessUpsertRequired,
+  CredentialEnsureRefused,
   CredentialStateUnknown,
 }
 import gunbc.auth.access_token_source {
   AccessTokenSource,
+  AccessTokenEnsureRefused,
+  AccessTokenReady,
+  AccessTokenUpsertRequired,
   GcloudPrintToken,
-  resolve_access_token,
+  access_token_upsert_required_reason,
+  ensure_access_token,
 }
 import std.types { NonEmptyStr, Secret, String }
 import std.logic { Bool }
@@ -140,23 +146,32 @@ func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSour
   let payload_b64 = credential as String
   let secret_id = onboarding_secret_id(plan: plan)
 
-  let token = resolve_access_token(source: token_source)
-  stored = gcp.SecretManager.AddVersion(
-    access_token: token,
-    secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
-    payload_b64: payload_b64
-  )
-  readback = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: secret_id,
-    version: "latest"
-  )
-  if readback.data_b64 != payload_b64 {
-    return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
-  }
+  match ensure_access_token(source: token_source) {
+    AccessTokenUpsertRequired { plan: upsert_plan } =>
+      return exit_failure(
+        reason: access_token_upsert_required_reason(plan: upsert_plan),
+      )
+    AccessTokenEnsureRefused { reason: reason } =>
+      return exit_failure(reason: reason as String)
+    AccessTokenReady { token: token } => {
+      stored = gcp.SecretManager.AddVersion(
+        access_token: token,
+        secret_name: gcp_secret_full_name(project: fleet_secrets_gcp_project, secret_id: secret_id),
+        payload_b64: payload_b64
+      )
+      readback = gcp.SecretManager.AccessVersion(
+        access_token: token,
+        project_id: fleet_secrets_gcp_project,
+        secret: secret_id,
+        version: "latest"
+      )
+      if readback.data_b64 != payload_b64 {
+        return exit_failure(reason: concat(concat(concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out ", plan.bmc.host), concat("); stored version ", stored.name)), ""))
+      }
 
-  return bmc_rotate_credential(plan: plan, new_credential: credential)
+      return bmc_rotate_credential(plan: plan, new_credential: credential)
+    }
+  }
 }
 
 func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
@@ -196,22 +211,29 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
     return FactoryCredentialActive
   }
 
-  let token = resolve_access_token(source: token_source)
-  secret_resp = gcp.SecretManager.AccessVersion(
-    access_token: token,
-    project_id: fleet_secrets_gcp_project,
-    secret: onboarding_secret_id(plan: plan),
-    version: "latest"
-  )
-  rotated_verify = redfish.Http.GetSystem(
-    bmc_host: host,
-    username: account,
-    password: secret_resp.data_b64 as Secret
-  )
-  return if rotated_verify.success {
-    RotatedCredentialActive
-  } else {
-    CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+  match ensure_access_token(source: token_source) {
+    AccessTokenUpsertRequired { plan: upsert_plan } =>
+      return CredentialAccessUpsertRequired { plan: upsert_plan }
+    AccessTokenEnsureRefused { reason: reason } =>
+      return CredentialEnsureRefused { reason: reason }
+    AccessTokenReady { token: token } => {
+      secret_resp = gcp.SecretManager.AccessVersion(
+        access_token: token,
+        project_id: fleet_secrets_gcp_project,
+        secret: onboarding_secret_id(plan: plan),
+        version: "latest"
+      )
+      rotated_verify = redfish.Http.GetSystem(
+        bmc_host: host,
+        username: account,
+        password: secret_resp.data_b64 as Secret
+      )
+      return if rotated_verify.success {
+        RotatedCredentialActive
+      } else {
+        CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+      }
+    }
   }
 }
 
@@ -227,6 +249,12 @@ func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   match probe {
     FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
     RotatedCredentialActive => return ExitSuccess
+    CredentialAccessUpsertRequired { plan: upsert_plan } =>
+      return exit_failure(
+        reason: access_token_upsert_required_reason(plan: upsert_plan),
+      )
+    CredentialEnsureRefused { reason: reason } =>
+      return exit_failure(reason: reason as String)
     CredentialStateUnknown { reason: r } =>
       return exit_failure(reason: concat("credential converge: unknown phase: ", r))
   }
