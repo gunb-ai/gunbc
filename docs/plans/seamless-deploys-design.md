@@ -8,6 +8,18 @@ live tree or a measurement, or is marked as an open question.
 Brief: *Deploying should not take the dashboard away.* Boundary: the restart path only — the serve
 process, its unit, and how the browser is told what it is seeing. Not what the deploy installs.
 
+**Revision, 2026-07-30 (review 45229).** Two central re-cuts in the first draft prescribed models
+that could not establish the behaviour they claimed, and both are corrected in place with the
+correction recorded rather than silently restated:
+
+- *Item 3* claimed the observed set could be supplied with "no new comparison logic." It cannot —
+  `DeploymentArtifactStep` carries `{kind, path}` and no content identity, so that change alone
+  inverts into a **silent never-deploy**. Split into 2a (model the comparable value) → 2b (supply
+  the provider), with the ordering now load-bearing (§2 Concept C).
+- *Item 2* was framed as a §3 de-fork of one readiness fact. There are **two** facts; the tree's own
+  `service_ready_means_serving_this_tree_note` and the dated 2026-07-24 incident say so. The digest
+  check is irreducible and must survive slice 3 (§2 Concept B).
+
 ---
 
 ## 1. Grounding — what the tree actually says
@@ -99,38 +111,51 @@ permanent and correct, and it is what makes a *genuine* srv1 outage legible — 
 1 should be justified as *"the refusal tells the truth"*, not as *"this is how we fix the deploy
 banner"*. Both fixes are worth having; they do not stack the way the brief's ordering implies.
 
-### Concept B — *Readiness is currently modeled twice, and one copy is wrong* (item 2, and it is the keystone for item 4)
+### Concept B — *Two readiness facts, one of them wrongly asserted* (item 2, and it is the keystone for item 4)
 
-This is the finding I would most want agreed before anything is built.
+**Corrected (review 45229).** An earlier draft of this section called readiness "modeled twice" and
+proposed `sd_notify` as a §3 *de-fork* that would let the healthz poll be argued down. That framing
+is wrong, and the tree says so in its own words. Recording the correction rather than quietly
+restating, because the mistake is instructive: **the draft committed the same state-space
+conflation it was accusing systemd of.**
 
-Readiness of `gunbc-roadmap.service` has **two representations in the tree today**:
+There are **two distinct facts** here, not two representations of one:
 
-1. **systemd's** — `Type=simple`, which by construction means *ready ≡ process spawned*. This is
-   false for this service by ~35–40 seconds, every single time. It is not occasionally wrong; it is
-   never right.
-2. **`live_deploy`'s** — `service_ready.dag` polls `/healthz` on a 1s cadence to a 120s bound, and
-   additionally compares a surface digest (`HealthzSurfaceStale`). This one is correct.
+- **F1 — process-bind readiness.** *A process on this unit has acquired the listener and can
+  answer.* systemd asserts this today via `Type=simple`, and its assertion is **false by ~35–40s,
+  every time** — ready ≡ spawned. This one *is* wrongly modeled, and `sd_notify(READY=1)` at the
+  bind (`cli_run.rs:11918`) is a genuine single-authority fix for it.
+- **F2 — deployment surface identity.** *The answering process is serving the tree this deploy
+  installed.* Only the digest comparison establishes this. **systemd can never know it**, so it is
+  not a duplicate of F1 and it never dissolves.
 
-Representation 2 exists *because* representation 1 is a lie. That is a §3 fork: one fact, two
-authorities, the derived one compensating for the broken one. And it explains why item 2's
-practical blast radius today is smaller than the brief implies — **the deploy already distrusts
-systemd**, so it does not suffer from the lie; it routes around it. I checked the other in-tree
-consumers of `SystemdUnitActiveState` (`host_hygiene_reaper.dag`, `oomd_install.dag`) and neither
-targets `gunbc-roadmap.service`. So today the misled consumers are: a human at `systemctl status`,
-systemd's own ordering and `Restart=` semantics, and any future consumer.
+The tree already draws this line explicitly, and paid for it. `readiness.dag`'s
+`service_ready_means_serving_this_tree_note` records that READY was under-specified and the gap was
+*live*: because `gunbc serve` binds its compiled graph **once at process start**, the **pre-restart
+process keeps answering** during the new one's ~35s load — so a poll grounding on *any* answer
+greens against the very process the deploy is replacing. On 2026-07-24 srv1 served a stale surface
+with every check in the system green. Readiness was deliberately strengthened to *answering **and**
+the surface is this tree's*.
 
-**Which means item 2 is not independently valuable as an outage fix — it is the enabling model for
-item 4, and a de-fork.** You cannot sequence a handover ("new instance is ready → move traffic")
-without a real readiness signal; the healthz poll cannot serve that role because it is external to
-the unit and runs in the deploy job, not on the host. Fix the unit's answer (`Type=notify` +
-`sd_notify(READY=1)` immediately after the bind at `cli_run.rs:11918`) and the correct fact has a
-single authority; the healthz poll then becomes *derivable* rather than compensatory, and can be
-argued down to the digest check it uniquely owns.
+That receipt is fatal to the de-fork framing, and it carries a warning for slice 3 specifically:
+**`sd_notify` fires when the new process binds, which is exactly the moment F2 is still unproven.**
+A notify-based readiness signal is not a stronger version of the digest check — on the axis that
+caused the 2026-07-24 incident it is *weaker* than what exists today. So:
 
-So I would re-cut item 2 from *"the unit reports ready when it is not"* (true but low-cost today)
-to **"readiness has two representations and the authoritative one is wrong"** — which is a §3
-violation, is the prerequisite for item 4, and is what makes the poll bound in §1 stop being a
-number we have to keep re-calibrating against corpus growth.
+- The overlap between systemd's claim and the poll is confined to F1 — and within the poll, to its
+  `HealthzProbeFailed` arm only. `HealthzBodyUnparseable` and `HealthzSurfaceStale` are irreducible.
+- **The digest check must survive slice 3 unchanged.** Any implementation that treats `Type=notify`
+  as licence to drop or weaken it re-opens a known, dated, live incident. This is a red control in
+  §6, not a caution.
+
+**What item 2 is actually worth, stated honestly.** Its value is (a) systemd stops lying to its own
+consumers about F1 — today the misled parties are a human at `systemctl status`, systemd's ordering
+and `Restart=` semantics, and any future consumer (I checked `host_hygiene_reaper.dag` and
+`oomd_install.dag`; neither targets this unit, so the blast radius today is small); and (b) it is
+the **prerequisite for item 4**, because you cannot sequence a handover without a trustworthy
+"the replacement has bound" signal, and the healthz poll cannot serve that role — it runs in the
+deploy job, not on the host. What item 2 is *not* is a way to dissolve the poll or to stop
+re-calibrating the bound; only the deep fix in §4 does that.
 
 ### Concept C — *The deploy does not reconcile; it applies* (item 3)
 
@@ -155,9 +180,44 @@ Removed). `Unchanged → noop` is already in the spine, already correct, and nev
 **The fix is therefore not a predicate on the restart step.** Adding `if unit-file-changed then
 restart` would be validation standing where construction was available — a second representation of
 "has this changed", checked after the fact, exactly what DESIGN §5 says to prefer construction over.
-The fix is to **supply the observed set**: read what is actually installed on srv1 (unit file
-content, binary identity, tree digest), pass it as `observed`, and `Unchanged → noop` falls out of
-the spine that already implements it. No new comparison logic, no new authority.
+The direction is to **supply the observed set** so that `Unchanged → noop` is reached by the spine
+that already implements it.
+
+**Correction (review 45229): supplying `observed` alone does not work, and the naive version fails
+dangerously.** An earlier draft of this section claimed the observed set could be supplied with "no
+new comparison logic, no new authority." That is wrong, and the reason is one level down in the
+model. `spec.dag:38–41` declares:
+
+```
+type DeploymentArtifactStep { kind: OwnedArtifactKind, path: NonEmptyStr }
+```
+
+The member value carries **kind and path only — no content identity.** `deployment_step_value_eq`
+is `a == b` over exactly that. So if the observed set is supplied as the same members at the same
+paths, `value_eq` returns **true for every member, always** — the binary changed, the tree changed,
+the unit file changed, and the diff still reports `Unchanged`. The failure is not "cannot
+distinguish changed from unchanged"; it is an **inversion into a silent never-deploy**, which is
+strictly worse than today's always-restart because it fails closed on nothing and green on
+everything.
+
+That is also precisely the shape DESIGN §5 names as the tell that a check was validation standing
+where construction was available: *it can be satisfied by editing the declaration while the
+realization still lies.* A `value_eq` over `{kind, path}` is a key-completeness claim whose realizer
+is faking the key.
+
+**So slice 2 splits, and the modeling comes first:**
+
+- **2a — model the comparable artifact value at its single authority.** `DeploymentArtifactStep`
+  must carry the content identity that makes two installations of a member comparable (a digest for
+  the binary and the unit file; the tree's identity for the source tree). This is a `std`-adjacent
+  change to a load-bearing deploy carrier and it is the real work of item 3. Note the existing
+  `ContentHash` family ambiguity recorded in DESIGN's open threads is live here: whichever family is
+  chosen, the carrier must say which it requires rather than leaving it to prose.
+- **2b — supply the observed provider** reading those same identities off the host. Only once 2a
+  exists does `Unchanged → noop` mean anything.
+
+The ordering matters for safety, not just tidiness: **2b without 2a is the never-deploy inversion**,
+and it would pass a typecheck.
 
 Two consequences worth stating up front, both good:
 
@@ -259,13 +319,19 @@ Ordered by displaced cost per unit of risk, respecting the brief's first_slice.
 stating what was observed and not asserting a cause. No timing change, no deployment change, no seed
 change. Independently correct regardless of what follows.
 
-**Slice 2 — the observed provider (item 3).** Supply `observed` to the apply pole so `Unchanged →
+**Slice 2a — model the comparable artifact value (item 3, prerequisite).** Give
+`DeploymentArtifactStep` the content identity that makes two installations comparable. This is the
+real work of item 3 and it touches a load-bearing deploy carrier. **Nothing in 2b may land first**
+— see §2 Concept C for why the reverse order is a silent never-deploy.
+
+**Slice 2b — the observed provider (item 3).** Supply `observed` to the apply pole so `Unchanged →
 noop` is reached by construction. Removes the avoidable restarts. Requires the refusal arm for
 "could not observe" to be typed/located/counted, and makes the ownership refusal arms live.
 
-**Slice 3 — the readiness de-fork (item 2), designed with the listener-acquisition realization
-(§3.1).** `Type=notify` + a readiness signal at the bind point, modelled as a realization rather
-than cemented. Enables item 4 and puts readiness on one authority.
+**Slice 3 — correct systemd's F1 assertion (item 2), designed with the listener-acquisition
+realization (§3.1).** `Type=notify` + a readiness signal at the bind point, modelled as a
+realization rather than cemented. Enables item 4. **Does not touch the digest check** (§2 Concept
+B).
 
 **Slice 4 — the residual window (item 4).** Socket activation, evaluated against §3's three
 decisions, with the staleness cue.
@@ -286,12 +352,19 @@ Adopting the brief's, and adding the ones the analysis surfaced:
   regression wearing a fix's clothes.
 - A deploy performed while a browser is watching produces no refusal banner and no gap in the
   workflow row.
-- **Added (slice 2):** a deploy where the unit file *did* change must still restart. The noop path
-  must not become an absorbing fallback in the other direction.
+- **Added (slice 2, the discriminating one):** a deploy in which **only the binary content changed**
+  — same kind, same path — must still restart. This is the control that fails against a
+  `{kind, path}` value and passes only once slice 2a lands, so it discriminates exactly the defect
+  review 45229 caught. Its mirror: a deploy where genuinely nothing changed must *not* restart.
 - **Added (slice 2):** a deploy where the observed set **cannot be read** must refuse, typed and
   located — not restart-everything, and not skip-everything.
-- **Added (slice 3):** the unit must not report ready before `/healthz` answers. This is directly
-  falsifiable: `systemctl is-active` and a curl must agree at every instant.
+- **Added (slice 3):** the unit must not report ready before it can answer. Directly falsifiable:
+  `systemctl is-active` and a curl must agree at every instant.
+- **Added (slice 3, regression guard):** the **surface-digest refusal must still fire** after
+  `Type=notify` lands. Concretely, the 2026-07-24 shape — the pre-restart process still answering
+  during the replacement's load — must still be refused as `HealthzSurfaceStale`. A notify signal
+  proves F1 and says nothing about F2; a slice 3 that greens this case has re-opened a dated live
+  incident.
 - **Coupling, not scope:** ~20% of deploys overlap another deploy (§1). Any handover model must
   state its behaviour under a concurrent deploy rather than assume exclusivity. The pre-existing
   `ServedSurfaceStale` race is the known instance.
@@ -304,12 +377,15 @@ Adopting the brief's, and adding the ones the analysis surfaced:
    rather than *"deploying, back shortly"*? The latter asserts a cause the client cannot establish.
    If you want *deploying* specifically, that needs a grounded deploy-in-progress fact on the wire,
    which I would scope as a separate ticket rather than smuggle into item 1.
-2. **Item 2's re-cut.** Do you agree item 2 is better framed as a §3 de-fork (readiness modelled
-   twice, authoritative copy wrong) and as item 4's prerequisite, rather than as a standalone outage
-   fix? Its independent displaced cost today is small because the deploy already routes around it.
-3. **Item 3's fix shape.** Confirm the fix is *supply the observed set* (construction) and not *add
-   a changed-predicate to the restart step* (validation). This is the one with real blast radius: it
-   makes the spine's refusal arms live on a path that today always applies.
+2. **Item 2's re-cut** (revised after review 45229). Do you agree with the F1/F2 split — systemd's
+   `Type=simple` wrongly asserts F1 and `sd_notify` fixes *that*, while F2 (serving this deploy's
+   tree) is irreducible and the digest check survives untouched? The practical consequence is that
+   item 2 buys the handover prerequisite, not a smaller poll.
+3. **Item 3's cost** (revised after review 45229). The fix is *supply the observed set*
+   (construction, not a changed-predicate) — but it is gated on **modelling content identity into
+   `DeploymentArtifactStep` first**, which is a load-bearing carrier change, not the cheap slice the
+   first draft implied. Confirm that carrier change is in scope for this ticket; if it is not, item
+   3 should be dropped from the ticket rather than attempted in the order that inverts it.
 4. **The seed change.** Is `listener acquisition as a §2 Realization` (SelfBound | Inherited, with
    `sd_notify` on the same seam) an acceptable way to touch the seed for slices 3–4? If the answer
    is that the seed should not grow host integration at all, slice 4 needs a different candidate and
