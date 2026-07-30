@@ -12,7 +12,9 @@ import extdeps.github.actions {
 import gunbc.ci_workflow {
   ci_prelude_steps, ci_release_build_step,
   ci_floor_peak_pre_step, ci_floor_peak_post_step,
-  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes
+  ci_selection_control_step,
+  gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes,
+  gunbc_ci_selection_control_step_timeout_minutes
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.ci_spec { plan_artifact_plan_function }
@@ -164,20 +166,21 @@ fn native_cache_cold_control_step() -> Step {
 }
 
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
+
+data gunbc_falsifier_selection_control_relocation_note: String = "The affected-set selection control (ci_selection_control_step, authority gunbc.ci_workflow) rides this cadence as of 2026-07-29, demoted from the per-PR ci job — full rationale, measurement, and return trigger in gunbc_ci_selection_control_step_note. Placement is load-bearing on two counts. (1) BEFORE ci_floor_peak_pre_step: the peak pre/post pair brackets the floor's cgroup measurement, so a step inside it would attribute its own residency to the falsifier's peak receipt — the control sits outside the bracket and the measurement stays the floor's. (2) BEFORE falsifier_step: the control is hermetic and ~10m, the falsifier step is up to 170m, so a broken selector reds in minutes instead of after the corpus walk. This is the third control on this job and the same shape as the other two (compile_clean_cold_control_step, native_cache_cold_control_step): a deterministic whole-corpus arm whose per-PR counterpart is scoped or skipped. Its 15m term joins gunbc_falsifier_job_backstop_timeout_minutes so the backstop stays the exact step-sum + prelude; the ci job's backstop drops the same term in the same motion, which is why the two edits are one change and not two."
 
 fn falsifier_job() -> Job {
   Job {
     id: "falsifier",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_selection_control_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    strategy: none,
     timeout_minutes: Present { value: gunbc_falsifier_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
