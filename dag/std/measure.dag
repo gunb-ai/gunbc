@@ -237,8 +237,45 @@ type Celsius = Measure<Temperature, One, Int>
 
 type CelsiusDelta = Measure<TemperatureDifference, One, Int>
 
-type PositiveMeasureCount =
-  Int where range(min: 1), brand("PositiveMeasureCount")
+type PositiveMeasureCount {
+  predecessor: Nat
+}
+
+type PositiveMeasureCountBuild
+  = PositiveMeasureCountBuilt { count: PositiveMeasureCount }
+  | PositiveMeasureCountRefused {
+      cause: PositiveMeasureCountNonPositive,
+    }
+
+type PositiveMeasureCountNonPositive {
+  observed: Int
+}
+
+fn positive_measure_count(predecessor: Nat) -> PositiveMeasureCount {
+  PositiveMeasureCount { predecessor: predecessor }
+}
+
+fn positive_measure_count_from_int(
+  count: Int,
+) -> PositiveMeasureCountBuild {
+  if count <= 0 {
+    PositiveMeasureCountRefused {
+      cause: PositiveMeasureCountNonPositive { observed: count },
+    }
+  } else {
+    PositiveMeasureCountBuilt {
+      count: positive_measure_count(
+        predecessor: (count - 1) as Nat,
+      ),
+    }
+  }
+}
+
+fn positive_measure_count_value(
+  count: PositiveMeasureCount,
+) -> Int {
+  count.predecessor + 1
+}
 
 type PositiveCelsiusDelta =
   Measure<TemperatureDifference, One, PositiveMeasureCount>
@@ -285,8 +322,8 @@ fn positive_celsius_delta(
 
 fn positive_celsius_delta_count(
   delta: PositiveCelsiusDelta,
-) -> PositiveMeasureCount {
-  measure_count(delta)
+) -> Int {
+  positive_measure_count_value(count: measure_count(delta))
 }
 
 fn rpm(count: Nat) -> RevolutionsPerMinute {
@@ -472,8 +509,8 @@ fn positive_millisecond(count: PositiveMeasureCount) -> PositiveMillisecond {
   PositiveMillisecond { count: count }
 }
 
-fn positive_millisecond_count(m: PositiveMillisecond) -> PositiveMeasureCount {
-  measure_count(m)
+fn positive_millisecond_count(m: PositiveMillisecond) -> Int {
+  positive_measure_count_value(count: measure_count(m))
 }
 
 fn nanoseconds_per_millisecond() -> Nat {
