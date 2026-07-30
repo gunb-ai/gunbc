@@ -6,6 +6,7 @@ import gunbc.floor_discovery_scaffold {
   floor_discovery_producer_entry,
   floor_discovery_equivalence_test_sidecar_misplaced,
   floor_discovery_equivalence_test_scan_wire_contract,
+  floor_discovery_equivalence_test_narrowed_corpus_control,
 }
 import v2.compiler.discovery_enumeration {
   OwnedBoolWitnessClaimInit,
@@ -367,5 +368,8 @@ test fn floor_discovery_equivalence_rust_tests_named() -> Bool {
   ) && string_contains(
     s: floor_discovery_equivalence_test_scan_wire_contract,
     pattern: "scan_detects_coproduct_wire_contract_data"
+  ) && string_contains(
+    s: floor_discovery_equivalence_test_narrowed_corpus_control,
+    pattern: "clean_dag_file_leaves_narrowed_discovery_ok"
   )
 }
