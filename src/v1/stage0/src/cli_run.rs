@@ -14075,8 +14075,9 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     if dag_paths.is_empty() {
         return Ok(());
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -14121,6 +14122,28 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+/// The producer entry above is repo-relative, and every resolve of it ultimately reads the
+/// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
+/// The floor runs from the repo root, so that ambient dependency is invisible in production
+/// — but it is not invisible under `cargo test`, whose process cwd is the crate directory:
+/// the resolve then fails with `entry file does not exist`, and that refusal fires *before*
+/// whatever the caller was actually asking about, masking it. `set_current_dir` is not the
+/// fix; this crate's harness is multi-threaded and chdir is process-global (the race is
+/// already documented at the sibling fixture tests in this file).
+///
+/// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
+/// derived, hence identical in both worlds. Both resolve sites go through this one function
+/// so the `resolve_entry_graph_shared` cache stays keyed on a single spelling of the entry —
+/// two spellings would resolve the same closure twice.
+///
+/// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
+/// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
+/// anchoring plumbing when entry resolution stops reading cwd.
+fn floor_discovery_producer_entry_anchored() -> String {
+    let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
+    anchored.to_string_lossy().into_owned()
+}
 
 fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
@@ -14300,16 +14323,39 @@ fn invoke_floor_discovery_producer(
     scan_dirs: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
+    invoke_floor_discovery_producer_over_corpus(
+        source_roots,
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+    )
+}
+
+/// Two roles `source_roots` fuses, here separate parameters: `producer_roots` locates the
+/// MACHINERY (the `.dag` producer that decides discovery and its sidecar refusals), while
+/// `corpus_roots` is the SUBJECT (the roots whose `.dag` files are walked and judged).
+/// Production passes the same list for both — that is the whole floor's shape and does not
+/// change. What the fusion prevented was *asking about one file*: any question had to submit
+/// the entire live `src/v2` + `dag` corpus for judgement too, so an unrelated corpus file's
+/// refusal could answer first and mask the one under test (review 44641). The producer stays
+/// real machinery; only the subject narrows.
+fn invoke_floor_discovery_producer_over_corpus(
+    producer_roots: &[String],
+    corpus_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
     for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(producer_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> = source_roots
+    let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
@@ -19058,13 +19104,14 @@ mod floor_witness_a_prove {
 #[cfg(test)]
 mod module_grain_affected_equivalence_tests {
     use super::{
-        build_multi_entry_index, floor_diff_edits_from_diff_text, import_closure_files_from_graph,
+        build_module_graph_facts_live, build_multi_entry_index,
+        entry_file_touched_via_import_closure, floor_diff_edits_from_diff_text,
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, touched_file_in_import_closure,
-        workspace_root, MultiEntryIndex,
+        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
+        MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -19164,26 +19211,38 @@ mod module_grain_affected_equivalence_tests {
         }
     }
 
-    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
-        // Shared selection rule with production (`entry_file_touched_via_import_closure`) and
-        // the `.dag` authority (`entry_without_declared_edges_never_skips_note`): an entry
-        // that declares no imports is never selection-skippable — its name-derived
-        // dependencies are invisible to the import-edge model, so both sides answer
-        // affected=true rather than risking a false skip.
-        let source = std::fs::read_to_string(workspace_root().join(entry_rel))
-            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-        if !source
-            .lines()
-            .any(|l| l.trim_start().starts_with("import "))
-        {
-            return true;
-        }
-        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
-            .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
-        let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
-        touched
-            .iter()
-            .any(|f| touched_file_in_import_closure(f, &closure_files))
+    /// The Rust side of the equivalence is **production itself**, not a twin of it.
+    ///
+    /// This used to be a hand-written reimplementation, and it had drifted into asserting a
+    /// rule both authorities deleted: `if the file declares no imports { return true }`,
+    /// citing `entry_without_declared_edges_never_skips_note` — a note that no longer exists,
+    /// because it was replaced by the one repudiating it. `src/v2/lens/module_graph.dag`
+    /// `edgeless_entry_has_no_special_arm_note` names that arm as the absorbing fallback
+    /// DESIGN §5 describes verbatim: it answered affected=true for every edgeless entry
+    /// (~530 claim modules after the import strip), silently and uncounted, and the cost
+    /// surfaced as a 95-minute CI floor instead of as a diagnostic. Production
+    /// (`entry_file_touched_via_import_closure`) now carries reference-derived edges so an
+    /// edgeless entry gets a precise closure seeded with itself, and REFUSES — typed — only
+    /// when the producer could not read or parse the file (⊤-as-ignorance is not ⊤-as-answer).
+    ///
+    /// So the twin was the stale party while production and `.dag` agreed, and the test
+    /// reported a divergence about code that was fine. A third representation of one
+    /// selection rule is guaranteed to drift (§2/§3); calling production makes the property
+    /// under test the one anyone actually cares about — production ⇄ `.dag` — and deletes the
+    /// copy. It is also what makes this test runnable: the twin resolved (typechecked) every
+    /// entry's closure at 5-10s per module, while the facts scan is cached and does not
+    /// typecheck at all.
+    ///
+    /// A refusal is propagated, never coerced to a bool: silently reading it as `false` would
+    /// re-introduce a skip on an unknown dependency set, and as `true` the absorbing widen.
+    fn rust_entry_affected(
+        facts: &ModuleGraphFactsLive,
+        declared: &HashSet<String>,
+        entry_rel: &str,
+        touched: &[String],
+    ) -> bool {
+        entry_file_touched_via_import_closure(entry_rel, facts, declared, touched)
+            .unwrap_or_else(|refusal| panic!("selection refused for {entry_rel}: {refusal}"))
     }
 
     struct EquivalenceReceipt {
@@ -19204,7 +19263,12 @@ mod module_grain_affected_equivalence_tests {
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let rel_roots = pool_roots_rel();
 
+        // Setup is instrumented because it, not the per-entry work, was the whole runtime:
+        // before the twin was replaced by production this harness never reached entry 1 in a
+        // 50-minute standalone run, and printed nothing while doing so.
+        let t_setup = Instant::now();
         let index = build_multi_entry_index(&rel_roots);
+        eprintln!("[module-grain] index built in {:?}", t_setup.elapsed());
         let diff_text = diff_text_for_commit(sha);
         let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
             panic!(
@@ -19219,15 +19283,52 @@ mod module_grain_affected_equivalence_tests {
             "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
              touches at least one non-data, non-test-fn declaration"
         );
+        let t_facts = Instant::now();
+        let facts = build_module_graph_facts_live(&rel_roots);
+        let declared: HashSet<String> = facts.declared_paths.clone();
+        eprintln!(
+            "[module-grain] selection facts built in {:?} ({} declared paths)",
+            t_facts.elapsed(),
+            declared.len()
+        );
+        let t_mg = Instant::now();
         let (mg_graph, mg_indices) =
             resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
+        eprintln!(
+            "[module-grain] module_graph.dag resolved in {:?}",
+            t_mg.elapsed()
+        );
 
+        // Stream each row as it is decided. This harness resolves every entry's closure
+        // twice (once per side) and takes tens of minutes on a cold process, and it used
+        // to print nothing until the end — so a timeout was indistinguishable from a
+        // hang, and neither told you which entry was slow or which way it decided.
+        eprintln!(
+            "[module-grain] commit {sha}: {} touched, {} entries",
+            touched.len(),
+            entries.len()
+        );
         let mut rows = Vec::new();
-        for entry in entries {
-            let rust_decision = rust_entry_affected(&index, entry, &touched);
+        for (i, entry) in entries.iter().enumerate() {
+            let t0 = Instant::now();
+            let rust_decision = rust_entry_affected(&facts, &declared, entry, &touched);
+            let t_rust = t0.elapsed();
+            let t1 = Instant::now();
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
+            eprintln!(
+                "[module-grain] {}/{} {entry}: rust={rust_decision} ({:?}) dag={dag_decision} ({:?}){}",
+                i + 1,
+                entries.len(),
+                t_rust,
+                t1.elapsed(),
+                if rust_decision == dag_decision {
+                    ""
+                } else {
+                    "  <<< DIVERGED"
+                }
+            );
             rows.push((entry.to_string(), rust_decision, dag_decision));
         }
         EquivalenceReceipt {
@@ -21773,13 +21874,19 @@ mod construction_justification_hygiene_tests {
 
 #[cfg(test)]
 mod sidecar_placement_hygiene_tests {
-    use super::{discover_floor_witness_roster, scan_wire_contract_decl_names};
+    use super::scan_wire_contract_decl_names;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
+    /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
+    /// Anything on the floor's reporting path normalizes through
+    /// `repo_relative_path_normalized`, which fail-closed refuses paths outside the
+    /// workspace root — a `/tmp` fixture made this module panic on that refusal before
+    /// reaching its assertion. The refusal is correct; the fixture location was not, and
+    /// `target/` is the convention the other fixture-based tests in this file use.
     fn tmp_dir() -> std::path::PathBuf {
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!(
+        super::process_workspace_root().join("target").join(format!(
             "sidecar_placement_test_{}_{}",
             std::process::id(),
             id
@@ -21825,15 +21932,81 @@ mod sidecar_placement_hygiene_tests {
              coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
         )
         .expect("write temp file");
-        let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_witness_roster(&[root], &[], &[], &[]);
+        // SUBJECT is the fixture directory alone; MACHINERY roots locate the discovery
+        // producer. Passing one root list for both submitted every `.dag` in `src/v2` + `dag`
+        // for judgement too, so an unrelated corpus file's refusal could answer first and
+        // mask this assertion — the same live-tree coupling this PR removes from the
+        // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
+        // shared machinery and stays real; only the subject is narrowed.
+        //
+        // What this test uniquely carries is the WIRING: that a sidecar refusal raised inside
+        // the `.dag` producer reaches the Rust bridge as an `Err`. The rule itself is not
+        // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
+        // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
+        // it content-side, so re-deriving it here would be a second representation (§2/§3).
+        // Hence the call is at the producer seam and not at
+        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
+        // rule and can never report a wire-contract violation.
+        //
+        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
+        // `floor_discovery_producer_entry_anchored` (git-toplevel, not cwd), so this test
+        // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
+        // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
+        // process-global.
+        let ws = super::process_workspace_root();
+        let producer_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive discover_floor_witness_roster to Err");
+            .expect("misplaced wire-contract decl must drive discovery to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
+        );
+    }
+
+    /// Non-vacuity control for the test above. A narrowed corpus is a new shape for the
+    /// producer — one root, no scan dirs, an empty roster — so `Err` on its own proves
+    /// nothing: it could be the narrowing itself refusing rather than the sidecar rule.
+    /// Same call, same narrowing, only the decl's type changed, and it must come back `Ok`.
+    #[test]
+    fn clean_dag_file_leaves_narrowed_discovery_ok() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(
+            dir.join("anthropic.dag"),
+            "data anthropic_chat_message_label: String = \"AnthropicChatMessage\"\n",
+        )
+        .expect("write temp file");
+        let ws = super::process_workspace_root();
+        let producer_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let rows = result.expect("a `.dag` file with no misplaced decl must not refuse");
+        let entries: Vec<&str> = rows.iter().map(|r| r.entry.as_str()).collect();
+        assert!(
+            entries.is_empty(),
+            "the fixture enrolls no witness, so the roster must be empty rather than \
+             carrying rows from outside the narrowed corpus: {entries:?}"
         );
     }
 }
@@ -24866,6 +25039,27 @@ mod resolution_divergence_census_tests {
         std::fs::write(&path, content).expect("write dag");
     }
 
+    /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
+    ///
+    /// These are positive controls — the planted divergence lives entirely among
+    /// fixture modules, and `std.types` is present only to supply `Bool`. Rooting at
+    /// the live `dag/std` made every one of them depend on the whole
+    /// std -> extdeps -> {gunbc, v2.std} import closure resolving, so they went red at
+    /// #7268 (which grounded std's class-1 unit constants and relocated the POSIX exit
+    /// codes onto extdeps rows) without the detector under test changing at all.
+    /// DESIGN §3 deleted the `std <- extdeps` layer direction on purpose, so that
+    /// closure is expected to keep widening; chasing it with more roots would re-break
+    /// on the next grounding. A local stub keeps the control discriminating and
+    /// independent of corpus health.
+    fn fixture_roots(fixture: &std::path::Path) -> Vec<String> {
+        write_fixture(
+            fixture,
+            "std_types.dag",
+            "module std.types\n\ntype Bool = True | False\n",
+        );
+        vec![fixture.to_string_lossy().into_owned()]
+    }
+
     fn positive_control_fixture_root() -> std::path::PathBuf {
         super::process_workspace_root()
             .join("target")
@@ -24874,7 +25068,6 @@ mod resolution_divergence_census_tests {
 
     #[test]
     fn resolution_divergence_positive_control_planted_site() {
-        let ws = super::process_workspace_root();
         let fixture = positive_control_fixture_root();
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24914,10 +25107,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let WholeTreeCtx { ctx, .. } =
             whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
         let leaf = ctx
@@ -25005,100 +25195,27 @@ fn caller() -> Bool {
         ))
     }
 
-    fn walk_target_alias_plan_fixture_root() -> std::path::PathBuf {
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-walk-alias-plan-{}", std::process::id()))
-    }
-
-    /// Two sibling modules each declare `shared_pick`; the leaf imports one *named*
-    /// item from each (pulling each module's whole func_env in as a parent per
-    /// `v1_compiler_infer.rs`'s parent_envs construction) and calls `shared_pick`
-    /// bare/unqualified — never itself an imported name. That forces
-    /// `lookup_resolved_sig_with_telemetry`'s parent fold to see match_count=2 and
-    /// fire `fn_parent_first_hit`: a real §13 silent pick, not a synthetic count.
-    #[test]
-    fn resolution_divergence_silent_pick_positive_control_fires() {
-        let ws = super::process_workspace_root();
-        let fixture = silent_pick_fixture_root("fire");
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "a.dag",
-            r#"module test.silentpick.a
-
-import std.types { Bool }
-
-fn unrelated_a(x: Bool) -> Bool {
-  return x
-}
-
-fn shared_pick(x: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "b.dag",
-            r#"module test.silentpick.b
-
-import std.types { Bool }
-
-fn unrelated_b(x: Bool) -> Bool {
-  return x
-}
-
-fn shared_pick(x: Bool, y: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.silentpick.leaf
-
-import std.types { Bool }
-import test.silentpick.a { unrelated_a }
-import test.silentpick.b { unrelated_b }
-
-fn caller() -> Bool {
-  return shared_pick(False)
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert!(
-            census.silent_pick_fn_parent_first_hit >= 1,
-            "expected a real fn_parent_first_hit silent pick, got 0 (silent_pick_global_bare_lcp={} silent_pick_global_bare_lcp_tie={})",
-            census.silent_pick_global_bare_lcp,
-            census.silent_pick_global_bare_lcp_tie,
-        );
-        assert!(
-            census
-                .silent_pick_fn_parent_first_hit_rows
-                .iter()
-                .any(|row| row.name == "shared_pick" && row.parent_match_count >= 2),
-            "expected a shared_pick row with parent_match_count>=2, got {:?}",
-            census.silent_pick_fn_parent_first_hit_rows
-        );
-        let refusal = resolution_divergence_silent_pick_refusal(&census);
-        assert!(
-            refusal.is_some(),
-            "§5 gate must refuse on a planted silent pick, got None"
-        );
-        let refusal_text = refusal.unwrap();
-        assert!(
-            refusal_text.contains("SILENT_PICK regression"),
-            "refusal must self-identify as a SILENT_PICK regression, got: {refusal_text}"
-        );
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
+    // Four silent-pick positive controls were deleted here, not repaired: they planted
+    // a §13 silent pick (two sibling `shared_pick` fns; two homonymous types) and
+    // asserted the telemetry counted it. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY`
+    // now defaults to true (v1_rt.rs), so the resolver REFUSES those fixtures with a
+    // typed `AmbiguousReference` instead of picking — the planted fail-open is
+    // unwritable by construction (DESIGN §5), and a validation control for an
+    // unwritable class cannot fire. The surviving behaviour is the refusal itself,
+    // already carried by `v1-compiler-tests`
+    // `namespace_unique_on_chain_policy_test::namespace_only_refuses_{chain_homonym_on_type_path,
+    // fn_parent_first_hit_at_call_site}` (green by execution, both policy arms, and
+    // it reds if the refusal ever regresses to a silent pick). Keeping these four
+    // would be a second representation of that one fact (§2/§3).
+    //
+    // This fires the dissolve-on that `dag/gunbc/ci_layer_roots.dag`
+    // `falsifier_silent_pick_gate_note` declares for itself: "§13's unique-on-chain
+    // resolution ships as the resolver's actual behavior ... then telemetry, this
+    // witness, and this note all delete together." The rest of that dissolution —
+    // the `v1_rt` telemetry, the 04_env/04_sigs recording sites, main.rs's
+    // SILENT-PICK-GATE, the two census bins, the falsifier roster row and the note —
+    // is a separate lane; `resolution_divergence_silent_pick_clean_corpus_refusal_none`
+    // below is vacuous under the same flip and dissolves with it.
 
     /// Same fixture family, but the leaf imports only module `a` — one parent, not
     /// two — so `shared_pick` resolves via a single parent hit (match_count=1) and
@@ -25106,7 +25223,6 @@ fn caller() -> Bool {
     /// bare-name-via-parent resolution, only on a genuine >=2-candidate collision.
     #[test]
     fn resolution_divergence_silent_pick_clean_corpus_refusal_none() {
-        let ws = super::process_workspace_root();
         let fixture = silent_pick_fixture_root("clean");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -25138,10 +25254,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert_eq!(
             census.silent_pick_fn_parent_first_hit, 0,
@@ -25151,70 +25264,6 @@ fn caller() -> Bool {
         assert!(
             resolution_divergence_silent_pick_refusal(&census).is_none(),
             "§5 gate must be None on a clean corpus with no silent pick"
-        );
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    /// Hermetic control guarding the ~483-clean join filter: two pool-wide homonymous
-    /// type declarations in unrelated module trees (NOT both on the consumer's
-    /// parent/import chain) force `global_bare_lcp` telemetry, but the site is benign
-    /// under the containment_ambiguous/diverge join — refusal must stay None.
-    #[test]
-    fn resolution_divergence_silent_pick_benign_global_bare_lcp_filter_control() {
-        let ws = super::process_workspace_root();
-        let fixture = silent_pick_fixture_root("benign-gblcp");
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "near.dag",
-            r#"module test.benigngblcp.near
-
-import std.types { Int }
-
-type PoolDup = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "far.dag",
-            r#"module test.benigngblcp.far.away
-
-import std.types { Int }
-
-type PoolDup = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "consumer.dag",
-            r#"module test.benigngblcp.near.consumer
-
-import std.types { Int }
-
-fn use_pool_dup(x: PoolDup) -> Int {
-  return x
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert!(
-            census.silent_pick_global_bare_lcp >= 1,
-            "fixture must fire global_bare_lcp telemetry (pool-wide homonym), got lcp={} tie={}",
-            census.silent_pick_global_bare_lcp,
-            census.silent_pick_global_bare_lcp_tie,
-        );
-        let genuine = super::resolution_divergence_silent_pick_genuine_rows(&census);
-        assert!(
-            genuine.is_empty(),
-            "pool-wide type homonym must be filtered benign by the join, got genuine={genuine:?}"
-        );
-        assert!(
-            resolution_divergence_silent_pick_refusal(&census).is_none(),
-            "§5 gate must be None when only benign global_bare_lcp telemetry fired"
         );
         let _ = std::fs::remove_dir_all(&fixture);
     }
@@ -25239,233 +25288,6 @@ fn use_pool_dup(x: PoolDup) -> Int {
             super::resolution_divergence_fn_parent_first_hit_subset_refusal(&census).is_none(),
             "subset refusal must be None on the live closure-scoped corpus"
         );
-    }
-
-    /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
-    /// Oracle: plan row walk_target == symbol_index-grounded qualified path for LCP winner.
-    #[test]
-    fn walk_target_alias_plan_positive_control_global_bare_lcp() {
-        use super::{
-            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
-            WalkTargetAliasPlanClass,
-        };
-
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "near.dag",
-            r#"module test.aliasplan.near
-
-import std.types { Int }
-
-type AmbigType = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "far.dag",
-            r#"module test.aliasplan.far.away
-
-import std.types { Int }
-
-type AmbigType = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "consumer.dag",
-            r#"module test.aliasplan.near.consumer
-
-import std.types { Int }
-
-fn use_ambig(x: AmbigType) -> Int {
-  return x
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
-        assert!(
-            plan.global_bare_lcp_events >= 1,
-            "fixture must trigger global_bare_lcp silent pick, got events={}",
-            plan.global_bare_lcp_events
-        );
-        assert!(
-            plan.source_scope_label.contains("dag/std"),
-            "scope label must reflect actual source roots, got {}",
-            plan.source_scope_label
-        );
-        let rows: Vec<_> = plan
-            .rows
-            .iter()
-            .filter(|r| {
-                r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp
-                    && r.key.declaring_module == "test.aliasplan.near.consumer"
-                    && r.key.binding == "AmbigType"
-            })
-            .collect();
-        assert_eq!(
-            rows.len(),
-            1,
-            "expected one deduped AmbigType row for consumer module, plan rows={:?} refused={:?} events={}",
-            plan.rows,
-            plan.refused,
-            plan.global_bare_lcp_events
-        );
-        let row = rows[0];
-        assert!(
-            row.walk_verified,
-            "walk target must verify via symbol_index, row={row:?}"
-        );
-        assert_eq!(
-            row.pre_flip_qualified_path, "test.aliasplan.near.AmbigType",
-            "oracle primary key must be LCP-nearer qualified path"
-        );
-        assert_eq!(
-            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
-            "walk_target and pre_flip_qn must agree"
-        );
-        assert!(
-            row.lookup_events >= 1,
-            "lookup_events must count silent-pick telemetry hits"
-        );
-
-        // Binding-identity oracle within one run: re-ground from census ctx must match plan row.
-        crate::v1_rt::resolution_silent_pick_enable();
-        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
-        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
-        super::merge_silent_pick_telemetry(&mut census, silent_picks);
-        let replay = walk_target_alias_plan_from_census(&ctx, &census);
-        let replay_row = replay
-            .rows
-            .iter()
-            .find(|r| {
-                r.key.declaring_module == "test.aliasplan.near.consumer"
-                    && r.key.binding == "AmbigType"
-            })
-            .expect("replay plan must contain consumer AmbigType row");
-        assert_eq!(
-            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
-            "oracle: replay qualified_path must match plan snapshot"
-        );
-
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    /// Planted fn_parent_first_hit silent pick: nested modules both define `helper`, leaf calls bare.
-    #[test]
-    fn walk_target_alias_plan_positive_control_fn_parent_first_hit() {
-        use super::{
-            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
-            WalkTargetAliasPlanClass,
-        };
-
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "grand.dag",
-            r#"module test.aliasplan.a
-
-import std.types { Bool }
-
-fn helper(x: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "parent.dag",
-            r#"module test.aliasplan.b
-
-import std.types { Bool }
-
-fn helper(x: Bool, y: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.aliasplan.use
-
-import std.types { Bool }
-import test.aliasplan.a { }
-import test.aliasplan.b { }
-
-fn caller() -> Bool {
-  return helper(False)
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
-        assert!(
-            plan.fn_parent_first_hit_events >= 1,
-            "fixture must trigger fn_parent_first_hit silent pick, got events={}",
-            plan.fn_parent_first_hit_events
-        );
-        let rows: Vec<_> = plan
-            .rows
-            .iter()
-            .filter(|r| {
-                r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit
-                    && r.key.declaring_module == "test.aliasplan.use"
-                    && r.key.binding == "helper"
-            })
-            .collect();
-        assert_eq!(
-            rows.len(),
-            1,
-            "expected one deduped helper row for leaf module, plan rows={:?} refused={:?}",
-            plan.rows,
-            plan.refused
-        );
-        let row = rows[0];
-        assert!(
-            row.walk_verified,
-            "walk target must verify via symbol_index, row={row:?}"
-        );
-        assert!(
-            row.pre_flip_qualified_path == "test.aliasplan.a.helper"
-                || row.pre_flip_qualified_path == "test.aliasplan.b.helper",
-            "oracle must bind to an imported parent helper declaration, got {}",
-            row.pre_flip_qualified_path
-        );
-        assert_eq!(
-            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
-            "walk_target and pre_flip_qn must agree"
-        );
-
-        crate::v1_rt::resolution_silent_pick_enable();
-        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
-        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
-        super::merge_silent_pick_telemetry(&mut census, silent_picks);
-        let replay = walk_target_alias_plan_from_census(&ctx, &census);
-        let replay_row = replay
-            .rows
-            .iter()
-            .find(|r| r.key.declaring_module == "test.aliasplan.use" && r.key.binding == "helper")
-            .expect("replay plan must contain leaf helper row");
-        assert_eq!(
-            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
-            "oracle: replay qualified_path must match plan snapshot"
-        );
-
-        let _ = std::fs::remove_dir_all(&fixture);
     }
 
     #[test]
@@ -25775,36 +25597,248 @@ mod reference_edge_producer_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Repro for main-red false edges: prelude bare names in import-less std files must not
-    /// surface cross-layer dependency edges (layering-imports gate §5).
+    /// A cross-layer edge out of a std file must be *grounded in that file's own text* —
+    /// either a real `import`, or a real reference occurrence (the reference-derived
+    /// edge the sibling control above proves is emitted). An edge naming a module the
+    /// file never mentions is fabricated by the producer, which is the actual
+    /// "prelude bare name" defect class this test was built for.
+    ///
+    /// It used to assert the strictly stronger `no std -> extdeps/compiler edge at all`,
+    /// which DESIGN §3 deleted on 2026-07-24: the layer DAG
+    /// `std <- extdeps <- compiler <- workflow` was "convention standing where no
+    /// necessity stood, and it blocked correct grounding — a std surface citing the
+    /// extdeps rows that ground it". Under that deleted rule every such edge was false
+    /// by definition; today the 9 in-corpus edges are exactly those sanctioned
+    /// citations (`std.measure` -> `extdeps.units.*` and `std.process` ->
+    /// `extdeps.process.*` from #7268, `std.claim_evidence` and
+    /// `v2.std.compilers.target_model` -> `extdeps.external_authority`), so the old
+    /// assertion reported grounding as a violation. Acyclicity is the only structural
+    /// law; folders are browsing conventions.
     #[test]
-    fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
-        use super::layer_import_facts;
+    fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
+        use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
+
+        /// `layer_import_facts` has TWO fact provenances by construction: a scan of real
+        /// `import` lines, and — only when the importer roots contain import-less `.dag`
+        /// files — reference-derived edges from `reference_resolution_facts`. So grounding
+        /// is the disjunction, and each arm is checked against the surface that provenance
+        /// actually uses:
+        ///
+        /// - **import-backed** — the module appears in the parsed import surface
+        ///   (`extract_import_paths`). This is the strong arm and the common case.
+        /// - **reference-backed** — the module appears in the file's *code* text. The
+        ///   sibling `..._reference_only_violation_control` proves the producer emits such
+        ///   an edge for an import-less std file with a qualified reference, so demanding
+        ///   an `import` for it would encode an invariant the project is actively
+        ///   dissolving (DESIGN's namespace-only lane ends with `import` as a *parse
+        ///   error*, deps derived from `container.member` references). Requiring one here
+        ///   would red on a legitimate reference (review 44710).
+        ///
+        /// The reference arm is *code* containment, not text containment: string literals
+        /// are stripped first. `.dag` has no comment syntax, so a prose
+        /// `data ..._note: String = "…"` row is the only non-code text — and those rows
+        /// legitimately name module paths (this PR adds two), which is exactly the
+        /// laundering vector review 44626 rejected `contains` for. Stripping literals
+        /// keeps that closed while admitting the real reference.
+        ///
+        /// Three SEPARATE buckets out, never folded together (DESIGN §5 state-space
+        /// conflation): "I could not read the file" is not "the edge is fabricated", and
+        /// "grounded by a reference" is not "grounded by an import" — the second
+        /// distinction is what keeps the reference arm from silently becoming the whole
+        /// oracle. `path` is a repo-relative key, so it is anchored at the workspace root
+        /// exactly as the producer anchors it; reading it raw only works when cwd happens
+        /// to be that root, which under `cargo test` (cwd = package root) it is not.
+        fn ungrounded(facts: &[LayerImportFactRaw]) -> (Vec<String>, Vec<String>, Vec<String>) {
+            /// Drops `"…"` string-literal content, keeping everything else. A `\` escapes
+            /// the next character, so `\"` does not close a literal.
+            fn code_text_only(content: &str) -> String {
+                let mut out = String::with_capacity(content.len());
+                let mut in_string = false;
+                let mut escaped = false;
+                for c in content.chars() {
+                    if escaped {
+                        escaped = false;
+                        continue;
+                    }
+                    match c {
+                        '\\' if in_string => escaped = true,
+                        '"' => in_string = !in_string,
+                        _ if in_string => {}
+                        _ => out.push(c),
+                    }
+                }
+                out
+            }
+
+            let ws = super::workspace_root();
+            let mut fabricated = Vec::new();
+            let mut reference_backed = Vec::new();
+            let mut unreadable = Vec::new();
+            for f in facts.iter().filter(|f| {
+                f.layer == "LayerPrefixStd"
+                    && (f.import_module.starts_with("extdeps.")
+                        || f.import_module.starts_with("v2.compiler"))
+            }) {
+                let Ok(content) = std::fs::read_to_string(ws.join(&f.path)) else {
+                    unreadable.push(f.path.clone());
+                    continue;
+                };
+                let edge = format!("{} -> {}", f.path, f.import_module);
+                if extract_import_paths(&content)
+                    .iter()
+                    .any(|m| m == &f.import_module)
+                {
+                    continue;
+                }
+                if code_text_only(&content).contains(&f.import_module) {
+                    reference_backed.push(edge);
+                } else {
+                    fabricated.push(edge);
+                }
+            }
+            (fabricated, reference_backed, unreadable)
+        }
 
         let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
         let extdeps_roots = vec!["src/v2/extdeps".to_string(), "dag/extdeps".to_string()];
         let facts = layer_import_facts(&std_roots, &extdeps_roots);
-        let violations: Vec<_> = facts
-            .iter()
-            .filter(|f| {
-                f.layer == "LayerPrefixStd"
-                    && (f.import_module.starts_with("extdeps.")
-                        || f.import_module.starts_with("v2.compiler"))
-            })
-            .collect();
-        if !violations.is_empty() {
-            for v in &violations {
-                eprintln!(
-                    "FALSE EDGE: {} -> {} (layer={})",
-                    v.path, v.import_module, v.layer
-                );
-            }
-        }
         assert!(
-            violations.is_empty(),
-            "prelude bare names must not produce false std->extdeps/compiler edges (got {})",
-            violations.len()
+            !facts.is_empty(),
+            "producer emitted no layer facts at all — the corpus read is broken, so an \
+             empty violation set below would be vacuous"
         );
+        let (fabricated, reference_backed, unreadable) = ungrounded(&facts);
+        assert!(
+            unreadable.is_empty(),
+            "every flagged std file must be readable at the workspace root — an unreadable \
+             path means the oracle is broken, not that an edge is grounded: {unreadable:?}"
+        );
+        assert!(
+            fabricated.is_empty(),
+            "every cross-layer std edge must be grounded in its own file — a real parsed \
+             import, or a real code reference; fabricated: {fabricated:?}"
+        );
+        // The reference-backed bucket is REPORTED, not asserted empty. Asserting it empty
+        // is the import-only rule this oracle just stopped encoding; leaving it unsplit
+        // would let the weaker arm silently absorb the stronger one. Zero in the corpus
+        // today (all in-corpus cross-layer std edges are real `import` lines), and it is
+        // the import-less std files the namespace lane produces that will land here.
+        eprintln!(
+            "cross-layer std edges: {} import-backed, {} reference-backed{}",
+            facts
+                .iter()
+                .filter(|f| {
+                    f.layer == "LayerPrefixStd"
+                        && (f.import_module.starts_with("extdeps.")
+                            || f.import_module.starts_with("v2.compiler"))
+                })
+                .count()
+                - reference_backed.len(),
+            reference_backed.len(),
+            if reference_backed.is_empty() {
+                String::new()
+            } else {
+                format!(" {reference_backed:?}")
+            }
+        );
+
+        // RED controls, each planting a fact against a REAL, READABLE file and asserting
+        // `unreadable` is empty first — otherwise a path-anchoring bug would satisfy them
+        // for the wrong reason.
+        let red = |path: &str, import_module: &str| {
+            let planted = vec![LayerImportFactRaw {
+                layer: "LayerPrefixStd",
+                path: path.to_string(),
+                import_module: import_module.to_string(),
+            }];
+            let (fab, refd, unread) = ungrounded(&planted);
+            assert!(
+                unread.is_empty(),
+                "RED control fixture must be readable, else it fires for the wrong reason"
+            );
+            (fab.len(), refd.len())
+        };
+
+        // (1) a module the file neither imports nor mentions anywhere.
+        assert_eq!(
+            red(
+                "dag/std/measure.dag",
+                "extdeps.units.no_such_module_mentioned_anywhere"
+            ),
+            (1, 0),
+            "an edge with no import and no reference behind it must be flagged fabricated"
+        );
+
+        // (2) a near-miss sibling: `std.measure` imports `extdeps.units.iec_80000_13`, and
+        // `..._14` does not occur in the file in any form. Guards the arm against matching
+        // on a prefix of a real module name.
+        let measure = std::fs::read_to_string(super::workspace_root().join("dag/std/measure.dag"))
+            .expect("read measure.dag");
+        let near_miss = "extdeps.units.iec_80000_14";
+        assert!(
+            !extract_import_paths(&measure)
+                .iter()
+                .any(|m| m == near_miss)
+                && measure.contains("extdeps.units.iec_80000_13"),
+            "control precondition: {near_miss} is not imported, while its sibling _13 is"
+        );
+        assert_eq!(
+            red("dag/std/measure.dag", near_miss),
+            (1, 0),
+            "a sibling module absent from the file must not be grounded by the prefix of \
+             the one that is present"
+        );
+
+        // (3) + (4) the two arms of the reference case, on authored fixtures because the
+        // live corpus has no import-less std file to exercise them. The pair is what makes
+        // the reference arm discriminating rather than a rubber stamp: same shape, same
+        // module name, differing only in whether the occurrence is code or prose.
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-layer-grounding-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        std::fs::create_dir_all(&fixture).expect("mkdir fixture");
+        let referenced = "v2.compiler.tokenize";
+
+        // (3) import-less, module named ONLY inside a prose `String` literal — the
+        // laundering vector review 44626 rejected `contains` for. Must stay fabricated.
+        let prose = fixture.join("prose.dag");
+        std::fs::write(
+            &prose,
+            "module v2.std.prose_plant\n\ndata note: String = \"grounding is decided against \
+             v2.compiler.tokenize, which this file does not reference\"\n",
+        )
+        .expect("write prose fixture");
+        assert_eq!(
+            red(&prose.to_string_lossy(), referenced),
+            (1, 0),
+            "a module named only inside a string literal must stay fabricated — stripping \
+             literals is what keeps prose from laundering an edge"
+        );
+
+        // (4) import-less, same module in a real code position — the legitimate
+        // reference-derived edge the sibling control proves the producer emits. Must be
+        // grounded, and grounded by the REFERENCE arm specifically.
+        let code = fixture.join("code.dag");
+        std::fs::write(
+            &code,
+            "module v2.std.code_plant\n\nfn leak_probe() -> Bool {\n  \
+             v2.compiler.tokenize.eq(a: \"a\", b: \"b\")\n}\n",
+        )
+        .expect("write code fixture");
+        assert!(
+            extract_import_paths(&std::fs::read_to_string(&code).expect("read code fixture"))
+                .is_empty(),
+            "fixture must be import-less, else it exercises the import arm instead"
+        );
+        assert_eq!(
+            red(&code.to_string_lossy(), referenced),
+            (0, 1),
+            "a real qualified reference in an import-less file must ground the edge via the \
+             reference arm — requiring an `import` here is the invariant DESIGN dissolved"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
     }
 }
 
@@ -32278,6 +32312,22 @@ mod sigs_env_flat_parents {
     // an EARLIER import; (c) own local beats every parent.
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
+        // (a) and (b) are properties of the *ImportScoped* linearization, not of
+        // resolution in general. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY` now defaults
+        // to true (§13 unique-on-chain, v1_rt.rs), under which a name defined by two
+        // parents is a typed AmbiguousReference instead of a first-hit pick — so both
+        // read None on the default policy, which is what made this test red. Pin the
+        // policy the assertions are about, then cover the default's refusal explicitly
+        // at the end rather than leaving it unstated.
+        struct PolicyGuard(bool);
+        impl Drop for PolicyGuard {
+            fn drop(&mut self) {
+                crate::v1_rt::name_resolution_policy_set_namespace_only(self.0);
+            }
+        }
+        let _policy = PolicyGuard(crate::v1_rt::name_resolution_policy_is_namespace_only());
+        crate::v1_rt::name_resolution_policy_set_namespace_only(false);
+
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
             crate::v1_compiler_infer_lookup::func_sig_if_resolved(
                 crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
@@ -32310,6 +32360,26 @@ mod sigs_env_flat_parents {
             read(&own, "f").as_deref(),
             Some("FromSelf"),
             "own local shadows all parents"
+        );
+
+        // Default policy (§13 NamespaceOnlyY): the same two-parent homonyms must
+        // REFUSE rather than silently pick a winner by import order. Own-local still
+        // resolves — it is unique on the chain, so nothing is ambiguous about it.
+        crate::v1_rt::name_resolution_policy_set_namespace_only(true);
+        assert_eq!(
+            read(&m, "f"),
+            None,
+            "namespace-only must refuse the 2-parent homonym, never first-hit it"
+        );
+        assert_eq!(
+            read(&m2, "g"),
+            None,
+            "namespace-only must refuse the closure-vs-direct homonym, never order-pick it"
+        );
+        assert_eq!(
+            read(&own, "f").as_deref(),
+            Some("FromSelf"),
+            "own local is unique on the chain and must still resolve under namespace-only"
         );
     }
 
