@@ -770,7 +770,20 @@ fn bmc_fan_policy_classification(
                                 ),
                               },
                             }
-                          _ =>
+                          Present {
+                            value: BmcFanDurabilityEvidenceBuilt { evidence: _ },
+                          } =>
+                            bmc_fan_policy_durability_gated_convergence_from_inputs(
+                              intent: intent,
+                              host: host,
+                              observed: observed,
+                              desired_curve: desired,
+                              projection: projector,
+                              durability_generation: durability_generation,
+                              durability_evidence_construction: durability_evidence_construction,
+                              durability_evidence: durability_evidence,
+                            )
+                          Absent =>
                             bmc_fan_policy_durability_gated_convergence_from_inputs(
                               intent: intent,
                               host: host,
