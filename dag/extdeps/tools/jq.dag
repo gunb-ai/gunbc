@@ -6,12 +6,14 @@ import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.apt { package_jq }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data jq_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "jqlang.org/manual/"
   }
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = jq_authority
 
 data jq_cli_tool: CliTool = CliTool {
   name: "jq",
