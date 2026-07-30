@@ -506,10 +506,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Make submit → landed the default source-control journey",
         boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
         displaced_cost: "Without the complete spine, each later solver or storage slice can leak its own vocabulary and repair ritual into the interface. This fixes the product boundary before the proof kernel and write transport make it expensive to change.",
-        first_slice: "Carry the proposal contract, shared claim assessments, all eight closure receipts, zero/one/many/unclosed result space, admission, transition, projection status, 50-agent/10-overlap stress profile, and timestamp non-authority through one executing scenario corpus.",
+        first_slice: "Carry the proposal contract, full-claim P−1 readiness receipts, all seven semantic closure receipts, zero/one/many/unclosed result space, admission, transition, projection status, 50-agent/10-overlap stress profile, and timestamp non-authority through one executing scenario corpus.",
         red_control: "Removing any closure receipt leaves the operation running inside the system; blocking evidence does not become a user question; both displayed answers resume automatically; unauthorized, self-amending, exhausted-bound, and permanent-effect cases retain typed refusals and plain explanations; a stale target retries internally; projection failure after a committed and independently read-back transition stays landed; primary messages contain neither internal theory words nor manual Git repair commands; an ordinary Git compatibility projection remains attached.",
         out_of_scope: "No P1 proof kernel, source parser or edit lens, effect transport, command-line product, hosted service, writable Mercurial/Pijul target, or claim that a modeled transition has executed.",
-        handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twelve executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
+        handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
       )
     ),
 
@@ -1564,8 +1564,8 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
       node: nid(s: "2-scm-compatibility-shape"),
       criteria_digest: chash(s: "f023bb4e862d9e27"),
       red_control: RedControlExecuted {
-        witness_module: "test.claim.scm_compatibility_git_witness",
-        witness_fn: "witness_git_readback_mismatch_refuses_binding",
+        witness_module: "test.claim.scm_compatibility_shape_witness",
+        witness_fn: "witness_r1_acceptance_contract_holds",
         executed_on: "2026-07-29",
       },
       handback: HandbackDelivered {

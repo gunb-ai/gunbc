@@ -932,28 +932,64 @@ type LandingProjectionStatus
       cause: NonEmptyStr,
     }
 
+type LandingProjectionStatusFold<R> {
+  projected: fn(LandingProjectionOfAcceptedTransition) -> R
+  pending: fn(
+    LandingTransitionReceipt,
+    CompatibilityRealizationHandle,
+    LandingCompatibilityTargetBinding,
+    NonEmptyStr,
+  ) -> R
+  failed: fn(
+    LandingTransitionReceipt,
+    CompatibilityRealizationHandle,
+    LandingCompatibilityTargetBinding,
+    NonEmptyStr,
+  ) -> R
+}
+
+fn landing_projection_status_fold<R>(
+  status: LandingProjectionStatus,
+  fold: LandingProjectionStatusFold<R>,
+) -> R {
+  match status {
+    LandingProjected { receipt } =>
+      fold.projected(receipt)
+    LandingProjectionPending {
+      transition,
+      realization,
+      target,
+      cause,
+    } =>
+      fold.pending(transition, realization, target, cause)
+    LandingProjectionFailed {
+      transition,
+      realization,
+      target,
+      cause,
+    } =>
+      fold.failed(transition, realization, target, cause)
+  }
+}
+
 fn landing_projection_status_matches(
   status: LandingProjectionStatus,
   transition: LandingTransitionReceipt,
 ) -> Bool {
-  match status {
-    LandingProjected { receipt } =>
-      receipt.transition == transition
-    LandingProjectionPending {
-      transition: projected,
-      realization: _,
-      target: _,
-      cause: _,
-    } =>
-      projected == transition
-    LandingProjectionFailed {
-      transition: projected,
-      realization: _,
-      target: _,
-      cause: _,
-    } =>
-      projected == transition
-  }
+  landing_projection_status_fold(
+    status: status,
+    fold: LandingProjectionStatusFold {
+      projected: fn(receipt) {
+        receipt.transition == transition
+      },
+      pending: fn(projected, _, _, _) {
+        projected == transition
+      },
+      failed: fn(projected, _, _, _) {
+        projected == transition
+      },
+    },
+  )
 }
 
 type LandingCommittedTransition {

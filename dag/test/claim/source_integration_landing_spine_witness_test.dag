@@ -509,10 +509,12 @@ test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
       proposal: _,
       policy: _,
       readiness: _,
-      first_blocking: LandingEvidenceRefused { claim, refusals: _ },
+      first_blocking: LandingMissingEvidence { claim },
       remaining_blocking: _,
     } =>
-      claim == p0_builds_claim()
+      claim.id == p0_builds_claim().id
+        && claim.target == p0_builds_claim().target
+        && claim.bound == p0_builds_claim().bound
     _ => false
   }
 }

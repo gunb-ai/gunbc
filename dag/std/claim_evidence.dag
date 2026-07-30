@@ -499,10 +499,13 @@ fn claim_requirement_readiness<F, C, A, FidelityBoundary, Independence>(
   claim: C,
   links: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
 ) -> ClaimRequirementReadiness<F, C, A, FidelityBoundary, Independence> {
+  let relevant = links |> filter(link =>
+    link.freshness.maximum_conclusion == claim
+  )
   let admitted = evidence_admitted_links(
     policy: policy,
     claim: claim,
-    links: links,
+    links: relevant,
   )
   let supporting = admitted |> filter(link =>
     evidence_direction_fold(
@@ -542,7 +545,7 @@ fn claim_requirement_readiness<F, C, A, FidelityBoundary, Independence>(
     let refusals = evidence_admission_refusals(
       policy: policy,
       claim: claim,
-      links: links,
+      links: relevant,
     )
     if count(refusals) > 0 {
       ClaimRequirementEvidenceRefused {
