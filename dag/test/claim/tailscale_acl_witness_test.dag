@@ -14,7 +14,7 @@ import extdeps.tailscale.acl {
   tailscale_grants_external_authority_holds,
 }
 import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
-import v2.extdeps.file_system { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree {
   LiveTreeDisposition,
   SubstrateInputsOnly,

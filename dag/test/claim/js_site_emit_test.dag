@@ -24,7 +24,7 @@ import extdeps.languages.react_jsx {
   JsxOk,
   JsxRejected,
 }
-import v2.extdeps.file_system { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.live_tree {
   LiveTreeDisposition,
   SubstrateInputsOnly,

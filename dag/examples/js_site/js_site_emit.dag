@@ -24,7 +24,7 @@ import std.process {
   ExitSuccess,
   exit_failure,
 }
-import v2.extdeps.file_system { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 fn js_site_generated_dir() -> String {
   "dag/examples/js_site/generated"
