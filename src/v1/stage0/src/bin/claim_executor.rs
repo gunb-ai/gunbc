@@ -2035,6 +2035,14 @@ struct BatchRecord {
     unit_count: u128,
     /// Flattened results from all units in this batch (order: unit by unit).
     results: Vec<ClaimResult>,
+    /// Heartbeat label for this batch — carried so the component receipt names the
+    /// component the same way the progress lines did.
+    label: String,
+    /// The batch's node-frontier selection role, the STRUCTURAL identity the component
+    /// receipt keys on (`gunbc.floor_component_receipt` role note): the affected-set
+    /// cold control is the `predict_only` component, never "batch 1" — indices shift
+    /// when a `gunbc_falsifier_batches` enrollment flag flips.
+    selection_tag: &'static str,
 }
 
 /// Materialization-ladder receipt: how many entry resolves this floor run actually
@@ -2045,6 +2053,283 @@ struct BatchRecord {
 /// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
 /// Returns false on a write error — the walk fails closed at the point of
 /// failure rather than relying only on the downstream missing-file gate.
+/// The batch's node-frontier selection role, as the tag vocabulary
+/// `gunbc.floor_component_receipt.floor_component_selection_of_tag` admits.
+/// Two or more DISTINCT selections in one batch returns `"ambiguous"`, which that
+/// function refuses — the role would not identify a unique component, and a silently
+/// picked first one is exactly the kind of guess the receipt exists to remove.
+fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
+    let mut seen: Vec<&'static str> = Vec::new();
+    for r in batch {
+        if let Runnable::DiscoveryBatch {
+            node_frontier_selection,
+            ..
+        } = r
+        {
+            let tag = match node_frontier_selection {
+                NodeFrontierSelectionMode::Off => "off",
+                NodeFrontierSelectionMode::Applied => "applied",
+                NodeFrontierSelectionMode::PredictOnly => "predict_only",
+            };
+            if !seen.contains(&tag) {
+                seen.push(tag);
+            }
+        }
+    }
+    match seen.len() {
+        0 => "off",
+        1 => seen[0],
+        _ => "ambiguous",
+    }
+}
+
+/// One batch's failure MODE and detail — the seed's existing `falsifier_failure_mode`
+/// vocabulary verbatim, with `"none"` for a clean batch. This function deliberately
+/// makes NO judgment: the mode-to-`ObservationOutcome` mapping lives in
+/// `gunbc.floor_component_receipt.floor_component_outcome_of_failure_mode`, under a
+/// witness, and refuses an unmodelled mode. An earlier version of this mapped the mode
+/// to an outcome tag here with a `_ => "failed"` arm, which would have absorbed a newly
+/// added mode into `failed` with no diagnostic — a silent widen (DESIGN §5).
+fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
+    let details: Vec<String> = rec
+        .results
+        .iter()
+        .filter(|r| !r.ok)
+        .map(|r| format!("fn={} detail={}", r.function, r.detail))
+        .collect();
+    if details.is_empty() {
+        return ("none", "no failures recorded".to_string());
+    }
+    let joined = details.join(" | ");
+    (
+        falsifier_failure_mode(&details),
+        joined.chars().take(600).collect::<String>(),
+    )
+}
+
+fn batch_witness_count(rec: &BatchRecord) -> u128 {
+    let corpus: u128 = rec.results.iter().map(|r| r.corpus_witnesses as u128).sum();
+    if corpus > 0 {
+        corpus
+    } else {
+        rec.results.len() as u128
+    }
+}
+
+/// Write the floor's per-component receipt, the machine-readable state
+/// `.github/workflows/falsifier-alert.yml` reads instead of inferring one hardcoded
+/// causal story from the overall workflow conclusion. Authority for shape and content
+/// is `gunbc.floor_component_receipt`; this only transports primitives across the seed
+/// boundary, exactly as `render_phase_concluded_line` does for progress lines. Returns
+/// false on any refusal or write failure so the walk fails closed — a receipt that
+/// silently did not appear is the blindness the alert defect was made of.
+fn write_floor_component_receipt_at(
+    base: &std::path::Path,
+    source_roots: &[String],
+    batch_records: &[BatchRecord],
+    total_batches: usize,
+) -> bool {
+    let Some(entry) = source_roots
+        .iter()
+        .map(|r| Path::new(r).join("gunbc/floor_component_receipt.dag"))
+        .find(|p| p.exists())
+        .map(|p| p.to_string_lossy().into_owned())
+    else {
+        eprintln!(
+            "claim_executor: floor component receipt REFUSED — gunbc/floor_component_receipt.dag \
+             not found under any source root {source_roots:?}"
+        );
+        return false;
+    };
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, &entry) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("claim_executor: floor component receipt REFUSED — resolve {entry}: {e}");
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
+
+    let mut rows: Vec<Value> = Vec::new();
+    for rec in batch_records {
+        let (failure_mode, detail) = batch_failure_mode_and_detail(rec);
+        match floor_component_row_value(
+            &ctx,
+            &run_id,
+            rec.batch_index as i64 + 1,
+            &rec.label,
+            rec.selection_tag,
+            batch_witness_count(rec) as i64,
+            failure_mode,
+            &detail,
+            (rec.wall_nanos / 1_000_000) as i64,
+        ) {
+            Some(v) => rows.push(v),
+            None => return false,
+        }
+    }
+    // Batches the stop policy never reached are Skipped with their cause — a named
+    // state, never an absent row the alert would have to guess about.
+    for bi in batch_records.len()..total_batches {
+        match floor_component_row_value(
+            &ctx,
+            &run_id,
+            bi as i64 + 1,
+            "not reached",
+            "off",
+            0,
+            "not_reached",
+            "batch not reached — an earlier batch failed under the stop policy",
+            0,
+        ) {
+            Some(v) => rows.push(v),
+            None => return false,
+        }
+    }
+
+    let doc = match run_in_context_with_args(
+        &ctx,
+        "floor_component_receipt_document",
+        &[
+            (Some("run_id".to_string()), Value::Str(run_id.clone())),
+            (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
+        ],
+        false,
+    ) {
+        Ok(Value::Str(s)) => s,
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — \
+                 floor_component_receipt_document returned {other:?}, not Str"
+            );
+            return false;
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — \
+                 floor_component_receipt_document eval: {e}"
+            );
+            return false;
+        }
+    };
+
+    let path = base.join("floor-component-receipt.json");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::write(&path, doc) {
+        Ok(()) => {
+            eprintln!(
+                "[receipt] floor component receipt: {} component(s) ({})",
+                total_batches,
+                path.display()
+            );
+            true
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — write {}: {e}",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+/// One `FloorComponentRow`, built by the `.dag` authority from primitives. `None` is a
+/// refusal the caller propagates: the only way the constructor returns absent is an
+/// outcome or selection tag outside its vocabulary, which is a defect in this seed's
+/// mapping and must stop the line rather than drop a component from the receipt.
+#[allow(clippy::too_many_arguments)]
+fn floor_component_row_value(
+    ctx: &InterpContext,
+    run_id: &str,
+    index: i64,
+    label: &str,
+    selection_tag: &str,
+    witnesses: i64,
+    failure_mode: &str,
+    detail: &str,
+    wall_ms: i64,
+) -> Option<Value> {
+    // The duration crosses as the std.measure carrier, not a bare scalar: `millisecond`
+    // is called across the boundary so the constructor stays the single authority. A
+    // `Value::Record { type_name: "Millisecond", .. }` built here would fork it, and a
+    // bare `wall_ms: Nat` parameter would be the flat-scalar unit the standing
+    // unit-modeling hold forbids (`floor_component_receipt_unit_surface_note`).
+    let wall = match run_in_context_with_args(
+        ctx,
+        "millisecond",
+        &[(Some("count".to_string()), Value::Int(wall_ms))],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — millisecond(count: {wall_ms}) \
+                 eval for batch {index}: {e}"
+            );
+            return None;
+        }
+    };
+    let constructor = "floor_component_row_of_failure_mode";
+    let args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), Value::Str(label.to_string())),
+        (
+            Some("selection_tag".to_string()),
+            Value::Str(selection_tag.to_string()),
+        ),
+        (Some("witnesses".to_string()), Value::Int(witnesses)),
+        (
+            Some("failure_mode".to_string()),
+            Value::Str(failure_mode.to_string()),
+        ),
+        (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("wall".to_string()), wall),
+    ];
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
+    match out {
+        Ok(Value::Variant {
+            ref variant_name,
+            ref fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => fields
+            .iter()
+            .find(|(n, _)| ctx.sym_eq(*n, "value"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     Present row without a `value` field (batch {index})"
+                );
+                None
+            }),
+        Ok(Value::Null) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
+                 absent for batch {index}: selection_tag={selection_tag:?} \
+                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+            );
+            None
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
+            );
+            None
+        }
+    }
+}
+
 fn write_resolve_receipt(batch_records: &[BatchRecord]) -> bool {
     write_resolve_receipt_at(std::path::Path::new("target"), batch_records)
 }
@@ -2697,6 +2982,62 @@ fn batch_unit_lane(
     }
 }
 
+/// Arm-time admissibility of the success-stage population. Called immediately after
+/// the plan parses, BEFORE the governor arms and before any ordinary batch runs: a
+/// plan-shape error is knowable at parse time, and discovering it after a 20-30 minute
+/// floor would spend the whole walk to report something the parse already had in hand.
+///
+/// Stages admit `RunnableSingleClaim` only. A discovery batch has no defined green-only
+/// meaning, and — until stages execute through the ordinary unit-lane partition — a
+/// Substantial or host-compiler-spawning claim would run outside governor admission and
+/// batch clamps, so those profiles refuse here rather than running through a weaker
+/// route (the executor gap is named on `std.realization_schedule.walk_plan_note`).
+fn validate_on_success_stage_admissibility(stages: &[Vec<Runnable>]) -> Vec<String> {
+    let mut refusals = Vec::new();
+    for (si, stage) in stages.iter().enumerate() {
+        for runnable in stage {
+            match runnable {
+                Runnable::SingleClaim {
+                    entry,
+                    function,
+                    use_walk_memo,
+                    ..
+                } => {
+                    if entry.trim().is_empty() || function.trim().is_empty() {
+                        refusals.push(format!(
+                            "on-success stage {} declares a claim with an empty entry or function",
+                            si + 1
+                        ));
+                    }
+                    // `use_walk_memo` is the parsed form of the profile's
+                    // heavy_whole_tree_resolve. It is the ONE resource fact the Rust
+                    // Runnable retains — spawns_host_compiler and the memory class are
+                    // consumed at parse time and not carried — so this validator can
+                    // wall the heavy-resolve case and no more. Walling the other two
+                    // requires retaining them on Runnable, which lands with the
+                    // run_stage extraction that gives stages governor admission
+                    // (std.realization_schedule walk_plan_note names the gap).
+                    if *use_walk_memo {
+                        refusals.push(format!(
+                            "on-success stage {} claim {} declares a heavy whole-tree resolve — \
+                             stages do not yet run through governor admission, so it refuses \
+                             rather than bypassing it",
+                            si + 1,
+                            function
+                        ));
+                    }
+                }
+                Runnable::DiscoveryBatch { .. } => refusals.push(format!(
+                    "on-success stage {} contains a RunnableDiscoveryBatch — stages admit single \
+                     claims only; a discovery batch has no defined green-only meaning",
+                    si + 1
+                )),
+            }
+        }
+    }
+    refusals
+}
+
 /// The floor plan's finalization laws, read from the plan closure at arm time (the
 /// clamp-params pattern) and enforced INSIDE the walk as ordinary-floor finalization
 /// (ruling 2026-07-30). These were two GitHub shell steps — the resolve-receipt gate
@@ -3011,6 +3352,8 @@ fn run_walk(
             clamp_ms: batch_clamp_ms,
             unit_count: batch_unit_count,
             results: batch_results,
+            label: label.clone(),
+            selection_tag: batch_selection_tag(batch),
         });
         if any_failed {
             match stop_policy {
@@ -3046,6 +3389,14 @@ fn run_walk(
     } else {
         true
     };
+    // Written on EVERY exit path, red included — a red run is precisely when the
+    // alert needs to know which component failed (gunbc.floor_component_receipt).
+    let floor_component_receipt_ok = write_floor_component_receipt_at(
+        std::path::Path::new("target"),
+        source_roots,
+        &batch_records,
+        batches.len(),
+    );
     // Memo contexts absorb their ledger totals into the process accumulator on
     // Drop, so they must die before the materialization receipt is written.
     drop(walk_memo);
@@ -3053,12 +3404,17 @@ fn run_walk(
     // Ordinary-floor verdict INCLUDING receipt construction: a receipt-write failure
     // is an ordinary-floor failure, so success stages are gated on the whole floor
     // contract this process owns, not just the batch verdicts (ruling 2026-07-30).
+    // #7467's per-component receipt joins the ordinary verdict: its construction or
+    // write failure is an ORDINARY-FLOOR failure and must therefore block admission,
+    // not merely red the walk after a stamp. Preserved explicitly through the rebase
+    // because dropping it would reopen the ordering defect this branch exists to close.
     let mut ordinary_failed = any_failed
         || !resolve_receipt_ok
         || !batch_wall_receipt_ok
         || !gate_warm_cost_receipt_ok
         || !witness_row_cost_receipt_ok
         || !witness_row_cost_drift_receipt_ok
+        || !floor_component_receipt_ok
         || !materialization_receipt_ok;
     // Floor finalization laws (the in-executor form of the deleted resolve/
     // materialization gate steps): validated AFTER the receipts wrote and BEFORE the
@@ -3614,6 +3970,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
     let batches = walk_plan.batches;
     let on_success_stages = walk_plan.on_success_stages;
+    // Plan-shape validation BEFORE the governor arms and before any batch runs.
+    {
+        let refusals = validate_on_success_stage_admissibility(&on_success_stages);
+        if !refusals.is_empty() {
+            for msg in &refusals {
+                eprintln!("claim_executor: ON-SUCCESS-STAGE-REFUSED: {msg}");
+            }
+            return Err(ExitCode::from(1));
+        }
+    }
     // Floor finalization: the floor plan declares its resolve law in the plan closure
     // (gunbc_ci_floor_declared_resolve_count, projecting the ci_materialization
     // authority). Read fail-closed — a floor plan whose law cannot be read refuses the
@@ -4007,6 +4373,8 @@ mod tests {
             wall_nanos: 0,
             clamp_ms: None,
             unit_count: 0,
+            label: "finalization-fixture".to_string(),
+            selection_tag: "fixture",
             results: resolve_counts
                 .iter()
                 .map(|n| ClaimResult {
@@ -4367,6 +4735,8 @@ mod tests {
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 3,
                 results: Vec::new(),
+                label: "batch-0".to_string(),
+                selection_tag: "off",
             },
             BatchRecord {
                 batch_index: 1,
@@ -4374,6 +4744,8 @@ mod tests {
                 clamp_ms: Some(2_000),     // 2s
                 unit_count: 0,
                 results: Vec::new(),
+                label: "batch-1".to_string(),
+                selection_tag: "off",
             },
         ];
         assert!(write_batch_wall_receipt_at(&base, &clamped_records));
@@ -4391,6 +4763,8 @@ mod tests {
             clamp_ms: None,
             unit_count: 0,
             results: Vec::new(),
+            label: "batch-0".to_string(),
+            selection_tag: "off",
         }];
         assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
         let body = fs::read_to_string(base.join("floor-batch-wall-receipt.txt")).unwrap();

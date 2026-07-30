@@ -13,7 +13,7 @@ env:
 jobs:
   falsifier:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 305
+    timeout-minutes: 315
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -113,6 +113,16 @@ jobs:
           GUNBC_CI_DIFF_BASE: HEAD~20
           GUNBC_CI_DIFF_HEAD: HEAD
         timeout-minutes: 170
+      - name: Upload floor component receipt (read by falsifier-alert)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-component-receipt
+          path: target/floor-component-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
       - name: compile-clean whole-tree cold control (scoped-PR admission counterpart)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
