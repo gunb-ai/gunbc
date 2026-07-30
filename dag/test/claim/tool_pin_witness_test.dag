@@ -48,14 +48,14 @@ data jq_tool: CliTool = CliTool {
 
 data authored_pin: Pin<CliTool> = Pin {
   subject: cargo_tool,
-  version: "1.93.0" as VersionIdentity,
+  version: Present { value: "1.93.0" as VersionIdentity },
   expected_identity: cargo_identity,
   selection: ExactPin,
 }
 
 data tracked_pin: Pin<CliTool> = Pin {
   subject: jq_tool,
-  version: "1.7.1" as VersionIdentity,
+  version: Present { value: "1.7.1" as VersionIdentity },
   expected_identity: cargo_identity,
   selection: TrackedChannel {
     channel: "latest",
@@ -160,7 +160,7 @@ data reconcile_bundle_family_note: String = "The (key_of, value_eq) bundle P2 ha
 test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
   let bumped = Pin {
     subject: cargo_tool,
-    version: "1.94.0" as VersionIdentity,
+    version: Present { value: "1.94.0" as VersionIdentity },
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -171,7 +171,7 @@ test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
 test fn value_eq_covers_digest_not_only_version() -> Bool {
   let same_version_new_binary = Pin {
     subject: cargo_tool,
-    version: "1.93.0" as VersionIdentity,
+    version: Present { value: "1.93.0" as VersionIdentity },
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -183,7 +183,7 @@ data selection_is_reconcile_content_note: String = "Added after review 44329, wh
 test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
   let flipped = Pin {
     subject: cargo_tool,
-    version: "1.93.0" as VersionIdentity,
+    version: Present { value: "1.93.0" as VersionIdentity },
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
   }
@@ -193,7 +193,7 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
 test fn value_eq_detects_channel_change() -> Bool {
   let other_channel = Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: Present { value: "1.7.1" as VersionIdentity },
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
   }
@@ -203,7 +203,7 @@ test fn value_eq_detects_channel_change() -> Bool {
 test fn value_eq_detects_refresh_window_change() -> Bool {
   let wider_window = Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: Present { value: "1.7.1" as VersionIdentity },
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
   }
@@ -213,7 +213,7 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
 test fn value_eq_still_holds_for_identical_pins() -> Bool {
   let same = Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: Present { value: "1.7.1" as VersionIdentity },
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
@@ -221,7 +221,7 @@ test fn value_eq_still_holds_for_identical_pins() -> Bool {
     && (tracked_pin.selection == same.selection)
 }
 
-data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. OciDescriptor is that subject and it is deliberately unlike CliTool: no name field, no semver field, and its own mediaType and size instead. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a descriptor with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes. For content-addressed subjects, Pin.version is DERIVED from the subject via extdeps.container.oci.pin (digest projected as VersionIdentity per image-spec), never a manufactured semver (review 44946)."
+data pin_composes_over_a_second_subject_note: String = "THE DISCRIMINATING EVIDENCE that Pin is a DIMENSION and not a renamed ToolPin (operator, 2026-07-29). A generic type proves nothing by existing — it earns the claim only when a structurally DIFFERENT subject instantiates it with zero edits to the dimension. OciDescriptor is that subject and it is deliberately unlike CliTool: no name field, no software-version field, and its own mediaType and size instead. It instantiates Pin, pin_value_eq, and admit_pin_integrity unchanged — extdeps.pin was not touched to admit it. Under the old ToolPin shape this was unrepresentable: the carrier demanded a tool_name string, so a descriptor with no name would have been given a fabricated one or a second pin type would have been minted, which is exactly the N-types-for-one-axis failure the re-model removes. Content-addressed subjects carry version: Absent; selection identity is expected_identity alone (review 44953)."
 
 data pin_second_subject_soundness_note: String = "review 44662, and the reviewer was right twice about my first attempt. The original second-subject proof instantiated Pin<SccacheBinaryRelease>, which was unsound in two independent ways. (1) GRAIN: one SccacheBinaryRelease carries TWO architecture-specific digests while Pin carries ONE expected_identity, so the model could associate either artifact's digest with the undifferentiated release — an ambiguous substrate state. I had recorded that as a tracked dissolve-on and treated the deferral as sufficient; it is not, and the reason is specific to what this witness IS. A trigger-only deferral is a legitimate way to carry a known gap on a PRODUCTION row, but this row's entire job is to PROVE the dimension composes, and a proof built on an ambiguous instantiation demonstrates ambiguity rather than composition. (2) PARALLEL AUTHORITY: it re-minted the aarch64 hex already owned by dag/extdeps/cache/sccache.dag and re-spelled the release version as a second literal, so two independent copies of one fact could drift — the consume-never-fork violation this whole lane exists to remove, committed inside the witness meant to demonstrate the lane. Both are fixed by CHOOSING A SOUND SUBJECT rather than defending the unsound one: OciDescriptor describes exactly ONE blob by construction, so the grain question cannot arise, and it carries digest: ContentHash natively, so expected_identity is DERIVED from the subject below rather than copied — one fact, one home. The sccache multi-artifact case is now modeled separately at SccacheBinaryArtifact + dag/test/claim/sccache_pin_witness_test.dag (feature:pin-artifact-grain); Digest to ContentHash crosses through extdeps.crypto.hash.sha256_digest_content_hash rather than a silent cast."
 
@@ -233,8 +233,11 @@ data oci_layer_descriptor: OciDescriptor = OciDescriptor {
 
 data oci_descriptor_pin: Pin<OciDescriptor> = oci_descriptor_pin(descriptor: oci_layer_descriptor)
 
-test fn oci_descriptor_pin_version_is_derived_from_subject_digest() -> Bool {
-  (oci_descriptor_pin.version as String) == (oci_layer_descriptor.digest as String)
+test fn oci_descriptor_pin_has_no_software_version_axis() -> Bool {
+  match oci_descriptor_pin.version {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 test fn pin_composes_over_a_structurally_different_subject() -> Bool {

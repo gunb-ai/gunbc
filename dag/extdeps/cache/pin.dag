@@ -29,7 +29,9 @@ fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact
 fn sccache_binary_artifact_pin(artifact: SccacheBinaryArtifact) -> Pin<SccacheBinaryArtifact> {
   Pin {
     subject: artifact,
-    version: sccache_binary_artifact_pin_version(artifact: artifact),
+    version: Present {
+      value: sccache_binary_artifact_pin_version(artifact: artifact),
+    },
     expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: artifact),
     selection: ExactPin,
   }
