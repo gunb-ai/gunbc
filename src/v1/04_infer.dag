@@ -1112,7 +1112,10 @@ fn where_refinement_diags_for_predicate(
               )]
             }
         }
-      Absent => refinement_refusal
+      Absent => [where_refinement_unenforced_error(
+        predicate: pname, formal: formal, reason: "non-literal value at refined position",
+        span: span, module_name: module_name, source_indices: source_indices
+      )]
     }
   } else if where_refinement_is_string_literal_predicate(pred_name: pname) {
     match literal_string_from_expr(expr: value_expr) {
