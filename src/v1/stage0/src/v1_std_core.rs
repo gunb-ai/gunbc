@@ -2496,16 +2496,70 @@ pub fn find_property_string(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
-        Some(n) => match (*n.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
-                let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                Some(s.clone())
-            }
+        Some(n) => expr_literal_string_optional(n.clone()),
+        None => None,
+    }
+}
+
+pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+                _ => None,
+            },
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => match expr_literal_int_optional(unaryop_operand(expr.clone())) {
+                Some(v) => Some((0 - v.clone())),
+                None => None,
+            },
+            _ => None,
+        }
+    })
+}
+
+pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+            LiteralValue::LitStr { value: v, .. } => Some(v.clone()),
             _ => None,
         },
-        None => None,
+        _ => None,
+    }
+}
+
+pub fn is_record_lit_expr(expr: Rc<Node>) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+        _ => false,
+    }
+}
+
+pub fn record_lit_named_field_value_optional(
+    record_expr: Rc<Node>,
+    field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    if !is_record_lit_expr(record_expr.clone()) {
+        None
+    } else {
+        match Rc::new({
+            let mut __result = Vec::new();
+            for fi in record_expr.children.clone().iter().cloned() {
+                if (field_init_node_name_at(fi.clone(), source_indices.clone()) == field.clone()) {
+                    __result.push(fi);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned()
+        {
+            Some(fi) => Some(field_init_node_value(fi.clone())),
+            None => None,
+        }
     }
 }
 

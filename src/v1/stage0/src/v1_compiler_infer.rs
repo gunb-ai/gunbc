@@ -159,14 +159,15 @@ pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
     default_ident_span, empty_intern_table, error_type, expr_call_func_at,
-    expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
-    field_access_base, field_access_field_at, field_access_spine, field_binding_name_at,
-    field_binding_pattern, field_init_node_name_at, field_init_node_value, field_node_name_at,
-    field_node_type_expr, find_child_named, find_property_string, float_type, foreach_body,
-    foreach_collection, foreach_variable_at, generic_param_name_at, has_child_named, has_inferred,
-    if_condition, if_else_branch, if_then_branch, import_is_all, import_specific_names_at,
-    index_base, index_expr, int_type, intern, intern_str, is_child_accessor_in_model,
-    is_compiler_error, is_container_type, is_error_diagnostic, is_property_contraction,
+    expr_has_non_tail_self_call, expr_has_self_call, expr_literal_int_optional,
+    expr_literal_string_optional, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_access_spine, field_binding_name_at, field_binding_pattern,
+    field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,
+    find_child_named, find_property_string, float_type, foreach_body, foreach_collection,
+    foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
+    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
+    index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
+    is_container_type, is_error_diagnostic, is_property_contraction, is_record_lit_expr,
     is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
     let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
     make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
@@ -174,9 +175,10 @@ pub use crate::v1_std_core::{
     make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, slice_base, slice_end, slice_start, string_type, type_name_compatible,
-    unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
+    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
+    string_type, type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
+    with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -778,7 +780,8 @@ pub fn namespace_root_from_properties(
     .first()
     .cloned()
     {
-        Some(ns_prop) => match literal_string_from_expr(field_init_node_value(ns_prop.clone())) {
+        Some(ns_prop) => match expr_literal_string_optional(field_init_node_value(ns_prop.clone()))
+        {
             Some(root) => root.clone(),
             None => name,
         },
@@ -1488,62 +1491,18 @@ pub fn where_predicate_name_at(
     field_init_node_name_at(pred.clone(), source_indices.clone())
 }
 
-pub fn literal_int_from_expr(expr: Rc<Node>) -> Option<i64> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*expr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
-                _ => None,
-            },
-            ExprData::ExprUnaryOp {
-                op: UnaryOpKind::Neg,
-                ..
-            } => match literal_int_from_expr(unaryop_operand(expr.clone())) {
-                Some(v) => Some((0 - v.clone())),
-                None => None,
-            },
-            _ => None,
-        }
-    })
-}
-
-pub fn literal_string_from_expr(expr: Rc<Node>) -> Option<String> {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-            LiteralValue::LitStr { value: v, .. } => Some(v.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
 pub fn where_predicate_named_int_arg(
     pred: Rc<Node>,
     field: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<i64> {
-    {
-        let value_expr = field_init_node_value(pred.clone());
-        match (*value_expr.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => match Rc::new({
-                let mut __result = Vec::new();
-                for fi in value_expr.children.clone().iter().cloned() {
-                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
-                        == field.clone())
-                    {
-                        __result.push(fi);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(fi) => literal_int_from_expr(field_init_node_value(fi.clone())),
-                None => None,
-            },
-            _ => None,
-        }
+    match record_lit_named_field_value_optional(
+        field_init_node_value(pred.clone()),
+        field.clone(),
+        source_indices.clone(),
+    ) {
+        Some(field_expr) => expr_literal_int_optional(field_expr.clone()),
+        None => None,
     }
 }
 
@@ -1552,26 +1511,13 @@ pub fn where_predicate_named_int_field_present(
     field: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let value_expr = field_init_node_value(pred.clone());
-        match (*value_expr.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                ((Rc::new({
-                    let mut __result = Vec::new();
-                    for fi in value_expr.children.clone().iter().cloned() {
-                        if (field_init_node_name_at(fi.clone(), source_indices.clone())
-                            == field.clone())
-                        {
-                            __result.push(fi);
-                        }
-                    }
-                    __result
-                })
-                .len() as i64)
-                    > 0)
-            }
-            _ => false,
-        }
+    match record_lit_named_field_value_optional(
+        field_init_node_value(pred.clone()),
+        field.clone(),
+        source_indices.clone(),
+    ) {
+        Some(_) => true,
+        None => false,
     }
 }
 
@@ -1677,12 +1623,12 @@ pub fn where_predicate_int_bound_args_equivalent(
 }
 
 pub fn where_predicate_literal_string_args_match(left: Rc<Node>, right: Rc<Node>) -> bool {
-    match literal_string_from_expr(field_init_node_value(left.clone())) {
-        Some(a) => match literal_string_from_expr(field_init_node_value(right.clone())) {
+    match expr_literal_string_optional(field_init_node_value(left.clone())) {
+        Some(a) => match expr_literal_string_optional(field_init_node_value(right.clone())) {
             Some(b) => (a.clone() == b.clone()),
             None => false,
         },
-        None => match literal_string_from_expr(field_init_node_value(right.clone())) {
+        None => match expr_literal_string_optional(field_init_node_value(right.clone())) {
             Some(_) => false,
             None => true,
         },
@@ -1893,7 +1839,7 @@ pub fn where_refinement_diags_for_predicate(
             module_name.clone(),
         )]);
         if where_refinement_is_int_literal_predicate(pname.clone()) {
-            match literal_int_from_expr(value_expr.clone()) {
+            match expr_literal_int_optional(value_expr.clone()) {
                 Some(v) => match decidable_where_int_predicate_holds(
                     pname.clone(),
                     pred.clone(),
@@ -1950,7 +1896,7 @@ pub fn where_refinement_diags_for_predicate(
             }
         } else {
             if where_refinement_is_string_literal_predicate(pname.clone()) {
-                match literal_string_from_expr(value_expr.clone()) {
+                match expr_literal_string_optional(value_expr.clone()) {
                     Some(v) => {
                         match decidable_where_string_predicate_holds(pname.clone(), v.clone()) {
                             Some(holds) => {
@@ -3701,13 +3647,6 @@ pub fn infer_method_args_with_fold(
 pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     match (*e.expr_data.clone()).clone() {
         ExprData::ExprLambda => true,
-        _ => false,
-    }
-}
-
-pub fn is_record_lit_expr(e: Rc<Node>) -> bool {
-    match (*e.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => true,
         _ => false,
     }
 }
@@ -7974,7 +7913,7 @@ pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<D
                                 .cloned()
                             {
                                 Some(DescentSizeExpr::ParamSize { param: p, .. }) => {
-                                    match literal_int_from_expr(right.clone()) {
+                                    match expr_literal_int_optional(right.clone()) {
                                         Some(d) => {
                                             if (d.clone() > 0) {
                                                 Some(Rc::new(DescentSizeExpr::DividedSize {
@@ -8025,7 +7964,7 @@ pub fn proportional_skip_alias_plus_literal(
                     ..
                 }) => {
                     if (p.clone() == param_name.clone()) {
-                        match literal_int_from_expr(lit_expr.clone()) {
+                        match expr_literal_int_optional(lit_expr.clone()) {
                             Some(k) => {
                                 if (k.clone() > 0) {
                                     match proportional_divisor_from_int_at_least_two(d.clone()) {
@@ -8094,7 +8033,7 @@ pub fn classify_collection_shrink(
                                     match args.clone().first().cloned() {
                                         Some(arg_node) => {
                                             let arg_val = arg_value(arg_node.clone());
-                                            match literal_int_from_expr(arg_val.clone()) {
+                                            match expr_literal_int_optional(arg_val.clone()) {
                                                 Some(k) => {
                                                     if ((k.clone() > 0)
                                                         && (mname.clone() == "skip".to_string()))
@@ -8919,113 +8858,37 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
             };
             match type_based.clone() {
                 Some(_) => type_based.clone(),
-                None => {
-                    match (*val.expr_data.clone()).clone() {
-                        ExprData::ExprBinOp { op: op, .. } => {
-                            let left = binop_left(val.clone());
-                            let right = binop_right(val.clone());
-                            match op.clone() {
-                                BinOp::Sub => {
-                                    match (*left.expr_data.clone()).clone() {
-                                        ExprData::ExprVar {
-                                            binding_kind: _, ..
-                                        } => {
-                                            let lname = expr_var_name_at(
-                                                left.clone(),
-                                                ctx.type_env.clone().source_indices.clone(),
-                                            );
-                                            if ((v1_rt::map_get(
-                                                &ctx.param_names.clone(),
-                                                lname.clone(),
-                                            ) != None)
-                                                || (v1_rt::map_get(
-                                                    &ctx.sub_value_vars.clone(),
-                                                    lname.clone(),
-                                                ) != None))
-                                            {
-                                                match literal_int_from_expr(right.clone()) {
-    Some(k) => match positive_descent_amount_from_positive_int(k.clone()) {
-    Some(steps) => Some(Rc::new(SubValueRelation::ArithmeticDescent {
-    param: lname.clone(),
-    factor: Rc::new(ShrinkFactor::ConstantShrink {
-    steps: steps.clone(),
-}),
-})),
-    None => None,
-},
-    None => None,
-}
-                                            } else {
-                                                None
-                                            }
-                                        }
-                                        _ => None,
-                                    }
-                                }
-                                BinOp::Div => {
-                                    let left_name = match (*left.expr_data.clone()).clone() {
-                                        ExprData::ExprVar {
-                                            binding_kind: _, ..
-                                        } => {
-                                            let lname = expr_var_name_at(
-                                                left.clone(),
-                                                ctx.type_env.clone().source_indices.clone(),
-                                            );
-                                            if ((v1_rt::map_get(
-                                                &ctx.param_names.clone(),
-                                                lname.clone(),
-                                            ) != None)
-                                                || (v1_rt::map_get(
-                                                    &ctx.sub_value_vars.clone(),
-                                                    lname.clone(),
-                                                ) != None))
-                                            {
-                                                lname.clone()
-                                            } else {
-                                                "".to_string()
-                                            }
-                                        }
-                                        ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
-                                            let inner_left = binop_left(left.clone());
-                                            match (*inner_left.expr_data.clone()).clone() {
-                                                ExprData::ExprVar {
-                                                    binding_kind: _, ..
-                                                } => {
-                                                    let lname = expr_var_name_at(
-                                                        inner_left.clone(),
-                                                        ctx.type_env.clone().source_indices.clone(),
-                                                    );
-                                                    if ((v1_rt::map_get(
-                                                        &ctx.param_names.clone(),
-                                                        lname.clone(),
-                                                    ) != None)
-                                                        || (v1_rt::map_get(
-                                                            &ctx.sub_value_vars.clone(),
-                                                            lname.clone(),
-                                                        ) != None))
-                                                    {
-                                                        lname.clone()
-                                                    } else {
-                                                        "".to_string()
-                                                    }
-                                                }
-                                                _ => "".to_string(),
-                                            }
-                                        }
-                                        _ => "".to_string(),
-                                    };
-                                    if (left_name.clone() != "".to_string()) {
-                                        match literal_int_from_expr(right.clone()) {
+                None => match (*val.expr_data.clone()).clone() {
+                    ExprData::ExprBinOp { op: op, .. } => {
+                        let left = binop_left(val.clone());
+                        let right = binop_right(val.clone());
+                        match op.clone() {
+                            BinOp::Sub => match (*left.expr_data.clone()).clone() {
+                                ExprData::ExprVar {
+                                    binding_kind: _, ..
+                                } => {
+                                    let lname = expr_var_name_at(
+                                        left.clone(),
+                                        ctx.type_env.clone().source_indices.clone(),
+                                    );
+                                    if ((v1_rt::map_get(&ctx.param_names.clone(), lname.clone())
+                                        != None)
+                                        || (v1_rt::map_get(
+                                            &ctx.sub_value_vars.clone(),
+                                            lname.clone(),
+                                        ) != None))
+                                    {
+                                        match expr_literal_int_optional(right.clone()) {
                                             Some(k) => {
-                                                match proportional_divisor_from_int_at_least_two(
+                                                match positive_descent_amount_from_positive_int(
                                                     k.clone(),
                                                 ) {
-                                                    Some(div_w) => Some(Rc::new(
+                                                    Some(steps) => Some(Rc::new(
                                                         SubValueRelation::ArithmeticDescent {
-                                                            param: left_name.clone(),
+                                                            param: lname.clone(),
                                                             factor: Rc::new(
-                                                                ShrinkFactor::ProportionalShrink {
-                                                                    divisor: div_w.clone(),
+                                                                ShrinkFactor::ConstantShrink {
+                                                                    steps: steps.clone(),
                                                                 },
                                                             ),
                                                         },
@@ -9039,80 +8902,158 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
                                         None
                                     }
                                 }
-                                BinOp::Add => None,
                                 _ => None,
-                            }
-                        }
-                        ExprData::ExprMethodCall {
-                            method_semantics: _,
-                            ..
-                        } => {
-                            let mname = expr_method_name_at(
-                                val.clone(),
-                                ctx.type_env.clone().source_indices.clone(),
-                            );
-                            let is_collection_preserving = (((((mname.clone()
-                                == "skip".to_string())
-                                || (mname.clone() == "filter".to_string()))
-                                || (mname.clone() == "take".to_string()))
-                                || (mname.clone() == "enumerate".to_string()))
-                                || (mname.clone() == "reverse".to_string()));
-                            if is_collection_preserving.clone() {
-                                {
-                                    let receiver = method_receiver(val.clone());
-                                    let coll_field =
-                                        resolve_collection_field(receiver.clone(), ctx.clone());
-                                    match coll_field.clone() {
-                                        Some(ind_field) => {
-                                            Some(Rc::new(SubValueRelation::StrictSubValue {
-                                                field: ind_field.clone(),
-                                                factor: Rc::new(ShrinkFactor::UnitShrink),
-                                            }))
+                            },
+                            BinOp::Div => {
+                                let left_name = match (*left.expr_data.clone()).clone() {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
+                                        let lname = expr_var_name_at(
+                                            left.clone(),
+                                            ctx.type_env.clone().source_indices.clone(),
+                                        );
+                                        if ((v1_rt::map_get(
+                                            &ctx.param_names.clone(),
+                                            lname.clone(),
+                                        ) != None)
+                                            || (v1_rt::map_get(
+                                                &ctx.sub_value_vars.clone(),
+                                                lname.clone(),
+                                            ) != None))
+                                        {
+                                            lname.clone()
+                                        } else {
+                                            "".to_string()
                                         }
-                                        None => {
-                                            if (mname.clone() == "skip".to_string()) {
+                                    }
+                                    ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
+                                        let inner_left = binop_left(left.clone());
+                                        match (*inner_left.expr_data.clone()).clone() {
+                                            ExprData::ExprVar {
+                                                binding_kind: _, ..
+                                            } => {
+                                                let lname = expr_var_name_at(
+                                                    inner_left.clone(),
+                                                    ctx.type_env.clone().source_indices.clone(),
+                                                );
+                                                if ((v1_rt::map_get(
+                                                    &ctx.param_names.clone(),
+                                                    lname.clone(),
+                                                ) != None)
+                                                    || (v1_rt::map_get(
+                                                        &ctx.sub_value_vars.clone(),
+                                                        lname.clone(),
+                                                    ) != None))
                                                 {
-                                                    let skip_args = method_arg_nodes(val.clone());
-                                                    let skip_amount =
-                                                        match skip_args.clone().first().cloned() {
-                                                            Some(a) => match literal_int_from_expr(
-                                                                arg_value(a.clone()),
-                                                            ) {
-                                                                Some(k) => {
-                                                                    if (k.clone() > 0) {
-                                                                        k.clone()
-                                                                    } else {
-                                                                        0
-                                                                    }
-                                                                }
-                                                                None => 0,
+                                                    lname.clone()
+                                                } else {
+                                                    "".to_string()
+                                                }
+                                            }
+                                            _ => "".to_string(),
+                                        }
+                                    }
+                                    _ => "".to_string(),
+                                };
+                                if (left_name.clone() != "".to_string()) {
+                                    match expr_literal_int_optional(right.clone()) {
+                                        Some(k) => {
+                                            match proportional_divisor_from_int_at_least_two(
+                                                k.clone(),
+                                            ) {
+                                                Some(div_w) => Some(Rc::new(
+                                                    SubValueRelation::ArithmeticDescent {
+                                                        param: left_name.clone(),
+                                                        factor: Rc::new(
+                                                            ShrinkFactor::ProportionalShrink {
+                                                                divisor: div_w.clone(),
                                                             },
+                                                        ),
+                                                    },
+                                                )),
+                                                None => None,
+                                            }
+                                        }
+                                        None => None,
+                                    }
+                                } else {
+                                    None
+                                }
+                            }
+                            BinOp::Add => None,
+                            _ => None,
+                        }
+                    }
+                    ExprData::ExprMethodCall {
+                        method_semantics: _,
+                        ..
+                    } => {
+                        let mname = expr_method_name_at(
+                            val.clone(),
+                            ctx.type_env.clone().source_indices.clone(),
+                        );
+                        let is_collection_preserving = (((((mname.clone()
+                            == "skip".to_string())
+                            || (mname.clone() == "filter".to_string()))
+                            || (mname.clone() == "take".to_string()))
+                            || (mname.clone() == "enumerate".to_string()))
+                            || (mname.clone() == "reverse".to_string()));
+                        if is_collection_preserving.clone() {
+                            {
+                                let receiver = method_receiver(val.clone());
+                                let coll_field =
+                                    resolve_collection_field(receiver.clone(), ctx.clone());
+                                match coll_field.clone() {
+                                    Some(ind_field) => {
+                                        Some(Rc::new(SubValueRelation::StrictSubValue {
+                                            field: ind_field.clone(),
+                                            factor: Rc::new(ShrinkFactor::UnitShrink),
+                                        }))
+                                    }
+                                    None => {
+                                        if (mname.clone() == "skip".to_string()) {
+                                            {
+                                                let skip_args = method_arg_nodes(val.clone());
+                                                let skip_amount =
+                                                    match skip_args.clone().first().cloned() {
+                                                        Some(a) => match expr_literal_int_optional(
+                                                            arg_value(a.clone()),
+                                                        ) {
+                                                            Some(k) => {
+                                                                if (k.clone() > 0) {
+                                                                    k.clone()
+                                                                } else {
+                                                                    0
+                                                                }
+                                                            }
                                                             None => 0,
-                                                        };
-                                                    if (skip_amount.clone() > 0) {
-                                                        match (*receiver.expr_data.clone()).clone()
-                                                        {
-                                                            ExprData::ExprVar {
-                                                                binding_kind: _,
-                                                                ..
-                                                            } => {
-                                                                let rname = expr_var_name_at(
-                                                                    receiver.clone(),
-                                                                    ctx.type_env
-                                                                        .clone()
-                                                                        .source_indices
-                                                                        .clone(),
-                                                                );
-                                                                if ((v1_rt::map_get(
-                                                                    &ctx.param_names.clone(),
+                                                        },
+                                                        None => 0,
+                                                    };
+                                                if (skip_amount.clone() > 0) {
+                                                    match (*receiver.expr_data.clone()).clone() {
+                                                        ExprData::ExprVar {
+                                                            binding_kind: _,
+                                                            ..
+                                                        } => {
+                                                            let rname = expr_var_name_at(
+                                                                receiver.clone(),
+                                                                ctx.type_env
+                                                                    .clone()
+                                                                    .source_indices
+                                                                    .clone(),
+                                                            );
+                                                            if ((v1_rt::map_get(
+                                                                &ctx.param_names.clone(),
+                                                                rname.clone(),
+                                                            ) != None)
+                                                                || (v1_rt::map_get(
+                                                                    &ctx.sub_value_vars.clone(),
                                                                     rname.clone(),
-                                                                ) != None)
-                                                                    || (v1_rt::map_get(
-                                                                        &ctx.sub_value_vars.clone(),
-                                                                        rname.clone(),
-                                                                    ) != None))
-                                                                {
-                                                                    match positive_descent_amount_from_positive_int(skip_amount.clone()) {
+                                                                ) != None))
+                                                            {
+                                                                match positive_descent_amount_from_positive_int(skip_amount.clone()) {
     Some(steps) => {
                                             let synth_field = Rc::new(InductiveField {
     type_name: rname.clone(),
@@ -9130,29 +9071,28 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
 },
     None => None,
 }
-                                                                } else {
-                                                                    None
-                                                                }
+                                                            } else {
+                                                                None
                                                             }
-                                                            _ => None,
                                                         }
-                                                    } else {
-                                                        None
+                                                        _ => None,
                                                     }
+                                                } else {
+                                                    None
                                                 }
-                                            } else {
-                                                None
                                             }
+                                        } else {
+                                            None
                                         }
                                     }
                                 }
-                            } else {
-                                None
                             }
+                        } else {
+                            None
                         }
-                        _ => None,
                     }
-                }
+                    _ => None,
+                },
             }
         }
     }
@@ -9467,7 +9407,7 @@ pub fn classify_argument(
                             _ => false,
                         };
                         if left_is_param.clone() {
-                            match literal_int_from_expr(right.clone()) {
+                            match expr_literal_int_optional(right.clone()) {
                                 Some(k) => {
                                     match positive_descent_amount_from_positive_int(k.clone()) {
                                         Some(steps) => {
@@ -9528,7 +9468,7 @@ pub fn classify_argument(
                             _ => false,
                         };
                         if left_is_param.clone() {
-                            match literal_int_from_expr(right.clone()) {
+                            match expr_literal_int_optional(right.clone()) {
                                 Some(k) => {
                                     match proportional_divisor_from_int_at_least_two(k.clone()) {
                                         Some(div_w) => {
@@ -11115,7 +11055,7 @@ pub fn classify_body_provenance(
                         if (is_shrink.clone()
                             && match method_arg_nodes(expr.clone()).first().cloned() {
                                 Some(arg_node) => {
-                                    match literal_int_from_expr(arg_value(arg_node.clone())) {
+                                    match expr_literal_int_optional(arg_value(arg_node.clone())) {
                                         Some(n) => (n.clone() > 0),
                                         None => false,
                                     }
