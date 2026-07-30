@@ -133,11 +133,16 @@ Three hypotheses tested and **refuted**:
    240 × 20 = 1.45s; 800 × 6 = 1.61s. A 30× file-size increase costs ~1.5×, not ~900×. The cost
    is **linear in total bytes**, at a bad constant.
 2. **Linear in file *count* — NO.** It tracks bytes, not files.
-3. **The non-ASCII `is_ascii()` fallback — NOT DOMINANT.** Identical generated corpora differing
-   only in one marker character inside a string literal (`-` vs `—`): 40×100 fns, ASCII 1.339s vs
-   non-ASCII 1.264s; 20×400 fns, ASCII 2.681s vs non-ASCII 2.857s. The penalty is **0–7%**, not
-   orders of magnitude. (35% of real `.dag` files contain non-ASCII, so the path is well
-   exercised — it is just not where the time goes.)
+3. **The non-ASCII `is_ascii()` fallback — NOT DOMINANT *on this path*.** Identical generated
+   corpora differing only in one marker character (`-` vs `—`): 40×100 fns, ASCII 1.339s vs
+   non-ASCII 1.264s; 20×400 fns, ASCII 2.681s vs non-ASCII 2.857s. The penalty is **0–7%**.
+   **Scope, added 2026-07-30:** these corpora are dense `fn` declarations with no meaningful
+   string-literal content, so they exercise the `source_chars` path, which never calls `char_at`
+   — the 0–7% figure says the *ordinary* scan is indifferent to encoding, which is expected. On
+   the path that does call `char_at`, §11 measures the same comparison at **46% worse at
+   L=4,000 and 111% worse at L=64,000**, growing with literal length exactly as an O(pos)
+   `chars().nth(pos)` predicts. Quoting 0–7% as the fallback's cost without that scope
+   understates it by an order of magnitude.
 
 **What it actually is: allocation.** 30 innermost-frame samples (`gdb -ex "bt 1"`) during a
 whole-corpus parse: **15 of 18 resolved samples (~83%) were in the allocator or `memcpy`** —
@@ -145,16 +150,22 @@ whole-corpus parse: **15 of 18 resolved samples (~83%) were in the allocator or 
 `malloc_consolidate`, `checked_request2size`, `__memcpy_avx512_unaligned_erms`, and
 `alloc::sync::Arc<T,A>::make_mut`. The tokenizer is **allocation-bound, not algorithm-bound.**
 
-The mechanism is visible in the seed runtime's interface, not its logic:
+**CORRECTED 2026-07-30 (external review, verified):** an earlier revision of this paragraph
+claimed `string_length`/`char_at` are "called per character from `tokenize_loop`/`scan_next_token`".
+**That is false and is retracted.** All six `char_at` sites in `src/v1/01_tokenize.dag` are in
+`process_escapes_loop` (3) and the helper predicates `all_hex_upper_in_range`,
+`sentinel_prefix_matches`, `sentinel_suffix_matches` (1 each). **The ordinary source scan does not
+use `char_at` at all** — it converts once via `chars(source)` into `SourceRef.source_chars` and
+indexes that code-point array through `source_code_point` / `source_scan_while` (§11). The
+consequence matters: the dense-code benchmark below contains essentially no string-literal work
+and still measures ~0.16 MB/s, so **`char_at` cannot explain the ordinary path's cost.**
 
-```rust
-pub fn char_at(s: &str, pos: i64) -> String { ... String::from(bytes[pos] as char) ... }
-```
-
-`char_at` **returns a heap-allocated `String` per character**, and `string_length` /
-`char_at` are called per character from `tokenize_loop`/`scan_next_token`. Add `im::Vector`
-persistent collections with `Arc::make_mut` copy-on-write (sampled in `build_newline_index`,
-`scan_string_body`) and every scanned character costs allocations rather than a pointer bump.
+What the sampling does support is broad allocation pressure across frontend *construction*, not
+one primitive: every token is an `Rc<Token>`, every scan result an `Rc<ScanResult>`, token text is
+an owned `String` cloned again by `make_token`, punctuation mints fresh short `String`s, and the
+token accumulator is an `Rc<im::Vector<_>>` whose every append path-copies through
+`Arc::make_mut`. That is a persistent structural update where a uniquely-owned builder is
+warranted — much better than deep-cloning a `Vec`, still not the bare-minimum realization.
 
 This is the **model↔realization fork** DESIGN already names, at the string layer: the modeled
 value semantics (immutable `String` values, persistent vectors, character-ordinal indexing)
@@ -213,6 +224,25 @@ standing **bare-minimum-cost** rule is explicit that a proven cost-shape defect 
 regardless of realized n. §4.1 is that proof. Fix the constant first; then cache what remains,
 against a baseline worth caching.
 
+**Second ordering correction (2026-07-30, external review — accepted).** The paragraph above
+over-generalized from *caching* to *all* invocation-count work, and the table's closing note
+("reducing process count is only worth doing once the per-process constant is fixed") is
+**retracted**. The cost model is multiplicative, not serial:
+
+```
+CI wall ≈ process_count × cold_frontend_cost
+        + entry_count   × graph_assembly_cost
+        + claim_count   × evaluation_cost
+```
+
+Reducing either factor of a product is a real reduction, so removing **exact duplicate
+producers** must not wait on the frontend work: fusing merge-admission stamp+gate, collapsing the
+two `regen_stage0 … --verify` invocations into one producer receipt, and not starting a heal
+process to discover no drift are all corrections to the *outer execution graph*. That is
+categorically different from a cache, which would leave a bad constant in place behind a hit
+rate. The distinction to hold: **deleting duplicated work is always in order; persisting the
+result of slow work is what should wait.**
+
 | # | lever | displaces | risk | notes |
 |---|---|---|---|---|
 | 1 | **Realize string primitives as byte-cursor ops** — delete `char_at -> String`, `string_length`'s rescan, and the 11 `is_ascii()` branches | targets the ~400–1200× gap; ~83% of samples are allocator | medium | the model↔realization fork at the string layer. Oracle: byte-identical token streams on the corpus, plus a non-ASCII discriminating case. Encoding-correct by construction, so the fallback disappears rather than being optimized. |
@@ -221,8 +251,9 @@ against a baseline worth caching.
 | 4 | **Bare-reference census (`tree_bare_census_for_root`)** | ~55% of every invocation, and the §5 per-entry walk | high | the `#6848` class. Dissolves via the namespace-only resolution lane (`build_module_path_index` becomes a projection of `v2.compiler.source_authority`). Still the deepest structural fix; lever 1 shrinks its constant without removing the pass. |
 | 5 | **`regen` → `ci` `needs:` edge** | ~8.5 min of PR critical path | low | independent of the above; `ci` consumes only `build`'s artifact. Counter-argument: it is a deliberate fail-fast before the 34-min floor, and unsequencing it starts two memory-heavy cold processes concurrently on a fleet already at width=1. |
 
-Note the interaction: **every lever multiplies with invocation count**, so reducing process count
-is only worth doing once the per-process constant is fixed, or it optimizes the wrong term.
+Note the interaction: **every lever multiplies with invocation count.** Both factors are worth
+reducing and neither blocks the other — see the second ordering correction above, which retracts
+this line's earlier claim that process-count reduction should wait on the constant.
 
 ---
 
@@ -503,3 +534,59 @@ The lens is currently pinned at two files by a cost it is itself designed to fla
    `always_required_root_lenses`, but the v1 seed is compiled by v1 to Rust via `regen_stage0`,
    not through v2's compile door — so `src/v1/01_tokenize.dag`, which carries the §11 quadratic,
    is structurally outside enforcement. Hypothesis from module topology, not yet executed.
+
+---
+
+## 13. Review corrections accepted (2026-07-30), and one measurement contributed
+
+An external review of §1–§12 landed five corrections. Four are accepted and applied in place
+rather than appended, because a load-bearing factual error that is only superseded later still
+misleads whoever reads the earlier section:
+
+1. **`char_at` is not in the ordinary tokenizer scan — ACCEPTED, §4.1 retracted in place.**
+   Verified: all six `char_at` sites in `src/v1/01_tokenize.dag` are `process_escapes_loop` (3)
+   plus `all_hex_upper_in_range` / `sentinel_prefix_matches` / `sentinel_suffix_matches`. The
+   ordinary scan converts once through `chars(source)` and indexes `SourceRef.source_chars`. The
+   dense-code benchmark has no meaningful literal content and still runs ~0.16 MB/s, so `char_at`
+   cannot explain the ordinary path at all.
+2. **"Allocation-bound, not algorithm-bound" was too broad — ACCEPTED.** Correct statement: the
+   ordinary path is allocation-bound and linear; the string path is allocation-bound *and*
+   algorithmically quadratic. §11's measurements are the latter.
+3. **The lever should be named frontend *construction*, not "byte-cursor ops" — ACCEPTED.** The
+   root fix is typed source/token/text construction (`SourceCursor`, `TokenBuilder`,
+   `FrozenTokenStream`, structural token text carrying span rather than owned `String`), of which
+   a byte cursor is one part. `Rc<Token>`, `Rc<ScanResult>`, `make_token`'s text clone, and the
+   `Rc<im::Vector>` accumulator are separate allocation sources the `char_at` framing hid.
+4. **The "fix the constant, then reduce invocations" sequence was too serial — ACCEPTED**, see §6.
+
+The fifth is accepted with a scope note rather than wholesale: the review cites the 0–7%
+non-ASCII figure as evidence the `is_ascii` split is not currently load-bearing. True *for the
+ordinary path*, which never calls `char_at` — but on the path that does, §11 measures **46% at
+L=4,000 and 111% at L=64,000**, growing with literal length as an O(pos) `chars().nth` predicts.
+Both numbers are needed; either alone misleads. Conclusion is unchanged: the interface should be
+bankrupted rather than either arm optimized.
+
+### Contributed measurement: `resolve-split` from the §12 lens run
+
+The review states that a later floor diagnosis put ~96% of resolve wall in `reconcile_assembly`
+with the closure loader at ~1 ms. This run's split is **differently shaped**, and is recorded
+here rather than reconciled, because the two exercise different legs:
+
+```
+[resolve] zzaudit_test.dag: 34208ms (106 modules, 3839 resolved items in closure)
+[resolve-split] load=34651.6ms parse=1400.1ms resolve=24.6ms normalize=100.2ms
+                typecheck=13077.7ms parent_envs=1.1ms reconcile_assembly=3252.6ms ownership=139.8ms
+[assembly-split] schedule=0.6ms probe=0.0ms registry=2.5ms services=53.0ms
+                 rewire=457.1ms (type_env=25.4ms import_str=428.1ms func_env=3.6ms)
+                 emit_info=99.7ms residue=3252.6ms
+```
+
+Here **load dominates** (34.6 s) with `parse` only 1.4 s, `typecheck` 13.1 s, and
+`reconcile_assembly` 3.25 s — i.e. a cold single-entry `claim_batch` leg, not a warm pooled floor
+with many entries. That is consistent with the review's own point that both lanes are real and
+separate: **cold process starts are a source-universe problem; pooled floor entries are a
+graph-major assembly problem.** It also demonstrates the review's process discipline point — the
+same word "resolve" names two different-shaped costs, so every future probe should record binary
+SHA, execution leg (native vs interpreted), source roots, and corpus identity. This note's own
+measurements are: release `gunbc`/`claim_batch` built from this branch, native leg,
+`--source-root dag --source-root src/v2`, 4-core x86 dev box.
