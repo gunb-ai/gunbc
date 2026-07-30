@@ -28,6 +28,8 @@ import v2.std.orchestration {
 import v2.std.collection { Absent, Present }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.tools.rustfmt { rustfmt_cli_tool }
+import gunbc.tool_readiness { UnpinnedToolFrontierRow }
 
 data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell emission for the regen-job rustfmt PATH ensure (bucket D). Intent is a Pipeline of If/Predicate/Exit/Let nodes — control flow is orchestration, not bash-in-String (review 43658). Leaf Run.command / export spellings are the irreducible kernel (test -x / command -v / export PATH / dirname) until FileExists + session-EnvExport carriers land (PR2b residue named beside ci_floor_stamp). Kept out of ci_workflow_run_emit so gunbc.ci_spec can import this surface without the ci_materialization ↔ ci_spec cycle."
 
@@ -36,6 +38,16 @@ data ci_regen_rustfmt_path_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFU
 data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)"
 
 data ci_regen_ensure_rustfmt_path_note: String = "Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent."
+
+data ci_regen_rustfmt_unpinned_frontier: UnpinnedToolFrontierRow = UnpinnedToolFrontierRow {
+  tool: rustfmt_cli_tool,
+  reason: "The current foreign-executor handler can establish presence but cannot author a stable expected executable identity until toolchain-rust-hermetic provisions rustfmt into the declared repo-local root.",
+  trigger: DeclarationRef {
+    module_path: "v2.workflow.ci_regen_rustfmt_path_emit",
+    decl_name: "ci_regen_ensure_rustfmt_path_script",
+    field: WholeDeclaration
+  }
+}
 
 data ci_regen_rustfmt_test_x_cargo_home: String = "[ -x \"$CARGO_HOME/bin/rustfmt\" ]"
 
