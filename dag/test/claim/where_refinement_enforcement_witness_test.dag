@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement construction wall witnesses: compile_dag_rust_emit_check on inline virtual sources — hard diagnostic refusal at every infer_expr expected-type site (literals, vars, record fields, call args, annotated lets, fn/data initializers, direct returns). Centralized via with_expected_where_refinement_diags (review 44949). Dissolves when the v1 compile-clean witness layer can import compile_multi diagnostic-shape assertions without the seed host bin (docs/plans/witness-realization-plan.md P0 lane)."
+data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals (record fields, direct returns, data inits, call args). DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): non-literal values at refined positions and deferred predicates (brand, Pattern) — undecidable at compile time; counted, not silently widened. Centralized via with_expected_where_refinement_diags (review 44949). Dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane)."
 
 fn w_positive_int_direct_return_red() -> Bool {
   compile_dag_rust_emit_check(
@@ -65,31 +65,54 @@ fn w_non_empty_string_record_field_green() -> Bool {
   )
 }
 
-fn w_positive_int_non_literal_var_red() -> Bool {
+fn w_positive_int_non_literal_var_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_var_red\n\
+    "module whereref_var_advisory\n\
       type PositiveInt = Nat where gt_zero\n\
       type Box { n: PositiveInt }\n\
       fn f() -> Box {\n\
         let n: Int = 0\n\
         Box { n: n }\n\
       }\n",
-    "src/whereref_var_red.rs",
+    "src/whereref_var_advisory.rs",
     [],
     []
   )
 }
 
-fn w_range_predicate_args_must_match_red() -> Bool {
+fn w_positive_int_direct_var_return_compile_clean_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module whereref_range_red\n\
+    "module whereref_var_return_advisory\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn bad(n: Nat) -> PositiveInt { n }\n",
+    "src/whereref_var_return_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_positive_int_data_init_non_literal_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_data_init_advisory\n\
+      type PositiveInt = Nat where gt_zero\n\
+      fn nat_src() -> Nat { 0 }\n\
+      data d: PositiveInt = nat_src()\n",
+    "src/whereref_data_init_advisory.rs",
+    [],
+    []
+  )
+}
+
+fn w_range_predicate_non_literal_compile_clean_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module whereref_range_advisory\n\
       type Port = Int where range(min: 1, max: 46)\n\
       type WidePort = Int where range(min: 48, max: 255)\n\
       fn f(w: WidePort) -> Int {\n\
         let p: Port = w\n\
         0\n\
       }\n",
-    "src/whereref_range_red.rs",
+    "src/whereref_range_advisory.rs",
     [],
     []
   )
@@ -104,37 +127,6 @@ fn w_declaration_ref_empty_bind_red() -> Bool {
     [],
     []
   )
-}
-
-fn w_positive_int_direct_var_return_red() -> Bool {
-  compile_dag_rust_emit_check(
-    "module whereref_var_return_red\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn bad(n: Nat) -> PositiveInt { n }\n",
-    "src/whereref_var_return_red.rs",
-    [],
-    []
-  )
-}
-
-fn w_positive_int_data_init_non_literal_red() -> Bool {
-  compile_dag_rust_emit_check(
-    "module whereref_data_init_red\n\
-      type PositiveInt = Nat where gt_zero\n\
-      fn nat_src() -> Nat { 0 }\n\
-      data d: PositiveInt = nat_src()\n",
-    "src/whereref_data_init_red.rs",
-    [],
-    []
-  )
-}
-
-test fn where_refinement_direct_return_var_refuses() -> Bool {
-  !w_positive_int_direct_var_return_red()
-}
-
-test fn where_refinement_data_init_non_literal_refuses() -> Bool {
-  !w_positive_int_data_init_non_literal_red()
 }
 
 test fn where_refinement_direct_return_literal_refuses() -> Bool {
@@ -157,12 +149,20 @@ test fn where_refinement_non_empty_string_literal_accepts() -> Bool {
   w_non_empty_string_record_field_green()
 }
 
-test fn where_refinement_non_literal_int_var_refuses() -> Bool {
-  !w_positive_int_non_literal_var_red()
+test fn where_refinement_non_literal_int_var_compile_clean() -> Bool {
+  w_positive_int_non_literal_var_compile_clean_green()
 }
 
-test fn where_refinement_range_args_must_match_refuses() -> Bool {
-  !w_range_predicate_args_must_match_red()
+test fn where_refinement_direct_return_var_compile_clean() -> Bool {
+  w_positive_int_direct_var_return_compile_clean_green()
+}
+
+test fn where_refinement_data_init_non_literal_compile_clean() -> Bool {
+  w_positive_int_data_init_non_literal_compile_clean_green()
+}
+
+test fn where_refinement_range_non_literal_compile_clean() -> Bool {
+  w_range_predicate_non_literal_compile_clean_green()
 }
 
 test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {
