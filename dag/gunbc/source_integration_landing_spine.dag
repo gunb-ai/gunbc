@@ -3,6 +3,7 @@ module gunbc.source_integration_landing_spine
 import std.types {
   Bool,
   ContentHash,
+  Int,
   List,
   NonEmptyStr,
   String,
@@ -10,11 +11,25 @@ import std.types {
 }
 import std.integer { PositiveInt }
 import std.measure { Minute, minute }
+import v2.std.optional { Present, Absent }
+import v2.std.collection { list_at_optional }
+import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import std.claim_evidence {
-  ClaimId,
-  ClaimReadinessAssessment,
-  ClaimReadinessAssessmentFold,
-  claim_readiness_assessment_fold,
+  Claim,
+  EvidenceAdmissionPolicy,
+  EvidenceAdmissionRefusal,
+  EvidenceLink,
+  ClaimReadinessPolicy,
+  ClaimReadinessReceipt,
+  ClaimRequirementReadiness,
+  ClaimRequirementReadinessFold,
+  ClaimRequirementReady,
+  ClaimRequirementMissing,
+  ClaimRequirementChallenged,
+  ClaimRequirementConflicted,
+  ClaimRequirementEvidenceRefused,
+  claim_readiness_receipt,
+  claim_requirement_readiness_fold,
 }
 import gunbc.native_scm_interaction_contract {
   NativeScmProposalIdentity,
@@ -22,14 +37,18 @@ import gunbc.native_scm_interaction_contract {
   NativeScmContinuationOption,
   NativeScmContinuationOptions,
   NativeScmContinuationChoice,
-  NativeScmContinuationChoiceLookupFold,
-  NativeScmPrimaryOutcome,
+  NativeScmFirstContinuationOption,
+  NativeScmSecondContinuationOption,
+  NativeScmAdditionalContinuationOption,
+  NativeScmContinuationChoiceMatched,
+  NativeScmContinuationChoiceNotOffered,
+  NativeScmSelectedContinuationOption,
   NativeScmRefusal,
-  Landed,
-  ChoiceRequired,
-  CouldNotLand,
+  NativeScmTerminalOutcome,
+  NativeScmTerminalLanded,
+  NativeScmTerminalChoiceRequired,
+  NativeScmTerminalCouldNotLand,
   native_scm_resolve_choice,
-  native_scm_continuation_choice_lookup_fold,
 }
 import gunbc.scm_compatibility_shape {
   CompatibilityProjectionReceipt,
@@ -37,7 +56,7 @@ import gunbc.scm_compatibility_shape {
   CompatibilityTargetHandle,
 }
 
-data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. This carrier is the first semantic consumer behind the landed C0 presentation fixture and R1 compatibility boundary. It keeps proposal contract, admitted claim assessments, bounded result-space classification, admission, transition, and projection status in separate layers, then projects them through one user boundary. Closed-one carries only a ready-evidence profile plus all eight closure receipts; admission consumes that closed-one receipt; transition consumes the admitted receipt; no later stage accepts an unrelated proposal or raw result. A normative question owns the proposal contract and derives its C0 continuation identity from that one authority; answers select the displayed option's structural position, so equal labels cannot collapse distinct resume tokens. A committed result is writable only together with independent read-back. Stale-parent, approval, retryable-effect, projection-repair, and unfinished-investigation states retain machine continuations and cannot become user questions. A terminal refusal is typed, located, counted, and also carries a plain explanation. This is an executing scenario model, not the P1 reconciliation kernel, P2 source capture, P3 effect transport, or a CLI."
+data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. Full P−1 claims and admitted evidence flow into one readiness receipt; the proposal guarantee population is the readiness policy population by construction. Support-only, challenge-only, conflict, missing evidence, admission refusal, and duplicate requirements remain distinct. One closed-space receipt owns ready evidence, admission contract, equivalence, candidate population, and seven semantic closure axes; zero, one, and many are projections of that receipt, never caller labels. Admission nests the exact closed-one receipt. A transition nests the exact admission, independent read-back nests that transition, and each compatibility projection names the same accepted transition through a typed semantic-to-native target binding. Only a matched read-back can project Landed. Normative options own their material result or proposal amendment, and the selected structural position remains in the resume identity; a free token is only a transport hint. Audience-projected text is distinct from internal cause and locus. The terminal surface is exactly Landed | ChoiceRequired | CouldNotLand; unfinished work is a separate machine-owned arm. Commit freshness is a transition-time exact-parent precondition, not an early semantic closure certificate. This is P0 construction, not the P1 proof kernel, P2 capture, P3 effect transport, or a CLI."
 
 type LandingProposalOccurrenceId = NonEmptyStr where brand("LandingProposalOccurrenceId")
 type LandingAttemptId = NonEmptyStr where brand("LandingAttemptId")
@@ -49,10 +68,65 @@ type LandingScopeHandle = NonEmptyStr where brand("LandingScopeHandle")
 type LandingActorAuthorityHandle = NonEmptyStr where brand("LandingActorAuthorityHandle")
 type LandingResultHandle = NonEmptyStr where brand("LandingResultHandle")
 type LandingContinuationHandle = NonEmptyStr where brand("LandingContinuationHandle")
+type LandingClaimBound = NonEmptyStr where brand("LandingClaimBound")
+type LandingEvidenceAuthorityHandle = NonEmptyStr where brand("LandingEvidenceAuthorityHandle")
+type LandingFidelityBoundaryHandle = NonEmptyStr where brand("LandingFidelityBoundaryHandle")
+type LandingEvidenceIndependenceHandle = NonEmptyStr where brand("LandingEvidenceIndependenceHandle")
+type LandingEvidencePolicyHandle = NonEmptyStr where brand("LandingEvidencePolicyHandle")
+type LandingAdmissionContractHandle = NonEmptyStr where brand("LandingAdmissionContractHandle")
+type LandingEquivalenceHandle = NonEmptyStr where brand("LandingEquivalenceHandle")
+type LandingAtomicGroupHandle = NonEmptyStr where brand("LandingAtomicGroupHandle")
+type LandingAtomicIndependenceReceipt = ContentHash where brand("LandingAtomicIndependenceReceipt")
+type LandingTransitionIdentity = NonEmptyStr where brand("LandingTransitionIdentity")
+type LandingResultingStateHandle = NonEmptyStr where brand("LandingResultingStateHandle")
+type LandingObservationAuthorityHandle = NonEmptyStr where brand("LandingObservationAuthorityHandle")
+type LandingTargetBindingReceipt = ContentHash where brand("LandingTargetBindingReceipt")
+type LandingAudienceQuestion = NonEmptyStr where brand("LandingAudienceQuestion")
+type LandingAudienceLabel = NonEmptyStr where brand("LandingAudienceLabel")
+type LandingAudiencePreview = NonEmptyStr where brand("LandingAudiencePreview")
+type LandingAudienceReason = NonEmptyStr where brand("LandingAudienceReason")
+type LandingAudienceParty = NonEmptyStr where brand("LandingAudienceParty")
+type LandingAudienceAction = NonEmptyStr where brand("LandingAudienceAction")
+type LandingAudienceStatus = NonEmptyStr where brand("LandingAudienceStatus")
+
+type LandingGuaranteeProposition {
+  statement: NonEmptyStr
+}
+
+type LandingEvidenceFact {
+  proposal: LandingProposalOccurrenceId
+  observation: LandingFactHandle
+  claim: LandingRequiredClaim
+}
+
+type LandingRequiredClaim = Claim<LandingTransformationHandle, LandingTargetHandle, LandingGuaranteeProposition, LandingScopeHandle, LandingClaimBound>
+
+type LandingEvidenceLink = EvidenceLink<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+
+type LandingEvidenceAdmissionPolicy = EvidenceAdmissionPolicy<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+
+type LandingClaimReadinessReceipt = ClaimReadinessReceipt<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+
+type LandingClaimRequirementReadiness = ClaimRequirementReadiness<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+
+type LandingRequiredClaims {
+  first: LandingRequiredClaim
+  remaining: List<LandingRequiredClaim>
+}
+
+type LandingAtomicGroup {
+  identity: LandingAtomicGroupHandle
+  scopes: List<LandingScopeHandle>
+}
 
 type LandingAtomicity
   = LandingWholeProposalAtomic
-  | LandingIndependentGroupsAllowed
+  | LandingIndependentGroupsAllowed {
+      first_group: LandingAtomicGroup,
+      second_group: LandingAtomicGroup,
+      additional_groups: List<LandingAtomicGroup>,
+      independence: LandingAtomicIndependenceReceipt,
+    }
 
 type LandingProposalContract {
   occurrence: LandingProposalOccurrenceId
@@ -62,7 +136,7 @@ type LandingProposalContract {
   transformation: LandingTransformationHandle
   reads_relies: List<LandingFactHandle>
   modifies_frame: List<LandingScopeHandle>
-  ensures_guarantees: List<ClaimId>
+  ensures_guarantees: LandingRequiredClaims
   dependencies: List<LandingProposalOccurrenceId>
   atomicity: LandingAtomicity
   submit_authority: LandingActorAuthorityHandle
@@ -90,118 +164,225 @@ data gunbc_landing_stress_profile: LandingStressProfile = LandingStressProfile {
   validation_path: minute(count: 30),
 }
 
-type LandingEvidenceProfile {
-  first_required: ClaimReadinessAssessment<ClaimId>
-  remaining_required: List<ClaimReadinessAssessment<ClaimId>>
+type LandingReadyEvidenceReceipt {
+  proposal: LandingProposalContract
+  policy: LandingEvidencePolicyHandle
+  readiness: LandingClaimReadinessReceipt
 }
 
-type LandingReadyEvidenceProfile {
-  first_required: ClaimId
-  remaining_required: List<ClaimId>
-}
+type LandingEvidenceBlock
+  = LandingDuplicateRequirement {
+      claim: LandingRequiredClaim,
+    }
+  | LandingMissingEvidence {
+      claim: LandingRequiredClaim,
+    }
+  | LandingClaimChallenged {
+      claim: LandingRequiredClaim,
+      challenging: List<LandingEvidenceLink>,
+    }
+  | LandingEvidenceConflicted {
+      claim: LandingRequiredClaim,
+      supporting: List<LandingEvidenceLink>,
+      challenging: List<LandingEvidenceLink>,
+    }
+  | LandingEvidenceRefused {
+      claim: LandingRequiredClaim,
+      refusals: List<EvidenceAdmissionRefusal>,
+    }
 
 type LandingEvidenceReadiness
   = LandingEvidenceReady {
-      profile: LandingReadyEvidenceProfile,
+      receipt: LandingReadyEvidenceReceipt,
     }
   | LandingEvidenceBlocking {
-      first_blocking: ClaimId,
+      proposal: LandingProposalContract,
+      policy: LandingEvidencePolicyHandle,
+      readiness: LandingClaimReadinessReceipt,
+      first_blocking: LandingEvidenceBlock,
+      remaining_blocking: List<LandingEvidenceBlock>,
     }
 
-fn landing_evidence_readiness_start(
-  assessment: ClaimReadinessAssessment<ClaimId>,
-) -> LandingEvidenceReadiness {
-  claim_readiness_assessment_fold(
-    assessment: assessment,
-    fold: ClaimReadinessAssessmentFold {
-      satisfied: fn(claim) {
-        LandingEvidenceReady {
-          profile: LandingReadyEvidenceProfile {
-            first_required: claim,
-            remaining_required: [],
-          },
-        }
-      },
-      blocking: fn(claim) {
-        LandingEvidenceBlocking {
-          first_blocking: claim,
-        }
-      },
-    },
+fn landing_required_claims(
+  proposal: LandingProposalContract,
+) -> List<LandingRequiredClaim> {
+  append(
+    [proposal.ensures_guarantees.first],
+    items: proposal.ensures_guarantees.remaining,
   )
 }
 
-fn landing_evidence_readiness_step(
-  readiness: LandingEvidenceReadiness,
-  assessment: ClaimReadinessAssessment<ClaimId>,
-) -> LandingEvidenceReadiness {
-  claim_readiness_assessment_fold(
-    assessment: assessment,
-    fold: ClaimReadinessAssessmentFold {
-      satisfied: fn(claim) {
-        match readiness {
-          LandingEvidenceReady { profile } =>
-            LandingEvidenceReady {
-              profile: LandingReadyEvidenceProfile {
-                first_required: profile.first_required,
-                remaining_required: append(
-                  profile.remaining_required,
-                  [claim],
-                ),
-              },
-            }
-          LandingEvidenceBlocking { first_blocking } =>
-            LandingEvidenceBlocking {
-              first_blocking: first_blocking,
-            }
+fn landing_requirement_is_duplicated(
+  proposal: LandingProposalContract,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  count(
+    landing_required_claims(proposal: proposal)
+      |> filter(required => required == claim)
+  ) > 1
+}
+
+fn landing_requirement_block(
+  proposal: LandingProposalContract,
+  readiness: LandingClaimRequirementReadiness,
+) -> List<LandingEvidenceBlock> {
+  claim_requirement_readiness_fold(
+    readiness: readiness,
+    fold: ClaimRequirementReadinessFold {
+      ready: fn(claim, _) {
+        if landing_requirement_is_duplicated(
+          proposal: proposal,
+          claim: claim,
+        ) {
+          [LandingDuplicateRequirement { claim: claim }]
+        } else {
+          []
         }
       },
-      blocking: fn(claim) {
-        match readiness {
-          LandingEvidenceReady { profile: _ } =>
-            LandingEvidenceBlocking {
-              first_blocking: claim,
-            }
-          LandingEvidenceBlocking { first_blocking } =>
-            LandingEvidenceBlocking {
-              first_blocking: first_blocking,
-            }
-        }
+      missing: fn(claim) {
+        [LandingMissingEvidence { claim: claim }]
+      },
+      challenged: fn(claim, challenging) {
+        [LandingClaimChallenged {
+          claim: claim,
+          challenging: challenging,
+        }]
+      },
+      conflicted: fn(claim, supporting, challenging) {
+        [LandingEvidenceConflicted {
+          claim: claim,
+          supporting: supporting,
+          challenging: challenging,
+        }]
+      },
+      evidence_refused: fn(claim, refusals) {
+        [LandingEvidenceRefused {
+          claim: claim,
+          refusals: refusals,
+        }]
       },
     },
   )
 }
 
 fn landing_evidence_readiness(
-  profile: LandingEvidenceProfile,
+  proposal: LandingProposalContract,
+  policy: LandingEvidencePolicyHandle,
+  admission: LandingEvidenceAdmissionPolicy,
+  links: List<LandingEvidenceLink>,
 ) -> LandingEvidenceReadiness {
-  fold(
-    profile.remaining_required,
-    init: landing_evidence_readiness_start(
-      assessment: profile.first_required,
-    ),
-    f: fn(readiness, assessment) {
-      landing_evidence_readiness_step(
-        readiness: readiness,
-        assessment: assessment,
-      )
+  let readiness = claim_readiness_receipt(
+    policy: ClaimReadinessPolicy {
+      first_required: proposal.ensures_guarantees.first,
+      remaining_required: proposal.ensures_guarantees.remaining,
+      evidence_admission: admission,
     },
+    links: links,
   )
+  let blocks = concat(
+    landing_requirement_block(
+      proposal: proposal,
+      readiness: readiness.first_required,
+    ),
+    readiness.remaining_required |> flat_map(required =>
+      landing_requirement_block(
+        proposal: proposal,
+        readiness: required,
+      )
+    ),
+  )
+  match list_head(xs: blocks) {
+    HeadAbsent =>
+      LandingEvidenceReady {
+        receipt: LandingReadyEvidenceReceipt {
+          proposal: proposal,
+          policy: policy,
+          readiness: readiness,
+        },
+      }
+    HeadFound { value } =>
+      LandingEvidenceBlocking {
+        proposal: proposal,
+        policy: policy,
+        readiness: readiness,
+        first_blocking: value,
+        remaining_blocking: blocks |> filter(block => block != value),
+      }
+  }
 }
 
-type LandingClosureCertificate {
-  receipt: ContentHash
+type LandingResultClass {
+  result: LandingResultHandle
+  preview: LandingAudiencePreview
 }
 
-type LandingClosureCertificates {
-  capture_completeness: LandingClosureCertificate
-  affected_scope: LandingClosureCertificate
-  rule_closure: LandingClosureCertificate
-  candidate_generation: LandingClosureCertificate
-  admissibility: LandingClosureCertificate
-  equivalence_quotient: LandingClosureCertificate
-  multiplicity: LandingClosureCertificate
-  commit_validity: LandingClosureCertificate
+type LandingProposalAmendment {
+  transformation: LandingTransformationHandle
+  preview: LandingAudiencePreview
+}
+
+type LandingNormativeAlternative
+  = LandingSelectResult {
+      result: LandingResultClass,
+    }
+  | LandingSelectProposalAmendment {
+      amendment: LandingProposalAmendment,
+    }
+
+type LandingNormativeOption {
+  label: LandingAudienceLabel
+  preview: LandingAudiencePreview
+  resume_hint: NonEmptyStr
+  alternative: LandingNormativeAlternative
+}
+
+type LandingNormativeOptions {
+  first_option: LandingNormativeOption
+  second_option: LandingNormativeOption
+  additional_options: List<LandingNormativeOption>
+}
+
+type LandingCandidateSpace
+  = LandingNoResultClasses {
+      incompatible_core: NonEmptyStr,
+      counterexample: NonEmptyStr,
+    }
+  | LandingOneResultClass {
+      result: LandingResultClass,
+    }
+  | LandingManyResultClasses {
+      question: LandingAudienceQuestion,
+      options: LandingNormativeOptions,
+    }
+
+type LandingClosureSubject {
+  ready_evidence: LandingReadyEvidenceReceipt
+  admission_contract: LandingAdmissionContractHandle
+  equivalence: LandingEquivalenceHandle
+  candidates: LandingCandidateSpace
+}
+
+type LandingCaptureCompletenessReceipt { receipt: ContentHash }
+type LandingAffectedScopeReceipt { receipt: ContentHash }
+type LandingRuleClosureReceipt { receipt: ContentHash }
+type LandingCandidateGenerationReceipt { receipt: ContentHash }
+type LandingAdmissibilityReceipt { receipt: ContentHash }
+type LandingEquivalenceQuotientReceipt { receipt: ContentHash }
+type LandingMultiplicityReceipt { receipt: ContentHash }
+
+type LandingClosureEvidence {
+  capture_completeness: LandingCaptureCompletenessReceipt
+  affected_scope: LandingAffectedScopeReceipt
+  rule_closure: LandingRuleClosureReceipt
+  candidate_generation: LandingCandidateGenerationReceipt
+  admissibility: LandingAdmissibilityReceipt
+  equivalence_quotient: LandingEquivalenceQuotientReceipt
+  multiplicity: LandingMultiplicityReceipt
+}
+
+type LandingClosedResultSpaceReceipt {
+  subject: LandingClosureSubject
+  closure: LandingClosureEvidence
 }
 
 type LandingClosureCertificateKind
@@ -212,33 +393,16 @@ type LandingClosureCertificateKind
   | LandingAdmissibilityCertificate
   | LandingEquivalenceQuotientCertificate
   | LandingMultiplicityCertificate
-  | LandingCommitValidityCertificate
 
 type LandingClosureAttempt
   = LandingClosureComplete {
-      certificates: LandingClosureCertificates,
+      receipt: LandingClosedResultSpaceReceipt,
     }
   | LandingClosureIncomplete {
+      subject: LandingClosureSubject,
       missing: LandingClosureCertificateKind,
       cause: NonEmptyStr,
     }
-
-type LandingClosureAttemptFold<R> {
-  complete: fn(LandingClosureCertificates) -> R
-  incomplete: fn(LandingClosureCertificateKind, NonEmptyStr) -> R
-}
-
-fn landing_closure_attempt_fold<R>(
-  attempt: LandingClosureAttempt,
-  fold: LandingClosureAttemptFold<R>,
-) -> R {
-  match attempt {
-    LandingClosureComplete { certificates } =>
-      fold.complete(certificates)
-    LandingClosureIncomplete { missing, cause } =>
-      fold.incomplete(missing, cause)
-  }
-}
 
 type LandingRefusalKind
   = LandingAuthorizationDenied
@@ -248,15 +412,16 @@ type LandingRefusalKind
   | LandingPermanentEffectFailure
   | LandingSemanticRequirementsIncompatible
   | LandingUnsupportedFragment
+  | LandingEvidenceAdmissionDenied
 
 type LandingRefusal {
   kind: LandingRefusalKind
   locus: NonEmptyStr
   occurrences: PositiveInt
-  cause: NonEmptyStr
-  plain_reason: NonEmptyStr
-  responsible_party: NonEmptyStr
-  next_action: NonEmptyStr
+  internal_cause: NonEmptyStr
+  plain_reason: LandingAudienceReason
+  responsible_party: LandingAudienceParty
+  next_action: LandingAudienceAction
   receipt: ContentHash
 }
 
@@ -273,6 +438,7 @@ fn landing_native_refusal(
 
 type LandingMachineContinuationKind
   = LandingContinueInvestigation
+  | LandingResolveEvidenceConflict
   | LandingAwaitApproval
   | LandingRetryCurrentTarget
   | LandingRetryEffect
@@ -282,13 +448,23 @@ type LandingMachineContinuationKind
 type LandingMachineContinuation {
   handle: LandingContinuationHandle
   kind: LandingMachineContinuationKind
-  status: NonEmptyStr
+  status: LandingAudienceStatus
 }
 
 type LandingNormativeQuestion {
   proposal: LandingProposalContract
-  question: NonEmptyStr
-  options: NativeScmContinuationOptions
+  question: LandingAudienceQuestion
+  options: LandingNormativeOptions
+}
+
+fn landing_native_option(
+  option: LandingNormativeOption,
+) -> NativeScmContinuationOption {
+  NativeScmContinuationOption {
+    label: option.label as NonEmptyStr,
+    result_preview: option.preview as NonEmptyStr,
+    resume_token: option.resume_hint,
+  }
 }
 
 fn landing_question_continuation(
@@ -296,74 +472,121 @@ fn landing_question_continuation(
 ) -> NativeScmContinuation {
   NativeScmContinuation {
     proposal: landing_native_identity(proposal: question.proposal),
-    options: question.options,
+    options: NativeScmContinuationOptions {
+      first_option: landing_native_option(
+        option: question.options.first_option,
+      ),
+      second_option: landing_native_option(
+        option: question.options.second_option,
+      ),
+      additional_options: question.options.additional_options
+        |> map(option => landing_native_option(option: option)),
+    },
+  }
+}
+
+type LandingClosedManyReceipt {
+  closed_space: LandingClosedResultSpaceReceipt
+  question: LandingNormativeQuestion
+}
+
+type LandingChoiceContinuation {
+  prior: LandingClosedManyReceipt
+  selected: NativeScmSelectedContinuationOption
+  processing: LandingResumedSemanticProcessing
+}
+
+type LandingResumedSemanticProcessing
+  = LandingSelectedResultProcessing {
+      result: LandingResultClass,
+    }
+  | LandingProposalAmendmentProcessing {
+      amendment: LandingProposalAmendment,
+    }
+
+fn landing_resume_alternative(
+  alternative: LandingNormativeAlternative,
+) -> LandingResumedSemanticProcessing {
+  match alternative {
+    LandingSelectResult { result } =>
+      LandingSelectedResultProcessing { result: result }
+    LandingSelectProposalAmendment { amendment } =>
+      LandingProposalAmendmentProcessing { amendment: amendment }
   }
 }
 
 type LandingChoiceResolution
-  = LandingChoiceResumed {
-      proposal: NativeScmProposalIdentity,
-      resume_token: NonEmptyStr,
+  = LandingChoiceAdvanced {
+      continuation: LandingChoiceContinuation,
     }
   | LandingChoiceNotOffered {
-      proposal: NativeScmProposalIdentity,
+      prior: LandingClosedManyReceipt,
       choice: NativeScmContinuationChoice,
     }
 
-fn landing_resolve_question(
-  question: LandingNormativeQuestion,
+fn landing_alternative_for_choice(
+  options: LandingNormativeOptions,
   choice: NativeScmContinuationChoice,
-) -> LandingChoiceResolution {
-  let continuation = landing_question_continuation(question: question)
-  native_scm_continuation_choice_lookup_fold(
-    lookup: native_scm_resolve_choice(
-      continuation: continuation,
-      choice: choice,
-    ),
-    fold: NativeScmContinuationChoiceLookupFold {
-      matched: fn(option) {
-        LandingChoiceResumed {
-          proposal: continuation.proposal,
-          resume_token: option.resume_token,
-        }
-      },
-      not_offered: fn(not_offered) {
-        LandingChoiceNotOffered {
-          proposal: continuation.proposal,
-          choice: not_offered,
-        }
-      },
-    },
-  )
-}
-
-type LandingClosedZeroDisposition
-  = LandingZeroNeedsNormativeChoice {
-      question: LandingNormativeQuestion,
-    }
-  | LandingZeroTerminal {
-      refusal: LandingRefusal,
-    }
-
-type LandingClosedZeroDispositionFold<R> {
-  normative_choice: fn(LandingNormativeQuestion) -> R
-  terminal: fn(LandingRefusal) -> R
-}
-
-fn landing_closed_zero_disposition_fold<R>(
-  disposition: LandingClosedZeroDisposition,
-  fold: LandingClosedZeroDispositionFold<R>,
-) -> R {
-  match disposition {
-    LandingZeroNeedsNormativeChoice { question } =>
-      fold.normative_choice(question)
-    LandingZeroTerminal { refusal } =>
-      fold.terminal(refusal)
+) -> LandingNormativeAlternative {
+  match choice {
+    NativeScmFirstContinuationOption =>
+      options.first_option.alternative
+    NativeScmSecondContinuationOption =>
+      options.second_option.alternative
+    NativeScmAdditionalContinuationOption { index } =>
+      match list_at_optional(
+        xs: options.additional_options,
+        index: index as Int,
+      ) {
+        Present { value } => value.alternative
+        Absent => options.first_option.alternative
+      }
   }
 }
 
+fn landing_resolve_question(
+  prior: LandingClosedManyReceipt,
+  choice: NativeScmContinuationChoice,
+) -> LandingChoiceResolution {
+  let question = prior.question
+  let continuation = landing_question_continuation(question: question)
+  match native_scm_resolve_choice(
+    continuation: continuation,
+    choice: choice,
+  ) {
+    NativeScmContinuationChoiceMatched { selected } => {
+      let alternative = landing_alternative_for_choice(
+        options: question.options,
+        choice: selected.identity.choice,
+      )
+      LandingChoiceAdvanced {
+        continuation: LandingChoiceContinuation {
+          prior: prior,
+          selected: selected,
+          processing: landing_resume_alternative(
+            alternative: alternative,
+          ),
+        },
+      }
+    }
+    NativeScmContinuationChoiceNotOffered { choice: not_offered } =>
+      LandingChoiceNotOffered {
+        prior: prior,
+        choice: not_offered,
+      }
+  }
+}
+
+type LandingClosedZeroDisposition
+  = LandingZeroTerminal {
+      refusal: LandingRefusal,
+    }
+
 type LandingUnclosedCause
-  = LandingRequiredClaimBlocking
+  = LandingEvidenceNotReady {
+      first: LandingEvidenceBlock,
+      remaining: List<LandingEvidenceBlock>,
+    }
   | LandingClosureCertificateMissing {
       certificate: LandingClosureCertificateKind,
       cause: NonEmptyStr,
@@ -376,43 +599,22 @@ type LandingUnclosedDisposition
   = LandingInvestigationContinues {
       continuation: LandingMachineContinuation,
     }
+  | LandingEvidenceConflictContinues {
+      continuation: LandingMachineContinuation,
+    }
   | LandingUnclosedTerminal {
       refusal: LandingRefusal,
     }
 
-type LandingUnclosedDispositionFold<R> {
-  investigation: fn(LandingMachineContinuation) -> R
-  terminal: fn(LandingRefusal) -> R
-}
-
-fn landing_unclosed_disposition_fold<R>(
-  disposition: LandingUnclosedDisposition,
-  fold: LandingUnclosedDispositionFold<R>,
-) -> R {
-  match disposition {
-    LandingInvestigationContinues { continuation } =>
-      fold.investigation(continuation)
-    LandingUnclosedTerminal { refusal } =>
-      fold.terminal(refusal)
-  }
-}
-
-type LandingUniqueResult {
-  result: LandingResultHandle
-  preview: NonEmptyStr
-  closure: LandingClosureCertificates
-  ready_obligations: LandingReadyEvidenceProfile
-}
-
 type LandingClosedOneReceipt {
-  proposal: LandingProposalContract
-  unique: LandingUniqueResult
+  closed_space: LandingClosedResultSpaceReceipt
+  unique: LandingResultClass
 }
 
 type LandingSemanticResultSpace
   = LandingClosedZero {
-      proposal: LandingProposalContract,
-      witnessed_core: NonEmptyStr,
+      closed_space: LandingClosedResultSpaceReceipt,
+      incompatible_core: NonEmptyStr,
       counterexample: NonEmptyStr,
       disposition: LandingClosedZeroDisposition,
     }
@@ -420,7 +622,7 @@ type LandingSemanticResultSpace
       receipt: LandingClosedOneReceipt,
     }
   | LandingClosedMany {
-      question: LandingNormativeQuestion,
+      receipt: LandingClosedManyReceipt,
     }
   | LandingUnclosed {
       proposal: LandingProposalContract,
@@ -429,111 +631,161 @@ type LandingSemanticResultSpace
       disposition: LandingUnclosedDisposition,
     }
 
-type LandingSemanticResultSpaceFold<R> {
-  closed_zero: fn(
-    LandingProposalContract,
-    NonEmptyStr,
-    NonEmptyStr,
-    LandingClosedZeroDisposition,
-  ) -> R
-  closed_one: fn(LandingClosedOneReceipt) -> R
-  closed_many: fn(LandingNormativeQuestion) -> R
-  unclosed: fn(
-    LandingProposalContract,
-    LandingUnclosedCause,
-    List<LandingResultHandle>,
-    LandingUnclosedDisposition,
-  ) -> R
-}
-
-fn landing_semantic_result_space_fold<R>(
-  semantic: LandingSemanticResultSpace,
-  fold: LandingSemanticResultSpaceFold<R>,
-) -> R {
-  match semantic {
-    LandingClosedZero {
-      proposal,
-      witnessed_core,
-      counterexample,
-      disposition,
-    } =>
-      fold.closed_zero(
-        proposal,
-        witnessed_core,
-        counterexample,
-        disposition,
-      )
-    LandingClosedOne { receipt } =>
-      fold.closed_one(receipt)
-    LandingClosedMany { question } =>
-      fold.closed_many(question)
-    LandingUnclosed {
-      proposal,
-      cause,
-      partial_results,
-      disposition,
-    } =>
-      fold.unclosed(proposal, cause, partial_results, disposition)
-  }
-}
-
-fn landing_unique_candidate(
-  proposal: LandingProposalContract,
-  result: LandingResultHandle,
-  preview: NonEmptyStr,
-  evidence: LandingEvidenceProfile,
-  closure: LandingClosureAttempt,
+fn landing_closed_result_space(
+  attempt: LandingClosureAttempt,
+  zero_refusal: LandingRefusal,
   continuation: LandingMachineContinuation,
 ) -> LandingSemanticResultSpace {
-  match landing_evidence_readiness(profile: evidence) {
-    LandingEvidenceBlocking { first_blocking: _ } =>
+  match attempt {
+    LandingClosureComplete { receipt } =>
+      match receipt.subject.candidates {
+        LandingNoResultClasses { incompatible_core, counterexample } =>
+          LandingClosedZero {
+            closed_space: receipt,
+            incompatible_core: incompatible_core,
+            counterexample: counterexample,
+            disposition: LandingZeroTerminal {
+              refusal: zero_refusal,
+            },
+          }
+        LandingOneResultClass { result } =>
+          LandingClosedOne {
+            receipt: LandingClosedOneReceipt {
+              closed_space: receipt,
+              unique: result,
+            },
+          }
+        LandingManyResultClasses { question, options } =>
+          LandingClosedMany {
+            receipt: LandingClosedManyReceipt {
+              closed_space: receipt,
+              question: LandingNormativeQuestion {
+                proposal: receipt.subject.ready_evidence.proposal,
+                question: question,
+                options: options,
+              },
+            },
+          }
+      }
+    LandingClosureIncomplete { subject, missing, cause } =>
       LandingUnclosed {
-        proposal: proposal,
-        cause: LandingRequiredClaimBlocking,
-        partial_results: [result],
+        proposal: subject.ready_evidence.proposal,
+        cause: LandingClosureCertificateMissing {
+          certificate: missing,
+          cause: cause,
+        },
+        partial_results: [],
         disposition: LandingInvestigationContinues {
           continuation: continuation,
         },
       }
-    LandingEvidenceReady { profile } =>
-      landing_closure_attempt_fold(
-        attempt: closure,
-        fold: LandingClosureAttemptFold {
-          complete: fn(certificates) {
-            LandingClosedOne {
-              receipt: LandingClosedOneReceipt {
-                proposal: proposal,
-                unique: LandingUniqueResult {
-                  result: result,
-                  preview: preview,
-                  closure: certificates,
-                  ready_obligations: profile,
-                },
-              },
-            }
-          },
-          incomplete: fn(missing, cause) {
-            LandingUnclosed {
-              proposal: proposal,
-              cause: LandingClosureCertificateMissing {
-                certificate: missing,
-                cause: cause,
-              },
-              partial_results: [result],
-              disposition: LandingInvestigationContinues {
-                continuation: continuation,
-              },
-            }
-          },
-        },
-      )
   }
+}
+
+fn landing_blocked_evidence_result(
+  readiness: LandingEvidenceReadiness,
+  partial_results: List<LandingResultHandle>,
+  continuation: LandingMachineContinuation,
+  conflict_continuation: LandingMachineContinuation,
+  terminal_refusal: LandingRefusal,
+) -> LandingSemanticResultSpace {
+  match readiness {
+    LandingEvidenceReady { receipt } =>
+      LandingUnclosed {
+        proposal: receipt.proposal,
+        cause: LandingSearchBoundExhausted {
+          cause: "ready evidence requires a closure attempt",
+        },
+        partial_results: partial_results,
+        disposition: LandingInvestigationContinues {
+          continuation: continuation,
+        },
+      }
+    LandingEvidenceBlocking {
+      proposal,
+      policy: _,
+      readiness: _,
+      first_blocking,
+      remaining_blocking,
+    } =>
+      match first_blocking {
+        LandingMissingEvidence { claim: _ } =>
+          LandingUnclosed {
+            proposal: proposal,
+            cause: LandingEvidenceNotReady {
+              first: first_blocking,
+              remaining: remaining_blocking,
+            },
+            partial_results: partial_results,
+            disposition: LandingInvestigationContinues {
+              continuation: continuation,
+            },
+          }
+        LandingEvidenceConflicted {
+          claim: _,
+          supporting: _,
+          challenging: _,
+        } =>
+          LandingUnclosed {
+            proposal: proposal,
+            cause: LandingEvidenceNotReady {
+              first: first_blocking,
+              remaining: remaining_blocking,
+            },
+            partial_results: partial_results,
+            disposition: LandingEvidenceConflictContinues {
+              continuation: conflict_continuation,
+            },
+          }
+        LandingClaimChallenged { claim: _, challenging: _ } =>
+          LandingUnclosed {
+            proposal: proposal,
+            cause: LandingEvidenceNotReady {
+              first: first_blocking,
+              remaining: remaining_blocking,
+            },
+            partial_results: partial_results,
+            disposition: LandingUnclosedTerminal {
+              refusal: terminal_refusal,
+            },
+          }
+        LandingEvidenceRefused { claim: _, refusals: _ } =>
+          LandingUnclosed {
+            proposal: proposal,
+            cause: LandingEvidenceNotReady {
+              first: first_blocking,
+              remaining: remaining_blocking,
+            },
+            partial_results: partial_results,
+            disposition: LandingUnclosedTerminal {
+              refusal: terminal_refusal,
+            },
+          }
+        LandingDuplicateRequirement { claim: _ } =>
+          LandingUnclosed {
+            proposal: proposal,
+            cause: LandingEvidenceNotReady {
+              first: first_blocking,
+              remaining: remaining_blocking,
+            },
+            partial_results: partial_results,
+            disposition: LandingUnclosedTerminal {
+              refusal: terminal_refusal,
+            },
+          }
+      }
+  }
+}
+
+type LandingAdmissionReceipt {
+  semantic: LandingClosedOneReceipt
+  authority: LandingActorAuthorityHandle
+  receipt: ContentHash
 }
 
 type LandingAdmissionDecision
   = LandingAdmitted {
-      semantic: LandingClosedOneReceipt,
-      receipt: ContentHash,
+      receipt: LandingAdmissionReceipt,
     }
   | LandingApprovalRequired {
       semantic: LandingClosedOneReceipt,
@@ -552,41 +804,8 @@ type LandingAdmissionDecision
       refusal: LandingRefusal,
     }
 
-type LandingAdmissionDecisionFold<R> {
-  admitted: fn(LandingClosedOneReceipt, ContentHash) -> R
-  approval_required: fn(
-    LandingClosedOneReceipt,
-    LandingMachineContinuation,
-  ) -> R
-  unauthorized: fn(LandingClosedOneReceipt, LandingRefusal) -> R
-  policy_refused: fn(LandingClosedOneReceipt, LandingRefusal) -> R
-  self_amendment_refused: fn(
-    LandingClosedOneReceipt,
-    LandingRefusal,
-  ) -> R
-}
-
-fn landing_admission_decision_fold<R>(
-  admission: LandingAdmissionDecision,
-  fold: LandingAdmissionDecisionFold<R>,
-) -> R {
-  match admission {
-    LandingAdmitted { semantic, receipt } =>
-      fold.admitted(semantic, receipt)
-    LandingApprovalRequired { semantic, continuation } =>
-      fold.approval_required(semantic, continuation)
-    LandingUnauthorized { semantic, refusal } =>
-      fold.unauthorized(semantic, refusal)
-    LandingPolicyRefused { semantic, refusal } =>
-      fold.policy_refused(semantic, refusal)
-    LandingSelfAmendmentRefused { semantic, refusal } =>
-      fold.self_amendment_refused(semantic, refusal)
-  }
-}
-
 type LandingAdmittedResult {
-  semantic: LandingClosedOneReceipt
-  admission_receipt: ContentHash
+  admission: LandingAdmissionReceipt
 }
 
 type LandingAdmissionAdvance
@@ -600,54 +819,189 @@ type LandingAdmissionAdvance
 fn landing_admitted_result(
   admission: LandingAdmissionDecision,
 ) -> LandingAdmissionAdvance {
-  landing_admission_decision_fold(
-    admission: admission,
-    fold: LandingAdmissionDecisionFold {
-      admitted: fn(semantic, receipt) {
-        LandingAdmissionAdvanced {
-          admitted: LandingAdmittedResult {
-            semantic: semantic,
-            admission_receipt: receipt,
-          },
-        }
+  match admission {
+    LandingAdmitted { receipt } =>
+      LandingAdmissionAdvanced {
+        admitted: LandingAdmittedResult {
+          admission: receipt,
+        },
+      }
+    _ => LandingAdmissionNotAdvanced { decision: admission }
+  }
+}
+
+type LandingTransitionReceipt {
+  admitted: LandingAdmittedResult
+  identity: LandingTransitionIdentity
+  resulting_state: LandingResultingStateHandle
+}
+
+type LandingReadBackObservation {
+  transition: LandingTransitionReceipt
+  observed_state: LandingResultingStateHandle
+  authority: LandingObservationAuthorityHandle
+}
+
+type LandingIndependentReadBackReceipt {
+  observation: LandingReadBackObservation
+}
+
+type LandingReadBackAssessment
+  = LandingReadBackMatched {
+      receipt: LandingIndependentReadBackReceipt,
+    }
+  | LandingReadBackMismatched {
+      observation: LandingReadBackObservation,
+    }
+
+fn landing_independent_read_back(
+  observation: LandingReadBackObservation,
+) -> LandingReadBackAssessment {
+  if observation.observed_state == observation.transition.resulting_state {
+    LandingReadBackMatched {
+      receipt: LandingIndependentReadBackReceipt {
+        observation: observation,
       },
-      approval_required: fn(_, _) {
-        LandingAdmissionNotAdvanced { decision: admission }
+    }
+  } else {
+    LandingReadBackMismatched {
+      observation: observation,
+    }
+  }
+}
+
+type LandingCompatibilityTargetBinding {
+  semantic_target: LandingTargetHandle
+  native_target: CompatibilityTargetHandle
+  receipt: LandingTargetBindingReceipt
+}
+
+type LandingProjectionOfAcceptedTransition {
+  transition: LandingTransitionReceipt
+  binding: LandingCompatibilityTargetBinding
+  projection: CompatibilityProjectionReceipt
+}
+
+type LandingProjectionRelation
+  = LandingProjectionBound {
+      receipt: LandingProjectionOfAcceptedTransition,
+    }
+  | LandingProjectionBindingRefused {
+      cause: NonEmptyStr,
+    }
+
+fn landing_projection_of_transition(
+  transition: LandingTransitionReceipt,
+  binding: LandingCompatibilityTargetBinding,
+  projection: CompatibilityProjectionReceipt,
+) -> LandingProjectionRelation {
+  let semantic_target = transition.admitted.admission.semantic.closed_space.subject.ready_evidence.proposal.target
+  if binding.semantic_target != semantic_target {
+    LandingProjectionBindingRefused {
+      cause: "the target binding names another semantic target",
+    }
+  } else if binding.native_target != projection.target {
+    LandingProjectionBindingRefused {
+      cause: "the projection names another native target",
+    }
+  } else {
+    LandingProjectionBound {
+      receipt: LandingProjectionOfAcceptedTransition {
+        transition: transition,
+        binding: binding,
+        projection: projection,
       },
-      unauthorized: fn(_, _) {
-        LandingAdmissionNotAdvanced { decision: admission }
-      },
-      policy_refused: fn(_, _) {
-        LandingAdmissionNotAdvanced { decision: admission }
-      },
-      self_amendment_refused: fn(_, _) {
-        LandingAdmissionNotAdvanced { decision: admission }
-      },
-    },
-  )
+    }
+  }
 }
 
 type LandingProjectionStatus
   = LandingProjected {
-      receipt: CompatibilityProjectionReceipt,
+      receipt: LandingProjectionOfAcceptedTransition,
     }
   | LandingProjectionPending {
+      transition: LandingTransitionReceipt,
       realization: CompatibilityRealizationHandle,
-      target: CompatibilityTargetHandle,
+      target: LandingCompatibilityTargetBinding,
       cause: NonEmptyStr,
     }
   | LandingProjectionFailed {
+      transition: LandingTransitionReceipt,
       realization: CompatibilityRealizationHandle,
-      target: CompatibilityTargetHandle,
+      target: LandingCompatibilityTargetBinding,
       cause: NonEmptyStr,
     }
 
+fn landing_projection_status_matches(
+  status: LandingProjectionStatus,
+  transition: LandingTransitionReceipt,
+) -> Bool {
+  match status {
+    LandingProjected { receipt } =>
+      receipt.transition == transition
+    LandingProjectionPending {
+      transition: projected,
+      realization: _,
+      target: _,
+      cause: _,
+    } =>
+      projected == transition
+    LandingProjectionFailed {
+      transition: projected,
+      realization: _,
+      target: _,
+      cause: _,
+    } =>
+      projected == transition
+  }
+}
+
+type LandingCommittedTransition {
+  read_back: LandingIndependentReadBackReceipt
+  projections: List<LandingProjectionStatus>
+}
+
+type LandingCommitAssembly
+  = LandingCommitAssembled {
+      committed: LandingCommittedTransition,
+    }
+  | LandingCommitRelationRefused {
+      cause: NonEmptyStr,
+    }
+
+fn landing_committed_transition(
+  read_back: LandingReadBackAssessment,
+  projections: List<LandingProjectionStatus>,
+) -> LandingCommitAssembly {
+  match read_back {
+    LandingReadBackMismatched { observation: _ } =>
+      LandingCommitRelationRefused {
+        cause: "independent read-back did not observe the transition result",
+      }
+    LandingReadBackMatched { receipt } =>
+      if all(projections, projection =>
+        landing_projection_status_matches(
+          status: projection,
+          transition: receipt.observation.transition,
+        )
+      ) {
+        LandingCommitAssembled {
+          committed: LandingCommittedTransition {
+            read_back: receipt,
+            projections: projections,
+          },
+        }
+      } else {
+        LandingCommitRelationRefused {
+          cause: "a compatibility projection belongs to another transition",
+        }
+      }
+  }
+}
+
 type LandingTransitionOutcome
   = LandingCommittedAndReadBack {
-      admitted: LandingAdmittedResult,
-      transition_receipt: ContentHash,
-      independent_read_back: ContentHash,
-      projections: List<LandingProjectionStatus>,
+      committed: LandingCommittedTransition,
     }
   | LandingRetryStaleParent {
       admitted: LandingAdmittedResult,
@@ -662,50 +1016,6 @@ type LandingTransitionOutcome
       refusal: LandingRefusal,
     }
 
-type LandingTransitionOutcomeFold<R> {
-  committed: fn(
-    LandingAdmittedResult,
-    ContentHash,
-    ContentHash,
-    List<LandingProjectionStatus>,
-  ) -> R
-  retry_stale_parent: fn(
-    LandingAdmittedResult,
-    LandingMachineContinuation,
-  ) -> R
-  effect_retry_pending: fn(
-    LandingAdmittedResult,
-    LandingMachineContinuation,
-  ) -> R
-  effect_failed: fn(LandingAdmittedResult, LandingRefusal) -> R
-}
-
-fn landing_transition_outcome_fold<R>(
-  transition: LandingTransitionOutcome,
-  fold: LandingTransitionOutcomeFold<R>,
-) -> R {
-  match transition {
-    LandingCommittedAndReadBack {
-      admitted,
-      transition_receipt,
-      independent_read_back,
-      projections,
-    } =>
-      fold.committed(
-        admitted,
-        transition_receipt,
-        independent_read_back,
-        projections,
-      )
-    LandingRetryStaleParent { admitted, continuation } =>
-      fold.retry_stale_parent(admitted, continuation)
-    LandingEffectRetryPending { admitted, continuation } =>
-      fold.effect_retry_pending(admitted, continuation)
-    LandingEffectFailed { admitted, refusal } =>
-      fold.effect_failed(admitted, refusal)
-  }
-}
-
 type LandingSpineReceipt
   = LandingSemanticSpine {
       result: LandingSemanticResultSpace,
@@ -717,38 +1027,12 @@ type LandingSpineReceipt
       transition: LandingTransitionOutcome,
     }
 
-type LandingSpineReceiptFold<R> {
-  semantic: fn(LandingSemanticResultSpace) -> R
-  admission: fn(LandingAdmissionDecision) -> R
-  transition: fn(LandingTransitionOutcome) -> R
-}
-
-fn landing_spine_receipt_fold<R>(
-  receipt: LandingSpineReceipt,
-  fold: LandingSpineReceiptFold<R>,
-) -> R {
-  match receipt {
-    LandingSemanticSpine {
-      result,
-    } =>
-      fold.semantic(result)
-    LandingAdmissionSpine {
-      admission,
-    } =>
-      fold.admission(admission)
-    LandingTransitionSpine {
-      transition,
-    } =>
-      fold.transition(transition)
-  }
-}
-
 type LandingUserBoundary
-  = LandingUserOutcome {
-      outcome: NativeScmPrimaryOutcome,
+  = LandingTerminal {
+      outcome: NativeScmTerminalOutcome,
     }
   | LandingMachineOwned {
-      status: NonEmptyStr,
+      status: LandingAudienceStatus,
       continuation: LandingMachineContinuation,
     }
 
@@ -764,8 +1048,8 @@ fn landing_machine_owned(
 fn landing_user_refusal(
   refusal: LandingRefusal,
 ) -> LandingUserBoundary {
-  LandingUserOutcome {
-    outcome: CouldNotLand {
+  LandingTerminal {
+    outcome: NativeScmTerminalCouldNotLand {
       refusal: landing_native_refusal(refusal: refusal),
     },
   }
@@ -774,111 +1058,82 @@ fn landing_user_refusal(
 fn landing_user_question(
   question: LandingNormativeQuestion,
 ) -> LandingUserBoundary {
-  LandingUserOutcome {
-    outcome: ChoiceRequired {
+  LandingTerminal {
+    outcome: NativeScmTerminalChoiceRequired {
       question: question.question as String,
       continuation: landing_question_continuation(question: question),
     },
   }
 }
 
-fn landing_closed_zero_user_boundary(
-  disposition: LandingClosedZeroDisposition,
-) -> LandingUserBoundary {
-  landing_closed_zero_disposition_fold(
-    disposition: disposition,
-    fold: LandingClosedZeroDispositionFold {
-      normative_choice: fn(question) {
-        landing_user_question(question: question)
-      },
-      terminal: fn(refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-    },
-  )
-}
-
-fn landing_unclosed_user_boundary(
-  disposition: LandingUnclosedDisposition,
-) -> LandingUserBoundary {
-  landing_unclosed_disposition_fold(
-    disposition: disposition,
-    fold: LandingUnclosedDispositionFold {
-      investigation: fn(continuation) {
-        landing_machine_owned(continuation: continuation)
-      },
-      terminal: fn(refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-    },
-  )
-}
-
 fn landing_semantic_user_boundary(
   semantic: LandingSemanticResultSpace,
 ) -> LandingUserBoundary {
-  landing_semantic_result_space_fold(
-    semantic: semantic,
-    fold: LandingSemanticResultSpaceFold {
-      closed_zero: fn(_, _, _, disposition) {
-        landing_closed_zero_user_boundary(disposition: disposition)
-      },
-      closed_one: fn(_) {
-        landing_machine_owned(
-          continuation: LandingMachineContinuation {
-            handle: "landing-prepare-admission",
-            kind: LandingPrepareTransition,
-            status: "checking whether the change may land",
-          },
-        )
-      },
-      closed_many: fn(question) {
-        landing_user_question(question: question)
-      },
-      unclosed: fn(_, _, _, disposition) {
-        landing_unclosed_user_boundary(disposition: disposition)
-      },
-    },
-  )
+  match semantic {
+    LandingClosedZero {
+      closed_space: _,
+      incompatible_core: _,
+      counterexample: _,
+      disposition: LandingZeroTerminal { refusal },
+    } =>
+      landing_user_refusal(refusal: refusal)
+    LandingClosedOne { receipt: _ } =>
+      landing_machine_owned(
+        continuation: LandingMachineContinuation {
+          handle: "landing-prepare-admission",
+          kind: LandingPrepareTransition,
+          status: "checking whether the change may land",
+        },
+      )
+    LandingClosedMany { receipt } =>
+      landing_user_question(question: receipt.question)
+    LandingUnclosed {
+      proposal: _,
+      cause: _,
+      partial_results: _,
+      disposition,
+    } =>
+      match disposition {
+        LandingInvestigationContinues { continuation } =>
+          landing_machine_owned(continuation: continuation)
+        LandingEvidenceConflictContinues { continuation } =>
+          landing_machine_owned(continuation: continuation)
+        LandingUnclosedTerminal { refusal } =>
+          landing_user_refusal(refusal: refusal)
+      }
+  }
 }
 
 fn landing_admission_user_boundary(
   admission: LandingAdmissionDecision,
 ) -> LandingUserBoundary {
-  landing_admission_decision_fold(
-    admission: admission,
-    fold: LandingAdmissionDecisionFold {
-      admitted: fn(_, _) {
-        landing_machine_owned(
-          continuation: LandingMachineContinuation {
-            handle: "landing-prepare-transition",
-            kind: LandingPrepareTransition,
-            status: "preparing the accepted change to land",
-          },
-        )
-      },
-      approval_required: fn(_, continuation) {
-        landing_machine_owned(continuation: continuation)
-      },
-      unauthorized: fn(_, refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-      policy_refused: fn(_, refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-      self_amendment_refused: fn(_, refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-    },
-  )
+  match admission {
+    LandingAdmitted { receipt: _ } =>
+      landing_machine_owned(
+        continuation: LandingMachineContinuation {
+          handle: "landing-prepare-transition",
+          kind: LandingPrepareTransition,
+          status: "preparing the accepted change to land",
+        },
+      )
+    LandingApprovalRequired { semantic: _, continuation } =>
+      landing_machine_owned(continuation: continuation)
+    LandingUnauthorized { semantic: _, refusal } =>
+      landing_user_refusal(refusal: refusal)
+    LandingPolicyRefused { semantic: _, refusal } =>
+      landing_user_refusal(refusal: refusal)
+    LandingSelfAmendmentRefused { semantic: _, refusal } =>
+      landing_user_refusal(refusal: refusal)
+  }
 }
 
 fn landing_committed_user_boundary(
-  admitted: LandingAdmittedResult,
+  committed: LandingCommittedTransition,
 ) -> LandingUserBoundary {
-  LandingUserOutcome {
-    outcome: Landed {
-      result_preview: admitted.semantic.unique.preview as String,
+  let preview = committed.read_back.observation.transition.admitted.admission.semantic.unique.preview
+  LandingTerminal {
+    outcome: NativeScmTerminalLanded {
+      result_preview: preview as String,
     },
   }
 }
@@ -886,44 +1141,29 @@ fn landing_committed_user_boundary(
 fn landing_transition_user_boundary(
   transition: LandingTransitionOutcome,
 ) -> LandingUserBoundary {
-  landing_transition_outcome_fold(
-    transition: transition,
-    fold: LandingTransitionOutcomeFold {
-      committed: fn(admitted, _, _, _) {
-        landing_committed_user_boundary(admitted: admitted)
-      },
-      retry_stale_parent: fn(_, continuation) {
-        landing_machine_owned(continuation: continuation)
-      },
-      effect_retry_pending: fn(_, continuation) {
-        landing_machine_owned(continuation: continuation)
-      },
-      effect_failed: fn(_, refusal) {
-        landing_user_refusal(refusal: refusal)
-      },
-    },
-  )
+  match transition {
+    LandingCommittedAndReadBack { committed } =>
+      landing_committed_user_boundary(committed: committed)
+    LandingRetryStaleParent { admitted: _, continuation } =>
+      landing_machine_owned(continuation: continuation)
+    LandingEffectRetryPending { admitted: _, continuation } =>
+      landing_machine_owned(continuation: continuation)
+    LandingEffectFailed { admitted: _, refusal } =>
+      landing_user_refusal(refusal: refusal)
+  }
 }
 
 fn landing_user_boundary(
   receipt: LandingSpineReceipt,
 ) -> LandingUserBoundary {
-  landing_spine_receipt_fold(
-    receipt: receipt,
-    fold: LandingSpineReceiptFold {
-      semantic: fn(result) {
-        landing_semantic_user_boundary(semantic: result)
-      },
-      admission: fn(admission) {
-        landing_admission_user_boundary(admission: admission)
-      },
-      transition: fn(transition) {
-        landing_transition_user_boundary(
-          transition: transition,
-        )
-      },
-    },
-  )
+  match receipt {
+    LandingSemanticSpine { result } =>
+      landing_semantic_user_boundary(semantic: result)
+    LandingAdmissionSpine { admission } =>
+      landing_admission_user_boundary(admission: admission)
+    LandingTransitionSpine { transition } =>
+      landing_transition_user_boundary(transition: transition)
+  }
 }
 
-data landing_timestamp_non_authority_note: NonEmptyStr = "LandingProposalContract.submitted_at is provenance only. landing_unique_candidate and landing_user_boundary do not read it. Target selection, semantic classification, admission, and transition order are carried by their own typed inputs; changing or permuting timestamps cannot change a result."
+data landing_timestamp_non_authority_note: NonEmptyStr = "LandingProposalContract.submitted_at is provenance only. Evidence readiness, closed-space classification, admission, and transition never use it to establish precedence. Exact-parent validity is carried by LandingProposalContract.authored_parent inside the admitted result and checked again by the transition realization; it is not represented by a semantic closure certificate."

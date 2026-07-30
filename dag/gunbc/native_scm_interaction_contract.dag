@@ -83,14 +83,24 @@ fn native_scm_continuation_choice_fold<R>(
 
 type NativeScmContinuationChoiceLookup
   = NativeScmContinuationChoiceMatched {
-      option: NativeScmContinuationOption,
+      selected: NativeScmSelectedContinuationOption,
     }
   | NativeScmContinuationChoiceNotOffered {
       choice: NativeScmContinuationChoice,
     }
 
+type NativeScmContinuationOptionIdentity {
+  proposal: NativeScmProposalIdentity
+  choice: NativeScmContinuationChoice
+}
+
+type NativeScmSelectedContinuationOption {
+  identity: NativeScmContinuationOptionIdentity
+  option: NativeScmContinuationOption
+}
+
 type NativeScmContinuationChoiceLookupFold<R> {
-  matched: fn(NativeScmContinuationOption) -> R
+  matched: fn(NativeScmSelectedContinuationOption) -> R
   not_offered: fn(NativeScmContinuationChoice) -> R
 }
 
@@ -99,8 +109,8 @@ fn native_scm_continuation_choice_lookup_fold<R>(
   fold: NativeScmContinuationChoiceLookupFold<R>,
 ) -> R {
   match lookup {
-    NativeScmContinuationChoiceMatched { option } =>
-      fold.matched(option)
+    NativeScmContinuationChoiceMatched { selected } =>
+      fold.matched(selected)
     NativeScmContinuationChoiceNotOffered { choice } =>
       fold.not_offered(choice)
   }
@@ -125,6 +135,18 @@ type NativeScmPrimaryOutcome
       progress_preview: String
     }
   | CouldNotLand {
+      refusal: NativeScmRefusal
+    }
+
+type NativeScmTerminalOutcome
+  = NativeScmTerminalLanded {
+      result_preview: String
+    }
+  | NativeScmTerminalChoiceRequired {
+      question: String
+      continuation: NativeScmContinuation
+    }
+  | NativeScmTerminalCouldNotLand {
       refusal: NativeScmRefusal
     }
 
@@ -154,369 +176,6 @@ type NativeScmProjectionRepairOutcome
       receipt: NativeScmReceipt
       reason: String
     }
-
-type NativeScmSubmissionLedger {
-  applied: List<String>
-}
-
-type NativeScmScenario
-  = TwoIndependentChangesLand
-  | StaleTargetAutoResync
-  | DuplicateSubmissionAppliesOnce
-  | RenameReferenceUniqueMeaning
-  | TwoLegitimateMeaningsNeedChoice
-  | IncompatibleGoalsNeedAuthorizedDecider
-  | EvidenceGatheredInternally
-  | ToolModelProofDeficitRoutesInternally
-  | ProjectionFailureRepairsWithoutReinterpretation
-  | ConventionalScmImportWithoutManualRewrite
-  | VisibilityAuthorizedDetails
-
-fn native_scm_identity_for(scenario: NativeScmScenario) -> NativeScmProposalIdentity {
-  match scenario {
-    TwoIndependentChangesLand => NativeScmProposalIdentity {
-      name: "two-independent-changes",
-      attempt_key: "attempt-two-independent-changes",
-    }
-    StaleTargetAutoResync => NativeScmProposalIdentity {
-      name: "stale-target-auto-resync",
-      attempt_key: "attempt-stale-target-auto-resync",
-    }
-    DuplicateSubmissionAppliesOnce => NativeScmProposalIdentity {
-      name: "duplicate-submission-applies-once",
-      attempt_key: "attempt-duplicate-submission",
-    }
-    RenameReferenceUniqueMeaning => NativeScmProposalIdentity {
-      name: "rename-reference-unique-meaning",
-      attempt_key: "attempt-rename-reference",
-    }
-    TwoLegitimateMeaningsNeedChoice => NativeScmProposalIdentity {
-      name: "two-legitimate-meanings-need-choice",
-      attempt_key: "attempt-two-legitimate-meanings",
-    }
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmProposalIdentity {
-      name: "incompatible-goals-need-authorized-decider",
-      attempt_key: "attempt-incompatible-goals",
-    }
-    EvidenceGatheredInternally => NativeScmProposalIdentity {
-      name: "evidence-gathered-internally",
-      attempt_key: "attempt-evidence-gathered-internally",
-    }
-    ToolModelProofDeficitRoutesInternally => NativeScmProposalIdentity {
-      name: "tool-model-proof-deficit-routes-internally",
-      attempt_key: "attempt-tool-model-proof-deficit",
-    }
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProposalIdentity {
-      name: "projection-failure-repairs-without-reinterpretation",
-      attempt_key: "attempt-projection-failure",
-    }
-    ConventionalScmImportWithoutManualRewrite => NativeScmProposalIdentity {
-      name: "conventional-scm-import-without-manual-rewrite",
-      attempt_key: "attempt-conventional-scm-import",
-    }
-    VisibilityAuthorizedDetails => NativeScmProposalIdentity {
-      name: "visibility-authorized-details",
-      attempt_key: "attempt-visibility-authorized-details",
-    }
-  }
-}
-
-fn native_scm_lifecycle_ready() -> NativeScmLifecycle {
-  NativeScmLifecycleReady
-}
-
-fn native_scm_transition_for(scenario: NativeScmScenario) -> NativeScmCommitTransition {
-  match scenario {
-    ToolModelProofDeficitRoutesInternally => NativeScmCommitTransitionUncommitted
-    TwoLegitimateMeaningsNeedChoice => NativeScmCommitTransitionUncommitted
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmCommitTransitionUncommitted
-    TwoIndependentChangesLand => NativeScmCommitTransitionCommitted
-    StaleTargetAutoResync => NativeScmCommitTransitionCommitted
-    DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
-    RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
-    EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmCommitTransitionCommitted
-    ConventionalScmImportWithoutManualRewrite => NativeScmCommitTransitionCommitted
-    VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
-  }
-}
-
-fn native_scm_projection(workspace: String, target: String) -> NativeScmProjection {
-  NativeScmProjection {
-    workspace: optional_present(value: workspace),
-    target: optional_present(value: target),
-    realizations: [],
-  }
-}
-
-fn native_scm_primary_for(scenario: NativeScmScenario, identity: NativeScmProposalIdentity) -> NativeScmPrimaryOutcome {
-  match scenario {
-    TwoIndependentChangesLand => Landed {
-      result_preview: "two independent changes both land on the same accepted target",
-    }
-    StaleTargetAutoResync => Landed {
-      result_preview: "stale target is replayed against the current target, then lands",
-    }
-    DuplicateSubmissionAppliesOnce => Landed {
-      result_preview: "duplicate submission reuses the stable proposal identity and applies once",
-    }
-    RenameReferenceUniqueMeaning => Landed {
-      result_preview: "rename plus reference resolves to one unique meaning",
-    }
-    TwoLegitimateMeaningsNeedChoice => ChoiceRequired {
-      question: "The call can follow the rename or stay separate. Which meaning should land?",
-      continuation: NativeScmContinuation {
-        proposal: identity,
-        options: NativeScmContinuationOptions {
-          first_option: NativeScmContinuationOption {
-            label: "follow the rename",
-            result_preview: "follow the rename: keep the new spelling and move the call",
-            resume_token: "resume-follow-the-rename",
-          },
-          second_option: NativeScmContinuationOption {
-            label: "keep a separate name",
-            result_preview: "keep a separate name: preserve the old spelling as a distinct meaning",
-            resume_token: "resume-keep-separate-name",
-          },
-          additional_options: [],
-        },
-      },
-    }
-    IncompatibleGoalsNeedAuthorizedDecider => ChoiceRequired {
-      question: "Two requested goals cannot both be retained. Which one should the authorized decider keep?",
-      continuation: NativeScmContinuation {
-        proposal: identity,
-        options: NativeScmContinuationOptions {
-          first_option: NativeScmContinuationOption {
-            label: "retain goal A",
-            result_preview: "retain goal A and drop goal B",
-            resume_token: "resume-retain-goal-a",
-          },
-          second_option: NativeScmContinuationOption {
-            label: "retain goal B",
-            result_preview: "retain goal B and drop goal A",
-            resume_token: "resume-retain-goal-b",
-          },
-          additional_options: [],
-        },
-      },
-    }
-    EvidenceGatheredInternally => Landed {
-      result_preview: "support was gathered internally, so the proposal lands without a user question",
-    }
-    ToolModelProofDeficitRoutesInternally => InProgress {
-      progress_preview: "tool, model, and proof work remain internal; the proposal is still progressing",
-    }
-    ProjectionFailureRepairsWithoutReinterpretation => Landed {
-      result_preview: "accepted result remains landed while its compatibility projection is repaired separately",
-    }
-    ConventionalScmImportWithoutManualRewrite => Landed {
-      result_preview: "a conventional SCM import lands as an ordinary import with no manual synchronization rewrite",
-    }
-    VisibilityAuthorizedDetails => Landed {
-      result_preview: "details stay optional and can be projected only when visibility authorizes them",
-    }
-  }
-}
-
-fn native_scm_receipt_details_for(scenario: NativeScmScenario) -> Optional<String> {
-  match scenario {
-    TwoIndependentChangesLand => Present {
-      value: "details: both changes are independently grounded and both land",
-    }
-    StaleTargetAutoResync => Present {
-      value: "details: the stale receipt is replayed against the current target before landing",
-    }
-    DuplicateSubmissionAppliesOnce => Present {
-      value: "details: stable proposal identity deduplicates repeated submission",
-    }
-    RenameReferenceUniqueMeaning => Present {
-      value: "details: rename transport preserves the unique meaning of the reference",
-    }
-    TwoLegitimateMeaningsNeedChoice => Present {
-      value: "details: one stored continuation resumes automatically after the answer",
-    }
-    IncompatibleGoalsNeedAuthorizedDecider => Present {
-      value: "details: the authorized decider chooses which incompatible goal to retain",
-    }
-    EvidenceGatheredInternally => Present {
-      value: "details: obtainable evidence is gathered inside the machine before the user sees a result",
-    }
-    ToolModelProofDeficitRoutesInternally => Present {
-      value: "details: internal progress stays internal until the machine finishes its own continuation",
-    }
-    ProjectionFailureRepairsWithoutReinterpretation => Present {
-      value: "details: compatibility repair updates only the projection, not the semantic result",
-    }
-    ConventionalScmImportWithoutManualRewrite => Present {
-      value: "details: import is accepted through its native realization without a manual synchronization rewrite",
-    }
-    VisibilityAuthorizedDetails => Present {
-      value: "details: this text is only available when visibility authorizes it",
-    }
-  }
-}
-
-fn native_scm_review_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
-  match scenario {
-    ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
-    TwoIndependentChangesLand => NativeScmLifecycleReady
-    StaleTargetAutoResync => NativeScmLifecycleReady
-    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
-    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
-    EvidenceGatheredInternally => NativeScmLifecycleReady
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
-    VisibilityAuthorizedDetails => NativeScmLifecycleReady
-  }
-}
-
-fn native_scm_access_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
-  match scenario {
-    ToolModelProofDeficitRoutesInternally => NativeScmLifecycleReady
-    TwoIndependentChangesLand => NativeScmLifecycleReady
-    StaleTargetAutoResync => NativeScmLifecycleReady
-    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
-    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
-    EvidenceGatheredInternally => NativeScmLifecycleReady
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
-    VisibilityAuthorizedDetails => NativeScmLifecycleReady
-  }
-}
-
-fn native_scm_check_for(scenario: NativeScmScenario) -> NativeScmLifecycle {
-  match scenario {
-    ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    TwoIndependentChangesLand => NativeScmLifecycleReady
-    StaleTargetAutoResync => NativeScmLifecycleReady
-    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
-    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
-    EvidenceGatheredInternally => NativeScmLifecycleReady
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmLifecycleReady
-    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
-    VisibilityAuthorizedDetails => NativeScmLifecycleReady
-  }
-}
-
-fn native_scm_operational_for(scenario: NativeScmScenario) -> NativeScmOperationalState {
-  match scenario {
-    ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjectionRepairPending
-    ToolModelProofDeficitRoutesInternally => NativeScmInternalWorkPending
-    TwoIndependentChangesLand => NativeScmOperationalReady
-    StaleTargetAutoResync => NativeScmOperationalReady
-    DuplicateSubmissionAppliesOnce => NativeScmOperationalReady
-    RenameReferenceUniqueMeaning => NativeScmOperationalReady
-    TwoLegitimateMeaningsNeedChoice => NativeScmOperationalReady
-    IncompatibleGoalsNeedAuthorizedDecider => NativeScmOperationalReady
-    EvidenceGatheredInternally => NativeScmOperationalReady
-    ConventionalScmImportWithoutManualRewrite => NativeScmOperationalReady
-    VisibilityAuthorizedDetails => NativeScmOperationalReady
-  }
-}
-
-fn native_scm_receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
-  let identity = native_scm_identity_for(scenario: scenario)
-  NativeScmReceipt {
-    identity: identity,
-    transition: native_scm_transition_for(scenario: scenario),
-    review: native_scm_review_for(scenario: scenario),
-    access: native_scm_access_for(scenario: scenario),
-    check: native_scm_check_for(scenario: scenario),
-    operational: native_scm_operational_for(scenario: scenario),
-    projections: match scenario {
-      ProjectionFailureRepairsWithoutReinterpretation => NativeScmProjection {
-        workspace: optional_present(value: "/workspaces/native-scm-projection-repair"),
-        target: optional_present(value: "main"),
-        realizations: [],
-      }
-      ConventionalScmImportWithoutManualRewrite => native_scm_projection(
-        workspace: "/workspaces/native-scm-conventional-import",
-        target: "main",
-      )
-      TwoIndependentChangesLand => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      StaleTargetAutoResync => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      DuplicateSubmissionAppliesOnce => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      RenameReferenceUniqueMeaning => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      TwoLegitimateMeaningsNeedChoice => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      IncompatibleGoalsNeedAuthorizedDecider => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      EvidenceGatheredInternally => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      ToolModelProofDeficitRoutesInternally => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-      VisibilityAuthorizedDetails => native_scm_projection(
-        workspace: "/workspaces/native-scm-contract",
-        target: "main",
-      )
-    },
-    primary: native_scm_primary_for(scenario: scenario, identity: identity),
-    receipt_details: native_scm_receipt_details_for(scenario: scenario),
-  }
-}
-
-fn native_scm_submission_ledger() -> NativeScmSubmissionLedger {
-  NativeScmSubmissionLedger { applied: [] }
-}
-
-fn native_scm_apply_once(
-  ledger: NativeScmSubmissionLedger,
-  receipt: NativeScmReceipt,
-) -> NativeScmSubmissionLedger {
-  if all(ledger.applied, applied => applied != receipt.identity.attempt_key) {
-    NativeScmSubmissionLedger { applied: concat(ledger.applied, [receipt.identity.attempt_key]) }
-  } else {
-    ledger
-  }
-}
-
-fn native_scm_rekey_receipt(receipt: NativeScmReceipt, attempt_key: String) -> NativeScmReceipt {
-  NativeScmReceipt {
-    identity: NativeScmProposalIdentity {
-      name: receipt.identity.name,
-      attempt_key: attempt_key,
-    },
-    transition: receipt.transition,
-    review: receipt.review,
-    access: receipt.access,
-    check: receipt.check,
-    operational: receipt.operational,
-    projections: receipt.projections,
-    primary: receipt.primary,
-    receipt_details: receipt.receipt_details,
-  }
-}
-
-fn native_scm_applied_count(ledger: NativeScmSubmissionLedger) -> Int {
-  count(ledger.applied)
-}
 
 fn native_scm_primary_label(primary: NativeScmPrimaryOutcome) -> String {
   match primary {
@@ -555,12 +214,24 @@ fn native_scm_resolve_choice(
     fold: NativeScmContinuationChoiceFold {
       first: fn() {
         NativeScmContinuationChoiceMatched {
-          option: continuation.options.first_option,
+          selected: NativeScmSelectedContinuationOption {
+            identity: NativeScmContinuationOptionIdentity {
+              proposal: continuation.proposal,
+              choice: choice,
+            },
+            option: continuation.options.first_option,
+          },
         }
       },
       second: fn() {
         NativeScmContinuationChoiceMatched {
-          option: continuation.options.second_option,
+          selected: NativeScmSelectedContinuationOption {
+            identity: NativeScmContinuationOptionIdentity {
+              proposal: continuation.proposal,
+              choice: choice,
+            },
+            option: continuation.options.second_option,
+          },
         }
       },
       additional: fn(index) {
@@ -570,7 +241,13 @@ fn native_scm_resolve_choice(
         ) {
           Present { value } =>
             NativeScmContinuationChoiceMatched {
-              option: value,
+              selected: NativeScmSelectedContinuationOption {
+                identity: NativeScmContinuationOptionIdentity {
+                  proposal: continuation.proposal,
+                  choice: choice,
+                },
+                option: value,
+              },
             }
           Absent =>
             NativeScmContinuationChoiceNotOffered {
@@ -668,3 +345,4 @@ fn native_scm_inspect_receipt(receipt: NativeScmReceipt, authorized: Bool) -> Op
     optional_absent()
   }
 }
+data native_scm_contract_test_fixture_boundary_note: String = "Named scenario construction and the submission-ledger oracle live only in test.claim.native_scm_interaction_scenario_fixture. This production carrier owns presentation, structural continuation identity, terminal-outcome shape, projection attachment, and inspection only; it cannot manufacture Landed from a scenario name."

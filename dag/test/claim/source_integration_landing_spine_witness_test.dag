@@ -1,30 +1,25 @@
 module test.claim.source_integration_landing_spine_witness
 
-import std.types {
-  Bool,
-  ContentHash,
-  List,
-  NonEmptyStr,
-  String,
-  Timestamp,
-}
+import std.types { Bool, ContentHash, List, NonEmptyStr, String, Timestamp }
 import std.measure { minute_count }
 import std.claim_evidence {
-  ClaimReadinessSatisfied,
-  ClaimReadinessBlocking,
+  Claim,
+  RecordedFact,
+  EvidenceProvenance,
+  EvidenceFreshness,
+  EvidenceFidelity,
+  EvidenceSupports,
+  EvidenceChallenges,
+  EvidenceAdmissionPolicy,
+  EvidenceAuthorityRefused,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
-  NativeScmContinuationOption,
-  NativeScmContinuationOptions,
   NativeScmFirstContinuationOption,
   NativeScmSecondContinuationOption,
-  NativeScmPrimaryOutcome,
-  Landed,
-  ChoiceRequired,
-  InProgress,
-  CouldNotLand,
-  native_scm_continuation_options,
+  NativeScmTerminalLanded,
+  NativeScmTerminalChoiceRequired,
+  NativeScmTerminalCouldNotLand,
 }
 import gunbc.scm_compatibility_shape {
   compatibility_projection_from_handler,
@@ -39,65 +34,144 @@ import test.claim.scm_compatibility_git_witness {
 }
 import gunbc.source_integration_landing_spine {
   LandingProposalContract,
+  LandingRequiredClaim,
+  LandingRequiredClaims,
+  LandingGuaranteeProposition,
   LandingWholeProposalAtomic,
   LandingStressProfile,
   gunbc_landing_stress_profile,
-  LandingEvidenceProfile,
-  LandingClosureCertificate,
-  LandingClosureCertificates,
+  LandingEvidenceFact,
+  LandingEvidenceLink,
+  LandingEvidenceAdmissionPolicy,
+  LandingEvidenceReady,
+  LandingEvidenceBlocking,
+  LandingDuplicateRequirement,
+  LandingMissingEvidence,
+  LandingClaimChallenged,
+  LandingEvidenceConflicted,
+  LandingEvidenceRefused,
+  LandingReadyEvidenceReceipt,
+  LandingResultClass,
+  LandingSelectResult,
+  LandingNormativeOption,
+  LandingNormativeOptions,
+  LandingNoResultClasses,
+  LandingOneResultClass,
+  LandingManyResultClasses,
+  LandingClosureSubject,
+  LandingCaptureCompletenessReceipt,
+  LandingAffectedScopeReceipt,
+  LandingRuleClosureReceipt,
+  LandingCandidateGenerationReceipt,
+  LandingAdmissibilityReceipt,
+  LandingEquivalenceQuotientReceipt,
+  LandingMultiplicityReceipt,
+  LandingClosureEvidence,
+  LandingClosedResultSpaceReceipt,
   LandingClosureComplete,
   LandingClosureIncomplete,
-  LandingCommitValidityCertificate,
+  LandingMultiplicityCertificate,
+  LandingClosedZero,
+  LandingClosedOne,
+  LandingClosedMany,
+  LandingUnclosed,
+  LandingClosureCertificateMissing,
+  LandingEvidenceNotReady,
+  LandingInvestigationContinues,
+  LandingEvidenceConflictContinues,
+  LandingUnclosedTerminal,
   LandingRefusalKind,
   LandingAuthorizationDenied,
   LandingSelfAmendmentDenied,
   LandingBoundExhausted,
   LandingPermanentEffectFailure,
+  LandingSemanticRequirementsIncompatible,
+  LandingEvidenceAdmissionDenied,
   LandingRefusal,
   LandingContinueInvestigation,
+  LandingResolveEvidenceConflict,
   LandingRetryCurrentTarget,
   LandingMachineContinuation,
-  LandingNormativeQuestion,
-  LandingChoiceResumed,
+  LandingChoiceAdvanced,
   LandingChoiceNotOffered,
-  LandingRequiredClaimBlocking,
-  LandingClosureCertificateMissing,
-  LandingSearchBoundExhausted,
-  LandingInvestigationContinues,
-  LandingUnclosedTerminal,
-  LandingClosedOneReceipt,
-  LandingClosedOne,
-  LandingClosedMany,
-  LandingUnclosed,
+  LandingSelectedResultProcessing,
+  LandingAdmissionReceipt,
   LandingAdmitted,
   LandingUnauthorized,
   LandingSelfAmendmentRefused,
-  LandingAdmittedResult,
   LandingAdmissionAdvanced,
   LandingAdmissionNotAdvanced,
+  LandingAdmittedResult,
+  LandingTransitionReceipt,
+  LandingReadBackObservation,
+  LandingReadBackMatched,
+  LandingReadBackMismatched,
+  LandingCompatibilityTargetBinding,
+  LandingProjectionBound,
+  LandingProjectionBindingRefused,
   LandingProjected,
   LandingProjectionFailed,
+  LandingCommitAssembled,
+  LandingCommitRelationRefused,
   LandingCommittedAndReadBack,
   LandingRetryStaleParent,
   LandingEffectFailed,
   LandingSemanticSpine,
   LandingAdmissionSpine,
   LandingTransitionSpine,
-  LandingUserOutcome,
+  LandingTerminal,
   LandingMachineOwned,
   landing_native_identity,
-  landing_question_continuation,
   landing_native_refusal,
-  landing_unique_candidate,
+  landing_evidence_readiness,
+  landing_closed_result_space,
+  landing_blocked_evidence_result,
   landing_admitted_result,
+  landing_independent_read_back,
+  landing_projection_of_transition,
+  landing_committed_transition,
   landing_resolve_question,
   landing_user_boundary,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn p0_proposal_at(
+fn p0_claim(
+  id: NonEmptyStr,
+  target: NonEmptyStr,
+  bound: NonEmptyStr,
+) -> LandingRequiredClaim {
+  Claim {
+    id: id,
+    subject: "rename-worker-and-update-callers",
+    target: target,
+    proposition: LandingGuaranteeProposition {
+      statement: id,
+    },
+    scope: "source-and-public-behavior",
+    bound: bound,
+  }
+}
+
+fn p0_builds_claim() -> LandingRequiredClaim {
+  p0_claim(
+    id: "builds",
+    target: "accepted-main",
+    bound: "proposal-50-agent-fixture-attempt-1",
+  )
+}
+
+fn p0_behavior_claim() -> LandingRequiredClaim {
+  p0_claim(
+    id: "preserves-public-behavior",
+    target: "accepted-main",
+    bound: "proposal-50-agent-fixture-attempt-1",
+  )
+}
+
+fn p0_proposal_with(
   submitted_at: Timestamp,
+  guarantees: LandingRequiredClaims,
 ) -> LandingProposalContract {
   LandingProposalContract {
     occurrence: "proposal-50-agent-fixture",
@@ -107,7 +181,7 @@ fn p0_proposal_at(
     transformation: "rename-worker-and-update-callers",
     reads_relies: ["declaration-worker", "caller-build"],
     modifies_frame: ["source-worker", "source-callers"],
-    ensures_guarantees: ["builds", "preserves-public-behavior"],
+    ensures_guarantees: guarantees,
     dependencies: [],
     atomicity: LandingWholeProposalAtomic,
     submit_authority: "fixture-author",
@@ -115,121 +189,175 @@ fn p0_proposal_at(
   }
 }
 
-fn p0_ready_evidence() -> LandingEvidenceProfile {
-  LandingEvidenceProfile {
-    first_required: ClaimReadinessSatisfied { claim: "builds" },
-    remaining_required: [
-      ClaimReadinessSatisfied {
-        claim: "preserves-public-behavior",
-      },
-    ],
-  }
-}
-
-fn p0_blocking_evidence() -> LandingEvidenceProfile {
-  LandingEvidenceProfile {
-    first_required: ClaimReadinessSatisfied { claim: "builds" },
-    remaining_required: [
-      ClaimReadinessBlocking {
-        claim: "preserves-public-behavior",
-      },
-    ],
-  }
-}
-
-fn p0_closure_receipt(
-  name: NonEmptyStr,
-) -> LandingClosureCertificate {
-  LandingClosureCertificate { receipt: name as ContentHash }
-}
-
-fn p0_complete_closure() -> LandingClosureCertificates {
-  LandingClosureCertificates {
-    capture_completeness: p0_closure_receipt(
-      name: "capture-completeness-receipt",
-    ),
-    affected_scope: p0_closure_receipt(
-      name: "affected-scope-receipt",
-    ),
-    rule_closure: p0_closure_receipt(
-      name: "rule-closure-receipt",
-    ),
-    candidate_generation: p0_closure_receipt(
-      name: "candidate-generation-receipt",
-    ),
-    admissibility: p0_closure_receipt(
-      name: "admissibility-receipt",
-    ),
-    equivalence_quotient: p0_closure_receipt(
-      name: "equivalence-quotient-receipt",
-    ),
-    multiplicity: p0_closure_receipt(
-      name: "multiplicity-receipt",
-    ),
-    commit_validity: p0_closure_receipt(
-      name: "commit-validity-receipt",
-    ),
-  }
-}
-
-fn p0_machine_continuation(
-  status: NonEmptyStr,
-) -> LandingMachineContinuation {
-  LandingMachineContinuation {
-    handle: "p0-machine-continuation",
-    kind: LandingContinueInvestigation,
-    status: status,
-  }
-}
-
-fn p0_closed_one_with_preview_holds(
-  preview: NonEmptyStr,
-  check: fn(LandingClosedOneReceipt) -> Bool,
-) -> Bool {
-  match landing_unique_candidate(
-    proposal: p0_proposal_at(
-      submitted_at: "2026-07-29T08:00:00Z",
-    ),
-    result: "unique-result-42",
-    preview: preview,
-    evidence: p0_ready_evidence(),
-    closure: LandingClosureComplete {
-      certificates: p0_complete_closure(),
+fn p0_proposal() -> LandingProposalContract {
+  p0_proposal_with(
+    submitted_at: "2026-07-29T08:00:00Z",
+    guarantees: LandingRequiredClaims {
+      first: p0_builds_claim(),
+      remaining: [p0_behavior_claim()],
     },
-    continuation: p0_machine_continuation(
-      status: "checking the result before it lands",
-    ),
+  )
+}
+
+fn p0_fact_claim(
+  fact: RecordedFact<LandingEvidenceFact>,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  fact.value.claim == claim
+    && fact.value.proposal == p0_proposal().occurrence
+}
+
+fn p0_rule_claim(
+  rule: std.claim_evidence.InferenceRuleId,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  rule == "p0-observation-supports-exact-guarantee"
+    && claim.subject == p0_proposal().transformation
+}
+
+fn p0_authority_claim(
+  authority: gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  authority == "p0-independent-validator"
+    && claim.target == p0_proposal().target
+}
+
+fn p0_provenance_claim(
+  provenance: EvidenceProvenance,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  provenance.agent == "p0-validator"
+    && claim.bound == (p0_proposal().attempt as gunbc.source_integration_landing_spine.LandingClaimBound)
+}
+
+fn p0_freshness_claim(
+  freshness: EvidenceFreshness<LandingRequiredClaim>,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  freshness.maximum_conclusion == claim
+}
+
+fn p0_fidelity_claim(
+  fidelity: EvidenceFidelity<gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle>,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  fidelity.boundary == "p0-lossless-guarantee"
+    && count(fidelity.losses) == 0
+    && claim.scope == "source-and-public-behavior"
+}
+
+fn p0_independence_claim(
+  independence: gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle,
+  claim: LandingRequiredClaim,
+  direction: std.claim_evidence.EvidenceDirection,
+) -> Bool {
+  independence == "p0-independent-probe"
+    && claim.target == p0_proposal().target
+    && (direction == EvidenceSupports || direction == EvidenceChallenges)
+}
+
+fn p0_link_relation(
+  link: LandingEvidenceLink,
+  claim: LandingRequiredClaim,
+) -> Bool {
+  link.fact.value.claim == claim
+    && link.freshness.maximum_conclusion == claim
+}
+
+fn p0_admission_policy() -> LandingEvidenceAdmissionPolicy {
+  EvidenceAdmissionPolicy {
+    fact_claim: p0_fact_claim,
+    inference_rule_claim: p0_rule_claim,
+    authority_claim: p0_authority_claim,
+    provenance_claim: p0_provenance_claim,
+    freshness_claim: p0_freshness_claim,
+    fidelity_claim: p0_fidelity_claim,
+    independence_claim: p0_independence_claim,
+    relation: p0_link_relation,
+  }
+}
+
+fn p0_link(
+  claim: LandingRequiredClaim,
+  direction: std.claim_evidence.EvidenceDirection,
+  authority: NonEmptyStr,
+) -> LandingEvidenceLink {
+  std.claim_evidence.EvidenceLink {
+    fact: RecordedFact {
+      id: concat("fact-", claim.id as String) as std.claim_evidence.RecordedFactId,
+      value: LandingEvidenceFact {
+        proposal: p0_proposal().occurrence,
+        observation: concat("observed-", claim.id as String),
+        claim: claim,
+      },
+    },
+    direction: direction,
+    inference_rule: "p0-observation-supports-exact-guarantee",
+    authority: authority,
+    provenance: EvidenceProvenance {
+      entity: "p0-validation-result",
+      activity: "p0-validate-proposal",
+      agent: "p0-validator",
+    },
+    freshness: EvidenceFreshness {
+      maximum_conclusion: claim,
+      basis: "the observation is bound to this proposal attempt",
+    },
+    fidelity: EvidenceFidelity {
+      boundary: "p0-lossless-guarantee",
+      losses: [],
+    },
+    probe_independence: "p0-independent-probe",
+  }
+}
+
+fn p0_support(claim: LandingRequiredClaim) -> LandingEvidenceLink {
+  p0_link(
+    claim: claim,
+    direction: EvidenceSupports,
+    authority: "p0-independent-validator",
+  )
+}
+
+fn p0_challenge(claim: LandingRequiredClaim) -> LandingEvidenceLink {
+  p0_link(
+    claim: claim,
+    direction: EvidenceChallenges,
+    authority: "p0-independent-validator",
+  )
+}
+
+fn p0_ready_evidence() -> LandingReadyEvidenceReceipt {
+  match landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_support(claim: p0_builds_claim()),
+      p0_support(claim: p0_behavior_claim()),
+    ],
   ) {
-    LandingClosedOne { receipt } => check(receipt)
-    _ => false
+    LandingEvidenceReady { receipt } => receipt
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: _,
+      remaining_blocking: _,
+    } =>
+      p0_ready_evidence()
   }
 }
 
-fn p0_closed_one_holds(
-  check: fn(LandingClosedOneReceipt) -> Bool,
-) -> Bool {
-  p0_closed_one_with_preview_holds(
-    preview: "Worker was renamed and its callers were updated.",
-    check: check,
-  )
-}
-
-fn p0_admitted_holds(
-  check: fn(LandingAdmittedResult) -> Bool,
-) -> Bool {
-  p0_closed_one_holds(
-    check: fn(semantic) {
-      match landing_admitted_result(
-        admission: LandingAdmitted {
-          semantic: semantic,
-          receipt: "admission-receipt-42",
-        },
-      ) {
-        LandingAdmissionAdvanced { admitted } => check(admitted)
-        LandingAdmissionNotAdvanced { decision: _ } => false
-      }
-    },
-  )
+fn p0_result(
+  handle: NonEmptyStr,
+  preview: NonEmptyStr,
+) -> LandingResultClass {
+  LandingResultClass {
+    result: handle,
+    preview: preview,
+  }
 }
 
 fn p0_refusal(
@@ -240,7 +368,7 @@ fn p0_refusal(
     kind: kind,
     locus: "proposal-50-agent-fixture",
     occurrences: 1,
-    cause: reason,
+    internal_cause: reason,
     plain_reason: reason,
     responsible_party: "workspace owner",
     next_action: "update the requested outcome and submit again",
@@ -248,578 +376,830 @@ fn p0_refusal(
   }
 }
 
-fn p0_question() -> LandingNormativeQuestion {
-  let proposal = p0_proposal_at(
-    submitted_at: "2026-07-29T08:00:00Z",
-  )
-  LandingNormativeQuestion {
-    proposal: proposal,
-    question: "Should the new call use the renamed function or keep a separate function?",
-    options: NativeScmContinuationOptions {
-      first_option: NativeScmContinuationOption {
-        label: "use the renamed function",
-        result_preview: "The new call uses the renamed function.",
-        resume_token: "resume-use-renamed-function",
-      },
-      second_option: NativeScmContinuationOption {
-        label: "keep a separate function",
-        result_preview: "The original name remains as a separate function.",
-        resume_token: "resume-keep-separate-function",
-      },
-      additional_options: [],
+fn p0_continuation(
+  kind: gunbc.source_integration_landing_spine.LandingMachineContinuationKind,
+  status: NonEmptyStr,
+) -> LandingMachineContinuation {
+  LandingMachineContinuation {
+    handle: "p0-machine-continuation",
+    kind: kind,
+    status: status,
+  }
+}
+
+fn p0_closure_evidence() -> LandingClosureEvidence {
+  LandingClosureEvidence {
+    capture_completeness: LandingCaptureCompletenessReceipt {
+      receipt: "capture-completeness-receipt",
+    },
+    affected_scope: LandingAffectedScopeReceipt {
+      receipt: "affected-scope-receipt",
+    },
+    rule_closure: LandingRuleClosureReceipt {
+      receipt: "rule-closure-receipt",
+    },
+    candidate_generation: LandingCandidateGenerationReceipt {
+      receipt: "candidate-generation-receipt",
+    },
+    admissibility: LandingAdmissibilityReceipt {
+      receipt: "admissibility-receipt",
+    },
+    equivalence_quotient: LandingEquivalenceQuotientReceipt {
+      receipt: "equivalence-quotient-receipt",
+    },
+    multiplicity: LandingMultiplicityReceipt {
+      receipt: "multiplicity-receipt",
     },
   }
 }
 
-fn p0_primary_messages(
-  primary: NativeScmPrimaryOutcome,
-) -> List<String> {
-  match primary {
-    Landed { result_preview } => [result_preview]
-    ChoiceRequired { question, continuation } =>
-      append(
-        [question],
-        items: native_scm_continuation_options(
-          continuation: continuation,
-        ) |> flat_map(option => [
-          option.label as String,
-          option.result_preview as String,
-        ]),
-      )
-    InProgress { progress_preview } => [progress_preview]
-    CouldNotLand { refusal } => [
-      refusal.plain_reason,
-      refusal.responsible_party,
-      refusal.next_action,
-    ]
+fn p0_closed_receipt(
+  candidates: gunbc.source_integration_landing_spine.LandingCandidateSpace,
+) -> LandingClosedResultSpaceReceipt {
+  LandingClosedResultSpaceReceipt {
+    subject: LandingClosureSubject {
+      ready_evidence: p0_ready_evidence(),
+      admission_contract: "p0-admission-contract",
+      equivalence: "p0-declared-equivalence",
+      candidates: candidates,
+    },
+    closure: p0_closure_evidence(),
   }
 }
 
-fn p0_message_is_plain(
-  message: String,
-) -> Bool {
-  !string_contains(s: message, pattern: "candidate")
-    && !string_contains(s: message, pattern: "closedness")
-    && !string_contains(s: message, pattern: "evidence grade")
-    && !string_contains(s: message, pattern: "reconciliation")
-    && !string_contains(s: message, pattern: "constraint")
-    && !string_contains(s: message, pattern: "unknown")
-    && !string_contains(s: message, pattern: "contradictory")
-    && !string_contains(s: message, pattern: "merge")
-    && !string_contains(s: message, pattern: "rebase")
-    && !string_contains(s: message, pattern: "cherry-pick")
-    && !string_contains(s: message, pattern: "reset")
-    && !string_contains(s: message, pattern: "conflict marker")
-    && !string_contains(s: message, pattern: "force-push")
-}
-
-test fn witness_p0_unique_admitted_commit_lands_with_git_projection() -> Bool {
-  let proposal = p0_proposal_at(
-    submitted_at: "2026-07-29T08:00:00Z",
-  )
-  match landing_unique_candidate(
-    proposal: proposal,
-    result: "unique-result-42",
+fn p0_closed_one() -> gunbc.source_integration_landing_spine.LandingClosedOneReceipt {
+  let result = p0_result(
+    handle: "unique-result-42",
     preview: "Worker was renamed and its callers were updated.",
-    evidence: p0_ready_evidence(),
-    closure: LandingClosureComplete {
-      certificates: p0_complete_closure(),
+  )
+  match landing_closed_result_space(
+    attempt: LandingClosureComplete {
+      receipt: p0_closed_receipt(
+        candidates: LandingOneResultClass { result: result },
+      ),
     },
-    continuation: p0_machine_continuation(
+    zero_refusal: p0_refusal(
+      kind: LandingSemanticRequirementsIncompatible,
+      reason: "The requested guarantees cannot all hold.",
+    ),
+    continuation: p0_continuation(
+      kind: LandingContinueInvestigation,
       status: "checking the result before it lands",
     ),
   ) {
-    LandingClosedOne { receipt: semantic } =>
-      match git_fixture_binding() {
-        GitCompatibilityBindingRefused { cause: _ } => false
-        GitCompatibilityBound { receipt } => {
-          let projection = compatibility_projection_from_handler(
-            handler: git_compatibility_projection_handler(),
-            receipt: receipt,
-          )
-          match landing_admitted_result(
-            admission: LandingAdmitted {
-              semantic: semantic,
-              receipt: "admission-receipt-42",
-            },
-          ) {
-            LandingAdmissionAdvanced { admitted } => {
-              let boundary = landing_user_boundary(
-                receipt: LandingTransitionSpine {
-                  transition: LandingCommittedAndReadBack {
-                    admitted: admitted,
-                    transition_receipt: "committed-transition-42",
-                    independent_read_back: "independent-read-back-42",
-                    projections: [
-                      LandingProjected { receipt: projection },
-                    ],
-                  },
-                },
-              )
-              projection.realization == "git-r0"
-                && projection.target == "refs/heads/main"
-                && match boundary {
-                  LandingUserOutcome {
-                    outcome: Landed { result_preview },
-                  } =>
-                    result_preview == "Worker was renamed and its callers were updated."
-                  _ => false
-                }
-            }
-            LandingAdmissionNotAdvanced { decision: _ } => false
+    LandingClosedOne { receipt } => receipt
+    _ => p0_closed_one()
+  }
+}
+
+fn p0_admitted() -> LandingAdmittedResult {
+  let semantic = p0_closed_one()
+  match landing_admitted_result(
+    admission: LandingAdmitted {
+      receipt: LandingAdmissionReceipt {
+        semantic: semantic,
+        authority: "fixture-author",
+        receipt: "admission-receipt-42",
+      },
+    },
+  ) {
+    LandingAdmissionAdvanced { admitted } => admitted
+    LandingAdmissionNotAdvanced { decision: _ } => p0_admitted()
+  }
+}
+
+fn p0_transition(
+  admitted: LandingAdmittedResult,
+  identity: NonEmptyStr,
+  result: NonEmptyStr,
+) -> LandingTransitionReceipt {
+  LandingTransitionReceipt {
+    admitted: admitted,
+    identity: identity,
+    resulting_state: result,
+  }
+}
+
+test fn witness_p0_full_claim_readiness_reaches_closed_one() -> Bool {
+  let receipt = p0_closed_one()
+  let first = receipt.closed_space.subject.ready_evidence.proposal.ensures_guarantees.first
+  first == p0_builds_claim()
+    && count(
+      receipt.closed_space.subject.ready_evidence.readiness.submitted_links
+    ) == 2
+    && receipt.unique.result == "unique-result-42"
+}
+
+test fn witness_p0_same_claim_id_different_target_and_bound_blocks() -> Bool {
+  let wrong = p0_claim(
+    id: "builds",
+    target: "another-target",
+    bound: "another-attempt",
+  )
+  match landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_support(claim: wrong),
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  ) {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: LandingEvidenceRefused { claim, refusals: _ },
+      remaining_blocking: _,
+    } =>
+      claim == p0_builds_claim()
+    _ => false
+  }
+}
+
+test fn witness_p0_unrelated_satisfied_claim_blocks() -> Bool {
+  let unrelated = p0_claim(
+    id: "unrelated",
+    target: "accepted-main",
+    bound: "proposal-50-agent-fixture-attempt-1",
+  )
+  match landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [p0_support(claim: unrelated)],
+  ) {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: _,
+      remaining_blocking: _,
+    } =>
+      true
+    _ => false
+  }
+}
+
+test fn witness_p0_omitted_guarantee_blocks() -> Bool {
+  match landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [p0_support(claim: p0_builds_claim())],
+  ) {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: LandingMissingEvidence { claim },
+      remaining_blocking: _,
+    } =>
+      claim.id == p0_behavior_claim().id
+        && claim.target == p0_behavior_claim().target
+        && claim.bound == p0_behavior_claim().bound
+    _ => false
+  }
+}
+
+test fn witness_p0_duplicate_requirement_blocks() -> Bool {
+  let duplicate = p0_proposal_with(
+    submitted_at: "2026-07-29T08:00:00Z",
+    guarantees: LandingRequiredClaims {
+      first: p0_builds_claim(),
+      remaining: [p0_builds_claim()],
+    },
+  )
+  match landing_evidence_readiness(
+    proposal: duplicate,
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [p0_support(claim: p0_builds_claim())],
+  ) {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: LandingDuplicateRequirement { claim },
+      remaining_blocking: _,
+    } =>
+      claim == p0_builds_claim()
+    _ => false
+  }
+}
+
+test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool {
+  let forged = p0_link(
+    claim: p0_builds_claim(),
+    direction: EvidenceSupports,
+    authority: "caller-authored-untrusted-authority",
+  )
+  match landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      forged,
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  ) {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: LandingEvidenceRefused { claim, refusals },
+      remaining_blocking: _,
+    } =>
+      claim == p0_builds_claim()
+        && any(refusals, refusal => refusal == EvidenceAuthorityRefused)
+    _ => false
+  }
+}
+
+test fn witness_p0_challenge_neither_and_both_remain_distinct() -> Bool {
+  let challenged = landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_challenge(claim: p0_builds_claim()),
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  )
+  let neither = landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [],
+  )
+  let both = landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_support(claim: p0_builds_claim()),
+      p0_challenge(claim: p0_builds_claim()),
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  )
+  match challenged {
+    LandingEvidenceBlocking {
+      proposal: _,
+      policy: _,
+      readiness: _,
+      first_blocking: LandingClaimChallenged { claim: _, challenging: _ },
+      remaining_blocking: _,
+    } =>
+      match neither {
+        LandingEvidenceBlocking {
+          proposal: _,
+          policy: _,
+          readiness: _,
+          first_blocking: LandingMissingEvidence { claim: _ },
+          remaining_blocking: _,
+        } =>
+          match both {
+            LandingEvidenceBlocking {
+              proposal: _,
+              policy: _,
+              readiness: _,
+              first_blocking: LandingEvidenceConflicted {
+                claim: _,
+                supporting: _,
+                challenging: _,
+              },
+              remaining_blocking: _,
+            } =>
+              true
+            _ => false
           }
-        }
+        _ => false
       }
     _ => false
   }
 }
 
-test fn witness_p0_missing_closure_stays_machine_owned() -> Bool {
-  let semantic = landing_unique_candidate(
-    proposal: p0_proposal_at(
-      submitted_at: "2026-07-29T08:00:00Z",
+test fn witness_p0_block_disposition_is_not_boolean_laundered() -> Bool {
+  let challenged = landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_challenge(claim: p0_builds_claim()),
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  )
+  let semantic = landing_blocked_evidence_result(
+    readiness: challenged,
+    partial_results: [],
+    continuation: p0_continuation(
+      kind: LandingContinueInvestigation,
+      status: "gathering missing observations",
     ),
-    result: "unique-result-42",
-    preview: "Worker was renamed and its callers were updated.",
-    evidence: p0_ready_evidence(),
-    closure: LandingClosureIncomplete {
-      missing: LandingCommitValidityCertificate,
-      cause: "the write validity check is still running",
+    conflict_continuation: p0_continuation(
+      kind: LandingResolveEvidenceConflict,
+      status: "resolving conflicting observations",
+    ),
+    terminal_refusal: p0_refusal(
+      kind: LandingEvidenceAdmissionDenied,
+      reason: "An independent check contradicts a required guarantee.",
+    ),
+  )
+  match semantic {
+    LandingUnclosed {
+      proposal: _,
+      cause: LandingEvidenceNotReady { first: _, remaining: _ },
+      partial_results: _,
+      disposition: LandingUnclosedTerminal { refusal },
+    } =>
+      refusal.kind == LandingEvidenceAdmissionDenied
+    _ => false
+  }
+}
+
+test fn witness_p0_closed_zero_is_closure_qualified() -> Bool {
+  let receipt = p0_closed_receipt(
+    candidates: LandingNoResultClasses {
+      incompatible_core: "the two required guarantees cannot coexist",
+      counterexample: "the public call changes behavior",
     },
-    continuation: p0_machine_continuation(
-      status: "checking the result before it lands",
+  )
+  match landing_closed_result_space(
+    attempt: LandingClosureComplete { receipt: receipt },
+    zero_refusal: p0_refusal(
+      kind: LandingSemanticRequirementsIncompatible,
+      reason: "The requested guarantees cannot all hold.",
+    ),
+    continuation: p0_continuation(
+      kind: LandingContinueInvestigation,
+      status: "checking the result space",
+    ),
+  ) {
+    LandingClosedZero {
+      closed_space,
+      incompatible_core: _,
+      counterexample: _,
+      disposition: _,
+    } =>
+      closed_space.subject.ready_evidence.policy == "p0-exact-guarantee-policy"
+        && closed_space.closure.multiplicity.receipt == "multiplicity-receipt"
+    _ => false
+  }
+}
+
+test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
+  let first = p0_result(
+    handle: "first-result",
+    preview: "The new call uses the renamed function.",
+  )
+  let second = p0_result(
+    handle: "second-result",
+    preview: "The original name remains as a separate function.",
+  )
+  let options = LandingNormativeOptions {
+    first_option: LandingNormativeOption {
+      label: "use this result",
+      preview: first.preview,
+      resume_hint: "same-non-authoritative-hint",
+      alternative: LandingSelectResult { result: first },
+    },
+    second_option: LandingNormativeOption {
+      label: "use this result",
+      preview: second.preview,
+      resume_hint: "same-non-authoritative-hint",
+      alternative: LandingSelectResult { result: second },
+    },
+    additional_options: [],
+  }
+  match landing_closed_result_space(
+    attempt: LandingClosureComplete {
+      receipt: p0_closed_receipt(
+        candidates: LandingManyResultClasses {
+          question: "Which result should be used?",
+          options: options,
+        },
+      ),
+    },
+    zero_refusal: p0_refusal(
+      kind: LandingSemanticRequirementsIncompatible,
+      reason: "No result can satisfy the request.",
+    ),
+    continuation: p0_continuation(
+      kind: LandingContinueInvestigation,
+      status: "checking the result space",
+    ),
+  ) {
+    LandingClosedMany { receipt } =>
+      match landing_resolve_question(
+        prior: receipt,
+        choice: NativeScmSecondContinuationOption,
+      ) {
+        LandingChoiceAdvanced { continuation } =>
+          continuation.selected.identity.choice == NativeScmSecondContinuationOption
+            && continuation.selected.option.resume_token == "same-non-authoritative-hint"
+            && continuation.prior.closed_space == receipt.closed_space
+            && match continuation.processing {
+              LandingSelectedResultProcessing { result } =>
+                result.result == "second-result"
+              _ => false
+            }
+        LandingChoiceNotOffered { prior: _, choice: _ } => false
+      }
+        && match receipt.closed_space.subject.candidates {
+          LandingManyResultClasses { question: _, options: stored } =>
+            stored.first_option.alternative != stored.second_option.alternative
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_p0_incomplete_closure_stays_machine_owned() -> Bool {
+  let subject = LandingClosureSubject {
+    ready_evidence: p0_ready_evidence(),
+    admission_contract: "p0-admission-contract",
+    equivalence: "p0-declared-equivalence",
+    candidates: LandingOneResultClass {
+      result: p0_result(
+        handle: "unique-result-42",
+        preview: "Worker was renamed and its callers were updated.",
+      ),
+    },
+  }
+  let semantic = landing_closed_result_space(
+    attempt: LandingClosureIncomplete {
+      subject: subject,
+      missing: LandingMultiplicityCertificate,
+      cause: "the result-class count is not closed",
+    },
+    zero_refusal: p0_refusal(
+      kind: LandingSemanticRequirementsIncompatible,
+      reason: "No result can satisfy the request.",
+    ),
+    continuation: p0_continuation(
+      kind: LandingContinueInvestigation,
+      status: "checking the result space",
     ),
   )
   match semantic {
     LandingUnclosed {
       proposal: _,
       cause: LandingClosureCertificateMissing {
-        certificate: LandingCommitValidityCertificate,
+        certificate: LandingMultiplicityCertificate,
         cause: _,
       },
       partial_results: _,
-      disposition: LandingInvestigationContinues {
-        continuation: _,
-      },
+      disposition: LandingInvestigationContinues { continuation: _ },
     } =>
       match landing_user_boundary(
-        receipt: LandingSemanticSpine {
-          result: semantic,
-        },
+        receipt: LandingSemanticSpine { result: semantic },
       ) {
         LandingMachineOwned { status, continuation: _ } =>
-          status == "checking the result before it lands"
-        LandingUserOutcome { outcome: _ } => false
+          status == "checking the result space"
+        LandingTerminal { outcome: _ } => false
       }
     _ => false
   }
 }
 
-test fn witness_p0_blocking_claim_stays_machine_owned() -> Bool {
-  let semantic = landing_unique_candidate(
-    proposal: p0_proposal_at(
-      submitted_at: "2026-07-29T08:00:00Z",
-    ),
-    result: "unique-result-42",
-    preview: "Worker was renamed and its callers were updated.",
-    evidence: p0_blocking_evidence(),
-    closure: LandingClosureComplete {
-      certificates: p0_complete_closure(),
-    },
-    continuation: p0_machine_continuation(
-      status: "checking the remaining requirement",
-    ),
+test fn witness_p0_admission_and_transition_flow_forward() -> Bool {
+  let admitted = p0_admitted()
+  let transition = p0_transition(
+    admitted: admitted,
+    identity: "transition-42",
+    result: "state-42",
   )
-  match semantic {
-    LandingUnclosed {
-      proposal: _,
-      cause: LandingRequiredClaimBlocking,
-      partial_results: _,
-      disposition: LandingInvestigationContinues {
-        continuation: _,
-      },
-    } =>
-      match landing_user_boundary(
-        receipt: LandingSemanticSpine {
-          result: semantic,
-        },
-      ) {
-        LandingMachineOwned { status: _, continuation: _ } => true
-        LandingUserOutcome { outcome: _ } => false
-      }
-    _ => false
-  }
+  let carried = transition.admitted.admission.semantic.closed_space.subject.ready_evidence.proposal
+  transition.admitted.admission.semantic == p0_closed_one()
+    && carried == p0_proposal()
 }
 
-test fn witness_p0_question_has_two_resumable_normative_answers() -> Bool {
-  let question = p0_question()
-  let expected_identity = landing_native_identity(
-    proposal: question.proposal,
+test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
+  let transition = p0_transition(
+    admitted: p0_admitted(),
+    identity: "transition-42",
+    result: "state-42",
   )
-  let boundary = landing_user_boundary(
-    receipt: LandingSemanticSpine {
-      result: LandingClosedMany {
-        question: question,
-      },
+  match landing_independent_read_back(
+    observation: LandingReadBackObservation {
+      transition: transition,
+      observed_state: "state-from-another-transition",
+      authority: "independent-read-back",
     },
-  )
-  let continuation = landing_question_continuation(question: question)
-  count(native_scm_continuation_options(
-    continuation: continuation,
-  )) == 2
-    && match landing_resolve_question(
-      question: question,
-      choice: NativeScmFirstContinuationOption,
-    ) {
-      LandingChoiceResumed { proposal: _, resume_token } =>
-        resume_token == "resume-use-renamed-function"
-      LandingChoiceNotOffered { proposal: _, choice: _ } => false
-    }
-    && match landing_resolve_question(
-      question: question,
-      choice: NativeScmSecondContinuationOption,
-    ) {
-      LandingChoiceResumed { proposal: _, resume_token } =>
-        resume_token == "resume-keep-separate-function"
-      LandingChoiceNotOffered { proposal: _, choice: _ } => false
-    }
-    && match boundary {
-      LandingUserOutcome {
-        outcome: ChoiceRequired {
-          question: prompt,
-          continuation: presented,
-        },
-      } =>
-        prompt == "Should the new call use the renamed function or keep a separate function?"
-          && presented.proposal.attempt_key == expected_identity.attempt_key
-      _ => false
-    }
-}
-
-test fn witness_p0_equal_labels_keep_distinct_resume_tokens() -> Bool {
-  let proposal = p0_proposal_at(
-    submitted_at: "2026-07-29T08:00:00Z",
-  )
-  let expected_identity = landing_native_identity(proposal: proposal)
-  let question = LandingNormativeQuestion {
-    proposal: proposal,
-    question: "Which same-named result did you intend?",
-    options: NativeScmContinuationOptions {
-      first_option: NativeScmContinuationOption {
-        label: "use this result",
-        result_preview: "first result",
-        resume_token: "resume-first-result",
-      },
-      second_option: NativeScmContinuationOption {
-        label: "use this result",
-        result_preview: "second result",
-        resume_token: "resume-second-result",
-      },
-      additional_options: [],
-    },
-  }
-  match landing_resolve_question(
-    question: question,
-    choice: NativeScmSecondContinuationOption,
   ) {
-    LandingChoiceResumed { proposal: identity, resume_token } =>
-      identity.attempt_key == expected_identity.attempt_key
-        && resume_token == "resume-second-result"
-    LandingChoiceNotOffered { proposal: _, choice: _ } => false
+    LandingReadBackMismatched { observation } =>
+      observation.transition.identity == "transition-42"
+    LandingReadBackMatched { receipt: _ } => false
   }
 }
 
-test fn witness_p0_unauthorized_unique_is_plain_refusal() -> Bool {
-  let refusal = p0_refusal(
-    kind: LandingAuthorizationDenied,
-    reason: "You are not allowed to change this target.",
+test fn witness_p0_cross_paired_projection_refuses() -> Bool {
+  let transition = p0_transition(
+    admitted: p0_admitted(),
+    identity: "transition-42",
+    result: "state-42",
   )
-  p0_closed_one_holds(
-    check: fn(semantic) {
-      let boundary = landing_user_boundary(
-        receipt: LandingAdmissionSpine {
-          admission: LandingUnauthorized {
-            semantic: semantic,
-            refusal: refusal,
-          },
-        },
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt } => {
+      let projection = compatibility_projection_from_handler(
+        handler: git_compatibility_projection_handler(),
+        receipt: receipt,
       )
-      refusal.kind == LandingAuthorizationDenied
-        && match boundary {
-          LandingUserOutcome {
-            outcome: CouldNotLand { refusal: user_refusal },
-          } =>
-            user_refusal.plain_reason == "You are not allowed to change this target."
-          _ => false
-        }
-    },
-  )
-}
-
-test fn witness_p0_refused_admission_cannot_advance() -> Bool {
-  p0_closed_one_holds(
-    check: fn(expected) {
-      match landing_admitted_result(
-        admission: LandingUnauthorized {
-          semantic: expected,
-          refusal: p0_refusal(
-            kind: LandingAuthorizationDenied,
-            reason: "You are not allowed to change this target.",
-          ),
+      match landing_projection_of_transition(
+        transition: transition,
+        binding: LandingCompatibilityTargetBinding {
+          semantic_target: "another-semantic-target",
+          native_target: projection.target,
+          receipt: "semantic-native-target-binding",
         },
+        projection: projection,
       ) {
-        LandingAdmissionNotAdvanced {
-          decision: LandingUnauthorized {
-            semantic,
-            refusal: _,
-          },
-        } =>
-          semantic.proposal.occurrence == expected.proposal.occurrence
-        LandingAdmissionNotAdvanced { decision: _ } => false
-        LandingAdmissionAdvanced { admitted: _ } => false
+        LandingProjectionBindingRefused { cause: _ } => true
+        LandingProjectionBound { receipt: _ } => false
       }
-    },
-  )
+    }
+  }
 }
 
-test fn witness_p0_transition_uses_its_admitted_semantic_receipt() -> Bool {
-  p0_closed_one_with_preview_holds(
-    preview: "The second admitted proposal landed.",
-    check: fn(admitted_semantic) {
-      match landing_admitted_result(
-        admission: LandingAdmitted {
-          semantic: admitted_semantic,
-          receipt: "second-admission-receipt",
+test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
+  let admitted = p0_admitted()
+  let first = p0_transition(
+    admitted: admitted,
+    identity: "transition-first",
+    result: "state-first",
+  )
+  let second = p0_transition(
+    admitted: admitted,
+    identity: "transition-second",
+    result: "state-second",
+  )
+  let read_back = landing_independent_read_back(
+    observation: LandingReadBackObservation {
+      transition: first,
+      observed_state: "state-first",
+      authority: "independent-read-back",
+    },
+  )
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt } => {
+      let projection = compatibility_projection_from_handler(
+        handler: git_compatibility_projection_handler(),
+        receipt: receipt,
+      )
+      match landing_projection_of_transition(
+        transition: second,
+        binding: LandingCompatibilityTargetBinding {
+          semantic_target: "accepted-main",
+          native_target: projection.target,
+          receipt: "semantic-native-target-binding",
         },
+        projection: projection,
       ) {
-        LandingAdmissionAdvanced { admitted } =>
-          match landing_user_boundary(
-            receipt: LandingTransitionSpine {
-              transition: LandingCommittedAndReadBack {
-                admitted: admitted,
-                transition_receipt: "second-transition-receipt",
-                independent_read_back: "second-read-back",
-                projections: [],
-              },
-            },
+        LandingProjectionBindingRefused { cause: _ } => false
+        LandingProjectionBound { receipt: bound } =>
+          match landing_committed_transition(
+            read_back: read_back,
+            projections: [LandingProjected { receipt: bound }],
           ) {
-            LandingUserOutcome {
-              outcome: Landed { result_preview },
-            } =>
-              result_preview == "The second admitted proposal landed."
-            _ => false
+            LandingCommitRelationRefused { cause: _ } => true
+            LandingCommitAssembled { committed: _ } => false
           }
-        LandingAdmissionNotAdvanced { decision: _ } => false
       }
-    },
-  )
-}
-
-test fn witness_p0_self_amendment_is_plain_refusal() -> Bool {
-  let refusal = p0_refusal(
-    kind: LandingSelfAmendmentDenied,
-    reason: "This change cannot approve itself.",
-  )
-  p0_closed_one_holds(
-    check: fn(semantic) {
-      match landing_user_boundary(
-        receipt: LandingAdmissionSpine {
-          admission: LandingSelfAmendmentRefused {
-            semantic: semantic,
-            refusal: refusal,
-          },
-        },
-      ) {
-        LandingUserOutcome {
-          outcome: CouldNotLand { refusal: user_refusal },
-        } =>
-          refusal.kind == LandingSelfAmendmentDenied
-            && user_refusal.plain_reason == "This change cannot approve itself."
-        _ => false
-      }
-    },
-  )
-}
-
-test fn witness_p0_exhausted_bound_is_typed_plain_refusal() -> Bool {
-  let refusal = p0_refusal(
-    kind: LandingBoundExhausted,
-    reason: "This change is too large for the current operation.",
-  )
-  let semantic = LandingUnclosed {
-    proposal: p0_proposal_at(
-      submitted_at: "2026-07-29T08:00:00Z",
-    ),
-    cause: LandingSearchBoundExhausted {
-      cause: "the bounded search was exhausted",
-    },
-    partial_results: [],
-    disposition: LandingUnclosedTerminal { refusal: refusal },
-  }
-  match landing_user_boundary(
-    receipt: LandingSemanticSpine {
-      result: semantic,
-    },
-  ) {
-    LandingUserOutcome {
-      outcome: CouldNotLand { refusal: user_refusal },
-    } =>
-      refusal.kind == LandingBoundExhausted
-        && user_refusal.plain_reason == "This change is too large for the current operation."
-    _ => false
+    }
   }
 }
 
-test fn witness_p0_permanent_effect_failure_is_typed_plain_refusal() -> Bool {
-  let refusal = p0_refusal(
-    kind: LandingPermanentEffectFailure,
-    reason: "The target rejected this update.",
+test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> Bool {
+  let transition = p0_transition(
+    admitted: p0_admitted(),
+    identity: "transition-42",
+    result: "state-42",
   )
-  p0_admitted_holds(
-    check: fn(admitted) {
-      match landing_user_boundary(
-        receipt: LandingTransitionSpine {
-          transition: LandingEffectFailed {
-            admitted: admitted,
-            refusal: refusal,
-          },
-        },
-      ) {
-        LandingUserOutcome {
-          outcome: CouldNotLand { refusal: user_refusal },
-        } =>
-          refusal.kind == LandingPermanentEffectFailure
-            && user_refusal.plain_reason == "The target rejected this update."
-        _ => false
-      }
+  let read_back = landing_independent_read_back(
+    observation: LandingReadBackObservation {
+      transition: transition,
+      observed_state: "state-42",
+      authority: "independent-read-back",
     },
   )
-}
-
-test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
-  p0_admitted_holds(
-    check: fn(admitted) {
-      match landing_user_boundary(
-        receipt: LandingTransitionSpine {
-          transition: LandingRetryStaleParent {
-            admitted: admitted,
-            continuation: LandingMachineContinuation {
-              handle: "retry-current-target-42",
-              kind: LandingRetryCurrentTarget,
-              status: "updating the change against the current target",
-            },
-          },
+  match git_fixture_binding() {
+    GitCompatibilityBindingRefused { cause: _ } => false
+    GitCompatibilityBound { receipt } => {
+      let projection = compatibility_projection_from_handler(
+        handler: git_compatibility_projection_handler(),
+        receipt: receipt,
+      )
+      match landing_projection_of_transition(
+        transition: transition,
+        binding: LandingCompatibilityTargetBinding {
+          semantic_target: "accepted-main",
+          native_target: projection.target,
+          receipt: "semantic-native-target-binding",
         },
+        projection: projection,
       ) {
-        LandingMachineOwned { status, continuation } =>
-          status == "updating the change against the current target"
-            && continuation.kind == LandingRetryCurrentTarget
-        LandingUserOutcome { outcome: _ } => false
+        LandingProjectionBindingRefused { cause: _ } => false
+        LandingProjectionBound { receipt: bound } =>
+          match landing_committed_transition(
+            read_back: read_back,
+            projections: [LandingProjected { receipt: bound }],
+          ) {
+            LandingCommitRelationRefused { cause: _ } => false
+            LandingCommitAssembled { committed } =>
+              match landing_user_boundary(
+                receipt: LandingTransitionSpine {
+                  transition: LandingCommittedAndReadBack {
+                    committed: committed,
+                  },
+                },
+              ) {
+                LandingTerminal {
+                  outcome: NativeScmTerminalLanded { result_preview },
+                } =>
+                  result_preview == "Worker was renamed and its callers were updated."
+                _ => false
+              }
+          }
       }
-    },
-  )
+    }
+  }
 }
 
 test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
-  p0_admitted_holds(
-    check: fn(admitted) {
+  let transition = p0_transition(
+    admitted: p0_admitted(),
+    identity: "transition-42",
+    result: "state-42",
+  )
+  let read_back = landing_independent_read_back(
+    observation: LandingReadBackObservation {
+      transition: transition,
+      observed_state: "state-42",
+      authority: "independent-read-back",
+    },
+  )
+  let failed = LandingProjectionFailed {
+    transition: transition,
+    realization: "git-r0",
+    target: LandingCompatibilityTargetBinding {
+      semantic_target: "accepted-main",
+      native_target: "refs/heads/main",
+      receipt: "semantic-native-target-binding",
+    },
+    cause: "the compatibility view will be retried",
+  }
+  match landing_committed_transition(
+    read_back: read_back,
+    projections: [failed],
+  ) {
+    LandingCommitRelationRefused { cause: _ } => false
+    LandingCommitAssembled { committed } =>
       match landing_user_boundary(
         receipt: LandingTransitionSpine {
           transition: LandingCommittedAndReadBack {
-            admitted: admitted,
-            transition_receipt: "committed-transition-42",
-            independent_read_back: "independent-read-back-42",
-            projections: [
-              LandingProjectionFailed {
-                realization: "git-r0",
-                target: "refs/heads/main",
-                cause: "the compatibility view will be retried",
-              },
-            ],
+            committed: committed,
           },
         },
       ) {
-        LandingUserOutcome {
-          outcome: Landed { result_preview },
+        LandingTerminal {
+          outcome: NativeScmTerminalLanded { result_preview: _ },
         } =>
-          result_preview == "Worker was renamed and its callers were updated."
+          true
         _ => false
       }
-    },
-  )
+  }
 }
 
-test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
-  let early = p0_proposal_at(
-    submitted_at: "2026-07-29T08:00:00Z",
-  )
-  let late = p0_proposal_at(
-    submitted_at: "2026-07-29T09:00:00Z",
-  )
-  let early_semantic = landing_unique_candidate(
-    proposal: early,
-    result: "unique-result-42",
-    preview: "Worker was renamed and its callers were updated.",
-    evidence: p0_ready_evidence(),
-    closure: LandingClosureComplete {
-      certificates: p0_complete_closure(),
-    },
-    continuation: p0_machine_continuation(
-      status: "checking the result before it lands",
-    ),
-  )
-  let late_semantic = landing_unique_candidate(
-    proposal: late,
-    result: "unique-result-42",
-    preview: "Worker was renamed and its callers were updated.",
-    evidence: p0_ready_evidence(),
-    closure: LandingClosureComplete {
-      certificates: p0_complete_closure(),
-    },
-    continuation: p0_machine_continuation(
-      status: "checking the result before it lands",
-    ),
-  )
-  let early_boundary = landing_user_boundary(
-    receipt: LandingSemanticSpine {
-      result: early_semantic,
-    },
-  )
-  let late_boundary = landing_user_boundary(
-    receipt: LandingSemanticSpine {
-      result: late_semantic,
-    },
-  )
-  let stress: LandingStressProfile = gunbc_landing_stress_profile
-  early_boundary == late_boundary
-    && stress.agents_per_developer == 50
-    && stress.overlapping_proposals == 10
-    && minute_count(stress.validation_path) == 30
-}
-
-test fn witness_p0_primary_messages_are_plain_and_git_ritual_free() -> Bool {
-  let landed = Landed {
-    result_preview: "Worker was renamed and its callers were updated.",
-  }
-  let normative = p0_question()
-  let question = ChoiceRequired {
-    question: normative.question as String,
-    continuation: landing_question_continuation(question: normative),
-  }
-  let refused = CouldNotLand {
-    refusal: landing_native_refusal(
+test fn witness_p0_refused_admission_cannot_advance() -> Bool {
+  let semantic = p0_closed_one()
+  match landing_admitted_result(
+    admission: LandingUnauthorized {
+      semantic: semantic,
       refusal: p0_refusal(
         kind: LandingAuthorizationDenied,
         reason: "You are not allowed to change this target.",
       ),
-    ),
+    },
+  ) {
+    LandingAdmissionNotAdvanced {
+      decision: LandingUnauthorized {
+        semantic: retained,
+        refusal: _,
+      },
+    } =>
+      retained == semantic
+    _ => false
   }
-  let messages = append(
-    p0_primary_messages(primary: landed),
-    items: append(
-      p0_primary_messages(primary: question),
-      items: p0_primary_messages(primary: refused),
-    ),
+}
+
+test fn witness_p0_stale_parent_retries_inside_machine() -> Bool {
+  match landing_user_boundary(
+    receipt: LandingTransitionSpine {
+      transition: LandingRetryStaleParent {
+        admitted: p0_admitted(),
+        continuation: p0_continuation(
+          kind: LandingRetryCurrentTarget,
+          status: "updating the change against the current target",
+        ),
+      },
+    },
+  ) {
+    LandingMachineOwned { status, continuation } =>
+      status == "updating the change against the current target"
+        && continuation.kind == LandingRetryCurrentTarget
+    LandingTerminal { outcome: _ } => false
+  }
+}
+
+test fn witness_p0_terminal_surface_excludes_machine_progress() -> Bool {
+  let machine = landing_user_boundary(
+    receipt: LandingTransitionSpine {
+      transition: LandingRetryStaleParent {
+        admitted: p0_admitted(),
+        continuation: p0_continuation(
+          kind: LandingRetryCurrentTarget,
+          status: "updating the change against the current target",
+        ),
+      },
+    },
   )
-  messages |> all(message => p0_message_is_plain(message: message))
+  let refused = landing_user_boundary(
+    receipt: LandingAdmissionSpine {
+      admission: LandingSelfAmendmentRefused {
+        semantic: p0_closed_one(),
+        refusal: p0_refusal(
+          kind: LandingSelfAmendmentDenied,
+          reason: "This change cannot approve itself.",
+        ),
+      },
+    },
+  )
+  match machine {
+    LandingMachineOwned { status: _, continuation: _ } =>
+      match refused {
+        LandingTerminal {
+          outcome: NativeScmTerminalCouldNotLand { refusal },
+        } =>
+          refusal.plain_reason == "This change cannot approve itself."
+        _ => false
+      }
+    LandingTerminal { outcome: _ } => false
+  }
+}
+
+test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool {
+  let refusal = LandingRefusal {
+    kind: LandingPermanentEffectFailure,
+    locus: "private-node-42",
+    occurrences: 1,
+    internal_cause: "locked node private-node-42 contradicted solver proof edge 7",
+    plain_reason: "The target rejected this update.",
+    responsible_party: "workspace owner",
+    next_action: "review the target policy",
+    receipt: "private-refusal-receipt",
+  }
+  match landing_user_boundary(
+    receipt: LandingTransitionSpine {
+      transition: LandingEffectFailed {
+        admitted: p0_admitted(),
+        refusal: refusal,
+      },
+    },
+  ) {
+    LandingTerminal {
+      outcome: NativeScmTerminalCouldNotLand { refusal: presented },
+    } =>
+      presented.plain_reason == "The target rejected this update."
+        && !string_contains(
+          s: presented.plain_reason,
+          pattern: "private-node-42",
+        )
+    _ => false
+  }
+}
+
+test fn witness_p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
+  let early = p0_proposal_with(
+    submitted_at: "2026-07-29T08:00:00Z",
+    guarantees: LandingRequiredClaims {
+      first: p0_builds_claim(),
+      remaining: [p0_behavior_claim()],
+    },
+  )
+  let late = p0_proposal_with(
+    submitted_at: "2026-07-29T09:00:00Z",
+    guarantees: LandingRequiredClaims {
+      first: p0_builds_claim(),
+      remaining: [p0_behavior_claim()],
+    },
+  )
+  let stress: LandingStressProfile = gunbc_landing_stress_profile
+  early.occurrence == late.occurrence
+    && early.target == late.target
+    && early.submitted_at != late.submitted_at
+    && stress.agents_per_developer == 50
+    && stress.overlapping_proposals == 10
+    && minute_count(stress.validation_path) == 30
 }

@@ -4,7 +4,6 @@ import std.types { Bool, String }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.native_scm_interaction_contract {
-  NativeScmScenario,
   NativeScmReceipt,
   NativeScmContinuation,
   NativeScmContinuationOption,
@@ -18,6 +17,14 @@ import gunbc.native_scm_interaction_contract {
   NativeScmOperationalReady,
   NativeScmInternalWorkPending,
   NativeScmLifecyclePending,
+  native_scm_primary_label,
+  native_scm_choice_previews,
+  native_scm_resolve_choice,
+  native_scm_record_repaired_projection,
+  native_scm_inspect_receipt,
+}
+import test.claim.native_scm_interaction_scenario_fixture {
+  NativeScmScenario,
   TwoIndependentChangesLand,
   StaleTargetAutoResync,
   DuplicateSubmissionAppliesOnce,
@@ -30,11 +37,6 @@ import gunbc.native_scm_interaction_contract {
   ConventionalScmImportWithoutManualRewrite,
   VisibilityAuthorizedDetails,
   native_scm_receipt_for,
-  native_scm_primary_label,
-  native_scm_choice_previews,
-  native_scm_resolve_choice,
-  native_scm_record_repaired_projection,
-  native_scm_inspect_receipt,
   native_scm_submission_ledger,
   native_scm_apply_once,
   native_scm_applied_count,
@@ -166,10 +168,11 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
             continuation: continuation,
             choice: NativeScmFirstContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { option } =>
-              option.resume_token == "resume-follow-the-rename"
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmFirstContinuationOption
+                && selected.option.resume_token == "resume-follow-the-rename"
                 && string_contains(
-                  s: option.result_preview,
+                  s: selected.option.result_preview,
                   pattern: "follow the rename",
                 )
             NativeScmContinuationChoiceNotOffered { choice: _ } => false
@@ -178,10 +181,11 @@ test fn witness_two_legitimate_meanings_ask_local_choice() -> Bool {
             continuation: continuation,
             choice: NativeScmSecondContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { option } =>
-              option.resume_token == "resume-keep-separate-name"
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmSecondContinuationOption
+                && selected.option.resume_token == "resume-keep-separate-name"
                 && string_contains(
-                  s: option.result_preview,
+                  s: selected.option.result_preview,
                   pattern: "keep a separate name",
                 )
             NativeScmContinuationChoiceNotOffered { choice: _ } => false
@@ -227,10 +231,11 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
         continuation: continuation,
         choice: NativeScmSecondContinuationOption,
       ) {
-        NativeScmContinuationChoiceMatched { option } =>
-          option.resume_token == "resume-duplicate-choice"
+        NativeScmContinuationChoiceMatched { selected } =>
+          selected.identity.choice == NativeScmSecondContinuationOption
+            && selected.option.resume_token == "resume-duplicate-choice"
             && string_contains(
-              s: option.result_preview,
+              s: selected.option.result_preview,
               pattern: "different result",
             )
         NativeScmContinuationChoiceNotOffered { choice: _ } => false
@@ -252,10 +257,11 @@ test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
             continuation: continuation,
             choice: NativeScmFirstContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { option } =>
-              option.resume_token == "resume-retain-goal-a"
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmFirstContinuationOption
+                && selected.option.resume_token == "resume-retain-goal-a"
                 && string_contains(
-                  s: option.result_preview,
+                  s: selected.option.result_preview,
                   pattern: "retain goal A",
                 )
             NativeScmContinuationChoiceNotOffered { choice: _ } => false
@@ -264,10 +270,11 @@ test fn witness_incompatible_goals_ask_authorized_decider() -> Bool {
             continuation: continuation,
             choice: NativeScmSecondContinuationOption,
           ) {
-            NativeScmContinuationChoiceMatched { option } =>
-              option.resume_token == "resume-retain-goal-b"
+            NativeScmContinuationChoiceMatched { selected } =>
+              selected.identity.choice == NativeScmSecondContinuationOption
+                && selected.option.resume_token == "resume-retain-goal-b"
                 && string_contains(
-                  s: option.result_preview,
+                  s: selected.option.result_preview,
                   pattern: "retain goal B",
                 )
             NativeScmContinuationChoiceNotOffered { choice: _ } => false

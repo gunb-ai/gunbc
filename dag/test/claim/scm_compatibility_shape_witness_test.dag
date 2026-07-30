@@ -12,10 +12,12 @@ import gunbc.scm_compatibility_shape {
   compatibility_projection_from_handler,
 }
 import gunbc.native_scm_interaction_contract {
-  TwoIndependentChangesLand,
-  native_scm_receipt_for,
   native_scm_primary_label,
   native_scm_attach_projection,
+}
+import test.claim.native_scm_interaction_scenario_fixture {
+  TwoIndependentChangesLand,
+  native_scm_receipt_for,
 }
 import gunbc.scm_compatibility.git {
   GitCompatibilityBound,
