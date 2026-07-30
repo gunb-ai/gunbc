@@ -40,17 +40,6 @@ data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
   arch: SccacheMuslX86_64,
 }
 
-data sccache_release_0_16_0: SccacheBinaryRelease = SccacheBinaryRelease {
-  version: "v0.16.0",
-  digest_aarch64: sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
-  digest_x86_64: sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
-}
-
-data sccache_aarch64_bumped_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
-  binary_release: sccache_release_0_16_0,
-  arch: SccacheMuslAarch64,
-}
-
 data sccache_aarch64_pin: SubjectProjectedPin<SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
 data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity projected via sha256_digest_content_hash bridge (review 44999). RED CONTROL reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not project both ContentHash and VersionIdentity onto Pin."
@@ -66,9 +55,16 @@ test fn reconcile_bridge_projects_identity_and_version() -> Bool {
 }
 
 test fn sccache_pin_key_stable_across_release_version_bump() -> Bool {
-  let bumped_pin = sccache_binary_artifact_pin(artifact: sccache_aarch64_bumped_artifact)
-  ((sccache_binary_artifact_pin_key_of(pin: sccache_aarch64_pin) as String)
-    == (sccache_binary_artifact_pin_key_of(pin: bumped_pin) as String))
+  let bumped_art = SccacheBinaryArtifact {
+    binary_release: SccacheBinaryRelease {
+      version: "v0.16.0",
+      digest_aarch64: sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+      digest_x86_64: sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+    },
+    arch: SccacheMuslAarch64,
+  }
+  let bumped_pin = sccache_binary_artifact_pin(artifact: bumped_art)
+  ((sccache_binary_artifact_pin_key_of(pin: sccache_aarch64_pin) as String) == (sccache_binary_artifact_pin_key_of(pin: bumped_pin) as String))
 }
 
 test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
