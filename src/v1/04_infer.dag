@@ -6,7 +6,7 @@ import v1.std.core {
   Node, InternTable,
   intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
-  expr_literal_int_optional, expr_literal_string_optional, is_record_lit_expr, record_lit_named_field_value_optional,
+  expr_literal_int_optional, expr_literal_string_optional, record_lit_expr_optional, record_lit_named_field_value_optional,
   module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
@@ -6257,14 +6257,18 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 }
 
 fn should_unify_record_lit_generics(formal: Node, arg_expr: Node, generic_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !is_record_lit_expr(e: arg_expr) || generic_names |> count == 0 {
-    false
-  } else if formal.children |> count > 0 {
-    true
-  } else {
-    let formal_name = type_node_label(n: formal, source_indices: source_indices)
-    let record_name = type_node_label(n: arg_expr, source_indices: source_indices)
-    formal_name != "" && record_name != "" && formal_name == record_name
+  match record_lit_expr_optional(expr: arg_expr) {
+    Absent => false
+    Present { value: record_expr } =>
+      if generic_names |> count == 0 {
+        false
+      } else if formal.children |> count > 0 {
+        true
+      } else {
+        let formal_name = type_node_label(n: formal, source_indices: source_indices)
+        let record_name = type_node_label(n: record_expr, source_indices: source_indices)
+        formal_name != "" && record_name != "" && formal_name == record_name
+      }
   }
 }
 
@@ -6278,10 +6282,11 @@ fn unify_record_lit_field_walk(struct_fields: List<Node>, record: Node, generic_
           Present { value: Resolved { node: rt } } => rt
           _ => field_node_type_expr(n: sf)
         }
-        if is_record_lit_expr(e: actual_value) {
-          unify_record_lit_generics(formal: field_formal, record: actual_value, generic_names: generic_names, scope: scope, acc: st)
-        } else {
-          unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
+        match record_lit_expr_optional(expr: actual_value) {
+          Present { value: nested_record } =>
+            unify_record_lit_generics(formal: field_formal, record: nested_record, generic_names: generic_names, scope: scope, acc: st)
+          Absent =>
+            unify_generics(formal: field_formal, actual: resolved_type(n: actual_value), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: st)
         }
       Absent => st
     }
@@ -6294,21 +6299,24 @@ fn unify_record_lit_generics(formal: Node, record: Node, generic_names: List<Str
     let is_generic_slot = generic_names |> any(g => g == formal_name)
     if is_generic_slot {
       unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
-    } else if is_record_lit_expr(e: record) {
-      let record_type_name = type_node_label(n: record, source_indices: scope.type_env.source_indices)
-      if record_type_name != "" && formal_name == record_type_name {
-        unify_record_lit_field_walk(
-          struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
-          record: record,
-          generic_names: generic_names,
-          scope: scope,
-          acc: acc
-        )
-      } else {
-        unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
-      }
     } else {
-      unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+      match record_lit_expr_optional(expr: record) {
+        Present { value: record_lit } =>
+          let record_type_name = type_node_label(n: record_lit, source_indices: scope.type_env.source_indices)
+          if record_type_name != "" && formal_name == record_type_name {
+            unify_record_lit_field_walk(
+              struct_fields: record_lit_expected_fields(type_name: Present { value: record_type_name }, scope: scope),
+              record: record_lit,
+              generic_names: generic_names,
+              scope: scope,
+              acc: acc
+            )
+          } else {
+            unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+          }
+        Absent =>
+          unify_generics(formal: formal, actual: resolved_type(n: record), generic_names: generic_names, source_indices: scope.type_env.source_indices, acc: acc)
+      }
     }
   } else {
     let type_name = type_node_label(n: formal, source_indices: scope.type_env.source_indices)

@@ -2530,10 +2530,10 @@ pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
     }
 }
 
-pub fn is_record_lit_expr(expr: Rc<Node>) -> bool {
+pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-        _ => false,
+        ExprData::ExprRecordLit { parent_enum: _, .. } => Some(expr.clone()),
+        _ => None,
     }
 }
 
@@ -2542,12 +2542,10 @@ pub fn record_lit_named_field_value_optional(
     field: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    if !is_record_lit_expr(record_expr.clone()) {
-        None
-    } else {
-        match Rc::new({
+    match record_lit_expr_optional(record_expr.clone()) {
+        Some(record) => match Rc::new({
             let mut __result = Vec::new();
-            for fi in record_expr.children.clone().iter().cloned() {
+            for fi in record.children.clone().iter().cloned() {
                 if (field_init_node_name_at(fi.clone(), source_indices.clone()) == field.clone()) {
                     __result.push(fi);
                 }
@@ -2559,7 +2557,8 @@ pub fn record_lit_named_field_value_optional(
         {
             Some(fi) => Some(field_init_node_value(fi.clone())),
             None => None,
-        }
+        },
+        None => None,
     }
 }
 

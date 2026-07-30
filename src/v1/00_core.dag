@@ -1069,10 +1069,10 @@ fn expr_literal_string_optional(expr: Node) -> String? {
   }
 }
 
-fn is_record_lit_expr(expr: Node) -> Bool {
+fn record_lit_expr_optional(expr: Node) -> Node? {
   match expr.expr_data {
-    ExprRecordLit { parent_enum: _ } => true
-    _ => false
+    ExprRecordLit { parent_enum: _ } => Present { value: expr }
+    _ => none
   }
 }
 
@@ -1081,15 +1081,15 @@ fn record_lit_named_field_value_optional(
   field: String,
   source_indices: Map<String, NewlineIndex>
 ) -> Node? {
-  if !is_record_lit_expr(expr: record_expr) {
-    none
-  } else {
-    match record_expr.children
-      |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field)
-      |> first {
-      Present { value: fi } => Present { value: field_init_node_value(n: fi) }
-      Absent => none
-    }
+  match record_lit_expr_optional(expr: record_expr) {
+    Present { value: record } =>
+      match record.children
+        |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field)
+        |> first {
+        Present { value: fi } => Present { value: field_init_node_value(n: fi) }
+        Absent => none
+      }
+    Absent => none
   }
 }
 

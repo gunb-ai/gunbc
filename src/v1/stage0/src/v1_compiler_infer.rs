@@ -167,18 +167,18 @@ pub use crate::v1_std_core::{
     foreach_variable_at, generic_param_name_at, has_child_named, has_inferred, if_condition,
     if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
     index_expr, int_type, intern, intern_str, is_child_accessor_in_model, is_compiler_error,
-    is_container_type, is_error_diagnostic, is_property_contraction, is_record_lit_expr,
-    is_tree_size_reducing, lambda_body, lambda_param_names_at, let_binding_name_at, let_body,
-    let_value, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_interp_part_node, make_named_expr_node, make_param_node, make_span, make_text_part_node,
-    make_transport_node, map_children, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, module_node, no_span, node_name_span, none_type,
+    is_container_type, is_error_diagnostic, is_property_contraction, is_tree_size_reducing,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value,
+    local_transport_node, make_arg_node, make_arm_node, make_error_node, make_expr_error_node,
+    make_expr_node, make_field_binding_node, make_field_init_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_span, make_text_part_node, make_transport_node,
+    map_children, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_imports, module_items, module_node, no_span, node_name_span, none_type,
     param_node_name_at, param_node_type_expr, preserve_outer_optional_cardinality,
-    qualified_last_segment, record_lit_named_field_value_optional, record_lit_type_name_at,
-    resource_use_name_at, resource_use_resource, return_value, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    qualified_last_segment, record_lit_expr_optional, record_lit_named_field_value_optional,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value, slice_base,
+    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,
@@ -13219,18 +13219,24 @@ pub fn should_unify_record_lit_generics(
     generic_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (!is_record_lit_expr(arg_expr.clone()) || ((generic_names.clone().len() as i64) == 0)) {
-        false
-    } else {
-        if ((formal.children.clone().len() as i64) > 0) {
-            true
-        } else {
-            {
-                let formal_name = type_node_label(formal.clone(), source_indices.clone());
-                let record_name = type_node_label(arg_expr.clone(), source_indices.clone());
-                (((formal_name.clone() != "".to_string())
-                    && (record_name.clone() != "".to_string()))
-                    && (formal_name.clone() == record_name.clone()))
+    match record_lit_expr_optional(arg_expr.clone()) {
+        None => false,
+        Some(record_expr) => {
+            if ((generic_names.clone().len() as i64) == 0) {
+                false
+            } else {
+                if ((formal.children.clone().len() as i64) > 0) {
+                    true
+                } else {
+                    {
+                        let formal_name = type_node_label(formal.clone(), source_indices.clone());
+                        let record_name =
+                            type_node_label(record_expr.clone(), source_indices.clone());
+                        (((formal_name.clone() != "".to_string())
+                            && (record_name.clone() != "".to_string()))
+                            && (formal_name.clone() == record_name.clone()))
+                    }
+                }
             }
         }
     }
@@ -13270,22 +13276,21 @@ pub fn unify_record_lit_field_walk(
                         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
                         _ => field_node_type_expr(sf.clone()),
                     };
-                    if is_record_lit_expr(actual_value.clone()) {
-                        unify_record_lit_generics(
+                    match record_lit_expr_optional(actual_value.clone()) {
+                        Some(nested_record) => unify_record_lit_generics(
                             field_formal.clone(),
-                            actual_value.clone(),
+                            nested_record.clone(),
                             generic_names.clone(),
                             scope.clone(),
                             st.clone(),
-                        )
-                    } else {
-                        unify_generics(
+                        ),
+                        None => unify_generics(
                             field_formal.clone(),
                             resolved_type(actual_value.clone()),
                             generic_names.clone(),
                             scope.type_env.clone().source_indices.clone(),
                             st.clone(),
-                        )
+                        ),
                     }
                 }
                 None => st.clone(),
@@ -13326,10 +13331,10 @@ pub fn unify_record_lit_generics(
                     acc.clone(),
                 )
             } else {
-                if is_record_lit_expr(record.clone()) {
-                    {
+                match record_lit_expr_optional(record.clone()) {
+                    Some(record_lit) => {
                         let record_type_name = type_node_label(
-                            record.clone(),
+                            record_lit.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
                         if ((record_type_name.clone() != "".to_string())
@@ -13340,7 +13345,7 @@ pub fn unify_record_lit_generics(
                                     Some(record_type_name.clone()),
                                     scope.clone(),
                                 ),
-                                record.clone(),
+                                record_lit.clone(),
                                 generic_names.clone(),
                                 scope.clone(),
                                 acc.clone(),
@@ -13355,14 +13360,13 @@ pub fn unify_record_lit_generics(
                             )
                         }
                     }
-                } else {
-                    unify_generics(
+                    None => unify_generics(
                         formal.clone(),
                         resolved_type(record.clone()),
                         generic_names.clone(),
                         scope.type_env.clone().source_indices.clone(),
                         acc.clone(),
-                    )
+                    ),
                 }
             }
         }
