@@ -216,6 +216,7 @@ fn lab_observed(
   health_current: Bool,
 ) -> DashboardInstanceObserved {
   DashboardInstanceObserved {
+    observation_refusals: [],
     root_present: true,
     ownership_marker_present: true,
     bundle_present: true,
@@ -343,6 +344,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
 
 test fn dashboard_bundle_is_required_for_convergence() -> Bool {
   let observed = DashboardInstanceObserved {
+    observation_refusals: [],
     root_present: true,
     ownership_marker_present: true,
     bundle_present: false,
@@ -405,6 +407,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
 
 test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
   let observed = DashboardInstanceObserved {
+    observation_refusals: [],
     root_present: true,
     ownership_marker_present: false,
     bundle_present: false,
@@ -591,6 +594,7 @@ test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
 
 test fn dashboard_instance_model_keystone_holds() -> Bool {
   isolated_instance_carries_the_layout_it_was_given()
+    && a_refused_observation_never_derives_a_plan()
     && derived_codex_home_matches_the_authenticated_directory()
     && the_plan_creates_every_path_it_later_verifies()
     && each_instance_ensures_its_own_binary_not_a_shared_one()
@@ -669,4 +673,49 @@ test fn derived_codex_home_matches_the_authenticated_directory() -> Bool {
          home: "/home/briansrls" as FilePath,
          selection: CodexDefaultAccount,
        ) as String) == "/home/briansrls/.codex"
+}
+
+data refused_observation_is_not_absence_note: String = "THE CLAIM THAT SEPARATES 'NOT THERE' FROM 'COULD NOT LOOK'. Both observations carry identical Bools — every presence field false — and they differ only in whether a probe refused. Before the refusal channel existed they were the same value, so a transport failure derived a full Apply plan: create the root, clone the source, install the service. Every one of those operations against a host whose state was never read.\\n\\nThe pairing is what makes it discriminating. Asserting only that a refused observation refuses would pass in a world where EVERYTHING refuses; asserting only that an absent observation plans would pass in a world where nothing does. Holding the Bools identical and varying just the channel isolates the single fact under test, and the claim fails the moment reconcile reads a field before the channel.\\n\\nThis is the operator-facing harm, not a modeling nicety: told a state root is absent, a human creates it — which is a real action taken on a fact nobody established."
+
+fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
+  DashboardInstanceObserved {
+    observation_refusals: refusals,
+    root_present: false,
+    ownership_marker_present: false,
+    bundle_present: false,
+    origin_present: false,
+    source_present: false,
+    source_revision_observed: false,
+    source_revision_current: false,
+    source_revision_detail: "",
+    attempts_present: false,
+    attempt_state_present: false,
+    provider_runtime_ready: false,
+    provider_runtime_detail: "",
+    provider_authenticated: false,
+    provider_auth_detail: "",
+    service_present: false,
+    health_current: false,
+    production_untouched: true,
+    source_anchor_matches: false,
+  }
+}
+
+test fn a_refused_observation_never_derives_a_plan() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let genuinely_absent = observed_all_absent(refusals: [])
+  let could_not_look = observed_all_absent(
+    refusals: ["path observation could not run for /x: ssh: connect refused"],
+  )
+  match dashboard_instance_reconcile(instance: lab, observed: could_not_look) {
+    DashboardInstanceRefused { reason } =>
+      string_contains(s: reason as String, pattern: "observation incomplete")
+        && match dashboard_instance_reconcile(instance: lab, observed: genuinely_absent) {
+          DashboardInstanceApply { plan } => count(plan) > 0
+          DashboardInstanceRefused { reason: _ } => false
+          DashboardInstanceConverged => false
+        }
+    DashboardInstanceApply { plan: _ } => false
+    DashboardInstanceConverged => false
+  }
 }
