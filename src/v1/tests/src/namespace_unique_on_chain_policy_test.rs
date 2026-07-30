@@ -14,6 +14,7 @@
 
 use std::rc::Rc;
 
+use v1_compiler::cli_run::{containment_resolve_fn_v1_for_module, ContainmentResolve};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_rt::{
     name_resolution_policy_is_namespace_only, name_resolution_policy_set_namespace_only,
@@ -217,6 +218,30 @@ fn zero_on_chain_homonym_discriminates_the_diagnostic_label() {
     assert!(
         !strict.iter().any(|m| m.contains("ambiguous")),
         "zero on-chain candidates must not widen into AmbiguousReference; got {strict:?}"
+    );
+}
+
+#[test]
+fn zero_on_chain_containment_census_matches_inference_unresolved() {
+    let _guard = ResolutionPolicyGuard::set(true);
+    let sources = zero_on_chain_fixture();
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let graph = resolved.graph.as_ref().expect("graph");
+    let leaf = graph
+        .modules
+        .iter()
+        .find(|m| m.type_env.module_path == "fixchain.mid.leaf")
+        .expect("leaf module");
+    let containment = containment_resolve_fn_v1_for_module(
+        &leaf.type_env.symbol_index,
+        "fixchain.mid.leaf",
+        "Stray",
+        None,
+    );
+    assert!(
+        matches!(containment, ContainmentResolve::Unresolved),
+        "containment census must mirror inference: zero on-chain homonym is Unresolved, \
+         not Ambiguous; got {containment:?}"
     );
 }
 
