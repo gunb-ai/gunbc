@@ -19,7 +19,6 @@ GUNBC_SUDOERS_EOF
 sudo -n /usr/sbin/visudo -cf "$_gunbc_stage/gunbc-deploy.sudoers"
 sudo -n install -m 0440 "$_gunbc_stage/gunbc-deploy.sudoers" /etc/sudoers.d/gunbc-deploy
 sudo -n /usr/sbin/visudo -cf /etc/sudoers.d/gunbc-deploy
-echo '__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__ tailscale serve exposes no per-port removal (only a node-global `serve reset`), so this retract will not remove the mapping: doing so would delete every other deployment'\''s routing on this host. Remove it deliberately, or dissolve this refusal by teaching the deployment whether it owns the only mapping (DESIGN 5: refuse, never widen)' >&2; false
 sudo -n systemctl disable --now gunbc-roadmap.service 2>/dev/null || true
 sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service
 sudo -n systemctl daemon-reload
@@ -28,4 +27,5 @@ sudo -n rm -f /opt/gunbc/bin/gunbc
 sudo -n rm -f /etc/systemd/system/gunbc-tree-sync.service /etc/gunbc-tree-sync.env
 sudo -n systemctl daemon-reload
 sudo -n rm -rf /opt/gunbc/gunbc
+echo '__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__ tailscale serve exposes no per-port removal (only a node-global `serve reset`), so this retract will not remove the mapping: doing so would delete every other deployment'\''s routing on this host. Remove it deliberately, or dissolve this refusal by teaching the deployment whether it owns the only mapping (DESIGN 5: refuse, never widen)' >&2; false
 echo live-deploy-receipt host=srv1 fold=retract verdict=converged

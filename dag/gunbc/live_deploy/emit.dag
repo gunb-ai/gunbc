@@ -405,7 +405,6 @@ fn deploy_teardown_refuses(effect: MemberEffect<DeploymentStep>) -> Bool {
             DispatchWorktreeRoot => false
             ServeBinary => false
             GunbcSourceTree => false
-            TreeSyncUnit => false
           }
       }
   }

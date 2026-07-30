@@ -420,3 +420,19 @@ test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
   shell_quote(arg: "deployment's routing") == "'deployment'\\''s routing'"
     && shell_quote(arg: "plain") == "'plain'"
 }
+
+
+data refusal_orders_after_siblings_note: String = "THE SECOND WAY THE SAME ARM SILENTLY DROPPED EVERY TEARDOWN (review 45016, proven by execution: `set -euo pipefail; echo x >&2; false; echo SIBLING` never prints SIBLING and exits 1). Retract order is the reverse of apply order and the tailscale mapping is applied LAST, so its refusal — which ends in `false` — was emitted FIRST. Under FailFast that aborted the pipeline before the systemd unit, worktree root, serve binary, tree-sync files and repo tree were touched. Every retract, production and twin, tore down nothing.\\n\\nThis is INDEPENDENT of the quoting defect beside it and was not fixed by fixing that: a syntactically valid `false` aborts a fail-fast pipeline exactly as well as a parse error does. Two unrelated causes, one silent outcome, one green golden gate.\\n\\nThe claim is an ORDERING claim over the emitted text, because that is the property that was violated — the refusal marker must appear after every teardown command and before the convergence receipt. Asserting mere presence of the marker, which the existing twin claim does, passes in both the broken and the fixed emission."
+
+test fn witness_retract_refusal_follows_every_teardown() -> Bool {
+  let retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  match first(split(s: retract, delimiter: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")) {
+    Absent => false
+    Present { value: before_refusal } =>
+      string_contains(s: before_refusal, pattern: "rm -f /opt/gunbc/bin/gunbc")
+        && string_contains(s: before_refusal, pattern: "rm -rf /opt/gunbc/gunbc")
+        && string_contains(s: before_refusal, pattern: "rm -d /opt/gunbc/dispatch-worktrees")
+        && string_contains(s: before_refusal, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+        && !string_contains(s: before_refusal, pattern: "verdict=converged")
+  }
+}

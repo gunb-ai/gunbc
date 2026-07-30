@@ -53,6 +53,7 @@ import gunbc.roadmap_dashboard_instance_apply {
   DashboardApplyPreflightResult,
   DashboardApplyPreflightReady,
   DashboardApplyPreflightRefused,
+  DashboardApplyPreflightBootstrapPending,
   DashboardBootstrapPreflight,
   DashboardBootstrapReady,
   DashboardBootstrapRefused,
@@ -464,12 +465,24 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       instance_id: _,
       source_revision: _,
     } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let clean_ok = match clean {
     DashboardApplyPreflightReady { instance_id, source_revision } =>
       instance_id == lab.instance_id
         && source_revision == "deadbeef"
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let missing_remote_ok = match missing_remote {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
@@ -479,6 +492,12 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
       instance_id: _,
       source_revision: _,
     } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } => false
   }
   let empty_revision_ok = match empty_revision {
     DashboardApplyPreflightRefused { instance_id: _, step, detail } =>
@@ -487,6 +506,12 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
     DashboardApplyPreflightReady {
       instance_id: _,
       source_revision: _,
+    } => false
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
     } => false
   }
   dirty_ok
