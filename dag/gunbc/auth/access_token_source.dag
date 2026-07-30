@@ -8,6 +8,7 @@ import std.upsert_decision {
   Converged,
   Noop,
   Refuse,
+  UnknownRefused,
   UpsertClassification,
 }
 import extdeps.shell
@@ -30,26 +31,56 @@ data gcloud_human_auth_pause_note: String = "Human gcloud authentication is the 
 
 data ensure_access_token_eager_bootstrap_fork_dissolve_on: String = "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second §3 authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wrapper that routes through it) and deletes the direct shell.GCloud node."
 
+fn gcloud_auth_print_access_token_is_auth_deficit(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "Reauthentication")
+    || string_contains(s: stderr, pattern: "not currently have an active account")
+    || string_contains(s: stderr, pattern: "Could not load the default credentials")
+    || string_contains(s: stderr, pattern: "default credentials were not found")
+    || string_contains(s: stderr, pattern: "invalid_grant")
+    || string_contains(s: stderr, pattern: "RefreshError")
+    || string_contains(s: stderr, pattern: "not logged in")
+}
+
+fn gcloud_access_ensure_refusal_reason(stderr: String) -> NonEmptyStr {
+  if string_length(s: stderr) > 0 {
+    stderr as NonEmptyStr
+  } else {
+    "gcloud auth print-access-token failed without observable authentication deficit" as NonEmptyStr
+  }
+}
+
 fn gcloud_access_ensure_classification(
   success: Bool,
+  stderr: String,
 ) -> UpsertClassification<AccessEnsurePlan> {
   if success {
     UpsertClassification {
       verdict: Converged,
       decision: Noop,
     }
-  } else {
+  } else if gcloud_auth_print_access_token_is_auth_deficit(stderr: stderr) {
     UpsertClassification {
       verdict: Absent,
       decision: Apply {
         plan: GoogleCloudInteractiveAuthenticationRequired {},
       },
     }
+  } else {
+    UpsertClassification {
+      verdict: UnknownRefused,
+      decision: Refuse {
+        reason: gcloud_access_ensure_refusal_reason(stderr: stderr),
+      },
+    }
   }
 }
 
-fn gcloud_access_token_resolution(success: Bool, token: Secret) -> AccessTokenResolution {
-  match gcloud_access_ensure_classification(success: success) {
+fn gcloud_access_token_resolution(
+  success: Bool,
+  stderr: String,
+  token: Secret,
+) -> AccessTokenResolution {
+  match gcloud_access_ensure_classification(success: success, stderr: stderr) {
     UpsertClassification { verdict: _, decision: Noop } =>
       AccessTokenReady { token: token }
     UpsertClassification { verdict: _, decision: Apply { plan: plan } } =>
@@ -74,6 +105,7 @@ func ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
       let printed = shell.GCloud.AuthPrintAccessToken()
       gcloud_access_token_resolution(
         success: printed.success,
+        stderr: printed.stderr,
         token: printed.access_token,
       )
     }

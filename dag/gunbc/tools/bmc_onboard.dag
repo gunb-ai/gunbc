@@ -12,6 +12,8 @@ import gunbc.bmc_onboarding {
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
+  CredentialAccessUpsertRequired,
+  CredentialEnsureRefused,
   CredentialStateUnknown,
 }
 import gunbc.auth.access_token_source {
@@ -211,11 +213,9 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
 
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
-      return CredentialStateUnknown {
-        reason: access_token_upsert_required_reason(plan: upsert_plan),
-      }
+      return CredentialAccessUpsertRequired { plan: upsert_plan }
     AccessTokenEnsureRefused { reason: reason } =>
-      return CredentialStateUnknown { reason: reason as String }
+      return CredentialEnsureRefused { reason: reason }
     AccessTokenReady { token: token } => {
       secret_resp = gcp.SecretManager.AccessVersion(
         access_token: token,
@@ -249,6 +249,12 @@ func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   match probe {
     FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
     RotatedCredentialActive => return ExitSuccess
+    CredentialAccessUpsertRequired { plan: upsert_plan } =>
+      return exit_failure(
+        reason: access_token_upsert_required_reason(plan: upsert_plan),
+      )
+    CredentialEnsureRefused { reason: reason } =>
+      return exit_failure(reason: reason as String)
     CredentialStateUnknown { reason: r } =>
       return exit_failure(reason: concat("credential converge: unknown phase: ", r))
   }
