@@ -14,8 +14,11 @@ correction recorded rather than silently restated:
 
 - *Item 3* claimed the observed set could be supplied with "no new comparison logic." It cannot —
   `DeploymentArtifactStep` carries `{kind, path}` and no content identity, so that change alone
-  inverts into a **silent never-deploy**. Split into 2a (model the comparable value) → 2b (supply
-  the provider), with the ordering now load-bearing (§2 Concept C).
+  inverts into a **silent never-deploy**. Corrected again after review 45232: content identity is
+  *also* not sufficient, because the restart is fused to the `SystemdUnit` member, so a binary-only
+  change would install the binary and never restart. Item 3 is now 2a (comparable value) → 2b
+  (de-fuse the running service from the unit file) → 2c (supply the provider), and the order is
+  load-bearing at every seam (§2 Concept C).
 - *Item 2* was framed as a §3 de-fork of one readiness fact. There are **two** facts; the tree's own
   `service_ready_means_serving_this_tree_note` and the dated 2026-07-24 incident say so. The digest
   check is irreducible and must survive slice 3 (§2 Concept B).
@@ -205,19 +208,55 @@ where construction was available: *it can be satisfied by editing the declaratio
 realization still lies.* A `value_eq` over `{kind, path}` is a key-completeness claim whose realizer
 is faking the key.
 
-**So slice 2 splits, and the modeling comes first:**
+**Second correction (review 45232): content identity alone still does not restart the service.**
+Reconciliation is **per member**, and the restart of `gunbc-roadmap.service` exists in exactly one
+place — `emit.dag:288`, inside the `SystemdUnit` upsert arm. (The other restart in the module,
+`:219`, targets `gunbc-tree-sync.service`, a different unit.) So under a real diff:
+
+> binary content changes → `ServeBinary` is Modified → its arm installs the new binary → **but**
+> the unit file is unchanged → `SystemdUnit` is `Unchanged` → noop → **no restart**. New binary on
+> disk, old process still serving the old one.
+
+That is the same silent non-deploy in a second costume, and the discriminating control added after
+review 45229 — *a binary-only change must still restart* — **would fail against the design as
+written**. The re-cut omitted the dependency that makes its own control pass.
+
+**The root is a conflation in the existing model, which the degenerate pole has been hiding.**
+`SystemdUnit` names two different things at once: the **unit file** (an artifact on disk, whose
+value is its text) and the **running service** (a process, whose correctness depends on the binary
+and tree it was started from). Restart got fused onto the file — `emit_deploy_member_effect_note`
+says so plainly: *"a SystemdUnit upsert carries its own daemon-reload/enable/restart (once, part of
+the unit's realization)"*. That fusion is harmless while every member always applies, because the
+restart then always happens anyway. **The moment the diff becomes real, the fusion is the defect.**
+
+The dependency itself is already known — it is just prose. `deployment_apply_order_note` states:
+*"all before the unit (ExecStart references binary + tree)"*. So the fact exists at a single
+authority in English and nowhere in the model.
+
+**The construction answer — derive the restart from the service's inputs, don't attach it to a
+file.** Model the running service as its own member whose value is a function of the identities it
+was started from (unit file text + binary identity + tree identity). Then a binary change *changes
+the service member's value*, so it is `Modified`, so it restarts — **by construction**, with no
+impact table and no `restart_required_by` adjacency list (which would be a second representation of
+the dependency the apply order already asserts). The bad state — new binary installed, old process
+serving — becomes **unwritable** rather than checked for.
+
+**So item 3 is three steps, and the ordering is load-bearing at every seam:**
 
 - **2a — model the comparable artifact value at its single authority.** `DeploymentArtifactStep`
-  must carry the content identity that makes two installations of a member comparable (a digest for
-  the binary and the unit file; the tree's identity for the source tree). This is a `std`-adjacent
-  change to a load-bearing deploy carrier and it is the real work of item 3. Note the existing
-  `ContentHash` family ambiguity recorded in DESIGN's open threads is live here: whichever family is
-  chosen, the carrier must say which it requires rather than leaving it to prose.
-- **2b — supply the observed provider** reading those same identities off the host. Only once 2a
-  exists does `Unchanged → noop` mean anything.
+  must carry the content identity that makes two installations comparable (a digest for the binary
+  and the unit file; the tree's identity for the source tree). Note the `ContentHash` family
+  ambiguity recorded in DESIGN's open threads is live here: whichever family is chosen, the carrier
+  must say which it requires rather than leaving it to prose.
+- **2b — de-fuse the running service from the unit file**, giving the service a member whose value
+  derives from the 2a identities. This is what makes a restart a *consequence* of its inputs.
+- **2c — supply the observed provider** reading those identities off the host.
 
-The ordering matters for safety, not just tidiness: **2b without 2a is the never-deploy inversion**,
-and it would pass a typecheck.
+Failure modes of getting the order wrong, both of which typecheck: **2c without 2a** reports
+`Unchanged` for everything (never deploys); **2c without 2b** installs new artifacts and never
+restarts (deploys the files, not the service). Neither is caught by a type; both are caught by the
+§6 binary-only control, which is why that control is the acceptance bar for item 3 rather than a
+nicety.
 
 Two consequences worth stating up front, both good:
 
@@ -320,13 +359,19 @@ stating what was observed and not asserting a cause. No timing change, no deploy
 change. Independently correct regardless of what follows.
 
 **Slice 2a — model the comparable artifact value (item 3, prerequisite).** Give
-`DeploymentArtifactStep` the content identity that makes two installations comparable. This is the
-real work of item 3 and it touches a load-bearing deploy carrier. **Nothing in 2b may land first**
-— see §2 Concept C for why the reverse order is a silent never-deploy.
+`DeploymentArtifactStep` the content identity that makes two installations comparable. Touches a
+load-bearing deploy carrier.
 
-**Slice 2b — the observed provider (item 3).** Supply `observed` to the apply pole so `Unchanged →
+**Slice 2b — de-fuse the running service from the unit file (item 3).** Give the service a member
+whose value derives from the 2a identities, so a restart is a consequence of its inputs rather than
+a side-effect of writing a file.
+
+**Slice 2c — the observed provider (item 3).** Supply `observed` to the apply pole so `Unchanged →
 noop` is reached by construction. Removes the avoidable restarts. Requires the refusal arm for
 "could not observe" to be typed/located/counted, and makes the ownership refusal arms live.
+
+**Order is load-bearing** (§2 Concept C): 2c without 2a never deploys; 2c without 2b deploys the
+files but not the service. Both typecheck.
 
 **Slice 3 — correct systemd's F1 assertion (item 2), designed with the listener-acquisition
 realization (§3.1).** `Type=notify` + a readiness signal at the bind point, modelled as a
@@ -352,10 +397,13 @@ Adopting the brief's, and adding the ones the analysis surfaced:
   regression wearing a fix's clothes.
 - A deploy performed while a browser is watching produces no refusal banner and no gap in the
   workflow row.
-- **Added (slice 2, the discriminating one):** a deploy in which **only the binary content changed**
-  — same kind, same path — must still restart. This is the control that fails against a
-  `{kind, path}` value and passes only once slice 2a lands, so it discriminates exactly the defect
-  review 45229 caught. Its mirror: a deploy where genuinely nothing changed must *not* restart.
+- **Added (slice 2 — the acceptance bar for item 3, not a nicety):** a deploy in which **only the
+  binary content changed** — same kind, same path, unit file untouched — must **install the new
+  binary AND restart the service**, and the live process must afterwards be the new binary. This
+  single control discriminates *both* defects found in review: it fails against a `{kind, path}`
+  value (review 45229) and it fails again if the restart stays fused to the `SystemdUnit` member
+  (review 45232). Its mirror: a deploy where genuinely nothing changed must *not* restart.
+  Checking only that the new binary reached the disk is what makes both failures look green.
 - **Added (slice 2):** a deploy where the observed set **cannot be read** must refuse, typed and
   located — not restart-everything, and not skip-everything.
 - **Added (slice 3):** the unit must not report ready before it can answer. Directly falsifiable:
@@ -381,11 +429,16 @@ Adopting the brief's, and adding the ones the analysis surfaced:
    `Type=simple` wrongly asserts F1 and `sd_notify` fixes *that*, while F2 (serving this deploy's
    tree) is irreducible and the digest check survives untouched? The practical consequence is that
    item 2 buys the handover prerequisite, not a smaller poll.
-3. **Item 3's cost** (revised after review 45229). The fix is *supply the observed set*
-   (construction, not a changed-predicate) — but it is gated on **modelling content identity into
-   `DeploymentArtifactStep` first**, which is a load-bearing carrier change, not the cheap slice the
-   first draft implied. Confirm that carrier change is in scope for this ticket; if it is not, item
-   3 should be dropped from the ticket rather than attempted in the order that inverts it.
+3. **Item 3's cost** (revised twice — reviews 45229, 45232). The fix is *supply the observed set*
+   (construction, not a changed-predicate), but it is gated on two prior modelling changes: content
+   identity on `DeploymentArtifactStep`, **and** de-fusing the running service from the unit file so
+   a restart derives from its inputs. Both touch load-bearing deploy carriers. This is no longer a
+   cheap slice, and it is the item whose *partial* implementations are dangerous rather than merely
+   incomplete. **Confirm those carrier changes are in scope for this ticket** — if they are not,
+   item 3 should be dropped from the ticket entirely rather than attempted in any partial order,
+   since every partial order typechecks and silently under-deploys. Item 3 is also the one item that
+   is *not* required for the headline outcome: slices 1, 3, and 4 make deploys invisible; item 3
+   only makes them rarer.
 4. **The seed change.** Is `listener acquisition as a §2 Realization` (SelfBound | Inherited, with
    `sd_notify` on the same seam) an acceptable way to touch the seed for slices 3–4? If the answer
    is that the seed should not grow host integration at all, slice 4 needs a different candidate and
