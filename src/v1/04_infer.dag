@@ -847,6 +847,25 @@ fn type_expr_where_refinement_predicates(ty: Node) -> List<Node> {
   } else { [] }
 }
 
+fn type_where_refinement_predicates_transitive(
+  ty: Node,
+  type_env: TypeEnv,
+) -> List<Node> {
+  let immediate = type_expr_where_refinement_predicates(ty: ty)
+  let inherited =
+    if ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1 {
+      let base = ty.children[0]
+      let base_resolved = match lookup_type_for(env: type_env, node: base) {
+        Present { value: resolved } => resolved
+        Absent => base
+      }
+      type_where_refinement_predicates_transitive(ty: base_resolved, type_env: type_env)
+    } else {
+      []
+    }
+  concat(immediate, inherited)
+}
+
 fn where_predicate_name_at(pred: Node, source_indices: Map<String, NewlineIndex>) -> String {
   field_init_node_name_at(n: pred, source_indices: source_indices)
 }
@@ -1180,7 +1199,7 @@ fn where_refinement_mismatch_diags(
     Absent => formal
   }
   let formal_checked = peel_nominal_alias_identity(n: formal_resolved, env: type_env, module_name: module_name)
-  let preds = type_expr_where_refinement_predicates(ty: formal_resolved)
+  let preds = type_where_refinement_predicates_transitive(ty: formal_resolved, type_env: type_env)
   if preds |> count == 0 {
     []
   } else {
@@ -1190,7 +1209,7 @@ fn where_refinement_mismatch_diags(
       Present { value: resolved } => resolved
       Absent => actual_raw
     }
-    let actual_preds = type_expr_where_refinement_predicates(ty: actual_resolved)
+    let actual_preds = type_where_refinement_predicates_transitive(ty: actual_resolved, type_env: type_env)
     if where_refinement_predicates_covered(
       formal_preds: preds,
       actual_preds: actual_preds,
