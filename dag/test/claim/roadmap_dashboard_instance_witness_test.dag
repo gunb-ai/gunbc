@@ -94,6 +94,18 @@ test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
     ]
 }
 
+fn instance_anchor_ref(i: HostDashboardInstance) -> String {
+  match i.source_seed {
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref,
+      history_remote: _,
+    } => anchor_ref as String
+    DashboardExistingRepo { anchor_ref } => anchor_ref as String
+  }
+}
+
 fn plan_binds_instance_paths(
   plan: List<DashboardInstanceProvisionOp>,
   instance: HostDashboardInstance,
@@ -168,7 +180,7 @@ fn plan_binds_source_ref_translation(
       publish_ref,
     } =>
       origin == instance.local_origin_root
-        && source_ref == "refs/heads/session/codex-provider-feedback-v0"
+        && source_ref == instance_anchor_ref(i: instance)
         && publish_ref == instance.local_origin_publish_ref
     _ => false
   })
@@ -485,9 +497,22 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
     root: "/witness/root" as FilePath,
     serve_function: "witness_handler" as NonEmptyStr,
     listen_port: 19999,
+    source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
+}
+
+data anchor_ref_witness_note: String = "THE LITERAL THAT WOULD HAVE SERVED THE WRONG BRANCH SILENTLY. Every isolated instance inherited the constructor's hardcoded refs/heads/session/codex-provider-feedback-v0, so a new lab provisioned itself from another lane's stale feedback branch while its instance id, posture and page all read correctly — no refusal, just unintended content rendered plausibly. Unlike the host facts, which produced identical values on both hosts and therefore no wrong output at all, this one produces a page that looks right and is not.\\n\\nThe claim asserts the anchors are per-instance and DIFFER, so collapsing them back to one shared literal fails whichever way it collapses."
+
+test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
+  let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
+  let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
+  let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
+  synthetic == "refs/heads/witness-anchor"
+    && srv2_lab == "refs/remotes/origin/main"
+    && srv1_lab == "refs/heads/session/codex-provider-feedback-v0"
+    && !(srv2_lab == srv1_lab)
 }
 
 test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
@@ -555,6 +580,7 @@ test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
 
 test fn dashboard_instance_model_keystone_holds() -> Bool {
   isolated_instance_carries_the_layout_it_was_given()
+    && source_anchor_is_per_instance_not_one_shared_literal()
     && srv2_lab_is_actuating_unlike_its_preview_sibling()
     && srv2_lab_owns_paths_disjoint_from_preview_and_production()
     && srv2_lab_has_a_provision_plan_bound_to_itself()
