@@ -13,6 +13,8 @@ import gunbc.namespace_unique_on_chain_policy_scaffold {
   namespace_unique_on_chain_policy_loc_delta_net,
   namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net,
   namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
+  namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_loc_delta_net,
+  namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
 }
 
 test fn namespace_unique_on_chain_policy_cli_run_growth_is_censused() -> Bool {
@@ -28,6 +30,32 @@ test fn namespace_unique_on_chain_policy_cli_run_growth_is_censused() -> Bool {
     string_contains(
       s: namespace_unique_on_chain_policy_cli_run_hand_rust_census_note,
       pattern: "namespace-canonical-binding",
+    )
+}
+
+test fn namespace_unique_on_chain_policy_parsed_dag_file_growth_is_censused() -> Bool {
+  namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_loc_delta_net > 0 &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
+      pattern: "parsed_dag_file.rs",
+    ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
+      pattern: "DISSOLVE-ON",
+    ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
+      pattern: "namespace-canonical-binding",
+    )
+}
+
+test fn namespace_unique_on_chain_policy_hand_rust_total_is_the_sum_of_its_rows() -> Bool {
+  ((namespace_unique_on_chain_policy_loc_delta_net +
+    namespace_unique_on_chain_policy_cli_run_hand_rust_loc_delta_net) +
+    namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_loc_delta_net) == 130 &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_parsed_dag_file_hand_rust_census_note,
+      pattern: "= +130",
     )
 }
 
