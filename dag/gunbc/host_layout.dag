@@ -1,6 +1,12 @@
 module gunbc.host_layout
 
 import std.types { String, NonEmptyStr, FilePath }
+import gunbc.provider_account {
+  ProviderAccountLabel,
+  CodexAccountSelection,
+  CodexLabelledAccount,
+  codex_account_state_root,
+}
 
 data host_layout_note: String = "The ONE authority for the srv1 gunbc host paths (docs/plans/gunbc-served-dashboard-design.md section 5; lane agreement with royal-carp-451, 2026-07-20). Four facts must agree with their consumers or in-process dispatch breaks: srv1_gunbc_repo_root is BOTH the tree `gunbc serve` loads AND the repo the belt runs `git worktree add` from; srv1_dispatch_worktree_root is where those worktrees land; srv1_gunbc_serve_binary is the deployed seed binary; srv1_roadmap_codex_home is the dedicated Codex state root whose auth/config/session state the Codex provider preflights and invokes through CODEX_HOME. gunbc.roadmap_belt_actuate and gunbc.roadmap_dispatch_actuator project these rows, while gunbc.live_deploy.spec owns convergence of the filesystem/runtime membership. Interim: the parent lane hand-provisions srv1 to these exact paths; that hand-provisioning dissolves when live_deploy formally carries every member, including the provider state-root existence/ownership check (credentials themselves remain user-authored secret state, never deployment payload)."
 
@@ -10,7 +16,20 @@ data srv1_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
 
 data srv1_dispatch_worktree_root: FilePath = "/opt/gunbc/dispatch-worktrees" as FilePath
 
-data srv1_roadmap_codex_home: FilePath = "/home/briansrls/.codex@gunbc-roadmap" as FilePath
+data roadmap_codex_account_note: String = "THE DASHBOARD'S CODEX HOME IS DERIVED FROM AN ACCOUNT SELECTION, not spelled as a path. It used to be the literal /home/briansrls/.codex@gunbc-roadmap, which encoded three separate facts in one string with no way to read any of them back: the user's home directory, codex's own default-root name, and the @label convention that distinguishes this account from the two others on the same machine.\\n\\nDeriving it makes each fact answerable at its own layer. gunbc.provider_account owns the suffix convention, extdeps.llm.codex_auth owns the fact that CODEX_HOME selects an isolated store at all, and the label below is the only thing this row still states. A second dashboard account becomes one more selection rather than one more hand-spelled path that has to agree with a convention nothing enforces.\\n\\nIt is byte-identical to the literal it replaces, which the witness asserts — the point is provenance, not a new value."
+
+data roadmap_codex_account_label: ProviderAccountLabel = "gunbc-roadmap" as ProviderAccountLabel
+
+data operator_home_root: FilePath = "/home/briansrls" as FilePath
+
+fn roadmap_codex_account() -> CodexAccountSelection {
+  CodexLabelledAccount { label: roadmap_codex_account_label }
+}
+
+data srv1_roadmap_codex_home: FilePath = codex_account_state_root(
+  home: operator_home_root,
+  selection: CodexLabelledAccount { label: "gunbc-roadmap" as ProviderAccountLabel },
+) as String as FilePath
 
 data gunbc_host_layout_note: String = "THE HOST FACTS AN INSTANCE CANNOT DERIVE FROM ITS OWN ROOT, carried as one row per host instead of one name per host. An isolated dashboard instance derives most of its paths from its instance root — source, attempts, attempt-state and local origin are all children of it — but three belong to the machine rather than the instance: which seed binary serves, where the provider's authenticated state root lives, and which local worktree seeds the source bundle. Those cannot come from the root, so before this row they were written as srv1 literals inside the shared constructor.\\n\\nBE PRECISE ABOUT WHAT THAT DEFECT WAS, because overstating it would be its own false claim. No value was wrong. srv1 and srv2 run the same layout convention, so both rows below carry byte-identical paths, and a home-directory path denotes a different file on each machine anyway. The defect was representational: the constructor took host_identity as a parameter and then pinned the other three facts, so a host whose layout DIVERGED could not be expressed at all. A second host was nameable without being describable, and the name silently carried the first host's body.\\n\\nThat is precisely why it survived review — there was no wrong output to notice. It is a latent fabrication, not a live one: the first host to install its binary elsewhere would have gotten srv1's path under its own name, with the mismatch appearing as an unexplained refusal against a path nobody wrote for it.\\n\\nOne row per host beats a second set of srv2_-prefixed names, because a prefix bakes the instance into the concept and the next host repeats the exercise. The flat srv1_ rows above stay as the field values of srv1's row — they have live consumers in live_deploy and the actuators — so each path is still written exactly once. Dissolution trigger: when live_deploy takes a layout row as a parameter, those flat rows fold into the record literal and the prefix disappears."
 
@@ -32,11 +51,14 @@ fn srv1_host_layout() -> GunbcHostLayout {
   }
 }
 
-data srv2_host_layout_note: String = "srv2's own row, and every path in it is DECLARED INTENT rather than observed state — the whole point of a typed preflight is that it compares this declaration against the machine and refuses on the difference. Two of the three are known absent right now: /opt/gunbc/bin/gunbc does not exist on srv2 (only /opt/gunbc/gunbc, a hand-made symlink into a session worktree), and the Codex state root has never been created here. Writing them anyway is correct — an apply that observed no binary and quietly served something else, or found no auth root and dispatched unauthenticated, is the absorbing fallback; refusing with the exact path is the whole mechanism. The controller repo is the one that does exist, because the preview instance these rows grew out of was authored on this machine."
+data srv2_host_layout_note: String = "srv2's own row, where a DECLARATION and an OBSERVATION are deliberately different things. A preflight exists to compare what this row says against what the machine holds and refuse on the difference, so a path may legitimately be declared before it exists — an apply that found no binary and quietly served something else, or found no auth root and dispatched unauthenticated, is the absorbing fallback; refusing with the exact path is the whole mechanism.\\n\\nSTATE AS OF 2026-07-30, and this row is the wrong place to keep tracking it: /opt/gunbc/bin/gunbc does not exist on srv2 (only /opt/gunbc/gunbc, a hand-made symlink into a session worktree), while the Codex state root now DOES exist and is authenticated — an earlier version of this note said it had never been created, and that sentence was already false within the hour. Prose describing mutable host state goes stale silently, which is why liveness belongs to the readiness probe that observes it and this row states only intent.\\n\\nThe codex home derives from the same account selection srv1 uses, so the two hosts share the convention rather than each spelling it. The controller repo exists because the preview instance these rows grew out of was authored on this machine."
 
 data srv2_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
 
-data srv2_roadmap_codex_home: FilePath = "/home/briansrls/.codex@gunbc-roadmap" as FilePath
+data srv2_roadmap_codex_home: FilePath = codex_account_state_root(
+  home: operator_home_root,
+  selection: CodexLabelledAccount { label: "gunbc-roadmap" as ProviderAccountLabel },
+) as String as FilePath
 
 data srv2_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
 

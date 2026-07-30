@@ -1,0 +1,130 @@
+module extdeps.llm.codex_auth
+
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.uuid { Uuid }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import extdeps.auth.jwt { JwtCompactSerialization, NumericDate }
+import extdeps.auth.oidc { OidcIdTokenClaims }
+
+data codex_auth_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/codex"
+  }
+}
+
+data codex_auth_file_note: String = "THE FILE THE CODEX CLI WRITES WHEN IT AUTHENTICATES, modeled because treating it as an opaque blob loses every fact that decides how it may be handled. CODEX_HOME/auth.json is what a device login produces and what every later invocation reads; a SecretRef pointing at it would say a credential lives there and nothing about what it grants, how long any part of it lasts, or whether it can be copied.\\n\\nOBSERVED, NOT REMEMBERED. Every field below was read from a real file on srv2 (codex-cli 0.145.0, 2026-07-30) by inspecting structure and never values — key names, string lengths, JWT segment counts, and the decoded id_token claim set. codex publishes no schema for this file, so its shape is a fact about the artifact and carries the version it was seen at.\\n\\nWHAT IS NOT HERE IS THE POINT. The id_token's registered claims are RFC 7519's, its email and amr are OIDC Core's and RFC 8176's, its identifiers are RFC 9562 UUIDs and its timestamps are RFC 3339 — all of which live in extdeps modules owned by those specifications. Only two things in this file are genuinely OpenAI's: the auth.json layout itself, and the private claim namespace below. Re-typing the standard leaves here would have coined a seventh local copy of sub and exp, each free to drift about whether a NumericDate is seconds or milliseconds."
+
+data codex_auth_mode_conflation_note: String = "THE FILE HOLDS TWO MUTUALLY EXCLUSIVE MODES AS ONE RECORD, and modeling that faithfully means a coproduct rather than a record with nulls. The observed file carries auth_mode: chatgpt alongside OPENAI_API_KEY: null — the other mode's slot, present and empty. Read as a record it invites the exact bug the shape encourages: code that checks whether OPENAI_API_KEY is set, finds null, and concludes the file is unauthenticated when it is a perfectly good subscription login.\\n\\nSo the discriminant becomes the constructor. CodexChatGptAuth carries tokens and no key, CodexApiKeyAuth carries a key and no tokens, and the states where both or neither are populated are unwritable rather than merely unlikely. The conflation is the vendor's; representing the same reachable states without the unreachable ones is not disagreeing with upstream."
+
+type CodexAuthMode
+  = CodexChatGptMode
+  | CodexApiKeyMode
+
+data codex_auth_mode_chatgpt_wire: String = "chatgpt"
+data codex_auth_mode_apikey_wire: String = "apikey"
+
+fn codex_auth_mode_of_wire(raw: String) -> CodexAuthMode? {
+  if raw == codex_auth_mode_chatgpt_wire {
+    Present { value: CodexChatGptMode }
+  } else if raw == codex_auth_mode_apikey_wire {
+    Present { value: CodexApiKeyMode }
+  } else {
+    none
+  }
+}
+
+data codex_token_durability_note: String = "THREE TOKENS IN ONE FILE WITH LIFETIMES THREE ORDERS OF MAGNITUDE APART, which is why auth.json cannot be one SecretRef. Measured on the observed file: id_token and access_token carry iat and exp exactly 3600 seconds apart, so both are gone within the hour. The refresh_token is the durable root and is NOT a JWT — decoding its middle segment fails — so it is opaque and its expiry is not readable from the token at all.\\n\\nThat asymmetry is the whole handling story, and it is why the two token fields carry different types. Anything reasoning about whether this credential is still good must consult the refresh token, and the only way to learn whether an opaque token is live is to USE it: existence is not validity, the same lesson secret_existence_is_not_validity_note records for Secret Manager versions. A liveness check that read exp from the access token would report a dead credential every hour and a live one never.\\n\\nThe short-lived pair is derived state, reconstructible from the refresh token and not worth storing. If any part of this file is ever placed in a secret store, the refresh token is the part that matters and the other two are cache."
+
+type CodexOpaqueToken = NonEmptyStr where brand("CodexOpaqueToken")
+
+type CodexOAuthTokens {
+  id_token: JwtCompactSerialization
+  access_token: JwtCompactSerialization
+  refresh_token: CodexOpaqueToken
+  account_id: Uuid
+}
+
+type CodexAuthFile
+  = CodexChatGptAuth {
+      tokens: CodexOAuthTokens,
+      last_refresh: Rfc3339Timestamp,
+    }
+  | CodexApiKeyAuth {
+      api_key: NonEmptyStr,
+    }
+
+data codex_state_root_isolation_note: String = "CODEX_HOME IS THE ISOLATION MECHANISM, AND IT IS CODEX'S, NOT OURS. The CLI resolves auth.json, config, logs and session state beneath whatever CODEX_HOME names, defaulting to ~/.codex — so two invocations with different CODEX_HOME values authenticate as different accounts with no interference, and that capability exists whether or not anyone builds a naming scheme on it.\\n\\nThe distinction matters for where a multi-account model lives. The MECHANISM belongs here because codex owns it; a convention for what to call the roots is a downstream choice that this module must not encode. Anything reading a state root path out of this module would be reading somebody's naming policy as though the CLI required it.\\n\\nObserved on srv2: three roots coexist under one user account, and seventeen concurrent sessions bind to one of them with no cross-talk to the others."
+
+type CodexStateRoot = NonEmptyStr where brand("CodexStateRoot")
+
+data codex_state_root_env_var: NonEmptyStr = "CODEX_HOME" as NonEmptyStr
+data codex_state_root_default_relative: NonEmptyStr = ".codex" as NonEmptyStr
+data codex_auth_file_relative: NonEmptyStr = "auth.json" as NonEmptyStr
+
+data codex_refresh_persistence_note: String = "WHEN THE CREDENTIAL FILE IS WRITTEN DECIDES WHETHER IT CAN BE SHARED, and this is measured rather than assumed. Observed on srv2, 2026-07-30: the default state root's auth.json carries last_refresh 2026-07-27T04:22 and an mtime matching it, while codex sessions bound to that same root have been running for over two hours — well past the 3600-second access-token lifetime the id_token declares. Seventeen concurrent processes, three days, and the file was never rewritten.\\n\\nThe inference is narrow and worth stating precisely. If refresh rotated the refresh token, the CLI would have to persist the replacement or lose access on the next exchange; it did not write, and access did not lapse. So the durable token survives use and the file is written at LOGIN, not at refresh — which makes it read-mostly in normal operation, and read-mostly is what makes concurrent binding safe. The write contention this row was expected to document does not occur, because after login there are no writers.\\n\\nWHAT THIS IS NOT: proof. It is three days of one host, and it does not establish that a refresh exchange happens at all (a long-lived session may hold its connection), that the authorization server never rotates, or how simultaneous cold starts behave when several processes exchange at once. CodexPersistenceObservedLoginOnly records what was seen with its evidence; it is deliberately a different value from a proven CodexPersistsAtLoginOnly, because an observation that survived one workload is not a contract."
+
+type CodexRefreshPersistence
+  = CodexPersistenceUnobserved
+  | CodexPersistenceObservedLoginOnly
+  | CodexPersistsOnRefresh
+
+data codex_observed_refresh_persistence: CodexRefreshPersistence = CodexPersistenceObservedLoginOnly
+
+data codex_observed_concurrent_sessions_per_root: Int = 17
+
+data codex_refresh_rotation_note: String = "WHETHER REFRESH ROTATES IS UNKNOWN AND MUST STAY UNKNOWN UNTIL OBSERVED, because the answer decides whether one login can serve many hosts and guessing it either way is expensive. If OpenAI rotates the refresh token on use — standard in OAuth 2.1 and the default in many implementations — then copying auth.json to a second host means the first refresh silently invalidates every other copy, and the others fail about an hour later with no indication a sibling host caused it. If it does not rotate, one interactive login can provision a fleet.\\n\\nThis was asserted optimistically in conversation before it was checked, which is why it is a typed row now rather than an assumption in someone's head. CodexRotationUnobserved is not a placeholder for 'probably fine'; it is a refusal to let fleet-wide credential replication rest on an unverified premise.\\n\\nDISSOLVES ON a two-host experiment: authenticate once, copy the file, force a refresh on host A, then exercise host B. B still working proves CodexRefreshStableAcrossUse; B failing proves CodexRefreshRotatesOnUse and settles that codex needs one login per host."
+
+type CodexRefreshRotationSemantics
+  = CodexRotationUnobserved
+  | CodexRefreshRotatesOnUse
+  | CodexRefreshStableAcrossUse
+
+data codex_observed_refresh_rotation: CodexRefreshRotationSemantics = CodexRotationUnobserved
+
+data codex_openai_auth_claim_note: String = "THE PRIVATE CLAIM NAMESPACE, which is the one part of the id_token that genuinely belongs to OpenAI. Everything else in that token is RFC 7519 or OIDC Core; the object at https://api.openai.com/auth is theirs, and URI-namespacing it is exactly what OIDC Core section 5.1.2 prescribes for claims outside the standard set.\\n\\nMODELING organizations AS MEMBERSHIPS RATHER THAN IDS IS THE LOAD-BEARING CHOICE. The observed token carries two, each with id, title, role and is_default — so the credential is not scoped to 'an account' but to a set of memberships with distinct authority. A dispatch that assumed one organization would silently run under whichever the provider defaults to, and nothing downstream could name which. Anything deciding where work runs has to be able to say the organization, and cannot unless the membership is represented.\\n\\nThe subscription window is three timestamps rather than a Bool because active_until and last_checked answer different questions: when entitlement lapses, versus how stale the provider's own view of it is. A single is_active flag would collapse 'expired' into 'not recently checked'.\\n\\nplan_type stays a NonEmptyStr deliberately. The observed value is pro, but the set of plan names is OpenAI's product surface rather than a specification, and a closed enum here would refuse a legitimate token the day a plan is renamed or added — the wrong failure for a field read only to display entitlement."
+
+type CodexOrganizationMembership {
+  id: NonEmptyStr
+  title: String
+  role: NonEmptyStr
+  is_default: Bool
+}
+
+type CodexSubscriptionWindow {
+  active_start: Rfc3339Timestamp
+  active_until: Rfc3339Timestamp
+  last_checked: Rfc3339Timestamp
+}
+
+type CodexOpenAiAuthClaim {
+  chatgpt_account_id: Uuid
+  chatgpt_user_id: NonEmptyStr
+  user_id: NonEmptyStr
+  plan_type: NonEmptyStr
+  subscription: CodexSubscriptionWindow
+  organizations: List<CodexOrganizationMembership>
+  groups: List<NonEmptyStr>
+}
+
+data codex_id_token_note: String = "The codex id_token is the OIDC claim set plus OpenAI's private namespace, composed rather than redeclared. Its issuer is https://auth.openai.com and its observed lifetime is 3600 seconds — recorded as a row because it is the number that decides how often a long-running host must refresh, and reading it from a live token would be reading the instance rather than the contract."
+
+type CodexIdToken {
+  oidc: OidcIdTokenClaims
+  openai_auth: CodexOpenAiAuthClaim
+}
+
+data codex_id_token_issuer: NonEmptyStr = "https://auth.openai.com" as NonEmptyStr
+data codex_id_token_observed_lifetime_seconds: Int = 3600
+
+fn codex_default_organization(token: CodexIdToken) -> CodexOrganizationMembership? {
+  token.openai_auth.organizations |> filter(o => o.is_default) |> first
+}
+
+fn codex_organization_ids(token: CodexIdToken) -> List<NonEmptyStr> {
+  token.openai_auth.organizations |> map(o => o.id)
+}
+
+data codex_auth_parse_boundary_note: String = "THIS MODEL DESCRIBES THE ARTIFACT; IT DOES NOT PARSE OR VERIFY IT. There is no ingest fold from auth.json bytes to CodexAuthFile and no signature check on the id_token, and both omissions are deliberate rather than pending.\\n\\nVerification needs OpenAI's JWKS over the network, and a model that decoded claims WITHOUT verifying would hand callers values that look authoritative and are merely base64 — jwt_verification_boundary_note states the same rule at the layer that owns it. Reading unverified claims is fine for showing which account a credential names and illegitimate for authorization, and once the values sit in a typed record that difference is invisible. So the parse lands with the verification or not at all.\\n\\nWhat the shape enables today, with no parse: a consumer can state which part it depends on, whether that part is perishable or durable, and whether an operation is scoped to an organization it has actually named — three questions that were unanswerable while this file was a String."

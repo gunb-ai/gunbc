@@ -1,0 +1,118 @@
+module gunbc.provider_account
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import extdeps.llm.codex_auth {
+  CodexStateRoot,
+  CodexRefreshPersistence,
+  CodexPersistenceUnobserved,
+  CodexPersistenceObservedLoginOnly,
+  CodexPersistsOnRefresh,
+  codex_state_root_default_relative,
+  codex_observed_refresh_persistence,
+}
+
+data provider_account_naming_note: String = "THE SUFFIX CONVENTION IS OURS; THE ISOLATION IS CODEX'S. extdeps.llm.codex_auth records that CODEX_HOME selects an independent credential store — that is the CLI's capability and exists regardless of what anyone names the directories. What lives here is the choice to name them ~/.codex@<label>, which is a gunbc fact and must not be written into the extdeps module, or a reader would take our policy for the tool's requirement.\\n\\nIT WAS ALREADY IN USE BEFORE IT WAS MODELED, which is why this cites rather than invents. Observed on srv2, 2026-07-30: ~/.codex (the default), ~/.codex@briansrls-gunb.ai, and ~/.codex@gunbc-roadmap coexisting under one user. Minting a different scheme — accounts/<label>/codex, or a flat registry — would have forked a convention with three live instances and forced a migration to satisfy a model nobody needed.\\n\\nThe default root is deliberately representable. ~/.codex has no label and holds the seventeen-session personal account; a model that could only express labelled roots would have been unable to describe the account carrying nearly all the current load."
+
+type ProviderAccountLabel = NonEmptyStr where brand("ProviderAccountLabel")
+
+type CodexAccountSelection
+  = CodexDefaultAccount
+  | CodexLabelledAccount { label: ProviderAccountLabel }
+
+data codex_account_label_separator: String = "@"
+
+fn codex_account_directory_name(selection: CodexAccountSelection) -> String {
+  match selection {
+    CodexDefaultAccount => codex_state_root_default_relative as String
+    CodexLabelledAccount { label } =>
+      join([
+        codex_state_root_default_relative as String,
+        codex_account_label_separator,
+        label as String,
+      ], "")
+  }
+}
+
+fn codex_account_state_root(home: FilePath, selection: CodexAccountSelection) -> CodexStateRoot {
+  join([
+    home as String,
+    "/",
+    codex_account_directory_name(selection: selection),
+  ], "") as CodexStateRoot
+}
+
+data provider_account_sharing_note: String = "HOW MANY CONCURRENT SESSIONS MAY BIND TO ONE ACCOUNT IS DERIVED FROM THE CREDENTIAL'S PERSISTENCE, never declared beside it. A declared number is a second representation of a fact the credential already determines: a store rewritten on every refresh is a write-contention point and cannot take concurrent binders, while one written only at login is read-mostly and can. Letting a deployment state its own concurrency would let it state a number the credential cannot honour, and the failure would appear an hour later as an intermittent auth error attributed to the network.\\n\\nThe three-way split is the point. ExclusiveBinding and ConcurrentBindingSafe are answers; SharingDisciplineUnknown is the absence of one, and it is NOT a cautious default that quietly means exclusive — it is a state with no admission arm at all, so a deployment cannot be built against a credential whose behaviour has not been observed. Collapsing it into ExclusiveBinding would silently permit N=1 deployments on an unknown credential and read as though the question had been answered.\\n\\nToday's value comes from codex_observed_refresh_persistence, which is an OBSERVATION rather than a contract — seventeen sessions on one root for three days without a rewrite. That is why the mapping below routes CodexPersistenceObservedLoginOnly to ConcurrentBindingSafe with the evidence behind it, and CodexPersistenceUnobserved to the unknown state that admits nothing."
+
+type CredentialSharingDiscipline
+  = SharingDisciplineUnknown
+  | ExclusiveBinding
+  | ConcurrentBindingSafe
+
+fn codex_sharing_discipline(
+  persistence: CodexRefreshPersistence,
+) -> CredentialSharingDiscipline {
+  match persistence {
+    CodexPersistenceUnobserved => SharingDisciplineUnknown
+    CodexPersistenceObservedLoginOnly => ConcurrentBindingSafe
+    CodexPersistsOnRefresh => ExclusiveBinding
+  }
+}
+
+fn codex_current_sharing_discipline() -> CredentialSharingDiscipline {
+  codex_sharing_discipline(persistence: codex_observed_refresh_persistence)
+}
+
+data provider_account_binding_admission_note: String = "ADMISSION HAS NO ARM FOR THE UNKNOWN DISCIPLINE, which is what makes an invalid architecture unwritable rather than merely discouraged. A binding of N concurrent sessions to one account is admitted when the credential is ConcurrentBindingSafe, admitted at exactly one when it is ExclusiveBinding, and REFUSED under SharingDisciplineUnknown at any N — including one — because a credential nobody has observed cannot be reasoned about even for a single consumer.\\n\\nThe refusal carries the account and the count so the diagnostic names the deployment that overreached rather than reporting that something somewhere is misconfigured. It is a typed value, not a Bool: a caller must match it, and the arm that would proceed anyway does not exist to be written.\\n\\nThis is the construction-over-validation rule applied to an architecture decision instead of a data shape. A post-hoc check that flagged over-binding would concede the over-bound deployment is writable and merely wrong; giving the admission no such constructor means the deployment cannot be expressed."
+
+type AccountBindingAdmission
+  = BindingAdmitted {
+      selection: CodexAccountSelection,
+      concurrent_sessions: Int,
+    }
+  | BindingRefusedUnknownDiscipline {
+      selection: CodexAccountSelection,
+      concurrent_sessions: Int,
+    }
+  | BindingRefusedExclusiveOverbound {
+      selection: CodexAccountSelection,
+      concurrent_sessions: Int,
+    }
+
+fn admit_account_binding(
+  selection: CodexAccountSelection,
+  concurrent_sessions: Int,
+  discipline: CredentialSharingDiscipline,
+) -> AccountBindingAdmission {
+  match discipline {
+    SharingDisciplineUnknown =>
+      BindingRefusedUnknownDiscipline {
+        selection: selection,
+        concurrent_sessions: concurrent_sessions,
+      }
+    ExclusiveBinding =>
+      if concurrent_sessions > 1 {
+        BindingRefusedExclusiveOverbound {
+          selection: selection,
+          concurrent_sessions: concurrent_sessions,
+        }
+      } else {
+        BindingAdmitted {
+          selection: selection,
+          concurrent_sessions: concurrent_sessions,
+        }
+      }
+    ConcurrentBindingSafe =>
+      BindingAdmitted {
+        selection: selection,
+        concurrent_sessions: concurrent_sessions,
+      }
+  }
+}
+
+data provider_account_observed_roster_note: String = "THE THREE ROOTS ACTUALLY PRESENT ON srv2 as of 2026-07-30, recorded so the model can be checked against the machine rather than describing an imagined fleet. The default account carries seventeen concurrent sessions; the two labelled accounts exist and are separately authenticated. gunbc-roadmap is the dedicated dashboard account and had zero sessions at the time of observation, which is the state the belt is being built to change.\\n\\nA roster is a snapshot and will go stale — that is expected and acceptable here, because its purpose is to ground the naming convention in instances that existed rather than to track live state. Anything needing current occupancy observes the host."
+
+data srv2_observed_codex_accounts: List<String> = [
+  ".codex",
+  ".codex@briansrls-gunb.ai",
+  ".codex@gunbc-roadmap",
+]

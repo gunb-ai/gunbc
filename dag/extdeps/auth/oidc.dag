@@ -1,0 +1,64 @@
+module extdeps.auth.oidc
+
+import std.types { String, NonEmptyStr, Bool, List, Email }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.auth.jwt { NumericDate, JwtStringOrUri, JwtRegisteredClaims }
+
+data oidc_core_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "openid.net/specs/openid-connect-core-1_0.html"
+  }
+}
+
+data oidc_amr_external_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc8176"
+  }
+}
+
+data oidc_standard_claims_note: String = "OpenID Connect Core 1.0 section 5.1 STANDARD CLAIMS, which are the OIDF's and not any provider's. email, email_verified and name mean the same thing in every id_token that carries them, so a vendor module redefining them would fork a concept with a specification.\\n\\nemail_verified is the one worth naming explicitly: section 5.1 says it is a BOOLEAN, and that when true the provider asserts it took affirmative steps to verify the address at some point — it is a claim about the provider's past diligence, not a guarantee the address is currently reachable or still controlled by the subject. Treating it as proof of present control is the standard misreading, and the spec says so in the claim's own definition."
+
+type OidcStandardClaims {
+  email: Email
+  email_verified: Bool
+  name: String
+}
+
+data oidc_amr_note: String = "amr IS A LIST OF AUTHENTICATION METHODS, AND IT MIXES REGISTERED WITH PRIVATE VALUES IN ONE ARRAY. RFC 8176 establishes an IANA registry of short names — pwd, mfa, otp, pop, hwk, sms and others — and OIDC Core section 2 permits any StringOrURI, so providers namespace their own methods as URIs alongside the registered ones.\\n\\nThe observed codex id_token demonstrates exactly this: its amr carries the registered pop and mfa next to urn:openai:amr:passkey and urn:openai:amr:google. A closed enum would have to reject the vendor values or silently drop them; a bare list of strings would lose the fact that two of the four have specified meanings and two are private. The coproduct keeps both readable, and the colon rule from RFC 7519 section 2 is what makes the split decidable rather than a guess.\\n\\nThe registered arm is deliberately not exhaustive over the IANA registry — it names the values actually encountered, and an unrecognized short name lands in AmrUnregisteredName rather than being forced into a URI arm it does not belong in. That is a third state on purpose: 'a registered-looking name this model has not enumerated' is different information from 'a vendor URI'."
+
+type OidcAuthMethodReference
+  = AmrProofOfPossession
+  | AmrMultiFactor
+  | AmrPassword
+  | AmrOneTimePassword
+  | AmrUnregisteredName { name: NonEmptyStr }
+  | AmrPrivateUri { uri: NonEmptyStr }
+
+data amr_pop_wire: String = "pop"
+data amr_mfa_wire: String = "mfa"
+data amr_pwd_wire: String = "pwd"
+data amr_otp_wire: String = "otp"
+
+fn oidc_amr_of_wire(raw: NonEmptyStr) -> OidcAuthMethodReference {
+  let s = raw as String
+  if s == amr_pop_wire { AmrProofOfPossession }
+  else if s == amr_mfa_wire { AmrMultiFactor }
+  else if s == amr_pwd_wire { AmrPassword }
+  else if s == amr_otp_wire { AmrOneTimePassword }
+  else if string_contains(s: s, pattern: ":") { AmrPrivateUri { uri: raw } }
+  else { AmrUnregisteredName { name: raw } }
+}
+
+data oidc_id_token_claims_note: String = "The id_token claims OIDC Core adds on top of RFC 7519's registered set (section 2): auth_time, the instant the end-user authentication actually occurred; acr, the authentication context class; amr, the methods used; and sid, the session identifier from Session Management.\\n\\nauth_time and iat are DIFFERENT INSTANTS and the distinction matters for any freshness decision. iat is when this token was issued — which a silent refresh updates — while auth_time is when the human last actually authenticated, which a refresh does not. A max-age policy written against iat would be satisfied forever by automatic refreshes without the user ever proving presence again."
+
+type OidcIdTokenClaims {
+  registered: JwtRegisteredClaims
+  standard: OidcStandardClaims
+  auth_time: NumericDate
+  acr: NonEmptyStr
+  amr: List<OidcAuthMethodReference>
+  session_id: NonEmptyStr
+}

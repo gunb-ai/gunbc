@@ -29,6 +29,7 @@ import extdeps.tmux {
 import extdeps.ssh.session { shape_scp_copy_to_argv }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
+  shape_codex_device_login_env_args_for_program,
   shape_codex_version_env_args_for_program,
   codex_cli_identity_contains,
 }
@@ -386,6 +387,62 @@ fn dashboard_stage_bundle(
   )
 }
 
+data serve_binary_copy_refusal_note: String = "THE SOURCE IS CHECKED BEFORE THE COPY so a missing build refuses by its own path rather than through cp's error. An absent target/release/gunbc is the ordinary state of a fresh controller checkout — nobody has built yet — and it is the single most likely reason this step fails, so it earns a refusal that names the file it looked for instead of a generic copy failure the reader has to decode.\\n\\nThe destination directory is created first because the instance's bin/ has no other creator: serve_binary is derived as a child of the instance root, and every other ensured directory in the plan is a sibling. Relying on the copy to imply its parent would fail on a fresh instance in a way that reads like a permissions problem.\\n\\nThe executable bit is set explicitly rather than inherited. cp preserves mode from the source, which is correct today and silently wrong the moment the build lands non-executable or the copy path changes — and a serve binary that exists but cannot execute produces a service that fails to start with no indication the provisioner is why."
+
+fn dashboard_ensure_serve_binary(
+  instance: HostDashboardInstance,
+  controller_repo: FilePath,
+  built_binary: FilePath,
+  path: FilePath,
+) -> DashboardExecResult {
+  let present = dashboard_local_exec(
+    workdir: controller_repo,
+    program: "/usr/bin/test" as FilePath,
+    args: ["-f", built_binary as String],
+  )
+  if !present.success {
+    dashboard_exec_refused(detail: join([
+      "controller seed binary absent: ",
+      built_binary as String,
+      " — build it before apply; this step copies, it never builds",
+    ], ""))
+  } else {
+    let parent = dashboard_target_exec(
+      instance: instance,
+      program: "/usr/bin/dirname" as FilePath,
+      args: [path as String],
+    )
+    if !parent.success {
+      parent
+    } else {
+      let made = dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/mkdir" as FilePath,
+        args: ["-p", trim(parent.stdout)],
+      )
+      if !made.success {
+        made
+      } else {
+        let copied = dashboard_copy_to_target_atomically(
+          instance: instance,
+          controller_workdir: controller_repo,
+          local_path: built_binary,
+          remote_path: path,
+        )
+        if !copied.success {
+          copied
+        } else {
+          dashboard_target_exec(
+            instance: instance,
+            program: "/usr/bin/chmod" as FilePath,
+            args: ["0755", path as String],
+          )
+        }
+      }
+    }
+  }
+}
+
 fn dashboard_ensure_local_origin(
   instance: HostDashboardInstance,
   bundle: FilePath,
@@ -640,6 +697,19 @@ fn dashboard_apply_provision_op(
         instance: instance,
         program: "/usr/bin/mkdir" as FilePath,
         args: ["-p", path as String],
+      )
+    DashboardEnsureProviderStateRoot { path } =>
+      dashboard_target_exec(
+        instance: instance,
+        program: "/usr/bin/mkdir" as FilePath,
+        args: ["-p", path as String],
+      )
+    DashboardEnsureServeBinary { controller_repo, built_binary, path } =>
+      dashboard_ensure_serve_binary(
+        instance: instance,
+        controller_repo: controller_repo,
+        built_binary: built_binary,
+        path: path,
       )
     DashboardEnsureOwnershipMarker { path, instance_id: _ } =>
       dashboard_target_exec(
@@ -1049,10 +1119,18 @@ fn dashboard_instance_observe(
   }
 }
 
+data preflight_provider_deadlock_note: String = "A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan operation, and it refuses when the provider is unauthenticated — but the operation that CREATES the state root a login writes into is a plan operation. So on a genuinely new instance the sequence was: preflight refuses at provider-auth, the ensure-state-root op never runs, the operator types codex login, and the CLI exits with 'that path does not exist'. The only way out was to create the directory by hand, which is the workaround this repository treats as a line-stop (review, 2026-07-30).\\n\\nsrv2 did not hit it because the login had already happened before the ensure op existed. That is precisely the masking condition worth recording: the deadlock is invisible on every host that was provisioned by hand first, and appears only on the first host that was not.\\n\\nDashboardApplyPreflightBootstrapPending is the third outcome the two-valued result could not express. Everything a deployment can do WITHOUT a credential — directories, the state root itself, the serve binary — is genuinely ready; only the provider is not. Reporting that as a flat refusal conflates 'this cannot proceed' with 'this can proceed up to the point a human is required', and those have different next actions: one is a defect, the other is an escalation."
+
 type DashboardApplyPreflightResult
   = DashboardApplyPreflightReady {
       instance_id: NonEmptyStr,
       source_revision: CommitSha,
+    }
+  | DashboardApplyPreflightBootstrapPending {
+      instance_id: NonEmptyStr,
+      source_revision: CommitSha,
+      state_root: FilePath,
+      remediation: String,
     }
   | DashboardApplyPreflightRefused {
       instance_id: NonEmptyStr,
@@ -1152,6 +1230,8 @@ fn dashboard_source_preflight_decision(
   }
 }
 
+data required_executables_are_preconditions_not_deliverables_note: String = "THE SERVE BINARY LEFT THIS ROSTER BECAUSE IT STOPPED BEING A PRECONDITION. This list is what must ALREADY EXIST on the target for provisioning to be possible — git to clone, tmux to run the service, mkdir and mv and cp to place things, the provider executable to preflight auth. The serve binary used to qualify because instances borrowed production's, which was installed by a different mechanism and always present.\\n\\nMaking it instance-owned turned it into an OUTPUT of the very plan this preflight gates, and the two facts together are a deadlock: preflight refuses because the binary is absent, and the only thing that installs it is the apply preflight is refusing to admit. Observed exactly that way on srv2 — a refusal naming a path that nothing but the blocked apply could ever create.\\n\\nThe distinction the roster now holds is precondition versus deliverable, and it is worth stating because the deadlock is invisible while every path happens to pre-exist. dirname and chmod join for the same reason the binary leaves: the install step runs them, so they are genuinely required beforehand. Whether the binary landed is answered AFTER apply by the readback, which is where an output belongs."
+
 fn dashboard_required_target_executables(
   instance: HostDashboardInstance,
 ) -> List<FilePath> {
@@ -1165,7 +1245,8 @@ fn dashboard_required_target_executables(
         "/usr/bin/touch" as FilePath,
         "/usr/bin/mv" as FilePath,
         "/usr/bin/nc" as FilePath,
-        instance.serve_binary,
+        "/usr/bin/dirname" as FilePath,
+        "/usr/bin/chmod" as FilePath,
         dashboard_instance_provider_executable(instance: instance),
       ],
       dashboard_instance_dispatch_platform_executables(instance: instance),
@@ -1329,6 +1410,13 @@ fn dashboard_instance_apply_preflight(
           match source {
             DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
               source
+            DashboardApplyPreflightBootstrapPending {
+              instance_id: _,
+              source_revision: _,
+              state_root: _,
+              remediation: _,
+            } =>
+              source
             DashboardApplyPreflightReady {
               instance_id: _,
               source_revision,
@@ -1379,7 +1467,7 @@ fn dashboard_instance_apply_preflight(
                     } else if !observed.provider_runtime_ready {
                       dashboard_apply_preflight_refused(
                         instance: instance,
-                        step: "provider-runtime",
+                        step: "provider-runtime-unrealized",
                         detail: join([
                           "codex --version did not realize ",
                           codex_cli_identity_contains,
@@ -1393,19 +1481,12 @@ fn dashboard_instance_apply_preflight(
                         ], ""),
                       )
                     } else if !observed.provider_authenticated {
-                      dashboard_apply_preflight_refused(
-                        instance: instance,
-                        step: "provider-auth",
-                        detail: join([
-                          "codex login status failed for ",
-                          dashboard_instance_provider_state_root(instance: instance) as String,
-                          if observed.provider_auth_detail == "" {
-                            ""
-                          } else {
-                            join([": ", observed.provider_auth_detail], "")
-                          },
-                        ], ""),
-                      )
+                      DashboardApplyPreflightBootstrapPending {
+                        instance_id: instance.instance_id,
+                        source_revision: source_revision,
+                        state_root: dashboard_instance_provider_state_root(instance: instance),
+                        remediation: dashboard_provider_device_login_command(instance: instance),
+                      }
                     } else {
                       DashboardApplyPreflightReady {
                         instance_id: instance.instance_id,
@@ -1434,6 +1515,20 @@ fn dashboard_apply_preflight_json_value(
         json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
         json_kv(key: "status", value: json_string(s: "ready")),
         json_kv(key: "source_revision", value: json_string(s: source_revision)),
+      ])
+    DashboardApplyPreflightBootstrapPending {
+      instance_id,
+      source_revision,
+      state_root,
+      remediation,
+    } =>
+      json_object(members: [
+        json_kv(key: "schema", value: json_string(s: "dashboard-instance-preflight/v1")),
+        json_kv(key: "instance_id", value: json_string(s: instance_id as String)),
+        json_kv(key: "status", value: json_string(s: "bootstrap-pending")),
+        json_kv(key: "source_revision", value: json_string(s: source_revision)),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
       ])
     DashboardApplyPreflightRefused { instance_id, step, detail } =>
       json_object(members: [
@@ -1635,6 +1730,48 @@ fn dashboard_instance_apply_after_preflight(
   }
 }
 
+data bootstrap_then_escalate_note: String = "THE ARM THAT BREAKS THE DEADLOCK: run everything a credential is not required for, then stop and say what a human must do. The credential-free prefix is exactly the operations whose absence blocked the login — the instance root, the attempts and attempt-state directories, the provider state root, and the serve binary — none of which reads or writes a secret.\\n\\nIt is an ESCALATION, not a success and not a defect. dashboard_apply_refused is reused as the carrier because the deployment did not converge and must not report that it did, but the step name and the remediation say plainly that the remaining work is a human's device-code login rather than a broken deployment. Returning Converged here would be the fabricated verdict; returning a bare refusal is what created the deadlock, because it left the directory uncreated.\\n\\nThe receipts from the bootstrap operations are carried through, so a reader can see WHICH prerequisites were satisfied before the stop. That distinguishes 'stopped at the credential with everything else in place' from 'stopped early for an unrelated reason', which a refusal with an empty receipt list cannot."
+
+data dashboard_bootstrap_unused_temp_path_note: String = "dashboard_apply_plan takes the two controller-side temp paths because its bundle operations need them; the bootstrap subset contains no bundle operation, so neither value is ever read. Passing a named marker rather than a plausible-looking /tmp path is deliberate — a realistic path would read as though a temp directory had been created and was being used, and the next reader would look for the mktemp that never ran. If a bundle op ever reaches this fold, the marker appears in the emitted argv and fails loudly instead of silently writing somewhere real."
+
+data dashboard_bootstrap_unused_temp_path: FilePath = "/nonexistent/gunbc-bootstrap-has-no-temp-dir" as FilePath
+
+fn dashboard_bootstrap_only_ops(
+  instance: HostDashboardInstance,
+) -> List<DashboardInstanceProvisionOp> {
+  dashboard_instance_provision_plan(instance: instance)
+    |> filter(op => match op {
+      DashboardEnsureDirectory { path: _ } => true
+      DashboardEnsureProviderStateRoot { path: _ } => true
+      DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => true
+      _ => false
+    })
+}
+
+fn dashboard_apply_bootstrap_then_escalate(
+  instance: HostDashboardInstance,
+  state_root: FilePath,
+  remediation: String,
+) -> DashboardInstanceApplyResult {
+  let applied = dashboard_apply_plan(
+    instance: instance,
+    plan: dashboard_bootstrap_only_ops(instance: instance),
+    temp_bundle: dashboard_bootstrap_unused_temp_path,
+    temp_verify_repo: dashboard_bootstrap_unused_temp_path,
+  )
+  dashboard_apply_refused(
+    instance: instance,
+    step: "provider-auth-required",
+    detail: join([
+      "credential-free bootstrap complete; the provider state root ",
+      state_root as String,
+      " now exists and awaits an operator device-code login: ",
+      remediation,
+    ], ""),
+    receipts: applied.receipts,
+  )
+}
+
 fn dashboard_instance_apply(
   instance: HostDashboardInstance,
   production: DashboardProductionPeer,
@@ -1649,6 +1786,17 @@ fn dashboard_instance_apply(
         step: step as String,
         detail: detail,
         receipts: [],
+      )
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root,
+      remediation,
+    } =>
+      dashboard_apply_bootstrap_then_escalate(
+        instance: instance,
+        state_root: state_root,
+        remediation: remediation,
       )
     DashboardApplyPreflightReady {
       instance_id: _,
@@ -1689,6 +1837,15 @@ func srv1_lab_dashboard_preflight_wet() -> ProcessExit {
       instance_id: _,
       source_revision: _,
     } => ExitSuccess
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
+        result: result,
+      )))
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
         result: result,
@@ -1738,6 +1895,15 @@ func srv2_lab_dashboard_preflight_wet() -> ProcessExit {
       instance_id: _,
       source_revision: _,
     } => ExitSuccess
+    DashboardApplyPreflightBootstrapPending {
+      instance_id: _,
+      source_revision: _,
+      state_root: _,
+      remediation: _,
+    } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
+        result: result,
+      )))
     DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
         result: result,
@@ -1756,4 +1922,128 @@ func srv2_lab_dashboard_apply_wet() -> ProcessExit {
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
       exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
   }
+}
+
+data provider_readiness_readback_note: String = "THE PAGE SHOWED WHAT WAS DESIRED AND NEVER WHAT WAS TRUE. /instance.json renders desired_provision_plan, which INCLUDES the verify-provider-auth row — so a reader saw that authentication is required and nothing about whether it holds. The first anyone learned of a missing login was a shell error in an operator's terminal, which is the observation gap DESIGN 5 calls specification-without-execution: the check existed, was correct, and was bound to no surface (operator, 2026-07-30: 'the roadmap website can just send me the status/details to log in').\\n\\nTHE THREE STATES ARE SEPARATE BECAUSE THEIR REMEDIES ARE. An absent state root is fixed by creating a directory; an unavailable runtime is a packaging or PATH problem; an unauthenticated runtime needs an interactive OAuth flow only a human can complete. Collapsing them into one ready: Bool would report 'not ready' for all three and leave the reader to guess which — the state-space conflation this repository names, and the reason the apply already keeps runtime and auth as independent probes so a broken npm launcher cannot masquerade as an auth refusal.\\n\\nTHE REMEDIATION COMMAND IS DERIVED FROM THE SAME SHAPE THE PROBE RUNS, never spelled a second time. A hand-written instruction string is a parallel representation of the invocation: it drifts the moment the env var, the program path, or the state root changes, and it drifts silently because nothing executes prose. Building it from shape_codex_login_status_env_args_for_program's own inputs means the line the page prints and the line the model checks cannot disagree about where the credentials live."
+
+data codex_probe_stream_note: String = "codex SPLITS ITS VERDICTS ACROSS STREAMS, and reading one of them reported a ready provider with no evidence attached. `codex --version` writes codex-cli 0.145.0 to stdout; `codex login status` writes 'Logged in using ChatGPT' to STDERR. Verified per-stream on srv2 by redirecting each independently: stdout alone is empty for login status, stderr alone carries the line.\\n\\nThe way this hid is worth recording, because it is the same error twice in one session. The first check of the login ran `login status 2>&1 | tail -3`, which MERGES the streams — so the verdict appeared, the probe looked correct, and which stream it came from was exactly the fact the merge destroyed. A verification that erases the distinction the code depends on cannot detect the code getting it wrong; the same shape as confirming an HTTP fix with a client that never exercises the failing path.\\n\\nSo the detail is read from whichever stream carried it, and an empty result stays visibly empty rather than being reported as a successful probe with nothing to show. This is not leniency about failure — success is still decided by the exit status alone, exactly as before; only the human-readable evidence is gathered from both places, which is what dashboard_instance_apply_note already requires when it says successful stderr is retained rather than dropped."
+
+fn codex_probe_detail(out: String, err: String) -> String {
+  let o = trim(out)
+  let e = trim(err)
+  if o == "" { e } else if e == "" { o } else { join([o, e], " | ") }
+}
+
+type DashboardProviderReadiness
+  = ProviderReady {
+      runtime_detail: String,
+      auth_detail: String,
+    }
+  | ProviderStateRootAbsent {
+      state_root: FilePath,
+      remediation: String,
+    }
+  | ProviderRuntimeUnavailable {
+      executable: FilePath,
+      detail: String,
+    }
+  | ProviderUnauthenticated {
+      state_root: FilePath,
+      detail: String,
+      remediation: String,
+    }
+
+data provider_login_command_projects_the_shaper_note: String = "THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless host MUST use --device-auth because the plain flow's callback resolves to localhost on the server rather than the operator's machine (review, 2026-07-30).\\n\\nSo the emitted instruction was the one proven not to work, spelled a second time beside the shaper built to prevent exactly that. Two representations of one invocation, and the prose one drifts silently because nothing executes it.\\n\\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same object. If the env var, the program path or the flag changes, both move together — and the operator is never handed a command this repository has already established cannot complete."
+
+fn dashboard_provider_device_login_command(instance: HostDashboardInstance) -> String {
+  join(
+    shape_codex_device_login_env_args_for_program(
+      program: dashboard_instance_provider_executable(instance: instance) as String,
+      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+    ),
+    " ",
+  )
+}
+
+data state_root_remediation_is_now_the_apply_note: String = "The remediation no longer tells the operator to mkdir. Creating the state root is DashboardEnsureProviderStateRoot's job and the apply reaches it now that provider absence yields BootstrapPending instead of a refusal — so instructing a human to run mkdir would be asking them to perform a step the deployment already owns, and the hand-run directory would then differ in ownership from the one the plan creates.\\n\\nWhat remains is the part only a human can do: the device-code login. Both arms therefore project the same shaper, and the difference between them is which state the reader is in rather than which command they should type."
+
+fn dashboard_provider_state_root_remediation(instance: HostDashboardInstance) -> String {
+  dashboard_provider_device_login_command(instance: instance)
+}
+
+fn dashboard_provider_readiness(
+  instance: HostDashboardInstance,
+) -> DashboardProviderReadiness {
+  let state_root = dashboard_instance_provider_state_root(instance: instance)
+  if !dashboard_target_directory_present(instance: instance, path: state_root) {
+    ProviderStateRootAbsent {
+      state_root: state_root,
+      remediation: dashboard_provider_state_root_remediation(instance: instance),
+    }
+  } else {
+    let runtime = dashboard_target_probe(
+      instance: instance,
+      program: dashboard_environment_binding_executable,
+      args: shape_codex_version_env_args_for_program(
+        program: dashboard_instance_provider_executable(instance: instance) as String,
+        codex_home: state_root as String,
+      ),
+    )
+    if !runtime.success {
+      ProviderRuntimeUnavailable {
+        executable: dashboard_instance_provider_executable(instance: instance),
+        detail: trim(runtime.stderr),
+      }
+    } else {
+      let auth = dashboard_target_probe(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_login_status_env_args_for_program(
+          program: dashboard_instance_provider_executable(instance: instance) as String,
+          codex_home: state_root as String,
+        ),
+      )
+      if !auth.success {
+        ProviderUnauthenticated {
+          state_root: state_root,
+          detail: trim(auth.stderr),
+          remediation: dashboard_provider_device_login_command(instance: instance),
+        }
+      } else {
+        ProviderReady {
+          runtime_detail: codex_probe_detail(out: runtime.stdout, err: runtime.stderr),
+          auth_detail: codex_probe_detail(out: auth.stdout, err: auth.stderr),
+        }
+      }
+    }
+  }
+}
+
+fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String {
+  serialize_json(v: json_object(members: concat(
+    [json_kv(key: "schema", value: json_string(s: "roadmap-provider-readiness/v1"))],
+    match dashboard_provider_readiness(instance: instance) {
+      ProviderReady { runtime_detail, auth_detail } => [
+        json_kv(key: "status", value: json_string(s: "ready")),
+        json_kv(key: "runtime_detail", value: json_string(s: runtime_detail)),
+        json_kv(key: "auth_detail", value: json_string(s: auth_detail)),
+      ]
+      ProviderStateRootAbsent { state_root, remediation } => [
+        json_kv(key: "status", value: json_string(s: "state-root-absent")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+      ProviderRuntimeUnavailable { executable, detail } => [
+        json_kv(key: "status", value: json_string(s: "runtime-unavailable")),
+        json_kv(key: "executable", value: json_string(s: executable as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+      ]
+      ProviderUnauthenticated { state_root, detail, remediation } => [
+        json_kv(key: "status", value: json_string(s: "unauthenticated")),
+        json_kv(key: "state_root", value: json_string(s: state_root as String)),
+        json_kv(key: "detail", value: json_string(s: detail)),
+        json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+    }
+  )))
 }

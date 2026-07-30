@@ -109,6 +109,33 @@ fn shape_tmux_respawn_pane_argv_for(
   )
 }
 
+data tmux_capture_fidelity_note: String = "WHETHER A CAPTURE CARRIES ESCAPES IS A tmux FACT, and it is a fact about capture-pane specifically rather than about whatever program happened to write into the pane. tmux keeps a RENDERED grid: the pane's contents are the characters currently displayed, with the control sequences that positioned and coloured them already consumed by the renderer. So `capture-pane -p` emits plain text, and `-e` re-serializes escape sequences for the attributes it stored. Cited against tmux's own manual, which documents -e as 'the output includes escape sequences for text and background attributes' — the flag ADDS them back; their absence is the default, not an accident.\\n\\nThe distinction is typed rather than left as a bare flag because the two outputs are different kinds of thing and only one of them is safe to parse. A caller that wants values out of a pane wants CapturePlainText; a caller reproducing a terminal's appearance wants CaptureWithEscapes; and a Bool named include_escapes at the call site would let the wrong one through with no signal. Verified on srv2: a plain capture of a colour-emitting CLI contains zero escape bytes under cat -v.\\n\\nThis module says nothing about which program is being captured. That is the point — the fidelity is tmux's, the format inside the pane belongs to whoever wrote it, and a consumer composes the two."
+
+type TmuxCaptureFidelity
+  = CapturePlainText
+  | CaptureWithEscapes
+
+fn tmux_capture_fidelity_argv(fidelity: TmuxCaptureFidelity) -> List<String> {
+  match fidelity {
+    CapturePlainText => []
+    CaptureWithEscapes => ["-e"]
+  }
+}
+
+fn shape_tmux_capture_pane_argv_for(
+  scope: TmuxServerScope,
+  target: String,
+  fidelity: TmuxCaptureFidelity,
+) -> List<String> {
+  concat(
+    tmux_server_scope_argv(scope: scope),
+    concat(
+      ["capture-pane", "-p"],
+      concat(tmux_capture_fidelity_argv(fidelity: fidelity), ["-t", target]),
+    ),
+  )
+}
+
 fn shape_tmux_ls_argv_for(scope: TmuxServerScope) -> List<String> {
   concat(tmux_server_scope_argv(scope: scope), ["ls"])
 }

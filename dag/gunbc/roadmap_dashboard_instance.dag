@@ -335,6 +335,8 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
 
 data isolated_instance_layout_parameter_note: String = "host_identity USED TO BE A PARAMETER OVER A BODY OF srv1 LITERALS, which made a second host expressible without making it representable. Serve binary, provider state root, and source-seed controller repo were pinned to srv1 rows here, so srv2_preview_dashboard_instance below produced a value reading host_identity srv2 while describing srv1's binary, srv1's Codex home, and srv1's controller worktree. Nothing caught it because every consumer that would disagree — preflight, apply, the git and tmux observations — needs the host to actually be actuated, and that instance was declared observe-only and never provisioned.\\n\\nTaking the whole layout row instead of a bare host_identity makes the mismatch unwritable: there is no longer a way to name a host without also supplying the three facts that belong to it, because the name IS a field of the row that carries them. gunbc.host_layout owns those rows."
 
+data isolated_instance_own_binary_note: String = "EACH INSTANCE OWNS ITS BINARY, BECAUSE THE PROCESSES ARE MUTUALLY EXCLUSIVE (operator ruling, 2026-07-30). The serve binary used to come from the host layout, so every isolated instance on one machine resolved to the same /opt/gunbc/bin/gunbc that production declares. dashboard_instance_owned_paths does not cover serve_binary — it checks origin, source, attempts and attempt-state — so the existing disjointness check passed while the DEPLOYMENT's owned-artifact set overlapped production on exactly that path.\\n\\nThe consequence was not a stale read. ServeBinary is an Owned artifact and retract tears Owned members down, so retracting a lab would have deleted the binary production is executing. That could not fire before deployments became expressible per instance, which is why it surfaced the moment the twin witness was written and not one commit earlier: the hazard is created by the capability, so it has to be closed in the same change that grants it.\\n\\nDeriving from the instance root rather than the layout also states the isolation the labs exist for — a lab testing a new seed must not overwrite the binary production is running. srv1-live is untouched: it declares /opt/gunbc/bin/gunbc directly rather than through this constructor, which is why its emitted apply and retract scripts stay byte-identical. GunbcHostLayout.gunbc_serve_binary keeps only srv1-live's own declaration as a consumer; it is a per-INSTANCE fact wearing a per-host name, and it dissolves when srv1-live is expressed as an instance row like the rest."
+
 data isolated_instance_anchor_parameter_note: String = "WHICH REF A LAB SERVES IS THE LAB'S OWN FACT, and it was the fourth srv1-preview literal hiding in this constructor — found by probing the served endpoints after the other three were lifted, not by reading the diff. Every isolated instance inherited anchor_ref refs/heads/session/codex-provider-feedback-v0, so a newly added lab would have provisioned itself from a stale feedback branch belonging to a different lane while its page, its instance id, and its posture all read correctly. Nothing would have refused; it would simply have served the wrong source.\\n\\nThat is worse than the host-fact defect above, which produced identical values and no wrong output. This one produces a plausible page from unintended content — the failure that looks like success. It is a parameter rather than a layout field because two labs on ONE host may legitimately serve different refs; the ref belongs to the instance, not the machine."
 
 fn isolated_dashboard_instance(
@@ -359,13 +361,13 @@ fn isolated_dashboard_instance(
     dispatch_worktree_root: dashboard_instance_child(root: root, child: "attempts"),
     dispatch_attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     execution_environment: dashboard_execution_environment(
-      serve_binary: layout.gunbc_serve_binary,
+      serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     ),
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
     },
-    serve_binary: layout.gunbc_serve_binary,
+    serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     serve_function: serve_function,
     listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: listen_port,
@@ -430,12 +432,15 @@ fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
   starts_with(s: path as String, prefix: concat(root as String, "/"))
 }
 
+data owned_paths_omitted_the_binary_note: String = "serve_binary WAS MISSING FROM THE CANONICAL OWNED SET while live_deploy treated it as an Owned artifact and removed it on retract — two models of one fact, one saying owned-and-retractable and the other saying neither (review, 2026-07-30). The omission was correct while instances BORROWED production's binary: a path you do not own does not belong in your owned set. Making it instance-derived changed the answer and nothing propagated it here.\\n\\nThe consequence was concrete rather than tidy. dashboard_instances_have_disjoint_owned_paths reads this roster, so the disjointness check could not see the one path two instances actually shared — which is why the twin witness had to assert binary inequality as a SEPARATE conjunct rather than getting it from the canonical set. A check that needs a hand-written supplement to cover the thing it exists to cover is not covering it.\\n\\nIt belongs here for both instance shapes: srv1-live's /opt/gunbc/bin/gunbc sits under its instance_root /opt/gunbc, and an isolated lab's sits under its own root by derivation, so dashboard_instance_paths_are_owned's containment law holds for both without exception. The twin claim can now drop its supplemental conjunct and read the roster."
+
 fn dashboard_instance_owned_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     instance.local_origin_root,
     instance.repo_root,
     instance.dispatch_worktree_root,
     instance.dispatch_attempt_state_root,
+    instance.serve_binary,
   ]
 }
 
@@ -462,6 +467,10 @@ fn dashboard_instances_have_disjoint_owned_paths(
   )
 }
 
+data serve_binary_ensure_note: String = "NOTHING INSTALLED A LAB'S BINARY, BECAUSE LABS USED TO BORROW PRODUCTION'S. Before serve_binary became instance-derived, every isolated instance resolved it to the host layout's /opt/gunbc/bin/gunbc — the file production is executing. That is why the plan had no install step: there was nothing to install, only something to point at. It is also exactly the hazard the twin witness caught, since ServeBinary is an Owned deployment artifact and a lab retract would have removed the binary out from under the running service.\\n\\nSo closing that hazard opened this gap, and the two belong in one change. An instance that owns its binary needs a step that puts one there, or the dashboard apply refuses at target-dependencies against a path only it was ever going to create — a chain that terminates in nobody's responsibility.\\n\\nIt copies rather than builds. The controller's already-built target/release/gunbc is the source, staged and moved into place through the same atomic copy the source bundle uses, so a half-written binary is never observable at the destination. Building is deliberately NOT modeled here: a provisioner that silently compiled would make apply's duration and its toolchain requirements invisible, and a stale or missing build should refuse with the path it looked for rather than quietly producing one that differs from what the operator tested."
+
+data provider_state_root_ensure_note: String = "THE MODEL VERIFIED AUTH AGAINST A DIRECTORY IT NEVER CREATED. DashboardVerifyProviderRuntime and DashboardVerifyProviderAuth both read the provider state root, and nothing in the plan brought it into existence — so on a fresh host the only command that can populate it fails first: `CODEX_HOME=... codex login` exits with 'that path does not exist' before any OAuth begins. The operator hits a CLI error in their own terminal instead of a typed refusal telling them what to do, which is the gap this variant closes (operator, 2026-07-30: 'i think this stuff needs to be in the workflow').\\n\\nIT IS A SEPARATE VARIANT BECAUSE ITS OWNERSHIP AND TEARDOWN DIFFER, and reusing DashboardEnsureDirectory would state neither. The state root lives OUTSIDE the instance root, so it can never be an owned path — dashboard_instance_paths_are_owned requires containment, and the roster it checks deliberately excludes this. And it must never be torn down: the directory holds user-authored OAuth state, so removing it on retract would destroy credentials the deploy is forbidden to carry in the first place. dashboard_retract_preserves_recovery_anchor_and_provider_state already asserts that preservation; the type now says it too.\\n\\nWhat this creates is a DIRECTORY, never a credential. dashboard_instance_note's rule stands unchanged — provider credentials remain pre-existing user-authored state, referenced and never copied into a deployment payload. An empty state root is infrastructure; the secret inside it is not, and this op cannot produce one."
+
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
       controller_repo: FilePath,
@@ -476,6 +485,12 @@ type DashboardInstanceProvisionOp
       staged_bundle: FilePath,
     }
   | DashboardEnsureDirectory { path: FilePath }
+  | DashboardEnsureProviderStateRoot { path: FilePath }
+  | DashboardEnsureServeBinary {
+      controller_repo: FilePath,
+      built_binary: FilePath,
+      path: FilePath,
+    }
   | DashboardEnsureOwnershipMarker {
       path: FilePath,
       instance_id: NonEmptyStr,
@@ -533,6 +548,17 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     DashboardEnsureDirectory { path: instance.instance_root },
     DashboardEnsureDirectory { path: instance.dispatch_worktree_root },
     DashboardEnsureDirectory { path: instance.dispatch_attempt_state_root },
+    DashboardEnsureProviderStateRoot {
+      path: dashboard_instance_provider_state_root(instance: instance),
+    },
+    DashboardEnsureServeBinary {
+      controller_repo: dashboard_instance_controller_workdir(instance: instance),
+      built_binary: dashboard_instance_child(
+        root: dashboard_instance_controller_workdir(instance: instance),
+        child: "target/release/gunbc",
+      ),
+      path: instance.serve_binary,
+    },
     DashboardEnsureOwnershipMarker {
       path: dashboard_instance_ownership_marker_path(instance: instance),
       instance_id: instance.instance_id,
@@ -628,6 +654,22 @@ fn dashboard_instance_provision_op_row(
         kind: "ensure-directory" as NonEmptyStr,
         target: path as String,
         detail: "mkdir parents; idempotent",
+      }
+    DashboardEnsureProviderStateRoot { path } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-provider-state-root" as NonEmptyStr,
+        target: path as String,
+        detail: "mkdir parents so the provider login has somewhere to write; never torn down, never populated by the deploy",
+      }
+    DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "ensure-serve-binary" as NonEmptyStr,
+        target: path as String,
+        detail: join([
+          "copy the controller's built seed from ",
+          built_binary as String,
+          "; atomic move, never a build",
+        ], ""),
       }
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       DashboardInstanceProvisionPlanRow {

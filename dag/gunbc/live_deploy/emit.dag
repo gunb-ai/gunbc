@@ -19,10 +19,7 @@ import gunbc.live_deploy.spec {
   deployment_plan_listen_port,
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
-  gunbc_roadmap_systemd_unit_path,
-  gunbc_tree_sync_unit_name,
-  gunbc_tree_sync_unit_path,
-  gunbc_tree_sync_env_path,
+  tree_sync_unit_path,
 }
 import gunbc.ownership { Ownership }
 import gunbc.membership_reconcile {
@@ -127,7 +124,7 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
     doc_line_of(text: join([
       "ExecStart=", svc.serve_binary,
       " serve --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/roadmap_serve.dag --function roadmap_serve_handle",
+      " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
       " --host ", host, " --port ", port,
     ], "")),
     doc_line_of(text: "Restart=on-failure"),
@@ -168,7 +165,7 @@ fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep>
 fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
   membership_reconcile(
     desired: [],
-    observed: map(deployment_owned_steps_retract_order(), s => ArtifactStep { step: s }),
+    observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
     key_of: deployment_step_key,
     key_eq: deployment_step_key_eq,
     value_eq: deployment_step_value_eq,
@@ -176,9 +173,14 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
   )
 }
 
+data staged_unit_filename_note: String = "The staged filename reads from spec.service.unit_name for the same reason the install does: these two steps write and then install THE SAME FILE, and while both were the literal gunbc-roadmap.service that agreement was a coincidence of two independent constants rather than a fact. Parameterizing only the install side would have left the writer staging one name and the installer copying another — a deploy that fails on a missing file, which is at least loud, or worse installs a stale unit left in the stage directory from a previous run."
+
 fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: concat(
-    concat("cat > \"$_gunbc_stage/gunbc-roadmap.service\" <<'GUNBC_UNIT_EOF'\n", render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)),
+    concat(
+      join(["cat > \"$_gunbc_stage/", spec.service.unit_name as String, "\" <<'GUNBC_UNIT_EOF'\n"], ""),
+      render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol),
+    ),
     "GUNBC_UNIT_EOF"
   ))
 }
@@ -195,7 +197,7 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
     doc_line_of(text: "Type=oneshot"),
     doc_line_of(text: concat("User=", user)),
     doc_line_of(text: concat("Group=", user)),
-    doc_line_of(text: concat("EnvironmentFile=", gunbc_tree_sync_env_path as String)),
+    doc_line_of(text: concat("EnvironmentFile=", spec.identity.tree_sync_env_path as String)),
     doc_line_of(text: join([
       "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
     ], "")),
@@ -214,13 +216,21 @@ fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> P
 
 data tree_sync_restart_diagnosis_note: String = "gunbc-tree-sync.service (#7011 realization) failed its control process on every srv1 deploy since landing (receipt 29928424523 and its predecessor 29926422286), and the bare 'sudo -n systemctl restart' stderr — 'Job for gunbc-tree-sync.service failed because the control process exited with error code' — never carries WHY: the actual ExecStart failure (the rsync exit) lives only in the unit's own journal, unreachable from this refusal (DESIGN 5 — a stopped, typed, but unlocated line, the same gap #7038 closed for gunbc-roadmap.service's async ServiceNotReady). This restart is SYNCHRONOUS, ahead of that poll-based unit_diagnosis capture entirely (GunbcSourceTree upsert runs before the SystemdUnit member), so it needs its own capture rather than waiting on one that never runs. Reuses the single unit-status-tail authority (live_deploy_unit_status_tail_command, gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired)."
 
-fn tree_sync_restart_step_with_diagnosis() -> PipelineStep {
+fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
-    systemctl_restart_command(unit: gunbc_tree_sync_unit_name, privileged: true),
+    systemctl_restart_command(unit: spec.identity.tree_sync_unit_name, privileged: true),
     " || { echo '--- gunbc-tree-sync.service control-process diagnosis ---' >&2; ",
-    live_deploy_unit_status_tail_command(unit: gunbc_tree_sync_unit_name),
+    live_deploy_unit_status_tail_command(unit: spec.identity.tree_sync_unit_name),
     " >&2; exit 1; }",
   ], ""))
+}
+
+data tailscale_teardown_cannot_be_scoped_note: String = "THE TEARDOWN WAS A GLOBAL RESET AND THERE IS NO SCOPED ALTERNATIVE. `sudo -n tailscale serve reset` removes the ENTIRE serve configuration for the node, so retracting a lab removed production's routing along with its own. That was invisible while one deployment existed per host and became a live hazard the moment placement became a parameter — the same shape as the shared serve binary, found by the same review and missed by the same path-disjointness witness (review, 2026-07-30).\\n\\nIT CANNOT SIMPLY BE FIXED, because the CLI offers no per-port removal. `tailscale serve --help` on this host lists exactly three top-level forms — serve <target>, serve status, serve reset — plus service-level subcommands (drain, clear, advertise) that operate on advertised Services rather than on a port mapping this deployment created. There is no `serve <port> off`.\\n\\nSo the arm REFUSES rather than widening. A global reset issued to remove one mapping is the absorbing fallback stated exactly: the precise operation is unavailable, so the superset runs and nothing is missed — while another deployment's routing is destroyed and the retract reports success. A typed, loud refusal leaves the route in place and tells the operator what it could not do, which is recoverable; the reset is not.\\n\\nDISSOLVES ON either tailscale gaining a scoped removal, or this deployment learning whether it is the sole serve mapping on the host — at which point a reset is provably safe and can run unconditionally."
+
+data live_deploy_tailscale_teardown_refused_poison: String = "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__ tailscale serve exposes no per-port removal (only a node-global `serve reset`), so this retract will not remove the mapping: doing so would delete every other deployment's routing on this host. Remove it deliberately, or dissolve this refusal by teaching the deployment whether it owns the only mapping (DESIGN 5: refuse, never widen)"
+
+fn tailscale_teardown_refusal_command() -> String {
+  concat("echo ", concat("'", concat(live_deploy_tailscale_teardown_refused_poison, "' >&2; false")))
 }
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
@@ -263,11 +273,11 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
       deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
       deploy_raw(command: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\""),
-      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" ", gunbc_tree_sync_env_path as String)),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" ", spec.identity.tree_sync_env_path as String)),
       apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
-      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" ", gunbc_tree_sync_unit_path as String)),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" ", tree_sync_unit_path(identity: spec.identity) as String)),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      tree_sync_restart_step_with_diagnosis(),
+      tree_sync_restart_step_with_diagnosis(spec: spec),
     ]
     ServeBinary => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc/bin"),
@@ -282,7 +292,10 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
     ]
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec),
-      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", spec.service.unit_name as String, "\" ",
+        art.path as String,
+      ], "")),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
       deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
@@ -298,11 +311,11 @@ data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
     TailscaleServeMapping => [
-      deploy_raw(command: "sudo -n tailscale serve reset || true"),
+      deploy_raw(command: tailscale_teardown_refusal_command()),
     ]
     SystemdUnit => [
       deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
-      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     DispatchWorktreeRoot => [
@@ -312,7 +325,7 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
     ]
     GunbcSourceTree => [
-      deploy_raw(command: concat("sudo -n rm -f ", concat(gunbc_tree_sync_unit_path as String, concat(" ", gunbc_tree_sync_env_path as String)))),
+      deploy_raw(command: concat("sudo -n rm -f ", concat(tree_sync_unit_path(identity: spec.identity) as String, concat(" ", spec.identity.tree_sync_env_path as String)))),
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       deploy_raw(command: concat("sudo -n rm -rf ", art.path as String)),
     ]
