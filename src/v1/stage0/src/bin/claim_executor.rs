@@ -588,6 +588,23 @@ struct ClaimResult {
     corpus_witnesses: usize,
     /// Per-witness eval+resolve identity preserved from discovery (empty for gate/single-claim rows).
     witness_row_costs: Vec<(String, String, u128, u128, u128, String, String)>,
+    /// Set only when this row was killed at a budget, carrying the pair that explains it.
+    ///
+    /// `ok`/`detail` are a lossy flattening of `ClaimOutcome`, so without this the batch's
+    /// failure mode has to be recovered by substring-matching `detail` — which is what
+    /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
+    /// message silently demoted a budget refusal to a witness failure. This keeps the fact
+    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
+    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    budget_refusal: Option<BudgetRefusal>,
+}
+
+/// The pair explaining a budget kill, kept alongside the flattened `ok`/`detail`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BudgetRefusal {
+    elapsed_ms: u64,
+    budget_ms: u64,
+    kind: BudgetKind,
 }
 
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
@@ -709,6 +726,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
@@ -720,6 +738,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
@@ -731,6 +750,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
@@ -742,6 +762,7 @@ fn claim_result_for_outcome(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         },
     }
 }
@@ -765,6 +786,7 @@ fn run_batch_unit(
             corpus_eval_nanos: 0,
             corpus_witnesses: 0,
             witness_row_costs: Vec::new(),
+            budget_refusal: None,
         }],
         BatchUnit::Discovery {
             source_roots: roots,
@@ -845,6 +867,7 @@ fn run_shared_entry_claims(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 })
                 .collect();
         }
@@ -904,6 +927,7 @@ fn run_memo_shared_claims(
                         corpus_eval_nanos: 0,
                         corpus_witnesses: 0,
                         witness_row_costs: Vec::new(),
+                        budget_refusal: None,
                     })
                     .collect();
             }
@@ -1332,6 +1356,7 @@ fn discovery_claim_result(
                 corpus_eval_nanos: summary.total_measured_nanos,
                 corpus_witnesses: summary.total,
                 witness_row_costs: Vec::new(),
+                budget_refusal: None,
             }
         }
     }
@@ -1494,6 +1519,7 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             } else {
                 ClaimResult {
@@ -1506,6 +1532,7 @@ fn run_discovery_batch_node(
                     corpus_eval_nanos: 0,
                     corpus_witnesses: 0,
                     witness_row_costs: Vec::new(),
+                    budget_refusal: None,
                 }
             }
         }
