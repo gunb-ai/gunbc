@@ -46,14 +46,14 @@ data jq_tool: CliTool = CliTool {
 
 data authored_pin: Pin<CliTool> = Pin {
   subject: cargo_tool,
-  version: Present { value: "1.93.0" as VersionIdentity },
+  version: "1.93.0" as VersionIdentity,
   expected_identity: cargo_identity,
   selection: ExactPin,
 }
 
 data tracked_pin: Pin<CliTool> = Pin {
   subject: jq_tool,
-  version: Present { value: "1.7.1" as VersionIdentity },
+  version: "1.7.1" as VersionIdentity,
   expected_identity: cargo_identity,
   selection: TrackedChannel {
     channel: "latest",
@@ -158,7 +158,7 @@ data reconcile_bundle_family_note: String = "The (key_of, value_eq) bundle P2 ha
 test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
   let bumped = Pin {
     subject: cargo_tool,
-    version: Present { value: "1.94.0" as VersionIdentity },
+    version: "1.94.0" as VersionIdentity,
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -169,7 +169,7 @@ test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
 test fn value_eq_covers_digest_not_only_version() -> Bool {
   let same_version_new_binary = Pin {
     subject: cargo_tool,
-    version: Present { value: "1.93.0" as VersionIdentity },
+    version: "1.93.0" as VersionIdentity,
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -181,7 +181,7 @@ data selection_is_reconcile_content_note: String = "Added after review 44329, wh
 test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
   let flipped = Pin {
     subject: cargo_tool,
-    version: Present { value: "1.93.0" as VersionIdentity },
+    version: "1.93.0" as VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
   }
@@ -191,7 +191,7 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
 test fn value_eq_detects_channel_change() -> Bool {
   let other_channel = Pin {
     subject: jq_tool,
-    version: Present { value: "1.7.1" as VersionIdentity },
+    version: "1.7.1" as VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
   }
@@ -201,7 +201,7 @@ test fn value_eq_detects_channel_change() -> Bool {
 test fn value_eq_detects_refresh_window_change() -> Bool {
   let wider_window = Pin {
     subject: jq_tool,
-    version: Present { value: "1.7.1" as VersionIdentity },
+    version: "1.7.1" as VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
   }
@@ -211,7 +211,7 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
 test fn value_eq_still_holds_for_identical_pins() -> Bool {
   let same = Pin {
     subject: jq_tool,
-    version: Present { value: "1.7.1" as VersionIdentity },
+    version: "1.7.1" as VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
@@ -237,14 +237,14 @@ data action_ref_synthetic_identity_note: String = "The two identities above are 
 
 data checkout_pin: Pin<ActionRef> = Pin {
   subject: checkout_action,
-  version: Present { value: "5.0.1" as VersionIdentity },
+  version: "5.0.1" as VersionIdentity,
   expected_identity: action_ref_pinned_identity,
   selection: ExactPin,
 }
 
 data checkout_pin_disagreeing: Pin<ActionRef> = Pin {
   subject: checkout_action,
-  version: Present { value: "5.0.1" as VersionIdentity },
+  version: "5.0.1" as VersionIdentity,
   expected_identity: action_ref_other_identity,
   selection: ExactPin,
 }

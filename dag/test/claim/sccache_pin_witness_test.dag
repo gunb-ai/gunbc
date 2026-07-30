@@ -39,15 +39,16 @@ data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
 
 data sccache_aarch64_pin: SubjectProjectedPin<SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
-data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity is projected only from the subject's cited digest (review 44999 construction wall). RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin. RED CONTROL unsupported_arch_cannot_construct_artifact fails if Riscv64 can inhabit SccacheBinaryArtifact (review 44866). RED CONTROL reconcile_bridge_projects_identity fails if subject_projected_pin_as_pin does not copy the subject projection onto Pin.expected_identity."
+data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity projected via sha256_digest_content_hash bridge (review 44999). RED CONTROL reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not project both ContentHash and VersionIdentity onto Pin."
 
 test fn sccache_pin_subject_carries_release_version() -> Bool {
   sccache_aarch64_artifact.binary_release.version == sccache_release_0_15_0.version
 }
 
-test fn sccache_pin_identity_is_projected_not_stored_on_carrier() -> Bool {
+test fn reconcile_bridge_projects_identity_and_version() -> Bool {
   let bridged = sccache_binary_artifact_subject_projected_pin_as_pin(pin: sccache_aarch64_pin)
-  bridged.expected_identity == sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact)
+  (bridged.expected_identity == sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact))
+    && ((bridged.version as String) == (sccache_release_0_15_0.version as String))
 }
 
 test fn sccache_aarch64_and_x86_64_identities_differ() -> Bool {
