@@ -1,8 +1,15 @@
 module extdeps.cache.pin
 
 import std.types { NonEmptyStr, String, ContentHash }
-import extdeps.version { VersionIdentity }
-import extdeps.pin { Pin, ExactPin }
+import extdeps.pin {
+  Pin,
+  ExactPin,
+  PinAdmission,
+  PinIntegrityAdmitted,
+  PinRefused,
+  PinRestatesSubjectMismatch,
+  admit_pin_integrity,
+}
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cache.sccache {
@@ -16,11 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/mozilla/sccache/releases" }
 }
 
-data sccache_pin_instantiation_note: String = "THE INSTANTIATION for extdeps.cache.sccache's multi-artifact release rows. extdeps.pin owns Pin<Subject>; this module binds that dimension to SccacheBinaryArtifact (release x published musl arch) and owns only subject-specific projection: how to derive expected_identity from the cited digest row and how to key reconcile membership. Pin<SccacheBinaryRelease> remains unsound — one release row carries two digests — so the subject is the artifact product modeled at sccache_binary_artifact_grain_note. extdeps_external_authority_anchor carries the same locator as sccache_releases_authority (one upstream releases URI); datum-alias form is unwritable for mandatory-tag corpus_scan projection, which reads literal ExternalAuthority bodies only (review 44866)."
-
-fn sccache_binary_artifact_pin_version(artifact: SccacheBinaryArtifact) -> VersionIdentity {
-  artifact.binary_release.version as VersionIdentity
-}
+data sccache_pin_instantiation_note: String = "THE INSTANTIATION for extdeps.cache.sccache's multi-artifact release rows. extdeps.pin owns Pin<Subject>; this module binds that dimension to SccacheBinaryArtifact (release x published musl arch) and owns only subject-specific projection: how to derive expected_identity from the cited digest row and how to key reconcile membership. Pin<SccacheBinaryRelease> remains unsound — one release row carries two digests — so the subject is the artifact product modeled at sccache_binary_artifact_grain_note. SccacheBinaryArtifact is NOT self-identifying like OciDescriptor (the subject carries cited Digest rows, not ContentHash), but the artifact row fully determines both release version and digest for its arch, so Pin.version is Absent (version lives on subject.binary_release only — restating it on Pin would be parallel authority, review 44984) and expected_identity is projected once via sccache_binary_artifact_content_identity. Direct Pin construction with a disagreeing expected_identity is writable in the substrate today; admit_sccache_binary_artifact_pin_integrity is the mandated admission entry that refuses PinRestatesSubjectMismatch before host observation is compared. dissolve-on: feature:pin-subject-self-identity-lens promotes projection coherence to a construction wall corpus-wide. extdeps_external_authority_anchor carries the same locator as sccache_releases_authority (one upstream releases URI); datum-alias form is unwritable for mandatory-tag corpus_scan projection, which reads literal ExternalAuthority bodies only (review 44866)."
 
 fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
   sccache_binary_artifact_content_identity(artifact: artifact)
@@ -29,11 +32,27 @@ fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact
 fn sccache_binary_artifact_pin(artifact: SccacheBinaryArtifact) -> Pin<SccacheBinaryArtifact> {
   Pin {
     subject: artifact,
-    version: Present {
-      value: sccache_binary_artifact_pin_version(artifact: artifact),
-    },
+    version: Absent,
     expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: artifact),
     selection: ExactPin,
+  }
+}
+
+fn admit_sccache_binary_artifact_pin_integrity(
+  pin: Pin<SccacheBinaryArtifact>,
+  observed_identity: ContentHash,
+) -> PinAdmission<SccacheBinaryArtifact> {
+  let projected = sccache_binary_artifact_pin_expected_identity(artifact: pin.subject)
+  if pin.expected_identity != projected {
+    PinRefused {
+      subject: pin.subject,
+      cause: PinRestatesSubjectMismatch {
+        projected: projected,
+        stated: pin.expected_identity,
+      },
+    }
+  } else {
+    admit_pin_integrity(pin: pin, observed_identity: observed_identity)
   }
 }
 

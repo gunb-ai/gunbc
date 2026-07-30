@@ -61,13 +61,14 @@ fn pin_currency_gap<Subject>(pin: Pin<Subject>) -> CurrencyGap {
   }
 }
 
-data pin_refusal_cause_note: String = "Every cause is SUBJECT-AGNOSTIC, which is why they live on the generic carrier rather than beside any one instantiation. ConstraintIsNotIdentity and PinAbsent are the two ingest deficits — a range is not an identity, and no version stated at all is a DIFFERENT deficit from a stated range, so collapsing them would be a state-space conflation. TrackedResolutionUnrecorded and ObservedIdentityMismatch are the two admission refusals. All four name their deficit and are countable, so a migration frontier burns down visibly instead of being silently assumed complete."
+data pin_refusal_cause_note: String = "Every cause is SUBJECT-AGNOSTIC, which is why they live on the generic carrier rather than beside any one instantiation. ConstraintIsNotIdentity and PinAbsent are the two ingest deficits — a range is not an identity, and no version stated at all is a DIFFERENT deficit from a stated range, so collapsing them would be a state-space conflation. TrackedResolutionUnrecorded, ObservedIdentityMismatch, and PinRestatesSubjectMismatch are the three admission refusals. All five name their deficit and are countable, so a migration frontier burns down visibly instead of being silently assumed complete."
 
 type PinRefusalCause
   = ConstraintIsNotIdentity { constraint: VersionConstraint }
   | PinAbsent
   | TrackedResolutionUnrecorded { channel: NonEmptyStr }
   | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
+  | PinRestatesSubjectMismatch { projected: ContentHash, stated: ContentHash }
 
 data pin_admission_subject_note: String = "PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string."
 
