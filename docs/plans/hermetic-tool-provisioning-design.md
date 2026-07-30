@@ -174,14 +174,30 @@ instantiation**, never an edit to `extdeps.pin` — and if it ever requires one,
 that is the signal the dimension was modelled too narrowly.
 
 **Proven by a second consumer, not asserted.** A generic type earns nothing by
-existing. `OciDescriptor` (`extdeps/container/oci/descriptor.dag`) is deliberately
-unlike `CliTool` — no name field, **no version field at all**, carrying a
-`mediaType` and `size` instead — and it instantiates `Pin`, `pin_value_eq` and
-`admit_pin_integrity` with zero edits to `extdeps.pin`
-(`pin_composes_over_a_structurally_different_subject`, green by execution). That
-the subject has no version while the *pin* carries one is the point rather than a
-gap: the version is the pin's own declared fact, so the dimension supplies it for
-subjects that have none.
+existing. `ActionRef { owner, repo, ref }` (`extdeps/github/actions.dag`) is
+deliberately unlike `CliTool` — three plain `String` fields against a
+`NonEmptyStr` name, an optional `VersionConstraint` and a `List<InstallSource>` —
+and it instantiates `Pin`, `pin_value_eq` and `admit_pin_integrity` with zero
+edits to `extdeps.pin` (`pin_composes_over_a_structurally_different_subject`,
+green by execution). The subject is *consumed, not minted*: `upload_artifact_action`
+is the live row already in the corpus. That the subject carries no version while
+the *pin* carries one is the point rather than a gap: the version is the pin's own
+declared fact, so the dimension supplies it for subjects that have none.
+
+It is also the lane's own next step rather than a synthetic exercise — §2 records
+that GHA actions are tag-pinned and that a mutable tag makes SHA-pinning the
+hermetic form. `Pin<ActionRef>` *is* that form.
+
+**The soundness condition on the dimension, which two rejected subjects taught:**
+a pin subject must not determine its own identity. If the subject already carries
+a `ContentHash` then the subject **is** a pin — an OCI descriptor is a content
+address — so `Pin` over it necessarily duplicates rather than supplies. The
+authority for this is `extdeps.pin`'s
+`pin_subject_must_not_be_self_identifying_note`, on the dimension rather than
+beside any one instantiation, because it constrains every future `Subject`. It is
+stated with its decidability: "the subject type declares no `ContentHash` field"
+is decidable by structural inspection, so it is a *wall-after-grounding* wanting a
+lens over the `Node` tree — not a permanent ratchet, and not a "never" (§5).
 
 Three corrections recorded with it:
 
@@ -207,10 +223,27 @@ Three corrections recorded with it:
   the release version already owned by `extdeps/cache/sccache.dag`, so two copies
   of one fact could drift — the consume-never-fork violation this lane exists to
   remove, committed inside the witness meant to demonstrate the lane. Fixed by
-  choosing a sound subject rather than defending the unsound one: a descriptor
-  describes exactly one blob, so the grain question cannot arise, and it carries
-  `digest: ContentHash` natively so `expected_identity` is **derived** from the
-  subject rather than copied.
+  choosing a sound subject rather than defending the unsound one.
+- **The second attempt was unsound too, and this note asserted otherwise**
+  (`review 44850`, and `review 44875` for the fact that this paragraph outlived
+  the fix). The replacement subject was `OciDescriptor`, and an earlier version of
+  the bullet above ended by recommending it: a descriptor "describes exactly one
+  blob, so the grain question cannot arise, and it carries `digest: ContentHash`
+  natively so `expected_identity` is **derived** from the subject rather than
+  copied." The first clause is true; the second was **false and is withdrawn**.
+  The construction *copied* the digest, nothing in `Pin<OciDescriptor>` forced the
+  two fields to agree, and `admit_pin_integrity` compares only
+  `expected_identity` — so a `Pin` whose halves disagreed was writable and would
+  have been admitted on the wrong one. A claim of derivation standing over a copy
+  is the §5 tell: a declaration that reads like a construction wall while the
+  realization lies. Two failures are worth separating here. The modelling failure
+  was choosing a self-identifying subject, fixed by `ActionRef` above. The
+  *documentation* failure was this bullet surviving that fix — the plan went on
+  recommending the rejected pattern after the carriers had retired it, so a reader
+  of the plan alone would have reimplemented it. That is the same defect as
+  `review 44422` on this PR, where a correction was accepted by *adding* a note
+  while the contradicted sentence stood; the rule it produced is that a
+  superseded claim is edited at its source, never annotated in place.
 - **Multi-artifact grain, kept as a finding.** For subjects that publish several
   artifacts the pin subject is the *artifact* (release × platform), not the release.
   That observation stands on the corpus rather than on the witness, and it is why
