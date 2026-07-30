@@ -868,6 +868,16 @@ type OpenBmcTachHealth
       source: OpenBmcTachThresholdSource,
     }
 
+fn openbmc_tach_health_sensor(
+  health: OpenBmcTachHealth,
+) -> NonEmptyStr {
+  match health {
+    OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
+    OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+    OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
+  }
+}
+
 type OpenBmcTachHealthResult
   = OpenBmcTachHealthObserved { health: OpenBmcTachHealth }
   | OpenBmcTachHealthRefused { reason: String }

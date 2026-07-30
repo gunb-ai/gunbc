@@ -66,6 +66,7 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_sensor_service,
   openbmc_sensor_value,
   openbmc_systemd_is_active,
+  openbmc_tach_health_sensor,
   openbmc_utc_timestamp,
   openbmc_zone_failsafe,
   openbmc_tach_health,
@@ -1096,12 +1097,7 @@ fn bmc_fan_tach_health_for_sensor(
     match health.first() {
       Absent => none
       Present { value: candidate } => {
-        let candidate_sensor = match candidate {
-          OpenBmcTachThresholdUnstated { sensor, reason: _ } => sensor
-          OpenBmcTachBelowThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-          OpenBmcTachAtOrAboveThreshold { sensor, reading_rpm: _, minimum_rpm: _, source: _ } => sensor
-        }
-        if candidate_sensor == sensor {
+        if openbmc_tach_health_sensor(health: candidate) == sensor {
           Present { value: candidate }
         } else {
           bmc_fan_tach_health_for_sensor(
