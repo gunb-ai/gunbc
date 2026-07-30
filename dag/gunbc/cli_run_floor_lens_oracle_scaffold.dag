@@ -1,8 +1,12 @@
 module gunbc.cli_run_floor_lens_oracle_scaffold
-import std.decl_ref { DeclarationRef }
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
 import std.disposition {
   Disposition,
   Scaffold,
+  SingleAuthority,
   Terminal,
 }
 

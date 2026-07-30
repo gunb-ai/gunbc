@@ -1,5 +1,6 @@
 module test.claim.host_hygiene_liveness
 import gunbc.host_hygiene_liveness {
+  ListeningFresh,
   ListeningNeverSeen,
   ListeningObserved,
   SlotListeningObservation,
@@ -7,7 +8,10 @@ import gunbc.host_hygiene_liveness {
   ground_fleet_listening,
   slot_listening_verdict,
 }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 import std.types { NonEmptyStr }
 import std.measure {
   Second,

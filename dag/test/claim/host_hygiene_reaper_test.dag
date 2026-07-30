@@ -1,10 +1,18 @@
 module test.claim.host_hygiene_reaper
-import std.symbols { Active }
-import std.observation { Failed }
-import extdeps.dhcp.v4 { Inactive }
-import v2.std.live_tree { LiveTreeDisposition }
+import extdeps.systemd {
+  Active,
+  Failed,
+  Inactive,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 import std.types { NonEmptyStr }
 import gunbc.host_hygiene_reaper {
+  CgroupBuildCacheServerOccupant,
+  CgroupEmpty,
+  CgroupOrdinaryProcesses,
   ResidualSlotObservation,
   action_kills_build_cache_server,
   collect_exempt_causes,

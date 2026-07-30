@@ -9,6 +9,11 @@ import std.types {
   FilePath,
   Secret,
 }
+import gunbc.auth.credentials {
+  gcp_oauth_access_token,
+  gcp_oauth_access_token_via_adc_refresh,
+  gcp_oauth_access_token_via_gcloud,
+}
 
 data witness_adc_path: std.types.FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
 
