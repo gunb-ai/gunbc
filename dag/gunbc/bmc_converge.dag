@@ -184,47 +184,48 @@ fn bmc_firmware_classification(
                     }
                   BmcFirmwareIntentSatisfied =>
                     match update_service {
-                  Absent =>
-                    UpsertClassification {
-                      verdict: Drifted,
-                      decision: Refuse {
-                        reason: concat(
-                          "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed: ",
-                          bmc_firmware_intent_mismatch_reason(
-                            required: required,
-                            observed: mismatch_observed,
-                          ),
-                        ),
-                      },
-                    }
-                  Present { value: update_surface } =>
-                    if update_surface.firmware.endpoint == observed.endpoint
-                      && update_surface.firmware.firmware == observed.firmware
-                      && update_surface.active_bmc_image_updateable {
-                      UpsertClassification {
-                        verdict: Drifted,
-                        decision: Apply {
-                          plan: BmcFirmwareUpdatePlan {
-                            host: host,
-                            observed: observed,
-                            artifact: approved,
-                            update_service: update_surface,
-                          },
-                        },
-                      }
-                    } else {
-                      UpsertClassification {
-                        verdict: Conflict,
-                        decision: Refuse {
-                          reason: concat(
-                            "observed UpdateService does not identify an updateable active image for the exact target controller and firmware: ",
-                            bmc_firmware_intent_mismatch_reason(
-                              required: required,
-                              observed: mismatch_observed,
+                      Absent =>
+                        UpsertClassification {
+                          verdict: Drifted,
+                          decision: Refuse {
+                            reason: concat(
+                              "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed: ",
+                              bmc_firmware_intent_mismatch_reason(
+                                required: required,
+                                observed: mismatch_observed,
+                              ),
                             ),
-                          ),
-                        },
-                      }
+                          },
+                        }
+                      Present { value: update_surface } =>
+                        if update_surface.firmware.endpoint == observed.endpoint
+                          && update_surface.firmware.firmware == observed.firmware
+                          && update_surface.active_bmc_image_updateable {
+                          UpsertClassification {
+                            verdict: Drifted,
+                            decision: Apply {
+                              plan: BmcFirmwareUpdatePlan {
+                                host: host,
+                                observed: observed,
+                                artifact: approved,
+                                update_service: update_surface,
+                              },
+                            },
+                          }
+                        } else {
+                          UpsertClassification {
+                            verdict: Conflict,
+                            decision: Refuse {
+                              reason: concat(
+                                "observed UpdateService does not identify an updateable active image for the exact target controller and firmware: ",
+                                bmc_firmware_intent_mismatch_reason(
+                                  required: required,
+                                  observed: mismatch_observed,
+                                ),
+                              ),
+                            },
+                          }
+                        }
                     }
                 }
               }
@@ -485,77 +486,77 @@ fn bmc_fan_policy_classification(
               }
             BmcFirmwareIntentSatisfied =>
               match projection {
-        Absent =>
-          UpsertClassification {
-            verdict: UnknownRefused,
-            decision: Refuse {
-              reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
-            },
-          }
-        Present { value: projector } =>
-          match bmc_fan_policy_apply_suitability(
-            host: host,
-            board: board,
-            intent: intent,
-            observation: observed,
-            persistence: persistence,
-            projection: projector,
-          ) {
-            FanPolicySuitabilityRefused { reason: reason } =>
-              UpsertClassification {
-                verdict: UnknownRefused,
-                decision: Refuse { reason: reason },
-              }
-            FanPolicySuitable =>
-              if bmc_fan_policy_needs_apply(
-                desired_curve: desired,
-                observation: observed,
-                projection: projector,
-              ) {
-                bmc_fan_policy_ordinary_convergence(
-                  host: host,
-                  observation: observed,
-                  desired_curve: desired,
-                  projection: projector,
-                )
-              } else {
-                let durability = bmc_fan_policy_durability_qualification(
-                  intent: intent,
-                  host: host,
-                  projection: projector,
-                  durability_generation: durability_generation,
-                  durability_evidence: durability_evidence,
-                )
-                if !bmc_fan_durability_verdict_qualified(verdict: durability) {
+                Absent =>
                   UpsertClassification {
                     verdict: UnknownRefused,
                     decision: Refuse {
-                      reason: concat(
-                        "bmc fan realizer does not satisfy the declared state lifetime: ",
-                        bmc_fan_durability_refusal_reason(verdict: durability),
-                      ),
+                      reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
                     },
                   }
-                } else if !bmc_fan_policy_projection_live_digest_matches(
-                  capability: projector,
-                  observation: observed,
-                ) {
-                  UpsertClassification {
-                    verdict: UnknownRefused,
-                    decision: Refuse {
-                      reason: "bmc fan live canonical config digest does not equal the admitted digest",
-                    },
-                  }
-                } else {
-                  bmc_fan_policy_ordinary_convergence(
+                Present { value: projector } =>
+                  match bmc_fan_policy_apply_suitability(
                     host: host,
+                    board: board,
+                    intent: intent,
                     observation: observed,
-                    desired_curve: desired,
+                    persistence: persistence,
                     projection: projector,
-                  )
-                }
-              }
-          }
+                  ) {
+                    FanPolicySuitabilityRefused { reason: reason } =>
+                      UpsertClassification {
+                        verdict: UnknownRefused,
+                        decision: Refuse { reason: reason },
+                      }
+                    FanPolicySuitable =>
+                      if bmc_fan_policy_needs_apply(
+                        desired_curve: desired,
+                        observation: observed,
+                        projection: projector,
+                      ) {
+                        bmc_fan_policy_ordinary_convergence(
+                          host: host,
+                          observation: observed,
+                          desired_curve: desired,
+                          projection: projector,
+                        )
+                      } else {
+                        let durability = bmc_fan_policy_durability_qualification(
+                          intent: intent,
+                          host: host,
+                          projection: projector,
+                          durability_generation: durability_generation,
+                          durability_evidence: durability_evidence,
+                        )
+                        if !bmc_fan_durability_verdict_qualified(verdict: durability) {
+                          UpsertClassification {
+                            verdict: UnknownRefused,
+                            decision: Refuse {
+                              reason: concat(
+                                "bmc fan realizer does not satisfy the declared state lifetime: ",
+                                bmc_fan_durability_refusal_reason(verdict: durability),
+                              ),
+                            },
+                          }
+                        } else if !bmc_fan_policy_projection_live_digest_matches(
+                          capability: projector,
+                          observation: observed,
+                        ) {
+                          UpsertClassification {
+                            verdict: UnknownRefused,
+                            decision: Refuse {
+                              reason: "bmc fan live canonical config digest does not equal the admitted digest",
+                            },
+                          }
+                        } else {
+                          bmc_fan_policy_ordinary_convergence(
+                            host: host,
+                            observation: observed,
+                            desired_curve: desired,
+                            projection: projector,
+                          )
+                        }
+                      }
+                  }
               }
           }
       }
