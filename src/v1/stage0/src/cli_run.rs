@@ -23816,51 +23816,39 @@ pub fn containment_resolve_fn_v1_for_module(
             binding,
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
-                let cands = Rc::new(vec![crate::v1_compiler_infer_env::GlobalBareCandidate {
-                    module_path: owner.clone(),
-                    binding: binding.clone(),
-                }]);
-                let chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
+                return match global_bare_unique_chain_candidate(
                     module_path.to_string(),
-                    cands.clone(),
-                );
-                let owners: Rc<im::Vector<String>> =
-                    Rc::new(chain.iter().map(|cand| cand.module_path.clone()).collect());
-                match (*module_path_owner_binding_decide(owners)).clone() {
-                    ModulePathBindingProjection::ModulePathBindingMiss => {
-                        ContainmentResolve::Unresolved
-                    }
-                    ModulePathBindingProjection::ModulePathBindingHit { .. } => {
-                        if let Some(cand) =
-                            crate::v1_compiler_infer_env::global_bare_unique_chain_candidate(
-                                module_path.to_string(),
-                                cands,
-                            )
-                        {
-                            if is_fn_like_binding(
-                                &cand.binding.resolved,
-                                &cand.module_path,
-                                name,
-                                item_index,
-                            ) {
-                                return ContainmentResolve::Hit {
-                                    owner_module: cand.module_path.clone(),
-                                    qualified_path: module_path_to_qualified_path(
-                                        &cand.module_path,
-                                        name,
-                                    ),
-                                    node_ptr: Rc::as_ptr(&cand.binding.resolved) as usize,
-                                    via: ContainmentResolveVia::GlobalUnique,
-                                    lexical_steps: 0,
-                                };
+                    Rc::new(
+                        vec![Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
+                            module_path: owner.clone(),
+                            binding: binding.clone(),
+                        })]
+                        .into(),
+                    ),
+                ) {
+                    Some(cand) => {
+                        if is_fn_like_binding(
+                            &cand.binding.resolved,
+                            &cand.module_path,
+                            name,
+                            item_index,
+                        ) {
+                            ContainmentResolve::Hit {
+                                owner_module: cand.module_path.clone(),
+                                qualified_path: module_path_to_qualified_path(
+                                    &cand.module_path,
+                                    name,
+                                ),
+                                node_ptr: Rc::as_ptr(&cand.binding.resolved) as usize,
+                                via: ContainmentResolveVia::GlobalUnique,
+                                lexical_steps: 0,
                             }
+                        } else {
+                            ContainmentResolve::Unresolved
                         }
-                        ContainmentResolve::Unresolved
                     }
-                    ModulePathBindingProjection::ModulePathBindingAmbiguous { .. } => {
-                        ContainmentResolve::Ambiguous
-                    }
-                }
+                    None => ContainmentResolve::Unresolved,
+                };
             } else if is_fn_like_binding(&binding.resolved, owner, name, item_index) {
                 return ContainmentResolve::Hit {
                     owner_module: owner.clone(),

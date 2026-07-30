@@ -1100,10 +1100,32 @@ pub fn global_bare_owner_module(
             module_path: mp,
             binding: b,
             ..
-        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
-            true => Some(mp.clone()),
-            false => None,
-        },
+        }) => {
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                match global_bare_unique_chain_candidate(
+                    owner_module_path.clone(),
+                    Rc::new(vec![Rc::new(GlobalBareCandidate {
+                        module_path: mp.clone(),
+                        binding: b.clone(),
+                    })]),
+                ) {
+                    Some(cand) => match binding_declares_name(
+                        cand.binding.clone(),
+                        name.clone(),
+                        env.source_indices.clone(),
+                    ) {
+                        true => Some(cand.module_path.clone()),
+                        false => None,
+                    },
+                    None => None,
+                }
+            } else {
+                match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+                    true => Some(mp.clone()),
+                    false => None,
+                }
+            }
+        }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
@@ -1397,8 +1419,25 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: mp,
+            binding,
+            ..
+        }) => {
+            if v1_rt::name_resolution_policy_is_namespace_only() {
+                match global_bare_unique_chain_candidate(
+                    env.module_path.clone(),
+                    Rc::new(vec![Rc::new(GlobalBareCandidate {
+                        module_path: mp.clone(),
+                        binding: binding.clone(),
+                    })]),
+                ) {
+                    Some(cand) => Some(cand.binding.clone()),
+                    None => None,
+                }
+            } else {
+                Some(binding.clone())
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..

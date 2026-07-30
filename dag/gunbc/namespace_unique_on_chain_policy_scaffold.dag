@@ -20,4 +20,6 @@ data namespace_unique_on_chain_policy_containment_census_test_discriminator: Str
 
 data namespace_unique_on_chain_policy_zero_on_chain_test_discriminator: String = "zero_on_chain_homonym_discriminates_the_diagnostic_label"
 
-data namespace_unique_on_chain_policy_loc_delta_net: Int = 45
+data namespace_unique_on_chain_policy_single_off_chain_test_discriminator: String = "single_off_chain_unique_refuses_under_namespace_only"
+
+data namespace_unique_on_chain_policy_loc_delta_net: Int = 75

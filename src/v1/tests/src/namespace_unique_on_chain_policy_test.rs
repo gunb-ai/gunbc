@@ -119,6 +119,20 @@ fn zero_on_chain_fixture() -> Vec<Rc<SourceFile>> {
     ]
 }
 
+/// Control fixture: corpus-unique name whose sole declaration is OFF the referencing
+/// chain (`Solo` only in `fixother`, referenced from `fixchain.mid.leaf`). ImportScoped
+/// resolves via GlobalBareUniqueBinding; NamespaceOnlyY must refuse as UnresolvedType —
+/// the canonical decision path must not bypass the chain filter for unique index rows.
+fn single_off_chain_unique_fixture() -> Vec<Rc<SourceFile>> {
+    vec![
+        src("fixother.dag", "module fixother\ntype Solo { a: Int }\n"),
+        src(
+            "leaf.dag",
+            "module fixchain.mid.leaf\nfn use_solo(x: Solo) -> Solo { x }\n",
+        ),
+    ]
+}
+
 /// Control fixture: a genuinely-unbound name (declared nowhere).
 fn unbound_fixture() -> Vec<Rc<SourceFile>> {
     vec![src(
@@ -242,6 +256,57 @@ fn zero_on_chain_containment_census_matches_inference_unresolved() {
         matches!(containment, ContainmentResolve::Unresolved),
         "containment census must mirror inference: zero on-chain homonym is Unresolved, \
          not Ambiguous; got {containment:?}"
+    );
+}
+
+#[test]
+fn single_off_chain_unique_refuses_under_namespace_only() {
+    let import_scoped = {
+        let _guard = ResolutionPolicyGuard::set(false);
+        error_diag_messages(single_off_chain_unique_fixture())
+    };
+    assert!(
+        import_scoped.is_empty(),
+        "ImportScoped resolves a corpus-unique off-chain name via GlobalBareUniqueBinding; \
+         got {import_scoped:?}"
+    );
+
+    let strict = {
+        let _guard = ResolutionPolicyGuard::set(true);
+        error_diag_messages(single_off_chain_unique_fixture())
+    };
+    assert!(
+        strict.iter().any(|m| m.contains("unresolved type 'Solo'")),
+        "NamespaceOnlyY must refuse a corpus-unique off-chain name as UnresolvedType \
+         (chain filter, not GlobalBareUniqueBinding bypass); got {strict:?}"
+    );
+    assert!(
+        !strict.iter().any(|m| m.contains("ambiguous")),
+        "single off-chain candidate is Unresolved, not Ambiguous; got {strict:?}"
+    );
+}
+
+#[test]
+fn single_off_chain_unique_containment_census_matches_inference() {
+    let _guard = ResolutionPolicyGuard::set(true);
+    let sources = single_off_chain_unique_fixture();
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let graph = resolved.graph.as_ref().expect("graph");
+    let leaf = graph
+        .modules
+        .iter()
+        .find(|m| m.type_env.module_path == "fixchain.mid.leaf")
+        .expect("leaf module");
+    let containment = containment_resolve_fn_v1_for_module(
+        &leaf.type_env.symbol_index,
+        "fixchain.mid.leaf",
+        "Solo",
+        None,
+    );
+    assert!(
+        matches!(containment, ContainmentResolve::Unresolved),
+        "containment census must mirror inference for corpus-unique off-chain name; \
+         got {containment:?}"
     );
 }
 
