@@ -336,16 +336,6 @@ pub fn positive_measure_count(predecessor: Nat) -> Rc<PositiveMeasureCount> {
     })
 }
 
-pub fn positive_measure_count_predecessor_from_positive_int(count: i64) -> Nat {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (count.clone() == 1) {
-            0
-        } else {
-            (1 + positive_measure_count_predecessor_from_positive_int((count.clone() - 1)))
-        }
-    })
-}
-
 pub fn positive_measure_count_from_int(count: i64) -> Rc<PositiveMeasureCountBuild> {
     if (count.clone() <= 0) {
         Rc::new(PositiveMeasureCountBuild::PositiveMeasureCountRefused {
@@ -355,9 +345,7 @@ pub fn positive_measure_count_from_int(count: i64) -> Rc<PositiveMeasureCountBui
         })
     } else {
         Rc::new(PositiveMeasureCountBuild::PositiveMeasureCountBuilt {
-            count: positive_measure_count(positive_measure_count_predecessor_from_positive_int(
-                count.clone(),
-            )),
+            count: positive_measure_count((count.clone() - 1)),
         })
     }
 }

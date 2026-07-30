@@ -481,20 +481,6 @@ fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
   }
 }
 
-fn state_durability_boundary_eq(
-  a: StateDurabilityBoundary,
-  b: StateDurabilityBoundary,
-) -> Bool {
-  a == b
-}
-
-fn state_durability_boundary_present(
-  boundaries: List<StateDurabilityBoundary>,
-  wanted: StateDurabilityBoundary,
-) -> Bool {
-  any(boundaries, boundary => boundary == wanted)
-}
-
 fn state_durability_admission_eq<Target, ReadbackSubject>(
   a: StateDurabilityAdmission<Target, ReadbackSubject>,
   b: StateDurabilityAdmission<Target, ReadbackSubject>,
@@ -527,10 +513,7 @@ fn state_durability_evidence_cardinality<Target, ReadbackSubject>(
       if state_durability_admission_eq(
         a: candidate.admission,
         b: admission,
-      ) && state_durability_boundary_eq(
-        a: candidate.perturbation.boundary,
-        b: boundary,
-      ) {
+      ) && candidate.perturbation.boundary == boundary {
         match cardinality {
           NoMatchingDurabilityEvidence =>
             OneMatchingDurabilityEvidence { evidence: candidate }
@@ -583,10 +566,7 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
         observed: evidence.perturbation.target,
       },
     }
-  } else if !state_durability_boundary_eq(
-    a: evidence.perturbation.boundary,
-    b: boundary,
-  ) {
+  } else if evidence.perturbation.boundary != boundary {
     Present {
       value: DurabilityPerturbationBoundaryMismatch {
         expected: boundary,
@@ -721,9 +701,9 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
   capability: StateDurabilityCapability,
   evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
 ) -> StateDurabilityVerdict<Target, ReadbackSubject> {
-  if !state_durability_boundary_present(
-    boundaries: capability.supported_boundaries,
-    wanted: boundary,
+  if !any(
+    capability.supported_boundaries,
+    supported => supported == boundary,
   ) {
     StateDurabilityRefused {
       cause: DurabilityBoundaryUnsupported {
