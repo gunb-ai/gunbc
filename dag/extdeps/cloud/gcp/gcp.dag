@@ -206,16 +206,3 @@ service oauth2.Google {
     }
   }
 }
-
-service shell.GCloud {
-  operation AuthPrintAccessToken {
-    input {}
-    output { access_token: Secret from "stdout" }
-    readonly
-    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
-    exit {
-      0 => Unit
-      nonzero => String "Failed to get access token"
-    }
-  }
-}

@@ -745,6 +745,36 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     active_small(
+      identity: "rn_2K8HXQ4MZV7NC3B6WD9YFT5J1E",
+      id: "frontend-escape-scan-construction",
+      owner: "ci-cost",
+      path: "docs/plans/inner-cost-lanes-scoping.md",
+      t: fields(
+        headline: "Stop re-walking the string to read one character",
+        boundary: "One function in the tokenizer still reads a string by counting from the start each time, while the rest of its file was already moved onto a pre-decoded form. Move it too, and collect its result into one buffer instead of a list of one-character pieces.",
+        displaced_cost: "For text that is entirely plain ASCII this costs one allocation per character. For text containing any non-ASCII character at all, reading position N costs N steps and asking how long the string is re-counts the whole thing, on every pass — so the work grows with the square of the literal's length, and a single accented character anywhere flips the whole literal onto that path.",
+        first_slice: "Move the one function onto the pre-decoded form its own file already builds, and replace its accumulator with a single buffer.",
+        red_control: "Identical output over the corpus is the equivalence half and is satisfied by changing nothing, so it does not stand alone: a long literal mixing non-ASCII text with escapes must separate the two implementations by cost, and a deliberately wrong escape decode must change the output.",
+        out_of_scope: "No general cursor or token-builder abstraction is introduced here. That generalization is worth what a second measured instance says it is worth, and the audit that would find one has not run.",
+        handback: "The migrated function, the cost separation on the discriminating literal, and the corpus showing identical tokens."
+      )
+    ),
+    active_large(
+      identity: "rn_9WD4YB1TQK6RXA0PJM7N5GHVC2",
+      id: "entry-graph-union-construction",
+      owner: "ci-cost",
+      path: "docs/plans/inner-cost-lanes-scoping.md",
+      t: fields(
+        headline: "Build the shared entry graph once instead of once per entry",
+        boundary: "Hundreds of selected entries are prepared independently even though their dependency closures overlap almost entirely. The end state prepares the union once and serves each entry from it. This row opens with a measurement, not a change.",
+        displaced_cost: "One entry measured at 107 seconds over 528 modules. The name of this lane is misleading in a way that costs time: the step actually called resolve is 0.2 percent of that, while typechecking is 69 percent and loading is 36 percent, so anyone optimizing by the name will optimize the wrong thing.",
+        first_slice: "Measure how much of the per-entry cost is genuinely shared across the selected set, so the prize is known before any architecture moves. If the overlap is smaller than assumed, this row shrinks or closes on that receipt.",
+        red_control: "Acceptance is fleet memory rather than wall time: identical verdicts, and no material increase in peak, hard backoff, or throttle wall at the real slot budget. A dev container has a different memory regime, so a local timing win is not evidence for this row.",
+        out_of_scope: "No eviction redesign, and no forking of the entry-closure memo already in flight — sharing more while holding more live collides with retention, which is the axis the floor already fails on.",
+        handback: "The overlap measurement first; the architecture only if that measurement justifies it."
+      )
+    ),
+    active_small(
       identity: "rn_6JR237TB4G7T9S52M93JCP3PK7",
       id: "placement-live-roster-preflight",
       owner: "ci-placement",
@@ -1334,10 +1364,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "Ensure tools through one membership reconcile",
         boundary: "Tool readiness is a desired-versus-observed reconcile keyed on tool identity with the pin as content; every forked PATH resolver collapses onto it and is deleted.",
         displaced_cost: "Deletes four forked resolvers and the fail-open bare-name arm that surfaces as an opaque spawn error.",
-        first_slice: "The per-tool observed identity is NAMED as of #7444, so this row's blocker is discharged and its slice is now the reconcile itself: instantiate membership_reconcile with the tool bundle and route one currently-forked call site through it. Two obligations on whoever writes it, both consequences of what #7444 landed rather than fresh policy — read every observed value through observed_tool_identity rather than re-deriving a digest beside observe_tool_identity (that would be the section 3 fork this lane removes), and answer its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms explicitly, since collapsing either into a match failure or a widened rerun is the absorbing fallback section 5 forbids and would discard exactly the precision #7444 bought. The original grain finding is retained on the carrier at extdeps.pin pin_observed_grain_prerequisite_note, which owns that history; this row does not restate it (review 44910 — one fact, one home).",
-        red_control: "An unpinned or digest-mismatched tool refuses before spawn, never after; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
+        first_slice: "The per-tool observed identity is NAMED as of #7444, so instantiate membership_reconcile with the tool bundle and expose the typed readiness decision in .dag. Live integrity admission is gated on toolchain-rust-hermetic: observe_tool_identity currently fingerprints host-specific executable bytes and version output, so authoring that value as a corpus Pin before hermetic provisioning would invert the dependency and fail across hosts. Until provisioning supplies a stable expected identity, retain the rustfmt host-effect realization through one declared per-tool UnpinnedFrontier row with a reason and migration trigger; it is never a default, zero rows refuses, multiple rows refuses, and a supplied mismatching pin cannot fall back to it. Every observed value is read through observed_tool_identity rather than re-derived beside observe_tool_identity, and its ObservedToolIdentityMissing and ObservedToolIdentityDuplicate arms refuse distinctly, located and counted. This first slice is explicitly witness-consumed rather than production-gating: the retained shell cannot call the decision until a host observation transport supplies ResolvedBuildContext, and it must not fabricate one. The original grain finding remains owned by extdeps.pin pin_observed_grain_prerequisite_note.",
+        red_control: "An undeclared unpinned tool or a digest-mismatched pin refuses before spawn, never after; a declared UnpinnedFrontier row is explicit migration state, not integrity admission; teardown of an Ensured system tool refuses; a reconcile that reads the derived aggregate toolchain_identity instead of a per-tool observed identity refuses as a grain mismatch; and an ObservedToolIdentityMissing or ObservedToolIdentityDuplicate answer refuses, counted and located, rather than falling through to a rerun or a match failure.",
         out_of_scope: "No new reconcile spine; a forked reconcile means the genericity bought nothing.",
-        handback: "Return the instantiation, the migrated call sites, and the deleted resolvers."
+        handback: "First-slice handback: the instantiation, closed declared frontier, and executing decision witnesses, with the absence of a live ResolvedBuildContext consumer stated plainly. The row remains active until hermetic provisioning permits the final handback: migrated call sites and deleted forked resolvers."
       )
     ),
     active(
