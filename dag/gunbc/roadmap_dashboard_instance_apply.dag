@@ -78,6 +78,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardInstanceRefused,
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
+  srv2_lab_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
   dashboard_instance_dispatch_platform_executables,
@@ -818,6 +819,69 @@ fn dashboard_production_snapshots_equal(
     && before.health == after.health
 }
 
+data dashboard_production_peer_note: String = "PRODUCTION IS A PEER ON THE APPLYING HOST, and until this type existed the parameter forced every apply to name one whether the host had one or not. Both uses assume locality without saying so: the isolation check compares owned paths on one filesystem, and the liveness read-back curls 127.0.0.1 at production's declared port. Passing a remote instance satisfies neither — it compares this machine's paths against another machine's declarations, then probes a loopback port nobody here is serving.\\n\\nThat is exactly how srv2's first apply failed. srv1-live was passed as production because the parameter demanded an instance; its repo_root happened to exist here as a hand-made symlink so the git half of the probe SUCCEEDED, and the refusal surfaced only as a curl connection error against port 8080 — a true message about a check that should never have run. The remedy for that refusal is not to start a server; it is to stop claiming srv1 is a peer of anything on srv2.\\n\\nNoProductionPeer is a DECLARATION, not a skipped check. A host with no production dashboard has nothing to be disjoint from and nothing whose liveness could be disturbed, so both obligations are discharged by the shape of the argument rather than silently bypassed inside the checks — and the reading below stays type-distinct across before and after, so an apply cannot pair a real snapshot with an absent one and call the difference untouched."
+
+type DashboardProductionPeer
+  = ProductionPeer { instance: HostDashboardInstance }
+  | NoProductionPeer { host: NonEmptyStr }
+
+type DashboardProductionReading
+  = ProductionRead { snapshot: DashboardProductionSnapshot }
+  | ProductionUnpeered { host: NonEmptyStr }
+
+fn dashboard_peer_isolation_ok(
+  instance: HostDashboardInstance,
+  peer: DashboardProductionPeer,
+) -> Bool {
+  match peer {
+    ProductionPeer { instance: production } =>
+      dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
+        && !(instance.listen_port == production.listen_port)
+    NoProductionPeer { host: _ } => true
+  }
+}
+
+fn dashboard_production_read(peer: DashboardProductionPeer) -> DashboardProductionReading {
+  match peer {
+    ProductionPeer { instance: production } =>
+      ProductionRead { snapshot: dashboard_production_snapshot(production: production) }
+    NoProductionPeer { host } => ProductionUnpeered { host: host }
+  }
+}
+
+fn dashboard_production_reading_refused(reading: DashboardProductionReading) -> Bool {
+  match reading {
+    ProductionRead { snapshot } => !snapshot.observed
+    ProductionUnpeered { host: _ } => false
+  }
+}
+
+fn dashboard_production_reading_detail(reading: DashboardProductionReading) -> String {
+  match reading {
+    ProductionRead { snapshot } => snapshot.detail
+    ProductionUnpeered { host } => join(["no production peer on ", host as String], "")
+  }
+}
+
+fn dashboard_production_readings_equal(
+  before: DashboardProductionReading,
+  after: DashboardProductionReading,
+) -> Bool {
+  match before {
+    ProductionRead { snapshot: b } =>
+      match after {
+        ProductionRead { snapshot: a } =>
+          dashboard_production_snapshots_equal(before: b, after: a)
+        ProductionUnpeered { host: _ } => false
+      }
+    ProductionUnpeered { host: bh } =>
+      match after {
+        ProductionRead { snapshot: _ } => false
+        ProductionUnpeered { host: ah } => bh == ah
+      }
+  }
+}
+
 fn dashboard_source_anchor_matches(
   instance: HostDashboardInstance,
 ) -> Bool {
@@ -1165,23 +1229,25 @@ fn dashboard_bootstrap_preflight_decision(
 
 fn dashboard_instance_apply_preflight(
   instance: HostDashboardInstance,
-  production: HostDashboardInstance,
+  production: DashboardProductionPeer,
 ) -> DashboardApplyPreflightResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
-      || !dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
-      || instance.listen_port == production.listen_port {
+      || !dashboard_peer_isolation_ok(instance: instance, peer: production) {
     dashboard_apply_preflight_refused(
       instance: instance,
       step: "isolation-preflight",
       detail: "instance path or port isolation failed",
     )
   } else {
-    let production_read = dashboard_production_snapshot(production: production)
-    if !production_read.observed {
+    let production_read = dashboard_production_read(peer: production)
+    if dashboard_production_reading_refused(reading: production_read) {
       dashboard_apply_preflight_refused(
         instance: instance,
         step: "production-preflight",
-        detail: join(["production read-back refused: ", production_read.detail], ""),
+        detail: join([
+          "production read-back refused: ",
+          dashboard_production_reading_detail(reading: production_read),
+        ], ""),
       )
     } else {
       let root_present = dashboard_target_directory_present(
@@ -1449,12 +1515,11 @@ fn dashboard_apply_refused(
 
 fn dashboard_instance_apply_after_preflight(
   instance: HostDashboardInstance,
-  production: HostDashboardInstance,
+  production: DashboardProductionPeer,
   desired_source_revision: CommitSha,
 ) -> DashboardInstanceApplyResult {
   if !dashboard_instance_paths_are_owned(instance: instance)
-      || !dashboard_instances_have_disjoint_owned_paths(a: instance, b: production)
-      || instance.listen_port == production.listen_port {
+      || !dashboard_peer_isolation_ok(instance: instance, peer: production) {
     dashboard_apply_refused(
       instance: instance,
       step: "isolation-preflight",
@@ -1462,12 +1527,15 @@ fn dashboard_instance_apply_after_preflight(
       receipts: [],
     )
   } else {
-    let production_before = dashboard_production_snapshot(production: production)
-    if !production_before.observed {
+    let production_before = dashboard_production_read(peer: production)
+    if dashboard_production_reading_refused(reading: production_before) {
       dashboard_apply_refused(
         instance: instance,
         step: "production-preflight",
-        detail: join(["production read-back refused before mutation: ", production_before.detail], ""),
+        detail: join([
+          "production read-back refused before mutation: ",
+          dashboard_production_reading_detail(reading: production_before),
+        ], ""),
         receipts: [],
       )
     } else {
@@ -1524,8 +1592,8 @@ fn dashboard_instance_apply_after_preflight(
                 receipts: applied.receipts,
               )
             } else {
-              let production_after = dashboard_production_snapshot(production: production)
-              let untouched = dashboard_production_snapshots_equal(
+              let production_after = dashboard_production_read(peer: production)
+              let untouched = dashboard_production_readings_equal(
                 before: production_before,
                 after: production_after,
               )
@@ -1569,7 +1637,7 @@ fn dashboard_instance_apply_after_preflight(
 
 fn dashboard_instance_apply(
   instance: HostDashboardInstance,
-  production: HostDashboardInstance,
+  production: DashboardProductionPeer,
 ) -> DashboardInstanceApplyResult {
   match dashboard_instance_apply_preflight(
     instance: instance,
@@ -1597,14 +1665,14 @@ fn dashboard_instance_apply(
 fn srv1_lab_dashboard_apply() -> DashboardInstanceApplyResult {
   dashboard_instance_apply(
     instance: srv1_lab_dashboard_instance(),
-    production: srv1_live_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
   )
 }
 
 fn srv1_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
   dashboard_instance_apply_preflight(
     instance: srv1_lab_dashboard_instance(),
-    production: srv1_live_dashboard_instance(),
+    production: ProductionPeer { instance: srv1_live_dashboard_instance() },
   )
 }
 
@@ -1634,6 +1702,55 @@ fn srv1_lab_dashboard_apply_json() -> String {
 
 func srv1_lab_dashboard_apply_wet() -> ProcessExit {
   let result = srv1_lab_dashboard_apply()
+  match result {
+    DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
+    DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_result_json_value(result: result)))
+  }
+}
+
+data srv2_lab_apply_entry_note: String = "BEFORE THIS BLOCK THIS MODULE CONTAINED THE STRING srv2 ZERO TIMES. Roughly sixteen hundred lines of observe/preflight/apply/converge with typed refusals throughout, and every wet entry bound srv1's lab — so srv2's declared instance had no provisioner anywhere in the tree. Its directories could not be created by anything, which is why every git and tmux observation on that page refused against paths naming a source root, an attempts root and a tmux socket that no code was able to bring into existence.\\n\\nThat is the coverage-by-illusion shape one level up from a witness: the mechanism was real, general, and complete, and it was simply never bound to the second instance. An instance row declared without an actuation entry reads exactly like one that has been provisioned and is refusing for a good reason, and the page cannot tell the operator which it is looking at.\\n\\nproduction is srv1_live for both labs deliberately. It is the instance the apply is forbidden to disturb, and the production_untouched check compares against its owned paths — /opt/gunbc and its children — which exist on this machine as hand-made symlinks. srv2's lab must leave them alone for the same reason srv1's must."
+
+fn srv2_lab_dashboard_apply() -> DashboardInstanceApplyResult {
+  dashboard_instance_apply(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
+}
+
+fn srv2_lab_dashboard_preflight() -> DashboardApplyPreflightResult {
+  dashboard_instance_apply_preflight(
+    instance: srv2_lab_dashboard_instance(),
+    production: NoProductionPeer { host: "srv2" as NonEmptyStr },
+  )
+}
+
+fn srv2_lab_dashboard_preflight_json() -> String {
+  serialize_json(v: dashboard_apply_preflight_json_value(
+    result: srv2_lab_dashboard_preflight(),
+  ))
+}
+
+func srv2_lab_dashboard_preflight_wet() -> ProcessExit {
+  let result = srv2_lab_dashboard_preflight()
+  match result {
+    DashboardApplyPreflightReady {
+      instance_id: _,
+      source_revision: _,
+    } => ExitSuccess
+    DashboardApplyPreflightRefused { instance_id: _, step: _, detail: _ } =>
+      exit_failure(reason: serialize_json(v: dashboard_apply_preflight_json_value(
+        result: result,
+      )))
+  }
+}
+
+fn srv2_lab_dashboard_apply_json() -> String {
+  serialize_json(v: dashboard_apply_result_json_value(result: srv2_lab_dashboard_apply()))
+}
+
+func srv2_lab_dashboard_apply_wet() -> ProcessExit {
+  let result = srv2_lab_dashboard_apply()
   match result {
     DashboardApplyConverged { instance_id: _, receipts: _, observed: _ } => ExitSuccess
     DashboardApplyRefused { instance_id: _, step: _, detail: _, receipts: _ } =>
