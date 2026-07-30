@@ -8371,7 +8371,125 @@ fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
     RESOLVE_STAGE_SLOT.with(|s| s.get())
 }
 
+/// The SPAN account for `resolve_entry_with_parse_cache` — the one window that, by
+/// construction, contains every `ResolveStageNanos` row above.
+///
+/// Why this exists (entry-graph-union slice 1 / lane ci-cost): the stage rows are
+/// accumulated over EVERY resolve this thread runs — witness entries and machinery
+/// entries alike (`resolve_entry_graph_shared` → `resolve_entry_with_index` →
+/// here, for the discovery producer, `floor_diff_observe`, the module-graph facts) —
+/// while the receipts that printed them quoted a parent measuring only ONE of those
+/// universes (`claim_batch`'s `[resolve-summary]` counts witness-entry resolves;
+/// `claim_executor`'s `total_resolve_nanos` sums per-entry discovery spans). Children
+/// drawn from a strictly larger universe than the parent are not a partition of it, so
+/// `load=48468ms` against a `45308ms` parent is not a paradox and not a double-count —
+/// it is two different denominators printed on one line. No share can be quoted off
+/// that pairing, which is why `exclusive_cost_partition` reports against THIS span
+/// total and keeps the receipts' own wall figures as separate observations.
+///
+/// Same dissolution trigger as `ResolveStageNanos`: a `.dag` `PerformanceReceipt`
+/// per-stage carrier consumed by a floor witness replaces this host-side account.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ResolveSpanAccount {
+    /// Summed duration of TOP-LEVEL resolve spans (nested calls are not added again).
+    pub span_nanos: u128,
+    /// Number of top-level resolve spans.
+    pub spans: u64,
+    /// Times a nested (depth > 1) resolve span was observed. Nonzero INVALIDATES the
+    /// per-entry stage attribution: `resolve_stage_slot_reset` runs at span entry, so an
+    /// inner call folds the outer's partial rows away mid-flight and the reconcile
+    /// residue is then subtracted against a slot that no longer holds them. The
+    /// partition refuses rather than reporting rows it cannot stand behind.
+    pub nested_spans: u64,
+    /// Live depth; not a receipt row.
+    depth: u32,
+}
+
+thread_local! {
+    static RESOLVE_SPAN_ACCOUNT: std::cell::Cell<ResolveSpanAccount> =
+        const { std::cell::Cell::new(ResolveSpanAccount {
+            span_nanos: 0,
+            spans: 0,
+            nested_spans: 0,
+            depth: 0,
+        }) };
+    /// Per-entry span attribution: entry path → (top-level spans, summed nanos). Answers
+    /// "which resolves is the stage total actually drawn from" — the question the
+    /// universe mismatch above makes load-bearing.
+    static RESOLVE_SPAN_BY_ENTRY: std::cell::RefCell<HashMap<String, (u64, u128)>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Cumulative span account for this thread.
+pub fn resolve_span_account() -> ResolveSpanAccount {
+    RESOLVE_SPAN_ACCOUNT.with(|s| s.get())
+}
+
+/// Per-entry span rows for this thread, descending by summed nanos.
+pub fn resolve_span_rows_by_entry() -> Vec<(String, u64, u128)> {
+    let mut rows: Vec<(String, u64, u128)> = RESOLVE_SPAN_BY_ENTRY.with(|m| {
+        m.borrow()
+            .iter()
+            .map(|(k, (n, ns))| (k.clone(), *n, *ns))
+            .collect()
+    });
+    rows.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    rows
+}
+
+fn resolve_span_enter() -> u32 {
+    RESOLVE_SPAN_ACCOUNT.with(|s| {
+        let mut v = s.get();
+        v.depth += 1;
+        if v.depth > 1 {
+            v.nested_spans += 1;
+        }
+        s.set(v);
+        v.depth
+    })
+}
+
+fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u128) {
+    RESOLVE_SPAN_ACCOUNT.with(|s| {
+        let mut v = s.get();
+        v.depth = v.depth.saturating_sub(1);
+        // Only top-level spans are summed: a nested span's time is already inside its
+        // parent's, so adding it would be the double-count this account exists to expose.
+        if depth == 1 {
+            v.span_nanos += elapsed_nanos;
+            v.spans += 1;
+        }
+        s.set(v);
+    });
+    if depth == 1 {
+        RESOLVE_SPAN_BY_ENTRY.with(|m| {
+            let mut map = m.borrow_mut();
+            let slot = map.entry(workspace_relative_entry_path(entry_file)).or_insert((0, 0));
+            slot.0 += 1;
+            slot.1 += elapsed_nanos;
+        });
+    }
+}
+
 fn resolve_entry_with_parse_cache(
+    index: &MultiEntryIndex,
+    entry_file: &str,
+    typecheck_gate: ResolveTypecheckGate,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let depth = resolve_span_enter();
+    let span_started = std::time::Instant::now();
+    let out = resolve_entry_with_parse_cache_inner(index, entry_file, typecheck_gate);
+    resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
+    out
+}
+
+fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,
     typecheck_gate: ResolveTypecheckGate,
