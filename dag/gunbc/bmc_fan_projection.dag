@@ -11,7 +11,8 @@ import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
-  linux_file_publication_has_synchronized_commit,
+  LinuxFilePublicationProtocolUnsynchronized,
+  LinuxSynchronizedRenameReplacePublication,
 }
 import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
 import gunbc.fleet_bmc_observation { srv4_bmc_fan_active_config_digest }
@@ -114,9 +115,15 @@ fn bmc_fan_policy_projection_apply_suitability(
     && capability.projected_curve == desired_curve
     && capability.config_path == observation.board_config_path
     && capability.controller_service == observation.controller_service
-    && linux_file_publication_has_synchronized_commit(
-      protocol: capability.publication_protocol,
-    )
+    && match capability.publication_protocol {
+      LinuxSynchronizedRenameReplacePublication => true
+      LinuxFilePublicationProtocolUnsynchronized {
+        stage_in_target_directory: _,
+        staged_content_validated: _,
+        replacement: _,
+        synchronization: _,
+      } => false
+    }
 }
 
 fn bmc_fan_policy_projection_live_digest_matches(
@@ -136,13 +143,15 @@ fn bmc_fan_state_durability_capability(
     realization: realization,
     capability_version: capability_version,
     supported_boundaries: boundaries,
-    commit_barrier: if linux_file_publication_has_synchronized_commit(
-      protocol: publication_protocol,
-    ) {
-        SynchronizedCommit
-      } else {
-        NoDurabilityCommitBarrier
-      },
+    commit_barrier: match publication_protocol {
+      LinuxSynchronizedRenameReplacePublication => SynchronizedCommit
+      LinuxFilePublicationProtocolUnsynchronized {
+        stage_in_target_directory: _,
+        staged_content_validated: _,
+        replacement: _,
+        synchronization: _,
+      } => NoDurabilityCommitBarrier
+    },
   }
 }
 

@@ -43,9 +43,8 @@ import std.measure {
   PositiveMeasureCountBuilt,
   PositiveMeasureCountRefused,
   PositiveMillisecond,
-  positive_measure_count,
-  positive_measure_count_from_int,
   positive_millisecond,
+  positive_measure_count_from_int,
 }
 import std.state_durability {
   ActivationUnverified,
@@ -90,10 +89,23 @@ data srv4_bmc_fan_durability_admission: BmcFanDurabilityAdmission = bmc_fan_poli
 type BmcFanDurabilityEvidenceConstructionRefusal
   = DurabilityReceiptDigestMismatch
   | DurabilityReceiptBoundaryMismatch
+  | DurabilityReceiptNonPositiveInterval { observed: Int }
 
 type BmcFanDurabilityEvidenceConstruction
   = BmcFanDurabilityEvidenceBuilt { evidence: BmcFanDurabilityEvidence }
   | BmcFanDurabilityEvidenceConstructionRefused {
+      cause: BmcFanDurabilityEvidenceConstructionRefusal,
+    }
+
+type BmcFanRebootTimingBuilt {
+  started_after_before_readback: PositiveMillisecond
+  duration: PositiveMillisecond
+  observed_after_perturbation_completion: PositiveMillisecond
+}
+
+type BmcFanRebootTimingReceipt
+  = BmcFanRebootTimingReceiptBuilt { timing: BmcFanRebootTimingBuilt }
+  | BmcFanRebootTimingReceiptRefused {
       cause: BmcFanDurabilityEvidenceConstructionRefusal,
     }
 
@@ -116,12 +128,50 @@ fn bmc_fan_reboot_observed_outage_positive(
   receipt.bmc_returned_at > receipt.bmc_down_observed_at
 }
 
-fn bmc_fan_receipt_elapsed_millisecond(count: Int) -> PositiveMillisecond {
-  match positive_measure_count_from_int(count: count) {
-    PositiveMeasureCountBuilt { count: built } =>
-      positive_millisecond(count: built)
-    PositiveMeasureCountRefused { cause: _ } =>
-      positive_millisecond(count: positive_measure_count(predecessor: 0))
+fn bmc_fan_reboot_timing_receipt(
+  receipt: BmcFanRebootPersistenceReceipt,
+) -> BmcFanRebootTimingReceipt {
+  match positive_measure_count_from_int(
+    count: receipt.reset.observed_at - receipt.before.observed_at,
+  ) {
+    PositiveMeasureCountRefused { cause: cause } =>
+      BmcFanRebootTimingReceiptRefused {
+        cause: DurabilityReceiptNonPositiveInterval {
+          observed: cause.observed,
+        },
+      }
+    PositiveMeasureCountBuilt { count: started } =>
+      match positive_measure_count_from_int(
+        count: receipt.bmc_returned_at - receipt.reset.observed_at,
+      ) {
+        PositiveMeasureCountRefused { cause: cause } =>
+          BmcFanRebootTimingReceiptRefused {
+            cause: DurabilityReceiptNonPositiveInterval {
+              observed: cause.observed,
+            },
+          }
+        PositiveMeasureCountBuilt { count: duration } =>
+          match positive_measure_count_from_int(
+            count: receipt.observed_at - receipt.bmc_returned_at,
+          ) {
+            PositiveMeasureCountRefused { cause: cause } =>
+              BmcFanRebootTimingReceiptRefused {
+                cause: DurabilityReceiptNonPositiveInterval {
+                  observed: cause.observed,
+                },
+              }
+            PositiveMeasureCountBuilt { count: after_completion } =>
+              BmcFanRebootTimingReceiptBuilt {
+                timing: BmcFanRebootTimingBuilt {
+                  started_after_before_readback: positive_millisecond(count: started),
+                  duration: positive_millisecond(count: duration),
+                  observed_after_perturbation_completion: positive_millisecond(
+                    count: after_completion,
+                  ),
+                },
+              }
+          }
+      }
   }
 }
 
@@ -161,6 +211,7 @@ fn bmc_fan_reboot_activation_evidence(
 fn bmc_fan_reboot_preservation_outcome(
   receipt: BmcFanRebootPersistenceReceipt,
   admission: StateDurabilityAdmission<HostIdentity, BmcFanConfigReadbackSubject>,
+  timing: BmcFanRebootTimingBuilt,
 ) -> StatePreservationOutcome<HostIdentity, BmcFanConfigReadbackSubject> {
   if receipt.bmc_returned {
     StatePreserved {
@@ -180,9 +231,7 @@ fn bmc_fan_reboot_preservation_outcome(
           config_path: receipt.post_reboot_policy.board_config_path,
         },
         state_digest: receipt.post_reboot_active_config_digest,
-        observed_after_perturbation_completion: bmc_fan_receipt_elapsed_millisecond(
-          count: receipt.observed_at - receipt.bmc_returned_at,
-        ),
+        observed_after_perturbation_completion: timing.observed_after_perturbation_completion,
       },
       activation: bmc_fan_reboot_activation_evidence(
         receipt: receipt,
@@ -206,6 +255,7 @@ fn bmc_fan_reboot_digest_mismatch(
 fn bmc_fan_reboot_durability_evidence_built(
   receipt: BmcFanRebootPersistenceReceipt,
   capability: BmcFanPolicyProjectionCapability,
+  timing: BmcFanRebootTimingBuilt,
 ) -> BmcFanDurabilityEvidenceConstruction {
   let admission = bmc_fan_policy_projection_durability_admission(
     host: receipt.host,
@@ -220,16 +270,13 @@ fn bmc_fan_reboot_durability_evidence_built(
         target: receipt.host,
         boundary: fleet_bmc_fan_graceful_restart_boundary,
         generation: receipt.perturbation_generation,
-        started_after_before_readback: bmc_fan_receipt_elapsed_millisecond(
-          count: receipt.reset.observed_at - receipt.before.observed_at,
-        ),
-        duration: bmc_fan_receipt_elapsed_millisecond(
-          count: receipt.bmc_returned_at - receipt.reset.observed_at,
-        ),
+        started_after_before_readback: timing.started_after_before_readback,
+        duration: timing.duration,
       },
       outcome: bmc_fan_reboot_preservation_outcome(
         receipt: receipt,
         admission: admission,
+        timing: timing,
       ),
     },
   }
@@ -260,7 +307,16 @@ fn bmc_fan_reboot_durability_evidence(
     Present { value: cause } =>
       BmcFanDurabilityEvidenceConstructionRefused { cause: cause }
     Absent =>
-      bmc_fan_reboot_durability_evidence_built(receipt: receipt, capability: capability)
+      match bmc_fan_reboot_timing_receipt(receipt: receipt) {
+        BmcFanRebootTimingReceiptRefused { cause: cause } =>
+          BmcFanDurabilityEvidenceConstructionRefused { cause: cause }
+        BmcFanRebootTimingReceiptBuilt { timing: timing } =>
+          bmc_fan_reboot_durability_evidence_built(
+            receipt: receipt,
+            capability: capability,
+            timing: timing,
+          )
+      }
   }
 }
 
