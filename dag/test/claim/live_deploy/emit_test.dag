@@ -21,6 +21,7 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_unit_name,
 }
 import gunbc.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import extdeps.exec.command { shell_quote }
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
@@ -401,4 +402,21 @@ test fn emitted_twin_retract_removes_nothing_of_productions() -> Bool {
     && !string_contains(s: twin, pattern: "/etc/gunbc-tree-sync.env")
     && !string_contains(s: twin, pattern: "tailscale serve reset")
     && string_contains(s: twin, pattern: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")
+}
+
+
+data refusal_arm_must_actually_parse_note: String = "THE REFUSAL ARM EMITTED A BASH SYNTAX ERROR, so the arm this PR advertises did not refuse — it aborted the script (review 45173, confirmed by running bash -n on the committed retract). The poison text contains an apostrophe in deployment's routing, and the constructor wrapped it in single quotes by concatenation; POSIX single-quoted strings cannot contain a single quote, so the shell closed the string at the apostrophe, reopened at the next quote, and hit EOF unterminated. Under set -euo pipefail every teardown step after that line — systemd disable and removal, daemon-reload, worktree and binary removal, tree-sync teardown — silently never ran, and neither did the message.\\n\\nWHY THE GOLDEN GATE DID NOT CATCH IT: witness_retract_script_matches_committed_golden compares the emission against the committed bytes, and both sides were equally unparseable. A byte-equality gate proves the artifact is the one the model produces; it says nothing about whether that artifact is valid in its target language. The two are different oracle families and this file previously had only the first.\\n\\nTHE DISCRIMINATION IS THE ESCAPE FORM, not a quote-parity count — parity is odd in BOTH the broken and the fixed emission, so counting quotes proves nothing. What distinguishes them is that the fixed emission carries the close-escape-reopen sequence and never carries the raw apostrophe, which is exactly the difference between hand-concatenated quotes and extdeps.exec.command.shell_quote. Reverting the call site to concatenation fails both conjuncts."
+
+test fn witness_retract_refusal_is_shell_quote_escaped() -> Bool {
+  let retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
+  string_contains(s: retract, pattern: "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__")
+    && !string_contains(s: retract, pattern: "deployment's routing")
+    && string_contains(s: retract, pattern: "deployment'\\''s routing")
+}
+
+data shell_quote_authority_note: String = "The authority itself, exercised on the character that broke the call site. This is the consume-never-fork half of the fix: the call site no longer spells quotes, and the one place that does is checked here rather than trusted. A second hand-rolled quoter elsewhere in the tree would not be caught by this claim — that is a lens question — but a regression in the shared one would be."
+
+test fn shell_quote_escapes_an_embedded_apostrophe() -> Bool {
+  shell_quote(arg: "deployment's routing") == "'deployment'\\''s routing'"
+    && shell_quote(arg: "plain") == "'plain'"
 }

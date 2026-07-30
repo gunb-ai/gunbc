@@ -22,6 +22,7 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.ownership { Ownership }
+import extdeps.exec.command { shell_quote }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberEffect, EffectUpsert, EffectTeardown,
@@ -229,8 +230,10 @@ data tailscale_teardown_cannot_be_scoped_note: String = "THE TEARDOWN WAS A GLOB
 
 data live_deploy_tailscale_teardown_refused_poison: String = "__GUNBC_TAILSCALE_TEARDOWN_UNSCOPED__ tailscale serve exposes no per-port removal (only a node-global `serve reset`), so this retract will not remove the mapping: doing so would delete every other deployment's routing on this host. Remove it deliberately, or dissolve this refusal by teaching the deployment whether it owns the only mapping (DESIGN 5: refuse, never widen)"
 
+data refusal_command_quoting_note: String = "THE REFUSAL ARM EMITTED A BASH SYNTAX ERROR AND THEREFORE DID NOT REFUSE (review 45173, confirmed by running bash -n on the emitted script). The poison text contains an apostrophe — deployment's routing — and this constructor wrapped it in single quotes by concatenation. A POSIX single-quoted string cannot contain a single quote, so the shell read the apostrophe as CLOSING the string, then reopened at the next quote and hit EOF unterminated. The text also carries backticks around serve reset, which land in the resulting unquoted stretch as command substitution.\n\nThe consequence is worse than a garbled message. Under set -euo pipefail the parse error aborts the whole script at that line, so every teardown step after it — systemd disable and removal, daemon-reload, worktree and binary removal, tree-sync teardown — silently never ran, and neither did the refusal message the arm exists to print. An arm designed to stop the line instead dropped the rest of the line on the floor.\n\nThe fix consumes the shared POSIX authority rather than hand-spelling quotes: extdeps.exec.command.shell_quote splits on the quote character and rejoins through the close-escape-reopen form, which is the one correct spelling and already what tmux_staged_provider_start_note instructs callers to use for exactly this reason. Hand-concatenating quotes at a call site is how this class recurs, and the git_pathspec_exclude_note records the same lesson from the same failure — a shell word quoted by hand, caught by bash -n."
+
 fn tailscale_teardown_refusal_command() -> String {
-  concat("echo ", concat("'", concat(live_deploy_tailscale_teardown_refused_poison, "' >&2; false")))
+  concat("echo ", concat(shell_quote(arg: live_deploy_tailscale_teardown_refused_poison), " >&2; false"))
 }
 
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
