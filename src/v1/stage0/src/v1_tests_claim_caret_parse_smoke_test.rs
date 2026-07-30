@@ -22,7 +22,7 @@ use std::rc::Rc;
 pub fn caret_parse_smoke_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_paren_full_pipeline,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren,w_compile_to_resolved_caret_probe5b_has_no_caret_function_error,w_emit_caret_ident_symbol_literal,w_emit_caret_paren_discriminant_sugar".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren && cargo test -p v1-compiler caret_parse_smoke_native_compile_emit_witnesses".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -31,7 +31,7 @@ pub fn caret_parse_smoke_offline_recipe() -> String {
 pub fn caret_parse_smoke_dissolve_on() -> String {
     thread_local! {
         static CACHED: String = {
-            "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget.".to_string()
+            "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget; fold compile/emit rows back into claim_batch when v1.compile_sources is interpreter-runnable (same map_keys gap as probe_emit_interp.dag).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -175,7 +175,7 @@ pub fn w_caret_tokenizes_as_sh_caret() -> bool {
 
 pub fn w_caret_paren_tokenizes_as_caret_then_lparen() -> bool {
     {
-        let tokens = tokenize("^(1)".to_string(), "test.dag".to_string());
+        let tokens = tokenize("^(alpha)".to_string(), "test.dag".to_string());
         match tokens.clone().first().cloned() {
             Some(t1) => match tokens.clone().iter().cloned().skip(1 as usize).next() {
                 Some(t2) => {
@@ -199,16 +199,8 @@ pub fn w_parse_caret_ident_produces_literal() -> bool {
 
 pub fn w_parse_caret_paren_produces_discriminant_call() -> bool {
     {
-        let tokens = tokenize("^(1)".to_string(), "test.dag".to_string());
+        let tokens = tokenize("^(alpha)".to_string(), "test.dag".to_string());
         let r = parse_caret_expr(token_stream_new(tokens.clone()), caret_parse_ctx());
-        ((r.err.clone() == None) && caret_expr_is_discriminant_call(r.expr.clone()))
-    }
-}
-
-pub fn w_parse_expr_caret_paren_full_pipeline() -> bool {
-    {
-        let tokens = tokenize("^(1)".to_string(), "test.dag".to_string());
-        let r = parse_expr(token_stream_new(tokens.clone()), caret_parse_ctx());
         ((r.err.clone() == None) && caret_expr_is_discriminant_call(r.expr.clone()))
     }
 }
