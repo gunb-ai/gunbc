@@ -127,7 +127,9 @@ fn policy_bracket_does_not_bypass_canonical_homonym_refusal() {
         "host policy bracket false must not restore nearest-wins for on-chain homonyms; got {diags:?}"
     );
     assert!(
-        diags.iter().any(|m| m.contains("ambiguous reference 'pick'")),
+        diags
+            .iter()
+            .any(|m| m.contains("ambiguous reference 'pick'")),
         "host policy bracket false must not restore first-hit fn resolution; got {diags:?}"
     );
 }

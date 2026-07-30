@@ -962,7 +962,7 @@ pub fn global_bare_nearest_ancestor(
 pub fn unique_on_chain_policy_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), landed as 8 step 1 with step-4 default ON = NamespaceOnlyY (name_resolution_policy_is_namespace_only; host bracket false = ImportScoped byte-for-byte): a bare homonym resolves to the UNIQUE binder on the referencing module's ancestor chain — a candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Exactly one on-chain candidate resolves; two-plus on-chain REFUSES as typed AmbiguousReference with the full chain population; zero on-chain REFUSES as UnresolvedType — never a whole-corpus search (namespace-unique-on-chain operational plan lines 290-291, 408). Cardinality for chain and func-parent populations routes through std.occurrence_binding_resolve.occurrence_binding_decide.".to_string()
+            "namespace-resolution-design.md 13 (operator-ratified 2026-07-21), namespace-canonical-binding: bare homonym cardinality on chain-filtered populations routes through module_path_owner_binding_decide (0 → Unresolved, 1 → bind, 2+ → Ambiguous with full chain population). A candidate is on the chain iff its declaring module path is a leading-segment prefix of (or equal to) TypeEnv.module_path. Zero on-chain never authorizes whole-corpus search. The host NameResolutionPolicy gate no longer selects parallel nearest-wins/first-hit paths on these production surfaces (roadmap out_of_scope: no configuration switch between old and new behaviour).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1023,39 +1023,30 @@ pub fn global_bare_policy_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
-    if v1_rt::name_resolution_policy_is_namespace_only() {
-        global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
-    } else {
-        global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone())
-    }
+    global_bare_unique_chain_candidate(env_module_path.clone(), candidates.clone())
 }
 
 pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec<String>> {
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+        .as_deref()
+        .cloned()
     {
-        if (v1_rt::name_resolution_policy_is_namespace_only() == false) {
-            return Rc::new(vec![]);
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+            candidates: cands, ..
+        }) => {
+            let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+            global_bare_chain_ambiguity_labels_from_decide(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in chain.clone().iter().cloned() {
+                        __result.push(c.module_path.clone());
+                    }
+                    __result
+                }),
+                name.clone(),
+            )
         }
-        match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
-            .as_deref()
-            .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                candidates: cands, ..
-            }) => {
-                let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                global_bare_chain_ambiguity_labels_from_decide(
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for c in chain.clone().iter().cloned() {
-                            __result.push(c.module_path.clone());
-                        }
-                        __result
-                    }),
-                    name.clone(),
-                )
-            }
-            _ => Rc::new(vec![]),
-        }
+        _ => Rc::new(vec![]),
     }
 }
 
@@ -1094,32 +1085,23 @@ pub fn global_bare_owner_module(
             module_path: mp,
             binding: b,
             ..
-        }) => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                match global_bare_unique_chain_candidate(
-                    owner_module_path.clone(),
-                    Rc::new(vec![Rc::new(GlobalBareCandidate {
-                        module_path: mp.clone(),
-                        binding: b.clone(),
-                    })]),
-                ) {
-                    Some(cand) => match binding_declares_name(
-                        cand.binding.clone(),
-                        name.clone(),
-                        env.source_indices.clone(),
-                    ) {
-                        true => Some(cand.module_path.clone()),
-                        false => None,
-                    },
-                    None => None,
-                }
-            } else {
-                match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
-                    true => Some(mp.clone()),
-                    false => None,
-                }
-            }
-        }
+        }) => match global_bare_unique_chain_candidate(
+            owner_module_path.clone(),
+            Rc::new(vec![Rc::new(GlobalBareCandidate {
+                module_path: mp.clone(),
+                binding: b.clone(),
+            })]),
+        ) {
+            Some(cand) => match binding_declares_name(
+                cand.binding.clone(),
+                name.clone(),
+                env.source_indices.clone(),
+            ) {
+                true => Some(cand.module_path.clone()),
+                false => None,
+            },
+            None => None,
+        },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
@@ -1417,45 +1399,22 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
             module_path: mp,
             binding,
             ..
-        }) => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                match global_bare_unique_chain_candidate(
-                    env.module_path.clone(),
-                    Rc::new(vec![Rc::new(GlobalBareCandidate {
-                        module_path: mp.clone(),
-                        binding: binding.clone(),
-                    })]),
-                ) {
-                    Some(cand) => Some(cand.binding.clone()),
-                    None => None,
-                }
-            } else {
-                Some(binding.clone())
-            }
-        }
+        }) => match global_bare_unique_chain_candidate(
+            env.module_path.clone(),
+            Rc::new(vec![Rc::new(GlobalBareCandidate {
+                module_path: mp.clone(),
+                binding: binding.clone(),
+            })]),
+        ) {
+            Some(cand) => Some(cand.binding.clone()),
+            None => None,
+        },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
-        }) => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
-                    Some(cand) => Some(cand.binding.clone()),
-                    None => None,
-                }
-            } else {
-                {
-                    if (v1_rt::resolution_silent_pick_is_enabled()
-                        && ((cands.clone().len() as i64) >= 2))
-                    {
-                        record_global_bare_ambiguous_silent_pick(
-                            env.module_path.clone(),
-                            name.clone(),
-                            cands.clone(),
-                        )
-                    }
-                    global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
-                }
-            }
-        }
+        }) => match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
+            Some(cand) => Some(cand.binding.clone()),
+            None => None,
+        },
         None => None,
     }
 }
@@ -1468,21 +1427,14 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                {
-                    let chain =
-                        global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-                    global_bare_chain_is_ambiguous_from_decide(Rc::new({
-                        let mut __result = Vec::new();
-                        for c in chain.clone().iter().cloned() {
-                            __result.push(c.module_path.clone());
-                        }
-                        __result
-                    }))
+            let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
+            global_bare_chain_is_ambiguous_from_decide(Rc::new({
+                let mut __result = Vec::new();
+                for c in chain.clone().iter().cloned() {
+                    __result.push(c.module_path.clone());
                 }
-            } else {
-                (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None)
-            }
+                __result
+            }))
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
         None => false,

@@ -23840,10 +23840,7 @@ pub fn containment_resolve_fn_v1_for_module(
                     ) {
                         ContainmentResolve::Hit {
                             owner_module: cand.module_path.clone(),
-                            qualified_path: module_path_to_qualified_path(
-                                &cand.module_path,
-                                name,
-                            ),
+                            qualified_path: module_path_to_qualified_path(&cand.module_path, name),
                             node_ptr: Rc::as_ptr(&cand.binding.resolved) as usize,
                             via: ContainmentResolveVia::GlobalUnique,
                             lexical_steps: 0,

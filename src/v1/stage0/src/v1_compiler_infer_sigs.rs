@@ -229,29 +229,7 @@ pub fn lookup_resolved_sig_with_telemetry(
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSigLookup> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-        None => {
-            if v1_rt::name_resolution_policy_is_namespace_only() {
-                lookup_resolved_sig_unique_across_parents(env.clone(), name.clone())
-            } else {
-                {
-                    let first_hit = if v1_rt::resolution_silent_pick_is_enabled() {
-                        lookup_resolved_sig_with_telemetry(env.clone(), name.clone())
-                    } else {
-                        env.parents.clone().iter().cloned().fold(
-                            none_resolved_sig(),
-                            |acc: _, p: Rc<ResolvedFuncEnv>| match acc.clone() {
-                                Some(sig) => Some(sig.clone()),
-                                None => v1_rt::map_get(&p.local.clone(), name.clone()),
-                            },
-                        )
-                    };
-                    match first_hit.clone() {
-                        Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
-                        None => Rc::new(FuncSigLookup::FuncSigUnresolved),
-                    }
-                }
-            }
-        }
+        None => lookup_resolved_sig_unique_across_parents(env.clone(), name.clone()),
     }
 }
 

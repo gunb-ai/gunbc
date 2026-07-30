@@ -145,28 +145,19 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
                 module_path: mp,
                 binding: b,
                 ..
-            }) => {
-                if v1_rt::name_resolution_policy_is_namespace_only() {
-                    match global_bare_unique_chain_candidate(
-                        type_env.module_path.clone(),
-                        Rc::new(vec![Rc::new(GlobalBareCandidate {
-                            module_path: mp.clone(),
-                            binding: b.clone(),
-                        })]),
-                    ) {
-                        Some(cand) => Some(Rc::new(BorrowedCensusDecl {
-                            owner_module_path: cand.module_path.clone(),
-                            node: cand.binding.clone().resolved.clone(),
-                        })),
-                        None => None,
-                    }
-                } else {
-                    Some(Rc::new(BorrowedCensusDecl {
-                        owner_module_path: mp.clone(),
-                        node: b.resolved.clone(),
-                    }))
-                }
-            }
+            }) => match global_bare_unique_chain_candidate(
+                type_env.module_path.clone(),
+                Rc::new(vec![Rc::new(GlobalBareCandidate {
+                    module_path: mp.clone(),
+                    binding: b.clone(),
+                })]),
+            ) {
+                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                    owner_module_path: cand.module_path.clone(),
+                    node: cand.binding.clone().resolved.clone(),
+                })),
+                None => None,
+            },
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                 candidates: cands, ..
             }) => match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone()) {
