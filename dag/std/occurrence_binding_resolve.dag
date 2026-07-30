@@ -20,6 +20,8 @@ import std.occurrence_identity {
   OccurrenceIndexEntry,
   DeclarationOccurrence,
   ReferenceOccurrence,
+  OccurrenceCategoryBindingAdmissible,
+  OccurrenceCategoryBindingInadmissible,
   occurrence_containment_path_is_prefix_of,
   occurrence_category_binding_verdict,
   occurrence_transport_validate,
@@ -89,32 +91,17 @@ fn declaration_exposed_on_reference_chain(
   )
 }
 
-data declaration_matches_reference_segment_note: String = "Candidate filter, not a refusal surface (review 45077): occurrence_category_binding_verdict is matched to admit/exclude a declaration from the candidate FreeMonoid. Inadmissible's located payload is intentionally unused here — zero candidates become OccurrenceUnbound via occurrence_binding_decide, not a parallel category-refusal arm. Sites that must name the inadmissible pair consume the verdict sum directly."
-
-fn declaration_matches_reference_segment(
-  validated: ValidatedOccurrenceTransport,
-  declaration: DeclarationOccurrence,
-  reference: ReferenceOccurrence,
-  segment: String
-) -> Bool {
-  match occurrence_index_entry_for_declaration(
-    validated: validated,
-    declaration: declaration,
-  ) {
-    Present { value: entry } =>
-      entry.projection.authored_name == segment
-        && match occurrence_category_binding_verdict(
-          reference: reference.category,
-          declaration: declaration.category,
-        ) {
-          OccurrenceCategoryBindingAdmissible => true
-          OccurrenceCategoryBindingInadmissible { reference: _, declaration: _ } => false
-        }
-        && declaration_exposed_on_reference_chain(
-          declaration: declaration,
-          reference: reference,
-        )
-    Absent => false
+fn binding_candidates_append(
+  acc: FreeMonoid<BindingCandidate<OccurrenceId>>,
+  candidate: BindingCandidate<OccurrenceId>
+) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
+  match acc {
+    Empty => Cons { head: candidate, tail: Empty }
+    Cons { head: head, tail: tail } =>
+      Cons {
+        head: head,
+        tail: binding_candidates_append(acc: tail, candidate: candidate),
+      }
   }
 }
 
@@ -123,18 +110,43 @@ fn binding_candidates_for_reference(
   reference: ReferenceOccurrence,
   segment: String
 ) -> FreeMonoid<BindingCandidate<OccurrenceId>> {
-  validated.declarations
-    |> filter(declaration =>
-      declaration_matches_reference_segment(
+  fold(
+    validated.declarations,
+    init: Empty,
+    f: (acc, declaration) =>
+      match occurrence_index_entry_for_declaration(
         validated: validated,
         declaration: declaration,
-        reference: reference,
-        segment: segment,
-      )
-    )
-    |> map(declaration =>
-      binding_candidate_from_declaration(declaration: declaration)
-    )
+      ) {
+        Absent => acc
+        Present { value: entry } =>
+          if entry.projection.authored_name != segment {
+            acc
+          } else if !declaration_exposed_on_reference_chain(
+            declaration: declaration,
+            reference: reference,
+          ) {
+            acc
+          } else {
+            match occurrence_category_binding_verdict(
+              reference: reference.category,
+              declaration: declaration.category,
+            ) {
+              OccurrenceCategoryBindingAdmissible =>
+                binding_candidates_append(
+                  acc: acc,
+                  candidate: binding_candidate_from_declaration(
+                    declaration: declaration,
+                  ),
+                )
+              OccurrenceCategoryBindingInadmissible {
+                reference: _,
+                declaration: _,
+              } => acc
+            }
+          }
+      },
+  )
 }
 
 type OccurrenceReferenceBindingOutcome
