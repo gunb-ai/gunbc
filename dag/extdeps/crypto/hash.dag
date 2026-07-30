@@ -35,6 +35,6 @@ data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extd
 
 fn sha256_digest_content_hash(digest: Digest) -> ContentHash {
   match digest.algorithm {
-    Sha256 => join(["sha256:", digest.hex as String]) as ContentHash
+    Sha256 => join(["sha256:", digest.hex as String], "") as ContentHash
   }
 }
