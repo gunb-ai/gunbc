@@ -1,5 +1,25 @@
 module extdeps.bmc.types
 
+import extdeps.bmc.capability {
+  BmcEvidenceTemporalScope,
+  BmcFirmwareObservation,
+  BmcFirmwareVersion,
+}
+import extdeps.crypto.hash { Digest }
+import extdeps.filesystem.linux { LinuxOverlayObservation }
+import std.measure {
+  ByteSize,
+  Celsius,
+  PositiveCelsiusDelta,
+  HardwareThreadCount,
+  Percent,
+  RevolutionsPerMinute,
+  Watt,
+  celsius_count,
+  percent_count,
+}
+import std.nat { Nat }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -8,7 +28,41 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data phosphor_pid_control_stepwise_semantics_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/phosphor-pid-control/blob/master/configure.md"
+  }
+}
+
 type RedfishPowerState = On | Off | PoweringOn | PoweringOff
+
+type RedfishHostPowerStateContinuityVerdict
+  = RedfishHostPowerStateRemainedOn
+  | RedfishHostPowerStateChanged {
+      power_before: RedfishPowerState,
+      power_after: RedfishPowerState,
+    }
+
+fn redfish_host_power_state_continuity_verdict(
+  power_before: RedfishPowerState,
+  power_after: RedfishPowerState,
+) -> RedfishHostPowerStateContinuityVerdict {
+  match power_before {
+    On =>
+      match power_after {
+        On => RedfishHostPowerStateRemainedOn
+        after => RedfishHostPowerStateChanged {
+          power_before: On,
+          power_after: after,
+        }
+      }
+    before => RedfishHostPowerStateChanged {
+      power_before: before,
+      power_after: power_after,
+    }
+  }
+}
 
 type RedfishProcessorSummary {
   model: NonEmptyStr
@@ -61,6 +115,379 @@ type RedfishChassisSensorCollection {
   sensors: List<RedfishSensorReading>
 }
 
+type RedfishThermalTelemetrySurface
+  = RedfishThermalSubsystemSensorCollection
+  | RedfishLegacyChassisThermal
+  | RedfishDualThermalSurface
+
+type RedfishFanControlSurface
+  = RedfishFanControlResourceAbsent
+  | RedfishInitialDutyControlResource
+
+type BmcRedfishSurfaceObservation {
+  firmware: BmcFirmwareObservation
+  thermal_surface: RedfishThermalTelemetrySurface
+  chassis_sensor_collection_member_count: Nat
+  fan_control_surface: RedfishFanControlSurface
+}
+
+type BmcUpdateServiceObservation {
+  firmware: BmcFirmwareObservation
+  http_push_uri: NonEmptyStr
+  multipart_http_push_uri: NonEmptyStr
+  active_bmc_image_id: NonEmptyStr
+  active_bmc_image_updateable: Bool
+  firmware_inventory_member_count: Nat
+  bmc_image_member_count: Nat
+  backup_bmc_image_observed: Bool
+  observed_at: EpochMs
+}
+
+type RedfishThermalQueryVerdict
+  = RedfishThermalQueryComplete { surface: RedfishThermalTelemetrySurface }
+  | RedfishThermalQueryRefused { reason: NonEmptyStr }
+
+fn redfish_thermal_query_verdict(
+  chassis_sensors_success: Bool,
+  thermal_subsystem_success: Bool,
+  legacy_thermal_success: Bool
+) -> RedfishThermalQueryVerdict {
+  if legacy_thermal_success && thermal_subsystem_success && chassis_sensors_success {
+    RedfishThermalQueryComplete { surface: RedfishDualThermalSurface }
+  } else if legacy_thermal_success {
+    RedfishThermalQueryComplete { surface: RedfishLegacyChassisThermal }
+  } else if thermal_subsystem_success && chassis_sensors_success {
+    RedfishThermalQueryComplete { surface: RedfishThermalSubsystemSensorCollection }
+  } else {
+    RedfishThermalQueryRefused {
+      reason: "no complete Redfish thermal surface: Sensors alone is not evidence of temperature/fan coverage",
+    }
+  }
+}
+
+type BmcFanCurveStep {
+  at_or_above: Celsius
+  duty: Percent
+}
+
+type BmcFanCurve {
+  control_sensor: NonEmptyStr
+  steps: List<BmcFanCurveStep>
+  minimum_duty: Percent
+  sensor_unavailable_duty: Percent
+  zone_failsafe_duty: Percent
+  positive_hysteresis: PositiveCelsiusDelta
+  negative_hysteresis: PositiveCelsiusDelta
+}
+
+type ValidatedBmcFanCurve {
+  curve: BmcFanCurve
+}
+
+data validated_bmc_fan_curve_construction_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. validate_bmc_fan_curve is the sole producer in this module and returns typed, located invalid causes, but .dag record literals remain public, so callers can still forge this proof wrapper. This is the same corpus-wide language-layer gap as ValidatedGrammarRoot, not authority for a second validation protocol."
+
+type BmcFanCurveInvalidCause
+  = BmcFanCurveEmpty
+  | BmcFanCurveDutyAboveFull {
+      field: BmcFanCurveDutyField,
+      duty: Percent,
+    }
+  | BmcFanCurveMinimumExceedsFirstStep {
+      minimum: Percent,
+      first_step: Percent,
+    }
+  | BmcFanCurveTemperatureNotStrictlyIncreasing {
+      previous: Celsius,
+      current: Celsius,
+    }
+  | BmcFanCurveDutyDecreased {
+      previous: Percent,
+      current: Percent,
+    }
+  | BmcFanCurveTerminalDutyNotFull { terminal_duty: Percent }
+
+type BmcFanCurveDutyField
+  = BmcFanCurveMinimumDuty
+  | BmcFanCurveSensorUnavailableDuty
+  | BmcFanCurveZoneFailsafeDuty
+
+type BmcFanCurveValidation
+  = BmcFanCurveValid { curve: ValidatedBmcFanCurve }
+  | BmcFanCurveInvalid { cause: BmcFanCurveInvalidCause }
+
+type BmcFanCurveStepOrderFold {
+  previous: BmcFanCurveStep
+  refusal: BmcFanCurveInvalidCause?
+}
+
+fn bmc_fan_curve_step_order_refusal(
+  remaining: List<BmcFanCurveStep>,
+  previous: BmcFanCurveStep,
+) -> BmcFanCurveInvalidCause? {
+  let folded = fold(
+    remaining,
+    init: BmcFanCurveStepOrderFold {
+      previous: previous,
+      refusal: none,
+    },
+    f: (acc, current) =>
+      match acc.refusal {
+        Present { value: _ } => acc
+        Absent =>
+          if celsius_count(current.at_or_above) <= celsius_count(acc.previous.at_or_above) {
+            BmcFanCurveStepOrderFold {
+              previous: acc.previous,
+              refusal: Present {
+                value: BmcFanCurveTemperatureNotStrictlyIncreasing {
+                  previous: acc.previous.at_or_above,
+                  current: current.at_or_above,
+                },
+              },
+            }
+          } else if percent_count(current.duty) < percent_count(acc.previous.duty) {
+            BmcFanCurveStepOrderFold {
+              previous: acc.previous,
+              refusal: Present {
+                value: BmcFanCurveDutyDecreased {
+                  previous: acc.previous.duty,
+                  current: current.duty,
+                },
+              },
+            }
+          } else {
+            BmcFanCurveStepOrderFold {
+              previous: current,
+              refusal: none,
+            }
+          }
+      },
+  )
+  folded.refusal
+}
+
+fn validate_bmc_fan_curve(curve: BmcFanCurve) -> BmcFanCurveValidation {
+  match curve.steps.first() {
+    Absent =>
+      BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+    Present { value: first } =>
+      if percent_count(curve.minimum_duty) > 100 {
+        BmcFanCurveInvalid {
+          cause: BmcFanCurveDutyAboveFull {
+            field: BmcFanCurveMinimumDuty,
+            duty: curve.minimum_duty,
+          },
+        }
+      } else if percent_count(curve.sensor_unavailable_duty) > 100 {
+        BmcFanCurveInvalid {
+          cause: BmcFanCurveDutyAboveFull {
+            field: BmcFanCurveSensorUnavailableDuty,
+            duty: curve.sensor_unavailable_duty,
+          },
+        }
+      } else if percent_count(curve.zone_failsafe_duty) > 100 {
+        BmcFanCurveInvalid {
+          cause: BmcFanCurveDutyAboveFull {
+            field: BmcFanCurveZoneFailsafeDuty,
+            duty: curve.zone_failsafe_duty,
+          },
+        }
+      } else if percent_count(first.duty) < percent_count(curve.minimum_duty) {
+        BmcFanCurveInvalid {
+          cause: BmcFanCurveMinimumExceedsFirstStep {
+            minimum: curve.minimum_duty,
+            first_step: first.duty,
+          },
+        }
+      } else {
+        match bmc_fan_curve_step_order_refusal(
+          remaining: curve.steps.skip(n: 1),
+          previous: first,
+        ) {
+          Present { value: cause } =>
+            BmcFanCurveInvalid { cause: cause }
+          Absent => {
+            let terminal = curve.steps.skip(n: curve.steps.length() - 1).first()
+            match terminal {
+              Absent =>
+                BmcFanCurveInvalid { cause: BmcFanCurveEmpty }
+              Present { value: final_step } =>
+                if percent_count(final_step.duty) != 100 {
+                  BmcFanCurveInvalid {
+                    cause: BmcFanCurveTerminalDutyNotFull {
+                      terminal_duty: final_step.duty,
+                    },
+                  }
+                } else {
+                  BmcFanCurveValid {
+                    curve: ValidatedBmcFanCurve { curve: curve },
+                  }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+type BmcFanDutyDecision
+  = BmcFanDutyFromCurve { reading: Celsius, duty: Percent }
+  | BmcFanDutyFromSensorFailsafe { duty: Percent }
+
+data bmc_fan_duty_decision_semantics_note: String = "The curve branch is the stateless base projection of the declared step points, clamped by minimum_duty below the first point. phosphor-pid-control's cited stepwise semantics only recompute after the input moves farther than positiveHysteresis or negativeHysteresis from the prior recomputation input; the effective emergency proof therefore includes rising hysteresis. A runtime observation must retain prior state when exact transition timing matters. The coproduct keeps a base-curve request distinct from the numerically identical sensor-unavailable fail-safe request."
+
+fn bmc_fan_curve_duty_at(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius,
+) -> Percent {
+  let curve = validated.curve
+  fold(
+    curve.steps,
+    init: curve.minimum_duty,
+    f: (selected, step) =>
+      if celsius_count(reading) >= celsius_count(step.at_or_above) {
+        step.duty
+      } else {
+        selected
+      }
+  )
+}
+
+fn bmc_fan_duty_decision(
+  validated: ValidatedBmcFanCurve,
+  reading: Celsius?,
+) -> BmcFanDutyDecision {
+  let curve = validated.curve
+  match reading {
+    Absent =>
+      BmcFanDutyFromSensorFailsafe { duty: curve.sensor_unavailable_duty }
+    Present { value: temperature } =>
+      BmcFanDutyFromCurve {
+        reading: temperature,
+        duty: bmc_fan_curve_duty_at(
+          validated: validated,
+          reading: temperature,
+        ),
+      }
+  }
+}
+
+fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
+  match decision {
+    BmcFanDutyFromCurve { reading: _, duty: duty } => Present { value: duty }
+    BmcFanDutyFromSensorFailsafe { duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_duty_decision_sensor_failsafe_duty(
+  decision: BmcFanDutyDecision,
+) -> Percent? {
+  match decision {
+    BmcFanDutyFromSensorFailsafe { duty: duty } => Present { value: duty }
+    BmcFanDutyFromCurve { reading: _, duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_curve_duty_at_temperature(
+  curve: BmcFanCurve,
+  reading: Celsius,
+) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_curve_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Present { value: reading },
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_sensor_failsafe_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Absent,
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
+type BmcFanControllerShape
+  = FanPidIndependentEntries { entry_names: List<NonEmptyStr> }
+  | FanPidAggregatedEntry {
+      entry_name: NonEmptyStr,
+      tach_inputs: List<NonEmptyStr>,
+    }
+
+type BmcFanAggregatedControllerTopology {
+  entry_name: NonEmptyStr
+  tach_inputs: List<NonEmptyStr>
+}
+
+fn bmc_fan_controller_shape_aggregated_topology(
+  shape: BmcFanControllerShape,
+) -> BmcFanAggregatedControllerTopology? {
+  match shape {
+    FanPidAggregatedEntry {
+      entry_name: entry_name,
+      tach_inputs: tach_inputs,
+    } =>
+      Present {
+        value: BmcFanAggregatedControllerTopology {
+          entry_name: entry_name,
+          tach_inputs: tach_inputs,
+        },
+      }
+    FanPidIndependentEntries { entry_names: _ } => Absent
+  }
+}
+
+fn bmc_fan_controller_shape_independent_entry_names(
+  shape: BmcFanControllerShape,
+) -> List<NonEmptyStr>? {
+  match shape {
+    FanPidIndependentEntries { entry_names: entry_names } =>
+      Present { value: entry_names }
+    FanPidAggregatedEntry { entry_name: _, tach_inputs: _ } => Absent
+  }
+}
+
+type BmcFanPolicyObservation {
+  firmware: BmcFirmwareVersion
+  evidence_scope: BmcEvidenceTemporalScope
+  curve: BmcFanCurve
+  active_config_digest: Digest
+  selected_config_path: NonEmptyStr
+  board_config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  controller_binary: NonEmptyStr
+  controller_shape: BmcFanControllerShape
+  observed_at: EpochMs
+}
+
+type BmcConfigPersistenceObservation
+  = BmcOverlayConfigObserved {
+      firmware: BmcFirmwareVersion
+      config_path: NonEmptyStr
+      overlay: LinuxOverlayObservation
+      writable: Bool
+      upper_override_present: Bool
+      available_bytes: ByteSize
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
+    }
+  | BmcConfigPersistenceUnsupported {
+      firmware: BmcFirmwareVersion
+      config_path: NonEmptyStr
+      reason: NonEmptyStr
+      evidence_scope: BmcEvidenceTemporalScope
+      observed_at: EpochMs
+    }
+
 type BmcTelemetrySnapshot {
   system: RedfishSystemInventory
   power: RedfishPowerSubsystem?
@@ -100,6 +527,15 @@ type RedfishResetType =
   | ResetGracefulRestart
   | ResetGracefulShutdown
   | ResetPowerCycle
+
+type RedfishManagerResetObservation {
+  action_target: NonEmptyStr
+  reset_type: RedfishResetType
+  http_status: HttpStatus
+  accepted: Bool
+  evidence_scope: BmcEvidenceTemporalScope
+  observed_at: EpochMs
+}
 
 type RedfishAccountRole =
     AccountRoleAdministrator
