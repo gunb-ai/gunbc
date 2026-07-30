@@ -320,6 +320,24 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             println!("FAIL {} (runtime error: {})", function, message);
             *any_failed = true;
         }
+        // Named as a kill, not a duration: the row stopped AT the budget, so elapsed is a
+        // ceiling. The clock is named because a cpu-budget kill and a wall-budget kill have
+        // different remedies.
+        ClaimOutcome::TimedOut {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => {
+            println!(
+                "FAIL {} (killed at its {} budget: {}ms elapsed > {}ms budget; elapsed is a \
+                 ceiling, not a completed duration)",
+                function,
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            );
+            *any_failed = true;
+        }
     }
 }
 

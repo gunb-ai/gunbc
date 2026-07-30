@@ -10916,14 +10916,21 @@ mod budget_completion_tests {
         // The stride-poll blind spot: a witness burning over-budget CPU in fewer than
         // 4096 dispatches must still refuse at completion, never green silently. The
         // third arg is CPU nanos (6ms CPU > 5ms budget), matching the stride-poll metric.
+        // The pair is asserted as DATA, not as prose. It used to be `format!`ed into a
+        // RuntimeError message and this test matched a substring of it — which is exactly
+        // the coupling that let a reworded message silently change the floor's failure
+        // classification downstream.
         match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
-            ClaimOutcome::RuntimeError { message } => {
-                assert!(
-                    message.contains("eval budget exceeded"),
-                    "typed refusal expected; got {message}"
-                );
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => {
+                assert_eq!(budget_ms, 5);
+                assert_eq!(elapsed_ms, 6);
+                assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
             }
-            other => panic!("expected RuntimeError, got {other:?}"),
+            other => panic!("expected TimedOut, got {other:?}"),
         }
     }
 
@@ -10954,14 +10961,46 @@ mod budget_completion_tests {
     #[test]
     fn pass_over_wall_budget_converts_to_typed_refusal() {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
-            ClaimOutcome::RuntimeError { message } => {
-                assert!(
-                    message.contains("witness receipt wall budget exceeded"),
-                    "typed refusal expected; got {message}"
-                );
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => {
+                assert_eq!(budget_ms, 600);
+                assert_eq!(elapsed_ms, 601_000);
+                assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
             }
-            other => panic!("expected RuntimeError, got {other:?}"),
+            other => panic!("expected TimedOut, got {other:?}"),
         }
+    }
+
+    /// The two clocks must stay distinguishable. A CPU kill and a wall kill have different
+    /// remedies — a witness burning CPU is over the fast-lane classification, a witness over
+    /// wall may simply be waiting on subprocess I/O — so collapsing them to one "timed out"
+    /// would be a state-space conflation, which is the defect class this variant exists to
+    /// end rather than relocate.
+    #[test]
+    fn cpu_and_wall_kills_do_not_collapse_into_one_state() {
+        let cpu = budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000);
+        let wall = wall_budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000);
+        assert_ne!(
+            cpu, wall,
+            "identical numbers on different clocks must not be the same value"
+        );
+        assert!(matches!(
+            cpu,
+            ClaimOutcome::TimedOut {
+                kind: BudgetKind::Cpu,
+                ..
+            }
+        ));
+        assert!(matches!(
+            wall,
+            ClaimOutcome::TimedOut {
+                kind: BudgetKind::Wall,
+                ..
+            }
+        ));
     }
 }
 
