@@ -6,6 +6,7 @@ use self::OccurrenceCategory::*;
 use self::OccurrenceCategoryBindingVerdict::*;
 use self::OccurrenceTransportRefusal::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_types::is_prefix_of;
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, SourceSpan};
 use crate::v1_rt;
@@ -442,7 +443,7 @@ pub fn occurrence_containment_paths_equal(
 pub fn occurrence_containment_path_query_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — consumers route through these, not parallel FreeMonoid walkers elsewhere in std/.".to_string()
+            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — ancestor prefix consumes std.types.is_prefix_of (review 45014), not a parallel Empty|Cons walker.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -461,44 +462,6 @@ pub fn occurrence_containment_path_contains_ancestor(
         })
 }
 
-pub fn occurrence_containment_ancestors_are_prefix_of(
-    mut prefix_ancestors: Rc<Vec<OccurrenceId>>,
-    mut path_ancestors: Rc<Vec<OccurrenceId>>,
-) -> bool {
-    loop {
-        {
-            let __fm = prefix_ancestors.clone();
-            if __fm.is_empty() {
-                break true;
-            } else {
-                let prefix_head = (*__fm)[0].clone();
-                let prefix_tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-                {
-                    let __fm = path_ancestors.clone();
-                    if __fm.is_empty() {
-                        break false;
-                    } else {
-                        let path_head = (*__fm)[0].clone();
-                        let path_tail: Rc<Vec<_>> =
-                            Rc::new((*__fm).iter().skip(1).cloned().collect());
-                        if (prefix_head.value.clone() == path_head.value.clone()) {
-                            {
-                                let __tco_0 = prefix_tail.clone();
-                                let __tco_1 = path_tail.clone();
-                                prefix_ancestors = __tco_0;
-                                path_ancestors = __tco_1;
-                                continue;
-                            }
-                        } else {
-                            break false;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn occurrence_containment_path_is_prefix_of(
     prefix: Rc<OccurrenceContainmentPath>,
     path: Rc<OccurrenceContainmentPath>,
@@ -507,9 +470,10 @@ pub fn occurrence_containment_path_is_prefix_of(
         true
     } else {
         if (prefix.terminal.clone().value.clone() == path.terminal.clone().value.clone()) {
-            occurrence_containment_ancestors_are_prefix_of(
+            is_prefix_of(
                 prefix.ancestors.clone(),
                 path.ancestors.clone(),
+                occurrence_id_eq,
             )
         } else {
             occurrence_containment_path_contains_ancestor(
@@ -534,7 +498,10 @@ pub fn occurrence_transport_index_build(
             entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
             refusal: None,
         }),
-        |build: _, entry: _| match build.refusal.clone() {
+        |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
+            .refusal
+            .clone()
+        {
             Some(_) => build.clone(),
             None => match v1_rt::map_get(
                 &build.entries_by_id.clone(),
@@ -601,7 +568,8 @@ pub fn occurrence_transport_role_index_build(
                 references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
                 refusal: None,
             }),
-            |build: _, declaration: _| match build.refusal.clone() {
+            |build: Rc<OccurrenceTransportRoleIndexBuild>,
+             declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
                 Some(_) => build.clone(),
                 None => match v1_rt::map_get(
                     &build.declarations_by_id.clone(),
@@ -633,7 +601,8 @@ pub fn occurrence_transport_role_index_build(
             Some(_) => declaration_build,
             None => references.clone().iter().cloned().fold(
                 declaration_build,
-                |build: _, reference: _| match build.refusal.clone() {
+                |build: Rc<OccurrenceTransportRoleIndexBuild>,
+                 reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
                     Some(_) => build.clone(),
                     None => match v1_rt::map_get(
                         &build.references_by_id.clone(),
@@ -767,7 +736,9 @@ pub fn occurrence_transport_refusal(
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
                                 None,
-                                |refusal: _, declaration: _| match refusal.clone() {
+                                |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
+                                    .clone()
+                                {
                                     Some(_) => refusal.clone(),
                                     None => declaration_occurrence_refusal(
                                         index_build.entries_by_id.clone(),
@@ -780,7 +751,9 @@ pub fn occurrence_transport_refusal(
                             Some(refusal) => Some(refusal.clone()),
                             None => transport.references.clone().iter().cloned().fold(
                                 None,
-                                |refusal: _, reference: _| match refusal.clone() {
+                                |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal
+                                    .clone()
+                                {
                                     Some(_) => refusal.clone(),
                                     None => reference_occurrence_refusal(
                                         index_build.entries_by_id.clone(),

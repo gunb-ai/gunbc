@@ -1,7 +1,7 @@
 module std.occurrence_identity
 
-import std.algebra { FreeMonoid, is_prefix_of }
-import std.types { Bool, Int, String, SourceSpan }
+import std.algebra { FreeMonoid }
+import std.types { Bool, Int, String, SourceSpan, is_prefix_of }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 
@@ -282,11 +282,7 @@ fn occurrence_containment_paths_equal(
   left.terminal.value == right.terminal.value
 }
 
-data occurrence_containment_path_query_note: String = "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — FreeMonoid prefix walks consume std.algebra.is_prefix_of (review 45014), not a parallel storage-shape walker."
-
-fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
-  left.value == right.value
-}
+data occurrence_containment_path_query_note: String = "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — ancestor prefix consumes std.types.is_prefix_of (review 45014), not a parallel Empty|Cons walker."
 
 fn occurrence_containment_path_contains_ancestor(
   ancestors: FreeMonoid<OccurrenceId>,

@@ -1,6 +1,6 @@
 module std.types
 
-import std.algebra { FreeMonoid, PartialFunction, PointwisePower, kernel_algebra_profile, algebra_type_param_names }
+import std.algebra { FreeMonoid, PartialFunction, PointwisePower, Empty, Cons, kernel_algebra_profile, algebra_type_param_names }
 
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
@@ -15,7 +15,7 @@ fn is_kernel_type(name: String) -> Bool {
 }
 
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2, "Witness": 1
+  "List": 1, "Set": 1, "Map": 2, "Witness": 1, "FreeMonoid": 1
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -106,6 +106,24 @@ type Char = Int where unicode_scalar, brand("Char")
 type List<element> = FreeMonoid<element>
 type Set<element> = PointwisePower<element>
 type Map<key, value> = PartialFunction<key, value>
+
+data free_monoid_prefix_query_note: String = "Canonical FreeMonoid/List prefix query (DESIGN §2/§3): is_prefix_of is the single Empty|Cons walker for prefix tests. Domain surfaces consume this — they do not re-walk storage shape. Parameterized over List (= FreeMonoid) so stage0 emit attaches Clone on the element type param via container_type_arity."
+
+fn is_prefix_of<T>(
+  prefix: List<T>,
+  xs: List<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
+  }
+}
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)

@@ -49,6 +49,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             __m.insert("Set".to_string(), 1);
             __m.insert("Map".to_string(), 2);
             __m.insert("Witness".to_string(), 1);
+            __m.insert("FreeMonoid".to_string(), 1);
             Rc::new(__m)
         };
     }
@@ -222,6 +223,42 @@ pub type List<Element> = Vec<Element>;
 pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
 
 pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+
+pub fn free_monoid_prefix_query_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical FreeMonoid/List prefix query (DESIGN §2/§3): is_prefix_of is the single Empty|Cons walker for prefix tests. Domain surfaces consume this — they do not re-walk storage shape. Parameterized over List (= FreeMonoid) so stage0 emit attaches Clone on the element type param via container_type_arity.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_prefix_of<T: Clone>(
+    prefix: Rc<Vec<T>>,
+    xs: Rc<Vec<T>>,
+    eq: impl Fn(T, T) -> bool + Clone,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = prefix.clone();
+        if __fm.is_empty() {
+            true
+        } else {
+            let h_prefix = (*__fm)[0].clone();
+            let t_prefix: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+            {
+                let __fm = xs.clone();
+                if __fm.is_empty() {
+                    false
+                } else {
+                    let h_xs = (*__fm)[0].clone();
+                    let t_xs: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                    (eq(h_prefix.clone(), h_xs.clone())
+                        && is_prefix_of(t_prefix.clone(), t_xs.clone(), eq.clone()))
+                }
+            }
+        }
+    })
+}
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.clone().iter().fold(0, |acc: i64, _: _| (acc + 1))

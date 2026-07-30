@@ -189,17 +189,15 @@ pub fn occurrence_index_has_name(
     occurrence: OccurrenceId,
     name: String,
 ) -> bool {
-    index
-        .entries
-        .clone()
-        .iter()
-        .cloned()
-        .fold(false, |found: bool, entry: _| {
+    index.entries.clone().iter().cloned().fold(
+        false,
+        |found: bool, entry: Rc<OccurrenceIndexEntry>| {
             (found
                 || ((entry.projection.clone().occurrence.clone().value.clone()
                     == occurrence.value.clone())
                     && (entry.projection.clone().authored_name.clone() == name.clone())))
-        })
+        },
+    )
 }
 
 pub fn lexical_declaration_count_named(transport: Rc<OccurrenceTransport>, name: String) -> i64 {
@@ -399,7 +397,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
             .clone()
             .iter()
             .cloned()
-            .fold(true, |outer_ok: bool, left: _| {
+            .fold(true, |outer_ok: bool, left: Rc<OccurrenceIndexEntry>| {
                 (outer_ok
                     && second
                         .occurrence_transport
@@ -410,7 +408,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(true, |inner_ok: bool, right: _| {
+                        .fold(true, |inner_ok: bool, right: Rc<OccurrenceIndexEntry>| {
                             (inner_ok
                                 && (left.projection.clone().occurrence.clone().value.clone()
                                     != right.projection.clone().occurrence.clone().value.clone()))
@@ -425,7 +423,7 @@ pub fn w_sequential_parse_uses_disjoint_authored_token_ordinal_ranges() -> bool 
             .clone()
             .iter()
             .cloned()
-            .fold(true, |ok: bool, entry: _| {
+            .fold(true, |ok: bool, entry: Rc<OccurrenceIndexEntry>| {
                 (ok && (entry.projection.clone().occurrence.clone().value.clone()
                     >= first.occurrence_allocator.clone().next_id.clone()))
             });
