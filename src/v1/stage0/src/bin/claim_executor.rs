@@ -2113,8 +2113,6 @@ fn write_floor_component_receipt_at(
         let (failure_mode, detail) = batch_failure_mode_and_detail(rec);
         match floor_component_row_value(
             &ctx,
-            "floor_component_row_of_failure_mode",
-            "failure_mode",
             &run_id,
             rec.batch_index as i64 + 1,
             &rec.label,
@@ -2133,14 +2131,12 @@ fn write_floor_component_receipt_at(
     for bi in batch_records.len()..total_batches {
         match floor_component_row_value(
             &ctx,
-            "floor_component_row",
-            "outcome_tag",
             &run_id,
             bi as i64 + 1,
             "not reached",
             "off",
             0,
-            "skipped",
+            "not_reached",
             "batch not reached — an earlier batch failed under the stop policy",
             0,
         ) {
@@ -2205,18 +2201,37 @@ fn write_floor_component_receipt_at(
 #[allow(clippy::too_many_arguments)]
 fn floor_component_row_value(
     ctx: &InterpContext,
-    constructor: &str,
-    outcome_arg: &str,
     run_id: &str,
     index: i64,
     label: &str,
     selection_tag: &str,
     witnesses: i64,
-    outcome_value: &str,
+    failure_mode: &str,
     detail: &str,
     wall_ms: i64,
 ) -> Option<Value> {
-    let mut args: Vec<(Option<String>, Value)> = vec![
+    // The duration crosses as the std.measure carrier, not a bare scalar: `millisecond`
+    // is called across the boundary so the constructor stays the single authority. A
+    // `Value::Record { type_name: "Millisecond", .. }` built here would fork it, and a
+    // bare `wall_ms: Nat` parameter would be the flat-scalar unit the standing
+    // unit-modeling hold forbids (`floor_component_receipt_unit_surface_note`).
+    let wall = match run_in_context_with_args(
+        ctx,
+        "millisecond",
+        &[(Some("count".to_string()), Value::Int(wall_ms))],
+        false,
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — millisecond(count: {wall_ms}) \
+                 eval for batch {index}: {e}"
+            );
+            return None;
+        }
+    };
+    let constructor = "floor_component_row_of_failure_mode";
+    let args: Vec<(Option<String>, Value)> = vec![
         (Some("run_id".to_string()), Value::Str(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
         (Some("label".to_string()), Value::Str(label.to_string())),
@@ -2226,19 +2241,12 @@ fn floor_component_row_value(
         ),
         (Some("witnesses".to_string()), Value::Int(witnesses)),
         (
-            Some(outcome_arg.to_string()),
-            Value::Str(outcome_value.to_string()),
+            Some("failure_mode".to_string()),
+            Value::Str(failure_mode.to_string()),
         ),
         (Some("detail".to_string()), Value::Str(detail.to_string())),
+        (Some("wall".to_string()), wall),
     ];
-    // The outcome-tag constructor also takes the measure arguments its TimedOut and
-    // Final arms read; the failure-mode constructor has no such arms.
-    if outcome_arg == "outcome_tag" {
-        args.push((Some("budget_ms".to_string()), Value::Int(0)));
-        args.push((Some("elapsed_ms".to_string()), Value::Int(0)));
-        args.push((Some("shown_failures".to_string()), Value::Int(0)));
-    }
-    args.push((Some("wall_ms".to_string()), Value::Int(wall_ms)));
     let out = run_in_context_with_args(ctx, constructor, &args, false);
     match out {
         Ok(Value::Variant {
@@ -2260,7 +2268,7 @@ fn floor_component_row_value(
             eprintln!(
                 "claim_executor: floor component receipt REFUSED — {constructor} returned \
                  absent for batch {index}: selection_tag={selection_tag:?} \
-                 {outcome_arg}={outcome_value:?} are outside the .dag vocabulary"
+                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
             );
             None
         }

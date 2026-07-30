@@ -62,7 +62,9 @@ data floor_component_receipt_role_note: String = "Components are identified by S
 
 data floor_component_receipt_timed_out_frontier_note: String = "TimedOut is MODELLED and PROJECTED here but the floor does not yet emit it, and that gap is declared rather than papered over. A whole-receipt wall-budget kill carries its numbers structurally at the point it is raised — v1_interpreter InterpError::WitnessWallBudgetExceeded { elapsed_ms, budget_ms } — but ClaimOutcome::RuntimeError flattens them to a formatted String before the walk sees them, so the executor cannot fill TimedOut's budget and elapsed without re-parsing its own prose. It therefore emits Refused with the interpreter's own located diagnostic, which is not a downgrade: a kill at a declared ceiling IS the deliberate, located stop that observation_refused_distinct_note defines Refused to mean. Fabricating 0 for budget and elapsed to reach the more specific arm would be the fabricated-plausible-output DESIGN section 5 forbids. Dissolve-on: ClaimOutcome carries the typed WitnessWallBudgetExceeded pair through to ClaimResult, at which point the budget arm becomes TimedOut { budget, elapsed } and this note deletes. The projection side needs no change then — floor_component_outcome_of_tag already admits the tag and floor_component_outcome_members already renders both fields, proven by execution today."
 
-data floor_component_receipt_seed_transport_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side transport this module is consumed by (review 45058 asked for it, correctly — new hand-Rust owes a named deferral, not a description). WHAT IS ADDED: no new Rust file and no parallel authority — functions inside the existing claim_executor bin that locate this module, resolve it, call floor_component_row_of_failure_mode / floor_component_receipt_document, and write the returned bytes. WHAT IS NOT IN RUST: the receipt's shape, its schema, the failure-mode-to-outcome mapping, the role identification, and every judgment about success — all of that is here, under dag/test/claim/floor_component_receipt_witness_test.dag. The seed side carries no classification of its own; its `_ => failed` catch-all was removed in favour of floor_component_outcome_of_failure_mode's refusal arm. PRECEDENT for the boundary shape: gunbc.observation_seed_render is the same seed-to-dag seam with the same primitive-arguments-in contract, called the same way from the same bin (render_phase_concluded_line). DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION: the transport deletes when the floor's receipt write is issued from .dag as a typed host effect (Filesystem.Write through host_effect_apply, the shell-to-intent Phase 2 routing for runtime-present sites) instead of std::fs::write in the seed — at that point the resolve-and-call marshalling has no reason to exist and this module's document function is invoked directly by the emitted walk."
+data floor_component_receipt_seed_transport_deferral_note: String = "PURE BOOTSTRAP RECEIPT for the seed-side transport this module is consumed by (review 45058 asked for it, correctly — new hand-Rust owes a named deferral, not a description). WHAT IS ADDED: no new Rust file and no parallel authority — functions inside the existing claim_executor bin that locate this module, resolve it, call floor_component_row_of_failure_mode / floor_component_receipt_document, and write the returned bytes. WHAT IS NOT IN RUST: the receipt's shape, its schema, the failure-mode-to-outcome mapping, the role identification, and every judgment about success — all of that is here, under dag/test/claim/floor_component_receipt_witness_test.dag. The seed side carries no classification of its own; its `_ => failed` catch-all was removed in favour of floor_component_outcome_of_failure_mode's refusal arm. BOUNDARY SHAPE: the seed calls millisecond(count:) through the interpreter and hands back the resulting Millisecond, so no carrier is constructed in Rust and no flat-scalar duration crosses the seam. The sibling seam gunbc.observation_seed_render (render_phase_concluded_line, same bin) still takes elapsed_ms: Nat; that is un-migrated debt on its own lane and was deliberately NOT copied here. DEFERRED TO: the v1 exit finish line ZeroHandMaintainedRust, roadmap node v1-zero-hand-maintained-rust (gunbc.v1_deletion_plan v1_exit_finish_lines). CONCRETE DISSOLUTION: the transport deletes when the floor's receipt write is issued from .dag as a typed host effect (Filesystem.Write through host_effect_apply, the shell-to-intent Phase 2 routing for runtime-present sites) instead of std::fs::write in the seed — at that point the resolve-and-call marshalling has no reason to exist and this module's document function is invoked directly by the emitted walk."
+
+data floor_component_receipt_unit_surface_note: String = "Every duration on this module's public surface is the std.measure carrier Millisecond (= Measure<Time, Milli, Nat>, the ratified Measure<Q,S,M> shape), never a bare Nat named *_ms. Two independent reviews (review 45058, review 45070) flagged the earlier *_ms: Nat constructor parameters, and they were right: a duration whose unit lives only in the field name is form 3 of the standing unit-modeling merge-hold, and the fact that a sibling seed seam still spells it that way makes that seam debt rather than a licence. Immediate millisecond(count:) wrapping inside the body does NOT discharge it — the parameter surface is what callers can get wrong, and a caller passing seconds into wall_ms would have typechecked. The seed constructs no carrier: it calls millisecond(count:) across the interpreter boundary and passes the Millisecond back in, so the constructor stays the single authority (a Value::Record built in Rust would have forked it). There is exactly ONE seed entry point, floor_component_row_of_failure_mode, whose failure_mode vocabulary covers every disposition the walk can report including not_reached."
 
 data floor_component_receipt_schema: String = "floor-component-receipt/v1"
 
@@ -108,20 +110,15 @@ fn floor_component_selection_tag(s: NodeFrontierSelection) -> String {
 fn floor_component_outcome_of_tag(
   tag: NonEmptyStr,
   detail: NonEmptyStr,
-  budget_ms: Nat,
-  elapsed_ms: Nat,
+  budget: Millisecond,
+  elapsed: Millisecond,
   shown_failures: Nat
 ) -> ObservationOutcome? {
   if (tag as String) == "done" { Present { value: Done } }
   else if (tag as String) == "refused" { Present { value: Refused { diagnostic: detail } } }
   else if (tag as String) == "failed" { Present { value: Failed { error: detail, output: "" } } }
   else if (tag as String) == "timed_out" {
-    Present {
-      value: TimedOut {
-        budget: millisecond(count: budget_ms),
-        elapsed: millisecond(count: elapsed_ms)
-      }
-    }
+    Present { value: TimedOut { budget: budget, elapsed: elapsed } }
   }
   else if (tag as String) == "skipped" { Present { value: Skipped { reason: detail } } }
   else if (tag as String) == "final" { Present { value: Final { shown_failures: shown_failures } } }
@@ -135,6 +132,7 @@ fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptySt
   else if (mode as String) == "BudgetExceeded" { Present { value: Refused { diagnostic: detail } } }
   else if (mode as String) == "Infra" { Present { value: Failed { error: detail, output: "" } } }
   else if (mode as String) == "WitnessRed" { Present { value: Failed { error: detail, output: "" } } }
+  else if (mode as String) == "not_reached" { Present { value: Skipped { reason: detail } } }
   else { none }
 }
 
@@ -181,13 +179,13 @@ fn floor_component_row_of(
   selection: NodeFrontierSelection,
   witnesses: Nat,
   outcome: ObservationOutcome,
-  wall_ms: Nat
+  wall: Millisecond
 ) -> FloorComponentRow {
   FloorComponentRow {
     event: ObservationEvent {
       subject: floor_component_subject(run_id: run_id, index: index, label: label),
       transition: Concluded { outcome: outcome },
-      wall: MeasuredValue { value: millisecond_to_nanosecond(m: millisecond(count: wall_ms)) },
+      wall: MeasuredValue { value: millisecond_to_nanosecond(m: wall) },
       rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
     },
     selection: selection,
@@ -203,10 +201,10 @@ fn floor_component_row(
   witnesses: Nat,
   outcome_tag: NonEmptyStr,
   detail: NonEmptyStr,
-  budget_ms: Nat,
-  elapsed_ms: Nat,
+  budget: Millisecond,
+  elapsed: Millisecond,
   shown_failures: Nat,
-  wall_ms: Nat
+  wall: Millisecond
 ) -> FloorComponentRow? {
   match floor_component_selection_of_tag(tag: selection_tag) {
     Absent => none
@@ -214,8 +212,8 @@ fn floor_component_row(
       match floor_component_outcome_of_tag(
         tag: outcome_tag,
         detail: detail,
-        budget_ms: budget_ms,
-        elapsed_ms: elapsed_ms,
+        budget: budget,
+        elapsed: elapsed,
         shown_failures: shown_failures
       ) {
         Absent => none
@@ -227,7 +225,7 @@ fn floor_component_row(
             selection: sel,
             witnesses: witnesses,
             outcome: outcome,
-            wall_ms: wall_ms
+            wall: wall
           )
         }
       }
@@ -242,7 +240,7 @@ fn floor_component_row_of_failure_mode(
   witnesses: Nat,
   failure_mode: NonEmptyStr,
   detail: NonEmptyStr,
-  wall_ms: Nat
+  wall: Millisecond
 ) -> FloorComponentRow? {
   match floor_component_selection_of_tag(tag: selection_tag) {
     Absent => none
@@ -257,7 +255,7 @@ fn floor_component_row_of_failure_mode(
             selection: sel,
             witnesses: witnesses,
             outcome: outcome,
-            wall_ms: wall_ms
+            wall: wall
           )
         }
       }

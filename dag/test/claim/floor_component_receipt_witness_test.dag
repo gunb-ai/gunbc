@@ -3,6 +3,7 @@ module test.claim.floor_component_receipt_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.nat { Nat }
+import std.measure { Millisecond, millisecond }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
   FloorControlState,
@@ -32,10 +33,10 @@ fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorC
     witnesses: 5217,
     outcome_tag: outcome_tag,
     detail: detail,
-    budget_ms: 0,
-    elapsed_ms: 0,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
     shown_failures: 0,
-    wall_ms: 1170401
+    wall: millisecond(count: 1170401)
   )
 }
 
@@ -50,10 +51,10 @@ fn fcr_silent_pick_row() -> FloorComponentRow? {
     witnesses: 1,
     outcome_tag: "refused" as NonEmptyStr,
     detail: fcr_silent_pick_diagnostic,
-    budget_ms: 0,
-    elapsed_ms: 0,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
     shown_failures: 0,
-    wall_ms: 905745
+    wall: millisecond(count: 905745)
   )
 }
 
@@ -66,10 +67,10 @@ fn fcr_timed_out_row() -> FloorComponentRow? {
     witnesses: 1,
     outcome_tag: "timed_out" as NonEmptyStr,
     detail: "unused by the TimedOut arm" as NonEmptyStr,
-    budget_ms: 900000,
-    elapsed_ms: 900766,
+    budget: millisecond(count: 900000),
+    elapsed: millisecond(count: 900766),
     shown_failures: 0,
-    wall_ms: 905745
+    wall: millisecond(count: 905745)
   )
 }
 
@@ -82,10 +83,10 @@ fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
     witnesses: 6,
     outcome_tag: "done" as NonEmptyStr,
     detail: "expect_red still-red OK" as NonEmptyStr,
-    budget_ms: 0,
-    elapsed_ms: 0,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
     shown_failures: 0,
-    wall_ms: 1974836
+    wall: millisecond(count: 1974836)
   )
 }
 
@@ -191,10 +192,10 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
     witnesses: 1,
     outcome_tag: "probably_fine" as NonEmptyStr,
     detail: "d" as NonEmptyStr,
-    budget_ms: 0,
-    elapsed_ms: 0,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
     shown_failures: 0,
-    wall_ms: 1
+    wall: millisecond(count: 1)
   )
   let bad_selection = floor_component_row(
     run_id: fcr_run_id,
@@ -204,10 +205,10 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
     witnesses: 1,
     outcome_tag: "done" as NonEmptyStr,
     detail: "d" as NonEmptyStr,
-    budget_ms: 0,
-    elapsed_ms: 0,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
     shown_failures: 0,
-    wall_ms: 1
+    wall: millisecond(count: 1)
   )
   (match bad_outcome { Absent => true  Present { value: _ } => false })
     && (match bad_selection { Absent => true  Present { value: _ } => false })
@@ -241,7 +242,7 @@ fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
     witnesses: 1,
     failure_mode: mode,
     detail: fcr_silent_pick_diagnostic,
-    wall_ms: 905745
+    wall: millisecond(count: 905745)
   )
 }
 
@@ -259,6 +260,10 @@ test fn fcr_failure_mode_maps_to_the_distinguishing_outcomes() -> Bool {
     && fcr_mode_outcome_is(mode: "BudgetExceeded" as NonEmptyStr, expected_outcome: "refused")
     && fcr_mode_outcome_is(mode: "Infra" as NonEmptyStr, expected_outcome: "failed")
     && fcr_mode_outcome_is(mode: "WitnessRed" as NonEmptyStr, expected_outcome: "failed")
+}
+
+test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
+  fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
