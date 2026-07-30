@@ -282,6 +282,60 @@ fn occurrence_containment_paths_equal(
   left.terminal.value == right.terminal.value
 }
 
+data occurrence_containment_path_query_note: String = "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — consumers route through these, not parallel FreeMonoid walkers elsewhere in std/."
+
+fn occurrence_containment_path_contains_ancestor(
+  ancestors: FreeMonoid<OccurrenceId>,
+  target: OccurrenceId
+) -> Bool {
+  fold(
+    ancestors,
+    init: false,
+    f: (found, id) => found || id.value == target.value,
+  )
+}
+
+fn occurrence_containment_ancestors_are_prefix_of(
+  prefix_ancestors: FreeMonoid<OccurrenceId>,
+  path_ancestors: FreeMonoid<OccurrenceId>
+) -> Bool {
+  match prefix_ancestors {
+    Empty => true
+    Cons { head: prefix_head, tail: prefix_tail } =>
+      match path_ancestors {
+        Empty => false
+        Cons { head: path_head, tail: path_tail } =>
+          if prefix_head.value == path_head.value {
+            occurrence_containment_ancestors_are_prefix_of(
+              prefix_ancestors: prefix_tail,
+              path_ancestors: path_tail,
+            )
+          } else {
+            false
+          }
+      }
+  }
+}
+
+fn occurrence_containment_path_is_prefix_of(
+  prefix: OccurrenceContainmentPath,
+  path: OccurrenceContainmentPath
+) -> Bool {
+  if occurrence_containment_paths_equal(left: prefix, right: path) {
+    true
+  } else if prefix.terminal.value == path.terminal.value {
+    occurrence_containment_ancestors_are_prefix_of(
+      prefix_ancestors: prefix.ancestors,
+      path_ancestors: path.ancestors,
+    )
+  } else {
+    occurrence_containment_path_contains_ancestor(
+      ancestors: path.ancestors,
+      target: prefix.terminal,
+    )
+  }
+}
+
 type OccurrenceTransportIndexBuild {
   entries_by_id: Map<Int, OccurrenceIndexEntry>
   refusal: OccurrenceTransportRefusal?

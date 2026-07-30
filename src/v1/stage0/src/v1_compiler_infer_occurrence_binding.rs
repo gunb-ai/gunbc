@@ -12,7 +12,7 @@ use std::rc::Rc;
 pub fn infer_occurrence_binding_canonical_decide_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "v1 production adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on owner module paths without importing generic std.occurrence_binding into stage0 (generic emission lacks Clone/serde bounds). Candidate enumeration stays in infer_env/infer_sigs. DISSOLVE-ON: stage0 emits std.occurrence_binding_resolve and this adapter delegates to module_path_binding_decide by execution.".to_string()
+            "v1 production adapter: global_bare chain and func parent-closure cardinality fold through module_path_owner_binding_decide, which mirrors occurrence_binding_from_candidates 0/1/many semantics on owner module paths without importing generic std.occurrence_binding into stage0 (generic emission lacks Clone/serde bounds). Candidate enumeration stays in infer_env/infer_sigs. Scaffold receipt: gunbc.infer_occurrence_binding_scaffold (binds std.occurrence_binding_resolve.module_path_binding_decide; witness: dag/test/claim/infer_occurrence_binding_scaffold_witness_test.dag). DISSOLVE-ON: stage0 emits std.occurrence_binding_resolve and this adapter delegates to module_path_binding_decide by execution.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

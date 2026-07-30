@@ -1,0 +1,23 @@
+module gunbc.namespace_unique_on_chain_policy_scaffold
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data namespace_unique_on_chain_policy_hand_rust_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "test.retirement.namespace_unique_on_chain_policy_retained",
+    decl_name: "namespace_unique_on_chain_policy_retention",
+    field: WholeDeclaration
+  }
+}
+
+data namespace_unique_on_chain_policy_hand_rust_dissolve_trigger: String = "DISSOLVE-ON: v1 self-host deletes src/v1 and the host thread-local NameResolutionPolicy gate; dag-native policy witnesses replace src/v1/tests/src/namespace_unique_on_chain_policy_test.rs. ROADMAP lane: namespace-canonical-binding."
+
+data namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor: String = "docs/plans/namespace-resolution-design.md"
+
+data namespace_unique_on_chain_policy_containment_census_test_discriminator: String = "zero_on_chain_containment_census_matches_inference_unresolved"
+
+data namespace_unique_on_chain_policy_zero_on_chain_test_discriminator: String = "zero_on_chain_homonym_discriminates_the_diagnostic_label"
+
+data namespace_unique_on_chain_policy_loc_delta_net: Int = 45

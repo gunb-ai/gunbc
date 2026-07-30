@@ -1,0 +1,47 @@
+module test.claim.namespace_unique_on_chain_policy_hand_rust_witness_test
+
+import std.disposition { Scaffold, SingleAuthority }
+import gunbc.namespace_unique_on_chain_policy_scaffold {
+  namespace_unique_on_chain_policy_hand_rust_scaffold,
+  namespace_unique_on_chain_policy_hand_rust_dissolve_trigger,
+  namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor,
+  namespace_unique_on_chain_policy_containment_census_test_discriminator,
+  namespace_unique_on_chain_policy_zero_on_chain_test_discriminator,
+  namespace_unique_on_chain_policy_loc_delta_net,
+}
+
+test fn namespace_unique_on_chain_policy_hand_rust_scaffold_is_seed_retained() -> Bool {
+  match namespace_unique_on_chain_policy_hand_rust_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+}
+
+test fn namespace_unique_on_chain_policy_hand_rust_dissolve_trigger_names_lane() -> Bool {
+  string_contains(
+    s: namespace_unique_on_chain_policy_hand_rust_dissolve_trigger,
+    pattern: "namespace-canonical-binding",
+  ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_hand_rust_dissolve_trigger,
+      pattern: "NameResolutionPolicy",
+    )
+}
+
+test fn namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
+  string_contains(
+    s: namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor,
+    pattern: "namespace-resolution-design.md",
+  ) && namespace_unique_on_chain_policy_loc_delta_net > 0
+}
+
+test fn namespace_unique_on_chain_policy_discriminating_tests_named() -> Bool {
+  string_contains(
+    s: namespace_unique_on_chain_policy_containment_census_test_discriminator,
+    pattern: "containment_census",
+  ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_zero_on_chain_test_discriminator,
+      pattern: "zero_on_chain",
+    )
+}

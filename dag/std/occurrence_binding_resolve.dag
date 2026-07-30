@@ -18,6 +18,7 @@ import std.occurrence_identity {
   DeclarationOccurrence,
   ReferenceOccurrence,
   occurrence_containment_paths_equal,
+  occurrence_containment_path_is_prefix_of,
   occurrence_category_binding_verdict,
 }
 
@@ -97,65 +98,6 @@ fn occurrence_index_entry_for_declaration(
       entry.projection.occurrence.value == declaration.occurrence.value
     )
     |> first
-}
-
-fn occurrence_containment_path_contains_ancestor(
-  ancestors: FreeMonoid<OccurrenceId>,
-  target: OccurrenceId
-) -> Bool {
-  match ancestors {
-    Empty => false
-    Cons { head: head, tail: tail } =>
-      if head.value == target.value {
-        true
-      } else {
-        occurrence_containment_path_contains_ancestor(
-          ancestors: tail,
-          target: target,
-        )
-      }
-  }
-}
-
-fn occurrence_containment_path_is_prefix_of(
-  prefix: OccurrenceContainmentPath,
-  path: OccurrenceContainmentPath
-) -> Bool {
-  if occurrence_containment_paths_equal(left: prefix, right: path) {
-    true
-  } else if prefix.terminal.value == path.terminal.value {
-    occurrence_containment_ancestors_are_prefix_of(
-      prefix_ancestors: prefix.ancestors,
-      path_ancestors: path.ancestors,
-    )
-  } else {
-    occurrence_containment_path_contains_ancestor(
-      ancestors: path.ancestors,
-      target: prefix.terminal,
-    )
-  }
-}
-
-fn occurrence_containment_ancestors_are_prefix_of(
-  prefix_ancestors: FreeMonoid<OccurrenceId>,
-  path_ancestors: FreeMonoid<OccurrenceId>
-) -> Bool {
-  match prefix_ancestors {
-    Empty => true
-    Cons { head: prefix_head, tail: prefix_tail } =>
-      match path_ancestors {
-        Empty => false
-        Cons { head: path_head, tail: path_tail } =>
-          if prefix_head.value == path_head.value {
-            occurrence_containment_ancestors_are_prefix_of(
-              prefix_ancestors: prefix_tail,
-              path_ancestors: path_tail,
-            )
-          } else {
-            false
-          }
-      }
-  }
 }
 
 fn declaration_exposed_on_reference_chain(

@@ -690,6 +690,16 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     reason: nfr_reason_observation_hold_cause,
     trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
   },
+  FrontierRow {
+    subject: PathSubject { path: "src/v1/04_occurrence_binding.dag::module_path_owner_binding_decide" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: "DISSOLVE-ON: stage0 emits std.occurrence_binding_resolve; v1 adapter delegates to module_path_binding_decide by execution (gunbc.infer_occurrence_binding_scaffold)" },
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/std/occurrence_identity.dag::occurrence_containment_ancestors_are_prefix_of" },
+    reason: nfr_reason_mint_era,
+    trigger: TriggerProse { text: nfr_dissolve_wildcard_total },
+  },
 ]
 
 fn non_fold_residue_frontier_units() -> List<String> {

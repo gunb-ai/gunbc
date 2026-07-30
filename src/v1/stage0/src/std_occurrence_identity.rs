@@ -439,6 +439,87 @@ pub fn occurrence_containment_paths_equal(
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
 }
 
+pub fn occurrence_containment_path_query_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Canonical containment-path prefix/membership queries (review 44814): occurrence_containment_path_contains_ancestor and occurrence_containment_path_is_prefix_of are the only surfaces for ancestor membership and prefix tests over OccurrenceContainmentPath — consumers route through these, not parallel FreeMonoid walkers elsewhere in std/.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn occurrence_containment_path_contains_ancestor(
+    ancestors: Rc<Vec<OccurrenceId>>,
+    target: OccurrenceId,
+) -> bool {
+    ancestors
+        .clone()
+        .iter()
+        .cloned()
+        .fold(false, |found: bool, id: OccurrenceId| {
+            (found || (id.value.clone() == target.value.clone()))
+        })
+}
+
+pub fn occurrence_containment_ancestors_are_prefix_of(
+    mut prefix_ancestors: Rc<Vec<OccurrenceId>>,
+    mut path_ancestors: Rc<Vec<OccurrenceId>>,
+) -> bool {
+    loop {
+        {
+            let __fm = prefix_ancestors.clone();
+            if __fm.is_empty() {
+                break true;
+            } else {
+                let prefix_head = (*__fm)[0].clone();
+                let prefix_tail: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                {
+                    let __fm = path_ancestors.clone();
+                    if __fm.is_empty() {
+                        break false;
+                    } else {
+                        let path_head = (*__fm)[0].clone();
+                        let path_tail: Rc<Vec<_>> =
+                            Rc::new((*__fm).iter().skip(1).cloned().collect());
+                        if (prefix_head.value.clone() == path_head.value.clone()) {
+                            {
+                                let __tco_0 = prefix_tail.clone();
+                                let __tco_1 = path_tail.clone();
+                                prefix_ancestors = __tco_0;
+                                path_ancestors = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            break false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn occurrence_containment_path_is_prefix_of(
+    prefix: Rc<OccurrenceContainmentPath>,
+    path: Rc<OccurrenceContainmentPath>,
+) -> bool {
+    if occurrence_containment_paths_equal(prefix.clone(), path.clone()) {
+        true
+    } else {
+        if (prefix.terminal.clone().value.clone() == path.terminal.clone().value.clone()) {
+            occurrence_containment_ancestors_are_prefix_of(
+                prefix.ancestors.clone(),
+                path.ancestors.clone(),
+            )
+        } else {
+            occurrence_containment_path_contains_ancestor(
+                path.ancestors.clone(),
+                prefix.terminal.clone(),
+            )
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceTransportIndexBuild {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
