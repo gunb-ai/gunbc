@@ -1,6 +1,7 @@
 module extdeps.auth.jwt
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.measure { Second, second }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -22,11 +23,12 @@ type NumericDate
       fractional_digits: NonEmptyStr,
     }
 
-data numeric_date_lifetime_refusal_note: String = "The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the fractional arms refuse rather than truncating. A caller that genuinely needs sub-second resolution needs the decimal parse this module does not provide, and giving it a rounded Int instead would answer a question it did not ask. The refusal names which side was fractional, so the diagnostic locates the token rather than reporting that arithmetic was unavailable."
+data numeric_date_lifetime_refusal_note: String = "The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the fractional arms refuse rather than truncating. A caller that genuinely needs sub-second resolution needs the decimal parse this module does not provide, and giving it a rounded value instead would answer a question it did not ask. The refusal names which side was fractional, so the diagnostic locates the token rather than reporting that arithmetic was unavailable.\\n\\nTHE ANSWER IS A std.measure.Second, NOT A BARE Int (review 45056). A seconds-valued duration returned as Int is the unit-modeling fork DESIGN forbids: the unit lives in the parameter's NAME, where nothing can check it, and the next consumer is free to read it as milliseconds. The wire-level NumericDate above stays a raw JSON-shaped value because that is genuinely what RFC 7519 puts on the wire — the extdeps boundary describes the artifact — but a DERIVED duration is an ordinary magnitude and belongs on the canonical carrier like every other one in the tree.\\n\\nSecond counts a Nat, which forces the third arm. A token whose expiry precedes its issuance has no non-negative lifetime, and the honest answer is a refusal rather than a wrapped negative or a clamp to zero — clamping would report a just-expired credential and a malformed one identically."
 
 type NumericDateLifetime
-  = LifetimeWholeSeconds { seconds: Int }
+  = LifetimeWholeSeconds { seconds: Second }
   | LifetimeNotWholeSeconds { reason: String }
+  | LifetimeExpiryPrecedesIssuance { issued_at: Int, expires_at: Int }
 
 fn numeric_date_lifetime(
   issued: NumericDate,
@@ -44,7 +46,11 @@ fn numeric_date_lifetime(
             reason: "expiry carries a fractional-seconds component; a whole-second lifetime would round it",
           }
         NumericDateWholeSeconds { seconds: until } =>
-          LifetimeWholeSeconds { seconds: until - from }
+          if until < from {
+            LifetimeExpiryPrecedesIssuance { issued_at: from, expires_at: until }
+          } else {
+            LifetimeWholeSeconds { seconds: second(count: until - from) }
+          }
       }
   }
 }

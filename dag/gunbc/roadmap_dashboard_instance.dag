@@ -3,6 +3,17 @@ module gunbc.roadmap_dashboard_instance
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
+import gunbc.provider_account {
+  AdmittedAccountBinding,
+  CodexAccountSelection,
+  CodexDefaultAccount,
+  CodexLabelledAccount,
+  ProviderAccountLabel,
+  EvidencedSharingDiscipline,
+  codex_roadmap_account_evidence,
+  codex_roadmap_account_selection,
+  admitted_single_session_binding,
+}
 import extdeps.languages.json.emit {
   json_kv,
   json_string,
@@ -54,10 +65,13 @@ type DashboardSourceSeed
       history_remote: NonEmptyStr,
     }
 
+data provider_state_requires_admission_note: String = "THE ADMITTED BINDING IS A FIELD, NOT A CHECK SOMEONE MAY RUN. gunbc.provider_account models which account a credential belongs to and how many concurrent sessions its persistence behaviour can carry, and its admission function refuses the combinations that cannot hold — but this record used to carry only a root and an executable, so every instance in the fleet was built along a path that admission never saw. The model said the invalid architecture was unwritable while the constructor two files away wrote it four times.\\n\\nAdding the binding as a required field is what closes it. There is no default and no second constructor, so a provider state cannot come into existence without naming an admitted binding, and the account a deployment uses is no longer a bare path that happens to end in a directory name — it is a selection the admission agreed to.\\n\\nThe four declarations below bind ONE session each, which is what a serve process is, and take the total single-session path admitted_single_session_binding provides. That path cannot refuse, because a single session is admissible under every discipline resting on evidence; what it cannot do is accept an unobserved credential, since EvidencedSharingDiscipline has no unknown arm to pass it. A deployment wanting more than one session goes through the partial admission and must match its refusal."
+
 type DashboardProviderStateBinding
   = DashboardExistingProviderState {
       root: FilePath,
       executable: FilePath,
+      binding: AdmittedAccountBinding,
     }
 
 type HostDashboardInstance {
@@ -99,13 +113,13 @@ fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
 
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
-    DashboardExistingProviderState { root, executable: _ } => root
+    DashboardExistingProviderState { root, executable: _, binding: _ } => root
   }
 }
 
 fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
-    DashboardExistingProviderState { root: _, executable } => executable
+    DashboardExistingProviderState { root: _, executable, binding: _ } => executable
   }
 }
 
@@ -321,6 +335,10 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
     },
     serve_binary: srv1_gunbc_serve_binary,
     serve_function: "roadmap_serve_handle" as NonEmptyStr,
@@ -366,6 +384,10 @@ fn isolated_dashboard_instance(
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
       executable: "/usr/bin/codex" as FilePath,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
+      ),
     },
     serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     serve_function: serve_function,

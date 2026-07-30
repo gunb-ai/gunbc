@@ -1998,6 +1998,8 @@ fn codex_probe_detail(out: String, err: String) -> String {
   if o == "" { e } else if e == "" { o } else { join([o, e], " | ") }
 }
 
+data readiness_refusal_is_not_a_negative_note: String = "AN UNREACHABLE HOST WAS PRODUCING REMEDIATION ADVICE (review 45153). Every branch of this readiness fold asked a two-valued question of a three-valued observation. dashboard_target_directory_present answers false for an absent path AND for a probe that could not run — this module's own path_observation_preserves_refusal_note says so in as many words — so an SSH transport refusal became ProviderStateRootAbsent, complete with a device-login command for the operator to type. The two probe branches did the same through the success Bool: a refused runtime probe became ProviderRuntimeUnavailable naming an executable nobody managed to ask about, and a refused auth probe became ProviderUnauthenticated telling someone to log in on a machine they cannot reach.\n\nThat is the fabricated-verdict shape rather than a missing feature, and it is worse than a wrong status because it is ACTIONABLE: the reader is handed a specific command that addresses a condition never observed. exec_refusal_reason_note in this same module already states the rule for the probe case — an unreachable host and an unauthenticated provider are the same value without the split — and the readiness fold was the caller that ignored it.\n\nThe fix is the fourth arm, and it deliberately carries NO remediation. Nothing is known about the provider when the transport did not deliver the question, so there is no correct instruction to give; what the operator needs is the reason the observation failed, which is what the arm carries. The vocabulary was already here — DashboardPathObservation's refused variant and dashboard_exec_refusal_reason — so this is the fold consuming the discrimination the module already made rather than new machinery."
+
 type DashboardProviderReadiness
   = ProviderReady {
       runtime_detail: String,
@@ -2015,6 +2017,10 @@ type DashboardProviderReadiness
       state_root: FilePath,
       detail: String,
       remediation: String,
+    }
+  | ProviderReadinessRefused {
+      stage: NonEmptyStr,
+      reason: String,
     }
 
 data provider_login_command_projects_the_shaper_note: String = "THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless host MUST use --device-auth because the plain flow's callback resolves to localhost on the server rather than the operator's machine (review, 2026-07-30).\\n\\nSo the emitted instruction was the one proven not to work, spelled a second time beside the shaper built to prevent exactly that. Two representations of one invocation, and the prose one drifts silently because nothing executes it.\\n\\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same object. If the env var, the program path or the flag changes, both move together — and the operator is never handed a command this repository has already established cannot complete."
@@ -2035,48 +2041,73 @@ fn dashboard_provider_state_root_remediation(instance: HostDashboardInstance) ->
   dashboard_provider_device_login_command(instance: instance)
 }
 
+fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
+  !r.success && trim(r.stdout) == "" && !(trim(r.stderr) == "")
+}
+
 fn dashboard_provider_readiness(
   instance: HostDashboardInstance,
 ) -> DashboardProviderReadiness {
   let state_root = dashboard_instance_provider_state_root(instance: instance)
-  if !dashboard_target_directory_present(instance: instance, path: state_root) {
-    ProviderStateRootAbsent {
-      state_root: state_root,
-      remediation: dashboard_provider_state_root_remediation(instance: instance),
-    }
-  } else {
-    let runtime = dashboard_target_probe(
-      instance: instance,
-      program: dashboard_environment_binding_executable,
-      args: shape_codex_version_env_args_for_program(
-        program: dashboard_instance_provider_executable(instance: instance) as String,
-        codex_home: state_root as String,
-      ),
-    )
-    if !runtime.success {
-      ProviderRuntimeUnavailable {
-        executable: dashboard_instance_provider_executable(instance: instance),
-        detail: trim(runtime.stderr),
+  match dashboard_target_path_observe(
+    instance: instance,
+    flag: "-d",
+    path: state_root,
+  ) {
+    PathObservationRefused { reason } =>
+      ProviderReadinessRefused {
+        stage: "provider-state-root" as NonEmptyStr,
+        reason: reason,
       }
-    } else {
-      let auth = dashboard_target_probe(
+    PathObservedAbsent =>
+      ProviderStateRootAbsent {
+        state_root: state_root,
+        remediation: dashboard_provider_state_root_remediation(instance: instance),
+      }
+    PathObservedPresent => {
+      let runtime = dashboard_target_probe(
         instance: instance,
         program: dashboard_environment_binding_executable,
-        args: shape_codex_login_status_env_args_for_program(
+        args: shape_codex_version_env_args_for_program(
           program: dashboard_instance_provider_executable(instance: instance) as String,
           codex_home: state_root as String,
         ),
       )
-      if !auth.success {
-        ProviderUnauthenticated {
-          state_root: state_root,
-          detail: trim(auth.stderr),
-          remediation: dashboard_provider_device_login_command(instance: instance),
+      if dashboard_probe_refused(r: runtime) {
+        ProviderReadinessRefused {
+          stage: "provider-runtime" as NonEmptyStr,
+          reason: trim(runtime.stderr),
+        }
+      } else if !runtime.success {
+        ProviderRuntimeUnavailable {
+          executable: dashboard_instance_provider_executable(instance: instance),
+          detail: trim(runtime.stderr),
         }
       } else {
-        ProviderReady {
-          runtime_detail: codex_probe_detail(out: runtime.stdout, err: runtime.stderr),
-          auth_detail: codex_probe_detail(out: auth.stdout, err: auth.stderr),
+        let auth = dashboard_target_probe(
+          instance: instance,
+          program: dashboard_environment_binding_executable,
+          args: shape_codex_login_status_env_args_for_program(
+            program: dashboard_instance_provider_executable(instance: instance) as String,
+            codex_home: state_root as String,
+          ),
+        )
+        if dashboard_probe_refused(r: auth) {
+          ProviderReadinessRefused {
+            stage: "provider-auth" as NonEmptyStr,
+            reason: trim(auth.stderr),
+          }
+        } else if !auth.success {
+          ProviderUnauthenticated {
+            state_root: state_root,
+            detail: trim(auth.stderr),
+            remediation: dashboard_provider_device_login_command(instance: instance),
+          }
+        } else {
+          ProviderReady {
+            runtime_detail: codex_probe_detail(out: runtime.stdout, err: runtime.stderr),
+            auth_detail: codex_probe_detail(out: auth.stdout, err: auth.stderr),
+          }
         }
       }
     }
@@ -2096,6 +2127,11 @@ fn dashboard_provider_readiness_json(instance: HostDashboardInstance) -> String 
         json_kv(key: "status", value: json_string(s: "state-root-absent")),
         json_kv(key: "state_root", value: json_string(s: state_root as String)),
         json_kv(key: "remediation", value: json_string(s: remediation)),
+      ]
+      ProviderReadinessRefused { stage, reason } => [
+        json_kv(key: "status", value: json_string(s: "readiness-refused")),
+        json_kv(key: "stage", value: json_string(s: stage as String)),
+        json_kv(key: "reason", value: json_string(s: reason)),
       ]
       ProviderRuntimeUnavailable { executable, detail } => [
         json_kv(key: "status", value: json_string(s: "runtime-unavailable")),

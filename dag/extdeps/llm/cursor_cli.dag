@@ -91,7 +91,20 @@ type CursorInvocation {
   prompt: NonEmptyStr
 }
 
-fn shape_cursor_agent_argv(inv: CursorInvocation) -> List<String> {
+data cursor_invocation_carries_environment_note: String = "THE AUTH FIELD WAS NEVER READ, SO BOTH ARMS PRODUCED THE SAME PROCESS. shape_cursor_agent_argv built an argv and returned a List of String, and its accompanying note explained at length why the key is deliberately absent from that argv — which was true, and which meant a CursorApiKeyArgument invocation and a CursorApiKeyEnvironment invocation were byte-identical and equally credential-free. The safe arm was justified in prose and never realized: nothing set CURSOR_API_KEY, so an invocation shaped from either arm authenticates as nobody.\\n\\nThe missing piece is that an argv is not a process. A process is a program, an argv AND an environment, and a credential passed by environment is invisible in a model whose output stops at the argv — there was no field for it to appear in, so 'the key is not in the argv' was simultaneously the security property and the reason the mechanism did not work.\\n\\nSo the shape is the whole invocation. The argument arm puts the key in argv where the CLI accepts it and where every ps and audit log records it; the environment arm puts it in the environment and leaves argv clean. The two are now observably different values, which is what makes the safety claim checkable instead of decorative — a witness can assert that the environment arm leaks nothing into argv AND that it actually binds the variable, and neither assertion was expressible before."
+
+type CursorEnvBinding {
+  name: NonEmptyStr
+  value: NonEmptyStr
+}
+
+type CursorProcessInvocation {
+  program: String
+  argv: List<String>
+  environment: List<CursorEnvBinding>
+}
+
+fn cursor_common_argv(inv: CursorInvocation) -> List<String> {
   concat(
     [cursor_cli_program, "--print"],
     concat(
@@ -104,13 +117,7 @@ fn shape_cursor_agent_argv(inv: CursorInvocation) -> List<String> {
             cursor_sandbox_args(choice: inv.sandbox),
             concat(
               if inv.force { ["--force"] } else { [] },
-              concat(
-                if inv.trust_workspace { ["--trust"] } else { [] },
-                concat(
-                  ["--workspace", inv.workspace as String],
-                  [inv.prompt as String],
-                ),
-              ),
+              if inv.trust_workspace { ["--trust"] } else { [] },
             ),
           ),
         ),
@@ -119,4 +126,68 @@ fn shape_cursor_agent_argv(inv: CursorInvocation) -> List<String> {
   )
 }
 
-data cursor_key_never_in_argv_note: String = "THE KEY IS NOT IN THE ARGV THIS FUNCTION BUILDS, and that omission is deliberate. --api-key would place a live credential in a process argument, where it is readable from /proc by any process the same user can inspect and captured by every ps, audit log and crash report that records a command line. CURSOR_API_KEY carries the same value through the environment, which is meaningfully narrower.\\n\\nSo shape_cursor_agent_argv emits no credential at all and CursorApiKeyArgument exists in the type only because the CLI offers it — representing the surface honestly is not the same as recommending it. A caller choosing that arm is choosing to leak, and the type makes that a visible decision instead of an accident of which field happened to be set."
+fn cursor_tail_argv(inv: CursorInvocation) -> List<String> {
+  concat(
+    ["--workspace", inv.workspace as String],
+    [inv.prompt as String],
+  )
+}
+
+fn shape_cursor_invocation(inv: CursorInvocation) -> CursorProcessInvocation {
+  match inv.auth {
+    CursorApiKeyArgument { key } =>
+      CursorProcessInvocation {
+        program: cursor_cli_program,
+        argv: concat(
+          cursor_common_argv(inv: inv),
+          concat(["--api-key", key as String], cursor_tail_argv(inv: inv)),
+        ),
+        environment: [],
+      }
+    CursorApiKeyEnvironment { key } =>
+      CursorProcessInvocation {
+        program: cursor_cli_program,
+        argv: concat(cursor_common_argv(inv: inv), cursor_tail_argv(inv: inv)),
+        environment: [
+          CursorEnvBinding { name: cursor_api_key_env_var, value: key },
+        ],
+      }
+  }
+}
+
+data cursor_automation_constructor_note: String = "THE AUTOMATION PATH CANNOT MINT THE LEAKY ARM. CursorApiKeyArgument stays in the type because the CLI genuinely offers --api-key and an extdeps model that hid it would be describing a tool that does not exist — representing a surface honestly is not recommending it. But nothing in this repository has a reason to choose it, and leaving both arms equally reachable makes the leak an accident of which constructor someone happened to call.\\n\\nSo the automation constructor takes the key and sets the environment arm itself. There is no parameter through which a caller can request the argument form, which is the difference between a documented preference and a shape: reaching the leaky arm now requires writing CursorInvocation by hand and naming CursorApiKeyArgument deliberately, which is a visible decision rather than a default.\\n\\nWHERE THE KEY COMES FROM IS NOT THIS MODULE'S FACT. gunbc.auth.materialized_secret already owns the lifecycle that turns a SecretRef into a scoped credential and its SecretBinding coproduct already has the EnvVar arm this needs — so the intended composition is a materialization bound to EnvVar carrying cursor_api_key_env_var, performed by the caller inside that bracket. Importing it here would invert the layer: which secret store a deployment uses is policy, and an extdeps module that named one would state a requirement the CLI does not have."
+
+fn cursor_automation_invocation(
+  key: NonEmptyStr,
+  model: CursorModelId,
+  mode: CursorExecutionMode,
+  sandbox: CursorSandboxChoice,
+  output_format: CursorOutputFormat,
+  force: Bool,
+  trust_workspace: Bool,
+  workspace: FilePath,
+  prompt: NonEmptyStr,
+) -> CursorInvocation {
+  CursorInvocation {
+    auth: CursorApiKeyEnvironment { key: key },
+    model: model,
+    mode: mode,
+    sandbox: sandbox,
+    output_format: output_format,
+    force: force,
+    trust_workspace: trust_workspace,
+    workspace: workspace,
+    prompt: prompt,
+  }
+}
+
+fn cursor_argv_contains(argv: List<String>, token: String) -> Bool {
+  any(argv, a => a == token)
+}
+
+fn cursor_invocation_binds_env(
+  shaped: CursorProcessInvocation,
+  name: NonEmptyStr,
+) -> Bool {
+  any(shaped.environment, b => (b.name as String) == (name as String))
+}
