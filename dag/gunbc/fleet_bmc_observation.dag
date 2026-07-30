@@ -32,6 +32,7 @@ import extdeps.filesystem.linux {
   LinuxOverlayFs,
   LinuxOverlayObservation,
   LinuxSquashFs,
+  linux_synchronized_rename_replace_publication,
 }
 import gunbc.fleet_intent {
   srv3_baseboard,
@@ -48,12 +49,18 @@ import std.measure {
   celsius,
   percent,
   positive_celsius_delta,
+  positive_measure_count,
   rpm,
   second,
 }
 import std.nat { Nat }
 import std.state_durability {
+  CallerAssertedDefinitionLinkage,
+  StateDurabilityCapabilityVersion,
+  StateDefinitionLinkage,
   StatePerturbationGeneration,
+  StateRealizationDefinitionLinkages,
+  StateRealizationIdentity,
 }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 
@@ -182,8 +189,12 @@ data srv4_bmc_fan_observed_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(75),
-  positive_hysteresis: positive_celsius_delta(count: 1),
-  negative_hysteresis: positive_celsius_delta(count: 2),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 1),
+  ),
 }
 
 data srv4_bmc_fan_observed_config_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
@@ -196,12 +207,60 @@ data srv4_bmc_fan_active_config_digest: Digest = sha256_digest(
   hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
 )
 
+data srv4_bmc_fan_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data bmc_fan_symbol_index_subtree_digest_dissolve_on: NonEmptyStr = "namespace content-addressed SymbolIndex subtree digest"
+
+fn bmc_fan_caller_asserted_definition_linkage(
+  reason: NonEmptyStr,
+) -> StateDefinitionLinkage {
+  CallerAssertedDefinitionLinkage {
+    reason: reason,
+    dissolve_on: bmc_fan_symbol_index_subtree_digest_dissolve_on,
+  }
+}
+
+fn bmc_fan_realization_definition_linkages() -> StateRealizationDefinitionLinkages {
+  StateRealizationDefinitionLinkages {
+    projection: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config projection is caller-asserted until SymbolIndex subtree digest",
+    ),
+    verifier: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config verifier is caller-asserted until SymbolIndex subtree digest",
+    ),
+    observer: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config observer is caller-asserted until SymbolIndex subtree digest",
+    ),
+    transport: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config transport is caller-asserted until SymbolIndex subtree digest",
+    ),
+    actuator: bmc_fan_caller_asserted_definition_linkage(
+      reason: "openbmc fan config actuator is caller-asserted until SymbolIndex subtree digest",
+    ),
+  }
+}
+
+data srv4_bmc_fan_realization_definition_linkages_scaffold_note: String = "🟡 dissolve-on: bmc_fan_symbol_index_subtree_digest_dissolve_on. Until the namespace content-addressed SymbolIndex subtree-digest authority lands, every realization role is CallerAssertedDefinitionLinkage and durable qualification refuses with typed DurabilityDefinitionLinkageUnavailable."
+
+data srv4_bmc_fan_realization: StateRealizationIdentity = StateRealizationIdentity {
+  realization_id: srv4_bmc_fan_realization_id,
+  definition_linkages: bmc_fan_realization_definition_linkages(),
+}
+
+data srv4_bmc_fan_durability_capability_version: StateDurabilityCapabilityVersion = StateDurabilityCapabilityVersion {
+  version: "openbmc-overlay-config-graceful-restart-v2",
+  definition_linkage: bmc_fan_caller_asserted_definition_linkage(
+    reason: "linux synchronized rename-replace publication capability is caller-asserted until SymbolIndex subtree digest",
+  ),
+}
+
 data srv4_bmc_fan_perturbation_generation: StatePerturbationGeneration = 1
 
 data srv4_bmc_fan_converged_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -274,6 +333,7 @@ data srv4_bmc_fan_post_reboot_policy_observation: BmcFanPolicyObservation = BmcF
   firmware: srv4_bmc_firmware_observation.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: srv4_bmc_fan_observed_curve,
+  active_config_digest: srv4_bmc_fan_active_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
@@ -331,7 +391,7 @@ data srv4_bmc_fan_reboot_persistence_receipt: BmcFanRebootPersistenceReceipt = B
 
 data srv4_bmc_fan_projection_probe_note: String = "Authenticated read-only BMC SSH probe, 2026-07-27: the active 3.22 config was projected in memory through the intended TEMP_SOC semantic patch. The projection was idempotent, and a curve perturbation was discriminating. The later typed live receipt is srv4_bmc_fan_convergence_receipt; this note remains the earlier projection-only provenance rather than being rewritten as execution."
 
-data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: this layer does not contain the projection, verifier, observer, transport, and actuator definitions whose transitive hashes StateRealizationDefinitionHashes requires. The operation/actuator layer must derive those five hashes from its actual definitions before a durability admission can be written; hashing a remembered label or these observed output values would leave definition changes invisible."
+data bmc_historical_receipt_not_realization_identity_note: String = "These July 27 rows are immutable historical evidence snapshots, not live producers and not StateDurabilityEvidence. In particular BmcFanConvergenceReceipt deliberately has no StateRealizationIdentity: the content-addressed SymbolIndex subtree-digest authority does not exist yet, so std.state_durability exposes only counted CallerAssertedDefinitionLinkage rows and refuses durable qualification. Hashing a remembered label or these observed output values would leave definition changes invisible; these historical rows therefore do not pretend to supply realization linkage."
 
 data srv4_bmc_fan_reboot_persistence_note: String = "Live perturbation receipt, 2026-07-27: Redfish Manager.Reset advertised and accepted GracefulRestart with HTTP 200. The BMC was observed down for a 157-second reachability interval while srv4's host OS SSH remained reachable and ComputerSystem PowerState remained On. After return, OpenBMC still reported 3.22.00; the active config path and SHA-256 digest were unchanged; phosphor-pid-control was active; zone0 FailSafe=false; the semantic observer returned ExitSuccess; and an independent converge re-drive returned ExitSuccess through its Noop arm. This proves the JFFS2 upper override across one graceful BMC restart. It does not prove persistence across a firmware replacement."
 

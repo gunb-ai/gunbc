@@ -1,17 +1,16 @@
 module std.state_durability
 
 import extdeps.crypto.hash { Digest }
-import std.content_hash { content_hash_combine, content_hash_tagged }
 import std.disposition { Disposition, Terminal }
 import std.measure { PositiveMillisecond, positive_millisecond_count }
 import std.types {
   Bool,
-  ContentHash,
   EpochMs,
   Int,
   List,
   NonEmptyStr,
   String,
+  list_length,
 }
 
 data state_durability_boundary_contract: Disposition = Terminal {
@@ -94,81 +93,108 @@ type DurabilityCommitBarrier
 
 type StateRealizationIdentity {
   realization_id: NonEmptyStr
-  definition_hashes: StateRealizationDefinitionHashes
+  definition_linkages: StateRealizationDefinitionLinkages
 }
 
-type StateRealizationDefinitionHashes {
-  projection: ContentHash
-  verifier: ContentHash
-  observer: ContentHash
-  transport: ContentHash
-  actuator: ContentHash
+type StateDefinitionLinkage
+  = CallerAssertedDefinitionLinkage {
+      reason: NonEmptyStr,
+      dissolve_on: NonEmptyStr,
+    }
+
+type StateDefinitionRole
+  = RealizationProjectionDefinition
+  | RealizationVerifierDefinition
+  | RealizationObserverDefinition
+  | RealizationTransportDefinition
+  | RealizationActuatorDefinition
+  | DurabilityCapabilityDefinition
+
+type StateDefinitionCallerAssertion {
+  role: StateDefinitionRole
+  reason: NonEmptyStr
+  dissolve_on: NonEmptyStr
 }
 
-fn state_realization_content_hash(
+type StateRealizationDefinitionLinkages {
+  projection: StateDefinitionLinkage
+  verifier: StateDefinitionLinkage
+  observer: StateDefinitionLinkage
+  transport: StateDefinitionLinkage
+  actuator: StateDefinitionLinkage
+}
+
+data state_definition_linkage_frontier_note: String = "🟡 dissolve-on: the namespace-only resolution lane lands its content-addressed SymbolIndex containment tree. Until then, every realization and capability definition is CallerAssertedDefinitionLinkage and durable qualification refuses with typed, located, counted assertions. The future mechanically-hashed arm MUST carry an opaque subtree-digest type whose only constructor is the SymbolIndex subtree-hashing operation; a bare ContentHash field is forbidden because callers could forge it from a label and recreate the lie this frontier removes."
+
+fn state_definition_caller_assertion(
+  role: StateDefinitionRole,
+  linkage: StateDefinitionLinkage,
+) -> StateDefinitionCallerAssertion {
+  match linkage {
+    CallerAssertedDefinitionLinkage {
+      reason: reason,
+      dissolve_on: dissolve_on,
+    } =>
+      StateDefinitionCallerAssertion {
+        role: role,
+        reason: reason,
+        dissolve_on: dissolve_on,
+      }
+  }
+}
+
+fn state_realization_definition_assertions(
   realization: StateRealizationIdentity,
-) -> ContentHash {
-  content_hash_tagged(
-    tag: "state-realization",
-    payload: content_hash_combine(
-      left: realization.definition_hashes.projection,
-      right: content_hash_combine(
-        left: realization.definition_hashes.verifier,
-        right: content_hash_combine(
-          left: realization.definition_hashes.observer,
-          right: content_hash_combine(
-            left: realization.definition_hashes.transport,
-            right: realization.definition_hashes.actuator,
-          ),
-        ),
-      ),
+) -> List<StateDefinitionCallerAssertion> {
+  [
+    state_definition_caller_assertion(
+      role: RealizationProjectionDefinition,
+      linkage: realization.definition_linkages.projection,
     ),
+    state_definition_caller_assertion(
+      role: RealizationVerifierDefinition,
+      linkage: realization.definition_linkages.verifier,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationObserverDefinition,
+      linkage: realization.definition_linkages.observer,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationTransportDefinition,
+      linkage: realization.definition_linkages.transport,
+    ),
+    state_definition_caller_assertion(
+      role: RealizationActuatorDefinition,
+      linkage: realization.definition_linkages.actuator,
+    ),
+  ]
+}
+
+fn state_durability_definition_assertions<Target, ReadbackSubject>(
+  admission: StateDurabilityAdmission<Target, ReadbackSubject>,
+) -> List<StateDefinitionCallerAssertion> {
+  append(
+    state_realization_definition_assertions(
+      realization: admission.realization,
+    ),
+    items: [
+      state_definition_caller_assertion(
+        role: DurabilityCapabilityDefinition,
+        linkage: admission.capability_version.definition_linkage,
+      ),
+    ],
   )
 }
 
 type StateDurabilityCapabilityVersion {
   version: NonEmptyStr
-  definition_hash: ContentHash
+  definition_linkage: StateDefinitionLinkage
 }
 
 type StatePerturbationGeneration =
   Int where range(min: 1), brand("StatePerturbationGeneration")
 
 type StateDurabilityInstant = EpochMs
-
-type StateDurabilityTimeline {
-  before_readback_at: StateDurabilityInstant
-  before_to_perturbation_start: PositiveMillisecond
-  perturbation_duration: PositiveMillisecond
-  completion_to_after_readback: PositiveMillisecond
-}
-
-fn state_durability_perturbation_started_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = timeline.before_readback_at + positive_millisecond_count(
-    m: timeline.before_to_perturbation_start,
-  )
-  instant
-}
-
-fn state_durability_perturbation_completed_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_started_at(timeline: timeline) + positive_millisecond_count(
-    m: timeline.perturbation_duration,
-  )
-  instant
-}
-
-fn state_durability_after_readback_at(
-  timeline: StateDurabilityTimeline,
-) -> StateDurabilityInstant {
-  let instant = state_durability_perturbation_completed_at(timeline: timeline) + positive_millisecond_count(
-    m: timeline.completion_to_after_readback,
-  )
-  instant
-}
 
 type StateDurabilityAdmission<Target, ReadbackSubject> {
   target: Target
@@ -191,13 +217,61 @@ type StatePerturbationReceipt<Target> {
   target: Target
   boundary: StateDurabilityBoundary
   generation: StatePerturbationGeneration
+  started_after_before_readback: PositiveMillisecond
+  duration: PositiveMillisecond
 }
 
-type StateReadbackReceipt<Target, ReadbackSubject> {
+type StateBeforeReadbackReceipt<Target, ReadbackSubject> {
   perturbation_receipt_id: NonEmptyStr
   target: Target
   subject: ReadbackSubject
   state_digest: Digest
+  observed_at: StateDurabilityInstant
+}
+
+type StateAfterReadbackReceipt<Target, ReadbackSubject> {
+  perturbation_receipt_id: NonEmptyStr
+  target: Target
+  subject: ReadbackSubject
+  state_digest: Digest
+  observed_after_perturbation_completion: PositiveMillisecond
+}
+
+fn state_durability_perturbation_started_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = before.observed_at + positive_millisecond_count(
+    m: perturbation.started_after_before_readback,
+  )
+  instant
+}
+
+fn state_durability_perturbation_completed_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_started_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: perturbation.duration,
+  )
+  instant
+}
+
+fn state_durability_after_readback_at<Target, ReadbackSubject>(
+  before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+  perturbation: StatePerturbationReceipt<Target>,
+  after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
+) -> StateDurabilityInstant {
+  let instant = state_durability_perturbation_completed_at(
+    before: before,
+    perturbation: perturbation,
+  ) + positive_millisecond_count(
+    m: after.observed_after_perturbation_completion,
+  )
+  instant
 }
 
 type StateActivationReceipt<Target, ReadbackSubject> {
@@ -218,15 +292,13 @@ type StateActivationEvidence<Target, ReadbackSubject>
 
 type StatePreservationOutcome<Target, ReadbackSubject>
   = StatePreserved {
-      timeline: StateDurabilityTimeline,
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       activation: StateActivationEvidence<Target, ReadbackSubject>,
     }
   | StateLost {
-      timeline: StateDurabilityTimeline,
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | StatePreservationObservationRefused { reason: String }
@@ -248,6 +320,12 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
       count: Int,
     }
   | DurabilityCapabilityMissing
+  | DurabilityDefinitionLinkageUnavailable {
+      realization: StateRealizationIdentity,
+      capability: StateDurabilityCapabilityVersion,
+      assertions: List<StateDefinitionCallerAssertion>,
+      count: Int,
+    }
   | DurabilityCapabilityAdmissionMismatch {
       expected_realization: StateRealizationIdentity,
       observed_realization: StateRealizationIdentity,
@@ -312,8 +390,8 @@ type StateDurabilityRefusal<Target, ReadbackSubject>
     }
   | DurabilityActivationUnverified { reason: String }
   | DurabilityStateLost {
-      before: StateReadbackReceipt<Target, ReadbackSubject>,
-      after: StateReadbackReceipt<Target, ReadbackSubject>,
+      before: StateBeforeReadbackReceipt<Target, ReadbackSubject>,
+      after: StateAfterReadbackReceipt<Target, ReadbackSubject>,
       reason: String,
     }
   | DurabilityObservationRefused { reason: String }
@@ -403,20 +481,6 @@ fn state_durability_boundary_requirements_refusal<Target, ReadbackSubject>(
   }
 }
 
-fn state_durability_boundary_eq(
-  a: StateDurabilityBoundary,
-  b: StateDurabilityBoundary,
-) -> Bool {
-  a == b
-}
-
-fn state_durability_boundary_present(
-  boundaries: List<StateDurabilityBoundary>,
-  wanted: StateDurabilityBoundary,
-) -> Bool {
-  any(boundaries, boundary => boundary == wanted)
-}
-
 fn state_durability_admission_eq<Target, ReadbackSubject>(
   a: StateDurabilityAdmission<Target, ReadbackSubject>,
   b: StateDurabilityAdmission<Target, ReadbackSubject>,
@@ -449,10 +513,7 @@ fn state_durability_evidence_cardinality<Target, ReadbackSubject>(
       if state_durability_admission_eq(
         a: candidate.admission,
         b: admission,
-      ) && state_durability_boundary_eq(
-        a: candidate.perturbation.boundary,
-        b: boundary,
-      ) {
+      ) && candidate.perturbation.boundary == boundary {
         match cardinality {
           NoMatchingDurabilityEvidence =>
             OneMatchingDurabilityEvidence { evidence: candidate }
@@ -505,10 +566,7 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
         observed: evidence.perturbation.target,
       },
     }
-  } else if !state_durability_boundary_eq(
-    a: evidence.perturbation.boundary,
-    b: boundary,
-  ) {
+  } else if evidence.perturbation.boundary != boundary {
     Present {
       value: DurabilityPerturbationBoundaryMismatch {
         expected: boundary,
@@ -529,7 +587,6 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
           value: DurabilityObservationRefused { reason: reason },
         }
       StateLost {
-        timeline: _,
         before: before,
         after: after,
         reason: reason,
@@ -542,7 +599,6 @@ fn state_durability_evidence_refusal<Target, ReadbackSubject>(
           },
         }
       StatePreserved {
-        timeline: _,
         before: before,
         after: after,
         activation: activation,
@@ -645,9 +701,9 @@ fn state_durability_boundary_verdict<Target, ReadbackSubject>(
   capability: StateDurabilityCapability,
   evidence: List<StateDurabilityEvidence<Target, ReadbackSubject>>,
 ) -> StateDurabilityVerdict<Target, ReadbackSubject> {
-  if !state_durability_boundary_present(
-    boundaries: capability.supported_boundaries,
-    wanted: boundary,
+  if !any(
+    capability.supported_boundaries,
+    supported => supported == boundary,
   ) {
     StateDurabilityRefused {
       cause: DurabilityBoundaryUnsupported {
@@ -836,13 +892,19 @@ fn state_durability_verdict<Target, ReadbackSubject>(
                         realization: realizer.realization,
                       },
                     }
-                  SynchronizedCommit =>
-                    state_durability_boundaries_verdict(
-                      required: boundaries,
+                  SynchronizedCommit => {
+                    let assertions = state_durability_definition_assertions(
                       admission: admission,
-                      capability: realizer,
-                      evidence: evidence,
                     )
+                    StateDurabilityRefused {
+                      cause: DurabilityDefinitionLinkageUnavailable {
+                        realization: admission.realization,
+                        capability: admission.capability_version,
+                        assertions: assertions,
+                        count: list_length(assertions),
+                      },
+                    }
+                  }
                 }
               }
           }

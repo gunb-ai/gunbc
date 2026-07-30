@@ -13,8 +13,10 @@ import gunbc.srv3_os_install_actuate_workflow {
 }
 import gunbc.srv3_bmc_credential_resolve {
   BmcCredentialResolution,
+  bmc_credential_materialization_failure_reason,
+  bmc_credential_materialization_password,
+  materialize_bmc_login_password,
   observe_and_resolve_srv3_bmc_credential,
-  materialize_bmc_login_password
 }
 import gunbc.bmc_onboarding { srv3_onboarding_plan }
 import gunbc.tools.bmc_onboard {
@@ -96,10 +98,16 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let password = match materialize_bmc_login_password(resolution: resolution) {
+  let materialization = materialize_bmc_login_password(resolution: resolution)
+  match bmc_credential_materialization_failure_reason(materialization: materialization) {
+    Present { value: reason } =>
+      return exit_failure(reason: concat("boot-once-cd: ", reason))
+    Absent => {}
+  }
+  let password = match bmc_credential_materialization_password(materialization: materialization) {
+    Present { value: password } => password
     Absent =>
       return exit_failure(reason: "boot-once-cd: could not materialize BMC password from resolution")
-    Present { value: p } => p
   }
 
   let netrc_write = Filesystem.Write(

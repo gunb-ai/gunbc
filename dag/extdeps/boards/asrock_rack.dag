@@ -16,7 +16,7 @@ import extdeps.bmc.capability {
   HistoricalEvidenceSnapshot,
   bmc_firmware_semantic_version,
 }
-import std.measure { celsius, percent, positive_celsius_delta }
+import std.measure { celsius, percent, positive_celsius_delta, positive_measure_count }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -123,14 +123,23 @@ data asrock_altrad8ud_factory_temp_soc_fan_curve: BmcFanCurve = BmcFanCurve {
   minimum_duty: percent(30),
   sensor_unavailable_duty: percent(75),
   zone_failsafe_duty: percent(30),
-  positive_hysteresis: positive_celsius_delta(count: 1),
-  negative_hysteresis: positive_celsius_delta(count: 1),
+  positive_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
+  negative_hysteresis: positive_celsius_delta(
+    count: positive_measure_count(predecessor: 0),
+  ),
 }
+
+data asrock_altrad8ud_factory_fan_config_digest: Digest = sha256_digest(
+  hex: "d8bfd424085001709228abdd5c19decb53e7da36f51001200b4ff5519dcc6d02",
+)
 
 data asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation: BmcFanPolicyObservation = BmcFanPolicyObservation {
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+  active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",
@@ -156,6 +165,7 @@ data asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation: BmcFanPolicyObserv
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   evidence_scope: HistoricalEvidenceSnapshot,
   curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
+  active_config_digest: asrock_altrad8ud_factory_fan_config_digest,
   selected_config_path: "/usr/share/swampd/config.json",
   board_config_path: "/usr/share/swampd/config-asrr.json",
   controller_service: "phosphor-pid-control.service",

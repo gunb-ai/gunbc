@@ -5,6 +5,7 @@ import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
 }
+import extdeps.crypto.hash { Digest }
 import extdeps.filesystem.linux { LinuxOverlayObservation }
 import std.measure {
   ByteSize,
@@ -155,6 +156,8 @@ type BmcFanCurve {
 type ValidatedBmcFanCurve {
   curve: BmcFanCurve
 }
+
+data validated_bmc_fan_curve_construction_scaffold_note: String = "🟡 dissolve-on: docs/plans/hollow-alias-construction-wall.md makes refinement/bodyless declarations construction-enforced after its lens-first corpus proof. validate_bmc_fan_curve is the sole producer in this module and returns typed, located invalid causes, but .dag record literals remain public, so callers can still forge this proof wrapper. This is the same corpus-wide language-layer gap as ValidatedGrammarRoot, not authority for a second validation protocol."
 
 type BmcFanCurveInvalidCause
   = BmcFanCurveEmpty
@@ -352,6 +355,7 @@ type BmcFanPolicyObservation {
   firmware: BmcFirmwareVersion
   evidence_scope: BmcEvidenceTemporalScope
   curve: BmcFanCurve
+  active_config_digest: Digest
   selected_config_path: NonEmptyStr
   board_config_path: NonEmptyStr
   controller_service: NonEmptyStr

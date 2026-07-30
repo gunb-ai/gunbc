@@ -1,0 +1,564 @@
+module gunbc.bmc_converge
+
+import extdeps.bmc.capability {
+  BmcFirmwareIntent,
+  BmcFirmwareIntentMismatch,
+  BmcFirmwareIntentSatisfied,
+  BmcFirmwareObservation,
+  BmcFirmwareTrack,
+  BmcFirmwareTrackRequired,
+  BmcFirmwareUnpinned,
+  BmcFirmwareVersion,
+  bmc_firmware_observation_intent_verdict,
+  bmc_firmware_version_intent_verdict,
+}
+import extdeps.bmc.types {
+  BmcConfigPersistenceObservation,
+  BmcConfigPersistenceUnsupported,
+  BmcFanCurve,
+  BmcFanPolicyObservation,
+  BmcOverlayConfigObserved,
+  BmcUpdateServiceObservation,
+}
+import extdeps.boards.types { BaseboardModel }
+import extdeps.crypto.hash { Digest }
+import extdeps.filesystem.linux {
+  linux_overlay_observation_is_flash_backed,
+}
+import extdeps.uri { Uri }
+import gunbc.bmc_intent {
+  BmcControlPlaneIntent,
+}
+import gunbc.bmc_fan_projection {
+  BmcFanConfigReadbackSubject,
+  BmcFanDurabilityEvidence,
+  BmcFanPolicyProjectionCapability,
+  bmc_fan_policy_projection_apply_suitability,
+  bmc_fan_policy_projection_durability_admission,
+  bmc_fan_policy_projection_durability_capability,
+  bmc_fan_policy_projection_live_digest_matches,
+  bmc_fan_policy_projection_topology_matches,
+}
+import product.placement_supply { HostIdentity }
+import std.state_durability {
+  DurabilityDefinitionLinkageUnavailable,
+  DurabilityEvidenceAmbiguous,
+  DurabilityEvidenceMissing,
+  NoDurabilityCommitBarrier,
+  StateDurabilityQualified,
+  StateDurabilityRefused,
+  StateDurabilityVerdict,
+  StatePerturbationGeneration,
+  SynchronizedCommit,
+  state_durability_verdict,
+}
+import std.types { Bool, List, NonEmptyStr, String }
+import std.upsert_decision {
+  Apply,
+  Conflict,
+  Converged,
+  Drifted,
+  Noop,
+  Refuse,
+  UnknownRefused,
+  UpsertClassification,
+}
+
+type ApprovedBmcFirmwareArtifact {
+  firmware: BmcFirmwareVersion
+  board: BaseboardModel
+  image_uri: Uri
+  digest: Digest
+}
+
+type BmcFirmwareUpdatePlan {
+  host: HostIdentity
+  observed: BmcFirmwareObservation
+  artifact: ApprovedBmcFirmwareArtifact
+  update_service: BmcUpdateServiceObservation
+}
+
+type BmcFanPolicyApplyPlan {
+  host: HostIdentity
+  observed: BmcFanPolicyObservation
+  desired_curve: BmcFanCurve
+  config_path: NonEmptyStr
+  controller_service: NonEmptyStr
+  projection: BmcFanPolicyProjectionCapability
+}
+
+type BmcFanPolicySuitability
+  = FanPolicySuitable
+  | FanPolicySuitabilityRefused { reason: String }
+
+data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
+
+fn bmc_firmware_intent_mismatch_reason(
+  required: BmcFirmwareTrack,
+  observed: BmcFirmwareVersion,
+) -> String {
+  concat(
+    "bmc firmware observation does not satisfy declared track: required major ",
+    required.major_version as String,
+    ", observed major ",
+    observed.version.major as String,
+    " minor ",
+    observed.version.minor as String,
+    " patch ",
+    observed.version.patch as String,
+  )
+}
+
+fn bmc_firmware_classification(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcFirmwareIntent,
+  observation: BmcFirmwareObservation?,
+  artifact: ApprovedBmcFirmwareArtifact?,
+  update_service: BmcUpdateServiceObservation?,
+) -> UpsertClassification<BmcFirmwareUpdatePlan> {
+  match observation {
+    Absent =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: "bmc firmware observation absent; refuse both noop and update",
+        },
+      }
+    Present { value: observed } =>
+      match bmc_firmware_observation_intent_verdict(
+        intent: intent,
+        observation: observed,
+      ) {
+        BmcFirmwareIntentSatisfied =>
+          UpsertClassification {
+            verdict: Converged,
+            decision: Noop,
+          }
+        BmcFirmwareIntentMismatch { required: required, observed: mismatch_observed } =>
+          match artifact {
+            Absent =>
+              UpsertClassification {
+                verdict: Drifted,
+                decision: Refuse {
+                  reason: concat(
+                    "bmc firmware drift observed, but no exact approved board-compatible image artifact is available: ",
+                    bmc_firmware_intent_mismatch_reason(
+                      required: required,
+                      observed: mismatch_observed,
+                    ),
+                  ),
+                },
+              }
+            Present { value: approved } =>
+              if approved.board != board {
+                UpsertClassification {
+                  verdict: Conflict,
+                  decision: Refuse {
+                    reason: concat(
+                      "approved bmc firmware artifact does not match the target board and declared firmware track: ",
+                      bmc_firmware_intent_mismatch_reason(
+                        required: required,
+                        observed: mismatch_observed,
+                      ),
+                    ),
+                  },
+                }
+              } else {
+                match bmc_firmware_version_intent_verdict(
+                  firmware: approved.firmware,
+                  intent: intent,
+                ) {
+                  BmcFirmwareIntentMismatch { required: _, observed: _ } =>
+                    UpsertClassification {
+                      verdict: Conflict,
+                      decision: Refuse {
+                        reason: concat(
+                          "approved bmc firmware artifact does not match the target board and declared firmware track: ",
+                          bmc_firmware_intent_mismatch_reason(
+                            required: required,
+                            observed: mismatch_observed,
+                          ),
+                        ),
+                      },
+                    }
+                  BmcFirmwareIntentSatisfied =>
+                    match update_service {
+                      Absent =>
+                        UpsertClassification {
+                          verdict: Drifted,
+                          decision: Refuse {
+                            reason: concat(
+                              "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed: ",
+                              bmc_firmware_intent_mismatch_reason(
+                                required: required,
+                                observed: mismatch_observed,
+                              ),
+                            ),
+                          },
+                        }
+                      Present { value: update_surface } =>
+                        if update_surface.firmware.endpoint == observed.endpoint
+                          && update_surface.firmware.firmware == observed.firmware
+                          && update_surface.active_bmc_image_updateable {
+                          UpsertClassification {
+                            verdict: Drifted,
+                            decision: Apply {
+                              plan: BmcFirmwareUpdatePlan {
+                                host: host,
+                                observed: observed,
+                                artifact: approved,
+                                update_service: update_surface,
+                              },
+                            },
+                          }
+                        } else {
+                          UpsertClassification {
+                            verdict: Conflict,
+                            decision: Refuse {
+                              reason: concat(
+                                "observed UpdateService does not identify an updateable active image for the exact target controller and firmware: ",
+                                bmc_firmware_intent_mismatch_reason(
+                                  required: required,
+                                  observed: mismatch_observed,
+                                ),
+                              ),
+                            },
+                          }
+                        }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn bmc_config_persistence_supports_apply(
+  observation: BmcConfigPersistenceObservation,
+  expected_firmware: BmcFirmwareVersion,
+  config_path: NonEmptyStr,
+) -> Bool {
+  match observation {
+    BmcOverlayConfigObserved {
+      firmware: firmware,
+      config_path: observed_path,
+      overlay: overlay,
+      writable: writable,
+      upper_override_present: _,
+      available_bytes: _,
+      observed_at: _,
+    } =>
+      firmware == expected_firmware
+        && writable
+        && observed_path == config_path
+        && linux_overlay_observation_is_flash_backed(
+          observation: overlay,
+        )
+    BmcConfigPersistenceUnsupported {
+      firmware: _,
+      config_path: _,
+      reason: _,
+      observed_at: _,
+    } => false
+  }
+}
+
+fn bmc_fan_policy_apply_suitability(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcControlPlaneIntent,
+  observation: BmcFanPolicyObservation,
+  persistence: BmcConfigPersistenceObservation?,
+  projection: BmcFanPolicyProjectionCapability,
+) -> BmcFanPolicySuitability {
+  match intent.firmware {
+    BmcFirmwareUnpinned =>
+      FanPolicySuitabilityRefused {
+        reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+      }
+    BmcFirmwareTrackRequired { track: _ } =>
+      match bmc_firmware_version_intent_verdict(
+        firmware: observation.firmware,
+        intent: intent.firmware,
+      ) {
+        BmcFirmwareIntentMismatch { required: _, observed: _ } =>
+          FanPolicySuitabilityRefused {
+            reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+          }
+        BmcFirmwareIntentSatisfied =>
+          if projection.required_tach_inputs != intent.fan_policy.required_tach_inputs {
+            FanPolicySuitabilityRefused {
+              reason: "bmc fan projection installed-tach topology differs from fleet intent",
+            }
+          } else if !bmc_fan_policy_projection_apply_suitability(
+            capability: projection,
+            board: board,
+            desired_curve: intent.fan_policy.curve,
+            observation: observation,
+          ) {
+            FanPolicySuitabilityRefused {
+              reason: "bmc fan projection capability does not match the observed board, exact firmware, config path, and controller service",
+            }
+          } else {
+            match persistence {
+              Absent =>
+                FanPolicySuitabilityRefused {
+                  reason: "bmc fan realizer lifetime cannot be evaluated because its current filesystem substrate has not been observed",
+                }
+              Present { value: storage } =>
+                if !bmc_config_persistence_supports_apply(
+                  observation: storage,
+                  expected_firmware: observation.firmware,
+                  config_path: observation.board_config_path,
+                ) {
+                  FanPolicySuitabilityRefused {
+                    reason: "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path",
+                  }
+                } else {
+                  match bmc_fan_policy_projection_durability_capability(
+                    capability: projection,
+                  ).commit_barrier {
+                    NoDurabilityCommitBarrier =>
+                      FanPolicySuitabilityRefused {
+                        reason: "bmc fan projection lacks a synchronized durability commit barrier",
+                      }
+                    SynchronizedCommit => FanPolicySuitable
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn bmc_fan_durability_verdict_qualified(
+  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+) -> Bool {
+  match verdict {
+    StateDurabilityQualified { qualification: _ } => true
+    StateDurabilityRefused { cause: _ } => false
+  }
+}
+
+fn bmc_fan_durability_refusal_reason(
+  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
+) -> String {
+  match verdict {
+    StateDurabilityQualified { qualification: _ } => ""
+    StateDurabilityRefused { cause: cause } =>
+      match cause {
+        DurabilityDefinitionLinkageUnavailable {
+          assertions: assertions,
+          count: count,
+        } =>
+          concat(
+            "caller-asserted definition linkages cannot qualify durable lifetime (count ",
+            count as String,
+            ")",
+          )
+        DurabilityEvidenceMissing { admission: admission, boundary: _ } =>
+          concat(
+            "selected realization has no exact evidence for target, desired state, realization, capability version, perturbation generation, readback subject, and boundary: ",
+            admission.realization.realization_id as String,
+          )
+        DurabilityEvidenceAmbiguous { admission: admission, boundary: _, count: _ } =>
+          concat(
+            "selected realization has duplicate or conflicting exact durability evidence: ",
+            admission.realization.realization_id as String,
+          )
+        _ =>
+          "bmc fan realizer does not satisfy the declared state lifetime"
+      }
+  }
+}
+
+fn bmc_fan_policy_durability_qualification(
+  intent: BmcControlPlaneIntent,
+  host: HostIdentity,
+  projection: BmcFanPolicyProjectionCapability,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject> {
+  state_durability_verdict(
+    intent: intent.fan_policy.durability,
+    admission: bmc_fan_policy_projection_durability_admission(
+      host: host,
+      capability: projection,
+      perturbation_generation: durability_generation,
+    ),
+    capability: Present {
+      value: bmc_fan_policy_projection_durability_capability(
+        capability: projection,
+      ),
+    },
+    evidence: durability_evidence,
+  )
+}
+
+fn bmc_fan_policy_needs_apply(
+  desired_curve: BmcFanCurve,
+  observation: BmcFanPolicyObservation,
+  projection: BmcFanPolicyProjectionCapability,
+) -> Bool {
+  observation.curve != desired_curve
+    || !bmc_fan_policy_projection_topology_matches(
+      capability: projection,
+      observation: observation,
+    )
+    || !bmc_fan_policy_projection_live_digest_matches(
+      capability: projection,
+      observation: observation,
+    )
+}
+
+fn bmc_fan_policy_ordinary_convergence(
+  host: HostIdentity,
+  observation: BmcFanPolicyObservation,
+  desired_curve: BmcFanCurve,
+  projection: BmcFanPolicyProjectionCapability,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  if bmc_fan_policy_needs_apply(
+    desired_curve: desired_curve,
+    observation: observation,
+    projection: projection,
+  ) {
+    UpsertClassification {
+      verdict: Drifted,
+      decision: Apply {
+        plan: BmcFanPolicyApplyPlan {
+          host: host,
+          observed: observation,
+          desired_curve: desired_curve,
+          config_path: observation.board_config_path,
+          controller_service: observation.controller_service,
+          projection: projection,
+        },
+      },
+    }
+  } else {
+    UpsertClassification {
+      verdict: Converged,
+      decision: Noop,
+    }
+  }
+}
+
+fn bmc_fan_policy_classification(
+  host: HostIdentity,
+  board: BaseboardModel,
+  intent: BmcControlPlaneIntent,
+  observation: BmcFanPolicyObservation?,
+  persistence: BmcConfigPersistenceObservation?,
+  projection: BmcFanPolicyProjectionCapability?,
+  durability_generation: StatePerturbationGeneration,
+  durability_evidence: List<BmcFanDurabilityEvidence>,
+) -> UpsertClassification<BmcFanPolicyApplyPlan> {
+  let desired = intent.fan_policy.curve
+  match observation {
+    Absent =>
+      UpsertClassification {
+        verdict: UnknownRefused,
+        decision: Refuse {
+          reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
+        },
+      }
+    Present { value: observed } =>
+      match intent.firmware {
+        BmcFirmwareUnpinned =>
+          UpsertClassification {
+            verdict: Conflict,
+            decision: Refuse {
+              reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+            },
+          }
+        BmcFirmwareTrackRequired { track: _ } =>
+          match bmc_firmware_version_intent_verdict(
+            firmware: observed.firmware,
+            intent: intent.firmware,
+          ) {
+            BmcFirmwareIntentMismatch { required: _, observed: _ } =>
+              UpsertClassification {
+                verdict: Conflict,
+                decision: Refuse {
+                  reason: "bmc firmware must converge and be re-observed before selecting a version-specific fan-policy realizer",
+                },
+              }
+            BmcFirmwareIntentSatisfied =>
+              match projection {
+                Absent =>
+                  UpsertClassification {
+                    verdict: UnknownRefused,
+                    decision: Refuse {
+                      reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
+                    },
+                  }
+                Present { value: projector } =>
+                  match bmc_fan_policy_apply_suitability(
+                    host: host,
+                    board: board,
+                    intent: intent,
+                    observation: observed,
+                    persistence: persistence,
+                    projection: projector,
+                  ) {
+                    FanPolicySuitabilityRefused { reason: reason } =>
+                      UpsertClassification {
+                        verdict: UnknownRefused,
+                        decision: Refuse { reason: reason },
+                      }
+                    FanPolicySuitable =>
+                      if bmc_fan_policy_needs_apply(
+                        desired_curve: desired,
+                        observation: observed,
+                        projection: projector,
+                      ) {
+                        bmc_fan_policy_ordinary_convergence(
+                          host: host,
+                          observation: observed,
+                          desired_curve: desired,
+                          projection: projector,
+                        )
+                      } else {
+                        let durability = bmc_fan_policy_durability_qualification(
+                          intent: intent,
+                          host: host,
+                          projection: projector,
+                          durability_generation: durability_generation,
+                          durability_evidence: durability_evidence,
+                        )
+                        if !bmc_fan_durability_verdict_qualified(verdict: durability) {
+                          UpsertClassification {
+                            verdict: UnknownRefused,
+                            decision: Refuse {
+                              reason: concat(
+                                "bmc fan realizer does not satisfy the declared state lifetime: ",
+                                bmc_fan_durability_refusal_reason(verdict: durability),
+                              ),
+                            },
+                          }
+                        } else if !bmc_fan_policy_projection_live_digest_matches(
+                          capability: projector,
+                          observation: observed,
+                        ) {
+                          UpsertClassification {
+                            verdict: UnknownRefused,
+                            decision: Refuse {
+                              reason: "bmc fan live canonical config digest does not equal the admitted digest",
+                            },
+                          }
+                        } else {
+                          bmc_fan_policy_ordinary_convergence(
+                            host: host,
+                            observation: observed,
+                            desired_curve: desired,
+                            projection: projector,
+                          )
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}

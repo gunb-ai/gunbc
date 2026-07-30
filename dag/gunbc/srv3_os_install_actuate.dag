@@ -53,10 +53,16 @@ func srv3_bmcweb_session_login() -> ProcessExit
 func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
   uses net: std.resources.Network
 {
-  let password = match materialize_bmc_login_password(resolution: resolution) {
+  let materialization = materialize_bmc_login_password(resolution: resolution)
+  match bmc_credential_materialization_failure_reason(materialization: materialization) {
+    Present { value: reason } =>
+      return exit_failure(reason: concat("bmcweb-login: ", reason))
+    Absent => {}
+  }
+  let password = match bmc_credential_materialization_password(materialization: materialization) {
+    Present { value: password } => password
     Absent =>
       return exit_failure(reason: "bmcweb-login: could not materialize BMC password from resolution")
-    Present { value: p } => p
   }
 
   let body_content = srv3_bmcweb_login_body_content_for_resolution(

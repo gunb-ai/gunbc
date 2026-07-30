@@ -1,6 +1,6 @@
 module extdeps.shell
 
-import std.types { FilePath, NonEmptyStr, String }
+import std.types { FilePath, NonEmptyStr, Secret, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -189,6 +189,22 @@ service shell.Copy {
     exit {
       0 => Unit
       nonzero => String "cp -r failed"
+    }
+  }
+}
+
+service shell.GCloud {
+  operation AuthPrintAccessToken {
+    input {}
+    output {
+      access_token: Secret from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["gcloud", "auth", "print-access-token"] }
+    exit {
+      0 => Unit
+      nonzero => String "Failed to get access token"
     }
   }
 }
