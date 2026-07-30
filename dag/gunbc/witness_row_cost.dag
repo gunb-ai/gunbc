@@ -45,6 +45,7 @@ import std.observation {
   Done,
   Refused,
   Failed,
+  TimedOut,
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
