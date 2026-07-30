@@ -424,10 +424,7 @@ pub fn guarded_union_str_bindings_into_acc(
             bindings: acc.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
-            &overlay,
-            name.clone(),
-        ) {
+        |state: _, name: String| match v1_rt::map_get(&overlay, name.clone()) {
             None => state.clone(),
             Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 None => Rc::new(GuardedStrBindingsUnion {
@@ -494,8 +491,7 @@ pub fn guarded_union_str_bindings_into_overlay(
             bindings: overlay.clone(),
             conflicts: conflicts.clone(),
         }),
-        |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
-        {
+        |state: _, name: String| match v1_rt::map_get(&acc, name.clone()) {
             None => state.clone(),
             Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
                 None => Rc::new(GuardedStrBindingsUnion {
@@ -684,38 +680,38 @@ pub fn union_variant_locals_into_acc(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
-        acc.clone(),
-        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &overlay,
-            name.clone(),
-        ) {
-            None => m.clone(),
-            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-                Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-            },
-        },
-    )
+    Rc::new(v1_rt::map_keys(&overlay))
+        .iter()
+        .cloned()
+        .fold(acc.clone(), |m: _, name: String| {
+            match v1_rt::map_get(&overlay, name.clone()) {
+                None => m.clone(),
+                Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                    Some(_existing) => {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                },
+            }
+        })
 }
 
 pub fn union_variant_locals_into_overlay(
     acc: Rc<HashMap<String, Rc<TypeBinding>>>,
     overlay: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
-        overlay.clone(),
-        |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &acc,
-            name.clone(),
-        ) {
-            None => m.clone(),
-            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
-                None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
-                Some(_incoming) => m.clone(),
-            },
-        },
-    )
+    Rc::new(v1_rt::map_keys(&acc))
+        .iter()
+        .cloned()
+        .fold(overlay.clone(), |m: _, name: String| {
+            match v1_rt::map_get(&acc, name.clone()) {
+                None => m.clone(),
+                Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+                    None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
+                    Some(_incoming) => m.clone(),
+                },
+            }
+        })
 }
 
 pub fn union_variant_locals_skip_equal(
@@ -793,9 +789,7 @@ pub fn str_bindings_from_bindings(
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
-            v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
-        },
+        |acc: _, binding: _| v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone()),
     )
 }
 
@@ -924,7 +918,7 @@ pub fn global_bare_nearest_ancestor_candidate(
                 best: None,
                 tie: false,
             }),
-            |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
+            |acc: _, cand: _| {
                 let l = segment_lcp_len(
                     env_segs.clone(),
                     module_path_segments(cand.module_path.clone()),
@@ -1612,7 +1606,7 @@ pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<In
         } else {
             env.parents.clone().iter().cloned().fold(
                 Rc::new(vec![]),
-                |acc: Rc<Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                |acc: _, parent: Rc<TypeEnv>| {
                     if ((acc.clone().len() as i64) > 0) {
                         acc.clone()
                     } else {
@@ -1779,49 +1773,45 @@ pub fn merge_inductive_fields(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
-            match v1_rt::map_get(&right, type_name.clone()) {
-                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
-                    Some(existing) => {
-                        if (existing.clone() == incoming.clone()) {
-                            acc.clone()
-                        } else {
-                            {
-                                let seen = existing.clone().iter().cloned().fold(
-                                    v1_rt::rc_empty_set::<_>(),
-                                    |s: _, f: Rc<InductiveField>| {
-                                        v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
-                                    },
-                                );
-                                let additions = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for f in incoming.clone().iter().cloned() {
-                                        if (v1_rt::set_contains(
-                                            &seen,
-                                            inductive_field_key(f.clone()),
-                                        ) == false)
-                                        {
-                                            __result.push(f);
-                                        }
+        |acc: _, type_name: String| match v1_rt::map_get(&right, type_name.clone()) {
+            Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
+                Some(existing) => {
+                    if (existing.clone() == incoming.clone()) {
+                        acc.clone()
+                    } else {
+                        {
+                            let seen = existing.clone().iter().cloned().fold(
+                                v1_rt::rc_empty_set::<_>(),
+                                |s: _, f: _| {
+                                    v1_rt::rc_set_insert(s, inductive_field_key(f.clone()))
+                                },
+                            );
+                            let additions = Rc::new({
+                                let mut __result = Vec::new();
+                                for f in incoming.clone().iter().cloned() {
+                                    if (v1_rt::set_contains(&seen, inductive_field_key(f.clone()))
+                                        == false)
+                                    {
+                                        __result.push(f);
                                     }
-                                    __result
-                                });
-                                if ((additions.clone().len() as i64) == 0) {
-                                    acc.clone()
-                                } else {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        type_name.clone(),
-                                        v1_rt::concat(existing.clone(), additions.clone()),
-                                    )
                                 }
+                                __result
+                            });
+                            if ((additions.clone().len() as i64) == 0) {
+                                acc.clone()
+                            } else {
+                                v1_rt::rc_map_insert(
+                                    acc.clone(),
+                                    type_name.clone(),
+                                    v1_rt::concat(existing.clone(), additions.clone()),
+                                )
                             }
                         }
                     }
-                    None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
-                },
-                None => acc.clone(),
-            }
+                }
+                None => v1_rt::rc_map_insert(acc.clone(), type_name.clone(), incoming.clone()),
+            },
+            None => acc.clone(),
         },
     )
 }
@@ -1831,7 +1821,7 @@ pub fn inductive_fields_list_to_map(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
+        |acc: _, field: _| {
             let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
                 None => Rc::new(vec![]),

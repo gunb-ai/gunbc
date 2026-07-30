@@ -149,10 +149,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 first_sig: None,
                 owners: Rc::new(vec![]),
             }),
-            |acc: Rc<ChainSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
-                &p.local.clone(),
-                name.clone(),
-            ) {
+            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
                 Some(sig) => Rc::new(ChainSigScan {
                     first_sig: if (acc.first_sig.clone() != None) {
                         acc.first_sig.clone()
@@ -197,10 +194,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                 match_count: 0,
                 first_parent: None,
             }),
-            |acc: Rc<ParentSigScan>, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(
-                &p.local.clone(),
-                name.clone(),
-            ) {
+            |acc: _, p: Rc<ResolvedFuncEnv>| match v1_rt::map_get(&p.local.clone(), name.clone()) {
                 Some(sig) => Rc::new(ParentSigScan {
                     sig: if (acc.sig.clone() != None) {
                         acc.sig.clone()
@@ -245,9 +239,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                     } else {
                         env.parents.clone().iter().cloned().fold(
                             none_resolved_sig(),
-                            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc
-                                .clone()
-                            {
+                            |acc: _, p: Rc<ResolvedFuncEnv>| match acc.clone() {
                                 Some(sig) => Some(sig.clone()),
                                 None => v1_rt::map_get(&p.local.clone(), name.clone()),
                             },
@@ -417,20 +409,17 @@ pub fn merge_remaining_declared(
     Rc::new(v1_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
-        .fold(
-            resolved.clone(),
-            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != None) {
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
-                    )
-                } else {
-                    acc.clone()
-                }
-            },
-        )
+        .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
+            if (dsig.inferred.clone() != None) {
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    dsig.name.clone(),
+                    declared_to_resolved(dsig.clone()),
+                )
+            } else {
+                acc.clone()
+            }
+        })
 }
 
 pub fn topo_resolve_loop(
@@ -450,21 +439,17 @@ pub fn topo_resolve_loop(
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
                     .iter()
                     .cloned()
-                    .fold(
-                        resolved.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
-                                v1_rt::rc_map_insert(
-                                    acc.clone(),
-                                    dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
-                                )
-                            } else {
-                                acc.clone()
-                            }
-                        },
-                    );
+                    .fold(resolved.clone(), |acc: _, dsig: Rc<DeclaredFuncSig>| {
+                        if (dsig.inferred.clone() != None) {
+                            v1_rt::rc_map_insert(
+                                acc.clone(),
+                                dsig.name.clone(),
+                                declared_to_resolved(dsig.clone()),
+                            )
+                        } else {
+                            acc.clone()
+                        }
+                    });
                 return Rc::new(ResolveFuncSigsResult {
                     func_env: Rc::new(ResolvedFuncEnv {
                         name: module_name.clone(),
@@ -531,10 +516,8 @@ pub fn topo_resolve_loop(
                         signatures: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                        &declared_sigs,
-                        fn_name.clone(),
-                    ) {
+                    |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone())
+                    {
                         Some(dsig) => {
                             if (dsig.inferred.clone() != None) {
                                 Rc::new(SigsAccum {
@@ -570,8 +553,7 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-                         dsig: Rc<DeclaredFuncSig>| {
+                        |acc: _, dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
@@ -601,10 +583,7 @@ pub fn topo_resolve_loop(
                 signatures: resolved.clone(),
                 diagnostics: diagnostics.clone(),
             }),
-            |acc: Rc<SigsAccum>, fn_name: String| match v1_rt::map_get(
-                &declared_sigs,
-                fn_name.clone(),
-            ) {
+            |acc: _, fn_name: String| match v1_rt::map_get(&declared_sigs, fn_name.clone()) {
                 Some(dsig) => {
                     if (dsig.inferred.clone() != None) {
                         Rc::new(SigsAccum {

@@ -1278,17 +1278,18 @@ pub fn emit_go_func_def(
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope = uses.clone().iter().cloned().fold(
-            body_scope.clone(),
-            |s: Rc<InferScope>, u: Rc<Node>| {
-                extend_scope(
-                    s,
-                    resource_use_name_at(u.clone(), si.clone()),
-                    resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
-                )
-            },
-        );
+        let body_scope =
+            uses.clone()
+                .iter()
+                .cloned()
+                .fold(body_scope.clone(), |s: _, u: Rc<Node>| {
+                    extend_scope(
+                        s,
+                        resource_use_name_at(u.clone(), si.clone()),
+                        resource_use_resource(u.clone()),
+                        Rc::new(SubValueRelation::SubValueUnknown),
+                    )
+                });
         let body_str = emit_unified_typed_func_body(
             body.clone(),
             RenderTarget::Go,

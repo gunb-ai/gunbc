@@ -603,7 +603,7 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
 pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: _| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -2292,13 +2292,14 @@ pub fn emit_from_artifact_plan(
 }
 
 pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    parse_results.clone().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
+    parse_results
+        .clone()
+        .iter()
+        .cloned()
+        .fold(Rc::new(vec![]), |acc: _, pr: _| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
             None => acc.clone(),
-        },
-    )
+        })
 }
 
 pub fn resolve_frontend_occurrence_transport(
@@ -2346,10 +2347,13 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             }
             __result
         });
-        let intern_table = prepared.clone().iter().cloned().fold(
-            empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
-        );
+        let intern_table = prepared
+            .clone()
+            .iter()
+            .cloned()
+            .fold(empty_intern_table(), |t: Rc<InternTable>, p: _| {
+                pre_intern_tokens(p.tokens.clone(), t)
+            });
         let parsed = prepared.clone().iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
@@ -2358,7 +2362,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: _, p: _| {
                 let parsed = parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
@@ -2458,10 +2462,13 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             }
             __result
         });
-        let intern_table = prepared.clone().iter().cloned().fold(
-            empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
-        );
+        let intern_table = prepared
+            .clone()
+            .iter()
+            .cloned()
+            .fold(empty_intern_table(), |t: Rc<InternTable>, p: _| {
+                pre_intern_tokens(p.tokens.clone(), t)
+            });
         let parsed = prepared.clone().iter().cloned().fold(
             Rc::new(FrontendAccum {
                 parse_results: Rc::new(vec![]),
@@ -2470,7 +2477,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 intern_table: intern_table.clone(),
                 occurrence_allocator: occurrence_id_allocator_initial(),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: _, p: _| {
                 let parsed = parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
