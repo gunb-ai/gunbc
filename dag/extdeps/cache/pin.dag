@@ -7,24 +7,21 @@ import extdeps.pin {
   ExactPin,
   SubjectProjectedPin,
   SubjectProjectedPinAdmission,
-  SubjectProjectedPinIntegrityAdmitted,
-  PinRefused,
-  ObservedIdentityMismatch,
-  TrackedResolutionUnrecorded,
   subject_projected_pin_as_pin,
+  admit_subject_projected_pin_integrity,
+  subject_projected_pin_value_eq,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cache.sccache {
   SccacheBinaryArtifact,
-  SccacheMuslAarch64,
-  SccacheMuslX86_64,
   sccache_binary_artifact_content_identity,
+  sccache_published_musl_arch_key_of,
   sccache_releases_authority,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = sccache_releases_authority
 
-data sccache_pin_instantiation_note: String = "THE INSTANTIATION at dag/extdeps/cache/pin.dag for extdeps.cache.sccache multi-artifact release rows. extdeps.pin owns Pin<Subject> or SubjectProjectedPin<Subject> when the subject fully determines cited digest identity (review 44999). SccacheBinaryArtifact carries cited extdeps.crypto.hash.Digest for its arch; sccache_binary_artifact_content_identity converts via extdeps.crypto.hash.sha256_digest_content_hash into std.types.ContentHash — rendering, not a second digest concept (deep-eagle-728 oracle msg_fac61885). Identity is projected at admission and bridge; never stored twice on SubjectProjectedPin. Version is projected from subject.binary_release.version at the reconcile bridge (Pin.version required on Pin<Subject>, msg_fac61885). Pin<SccacheBinaryRelease> remains unsound at release grain. extdeps_external_authority_anchor datum-binds to sccache_releases_authority in extdeps.cache.sccache — one releases URI, consumed not re-spelled (review 45011); the fixed decl name is mandatory-tag machinery, not a second citation."
+data sccache_pin_instantiation_note: String = "THE INSTANTIATION at dag/extdeps/cache/pin.dag for extdeps.cache.sccache multi-artifact release rows. extdeps.pin owns Pin<Subject> or SubjectProjectedPin<Subject> when the subject fully determines cited digest identity (review 44999). SccacheBinaryArtifact carries cited extdeps.crypto.hash.Digest for its arch; sccache_binary_artifact_content_identity converts via extdeps.crypto.hash.sha256_digest_content_hash into std.types.ContentHash — rendering, not a second digest concept (deep-eagle-728 oracle msg_fac61885). Identity is projected at admission and bridge; never stored twice on SubjectProjectedPin. Version is projected from subject.binary_release.version at the reconcile bridge (Pin.version required on Pin<Subject>, msg_fac61885). Pin<SccacheBinaryRelease> remains unsound at release grain. extdeps_external_authority_anchor datum-binds to sccache_releases_authority in extdeps.cache.sccache — one releases URI, consumed not re-spelled (review 45011); the fixed decl name is mandatory-tag machinery, not a second citation. key_of projects published musl arch only — release version is content carried in value_eq, not reconcile identity (review 45019, pin_value_eq_note identity-vs-content split)."
 
 fn sccache_binary_artifact_pin_version(artifact: SccacheBinaryArtifact) -> VersionIdentity {
   artifact.binary_release.version as VersionIdentity
@@ -41,42 +38,22 @@ fn admit_sccache_binary_artifact_pin_integrity(
   pin: SubjectProjectedPin<SccacheBinaryArtifact>,
   observed_identity: ContentHash,
 ) -> SubjectProjectedPinAdmission<SccacheBinaryArtifact> {
-  let expected = sccache_binary_artifact_content_identity(artifact: pin.subject)
-  match pin.selection {
-    TrackedChannel { channel: c, refresh_window_days: _ } =>
-      PinRefused {
-        subject: pin.subject,
-        cause: TrackedResolutionUnrecorded { channel: c },
-      }
-    ExactPin =>
-      if expected == observed_identity {
-        SubjectProjectedPinIntegrityAdmitted { pin: pin }
-      } else {
-        PinRefused {
-          subject: pin.subject,
-          cause: ObservedIdentityMismatch {
-            expected: expected,
-            observed: observed_identity,
-          },
-        }
-      }
-  }
+  admit_subject_projected_pin_integrity(
+    pin: pin,
+    observed_identity: observed_identity,
+    expected_identity: sccache_binary_artifact_content_identity(artifact: pin.subject),
+  )
 }
 
 fn sccache_binary_artifact_pin_key_of(pin: SubjectProjectedPin<SccacheBinaryArtifact>) -> NonEmptyStr {
-  match pin.subject.arch {
-    SccacheMuslAarch64 =>
-      join([pin.subject.binary_release.version as String, "-aarch64"], "") as NonEmptyStr
-    SccacheMuslX86_64 =>
-      join([pin.subject.binary_release.version as String, "-x86_64"], "") as NonEmptyStr
-  }
+  sccache_published_musl_arch_key_of(arch: pin.subject.arch)
 }
 
 fn sccache_binary_artifact_subject_projected_pin_value_eq(
   a: SubjectProjectedPin<SccacheBinaryArtifact>,
   b: SubjectProjectedPin<SccacheBinaryArtifact>,
 ) -> Bool {
-  (a.subject == b.subject) && (a.selection == b.selection)
+  subject_projected_pin_value_eq(a: a, b: b)
 }
 
 fn sccache_binary_artifact_subject_projected_pin_as_pin(

@@ -47,7 +47,7 @@ type Pin<Subject> {
   selection: PinSelection
 }
 
-data subject_projected_pin_note: String = "When a pin subject fully determines cited digest identity for its grain, Pin<Subject> would duplicate one fact in independently writable fields — the OciDescriptor failure class and review 44999 on SccacheBinaryArtifact. SubjectProjectedPin carries subject + selection only; the instantiation module owns projection fns and admission compares observed identity to the content projection with no stored expected_identity (construction, deep-eagle-728 oracle msg_36c1fcf1). P2 membership_reconcile bridges via subject_projected_pin_as_pin(pin, expected_identity, version) — both fields passed explicitly, symmetric with identity projection, so Pin.version Absent is never representable (msg_fac61885 regression fix). Pin<Subject> over subjects that declare ContentHash remain dissolve-on feature:pin-subject-self-identity-lens targets."
+data subject_projected_pin_note: String = "When a pin subject fully determines cited digest identity for its grain, Pin<Subject> would duplicate one fact in independently writable fields — the OciDescriptor failure class and review 44999 on SccacheBinaryArtifact. SubjectProjectedPin carries subject + selection only; identity and version are projected by the instantiation module and supplied at the reconcile bridge — never stored twice (construction, deep-eagle-728 oracle msg_36c1fcf1). admit_subject_projected_pin_integrity and subject_projected_pin_value_eq live HERE as the single admission and value_eq authority for every SubjectProjectedPin instantiation; instantiation modules own projection fns (content_identity, pin_version, key_of) only. P2 membership_reconcile bridges via subject_projected_pin_as_pin(pin, expected_identity, version) — both fields passed explicitly, symmetric with identity projection, so Pin.version Absent is never representable (msg_fac61885 regression fix). Pin<Subject> over subjects that declare ContentHash remain dissolve-on feature:pin-subject-self-identity-lens targets."
 
 type SubjectProjectedPin<Subject> {
   subject: Subject
@@ -69,6 +69,39 @@ fn subject_projected_pin_as_pin<Subject>(
     expected_identity: expected_identity,
     selection: pin.selection,
   }
+}
+
+fn admit_subject_projected_pin_integrity<Subject>(
+  pin: SubjectProjectedPin<Subject>,
+  observed_identity: ContentHash,
+  expected_identity: ContentHash,
+) -> SubjectProjectedPinAdmission<Subject> {
+  match pin.selection {
+    TrackedChannel { channel: c, refresh_window_days: _ } =>
+      PinRefused {
+        subject: pin.subject,
+        cause: TrackedResolutionUnrecorded { channel: c },
+      }
+    ExactPin =>
+      if expected_identity == observed_identity {
+        SubjectProjectedPinIntegrityAdmitted { pin: pin }
+      } else {
+        PinRefused {
+          subject: pin.subject,
+          cause: ObservedIdentityMismatch {
+            expected: expected_identity,
+            observed: observed_identity,
+          },
+        }
+      }
+  }
+}
+
+fn subject_projected_pin_value_eq<Subject>(
+  a: SubjectProjectedPin<Subject>,
+  b: SubjectProjectedPin<Subject>,
+) -> Bool {
+  (a.subject == b.subject) && (a.selection == b.selection)
 }
 
 data integrity_versus_currency_note: String = "Two questions were once fused under the word 'fresh', and separating them is load-bearing (review 44274). INTEGRITY asks: is the artifact in front of us the one this pin declares? That is decidable NOW — compare the observed digest to expected_identity — and it is what admission establishes. CURRENCY asks: is the declared version still the one we should be running? That is NOT decidable here for EITHER variant, and an earlier shape fabricated a positive answer for one of them: ExactPin returned PinFresh unconditionally. Authorship proves reproducibility, not currency — an exact pin authored three years ago is exactly as reproducible and exactly as rotten, and reporting it fresh forever is the 'pinned and never updated' failure this lane's refresh axis exists to prevent (operator's framing when the axis was requested: 'some way to avoid pinning and never updating'). So no arm anywhere returns a positive currency verdict: pin_currency_gap is TOTAL and always names a gap, and the word 'fresh' does not appear in this module. A consumer that needs currency reads that gap and refuses; it cannot be handed a green it did not earn."

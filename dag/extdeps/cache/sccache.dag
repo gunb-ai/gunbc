@@ -72,10 +72,10 @@ data sccache_binary_artifact_grain_note: String = "For multi-artifact releases t
 
 type SccachePublishedMuslArch = SccacheMuslAarch64 | SccacheMuslX86_64
 
-fn sccache_published_musl_architecture(arch: SccachePublishedMuslArch) -> Architecture {
+fn sccache_published_musl_arch_key_of(arch: SccachePublishedMuslArch) -> NonEmptyStr {
   match arch {
-    SccacheMuslAarch64 => Aarch64
-    SccacheMuslX86_64 => X86_64
+    SccacheMuslAarch64 => "aarch64" as NonEmptyStr
+    SccacheMuslX86_64 => "x86_64" as NonEmptyStr
   }
 }
 
