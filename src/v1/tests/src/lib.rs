@@ -7,6 +7,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod where_refinement_witness_probe_test;
+#[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
 mod b1_hash_primitive_test;
