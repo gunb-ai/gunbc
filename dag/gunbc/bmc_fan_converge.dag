@@ -1,0 +1,83 @@
+module gunbc.bmc_fan_converge
+
+import std.types { NonEmptyStr, String, List }
+import extdeps.bmc.fan_control { FanControlZoneProfile }
+import extdeps.boards.types { BaseboardModel, AsrockRackAltrad8ud1l2t }
+import extdeps.boards.asrock_rack { altrad8ud_fleet_fan_profile }
+import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, command_over_transport }
+import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
+
+data bmc_fan_converge_authority_note: NonEmptyStr = "Durable/uniform fleet fan-control convergence. Every ALTRAD8UD BMC must run altrad8ud_fleet_fan_profile (the 2.07.00 vendor curve); this module is the single authority that pairs each fleet BMC with that desired profile and defines the fail-closed convergence verdict. It exists so the good curve survives BMC reboots/reflashes and no BMC drifts back to a lazy curve (as srv4 had). The profile is topology-agnostic by construction (curve + floor + failsafe, no per-rotor PID / tach enumeration), so the apply is a read-modify-write PATCH of the TEMP_SOC stepwise curve into each BMC's existing config-asrr.json — preserving that BMC's own sensor/fan topology — never a whole-file overwrite."
+
+type BmcFanConvergeTarget {
+  bmc_host: NonEmptyStr
+  ssh_target: NonEmptyStr
+  config_path: NonEmptyStr
+  fan_service: NonEmptyStr
+  desired: FanControlZoneProfile
+}
+
+fn bmc_fan_ssh_target(bmc_host: NonEmptyStr) -> NonEmptyStr {
+  join(["root@", bmc_host as String], "") as NonEmptyStr
+}
+
+fn altrad8ud_bmc_fan_target(bmc_host: NonEmptyStr) -> BmcFanConvergeTarget {
+  BmcFanConvergeTarget {
+    bmc_host: bmc_host,
+    ssh_target: bmc_fan_ssh_target(bmc_host: bmc_host),
+    config_path: "/usr/share/swampd/config-asrr.json",
+    fan_service: "phosphor-pid-control",
+    desired: altrad8ud_fleet_fan_profile,
+  }
+}
+
+fn host_altrad8ud_bmc_host(host: ComputeHost) -> NonEmptyStr? {
+  match host.baseboard {
+    Present { value: bb } =>
+      match bb.catalog.model {
+        AsrockRackAltrad8ud1l2t => Present { value: bb.bmc.host }
+      }
+    Absent => Absent
+  }
+}
+
+fn fleet_altrad8ud_bmc_fan_targets() -> List<BmcFanConvergeTarget> {
+  fold(
+    fleet_intent_known_hosts,
+    init: [],
+    f: fn(acc, host) {
+      match host_altrad8ud_bmc_host(host: host) {
+        Present { value: bmc } => acc |> list_push(altrad8ud_bmc_fan_target(bmc_host: bmc))
+        Absent => acc
+      }
+    }
+  )
+}
+
+type BmcFanObservation =
+    FanCurveMatchesDesired
+  | FanCurveDiffers { observed_summary: String }
+  | FanObserveUnavailable { reason: String }
+
+type BmcFanConvergeVerdict =
+    FanConverged { bmc_host: NonEmptyStr }
+  | FanDrifted { bmc_host: NonEmptyStr, observed_summary: String }
+  | FanConvergeRefused { bmc_host: NonEmptyStr, reason: String }
+
+fn bmc_fan_converge_verdict(target: BmcFanConvergeTarget, observation: BmcFanObservation) -> BmcFanConvergeVerdict {
+  match observation {
+    FanCurveMatchesDesired => FanConverged { bmc_host: target.bmc_host }
+    FanCurveDiffers { observed_summary: s } => FanDrifted { bmc_host: target.bmc_host, observed_summary: s }
+    FanObserveUnavailable { reason: r } =>
+      FanConvergeRefused { bmc_host: target.bmc_host, reason: concat("fan-curve observation unavailable — ", r) }
+  }
+}
+
+fn bmc_fan_restart_command(target: BmcFanConvergeTarget) -> ArgvCommand {
+  command_over_transport(
+    command: ArgvCommand { argv: ["systemctl", "restart", target.fan_service as String] },
+    transport: SshExec { ssh_target: target.ssh_target },
+  )
+}
+
+data bmc_fan_curve_patch_realization_note: NonEmptyStr = "REALIZATION STEP (declared): applying a drifted target has two parts — (1) PATCH the desired StepwiseFanCurve into the BMC's live config-asrr.json (read the file over the SshExec BMC transport, replace only the TEMP_SOC stepwise reading/output + zone floor/failsafe, write back — preserving that BMC's sensor/fan-PID topology), then (2) bmc_fan_restart_command. Only step (2) is modeled here with existing argv-over-SshExec vocabulary; step (1) is the same BMC-filesystem read-modify-write transport that fleet_subsumption_manual_gaps still lists as unmodeled (bmc ssh/scp done by hand today). DISSOLVES WHEN a modeled BmcConfigPatch effect (read-modify-write a BMC file over SshExec, fail-closed) lands and this note is replaced by that effect wired through host_effect_apply. Interim manual procedure proven live on srv4 2026-07-30 (backup config-asrr.json.bak-precurve, swap the stepwise reading/output to the 2.07.00 curve, restart phosphor-pid-control)."
