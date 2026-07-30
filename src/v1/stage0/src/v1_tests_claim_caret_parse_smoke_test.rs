@@ -5,15 +5,17 @@ pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_compile::SourceFile;
 pub use crate::v1_compiler_compile::{compile_sources, compile_to_resolved};
-pub use crate::v1_compiler_parse::ParseContext;
+pub use crate::v1_compiler_dag_collect_support::expr_data_variant;
 pub use crate::v1_compiler_parse::{parse_caret_expr, parse_expr, parse_module, token_stream_new};
+pub use crate::v1_compiler_parse::{ParseContext, TokenStream};
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::ExprData::{ExprCall, ExprLiteral};
 use crate::v1_std_core::TokenShape::{ShCaret, ShEof, ShIdent, ShLParen};
-pub use crate::v1_std_core::{diagnostic_to_message, empty_intern_table, is_error_diagnostic};
-pub use crate::v1_std_core::{ErrorNode, ExprData, NewlineIndex, Node, TokenShape};
+pub use crate::v1_std_core::{
+    diagnostic_to_message, empty_intern_table, expr_call_func_at, is_error_diagnostic,
+};
+pub use crate::v1_std_core::{ErrorNode, NewlineIndex, Node, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -22,7 +24,7 @@ use std::rc::Rc;
 pub fn caret_parse_smoke_offline_recipe() -> String {
     thread_local! {
         static CACHED: String = {
-            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren && cargo test -p v1-compiler caret_parse_smoke_native_compile_emit_witnesses".to_string()
+            "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_paren_full_pipeline,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren && cargo test -p v1-compiler --lib caret_parse_smoke_native_compile_emit_witnesses".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -149,25 +151,53 @@ pub fn caret_diagnostics_contain_pattern(
     }
 }
 
-pub fn caret_expr_is_literal(expr: Rc<Node>) -> bool {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { value: _, .. } => true,
-        _ => false,
+pub fn caret_token_stream_only_eof_remains(stream: Rc<TokenStream>) -> bool {
+    {
+        let remaining = Rc::new(
+            stream
+                .all
+                .clone()
+                .iter()
+                .cloned()
+                .skip(stream.pos.clone() as usize)
+                .collect::<Vec<_>>(),
+        );
+        {
+            let mut __all = true;
+            for t in remaining.clone().iter().cloned() {
+                if !(t.shape.clone() == TokenShape::ShEof) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        }
     }
 }
 
+pub fn caret_expr_is_symbol_literal(expr: Rc<Node>) -> bool {
+    (expr_data_variant(expr.expr_data.clone()) == "ExprLiteral".to_string())
+}
+
 pub fn caret_expr_is_discriminant_call(expr: Rc<Node>) -> bool {
-    match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => (expr.name.clone() == "discriminant".to_string()),
-        _ => false,
-    }
+    ((expr_data_variant(expr.expr_data.clone()) == "ExprCall".to_string())
+        && (expr_call_func_at(
+            expr.clone(),
+            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        ) == "discriminant".to_string()))
 }
 
 pub fn w_caret_tokenizes_as_sh_caret() -> bool {
     {
         let tokens = tokenize("^foo".to_string(), "test.dag".to_string());
         match tokens.clone().first().cloned() {
-            Some(t) => (t.shape.clone() == TokenShape::ShCaret),
+            Some(t1) => match tokens.clone().iter().cloned().skip(1 as usize).next() {
+                Some(t2) => {
+                    ((t1.shape.clone() == TokenShape::ShCaret)
+                        && (t2.shape.clone() == TokenShape::ShIdent))
+                }
+                None => false,
+            },
             None => false,
         }
     }
@@ -193,7 +223,7 @@ pub fn w_parse_caret_ident_produces_literal() -> bool {
     {
         let tokens = tokenize("^foo_tag".to_string(), "test.dag".to_string());
         let r = parse_caret_expr(token_stream_new(tokens.clone()), caret_parse_ctx());
-        ((r.err.clone() == None) && caret_expr_is_literal(r.expr.clone()))
+        ((r.err.clone() == None) && caret_expr_is_symbol_literal(r.expr.clone()))
     }
 }
 
@@ -202,6 +232,15 @@ pub fn w_parse_caret_paren_produces_discriminant_call() -> bool {
         let tokens = tokenize("^(alpha)".to_string(), "test.dag".to_string());
         let r = parse_caret_expr(token_stream_new(tokens.clone()), caret_parse_ctx());
         ((r.err.clone() == None) && caret_expr_is_discriminant_call(r.expr.clone()))
+    }
+}
+
+pub fn w_parse_expr_caret_paren_full_pipeline() -> bool {
+    {
+        let tokens = tokenize("^(alpha)".to_string(), "test.dag".to_string());
+        let r = parse_expr(token_stream_new(tokens.clone()), caret_parse_ctx());
+        (((r.err.clone() == None) && caret_token_stream_only_eof_remains(r.tokens.clone()))
+            && caret_expr_is_discriminant_call(r.expr.clone()))
     }
 }
 
@@ -234,33 +273,32 @@ pub fn w_compile_to_resolved_caret_probe5b_has_no_caret_function_error() -> bool
 
 pub fn w_emit_caret_ident_symbol_literal() -> bool {
     {
-        let emitted = caret_compile_rust_emitted(caret_source_file(
-            "caret_emit_tag.dag".to_string(),
-            caret_emit_tag_source(),
-        ));
-        v1_rt::contains(emitted.clone(), "\"caret_emit_tag\"".to_string())
+        let source = caret_source_file("caret_emit_tag.dag".to_string(), caret_emit_tag_source());
+        (caret_compile_rust_has_no_errors(source.clone())
+            && v1_rt::contains(
+                caret_compile_rust_emitted(source.clone()),
+                "\"caret_emit_tag\"".to_string(),
+            ))
     }
 }
 
 pub fn w_emit_caret_paren_discriminant_sugar() -> bool {
     {
-        let emitted = caret_compile_rust_emitted(caret_source_file(
-            "caret_emit_disc.dag".to_string(),
-            caret_emit_disc_source(),
-        ));
-        ((v1_rt::contains(emitted.clone(), "CaretAlpha".to_string())
+        let source = caret_source_file("caret_emit_disc.dag".to_string(), caret_emit_disc_source());
+        (((caret_compile_rust_has_no_errors(source.clone())
+            && v1_rt::contains(
+                caret_compile_rust_emitted(source.clone()),
+                "CaretAlpha".to_string(),
+            ))
             && (caret_diagnostics_contain_pattern(
-                compile_sources(
-                    Rc::new(vec![caret_source_file(
-                        "caret_emit_disc.dag".to_string(),
-                        caret_emit_disc_source(),
-                    )]),
-                    RenderTarget::Rust,
-                )
-                .diagnostics
-                .clone(),
+                compile_sources(Rc::new(vec![source.clone()]), RenderTarget::Rust)
+                    .diagnostics
+                    .clone(),
                 "function '^'".to_string(),
             ) == false))
-            && (v1_rt::contains(emitted.clone(), "compile_error".to_string()) == false))
+            && (v1_rt::contains(
+                caret_compile_rust_emitted(source.clone()),
+                "compile_error".to_string(),
+            ) == false))
     }
 }
