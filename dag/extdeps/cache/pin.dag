@@ -1,7 +1,8 @@
 module extdeps.cache.pin
 
 import std.types { NonEmptyStr, String, ContentHash }
-import extdeps.pin { Pin }
+import extdeps.version { VersionIdentity }
+import extdeps.pin { Pin, ExactPin }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cache.sccache {
   SccacheBinaryArtifact,
@@ -15,8 +16,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = sccache_releases_aut
 
 data sccache_pin_instantiation_note: String = "THE INSTANTIATION for extdeps.cache.sccache's multi-artifact release rows. extdeps.pin owns Pin<Subject>; this module binds that dimension to SccacheBinaryArtifact (release x published musl arch) and owns only subject-specific projection: how to derive expected_identity from the cited digest row and how to key reconcile membership. Pin<SccacheBinaryRelease> remains unsound — one release row carries two digests — so the subject is the artifact product modeled at sccache_binary_artifact_grain_note. extdeps_external_authority_anchor aliases sccache_releases_authority — one releases URI, not a second citation (review 44866)."
 
+fn sccache_binary_artifact_pin_version(artifact: SccacheBinaryArtifact) -> VersionIdentity {
+  artifact.binary_release.version as VersionIdentity
+}
+
 fn sccache_binary_artifact_pin_expected_identity(artifact: SccacheBinaryArtifact) -> ContentHash {
   sccache_binary_artifact_content_identity(artifact: artifact)
+}
+
+fn sccache_binary_artifact_pin(artifact: SccacheBinaryArtifact) -> Pin<SccacheBinaryArtifact> {
+  Pin {
+    subject: artifact,
+    version: sccache_binary_artifact_pin_version(artifact: artifact),
+    expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: artifact),
+    selection: ExactPin,
+  }
 }
 
 fn sccache_binary_artifact_pin_key_of(pin: Pin<SccacheBinaryArtifact>) -> NonEmptyStr {

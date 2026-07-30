@@ -21,7 +21,7 @@ import extdeps.cache.sccache {
   sccache_binary_artifact_for_arch,
   sccache_published_musl_arch_of,
 }
-import extdeps.cache.pin { sccache_binary_artifact_pin_expected_identity }
+import extdeps.cache.pin { sccache_binary_artifact_pin }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -36,14 +36,13 @@ data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
   arch: SccacheMuslX86_64,
 }
 
-data sccache_aarch64_pin: Pin<SccacheBinaryArtifact> = Pin {
-  subject: sccache_aarch64_artifact,
-  version: "0.15.0" as VersionIdentity,
-  expected_identity: sccache_binary_artifact_pin_expected_identity(artifact: sccache_aarch64_artifact),
-  selection: ExactPin,
-}
+data sccache_aarch64_pin: Pin<SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
-data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. Pin<SccacheBinaryArtifact> pins ONE cited musl tarball per row; expected_identity is DERIVED from the release's named digest field via sha256_digest_content_hash, never re-minted. RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin — the whole point of release x platform grain. RED CONTROL unsupported_arch_cannot_construct_artifact fails if Riscv64 can inhabit SccacheBinaryArtifact (review 44866 construction wall)."
+data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. Pin<SccacheBinaryArtifact> pins ONE cited musl tarball per row; expected_identity and version are DERIVED from the subject's cited release row via extdeps.cache.pin projection fns, never re-minted (review 44893). RED CONTROL aarch64_pin_refuses_x86_64_observation fails if observing the x86_64 digest admits an aarch64 pin — the whole point of release x platform grain. RED CONTROL unsupported_arch_cannot_construct_artifact fails if Riscv64 can inhabit SccacheBinaryArtifact (review 44866 construction wall)."
+
+test fn sccache_pin_version_is_derived_from_release_row() -> Bool {
+  (sccache_aarch64_pin.version as String) == (sccache_release_0_15_0.version as String)
+}
 
 test fn sccache_pin_expected_identity_is_derived_from_cited_row() -> Bool {
   sccache_aarch64_pin.expected_identity == sccache_binary_artifact_content_identity(artifact: sccache_aarch64_artifact)
