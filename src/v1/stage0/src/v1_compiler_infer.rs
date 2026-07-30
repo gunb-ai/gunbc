@@ -1451,6 +1451,31 @@ pub fn type_expr_where_refinement_predicates(ty: Rc<Node>) -> Rc<Vec<Rc<Node>>> 
     }
 }
 
+pub fn type_where_refinement_predicates_transitive(
+    ty: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+) -> Rc<Vec<Rc<Node>>> {
+    let immediate = type_expr_where_refinement_predicates(ty.clone());
+    let inherited = if (((ty.connective.clone() == Connective::Conj)
+        && (ty.type_annotation.clone() != None))
+        && ((ty.children.clone().len() as i64) == 1))
+    {
+        let base = ty.children.clone()[0].clone();
+        let base_resolved = match lookup_type_for(type_env.clone(), base.clone()) {
+            Some(resolved) => resolved.clone(),
+            None => base.clone(),
+        };
+        type_where_refinement_predicates_transitive(base_resolved, type_env.clone())
+    } else {
+        Rc::new(vec![])
+    };
+    Rc::new({
+        let mut combined = (*immediate).clone();
+        combined.extend((*inherited).iter().cloned());
+        combined
+    })
+}
+
 pub fn where_predicate_name_at(
     pred: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1998,7 +2023,8 @@ pub fn where_refinement_mismatch_diags(
             type_env.clone(),
             module_name.clone(),
         );
-        let preds = type_expr_where_refinement_predicates(formal_resolved.clone());
+        let preds =
+            type_where_refinement_predicates_transitive(formal_resolved.clone(), type_env.clone());
         if ((preds.clone().len() as i64) == 0) {
             Rc::new(vec![])
         } else {
@@ -2009,7 +2035,10 @@ pub fn where_refinement_mismatch_diags(
                     Some(resolved) => resolved.clone(),
                     None => actual_raw.clone(),
                 };
-                let actual_preds = type_expr_where_refinement_predicates(actual_resolved.clone());
+                let actual_preds = type_where_refinement_predicates_transitive(
+                    actual_resolved.clone(),
+                    type_env.clone(),
+                );
                 if where_refinement_predicates_covered(
                     preds.clone(),
                     actual_preds.clone(),
