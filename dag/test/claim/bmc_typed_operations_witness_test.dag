@@ -24,6 +24,8 @@ import extdeps.bmc.openbmc_fan_control {
   openbmc_sensor_threshold_result,
   openbmc_tach_health_from_floor,
   openbmc_path_result,
+  openbmc_path_probe_result,
+  openbmc_service_active_result,
   openbmc_zone_failsafe_result,
 }
 import extdeps.ssh.password_session { PasswordSshExecResult }
@@ -203,6 +205,49 @@ test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
     },
   ) {
     OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
+    _ => false
+  }
+}
+
+test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 1,
+      success: false,
+      stdout: "",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => !value
+    _ => false
+  }
+}
+
+test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
+  match openbmc_path_probe_result(
+    remote: PasswordSshExecResult {
+      exit_code: 255,
+      success: false,
+      stdout: "",
+      stderr: "SSH host identity verification failed",
+    },
+  ) {
+    OpenBmcBoolRefused { reason } =>
+      reason == "SSH host identity verification failed"
+    _ => false
+  }
+}
+
+test fn inactive_service_is_observed_not_transport_refused() -> Bool {
+  match openbmc_service_active_result(
+    remote: PasswordSshExecResult {
+      exit_code: 3,
+      success: false,
+      stdout: "inactive\n",
+      stderr: "",
+    },
+  ) {
+    OpenBmcBoolObserved { value } => !value
     _ => false
   }
 }

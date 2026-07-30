@@ -225,6 +225,30 @@ fn openbmc_zone_failsafe_result(
   }
 }
 
+fn openbmc_path_probe_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if remote.exit_code == 0 {
+    OpenBmcBoolObserved { value: true }
+  } else if remote.exit_code == 1 {
+    OpenBmcBoolObserved { value: false }
+  } else {
+    OpenBmcBoolRefused { reason: remote.stderr }
+  }
+}
+
+fn openbmc_service_active_result(
+  remote: PasswordSshExecResult,
+) -> OpenBmcBoolResult {
+  if remote.exit_code == 0 {
+    OpenBmcBoolObserved { value: true }
+  } else if remote.exit_code == 3 {
+    OpenBmcBoolObserved { value: false }
+  } else {
+    OpenBmcBoolRefused { reason: remote.stderr }
+  }
+}
+
 fn openbmc_disk_usage_result(
   remote: PasswordSshExecResult,
 ) -> OpenBmcByteSizeResult {
@@ -750,8 +774,13 @@ fn openbmc_parent_directory(
 fn openbmc_systemd_is_active(
   session: PasswordSshSession,
   service: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcSystemdIsActive { service: service })
+) -> OpenBmcBoolResult {
+  openbmc_service_active_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcSystemdIsActive { service: service },
+    ),
+  )
 }
 
 fn openbmc_systemd_restart(
@@ -1575,15 +1604,25 @@ fn openbmc_fan_config_project_local(
 fn openbmc_path_is_writable(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcPathIsWritable { path: path })
+) -> OpenBmcBoolResult {
+  openbmc_path_probe_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcPathIsWritable { path: path },
+    ),
+  )
 }
 
 fn openbmc_path_exists(
   session: PasswordSshSession,
   path: NonEmptyStr,
-) -> PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcPathExists { path: path })
+) -> OpenBmcBoolResult {
+  openbmc_path_probe_result(
+    remote: openbmc_execute(
+      session: session,
+      operation: OpenBmcPathExists { path: path },
+    ),
+  )
 }
 
 fn openbmc_path_is_nonempty_file(

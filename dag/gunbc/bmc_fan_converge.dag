@@ -795,11 +795,15 @@ fn bmc_fan_observe_typed_parts(
   )
   let disk = openbmc_disk_usage_kib(session: session, path: "/")
   let timestamp = openbmc_utc_timestamp(session: session)
-  if !service.success {
-    BmcFanObservedPartsRefused {
-      reason: concat("fan controller is not active: ", service.stderr),
-    }
-  } else if !mounts.success {
+  match service {
+    OpenBmcBoolRefused { reason } =>
+      BmcFanObservedPartsRefused {
+        reason: concat("fan controller service observation failed: ", reason),
+      }
+    OpenBmcBoolObserved { value: false } =>
+      BmcFanObservedPartsRefused { reason: "fan controller is not active" }
+    OpenBmcBoolObserved { value: true } =>
+  if !mounts.success {
     BmcFanObservedPartsRefused {
       reason: concat("BMC mount-table observation failed: ", mounts.stderr),
     }
@@ -865,6 +869,18 @@ fn bmc_fan_observe_typed_parts(
             "",
           ) as NonEmptyStr,
         )
+        match writable {
+          OpenBmcBoolRefused { reason } =>
+            BmcFanObservedPartsRefused {
+              reason: concat("fan config parent writability observation failed: ", reason),
+            }
+          OpenBmcBoolObserved { value: writable_value } =>
+        match upper_override {
+          OpenBmcBoolRefused { reason } =>
+            BmcFanObservedPartsRefused {
+              reason: concat("fan config upper override observation failed: ", reason),
+            }
+          OpenBmcBoolObserved { value: upper_override_value } =>
             let temperatures = bmc_fan_observe_temperatures(
               session: session,
               sensor_names: plan.temperature_sensors,
@@ -883,8 +899,8 @@ fn bmc_fan_observe_typed_parts(
                           controller_binary: "/usr/bin/swampd",
                           zone_control_path: plan.controller_zone_path,
                           zone_failsafe_active: zone_failsafe_active,
-                          writable: writable.success,
-                          upper_override_present: upper_override.success,
+                          writable: writable_value,
+                          upper_override_present: upper_override_value,
                           available_bytes: available_bytes,
                           observed_at: observed_at,
                           overlay: overlay,
@@ -894,6 +910,8 @@ fn bmc_fan_observe_typed_parts(
                           temperatures: temperatures,
                         }
                     }
+        }
+        }
           }
         }
         }
@@ -903,6 +921,7 @@ fn bmc_fan_observe_typed_parts(
     }
     }
     }
+  }
   }
 }
 
@@ -1000,10 +1019,7 @@ fn bmc_fan_build_live_observation(
   let board_path = board_config_path as String
   let service = controller_service as String
   let binary = controller_binary as String
-  let service_active = "active"
   let zone_path = zone_control_path as String
-  let zone_failsafe = if zone_failsafe_active { "true" } else { "false" }
-  let available_raw = to_string(byte_size_count(available_bytes))
   if firmware == "" {
     BmcFanLiveObservationRefused {
       reason: "BMC fan observer omitted firmware",
@@ -1028,17 +1044,9 @@ fn bmc_fan_build_live_observation(
     BmcFanLiveObservationRefused {
       reason: "BMC fan observer omitted zone control path",
     }
-  } else if zone_failsafe != "true" && zone_failsafe != "false" {
-    BmcFanLiveObservationRefused {
-      reason: "BMC fan observer omitted a typed zone failsafe state",
-    }
   } else if machine != "altrad8ud-1l2t" {
     BmcFanLiveObservationRefused {
       reason: concat("BMC target machine is not altrad8ud-1l2t: ", machine),
-    }
-  } else if service_active != "active" {
-    BmcFanLiveObservationRefused {
-      reason: concat("fan controller service is not active: ", service_active),
     }
   } else {
           match bmc_fan_parse_curve(config: config) {
@@ -1049,53 +1057,46 @@ fn bmc_fan_build_live_observation(
                 FanControllerShapeParseRefused { reason: reason } =>
                   BmcFanLiveObservationRefused { reason: reason }
                 FanControllerShapeParsed { shape: shape } =>
-                  match parse_int(s: available_raw) {
-                    Absent =>
-                      BmcFanLiveObservationRefused {
-                        reason: "persistent overlay available-byte observation is absent or invalid",
-                      }
-                    Present { value: available } =>
-                      if available <= 0 {
-                        BmcFanLiveObservationRefused {
-                          reason: "persistent overlay free-space observation is absent",
-                        }
-                      } else {
-                        let firmware_version = BmcFirmwareVersion {
-                          family: OpenBmc,
-                          version: firmware as NonEmptyStr,
-                        }
-                        BmcFanLiveObserved {
-                          observation: BmcFanLiveObservation {
-                            policy: BmcFanPolicyObservation {
-                              firmware: firmware_version,
-                              evidence_scope: CurrentEvidenceUnclaimed,
-                              curve: curve,
-                              active_config_digest: config_digest,
-                              selected_config_path: selected_path as NonEmptyStr,
-                              board_config_path: board_path as NonEmptyStr,
-                              controller_service: service as NonEmptyStr,
-                              controller_binary: binary as NonEmptyStr,
-                              controller_shape: shape,
-                              observed_at: observed_at,
-                            },
-                            persistence: BmcOverlayConfigObserved {
-                              firmware: firmware_version,
-                              config_path: board_path as NonEmptyStr,
-                              overlay: overlay,
-                              writable: writable,
-                              upper_override_present: upper_override_present,
-                              available_bytes: available_bytes,
-                              evidence_scope: CurrentEvidenceUnclaimed,
-                              observed_at: observed_at,
-                            },
-                            zone_control_path: zone_path as NonEmptyStr,
-                            zone_failsafe_active: zone_failsafe_active,
-                            active_config_digest: config_digest,
-                            tach_health: tach_health,
-                            temperatures: temperatures,
-                          },
-                        }
-                      }
+                  if byte_size_count(available_bytes) <= 0 {
+                    BmcFanLiveObservationRefused {
+                      reason: "persistent overlay free-space observation is absent",
+                    }
+                  } else {
+                    let firmware_version = BmcFirmwareVersion {
+                      family: OpenBmc,
+                      version: firmware as NonEmptyStr,
+                    }
+                    BmcFanLiveObserved {
+                      observation: BmcFanLiveObservation {
+                        policy: BmcFanPolicyObservation {
+                          firmware: firmware_version,
+                          evidence_scope: CurrentEvidenceUnclaimed,
+                          curve: curve,
+                          active_config_digest: config_digest,
+                          selected_config_path: selected_path as NonEmptyStr,
+                          board_config_path: board_path as NonEmptyStr,
+                          controller_service: service as NonEmptyStr,
+                          controller_binary: binary as NonEmptyStr,
+                          controller_shape: shape,
+                          observed_at: observed_at,
+                        },
+                        persistence: BmcOverlayConfigObserved {
+                          firmware: firmware_version,
+                          config_path: board_path as NonEmptyStr,
+                          overlay: overlay,
+                          writable: writable,
+                          upper_override_present: upper_override_present,
+                          available_bytes: available_bytes,
+                          evidence_scope: CurrentEvidenceUnclaimed,
+                          observed_at: observed_at,
+                        },
+                        zone_control_path: zone_path as NonEmptyStr,
+                        zone_failsafe_active: zone_failsafe_active,
+                        active_config_digest: config_digest,
+                        tach_health: tach_health,
+                        temperatures: temperatures,
+                      },
+                    }
                   }
               }
           }
