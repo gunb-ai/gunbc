@@ -72,6 +72,7 @@ data cleanup_debt_test_applied_receipt: BmcFanAppliedReceipt = BmcFanAppliedRece
     sample_count: 12,
     elapsed: second(360),
     required_elapsed: second(360),
+    maximum_sample_gap: second(30),
   },
 }
 
@@ -318,6 +319,7 @@ test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
       BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
     required_elapsed: second(360),
+    maximum_sample_gap: second(30),
   ) {
     BmcFanMonitoringRefused { reason: _, receipt } =>
       receipt.sample_count == 3 && second_count(receipt.elapsed) == 90
@@ -329,12 +331,13 @@ test fn short_monitoring_window_cannot_claim_completion() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
     ],
     required_elapsed: second(360),
+    maximum_sample_gap: second(30),
   ) {
     BmcFanMonitoringRefused { reason: _, receipt } =>
-      receipt.sample_count == 2 && second_count(receipt.elapsed) == 330
+      receipt.sample_count == 2 && second_count(receipt.elapsed) == 60
     BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
@@ -343,6 +346,7 @@ test fn empty_monitoring_window_cannot_claim_completion() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [],
     required_elapsed: second(360),
+    maximum_sample_gap: second(30),
   ) {
     BmcFanMonitoringRefused { reason: _, receipt } =>
       receipt.sample_count == 0 && second_count(receipt.elapsed) == 0
@@ -354,14 +358,42 @@ test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
       BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(90), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(120), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(150), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(180), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(210), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(240), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(270), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(300), safety_refusal: none },
+      BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
       BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
     required_elapsed: second(360),
+    maximum_sample_gap: second(30),
   ) {
     BmcFanMonitoringCompleted { receipt } =>
-      receipt.sample_count == 2
+      receipt.sample_count == 12
         && second_count(receipt.elapsed) == 360
         && second_count(receipt.required_elapsed) == 360
+        && second_count(receipt.maximum_sample_gap) == 30
     BmcFanMonitoringRefused { reason: _, receipt: _ } => false
+  }
+}
+
+test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool {
+  match bmc_fan_assess_monitoring_samples(
+    samples: [
+      BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+    ],
+    required_elapsed: second(360),
+    maximum_sample_gap: second(30),
+  ) {
+    BmcFanMonitoringRefused { reason, receipt } =>
+      reason == "post-restart monitoring sample gap exceeded its admitted cadence"
+        && receipt.sample_count == 1
+        && second_count(receipt.elapsed) == 360
+    BmcFanMonitoringCompleted { receipt: _ } => false
   }
 }
