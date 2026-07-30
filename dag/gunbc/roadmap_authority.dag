@@ -604,6 +604,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The zero-remaining inventory plus proof the compiler still behaves the same."
       )
     ),
+    active_large(
+      identity: "rn_SG8EVJAQXVGP7V5G8BG8G8YVJQ",
+      id: "namespace-import-deletion",
+      owner: "namespace",
+      path: "docs/plans/namespace-unique-on-chain-operational-plan.md",
+      t: fields(
+        headline: "Delete the import lines, and the grammar that allows them",
+        boundary: "Every import line goes, and import stops being something the language can express at all: writing one becomes a parse error. What a file depends on is worked out from the names it actually mentions.",
+        displaced_cost: "While import still parses, a file can declare one set of dependencies while its references need another, and the two can disagree. That is the second source of truth this whole chain exists to remove, and it survives every earlier step.",
+        first_slice: "Delete the import lines from one subtree whose references already reach everything it needs, and show that subtree still compiles from its references alone.",
+        red_control: "A file that still needs an import to reach something is named and refused, never quietly left holding it. Once the grammar goes, a file containing an import line fails to parse rather than being ignored.",
+        out_of_scope: "No new way of writing dependencies is introduced; this step only removes the old one. Deleting imports ahead of a proven reference-only closure is the failure this step exists to prevent, not a shortcut through it.",
+        handback: "A corpus with no import lines, a grammar with no import production, and a run showing that an authored import is now a parse error."
+      )
+    ),
 
     active_small(
       identity: "rn_E414RDCS728VRFA9QZ0NX76SYN",
@@ -1460,6 +1475,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-test-migration"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "v1-seed-honesty-decision"),
     edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement"),
+    edge(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion"),
 
     edge(child: "shell-effectplan-to-bash", parent: "shell-typed-invocation"),
     edge(child: "shell-gate-migration", parent: "shell-effectplan-to-bash"),
@@ -1614,6 +1631,24 @@ fn roadmap_acceptance_receipts() -> List<RoadmapAcceptanceReceipt> {
         further_artifacts: [
           "dag/extdeps/languages/rust/derive_contracts.dag",
           "src/v2/test/claim/emit/trait_derive_supplemental_generic_bound_contract_test.dag",
+        ],
+      },
+      accepted_by: "operator",
+      accepted_on: "2026-07-29",
+    },
+    RoadmapAcceptanceReceipt {
+      node: nid(s: "v1-test-hygiene-producer-retirement"),
+      criteria_digest: chash(s: "8f77a4b2e0ee3387"),
+      red_control: RedControlExecuted {
+        witness_module: "test.claim.test_module_hygiene_hand_rust_equivalence_witness",
+        witness_fn: "test_module_hygiene_equivalence_unparsable_refuse_discriminator_holds",
+        executed_on: "2026-07-29",
+      },
+      handback: HandbackDelivered {
+        first_artifact: "dag/gunbc/test_module_hygiene.dag",
+        further_artifacts: [
+          "dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag",
+          "src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs",
         ],
       },
       accepted_by: "operator",
