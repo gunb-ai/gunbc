@@ -1,0 +1,112 @@
+module gunbc.live_deploy.revision
+
+import std.types { NonEmptyStr, FilePath, CommitSha }
+import gunbc.fleet_intent { srv1_host }
+import product.placement_supply { HostIdentity }
+
+data deploy_revision_authority_note: String = "DEPLOY ORDERING IS A SEPARATE DEFECT FROM DEPLOY INTERLEAVING, AND ONLY THIS MODULE ADDRESSES THE FIRST. Serialization (one deploy at a time per target) stops two deploys from rsyncing into the same tree concurrently; it does NOT make the sequence monotonic, because main-push runs are deliberately not cancelled (operator ruling 2026-07-23: the per-commit verdict history is bisection evidence) and GitHub orders queued jobs by when they began waiting, never by commit ancestry. srv1-deploy-serialization-and-false-greens.md §2.3 carries the receipt that arrival order is ALREADY inverted relative to commit order — the earlier commit's deploy started 12 seconds later — and its §6 concludes that serialization ALONE is strictly worse than today's honest red, because an older deploy running second rsyncs its older tree, converges, and greens, silently regressing the live dashboard. The missing half is a freshness precondition, which is what classify_deploy_revision is."
+
+data deploy_revision_four_cases_note: String = "FOUR CASES, NOT A BINARY DESCENDANT CHECK, and the third is the one that matters. A naive guard refuses everything that is not a strict descendant, which turns the ORDINARY case — an older run finishing after a newer one — into a red. That is expected noise by construction: it fires on every rapid push pair, so it trains the operator to ignore deploy failures, which is the opposite of a safety property (operator ruling 2026-07-30). The cases: SameRevision means the host already carries this exact tree, so there is nothing to do and nothing to report. DeployedIsAncestor is the normal forward deploy. CandidateIsAncestor means a NEWER revision is already live and this run has been superseded — the correct behavior is to do nothing and exit ZERO, because the fleet is in a strictly better state than this run would have produced; treating it as failure would red main for behaving correctly. UnrelatedHistories (neither is an ancestor of the other — a force-push, a rewritten branch, a different repository) and RelationUnverifiable (the ancestry probe itself could not answer: missing object, unreadable state, no persisted revision) are the only refusals, and both are typed and located rather than a generic error. Refusing on unverifiable is the fail-closed direction: 'I could not determine whether this is newer' is NOT 'this is newer', and collapsing the two is the absorbing-fallback shape DESIGN §5 forbids."
+
+data deploy_revision_probe_note: String = "The relation is OBSERVED, not inferred from timestamps or run numbers. `git merge-base --is-ancestor A B` answers it in one exit code — 0 for yes, 1 for no, 128 for a bad object — and the exit-1 case is a legitimate ANSWER rather than an error, which is precisely what lets UnrelatedHistories and RelationUnverifiable stay separate variants. Two probes are needed because a single direction cannot distinguish 'candidate is older' from 'unrelated': is_ancestor(deployed, candidate) and is_ancestor(candidate, deployed) together give (true,true)=same, (true,false)=advance, (false,true)=superseded, (false,false)=unrelated. Equality is decided by SHA comparison BEFORE any probe, because it is the common no-op case and deserves neither a subprocess nor a chance to misclassify. Timestamps are explicitly NOT an input: wall-clock ordering of CI runs is exactly the signal that is already inverted, and commit dates are attacker- and rebase-controlled."
+
+type DeployTargetId {
+  host: HostIdentity
+  destination: FilePath
+  service_unit: NonEmptyStr
+}
+
+data deploy_target_id_note: String = "The mutex identity is the DEPLOYMENT DOMAIN — the host, the directory the deploy rsyncs into, and the service unit it restarts — never the workflow job name. A job id is a CI-side label: renaming the job silently mints a different lock while the same three host resources are still being mutated, and two differently-named stages that touch the same directory would serialize against nothing. Deriving the identity from what is actually mutated makes 'same target' mean 'same bytes at risk', which is the only reading under which a mutex is a safety property rather than a naming convention."
+
+data srv1_dashboard_target: DeployTargetId = DeployTargetId {
+  host: srv1_host.identity,
+  destination: "/opt/gunbc/gunbc" as FilePath,
+  service_unit: "gunbc-dashboard" as NonEmptyStr,
+}
+
+type DeployRevisionRelation
+  = SameRevision
+  | DeployedIsAncestor
+  | CandidateIsAncestor
+  | UnrelatedHistories
+  | RelationUnverifiable { cause: NonEmptyStr }
+
+type DeployRevisionVerdict
+  = RevisionAlreadyConverged
+  | RevisionAdvance
+  | RevisionSupersededNoOp
+  | RevisionRefused { cause: NonEmptyStr }
+
+fn classify_deploy_revision(relation: DeployRevisionRelation) -> DeployRevisionVerdict {
+  match relation {
+    SameRevision => RevisionAlreadyConverged
+    DeployedIsAncestor => RevisionAdvance
+    CandidateIsAncestor => RevisionSupersededNoOp
+    UnrelatedHistories =>
+      RevisionRefused {
+        cause: "deployed and candidate revisions share no ancestry (force-push, rewritten history, or foreign repository) — refusing rather than guessing which is newer" as NonEmptyStr
+      }
+    RelationUnverifiable { cause: why } => RevisionRefused { cause: why }
+  }
+}
+
+data deploy_revision_disposition_split_note: String = "Three dispositions, deliberately not two. `proceeds` is the ONLY verdict that performs the mutation. `terminal_success` covers the two do-nothing outcomes — already converged and superseded — which must exit ZERO: they are correct states of the world, not failures, and the whole point of the four-case split is that a superseded run is indistinguishable from a healthy fleet. `refuses` is the only red. Collapsing proceeds and terminal_success into one 'ok' predicate would lose the distinction the apply path needs (whether to mutate at all), and collapsing superseded into refuses would reintroduce the expected-red-noise defect this module exists to prevent. Every verdict lands in exactly one of the three, and the witnesses assert that totality rather than trusting it."
+
+fn deploy_revision_proceeds(verdict: DeployRevisionVerdict) -> Bool {
+  match verdict {
+    RevisionAdvance => true
+    RevisionAlreadyConverged => false
+    RevisionSupersededNoOp => false
+    RevisionRefused { cause: _ } => false
+  }
+}
+
+fn deploy_revision_terminal_success(verdict: DeployRevisionVerdict) -> Bool {
+  match verdict {
+    RevisionAlreadyConverged => true
+    RevisionSupersededNoOp => true
+    RevisionAdvance => false
+    RevisionRefused { cause: _ } => false
+  }
+}
+
+fn deploy_revision_refuses(verdict: DeployRevisionVerdict) -> Bool {
+  match verdict {
+    RevisionRefused { cause: _ } => true
+    RevisionAlreadyConverged => false
+    RevisionAdvance => false
+    RevisionSupersededNoOp => false
+  }
+}
+
+data deploy_revision_probe_relation_note: String = "The (deployed→candidate, candidate→deployed) probe pair folded into a relation. SHA equality is checked first and short-circuits both probes. Note that (true,true) is reachable ONLY when the SHAs are equal — a commit is its own ancestor and ancestry is antisymmetric — so this arm is defensive rather than expected, and it agrees with the equality short-circuit instead of contradicting it."
+
+fn deploy_revision_relation_from_probes(
+  deployed: CommitSha,
+  candidate: CommitSha,
+  deployed_is_ancestor_of_candidate: Bool,
+  candidate_is_ancestor_of_deployed: Bool,
+) -> DeployRevisionRelation {
+  if deployed == candidate {
+    SameRevision
+  } else {
+    if deployed_is_ancestor_of_candidate {
+      if candidate_is_ancestor_of_deployed { SameRevision } else { DeployedIsAncestor }
+    } else {
+      if candidate_is_ancestor_of_deployed { CandidateIsAncestor } else { UnrelatedHistories }
+    }
+  }
+}
+
+data deploy_revision_persisted_outside_tree_note: String = "The deployed-revision record lives OUTSIDE the directory the deploy rsyncs into, and that placement is load-bearing rather than tidy. A marker inside the deployed tree is destroyed or overwritten by the very rsync whose outcome it is supposed to describe, so after a partial or interrupted deploy the record would describe a tree that was never fully written — the state the guard exists to detect becomes the state it cannot see. Keeping it beside the destination instead means the record is written ONLY after the service has restarted and the deployed surface has been read back, so a crash mid-deploy leaves the previous revision recorded and the next run correctly classifies the incomplete tree as still-at-the-old-revision rather than trusting a marker the failed run had already advanced."
+
+fn deploy_revision_state_path(target: DeployTargetId) -> FilePath {
+  concat(concat("/var/lib/gunbc/deploy-revision/", target.service_unit as String), ".sha") as FilePath
+}
+
+fn deploy_target_mutex_group(target: DeployTargetId) -> String {
+  concat(
+    concat(concat("gunbc-deploy-", target.host as String), "-"),
+    target.service_unit as String
+  )
+}
