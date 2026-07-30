@@ -91,6 +91,10 @@ type BmcFanPolicySuitability
   = FanPolicySuitable
   | FanPolicySuitabilityRefused { reason: String }
 
+type BmcFanConfigPersistenceApplySuitability
+  = BmcFanConfigPersistenceApplySuitable
+  | BmcFanConfigPersistenceApplyRefused { reason: String }
+
 data bmc_converge_shared_workflow_note: String = "BMC and Ubuntu convergence share std.upsert_decision for observe/classify/plan and std.realization_reconcile for apply/read-back. Fan-policy reconciliation is three separable questions: apply suitability, post-apply durability qualification, and ordinary convergence after qualification. Apply may proceed without prior durability evidence; Noop requires qualification plus a live canonical digest equal to the admitted digest."
 
 fn bmc_firmware_intent_mismatch_reason(
@@ -234,11 +238,11 @@ fn bmc_firmware_classification(
   }
 }
 
-fn bmc_config_persistence_supports_apply(
+fn bmc_fan_config_persistence_apply_suitability(
   observation: BmcConfigPersistenceObservation,
   expected_firmware: BmcFirmwareVersion,
   config_path: NonEmptyStr,
-) -> Bool {
+) -> BmcFanConfigPersistenceApplySuitability {
   match observation {
     BmcOverlayConfigObserved {
       firmware: firmware,
@@ -249,18 +253,27 @@ fn bmc_config_persistence_supports_apply(
       available_bytes: _,
       observed_at: _,
     } =>
-      firmware == expected_firmware
+      if firmware == expected_firmware
         && writable
         && observed_path == config_path
         && linux_overlay_observation_is_flash_backed(
           observation: overlay,
-        )
+        ) {
+        BmcFanConfigPersistenceApplySuitable
+      } else {
+        BmcFanConfigPersistenceApplyRefused {
+          reason: "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path",
+        }
+      }
     BmcConfigPersistenceUnsupported {
       firmware: _,
       config_path: _,
-      reason: _,
+      reason: reason,
       observed_at: _,
-    } => false
+    } =>
+      BmcFanConfigPersistenceApplyRefused {
+        reason: concat("bmc config persistence unsupported: ", reason),
+      }
   }
 }
 
@@ -307,37 +320,27 @@ fn bmc_fan_policy_apply_suitability(
                   reason: "bmc fan realizer lifetime cannot be evaluated because its current filesystem substrate has not been observed",
                 }
               Present { value: storage } =>
-                if !bmc_config_persistence_supports_apply(
+                match bmc_fan_config_persistence_apply_suitability(
                   observation: storage,
                   expected_firmware: observation.firmware,
                   config_path: observation.board_config_path,
                 ) {
-                  FanPolicySuitabilityRefused {
-                    reason: "bmc fan realizer is not grounded by the observed overlay, SquashFS lower, writable JFFS2 upper, exact firmware, and config path",
-                  }
-                } else {
-                  match bmc_fan_policy_projection_durability_capability(
-                    capability: projection,
-                  ).commit_barrier {
-                    NoDurabilityCommitBarrier =>
-                      FanPolicySuitabilityRefused {
-                        reason: "bmc fan projection lacks a synchronized durability commit barrier",
-                      }
-                    SynchronizedCommit => FanPolicySuitable
-                  }
+                  BmcFanConfigPersistenceApplyRefused { reason: reason } =>
+                    FanPolicySuitabilityRefused { reason: reason }
+                  BmcFanConfigPersistenceApplySuitable =>
+                    match bmc_fan_policy_projection_durability_capability(
+                      capability: projection,
+                    ).commit_barrier {
+                      NoDurabilityCommitBarrier =>
+                        FanPolicySuitabilityRefused {
+                          reason: "bmc fan projection lacks a synchronized durability commit barrier",
+                        }
+                      SynchronizedCommit => FanPolicySuitable
+                    }
                 }
             }
           }
       }
-  }
-}
-
-fn bmc_fan_durability_verdict_qualified(
-  verdict: StateDurabilityVerdict<HostIdentity, BmcFanConfigReadbackSubject>,
-) -> Bool {
-  match verdict {
-    StateDurabilityQualified { qualification: _ } => true
-    StateDurabilityRefused { cause: _ } => false
   }
 }
 
@@ -527,33 +530,36 @@ fn bmc_fan_policy_classification(
                           durability_generation: durability_generation,
                           durability_evidence: durability_evidence,
                         )
-                        if !bmc_fan_durability_verdict_qualified(verdict: durability) {
-                          UpsertClassification {
-                            verdict: UnknownRefused,
-                            decision: Refuse {
-                              reason: concat(
-                                "bmc fan realizer does not satisfy the declared state lifetime: ",
-                                bmc_fan_durability_refusal_reason(verdict: durability),
-                              ),
-                            },
-                          }
-                        } else if !bmc_fan_policy_projection_live_digest_matches(
-                          capability: projector,
-                          observation: observed,
-                        ) {
-                          UpsertClassification {
-                            verdict: UnknownRefused,
-                            decision: Refuse {
-                              reason: "bmc fan live canonical config digest does not equal the admitted digest",
-                            },
-                          }
-                        } else {
-                          bmc_fan_policy_ordinary_convergence(
-                            host: host,
-                            observation: observed,
-                            desired_curve: desired,
-                            projection: projector,
-                          )
+                        match durability {
+                          StateDurabilityRefused { cause: _ } =>
+                            UpsertClassification {
+                              verdict: UnknownRefused,
+                              decision: Refuse {
+                                reason: concat(
+                                  "bmc fan realizer does not satisfy the declared state lifetime: ",
+                                  bmc_fan_durability_refusal_reason(verdict: durability),
+                                ),
+                              },
+                            }
+                          StateDurabilityQualified { qualification: _ } =>
+                            if !bmc_fan_policy_projection_live_digest_matches(
+                              capability: projector,
+                              observation: observed,
+                            ) {
+                              UpsertClassification {
+                                verdict: UnknownRefused,
+                                decision: Refuse {
+                                  reason: "bmc fan live canonical config digest does not equal the admitted digest",
+                                },
+                              }
+                            } else {
+                              bmc_fan_policy_ordinary_convergence(
+                                host: host,
+                                observation: observed,
+                                desired_curve: desired,
+                                projection: projector,
+                              )
+                            }
                         }
                       }
                   }

@@ -4,38 +4,22 @@ import extdeps.bmc.types {
   On,
   ResetGracefulRestart,
 }
-import extdeps.filesystem.linux {
-  LinuxFilePublicationProtocol,
-  linux_synchronized_rename_replace_publication,
-}
 import gunbc.bmc_intent {
   fleet_bmc_fan_graceful_restart_boundary,
-  fleet_bmc_valid_state,
 }
 import gunbc.bmc_fan_projection {
   BmcFanConfigReadbackSubject,
   BmcFanDurabilityAdmission,
   BmcFanDurabilityEvidence,
-  BmcFanPolicyProjectionCapability,
-  bmc_fan_policy_projection_capability,
   bmc_fan_policy_projection_durability_admission,
 }
 import gunbc.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
-  srv4_bmc_fan_active_config_digest,
-  srv4_bmc_fan_durability_capability_version,
-  srv4_bmc_fan_observed_aggregate_entry,
-  srv4_bmc_fan_observed_config_path,
-  srv4_bmc_fan_observed_controller_service,
-  srv4_bmc_fan_observed_controller_zone_path,
-  srv4_bmc_fan_observed_tach_inputs,
   srv4_bmc_fan_perturbation_generation,
-  srv4_bmc_fan_realization,
+  srv4_bmc_fan_projection_capability,
   srv4_bmc_fan_reboot_persistence_receipt,
-  srv4_bmc_firmware_observation,
 }
 import gunbc.fleet_intent {
-  srv4_baseboard,
   srv4_host,
 }
 import product.placement_supply { HostIdentity }
@@ -61,24 +45,6 @@ import std.state_durability {
   StatePreserved,
 }
 import std.types { Bool, List, String }
-
-data srv4_bmc_fan_publication_protocol: LinuxFilePublicationProtocol = linux_synchronized_rename_replace_publication
-
-data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_fan_policy_projection_capability(
-  board: srv4_baseboard.catalog.model,
-  firmware: srv4_bmc_firmware_observation.firmware,
-  projected_curve: fleet_bmc_valid_state.fan_policy.curve,
-  projected_config_digest: srv4_bmc_fan_active_config_digest,
-  config_path: srv4_bmc_fan_observed_config_path,
-  controller_service: srv4_bmc_fan_observed_controller_service,
-  controller_zone_path: srv4_bmc_fan_observed_controller_zone_path,
-  aggregate_fan_pid_entry: srv4_bmc_fan_observed_aggregate_entry,
-  realization: srv4_bmc_fan_realization,
-  durability_capability_version: srv4_bmc_fan_durability_capability_version,
-  publication_protocol: srv4_bmc_fan_publication_protocol,
-  durability_boundaries: [fleet_bmc_fan_graceful_restart_boundary],
-  required_tach_inputs: srv4_bmc_fan_observed_tach_inputs,
-)
 
 data srv4_bmc_fan_durability_admission: BmcFanDurabilityAdmission = bmc_fan_policy_projection_durability_admission(
   host: srv4_host.identity,
@@ -247,19 +213,17 @@ fn bmc_fan_reboot_preservation_outcome(
 
 fn bmc_fan_reboot_digest_mismatch(
   receipt: BmcFanRebootPersistenceReceipt,
-  capability: BmcFanPolicyProjectionCapability,
 ) -> Bool {
-  receipt.before.active_config_digest != capability.projected_config_digest || receipt.post_reboot_active_config_digest != capability.projected_config_digest
+  receipt.before.active_config_digest != receipt.perturbation_capability.projected_config_digest || receipt.post_reboot_active_config_digest != receipt.perturbation_capability.projected_config_digest
 }
 
 fn bmc_fan_reboot_durability_evidence_built(
   receipt: BmcFanRebootPersistenceReceipt,
-  capability: BmcFanPolicyProjectionCapability,
   timing: BmcFanRebootTimingBuilt,
 ) -> BmcFanDurabilityEvidenceConstruction {
   let admission = bmc_fan_policy_projection_durability_admission(
     host: receipt.host,
-    capability: capability,
+    capability: receipt.perturbation_capability,
     perturbation_generation: receipt.perturbation_generation,
   )
   BmcFanDurabilityEvidenceBuilt {
@@ -284,9 +248,8 @@ fn bmc_fan_reboot_durability_evidence_built(
 
 fn bmc_fan_reboot_durability_evidence_refusal(
   receipt: BmcFanRebootPersistenceReceipt,
-  capability: BmcFanPolicyProjectionCapability,
 ) -> BmcFanDurabilityEvidenceConstructionRefusal? {
-  match bmc_fan_reboot_digest_mismatch(receipt: receipt, capability: capability) {
+  match bmc_fan_reboot_digest_mismatch(receipt: receipt) {
     true => Present { value: DurabilityReceiptDigestMismatch }
     false =>
       match receipt.reset.reset_type {
@@ -298,12 +261,8 @@ fn bmc_fan_reboot_durability_evidence_refusal(
 
 fn bmc_fan_reboot_durability_evidence(
   receipt: BmcFanRebootPersistenceReceipt,
-  capability: BmcFanPolicyProjectionCapability,
 ) -> BmcFanDurabilityEvidenceConstruction {
-  match bmc_fan_reboot_durability_evidence_refusal(
-    receipt: receipt,
-    capability: capability,
-  ) {
+  match bmc_fan_reboot_durability_evidence_refusal(receipt: receipt) {
     Present { value: cause } =>
       BmcFanDurabilityEvidenceConstructionRefused { cause: cause }
     Absent =>
@@ -313,7 +272,6 @@ fn bmc_fan_reboot_durability_evidence(
         BmcFanRebootTimingReceiptBuilt { timing: timing } =>
           bmc_fan_reboot_durability_evidence_built(
             receipt: receipt,
-            capability: capability,
             timing: timing,
           )
       }
@@ -322,10 +280,9 @@ fn bmc_fan_reboot_durability_evidence(
 
 data srv4_bmc_fan_durability_evidence: List<BmcFanDurabilityEvidence> = match bmc_fan_reboot_durability_evidence(
   receipt: srv4_bmc_fan_reboot_persistence_receipt,
-  capability: srv4_bmc_fan_projection_capability,
 ) {
   BmcFanDurabilityEvidenceBuilt { evidence: evidence } => [evidence]
   BmcFanDurabilityEvidenceConstructionRefused { cause: _ } => []
 }
 
-data srv4_bmc_fan_policy_qualification_note: String = "Durability evidence is derived from the typed perturbation receipt and the exact projection capability that produced it. Admission and the graceful-restart boundary are not caller labels. Activation is established from independent controller, content, and safety readbacks; a later converge no-op is a consequence, never a premise. Ordinary convergence additionally requires the live canonical config digest to equal the admitted digest derived from the projected curve."
+data srv4_bmc_fan_policy_qualification_note: String = "Durability evidence is derived solely from the typed perturbation receipt, including the exact projection capability recorded at perturbation time. Admission and the graceful-restart boundary are not separately writable caller labels. Activation is established from independent controller, content, and safety readbacks; a later converge no-op is a consequence, never a premise. Ordinary convergence additionally requires the live canonical config digest to equal the admitted digest derived from the projected curve."
