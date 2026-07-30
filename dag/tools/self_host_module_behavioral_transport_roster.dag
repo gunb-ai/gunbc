@@ -65,15 +65,15 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
-        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_node.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_algebra.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
-        source_rel: "dag/tools/self_host_body_producer_shims/v2_std_diagnostic.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_diagnostic.rs"
       }
     ],
     driver_rel: "dag/tools/self_host_body_producer_shims/witness_main.rs",
@@ -101,11 +101,11 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",
-        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_collection.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_grammar.rs",
@@ -113,11 +113,11 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_diagnostic.rs",
-        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_diagnostic.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
-        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_compilers_sugar.rs",
@@ -145,7 +145,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_integer.rs",
-        source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_integer.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_integer.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_compiler_namespace_graft.rs",
@@ -223,7 +223,7 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
-        source_rel: "dag/tools/self_host_parse_engine_hooks_shims/v2_std_node.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       }
     ],
     driver_rel: "dag/tools/self_host_parse_engine_hooks_shims/witness_main.rs",
@@ -269,15 +269,15 @@ data compiler_module_behavioral_transport_roster: List<ModuleBehavioralTransport
     shim_writes: [
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_node.rs",
-        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_node.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_node.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_algebra.rs",
-        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_algebra.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_algebra.rs"
       },
       CuratedSeedLinkedShimWrite {
         dest_rel: "v2_std_collection.rs",
-        source_rel: "dag/tools/self_host_use_site_verdict_shims/v2_std_collection.rs"
+        source_rel: "dag/tools/self_host_std_bridge_shims/v2_std_collection.rs"
       }
     ],
     driver_rel: "dag/tools/self_host_use_site_verdict_shims/witness_main.rs",

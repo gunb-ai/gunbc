@@ -2780,6 +2780,392 @@ pub fn regen_floor_skip_label_for_ci() -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Affected-set SELECTION-CONTROL skip — the selection mechanism applied to itself.
+//
+// `floor_skip_discovery_witness` is the per-PR control suite for affected-set selection:
+// the skip / refuse / divergence arms, the declared-live-tree pin, and the node-frontier
+// precision cases. It ran UNCONDITIONALLY on every PR — 9m02s measured (run 30482171871,
+// job 90679506428, step "Affected-set selection control") against the 80s local basis
+// declared in `gunbc.ci_workflow` `gunbc_ci_selection_control_step_note` — because it is a
+// Rust bin rather than a `.dag` witness and therefore sat outside the very affected-set
+// corpus its own subject matter governs.
+//
+// The suite's verdict is a function of exactly one input set: every `src/v1/**` source (the
+// selection implementation in this file, the witness bin, and the committed stage0 outputs
+// the release binary is built from), the suite's declared `.dag` entries plus their
+// transitive `import` closure through `[src/v2, dag]`, and the Cargo/toolchain build
+// config. A PR touching none of those provably cannot change the suite's verdict.
+//
+// NOT circular. The skip decision is a coarse path / import-closure intersection — the same
+// authority SHAPE `regen_floor_skip_label_for_ci` uses — and never the node-frontier
+// selector the suite exists to verify. A broken selector therefore cannot suppress its own
+// control.
+//
+// Fail-closed on every arm, in TWO different ways — the distinction is load-bearing:
+//   - STRUCTURAL arms (empty diff, ANY departed path, ANY markdown path, any closure
+//     intersection) RUN the suite. The diff was observed, so the answer is computed.
+//   - REFUSAL arms (diff-observation failure, input-closure failure) REFUSE: typed, located,
+//     countable, non-zero exit, no label. They do NOT run the suite, because "I could not
+//     compute what is affected" is a different state from "everything is affected" and has a
+//     different remedy (DESIGN §5 absorbing fallback; the ruling recorded in
+//     `floor_diff_baseline_law`, operator 2026-07-05).
+// Corrected after review 44778 caught this comment still claiming the failure arms RUN — the
+// same Rust-side single-authority drift review 44768 fixed in the emitted policy note.
+//
+// RESIDUAL, stated rather than elided, and mirroring the regen precedent's accepted trade
+// exactly: the suite builds its resolve index over the WHOLE of `[src/v2, dag]`, so an
+// unrelated file that breaks index construction is outside this import closure. The
+// mitigation is regen's: the CI shell gates the skip to pull_request events, so push-to-main
+// runs the suite unconditionally and a wrong closure surfaces as a red main within one
+// merge (the one-merge acceptance window, the discovery-flip shape).
+// ---------------------------------------------------------------------------
+
+pub const SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL: &str = "selection_control_not_affected_skip";
+pub const RUN_SELECTION_CONTROL_LABEL: &str = "run_selection_control";
+
+// The suite's declared `.dag` surface, one named const per entry. These are the SINGLE
+// authority: `floor_skip_discovery_witness` builds its rosters from them, and the closure
+// below decides whether a diff can affect them. Declaring them here rather than in the bin
+// is what keeps the two from forking — a fixture added to the suite with its own private
+// path literal would be invisible to the skip decision, which is precisely the silent
+// under-run this whole mechanism exists to prevent.
+pub const SELECTION_CONTROL_REALIZATION_SCHEDULE_REL: &str = "dag/std/realization_schedule.dag";
+pub const SELECTION_CONTROL_DOC_REACHABILITY_REL: &str =
+    "dag/test/claim/doc_reachability_witness_test.dag";
+pub const SELECTION_CONTROL_BUDGET_ROSTER_REL: &str =
+    "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag";
+pub const SELECTION_CONTROL_FALSIFIER_CONTROL_REL: &str =
+    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
+pub const SELECTION_CONTROL_SHARED_HELPER_REL: &str =
+    "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
+pub const SELECTION_CONTROL_LIVE_TREE_DECLARED_REL: &str =
+    "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
+pub const SELECTION_CONTROL_NODE_PRECISE_REL: &str =
+    "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+pub const SELECTION_CONTROL_FLOOR_RUNNER_REL: &str =
+    "src/v2/workflow/affected_set_floor_runner.dag";
+pub const SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL: &str =
+    "src/v2/workflow/affected_set_floor_runner_test.dag";
+pub const SELECTION_CONTROL_CI_FLOOR_PLAN_REL: &str = "src/v2/workflow/ci_floor_plan.dag";
+
+pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
+    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
+    SELECTION_CONTROL_DOC_REACHABILITY_REL,
+    SELECTION_CONTROL_BUDGET_ROSTER_REL,
+    SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
+    SELECTION_CONTROL_SHARED_HELPER_REL,
+    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
+    SELECTION_CONTROL_NODE_PRECISE_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_REL,
+    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
+    SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
+];
+
+/// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
+/// Single authority for the same reason as the entry consts above.
+pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
+    vec![workspace.join("src/v2"), workspace.join("dag")]
+}
+
+/// Module-path -> every candidate file, over the suite's roots.
+///
+/// Deliberately unlike `regen_build_module_index`, which REFUSES on a duplicate module
+/// path: this keeps all candidates so the closure below is a superset. For a SKIP closure a
+/// superset is the fail-closed direction (more paths in the closure = more PRs run the
+/// suite), whereas regen's error arm is the correct one for regen, whose emit must be
+/// single-valued.
+fn selection_control_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+        std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                index.entry(module_path).or_default().push(path);
+            }
+        }
+    }
+    Ok(index)
+}
+
+/// Every workspace-relative `.dag` path whose content can change the selection-control
+/// suite's verdict: the declared entries plus their transitive `import` closure through
+/// `[src/v2, dag]`, sorted.
+///
+/// 🟡 dissolve-on (two triggers, near then terminal):
+///
+/// NEAR — the import walk here duplicates the shape of `regen_input_sources`'s
+/// walk. They are NOT unified yet because regen's closure is guarded by a byte-identical
+/// oracle (`regen_stage0 --verify`) that this change is not in a position to re-verify, and
+/// the two differ in duplicate policy (refuse vs. superset) and entry selection (whole-root
+/// walk vs. declared list). DISSOLVES WHEN the walk is lifted to one parameterized helper
+/// (duplicate policy + entry source as arguments) and regen's byte oracle re-greens on it.
+///
+/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
+/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side
+/// selection Rust in favour of the `.dag` authority. This fn and
+/// `selection_control_skip_label_for_ci` are new members of exactly that Rust-parallel set —
+/// a path/import-closure selection decision living in the seed rather than in
+/// `.dag` — so they inherit Step 5's terminal condition. They are ENUMERATED on that roster as
+/// an explicit deferral (the "Step 5 roster — CI skip-decision surfaces" row, added by this
+/// change), which is what makes this a declared, countable seed-retained surface rather than a
+/// silent escape hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run
+/// BEFORE the floor resolves anything — that is its entire purpose — so a `.dag` consumer would
+/// pay the ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with
+/// the persistent content-keyed node store, not on its own schedule.
+///
+/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
+/// execution — 9 label arms below (7 structural + 2 refusal), discriminating in both
+/// directions, plus 3 bin unit tests.
+pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
+    let roots = selection_control_source_roots(workspace);
+    let index = selection_control_module_index(&roots)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    for rel in SELECTION_CONTROL_DECLARED_ENTRIES {
+        let path = workspace.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read declared selection-control entry {rel}: {e}"))?;
+        seen.insert(normalize_repo_path(rel));
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(candidates) = index.get(&module_path) else {
+                continue;
+            };
+            for path in candidates {
+                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
+                if !seen.insert(rel) {
+                    continue;
+                }
+                let file_content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<String> = seen.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+/// Does a diff-changed path belong to the selection-control input surface?
+fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    // src/v1/** = the selection implementation (this file's discovery / affected-set /
+    // node-frontier paths), the witness bin itself, and every committed stage0 output the
+    // release binary is built from.
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    // Cargo/toolchain build config: the witness binary is built from these (whole-file
+    // matches, no substring), same fail-closed arm as regen's.
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    // Markdown: the doc-reachability declared entry (`SELECTION_CONTROL_DOC_REACHABILITY_REL`)
+    // declares `LiveTreeDisposition = ReadsLiveTree` and folds the whole markdown doc graph
+    // (`gunbc.doc_graph_roots.doc_graph_roots_all` — registered plan docs ∪ hand-authored
+    // binds) to decide `doc_graph_has_no_orphan_docs` / `doc_graph_has_no_dangling_links`.
+    // A `.md` add/edit/delete can therefore flip this suite's verdict, and that reach is NOT
+    // discoverable through the `.dag` import walk above — a live-tree read is not an import
+    // edge. So every markdown path runs the suite.
+    //
+    // This is a structural over-approximation computed AS the answer (DESIGN §5: "a
+    // dependency-closure superset is the model's precision frontier, not an absorption"),
+    // not a failure arm that widens — the entry really does read every markdown root, so no
+    // `.md` diff can be proven irrelevant by path.
+    //
+    // FOUND BY REVIEW (review 44682, this PR): the first draft bounded inputs by
+    // `src/v1/**` ∪ dag-import-closure ∪ Cargo config and skipped docs-only diffs, while its
+    // own green control asserted that skip on `docs/plans/example.md` — enshrining the
+    // suppression of exactly the docs-only orphan regression this suite carries per-PR.
+    if p.ends_with(".md") {
+        return true;
+    }
+    dag_closure.contains(&p)
+}
+
+/// Typed cause for a selection-control REFUSAL — the arms where the affected set could not be
+/// computed at all.
+///
+/// DESIGN §5: "can't compute the affected set → rerun the entire suite" is the named absorbing
+/// fallback — ⊤-as-ignorance conflated with ⊤-as-answer. It fails open twice: the deficit's
+/// frequency is zeroed by construction (so it never ranks for fixing), and the cost is
+/// denominated in the corpus rather than the change. The repo already ruled on exactly this
+/// arm: `floor_diff_baseline_law` (src/v2/workflow/floor_diff_observe.dag) records that a
+/// `BaselineRefused` → `NameStatusDiffFail` "HALTS the floor with a typed AFFECTED-SET REFUSAL
+/// (refuses every enrolled row, never widens to a full-corpus run; operator ruling
+/// 2026-07-05)". This enum is that ruling applied to the selection-control step's own skip
+/// decision — FOUND BY REVIEW (review 44745), whose first draft returned the RUN label from
+/// both failure arms and stayed green.
+///
+/// `token()` is the stable, greppable discriminator that makes each refusal COUNTABLE in the
+/// job log, so its frequency is observable and prioritizable rather than absorbed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SelectionControlRefusalCause {
+    /// The merge-base diff could not be observed (`floor_git_diff_name_status_range` failed).
+    DiffObservationFailed,
+    /// The suite's input closure could not be computed (entry unreadable, import walk failed).
+    InputClosureFailed,
+}
+
+impl SelectionControlRefusalCause {
+    pub fn token(&self) -> &'static str {
+        match self {
+            Self::DiffObservationFailed => "DiffObservationFailed",
+            Self::InputClosureFailed => "InputClosureFailed",
+        }
+    }
+}
+
+/// A typed, located, countable refusal. Carries the cause, the mechanism that could not answer
+/// (`located`), and the underlying detail — everything analysis needs before the line restarts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SelectionControlSkipRefusal {
+    pub cause: SelectionControlRefusalCause,
+    pub located: &'static str,
+    pub detail: String,
+}
+
+impl SelectionControlSkipRefusal {
+    /// The single-line diagnostic. Stable prefix + `cause=` token so occurrences are countable.
+    pub fn diagnostic(&self) -> String {
+        format!(
+            "SELECTION_CONTROL_REFUSED cause={} at={} detail={} \
+             — the affected set could not be computed, so this step REFUSES rather than \
+             widening to a full run (DESIGN §5 absorbing fallback; operator ruling 2026-07-05, \
+             floor_diff_baseline_law). Analyse the cause before restarting the line.",
+            self.cause.token(),
+            self.located,
+            self.detail
+        )
+    }
+}
+
+/// CI label for the affected-set selection-control step's skip arm.
+///
+/// `Ok(selection_control_not_affected_skip)` iff the merge-base diff touches no input of the
+/// control suite; `Ok(run_selection_control)` on any intersection, empty diff, or ANY departed
+/// path — those are STRUCTURAL answers, computed from an observed diff.
+///
+/// `Err(SelectionControlSkipRefusal)` when the affected set could not be computed at all
+/// (diff observation or closure failure). Those arms REFUSE rather than widening to a run:
+/// see `SelectionControlRefusalCause` for the §5 reasoning and the 2026-07-05 ruling. The
+/// distinction is the whole point — "everything is affected" and "I could not compute what is
+/// affected" are different states with different remedies, and only the first may be answered
+/// with a label.
+///
+/// This computes the decision only; the CI shell gates the skip to pull_request events, so
+/// push-to-main runs the suite unconditionally as the cold control.
+pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlSkipRefusal> {
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(detail) => {
+            // REFUSE, never widen: "diff unavailable → run everything" is the §5 absorbing
+            // fallback. Returning the RUN label here would keep CI green and zero this
+            // deficit's observed frequency, which is exactly how it never gets fixed.
+            return Err(SelectionControlSkipRefusal {
+                cause: SelectionControlRefusalCause::DiffObservationFailed,
+                located: "cli_run::floor_git_diff_name_status_range \
+                          (src/v2/workflow/floor_diff_observe.dag \
+                          floor_observe_git_diff_name_status_for_ci)",
+                detail,
+            });
+        }
+    };
+    // Empty diff is a STRUCTURAL state, not a failure arm: the observation succeeded and
+    // reported zero changed paths. It is therefore answerable with a label, unlike the
+    // refusals above. It answers RUN (conservative) rather than SKIP because an empty
+    // merge-base diff on a pull_request is degenerate — a PR changes something by definition —
+    // so the honest reading is "this observation tells us nothing useful about THIS PR".
+    //
+    // Noted for the record, because it is adjacent to a ruling: DESIGN's floor-runner receipt
+    // has the empty diff "dissolved into the general disposition, never a special arm"
+    // (operator rulings 2026-07-05). Dissolving it here would make it SKIP (no changed path
+    // can intersect the closure). That is a live question about THIS step rather than the
+    // floor runner, and it moves in the less-checking direction, so it is deliberately not
+    // decided here — flagged for the operator instead of quietly picked.
+    if changed_paths.is_empty() {
+        eprintln!(
+            "selection-control skip: empty diff — run the control suite (degenerate observation \
+             for a pull_request; structural arm, not a refusal)"
+        );
+        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
+    }
+    // Departed (deleted / renamed-from) paths: NO carve-out. Two independent causes, which
+    // together leave no departed path provably irrelevant:
+    //   - non-docs: the closure is computed from the CURRENT tree, so a deleted `.dag` file
+    //     that WAS in the suite's closure is invisible to the intersection below;
+    //   - markdown: a deleted doc changes the live doc graph the `ReadsLiveTree`
+    //     doc-reachability entry folds — removing a link target creates a dangling link,
+    //     removing a linker orphans its target. Either flips the suite red.
+    // The regen/compile-clean departed arms exempt `docs/` because markdown is genuinely
+    // outside THEIR closures; it is inside this one (see the `.md` arm in
+    // `selection_control_path_affects_suite`), so copying their carve-out here was the bug.
+    // `min()` rather than `iter().next()`: the set's iteration order is not stable, and this
+    // path is printed into the CI log as the reason. A nondeterministic diagnostic is the
+    // determinism class `v2.lens.determinism` gates on — the arm fires on ANY departed path,
+    // so which one it names must not vary run to run.
+    if let Some(gone) = departed_paths.iter().min() {
+        eprintln!(
+            "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
+            normalize_repo_path(gone)
+        );
+        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match selection_control_input_sources(&workspace) {
+        Ok(sources) => sources.into_iter().collect(),
+        Err(detail) => {
+            // REFUSE, never widen — same §5 arm as the diff-observation failure above. An
+            // unreadable entry or a dead import walk means the input set is UNKNOWN, which is
+            // a different state from "everything is affected" and has a different remedy.
+            return Err(SelectionControlSkipRefusal {
+                cause: SelectionControlRefusalCause::InputClosureFailed,
+                located: "cli_run::selection_control_input_sources",
+                detail,
+            });
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| selection_control_path_affects_suite(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "selection-control skip: diff intersects the control suite's inputs (e.g. {}) — run the control suite",
+                normalize_repo_path(example)
+            );
+            Ok(RUN_SELECTION_CONTROL_LABEL.to_string())
+        }
+        None => {
+            eprintln!(
+                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ every .md ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
+                changed_paths.len()
+            );
+            Ok(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string())
+        }
+    }
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
     // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
@@ -13689,8 +14075,9 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
     if dag_paths.is_empty() {
         return Ok(());
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -13735,6 +14122,28 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+
+/// The producer entry above is repo-relative, and every resolve of it ultimately reads the
+/// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
+/// The floor runs from the repo root, so that ambient dependency is invisible in production
+/// — but it is not invisible under `cargo test`, whose process cwd is the crate directory:
+/// the resolve then fails with `entry file does not exist`, and that refusal fires *before*
+/// whatever the caller was actually asking about, masking it. `set_current_dir` is not the
+/// fix; this crate's harness is multi-threaded and chdir is process-global (the race is
+/// already documented at the sibling fixture tests in this file).
+///
+/// So locate the entry rather than assume a cwd: `process_workspace_root` is git-toplevel
+/// derived, hence identical in both worlds. Both resolve sites go through this one function
+/// so the `resolve_entry_graph_shared` cache stays keyed on a single spelling of the entry —
+/// two spellings would resolve the same closure twice.
+///
+/// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
+/// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
+/// anchoring plumbing when entry resolution stops reading cwd.
+fn floor_discovery_producer_entry_anchored() -> String {
+    let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
+    anchored.to_string_lossy().into_owned()
+}
 
 fn owned_data_decl_record_to_value(
     rec: &OwnedDataDeclRecord,
@@ -13914,16 +14323,39 @@ fn invoke_floor_discovery_producer(
     scan_dirs: &[String],
     exclude_substrings: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
+    invoke_floor_discovery_producer_over_corpus(
+        source_roots,
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+    )
+}
+
+/// Two roles `source_roots` fuses, here separate parameters: `producer_roots` locates the
+/// MACHINERY (the `.dag` producer that decides discovery and its sidecar refusals), while
+/// `corpus_roots` is the SUBJECT (the roots whose `.dag` files are walked and judged).
+/// Production passes the same list for both — that is the whole floor's shape and does not
+/// change. What the fusion prevented was *asking about one file*: any question had to submit
+/// the entire live `src/v2` + `dag` corpus for judgement too, so an unrelated corpus file's
+/// refusal could answer first and mask the one under test (review 44641). The producer stays
+/// real machinery; only the subject narrows.
+fn invoke_floor_discovery_producer_over_corpus(
+    producer_roots: &[String],
+    corpus_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+) -> Result<Vec<DiscoveryRow>, String> {
     let excludes: Vec<String> = exclude_substrings.to_vec();
     let mut owned_data_records: Vec<OwnedDataDeclRecord> = Vec::new();
     for scan_dir in scan_dirs {
-        let discovery = discover_owned_data_decls(source_roots, scan_dir, &excludes)?;
+        let discovery = discover_owned_data_decls(corpus_roots, scan_dir, &excludes)?;
         owned_data_records.extend(discovery.records);
     }
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, FLOOR_DISCOVERY_PRODUCER_ENTRY)
-        .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
+    let (graph, indices) =
+        resolve_entry_graph_shared(producer_roots, &floor_discovery_producer_entry_anchored())
+            .map_err(|e| format!("floor_discovery_producer resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let source_root_values: Vec<v1_interpreter::Value> = source_roots
+    let source_root_values: Vec<v1_interpreter::Value> = corpus_roots
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
@@ -18672,13 +19104,14 @@ mod floor_witness_a_prove {
 #[cfg(test)]
 mod module_grain_affected_equivalence_tests {
     use super::{
-        build_multi_entry_index, floor_diff_edits_from_diff_text, import_closure_files_from_graph,
+        build_module_graph_facts_live, build_multi_entry_index,
+        entry_file_touched_via_import_closure, floor_diff_edits_from_diff_text,
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
-        resolve_entry_with_index_for_discovery_corpus, touched_file_in_import_closure,
-        workspace_root, MultiEntryIndex,
+        resolve_entry_with_index_for_discovery_corpus, workspace_root, ModuleGraphFactsLive,
+        MultiEntryIndex,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
     use std::collections::HashSet;
@@ -18778,26 +19211,38 @@ mod module_grain_affected_equivalence_tests {
         }
     }
 
-    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
-        // Shared selection rule with production (`entry_file_touched_via_import_closure`) and
-        // the `.dag` authority (`entry_without_declared_edges_never_skips_note`): an entry
-        // that declares no imports is never selection-skippable — its name-derived
-        // dependencies are invisible to the import-edge model, so both sides answer
-        // affected=true rather than risking a false skip.
-        let source = std::fs::read_to_string(workspace_root().join(entry_rel))
-            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-        if !source
-            .lines()
-            .any(|l| l.trim_start().starts_with("import "))
-        {
-            return true;
-        }
-        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
-            .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
-        let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
-        touched
-            .iter()
-            .any(|f| touched_file_in_import_closure(f, &closure_files))
+    /// The Rust side of the equivalence is **production itself**, not a twin of it.
+    ///
+    /// This used to be a hand-written reimplementation, and it had drifted into asserting a
+    /// rule both authorities deleted: `if the file declares no imports { return true }`,
+    /// citing `entry_without_declared_edges_never_skips_note` — a note that no longer exists,
+    /// because it was replaced by the one repudiating it. `src/v2/lens/module_graph.dag`
+    /// `edgeless_entry_has_no_special_arm_note` names that arm as the absorbing fallback
+    /// DESIGN §5 describes verbatim: it answered affected=true for every edgeless entry
+    /// (~530 claim modules after the import strip), silently and uncounted, and the cost
+    /// surfaced as a 95-minute CI floor instead of as a diagnostic. Production
+    /// (`entry_file_touched_via_import_closure`) now carries reference-derived edges so an
+    /// edgeless entry gets a precise closure seeded with itself, and REFUSES — typed — only
+    /// when the producer could not read or parse the file (⊤-as-ignorance is not ⊤-as-answer).
+    ///
+    /// So the twin was the stale party while production and `.dag` agreed, and the test
+    /// reported a divergence about code that was fine. A third representation of one
+    /// selection rule is guaranteed to drift (§2/§3); calling production makes the property
+    /// under test the one anyone actually cares about — production ⇄ `.dag` — and deletes the
+    /// copy. It is also what makes this test runnable: the twin resolved (typechecked) every
+    /// entry's closure at 5-10s per module, while the facts scan is cached and does not
+    /// typecheck at all.
+    ///
+    /// A refusal is propagated, never coerced to a bool: silently reading it as `false` would
+    /// re-introduce a skip on an unknown dependency set, and as `true` the absorbing widen.
+    fn rust_entry_affected(
+        facts: &ModuleGraphFactsLive,
+        declared: &HashSet<String>,
+        entry_rel: &str,
+        touched: &[String],
+    ) -> bool {
+        entry_file_touched_via_import_closure(entry_rel, facts, declared, touched)
+            .unwrap_or_else(|refusal| panic!("selection refused for {entry_rel}: {refusal}"))
     }
 
     struct EquivalenceReceipt {
@@ -18818,7 +19263,12 @@ mod module_grain_affected_equivalence_tests {
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let rel_roots = pool_roots_rel();
 
+        // Setup is instrumented because it, not the per-entry work, was the whole runtime:
+        // before the twin was replaced by production this harness never reached entry 1 in a
+        // 50-minute standalone run, and printed nothing while doing so.
+        let t_setup = Instant::now();
         let index = build_multi_entry_index(&rel_roots);
+        eprintln!("[module-grain] index built in {:?}", t_setup.elapsed());
         let diff_text = diff_text_for_commit(sha);
         let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
             panic!(
@@ -18833,15 +19283,52 @@ mod module_grain_affected_equivalence_tests {
             "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
              touches at least one non-data, non-test-fn declaration"
         );
+        let t_facts = Instant::now();
+        let facts = build_module_graph_facts_live(&rel_roots);
+        let declared: HashSet<String> = facts.declared_paths.clone();
+        eprintln!(
+            "[module-grain] selection facts built in {:?} ({} declared paths)",
+            t_facts.elapsed(),
+            declared.len()
+        );
+        let t_mg = Instant::now();
         let (mg_graph, mg_indices) =
             resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
+        eprintln!(
+            "[module-grain] module_graph.dag resolved in {:?}",
+            t_mg.elapsed()
+        );
 
+        // Stream each row as it is decided. This harness resolves every entry's closure
+        // twice (once per side) and takes tens of minutes on a cold process, and it used
+        // to print nothing until the end — so a timeout was indistinguishable from a
+        // hang, and neither told you which entry was slow or which way it decided.
+        eprintln!(
+            "[module-grain] commit {sha}: {} touched, {} entries",
+            touched.len(),
+            entries.len()
+        );
         let mut rows = Vec::new();
-        for entry in entries {
-            let rust_decision = rust_entry_affected(&index, entry, &touched);
+        for (i, entry) in entries.iter().enumerate() {
+            let t0 = Instant::now();
+            let rust_decision = rust_entry_affected(&facts, &declared, entry, &touched);
+            let t_rust = t0.elapsed();
+            let t1 = Instant::now();
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
+            eprintln!(
+                "[module-grain] {}/{} {entry}: rust={rust_decision} ({:?}) dag={dag_decision} ({:?}){}",
+                i + 1,
+                entries.len(),
+                t_rust,
+                t1.elapsed(),
+                if rust_decision == dag_decision {
+                    ""
+                } else {
+                    "  <<< DIVERGED"
+                }
+            );
             rows.push((entry.to_string(), rust_decision, dag_decision));
         }
         EquivalenceReceipt {
@@ -21387,13 +21874,19 @@ mod construction_justification_hygiene_tests {
 
 #[cfg(test)]
 mod sidecar_placement_hygiene_tests {
-    use super::{discover_floor_witness_roster, scan_wire_contract_decl_names};
+    use super::scan_wire_contract_decl_names;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
+    /// Fixtures live under the workspace's own `target/`, not `std::env::temp_dir()`.
+    /// Anything on the floor's reporting path normalizes through
+    /// `repo_relative_path_normalized`, which fail-closed refuses paths outside the
+    /// workspace root — a `/tmp` fixture made this module panic on that refusal before
+    /// reaching its assertion. The refusal is correct; the fixture location was not, and
+    /// `target/` is the convention the other fixture-based tests in this file use.
     fn tmp_dir() -> std::path::PathBuf {
         let id = SEQ.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!(
+        super::process_workspace_root().join("target").join(format!(
             "sidecar_placement_test_{}_{}",
             std::process::id(),
             id
@@ -21439,15 +21932,81 @@ mod sidecar_placement_hygiene_tests {
              coproduct: \"AnthropicChatMessage\", encoding: UntaggedVariant }\n",
         )
         .expect("write temp file");
-        let root = dir.to_string_lossy().into_owned();
-        let result = discover_floor_witness_roster(&[root], &[], &[], &[]);
+        // SUBJECT is the fixture directory alone; MACHINERY roots locate the discovery
+        // producer. Passing one root list for both submitted every `.dag` in `src/v2` + `dag`
+        // for judgement too, so an unrelated corpus file's refusal could answer first and
+        // mask this assertion — the same live-tree coupling this PR removes from the
+        // resolution-divergence fixtures, recreated (review 44641). The producer is genuinely
+        // shared machinery and stays real; only the subject is narrowed.
+        //
+        // What this test uniquely carries is the WIRING: that a sidecar refusal raised inside
+        // the `.dag` producer reaches the Rust bridge as an `Err`. The rule itself is not
+        // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
+        // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
+        // it content-side, so re-deriving it here would be a second representation (§2/§3).
+        // Hence the call is at the producer seam and not at
+        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
+        // rule and can never report a wire-contract violation.
+        //
+        // Nothing here chdirs, and that is load-bearing: the producer entry is located by
+        // `floor_discovery_producer_entry_anchored` (git-toplevel, not cwd), so this test
+        // behaves the same under `cargo test` (cwd = crate dir) as on the floor (cwd = repo
+        // root). Chdir is not the alternative — this harness is multi-threaded and cwd is
+        // process-global.
+        let ws = super::process_workspace_root();
+        let producer_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
         let _ = std::fs::remove_dir_all(&dir);
         let msg = result
             .err()
-            .expect("misplaced wire-contract decl must drive discover_floor_witness_roster to Err");
+            .expect("misplaced wire-contract decl must drive discovery to Err");
         assert!(
             msg.contains("wire-contract decls") && msg.contains("_contracts.dag"),
             "error must name the decl type and required suffix: {msg}"
+        );
+    }
+
+    /// Non-vacuity control for the test above. A narrowed corpus is a new shape for the
+    /// producer — one root, no scan dirs, an empty roster — so `Err` on its own proves
+    /// nothing: it could be the narrowing itself refusing rather than the sidecar rule.
+    /// Same call, same narrowing, only the decl's type changed, and it must come back `Ok`.
+    #[test]
+    fn clean_dag_file_leaves_narrowed_discovery_ok() {
+        let dir = tmp_dir();
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(
+            dir.join("anthropic.dag"),
+            "data anthropic_chat_message_label: String = \"AnthropicChatMessage\"\n",
+        )
+        .expect("write temp file");
+        let ws = super::process_workspace_root();
+        let producer_roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let corpus_roots = vec![dir.to_string_lossy().into_owned()];
+        let result = super::invoke_floor_discovery_producer_over_corpus(
+            &producer_roots,
+            &corpus_roots,
+            &[],
+            &[],
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let rows = result.expect("a `.dag` file with no misplaced decl must not refuse");
+        let entries: Vec<&str> = rows.iter().map(|r| r.entry.as_str()).collect();
+        assert!(
+            entries.is_empty(),
+            "the fixture enrolls no witness, so the roster must be empty rather than \
+             carrying rows from outside the narrowed corpus: {entries:?}"
         );
     }
 }
@@ -24480,6 +25039,27 @@ mod resolution_divergence_census_tests {
         std::fs::write(&path, content).expect("write dag");
     }
 
+    /// The root set for a hermetic fixture corpus: the fixture, and nothing else.
+    ///
+    /// These are positive controls — the planted divergence lives entirely among
+    /// fixture modules, and `std.types` is present only to supply `Bool`. Rooting at
+    /// the live `dag/std` made every one of them depend on the whole
+    /// std -> extdeps -> {gunbc, v2.std} import closure resolving, so they went red at
+    /// #7268 (which grounded std's class-1 unit constants and relocated the POSIX exit
+    /// codes onto extdeps rows) without the detector under test changing at all.
+    /// DESIGN §3 deleted the `std <- extdeps` layer direction on purpose, so that
+    /// closure is expected to keep widening; chasing it with more roots would re-break
+    /// on the next grounding. A local stub keeps the control discriminating and
+    /// independent of corpus health.
+    fn fixture_roots(fixture: &std::path::Path) -> Vec<String> {
+        write_fixture(
+            fixture,
+            "std_types.dag",
+            "module std.types\n\ntype Bool = True | False\n",
+        );
+        vec![fixture.to_string_lossy().into_owned()]
+    }
+
     fn positive_control_fixture_root() -> std::path::PathBuf {
         super::process_workspace_root()
             .join("target")
@@ -24488,7 +25068,6 @@ mod resolution_divergence_census_tests {
 
     #[test]
     fn resolution_divergence_positive_control_planted_site() {
-        let ws = super::process_workspace_root();
         let fixture = positive_control_fixture_root();
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24528,10 +25107,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let WholeTreeCtx { ctx, .. } =
             whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
         let leaf = ctx
@@ -24619,100 +25195,27 @@ fn caller() -> Bool {
         ))
     }
 
-    fn walk_target_alias_plan_fixture_root() -> std::path::PathBuf {
-        super::process_workspace_root()
-            .join("target")
-            .join(format!("gunbc-walk-alias-plan-{}", std::process::id()))
-    }
-
-    /// Two sibling modules each declare `shared_pick`; the leaf imports one *named*
-    /// item from each (pulling each module's whole func_env in as a parent per
-    /// `v1_compiler_infer.rs`'s parent_envs construction) and calls `shared_pick`
-    /// bare/unqualified — never itself an imported name. That forces
-    /// `lookup_resolved_sig_with_telemetry`'s parent fold to see match_count=2 and
-    /// fire `fn_parent_first_hit`: a real §13 silent pick, not a synthetic count.
-    #[test]
-    fn resolution_divergence_silent_pick_positive_control_fires() {
-        let ws = super::process_workspace_root();
-        let fixture = silent_pick_fixture_root("fire");
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "a.dag",
-            r#"module test.silentpick.a
-
-import std.types { Bool }
-
-fn unrelated_a(x: Bool) -> Bool {
-  return x
-}
-
-fn shared_pick(x: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "b.dag",
-            r#"module test.silentpick.b
-
-import std.types { Bool }
-
-fn unrelated_b(x: Bool) -> Bool {
-  return x
-}
-
-fn shared_pick(x: Bool, y: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.silentpick.leaf
-
-import std.types { Bool }
-import test.silentpick.a { unrelated_a }
-import test.silentpick.b { unrelated_b }
-
-fn caller() -> Bool {
-  return shared_pick(False)
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert!(
-            census.silent_pick_fn_parent_first_hit >= 1,
-            "expected a real fn_parent_first_hit silent pick, got 0 (silent_pick_global_bare_lcp={} silent_pick_global_bare_lcp_tie={})",
-            census.silent_pick_global_bare_lcp,
-            census.silent_pick_global_bare_lcp_tie,
-        );
-        assert!(
-            census
-                .silent_pick_fn_parent_first_hit_rows
-                .iter()
-                .any(|row| row.name == "shared_pick" && row.parent_match_count >= 2),
-            "expected a shared_pick row with parent_match_count>=2, got {:?}",
-            census.silent_pick_fn_parent_first_hit_rows
-        );
-        let refusal = resolution_divergence_silent_pick_refusal(&census);
-        assert!(
-            refusal.is_some(),
-            "§5 gate must refuse on a planted silent pick, got None"
-        );
-        let refusal_text = refusal.unwrap();
-        assert!(
-            refusal_text.contains("SILENT_PICK regression"),
-            "refusal must self-identify as a SILENT_PICK regression, got: {refusal_text}"
-        );
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
+    // Four silent-pick positive controls were deleted here, not repaired: they planted
+    // a §13 silent pick (two sibling `shared_pick` fns; two homonymous types) and
+    // asserted the telemetry counted it. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY`
+    // now defaults to true (v1_rt.rs), so the resolver REFUSES those fixtures with a
+    // typed `AmbiguousReference` instead of picking — the planted fail-open is
+    // unwritable by construction (DESIGN §5), and a validation control for an
+    // unwritable class cannot fire. The surviving behaviour is the refusal itself,
+    // already carried by `v1-compiler-tests`
+    // `namespace_unique_on_chain_policy_test::namespace_only_refuses_{chain_homonym_on_type_path,
+    // fn_parent_first_hit_at_call_site}` (green by execution, both policy arms, and
+    // it reds if the refusal ever regresses to a silent pick). Keeping these four
+    // would be a second representation of that one fact (§2/§3).
+    //
+    // This fires the dissolve-on that `dag/gunbc/ci_layer_roots.dag`
+    // `falsifier_silent_pick_gate_note` declares for itself: "§13's unique-on-chain
+    // resolution ships as the resolver's actual behavior ... then telemetry, this
+    // witness, and this note all delete together." The rest of that dissolution —
+    // the `v1_rt` telemetry, the 04_env/04_sigs recording sites, main.rs's
+    // SILENT-PICK-GATE, the two census bins, the falsifier roster row and the note —
+    // is a separate lane; `resolution_divergence_silent_pick_clean_corpus_refusal_none`
+    // below is vacuous under the same flip and dissolves with it.
 
     /// Same fixture family, but the leaf imports only module `a` — one parent, not
     /// two — so `shared_pick` resolves via a single parent hit (match_count=1) and
@@ -24720,7 +25223,6 @@ fn caller() -> Bool {
     /// bare-name-via-parent resolution, only on a genuine >=2-candidate collision.
     #[test]
     fn resolution_divergence_silent_pick_clean_corpus_refusal_none() {
-        let ws = super::process_workspace_root();
         let fixture = silent_pick_fixture_root("clean");
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
@@ -24752,10 +25254,7 @@ fn caller() -> Bool {
 }
 "#,
         );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
+        let roots = fixture_roots(&fixture);
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert_eq!(
             census.silent_pick_fn_parent_first_hit, 0,
@@ -24765,70 +25264,6 @@ fn caller() -> Bool {
         assert!(
             resolution_divergence_silent_pick_refusal(&census).is_none(),
             "§5 gate must be None on a clean corpus with no silent pick"
-        );
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    /// Hermetic control guarding the ~483-clean join filter: two pool-wide homonymous
-    /// type declarations in unrelated module trees (NOT both on the consumer's
-    /// parent/import chain) force `global_bare_lcp` telemetry, but the site is benign
-    /// under the containment_ambiguous/diverge join — refusal must stay None.
-    #[test]
-    fn resolution_divergence_silent_pick_benign_global_bare_lcp_filter_control() {
-        let ws = super::process_workspace_root();
-        let fixture = silent_pick_fixture_root("benign-gblcp");
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "near.dag",
-            r#"module test.benigngblcp.near
-
-import std.types { Int }
-
-type PoolDup = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "far.dag",
-            r#"module test.benigngblcp.far.away
-
-import std.types { Int }
-
-type PoolDup = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "consumer.dag",
-            r#"module test.benigngblcp.near.consumer
-
-import std.types { Int }
-
-fn use_pool_dup(x: PoolDup) -> Int {
-  return x
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        assert!(
-            census.silent_pick_global_bare_lcp >= 1,
-            "fixture must fire global_bare_lcp telemetry (pool-wide homonym), got lcp={} tie={}",
-            census.silent_pick_global_bare_lcp,
-            census.silent_pick_global_bare_lcp_tie,
-        );
-        let genuine = super::resolution_divergence_silent_pick_genuine_rows(&census);
-        assert!(
-            genuine.is_empty(),
-            "pool-wide type homonym must be filtered benign by the join, got genuine={genuine:?}"
-        );
-        assert!(
-            resolution_divergence_silent_pick_refusal(&census).is_none(),
-            "§5 gate must be None when only benign global_bare_lcp telemetry fired"
         );
         let _ = std::fs::remove_dir_all(&fixture);
     }
@@ -24853,233 +25288,6 @@ fn use_pool_dup(x: PoolDup) -> Int {
             super::resolution_divergence_fn_parent_first_hit_subset_refusal(&census).is_none(),
             "subset refusal must be None on the live closure-scoped corpus"
         );
-    }
-
-    /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
-    /// Oracle: plan row walk_target == symbol_index-grounded qualified path for LCP winner.
-    #[test]
-    fn walk_target_alias_plan_positive_control_global_bare_lcp() {
-        use super::{
-            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
-            WalkTargetAliasPlanClass,
-        };
-
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "near.dag",
-            r#"module test.aliasplan.near
-
-import std.types { Int }
-
-type AmbigType = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "far.dag",
-            r#"module test.aliasplan.far.away
-
-import std.types { Int }
-
-type AmbigType = Int
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "consumer.dag",
-            r#"module test.aliasplan.near.consumer
-
-import std.types { Int }
-
-fn use_ambig(x: AmbigType) -> Int {
-  return x
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
-        assert!(
-            plan.global_bare_lcp_events >= 1,
-            "fixture must trigger global_bare_lcp silent pick, got events={}",
-            plan.global_bare_lcp_events
-        );
-        assert!(
-            plan.source_scope_label.contains("dag/std"),
-            "scope label must reflect actual source roots, got {}",
-            plan.source_scope_label
-        );
-        let rows: Vec<_> = plan
-            .rows
-            .iter()
-            .filter(|r| {
-                r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp
-                    && r.key.declaring_module == "test.aliasplan.near.consumer"
-                    && r.key.binding == "AmbigType"
-            })
-            .collect();
-        assert_eq!(
-            rows.len(),
-            1,
-            "expected one deduped AmbigType row for consumer module, plan rows={:?} refused={:?} events={}",
-            plan.rows,
-            plan.refused,
-            plan.global_bare_lcp_events
-        );
-        let row = rows[0];
-        assert!(
-            row.walk_verified,
-            "walk target must verify via symbol_index, row={row:?}"
-        );
-        assert_eq!(
-            row.pre_flip_qualified_path, "test.aliasplan.near.AmbigType",
-            "oracle primary key must be LCP-nearer qualified path"
-        );
-        assert_eq!(
-            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
-            "walk_target and pre_flip_qn must agree"
-        );
-        assert!(
-            row.lookup_events >= 1,
-            "lookup_events must count silent-pick telemetry hits"
-        );
-
-        // Binding-identity oracle within one run: re-ground from census ctx must match plan row.
-        crate::v1_rt::resolution_silent_pick_enable();
-        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
-        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
-        super::merge_silent_pick_telemetry(&mut census, silent_picks);
-        let replay = walk_target_alias_plan_from_census(&ctx, &census);
-        let replay_row = replay
-            .rows
-            .iter()
-            .find(|r| {
-                r.key.declaring_module == "test.aliasplan.near.consumer"
-                    && r.key.binding == "AmbigType"
-            })
-            .expect("replay plan must contain consumer AmbigType row");
-        assert_eq!(
-            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
-            "oracle: replay qualified_path must match plan snapshot"
-        );
-
-        let _ = std::fs::remove_dir_all(&fixture);
-    }
-
-    /// Planted fn_parent_first_hit silent pick: nested modules both define `helper`, leaf calls bare.
-    #[test]
-    fn walk_target_alias_plan_positive_control_fn_parent_first_hit() {
-        use super::{
-            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
-            WalkTargetAliasPlanClass,
-        };
-
-        let ws = super::process_workspace_root();
-        let fixture = walk_target_alias_plan_fixture_root();
-        let _ = std::fs::remove_dir_all(&fixture);
-        write_fixture(
-            &fixture,
-            "grand.dag",
-            r#"module test.aliasplan.a
-
-import std.types { Bool }
-
-fn helper(x: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "parent.dag",
-            r#"module test.aliasplan.b
-
-import std.types { Bool }
-
-fn helper(x: Bool, y: Bool) -> Bool {
-  return x
-}
-"#,
-        );
-        write_fixture(
-            &fixture,
-            "leaf.dag",
-            r#"module test.aliasplan.use
-
-import std.types { Bool }
-import test.aliasplan.a { }
-import test.aliasplan.b { }
-
-fn caller() -> Bool {
-  return helper(False)
-}
-"#,
-        );
-        let roots = vec![
-            fixture.to_string_lossy().into_owned(),
-            ws.join("dag/std").to_string_lossy().into_owned(),
-        ];
-        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
-        assert!(
-            plan.fn_parent_first_hit_events >= 1,
-            "fixture must trigger fn_parent_first_hit silent pick, got events={}",
-            plan.fn_parent_first_hit_events
-        );
-        let rows: Vec<_> = plan
-            .rows
-            .iter()
-            .filter(|r| {
-                r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit
-                    && r.key.declaring_module == "test.aliasplan.use"
-                    && r.key.binding == "helper"
-            })
-            .collect();
-        assert_eq!(
-            rows.len(),
-            1,
-            "expected one deduped helper row for leaf module, plan rows={:?} refused={:?}",
-            plan.rows,
-            plan.refused
-        );
-        let row = rows[0];
-        assert!(
-            row.walk_verified,
-            "walk target must verify via symbol_index, row={row:?}"
-        );
-        assert!(
-            row.pre_flip_qualified_path == "test.aliasplan.a.helper"
-                || row.pre_flip_qualified_path == "test.aliasplan.b.helper",
-            "oracle must bind to an imported parent helper declaration, got {}",
-            row.pre_flip_qualified_path
-        );
-        assert_eq!(
-            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
-            "walk_target and pre_flip_qn must agree"
-        );
-
-        crate::v1_rt::resolution_silent_pick_enable();
-        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
-        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
-        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
-        super::merge_silent_pick_telemetry(&mut census, silent_picks);
-        let replay = walk_target_alias_plan_from_census(&ctx, &census);
-        let replay_row = replay
-            .rows
-            .iter()
-            .find(|r| r.key.declaring_module == "test.aliasplan.use" && r.key.binding == "helper")
-            .expect("replay plan must contain leaf helper row");
-        assert_eq!(
-            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
-            "oracle: replay qualified_path must match plan snapshot"
-        );
-
-        let _ = std::fs::remove_dir_all(&fixture);
     }
 
     #[test]
@@ -25389,36 +25597,248 @@ mod reference_edge_producer_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Repro for main-red false edges: prelude bare names in import-less std files must not
-    /// surface cross-layer dependency edges (layering-imports gate §5).
+    /// A cross-layer edge out of a std file must be *grounded in that file's own text* —
+    /// either a real `import`, or a real reference occurrence (the reference-derived
+    /// edge the sibling control above proves is emitted). An edge naming a module the
+    /// file never mentions is fabricated by the producer, which is the actual
+    /// "prelude bare name" defect class this test was built for.
+    ///
+    /// It used to assert the strictly stronger `no std -> extdeps/compiler edge at all`,
+    /// which DESIGN §3 deleted on 2026-07-24: the layer DAG
+    /// `std <- extdeps <- compiler <- workflow` was "convention standing where no
+    /// necessity stood, and it blocked correct grounding — a std surface citing the
+    /// extdeps rows that ground it". Under that deleted rule every such edge was false
+    /// by definition; today the 9 in-corpus edges are exactly those sanctioned
+    /// citations (`std.measure` -> `extdeps.units.*` and `std.process` ->
+    /// `extdeps.process.*` from #7268, `std.claim_evidence` and
+    /// `v2.std.compilers.target_model` -> `extdeps.external_authority`), so the old
+    /// assertion reported grounding as a violation. Acyclicity is the only structural
+    /// law; folders are browsing conventions.
     #[test]
-    fn layer_import_facts_prelude_bare_names_no_false_cross_layer_edges() {
-        use super::layer_import_facts;
+    fn layer_import_facts_cross_layer_edges_are_grounded_in_file_text() {
+        use super::{extract_import_paths, layer_import_facts, LayerImportFactRaw};
+
+        /// `layer_import_facts` has TWO fact provenances by construction: a scan of real
+        /// `import` lines, and — only when the importer roots contain import-less `.dag`
+        /// files — reference-derived edges from `reference_resolution_facts`. So grounding
+        /// is the disjunction, and each arm is checked against the surface that provenance
+        /// actually uses:
+        ///
+        /// - **import-backed** — the module appears in the parsed import surface
+        ///   (`extract_import_paths`). This is the strong arm and the common case.
+        /// - **reference-backed** — the module appears in the file's *code* text. The
+        ///   sibling `..._reference_only_violation_control` proves the producer emits such
+        ///   an edge for an import-less std file with a qualified reference, so demanding
+        ///   an `import` for it would encode an invariant the project is actively
+        ///   dissolving (DESIGN's namespace-only lane ends with `import` as a *parse
+        ///   error*, deps derived from `container.member` references). Requiring one here
+        ///   would red on a legitimate reference (review 44710).
+        ///
+        /// The reference arm is *code* containment, not text containment: string literals
+        /// are stripped first. `.dag` has no comment syntax, so a prose
+        /// `data ..._note: String = "…"` row is the only non-code text — and those rows
+        /// legitimately name module paths (this PR adds two), which is exactly the
+        /// laundering vector review 44626 rejected `contains` for. Stripping literals
+        /// keeps that closed while admitting the real reference.
+        ///
+        /// Three SEPARATE buckets out, never folded together (DESIGN §5 state-space
+        /// conflation): "I could not read the file" is not "the edge is fabricated", and
+        /// "grounded by a reference" is not "grounded by an import" — the second
+        /// distinction is what keeps the reference arm from silently becoming the whole
+        /// oracle. `path` is a repo-relative key, so it is anchored at the workspace root
+        /// exactly as the producer anchors it; reading it raw only works when cwd happens
+        /// to be that root, which under `cargo test` (cwd = package root) it is not.
+        fn ungrounded(facts: &[LayerImportFactRaw]) -> (Vec<String>, Vec<String>, Vec<String>) {
+            /// Drops `"…"` string-literal content, keeping everything else. A `\` escapes
+            /// the next character, so `\"` does not close a literal.
+            fn code_text_only(content: &str) -> String {
+                let mut out = String::with_capacity(content.len());
+                let mut in_string = false;
+                let mut escaped = false;
+                for c in content.chars() {
+                    if escaped {
+                        escaped = false;
+                        continue;
+                    }
+                    match c {
+                        '\\' if in_string => escaped = true,
+                        '"' => in_string = !in_string,
+                        _ if in_string => {}
+                        _ => out.push(c),
+                    }
+                }
+                out
+            }
+
+            let ws = super::workspace_root();
+            let mut fabricated = Vec::new();
+            let mut reference_backed = Vec::new();
+            let mut unreadable = Vec::new();
+            for f in facts.iter().filter(|f| {
+                f.layer == "LayerPrefixStd"
+                    && (f.import_module.starts_with("extdeps.")
+                        || f.import_module.starts_with("v2.compiler"))
+            }) {
+                let Ok(content) = std::fs::read_to_string(ws.join(&f.path)) else {
+                    unreadable.push(f.path.clone());
+                    continue;
+                };
+                let edge = format!("{} -> {}", f.path, f.import_module);
+                if extract_import_paths(&content)
+                    .iter()
+                    .any(|m| m == &f.import_module)
+                {
+                    continue;
+                }
+                if code_text_only(&content).contains(&f.import_module) {
+                    reference_backed.push(edge);
+                } else {
+                    fabricated.push(edge);
+                }
+            }
+            (fabricated, reference_backed, unreadable)
+        }
 
         let std_roots = vec!["src/v2/std".to_string(), "dag/std".to_string()];
         let extdeps_roots = vec!["src/v2/extdeps".to_string(), "dag/extdeps".to_string()];
         let facts = layer_import_facts(&std_roots, &extdeps_roots);
-        let violations: Vec<_> = facts
-            .iter()
-            .filter(|f| {
-                f.layer == "LayerPrefixStd"
-                    && (f.import_module.starts_with("extdeps.")
-                        || f.import_module.starts_with("v2.compiler"))
-            })
-            .collect();
-        if !violations.is_empty() {
-            for v in &violations {
-                eprintln!(
-                    "FALSE EDGE: {} -> {} (layer={})",
-                    v.path, v.import_module, v.layer
-                );
-            }
-        }
         assert!(
-            violations.is_empty(),
-            "prelude bare names must not produce false std->extdeps/compiler edges (got {})",
-            violations.len()
+            !facts.is_empty(),
+            "producer emitted no layer facts at all — the corpus read is broken, so an \
+             empty violation set below would be vacuous"
         );
+        let (fabricated, reference_backed, unreadable) = ungrounded(&facts);
+        assert!(
+            unreadable.is_empty(),
+            "every flagged std file must be readable at the workspace root — an unreadable \
+             path means the oracle is broken, not that an edge is grounded: {unreadable:?}"
+        );
+        assert!(
+            fabricated.is_empty(),
+            "every cross-layer std edge must be grounded in its own file — a real parsed \
+             import, or a real code reference; fabricated: {fabricated:?}"
+        );
+        // The reference-backed bucket is REPORTED, not asserted empty. Asserting it empty
+        // is the import-only rule this oracle just stopped encoding; leaving it unsplit
+        // would let the weaker arm silently absorb the stronger one. Zero in the corpus
+        // today (all in-corpus cross-layer std edges are real `import` lines), and it is
+        // the import-less std files the namespace lane produces that will land here.
+        eprintln!(
+            "cross-layer std edges: {} import-backed, {} reference-backed{}",
+            facts
+                .iter()
+                .filter(|f| {
+                    f.layer == "LayerPrefixStd"
+                        && (f.import_module.starts_with("extdeps.")
+                            || f.import_module.starts_with("v2.compiler"))
+                })
+                .count()
+                - reference_backed.len(),
+            reference_backed.len(),
+            if reference_backed.is_empty() {
+                String::new()
+            } else {
+                format!(" {reference_backed:?}")
+            }
+        );
+
+        // RED controls, each planting a fact against a REAL, READABLE file and asserting
+        // `unreadable` is empty first — otherwise a path-anchoring bug would satisfy them
+        // for the wrong reason.
+        let red = |path: &str, import_module: &str| {
+            let planted = vec![LayerImportFactRaw {
+                layer: "LayerPrefixStd",
+                path: path.to_string(),
+                import_module: import_module.to_string(),
+            }];
+            let (fab, refd, unread) = ungrounded(&planted);
+            assert!(
+                unread.is_empty(),
+                "RED control fixture must be readable, else it fires for the wrong reason"
+            );
+            (fab.len(), refd.len())
+        };
+
+        // (1) a module the file neither imports nor mentions anywhere.
+        assert_eq!(
+            red(
+                "dag/std/measure.dag",
+                "extdeps.units.no_such_module_mentioned_anywhere"
+            ),
+            (1, 0),
+            "an edge with no import and no reference behind it must be flagged fabricated"
+        );
+
+        // (2) a near-miss sibling: `std.measure` imports `extdeps.units.iec_80000_13`, and
+        // `..._14` does not occur in the file in any form. Guards the arm against matching
+        // on a prefix of a real module name.
+        let measure = std::fs::read_to_string(super::workspace_root().join("dag/std/measure.dag"))
+            .expect("read measure.dag");
+        let near_miss = "extdeps.units.iec_80000_14";
+        assert!(
+            !extract_import_paths(&measure)
+                .iter()
+                .any(|m| m == near_miss)
+                && measure.contains("extdeps.units.iec_80000_13"),
+            "control precondition: {near_miss} is not imported, while its sibling _13 is"
+        );
+        assert_eq!(
+            red("dag/std/measure.dag", near_miss),
+            (1, 0),
+            "a sibling module absent from the file must not be grounded by the prefix of \
+             the one that is present"
+        );
+
+        // (3) + (4) the two arms of the reference case, on authored fixtures because the
+        // live corpus has no import-less std file to exercise them. The pair is what makes
+        // the reference arm discriminating rather than a rubber stamp: same shape, same
+        // module name, differing only in whether the occurrence is code or prose.
+        let fixture = super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-layer-grounding-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&fixture);
+        std::fs::create_dir_all(&fixture).expect("mkdir fixture");
+        let referenced = "v2.compiler.tokenize";
+
+        // (3) import-less, module named ONLY inside a prose `String` literal — the
+        // laundering vector review 44626 rejected `contains` for. Must stay fabricated.
+        let prose = fixture.join("prose.dag");
+        std::fs::write(
+            &prose,
+            "module v2.std.prose_plant\n\ndata note: String = \"grounding is decided against \
+             v2.compiler.tokenize, which this file does not reference\"\n",
+        )
+        .expect("write prose fixture");
+        assert_eq!(
+            red(&prose.to_string_lossy(), referenced),
+            (1, 0),
+            "a module named only inside a string literal must stay fabricated — stripping \
+             literals is what keeps prose from laundering an edge"
+        );
+
+        // (4) import-less, same module in a real code position — the legitimate
+        // reference-derived edge the sibling control proves the producer emits. Must be
+        // grounded, and grounded by the REFERENCE arm specifically.
+        let code = fixture.join("code.dag");
+        std::fs::write(
+            &code,
+            "module v2.std.code_plant\n\nfn leak_probe() -> Bool {\n  \
+             v2.compiler.tokenize.eq(a: \"a\", b: \"b\")\n}\n",
+        )
+        .expect("write code fixture");
+        assert!(
+            extract_import_paths(&std::fs::read_to_string(&code).expect("read code fixture"))
+                .is_empty(),
+            "fixture must be import-less, else it exercises the import arm instead"
+        );
+        assert_eq!(
+            red(&code.to_string_lossy(), referenced),
+            (0, 1),
+            "a real qualified reference in an import-less file must ground the edge via the \
+             reference arm — requiring an `import` here is the invariant DESIGN dissolved"
+        );
+
+        let _ = std::fs::remove_dir_all(&fixture);
     }
 }
 
@@ -28572,6 +28992,225 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
+    /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
+    /// this a decision rather than a constant.
+    ///
+    /// The subject is ASSERTED outside the closure rather than assumed: if a new import edge
+    /// or declared entry ever pulls it in, this test panics instead of quietly passing for
+    /// the wrong reason. It is deliberately NOT a `.md` path — markdown is an input through
+    /// the `ReadsLiveTree` doc-reachability entry. The first draft of this test used
+    /// `docs/plans/example.md`, i.e. it asserted the very suppression review 44682 caught.
+    #[test]
+    fn selection_control_skip_skips_on_unrelated_path() {
+        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
+        let closure = selection_control_input_sources(&workspace_root())
+            .expect("selection-control closure must compute");
+        assert!(
+            !closure.iter().any(|p| p == UNRELATED),
+            "{UNRELATED} entered the suite's input closure — choose a new skip subject; \
+             do not weaken this arm to keep it green"
+        );
+        assert!(
+            !UNRELATED.ends_with(".md"),
+            "the skip subject must not be markdown (markdown always runs the suite)"
+        );
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{UNRELATED}\\000"),
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 1 — a declared entry of the suite is touched.
+    #[test]
+    fn selection_control_skip_runs_on_declared_entry() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/workflow/affected_set_floor_runner.dag\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 2 — a TRANSITIVELY imported module, not a declared entry. This is the arm
+    /// that proves the import walk is load-bearing: the path is chosen from the computed
+    /// closure at test time, so if the walk ever stopped at the declared entries this test
+    /// would fail to find a subject and panic rather than silently weaken.
+    #[test]
+    fn selection_control_skip_runs_on_transitively_imported_module() {
+        let closure = selection_control_input_sources(&workspace_root())
+            .expect("selection-control closure must compute");
+        let transitive = closure
+            .iter()
+            .find(|p| !SELECTION_CONTROL_DECLARED_ENTRIES.contains(&p.as_str()))
+            .expect("closure must reach past the declared entries (import walk is dead)")
+            .clone();
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    &format!("M\\000{transitive}\\000"),
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a transitively imported closure member ({transitive}) must run the suite"
+                );
+            });
+        });
+    }
+
+    /// RUN arm 3 — the `src/v1/**` prefix: the selection implementation and the witness bin
+    /// live there, and neither is reachable through the `.dag` import walk.
+    #[test]
+    fn selection_control_skip_runs_on_src_v1_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v1/stage0/src/cli_run.rs\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 4 — departed path. The closure is computed from the CURRENT tree, so a
+    /// deletion is invisible to the intersection; the guard discriminates on D, not on
+    /// path. The subject is the SAME path the skip control above modifies, so the pair
+    /// isolates the D/M axis: modified → skip, departed → run.
+    #[test]
+    fn selection_control_skip_runs_on_departed_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL
+                );
+            });
+        });
+    }
+
+    /// RUN arm 5 — a docs-only diff. THE REGRESSION CONTROL for review 44682: the suite's
+    /// `dag/test/claim/doc_reachability_witness_test.dag` entry declares
+    /// `LiveTreeDisposition = ReadsLiveTree` and folds the live markdown doc graph, and the
+    /// suite's own `doc_reachability_runs_on_docs_only_diff` scenario asserts the orphan wall
+    /// is green against the real tree. So a docs-only PR that orphans a doc flips this suite
+    /// red — and the first draft skipped it. Markdown is an input; it runs.
+    #[test]
+    fn selection_control_skip_runs_on_docs_only_diff() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000docs/plans/example.md\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a docs-only diff must RUN the control suite: its doc-reachability entry \
+                     reads the live doc graph, so markdown changes its verdict"
+                );
+            });
+        });
+    }
+
+    /// RUN arm 6 — a DEPARTED doc. Deletion is the direction the orphan/dangling wall is
+    /// most sensitive to (removing a link target creates a dangling link; removing a linker
+    /// orphans its target), and it is the arm the copied `!starts_with("docs/")` carve-out
+    /// from regen/compile-clean would have skipped.
+    #[test]
+    fn selection_control_skip_runs_on_departed_doc() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000docs/plans/example.md\\000",
+                );
+                assert_eq!(
+                    selection_control_skip_label_for_ci()
+                        .expect("structural arm must answer with a label, not refuse"),
+                    RUN_SELECTION_CONTROL_LABEL,
+                    "a departed doc must RUN the control suite (it changes the live doc graph)"
+                );
+            });
+        });
+    }
+
+    /// REFUSAL arm — the discriminating control for review 44745. An unrecognized git
+    /// `--name-status` status letter makes the modeled observation answer `NameStatusDiffFail`,
+    /// i.e. the affected set is UNKNOWN. The step must REFUSE (typed, located, countable), not
+    /// widen to a run: "can't compute the affected set → rerun everything" is DESIGN §5's named
+    /// absorbing fallback, and `floor_diff_baseline_law` already records the 2026-07-05 ruling
+    /// that this arm HALTS rather than widening.
+    ///
+    /// This is the RED that would go green again if anyone reinstated the old widening arm:
+    /// with the fail-open version, this returned `Ok(run_selection_control)` and CI stayed green.
+    #[test]
+    fn selection_control_skip_refuses_when_diff_observation_fails() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                // 'Z' is not a status letter git emits; the modeled observation rejects it.
+                let _ns =
+                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
+                let refusal = selection_control_skip_label_for_ci()
+                    .expect_err("an unobservable diff must REFUSE, never widen to a run");
+                assert_eq!(
+                    refusal.cause,
+                    SelectionControlRefusalCause::DiffObservationFailed
+                );
+                let d = refusal.diagnostic();
+                assert!(
+                    d.contains("SELECTION_CONTROL_REFUSED")
+                        && d.contains("cause=DiffObservationFailed"),
+                    "the refusal must be countable by a stable token: {d}"
+                );
+                assert!(
+                    !d.contains(RUN_SELECTION_CONTROL_LABEL)
+                        && !d.contains(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL),
+                    "a refusal must not carry a label — ignorance is not an answer: {d}"
+                );
+            });
+        });
+    }
+
+    /// The two refusal causes must stay distinguishable, so each is separately countable in the
+    /// job log. A single fused cause would re-absorb the deficits into one unprioritizable bucket.
+    #[test]
+    fn selection_control_refusal_causes_are_distinct_and_countable() {
+        assert_ne!(
+            SelectionControlRefusalCause::DiffObservationFailed.token(),
+            SelectionControlRefusalCause::InputClosureFailed.token()
+        );
+    }
+
     /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
     /// itself through the import-closure grain (the discriminating RED for this arm is
     /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
@@ -31673,6 +32312,22 @@ mod sigs_env_flat_parents {
     // an EARLIER import; (c) own local beats every parent.
     #[test]
     fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
+        // (a) and (b) are properties of the *ImportScoped* linearization, not of
+        // resolution in general. `NAME_RESOLUTION_POLICY_NAMESPACE_ONLY` now defaults
+        // to true (§13 unique-on-chain, v1_rt.rs), under which a name defined by two
+        // parents is a typed AmbiguousReference instead of a first-hit pick — so both
+        // read None on the default policy, which is what made this test red. Pin the
+        // policy the assertions are about, then cover the default's refusal explicitly
+        // at the end rather than leaving it unstated.
+        struct PolicyGuard(bool);
+        impl Drop for PolicyGuard {
+            fn drop(&mut self) {
+                crate::v1_rt::name_resolution_policy_set_namespace_only(self.0);
+            }
+        }
+        let _policy = PolicyGuard(crate::v1_rt::name_resolution_policy_is_namespace_only());
+        crate::v1_rt::name_resolution_policy_set_namespace_only(false);
+
         let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
             crate::v1_compiler_infer_lookup::func_sig_if_resolved(
                 crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string()),
@@ -31705,6 +32360,26 @@ mod sigs_env_flat_parents {
             read(&own, "f").as_deref(),
             Some("FromSelf"),
             "own local shadows all parents"
+        );
+
+        // Default policy (§13 NamespaceOnlyY): the same two-parent homonyms must
+        // REFUSE rather than silently pick a winner by import order. Own-local still
+        // resolves — it is unique on the chain, so nothing is ambiguous about it.
+        crate::v1_rt::name_resolution_policy_set_namespace_only(true);
+        assert_eq!(
+            read(&m, "f"),
+            None,
+            "namespace-only must refuse the 2-parent homonym, never first-hit it"
+        );
+        assert_eq!(
+            read(&m2, "g"),
+            None,
+            "namespace-only must refuse the closure-vs-direct homonym, never order-pick it"
+        );
+        assert_eq!(
+            read(&own, "f").as_deref(),
+            Some("FromSelf"),
+            "own local is unique on the chain and must still resolve under namespace-only"
         );
     }
 

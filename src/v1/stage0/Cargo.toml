@@ -195,6 +195,16 @@ path = "src/bin/floor_skip_discovery_witness.rs"
 name = "regen_floor_skip_witness"
 path = "src/bin/regen_floor_skip_witness.rs"
 
+# Affected-set selection-control skip witness. Declared explicitly for the same reason every
+# other witness here is: edition-2021 autodiscovery WOULD find src/bin/*.rs (cargo metadata
+# lists this target with or without this block, and CI's --bin build has been green
+# throughout), but an undeclared target is invisible to a reader of the manifest and would
+# vanish if autobins were ever turned off. Consistency with the roster above, not a fix
+# (review 44778 read the omission as a build break; it was not).
+[[bin]]
+name = "selection_control_skip_witness"
+path = "src/bin/selection_control_skip_witness.rs"
+
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
