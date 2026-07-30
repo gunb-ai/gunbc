@@ -435,6 +435,8 @@ type ClaimRequirementReadiness<F, C, A, FidelityBoundary, Independence>
     }
   | ClaimRequirementEvidenceRefused {
       claim: C,
+      supporting: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+      challenging: List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
       refusals: List<EvidenceAdmissionRefusal>,
     }
 
@@ -453,7 +455,12 @@ type ClaimRequirementReadinessFold<F, C, A, FidelityBoundary, Independence, R> {
     List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
     List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
   ) -> R
-  evidence_refused: fn(C, List<EvidenceAdmissionRefusal>) -> R
+  evidence_refused: fn(
+    C,
+    List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+    List<EvidenceLink<F, C, A, FidelityBoundary, Independence>>,
+    List<EvidenceAdmissionRefusal>,
+  ) -> R
 }
 
 fn claim_requirement_readiness_fold<F, C, A, FidelityBoundary, Independence, R>(
@@ -469,8 +476,13 @@ fn claim_requirement_readiness_fold<F, C, A, FidelityBoundary, Independence, R>(
       fold.challenged(claim, challenging)
     ClaimRequirementConflicted { claim, supporting, challenging } =>
       fold.conflicted(claim, supporting, challenging)
-    ClaimRequirementEvidenceRefused { claim, refusals } =>
-      fold.evidence_refused(claim, refusals)
+    ClaimRequirementEvidenceRefused {
+      claim,
+      supporting,
+      challenging,
+      refusals,
+    } =>
+      fold.evidence_refused(claim, supporting, challenging, refusals)
   }
 }
 
@@ -525,7 +537,19 @@ fn claim_requirement_readiness<F, C, A, FidelityBoundary, Independence>(
       },
     )
   )
-  if count(supporting) > 0 && count(challenging) == 0 {
+  let refusals = evidence_admission_refusals(
+    policy: policy,
+    claim: claim,
+    links: relevant,
+  )
+  if count(refusals) > 0 {
+    ClaimRequirementEvidenceRefused {
+      claim: claim,
+      supporting: supporting,
+      challenging: challenging,
+      refusals: refusals,
+    }
+  } else if count(supporting) > 0 && count(challenging) == 0 {
     ClaimRequirementReady {
       claim: claim,
       supporting: supporting,
@@ -542,19 +566,7 @@ fn claim_requirement_readiness<F, C, A, FidelityBoundary, Independence>(
       challenging: challenging,
     }
   } else {
-    let refusals = evidence_admission_refusals(
-      policy: policy,
-      claim: claim,
-      links: relevant,
-    )
-    if count(refusals) > 0 {
-      ClaimRequirementEvidenceRefused {
-        claim: claim,
-        refusals: refusals,
-      }
-    } else {
-      ClaimRequirementMissing { claim: claim }
-    }
+    ClaimRequirementMissing { claim: claim }
   }
 }
 

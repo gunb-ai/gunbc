@@ -255,7 +255,7 @@ fn landing_requirement_block(
           challenging: challenging,
         }]
       },
-      evidence_refused: fn(claim, refusals) {
+      evidence_refused: fn(claim, _, _, refusals) {
         [LandingEvidenceRefused {
           claim: claim,
           refusals: refusals,
@@ -839,6 +839,7 @@ type LandingTransitionReceipt {
   admitted: LandingAdmittedResult
   identity: LandingTransitionIdentity
   resulting_state: LandingResultingStateHandle
+  transition_authority: LandingActorAuthorityHandle
 }
 
 type LandingReadBackObservation {
@@ -858,11 +859,18 @@ type LandingReadBackAssessment
   | LandingReadBackMismatched {
       observation: LandingReadBackObservation,
     }
+  | LandingReadBackNotIndependent {
+      observation: LandingReadBackObservation,
+    }
 
 fn landing_independent_read_back(
   observation: LandingReadBackObservation,
 ) -> LandingReadBackAssessment {
-  if observation.observed_state == observation.transition.resulting_state {
+  if observation.authority == observation.transition.transition_authority {
+    LandingReadBackNotIndependent {
+      observation: observation,
+    }
+  } else if observation.observed_state == observation.transition.resulting_state {
     LandingReadBackMatched {
       receipt: LandingIndependentReadBackReceipt {
         observation: observation,
@@ -1015,6 +1023,10 @@ fn landing_committed_transition(
   projections: List<LandingProjectionStatus>,
 ) -> LandingCommitAssembly {
   match read_back {
+    LandingReadBackNotIndependent { observation: _ } =>
+      LandingCommitRelationRefused {
+        cause: "the transition producer cannot certify independent read-back",
+      }
     LandingReadBackMismatched { observation: _ } =>
       LandingCommitRelationRefused {
         cause: "independent read-back did not observe the transition result",

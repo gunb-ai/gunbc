@@ -107,6 +107,7 @@ import gunbc.source_integration_landing_spine {
   LandingReadBackObservation,
   LandingReadBackMatched,
   LandingReadBackMismatched,
+  LandingReadBackNotIndependent,
   LandingCompatibilityTargetBinding,
   LandingProjectionBound,
   LandingProjectionBindingRefused,
@@ -478,6 +479,7 @@ fn p0_transition(
     admitted: admitted,
     identity: identity,
     resulting_state: result,
+    transition_authority: "transition-executor",
   }
 }
 
@@ -597,7 +599,7 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
     direction: EvidenceSupports,
     authority: "caller-authored-untrusted-authority",
   )
-  match landing_evidence_readiness(
+  let refused_only = landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
     admission: p0_admission_policy(),
@@ -605,7 +607,22 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
       forged,
       p0_support(claim: p0_behavior_claim()),
     ],
-  ) {
+  )
+  let mixed = landing_evidence_readiness(
+    proposal: p0_proposal(),
+    policy: "p0-exact-guarantee-policy",
+    admission: p0_admission_policy(),
+    links: [
+      p0_support(claim: p0_builds_claim()),
+      p0_link(
+        claim: p0_builds_claim(),
+        direction: EvidenceChallenges,
+        authority: "caller-authored-untrusted-authority",
+      ),
+      p0_support(claim: p0_behavior_claim()),
+    ],
+  )
+  match refused_only {
     LandingEvidenceBlocking {
       proposal: _,
       policy: _,
@@ -615,6 +632,24 @@ test fn witness_p0_forged_readiness_without_evidence_admission_blocks() -> Bool 
     } =>
       claim == p0_builds_claim()
         && any(refusals, refusal => refusal == EvidenceAuthorityRefused)
+        && match mixed {
+          LandingEvidenceBlocking {
+            proposal: _,
+            policy: _,
+            readiness: _,
+            first_blocking: LandingEvidenceRefused {
+              claim: mixed_claim,
+              refusals: mixed_refusals,
+            },
+            remaining_blocking: _,
+          } =>
+            mixed_claim == p0_builds_claim()
+              && any(
+                mixed_refusals,
+                refusal => refusal == EvidenceAuthorityRefused,
+              )
+          _ => false
+        }
     _ => false
   }
 }
@@ -901,7 +936,20 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     LandingReadBackMismatched { observation } =>
       observation.transition.identity == "transition-42"
     LandingReadBackMatched { receipt: _ } => false
+    LandingReadBackNotIndependent { observation: _ } => false
   }
+    && match landing_independent_read_back(
+      observation: LandingReadBackObservation {
+        transition: transition,
+        observed_state: "state-42",
+        authority: "transition-executor",
+      },
+    ) {
+      LandingReadBackNotIndependent { observation } =>
+        observation.transition.transition_authority == observation.authority
+      LandingReadBackMatched { receipt: _ } => false
+      LandingReadBackMismatched { observation: _ } => false
+    }
 }
 
 test fn witness_p0_cross_paired_projection_refuses() -> Bool {
