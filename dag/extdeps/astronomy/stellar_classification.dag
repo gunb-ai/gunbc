@@ -72,12 +72,11 @@ fn no_green_stellar_class(classes: List<SpectralClass>) -> Bool {
   all(classes, c => class_chromaticity_is_achromatic_or_warm_or_blue(c: c))
 }
 
-fn class_by_letter(classes: List<SpectralClass>, code: String) -> SpectralClass {
-  fold(classes, init: SpectralClass { code: "", temperature: OpenAbove { min_k: 0 }, vega_chromaticity: "", d65_chromaticity: "", hydrogen_lines: "", main_sequence_share_text: "" },
-    f: (acc, c) => {
-      let candidate_code = c.code as String
-      if candidate_code == code { c } else { acc }
-    })
+fn class_by_letter(classes: List<SpectralClass>, code: String) -> SpectralClass? {
+  fold(classes, init: none, f: (acc, c) => {
+    let candidate_code = c.code as String
+    if candidate_code == code { Present { value: c } } else { acc }
+  })
 }
 
 fn classes_hot_to_cool_by_floor(classes: List<SpectralClass>) -> Bool {
