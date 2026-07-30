@@ -4,21 +4,21 @@ import v1.std.core {
   Node,
   ErrorNode,
   NewlineIndex,
-  ExprData,
-  ExprLiteral,
-  ExprCall,
+  empty_intern_table,
+  diagnostic_to_message,
+  is_error_diagnostic,
+  expr_call_func_at,
   TokenShape,
   ShCaret,
   ShIdent,
   ShLParen,
   ShEof,
-  empty_intern_table,
-  diagnostic_to_message,
-  is_error_diagnostic,
 }
+import v1.compiler.dag_collect_support { expr_data_variant }
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse {
   ParseContext,
+  TokenStream,
   token_stream_new,
   parse_caret_expr,
   parse_expr,
@@ -27,7 +27,7 @@ import v1.compiler.parse {
 import v1.compiler.compile { compile_sources, compile_to_resolved, SourceFile }
 import v1.compiler.artifact { Rust }
 
-data caret_parse_smoke_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren && cargo test -p v1-compiler caret_parse_smoke_native_compile_emit_witnesses"
+data caret_parse_smoke_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_paren_full_pipeline,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren && cargo test -p v1-compiler --lib caret_parse_smoke_native_compile_emit_witnesses"
 
 data caret_parse_smoke_dissolve_on: String = "DISSOLVE-ON: move this claim into normal discovery when v1 compiler claims are admitted under the regular witness source-root and cost budget; fold compile/emit rows back into claim_batch when v1.compile_sources is interpreter-runnable (same map_keys gap as probe_emit_interp.dag)."
 
@@ -115,24 +115,28 @@ fn caret_diagnostics_contain_pattern(diagnostics: List<ErrorNode>, pattern: Stri
   any(diagnostics, d => contains(diagnostic_to_message(d.diagnostic), pattern))
 }
 
-fn caret_expr_is_literal(expr: Node) -> Bool {
-  match expr.expr_data {
-    ExprLiteral { value: _ } => true
-    _ => false
-  }
+fn caret_token_stream_only_eof_remains(stream: TokenStream) -> Bool {
+  let remaining = stream.all |> skip(count: stream.pos)
+  all(remaining, t => t.shape == ShEof)
+}
+
+fn caret_expr_is_symbol_literal(expr: Node) -> Bool {
+  expr_data_variant(data: expr.expr_data) == "ExprLiteral"
 }
 
 fn caret_expr_is_discriminant_call(expr: Node) -> Bool {
-  match expr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } => expr.name == "discriminant"
-    _ => false
-  }
+  expr_data_variant(data: expr.expr_data) == "ExprCall"
+    && expr_call_func_at(texpr: expr, source_indices: empty_map()) == "discriminant"
 }
 
 test fn w_caret_tokenizes_as_sh_caret() -> Bool {
   let tokens = tokenize(source: "^foo", file: "test.dag")
   match tokens |> first {
-    Present { value: t } => t.shape == ShCaret
+    Present { value: t1 } =>
+      match tokens |> skip(count: 1) |> first {
+        Present { value: t2 } => t1.shape == ShCaret && t2.shape == ShIdent
+        Absent => false
+      }
     Absent => false
   }
 }
@@ -152,13 +156,21 @@ test fn w_caret_paren_tokenizes_as_caret_then_lparen() -> Bool {
 test fn w_parse_caret_ident_produces_literal() -> Bool {
   let tokens = tokenize(source: "^foo_tag", file: "test.dag")
   let r = parse_caret_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
-  r.err == none && caret_expr_is_literal(expr: r.expr)
+  r.err == none && caret_expr_is_symbol_literal(expr: r.expr)
 }
 
 test fn w_parse_caret_paren_produces_discriminant_call() -> Bool {
   let tokens = tokenize(source: "^(alpha)", file: "test.dag")
   let r = parse_caret_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none && caret_expr_is_discriminant_call(expr: r.expr)
+}
+
+test fn w_parse_expr_caret_paren_full_pipeline() -> Bool {
+  let tokens = tokenize(source: "^(alpha)", file: "test.dag")
+  let r = parse_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  r.err == none
+    && caret_token_stream_only_eof_remains(stream: r.tokens)
+    && caret_expr_is_discriminant_call(expr: r.expr)
 }
 
 test fn w_parse_expr_caret_var_arg_produces_discriminant_call() -> Bool {
@@ -181,23 +193,18 @@ fn w_compile_to_resolved_caret_probe5b_has_no_caret_function_error() -> Bool {
 }
 
 fn w_emit_caret_ident_symbol_literal() -> Bool {
-  let emitted = caret_compile_rust_emitted(
-    source: caret_source_file(path: "caret_emit_tag.dag", content: caret_emit_tag_source())
-  )
-  contains(emitted, "\"caret_emit_tag\"")
+  let source = caret_source_file(path: "caret_emit_tag.dag", content: caret_emit_tag_source())
+  caret_compile_rust_has_no_errors(source: source)
+    && contains(caret_compile_rust_emitted(source: source), "\"caret_emit_tag\"")
 }
 
 fn w_emit_caret_paren_discriminant_sugar() -> Bool {
-  let emitted = caret_compile_rust_emitted(
-    source: caret_source_file(path: "caret_emit_disc.dag", content: caret_emit_disc_source())
-  )
-  contains(emitted, "CaretAlpha")
+  let source = caret_source_file(path: "caret_emit_disc.dag", content: caret_emit_disc_source())
+  caret_compile_rust_has_no_errors(source: source)
+    && contains(caret_compile_rust_emitted(source: source), "CaretAlpha")
     && caret_diagnostics_contain_pattern(
-      diagnostics: compile_sources(
-        sources: [caret_source_file(path: "caret_emit_disc.dag", content: caret_emit_disc_source())],
-        target: Rust
-      ).diagnostics,
+      diagnostics: compile_sources(sources: [source], target: Rust).diagnostics,
       pattern: "function '^'"
     ) == false
-    && contains(emitted, "compile_error") == false
+    && contains(caret_compile_rust_emitted(source: source), "compile_error") == false
 }
