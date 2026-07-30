@@ -371,6 +371,51 @@ fn bmc_fan_duty_decision(
   }
 }
 
+fn bmc_fan_duty_decision_curve_duty(decision: BmcFanDutyDecision) -> Percent? {
+  match decision {
+    BmcFanDutyFromCurve { reading: _, duty: duty } => Present { value: duty }
+    BmcFanDutyFromSensorFailsafe { duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_duty_decision_sensor_failsafe_duty(
+  decision: BmcFanDutyDecision,
+) -> Percent? {
+  match decision {
+    BmcFanDutyFromSensorFailsafe { duty: duty } => Present { value: duty }
+    BmcFanDutyFromCurve { reading: _, duty: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_curve_duty_at_temperature(
+  curve: BmcFanCurve,
+  reading: Celsius,
+) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_curve_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Present { value: reading },
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
+fn bmc_fan_curve_sensor_unavailable_duty(curve: BmcFanCurve) -> Percent? {
+  match validate_bmc_fan_curve(curve: curve) {
+    BmcFanCurveValid { curve: validated } =>
+      bmc_fan_duty_decision_sensor_failsafe_duty(
+        decision: bmc_fan_duty_decision(
+          validated: validated,
+          reading: Absent,
+        ),
+      )
+    BmcFanCurveInvalid { cause: _ } => Absent
+  }
+}
+
 type BmcFanControllerShape
   = FanPidIndependentEntries { entry_names: List<NonEmptyStr> }
   | FanPidAggregatedEntry {
