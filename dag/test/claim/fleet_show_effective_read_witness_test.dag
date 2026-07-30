@@ -1,8 +1,8 @@
 module test.claim.fleet_show_effective_read_witness
 import std.types {
   Bool,
-  String,
   NonEmptyStr,
+  String,
 }
 import std.measure {
   byte_size_count,
@@ -10,20 +10,20 @@ import std.measure {
   percent_count,
 }
 import extdeps.systemd {
-  MemoryLimitUnbounded,
   MemoryLimitAbsent,
+  MemoryLimitUnbounded,
   parse_systemd_memory_limit_show,
   systemd_memory_max_property,
 }
 import extdeps.systemd.oomd {
-  parse_managed_oom_pressure_limit_show,
   managed_oom_pressure_limit_show_value,
   managed_oom_pressure_limit_wire_matches_percent,
+  parse_managed_oom_pressure_limit_show,
 }
 import gunbc.host_converge {
+  Drifted,
   PerSlotMemoryCap,
   VerdictConverged,
-  Drifted,
   gunbc_runner_per_slot_dropin_path,
   runner_instance_glob,
 }
@@ -32,8 +32,8 @@ import gunbc.fleet_host_budget {
   gunbc_runner_pool_budget,
 }
 import gunbc.ci_floor_measurement {
-  gunbc_ci_runner_cgroup_memory_cap,
   CapUnbounded,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
@@ -42,34 +42,34 @@ import gunbc.fleet_intent_network {
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
 import gunbc.fleet_show_effective_read {
   RunnerSliceCapLiveReadRow,
-  gunbc_srv1_runner_slice_cap_fixture_row,
-  gunbc_srv2_runner_slice_cap_fixture_row,
-  gunbc_srv1_runner_width_fixture_row,
-  gunbc_srv2_runner_width_fixture_row,
-  gunbc_srv1_oom_pressure_limit_fixture_row,
+  fixture_srv1_host_effective_read_grounded_receipt,
+  fixture_srv2_host_effective_read_grounded_receipt,
+  fleet_receipt_lists_unit,
+  fleet_receipt_unit_count,
+  grounded_receipt_has_observed_v0_knobs,
+  gunbc_fleet_host_effective_read_show_effective_read,
   gunbc_fleet_runner_slice_cap_show_effective_read,
   gunbc_fleet_runner_units_show_effective_read,
   gunbc_fleet_runner_width_show_effective_read,
-  gunbc_fleet_host_effective_read_show_effective_read,
-  runner_slice_cap_live_read_typed,
-  slice_property_memory_max_verdict,
-  parse_runner_width_active_count,
-  runner_width_live_read_typed,
-  runner_width_converge_verdict,
-  oom_pressure_limit_live_read_typed,
+  gunbc_srv1_oom_pressure_limit_fixture_row,
+  gunbc_srv1_runner_slice_cap_fixture_row,
+  gunbc_srv1_runner_width_fixture_row,
+  gunbc_srv2_runner_slice_cap_fixture_row,
+  gunbc_srv2_runner_width_fixture_row,
   oom_pressure_limit_converge_verdict,
-  show_effective_read_from_slice_cap_row,
+  oom_pressure_limit_live_read_typed,
+  parse_runner_width_active_count,
+  runner_slice_cap_live_read_typed,
+  runner_width_converge_verdict,
+  runner_width_live_read_typed,
   show_effective_read_cannot_converge,
-  fixture_srv1_host_effective_read_grounded_receipt,
-  fixture_srv2_host_effective_read_grounded_receipt,
-  fleet_receipt_unit_count,
-  fleet_receipt_lists_unit,
-  grounded_receipt_has_observed_v0_knobs,
+  show_effective_read_from_slice_cap_row,
+  slice_property_memory_max_verdict,
 }
 import gunbc.runner_unit_live_read {
-  runner_unit_live_read_typed,
   converge_target_live_verdict,
   gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
 }
 import gunbc.runner_slot_enforcement {
   RunnerSlotEnforced,
@@ -83,6 +83,11 @@ import std.realization_reconcile {
 import v2.std.live_tree {
   LiveTreeDisposition,
   SubstrateInputsOnly,
+}
+import gunbc.systemctl_show_read {
+  systemctl_show_property_operation_argv,
+  systemctl_show_property_operation_argv_matches_transport,
+  systemctl_show_property_read_local,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

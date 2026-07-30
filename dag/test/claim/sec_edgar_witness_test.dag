@@ -1,5 +1,4 @@
 module test.claim.sec_edgar_witness
-
 import extdeps.sec.facts {
   derive_gross_margin_ratio_from_facts,
   filed_amount,
@@ -15,6 +14,7 @@ import extdeps.sec.issuer.gitlab_facts {
 }
 import extdeps.sec.issuer.gitlab { gitlab_cik }
 import extdeps.sec.edgar { cik_padded_digits }
+import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

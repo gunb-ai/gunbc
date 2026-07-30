@@ -1,5 +1,4 @@
 module test.claim.sec_edgar_rollins_chemed_witness
-
 import extdeps.sec.facts {
   FiledMonetaryFact,
   derive_gross_margin_ratio_from_facts,
@@ -19,6 +18,7 @@ import extdeps.sec.issuer.chemed_facts {
 }
 import extdeps.sec.issuer.chemed { chemed_cik }
 import extdeps.sec.edgar { cik_padded_digits }
+import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

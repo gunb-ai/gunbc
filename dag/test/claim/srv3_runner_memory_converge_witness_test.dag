@@ -1,4 +1,46 @@
 module test.claim.srv3_runner_memory_converge_witness
+import gunbc.host_converge {
+  ConvergeKnob,
+  HostConverge,
+  PerSlotMemoryCap,
+  converge_apply_mode_label,
+  gunbc_apply_mode_for_host,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  legacy_converge_knob,
+  runner_instance_glob,
+}
+import v2.std.live_tree { LiveTreeDisposition }
+import std.measure {
+  byte_size,
+  byte_size_count,
+}
+import gunbc.host_converge_slice1 {
+  converge_knob_by_name,
+  host_converge_from_policy,
+}
+import gunbc.runner_slot_allocation {
+  gunbc_committed_host_runner_slot_allocation,
+  gunbc_runner_slot_desired,
+}
+import gunbc.runner_unit_live_read {
+  gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
+}
+import gunbc.host_runner_memory_provision {
+  host_runner_memory_provision_scope_binds_realize_frontier,
+  provision_runner_memory_caps_routes_through_host_effect_apply,
+  runner_memory_cap_readback_verdict,
+  runner_memory_host_converge,
+  runner_memory_knob_apply_interpreted,
+  runner_memory_knobs_from,
+}
+import gunbc.host_standup { host_standup_fleet_converge_policy }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import extdeps.systemd {
+  systemd_memory_high_property,
+  systemd_memory_max_property,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

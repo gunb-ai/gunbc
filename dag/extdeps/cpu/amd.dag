@@ -1,11 +1,11 @@
 module extdeps.cpu.amd
 import extdeps.cpu.types {
+  CacheGeometryCitation,
+  CpuFacts,
   CpuL1CacheGeometry,
   CpuL2CacheGeometry,
   CpuL3CacheGeometry,
-  CacheGeometryCitation,
   CpuModelCatalogRow,
-  CpuFacts,
   CpuSocket,
   PinGridArray,
 }
@@ -17,9 +17,10 @@ import std.measure {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri {
-  Uri,
   Https,
+  Uri,
 }
+import extdeps.vendor.amd { amd }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

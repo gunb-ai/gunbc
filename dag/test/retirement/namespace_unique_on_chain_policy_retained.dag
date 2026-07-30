@@ -1,5 +1,8 @@
 module test.retirement.namespace_unique_on_chain_policy_retained
-
+import test.retirement.model {
+  RetainedNonMigratable,
+  TestModuleRetirement,
+}
 
 data namespace_unique_on_chain_policy_retention: TestModuleRetirement = TestModuleRetirement {
   module: "namespace_unique_on_chain_policy_test.rs",

@@ -1,4 +1,39 @@
 module test.claim.host_phase_status
+import std.decl_ref { DeclarationRef }
+import gunbc.host_standup {
+  DeclaredGap,
+  ModeledCompose,
+  PhaseDisposition,
+  host_standup_gap_phase_count,
+  host_standup_spine,
+}
+import product.placement_supply { HostIdentity }
+import gunbc.host_phase_status {
+  HostPhaseCell,
+  HostPhaseCellStatus,
+  fleet_subsumption_hosts,
+  host_fleet_phase_matrix,
+  host_phase_cell_has_live_producer,
+  host_phase_cell_is_converged,
+  host_phase_cell_is_modeled,
+  host_phase_finished_cell_count,
+  host_phase_observation_coverage_count,
+  host_phase_reconcile,
+  host_phase_remaining_work_count,
+  host_phase_unmodeled_count,
+  host_phase_verdict_absorbing_fallback_widen_sketch,
+  host_phase_verdict_from,
+  host_phase_verdict_gate_accepts,
+  observation_verdict_eq,
+}
+import v2.std.live_tree { LiveTreeDisposition }
+import std.upsert_decision { ObservationVerdict }
+import gunbc.membership_reconcile {
+  membership_refusal_count,
+  membership_teardown_count,
+  membership_upsert_count,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

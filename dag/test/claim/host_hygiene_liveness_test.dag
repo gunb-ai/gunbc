@@ -1,4 +1,19 @@
 module test.claim.host_hygiene_liveness
+import gunbc.host_hygiene_liveness {
+  ListeningNeverSeen,
+  ListeningObserved,
+  SlotListeningObservation,
+  fleet_green_from_listening,
+  ground_fleet_listening,
+  slot_listening_verdict,
+}
+import v2.std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
+import std.measure {
+  Second,
+  second,
+}
+import gunbc.host_hygiene_liveness_script { host_hygiene_liveness_reads_listening_for_jobs_line }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
