@@ -1,23 +1,24 @@
 module test.claim.domain_name_parse
-
-import std.logic { Bool }
-import std.error_primitives { Ok, Err }
+import std.bit { Bool }
+import std.error_primitives {
+  Ok,
+  Err,
+}
 import extdeps.dns.domain_name {
   parse_host_name,
   host_name_eq,
   host_name_label_count,
-  FullyQualified,
   PartiallyQualified,
-  EmptyName,
   LabelTooLong,
   NameTooLong,
   BadLabelChar,
   EdgeHyphen,
-  Ok,
-  Err,
 }
-import std.render { repeat_string }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.render_repeat_string_bootstrap { repeat_string }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

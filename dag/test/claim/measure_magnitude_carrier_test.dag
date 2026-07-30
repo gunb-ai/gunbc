@@ -1,5 +1,4 @@
 module test.claim.measure_magnitude_carrier
-
 import std.measure {
   Measure,
   ByteSize,
@@ -19,8 +18,11 @@ import std.measure {
   money_amount_micro_count,
 }
 import std.types { Int }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.bit { Bool }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

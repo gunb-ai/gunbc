@@ -1,6 +1,10 @@
 module product.hardware_selection
-
-import std.types { Int, NonEmptyStr, Bool, List }
+import std.types {
+  Int,
+  NonEmptyStr,
+  Bool,
+  List,
+}
 import std.nat { Nat }
 import std.measure {
   Measure,
@@ -20,8 +24,17 @@ import std.measure {
   money_amount_micro,
   money_amount_micro_count,
 }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
-import extdeps.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width, JedecDdrGenerationCatalogRow }
+import extdeps.cpu.types {
+  CpuModelCatalogRow,
+  CpuSocket,
+}
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  dram_chips_per_rank,
+  dram_module_is_realizable,
+  dram_data_word_width,
+  JedecDdrGenerationCatalogRow,
+}
 import std.pareto {
   AxisComparison,
   DominanceVerdict,
@@ -30,7 +43,7 @@ import std.pareto {
   axis_comparison_int,
   dominance_of_comparisons,
   verdict_dominates,
-  on_pareto_front
+  on_pareto_front,
 }
 
 type Milliwatt = Measure<Power, Milli, std.nat.Nat>

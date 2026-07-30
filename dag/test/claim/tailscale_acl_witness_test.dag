@@ -1,5 +1,4 @@
 module test.claim.tailscale_acl_witness
-
 import extdeps.tailscale.acl {
   operator_tailscale_acl_policy,
   tag_ci,
@@ -15,8 +14,11 @@ import extdeps.tailscale.acl {
   tailscale_grants_external_authority_holds,
 }
 import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.extdeps.file_system { Filesystem }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

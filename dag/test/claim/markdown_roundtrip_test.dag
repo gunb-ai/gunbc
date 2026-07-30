@@ -1,5 +1,4 @@
 module test.claim.markdown_roundtrip
-
 import std.markdown {
   MarkdownDocument,
   MarkdownListItem,
@@ -26,8 +25,14 @@ import extdeps.languages.markdown {
   ingest_markdown_source_with,
   markdown_medium_lossless,
 }
-import extdeps.communication.medium { Lossless, Lossy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.communication.medium {
+  Lossless,
+  Lossy,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,7 +1,13 @@
 module test.claim.host_standup_assimilation_deduction
-
-import std.types { Bool, List }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.types {
+  Bool,
+  List,
+}
+import std.measure {
+  Millisecond,
+  millisecond,
+  millisecond_count,
+}
 import std.upsert_decision {
   Converged,
   Absent,
@@ -18,7 +24,7 @@ import std.temporal_effect {
   StallBudgetExceeded,
   stall_budget_verdict,
 }
-import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
+import extdeps.bmc.types { BootOverrideModeUefi }
 import gunbc.os_install_deduction { SubiquityStorageScreen }
 import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
 import gunbc.host_standup_assimilation_deduction {
@@ -56,7 +62,10 @@ import gunbc.host_standup {
   Assimilation,
   HostIdentityConverge,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

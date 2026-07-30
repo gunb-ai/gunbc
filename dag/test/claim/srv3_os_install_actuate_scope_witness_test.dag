@@ -1,6 +1,5 @@
 module test.claim.srv3_os_install_actuate_scope
-
-import std.logic { Bool }
+import std.bit { Bool }
 import gunbc.srv3_os_install_actuate_scope {
   srv3_autoinstall_seed_delivery_refusal,
   srv3_autoinstall_seed_gap_is_fail_closed,
@@ -11,7 +10,10 @@ import gunbc.srv3_os_install_actuate_scope {
   srv3_os_install_actuate_is_actuator_prep_not_install_solved,
 }
 import gunbc.os_install { fleet_install_server_specs }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

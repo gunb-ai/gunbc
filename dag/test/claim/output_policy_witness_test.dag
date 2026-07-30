@@ -1,5 +1,4 @@
 module test.claim.output_policy_witness
-
 import gunbc.output_policy {
   ChannelPolicy,
   ClaimResult,
@@ -20,9 +19,12 @@ import gunbc.output_policy {
   env_var_for,
   resolve_channel_policy,
   resolve_verbosity,
-  shell_trace_summary_max_columns
+  shell_trace_summary_max_columns,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

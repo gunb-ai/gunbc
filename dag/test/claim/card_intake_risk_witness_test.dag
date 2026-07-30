@@ -1,5 +1,4 @@
 module test.claim.card_intake_risk_witness
-
 import extdeps.tcgplayer.catalog {
   CardCondition,
   NearMint,
@@ -22,7 +21,10 @@ import gunbc.tools.card_intake {
   classify_catalog_match,
   assess_intake,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

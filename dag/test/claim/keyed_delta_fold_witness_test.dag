@@ -1,6 +1,9 @@
 module test.claim.keyed_delta_fold_witness
-
-import std.types { Bool, String, List }
+import std.types {
+  Bool,
+  String,
+  List,
+}
 import std.change {
   KeyedRow,
   KeyedPatch,
@@ -30,7 +33,10 @@ import std.change {
   keyed_rows_snapshot_equal,
   keyed_patch_hunk_count,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

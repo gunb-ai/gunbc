@@ -1,15 +1,17 @@
 module test.claim.fleet_show_effective_read_witness
 import std.types {
   Bool,
+  String,
   NonEmptyStr,
 }
-import std.string_type { String }
 import std.measure {
   byte_size_count,
   percent,
   percent_count,
 }
 import extdeps.systemd {
+  MemoryLimitUnbounded,
+  MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
   systemd_memory_max_property,
 }
@@ -19,6 +21,9 @@ import extdeps.systemd.oomd {
   managed_oom_pressure_limit_wire_matches_percent,
 }
 import gunbc.host_converge {
+  PerSlotMemoryCap,
+  VerdictConverged,
+  Drifted,
   gunbc_runner_per_slot_dropin_path,
   runner_instance_glob,
 }
@@ -26,7 +31,10 @@ import gunbc.fleet_host_budget {
   declared_runner_count,
   gunbc_runner_pool_budget,
 }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
+  CapUnbounded,
+}
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -63,8 +71,19 @@ import gunbc.runner_unit_live_read {
   converge_target_live_verdict,
   gunbc_srv1_runner_unit_live_read_fixture,
 }
-import gunbc.runner_slot_enforcement { gunbc_runner_slot_enforcement_committed }
-import v2.std.live_tree { LiveTreeDisposition }
+import gunbc.runner_slot_enforcement {
+  RunnerSlotEnforced,
+  RunnerSlotUnenforced,
+  gunbc_runner_slot_enforcement_committed,
+}
+import std.realization_reconcile {
+  ReadAbsent,
+  ReadObserved,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

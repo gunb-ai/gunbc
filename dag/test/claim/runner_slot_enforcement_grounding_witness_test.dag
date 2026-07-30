@@ -1,7 +1,14 @@
 module test.claim.runner_slot_enforcement_grounding_witness
-
-import std.types { Bool, NonEmptyStr, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.types {
+  Bool,
+  NonEmptyStr,
+  String,
+}
+import std.measure {
+  ByteSize,
+  byte_size,
+  byte_size_count,
+}
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -11,6 +18,7 @@ import gunbc.ci_floor_measurement {
   RunnerSliceCapEffectiveness,
   CapEffective,
   CapUnbounded,
+  gunbc_ci_runner_cgroup_memory_cap,
 }
 import gunbc.runner_slot_enforcement {
   RunnerSlotEnforcement,
@@ -31,9 +39,11 @@ import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_enforcement_expected_cap }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import gunbc.fleet_show_effective_read { gunbc_fleet_runner_slice_cap_show_effective_read }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

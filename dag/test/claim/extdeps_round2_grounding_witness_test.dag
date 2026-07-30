@@ -1,5 +1,4 @@
 module test.claim.extdeps_round2_grounding_witness
-
 import extdeps.sql.migration {
   SqlDialect,
   Postgres,
@@ -9,13 +8,7 @@ import extdeps.sql.migration {
   CreateTable,
   sql_dialect_wire_label,
 }
-import extdeps.http.server {
-  HttpContentType,
-  TextHtmlUtf8,
-  TextPlainUtf8,
-  http_content_type_wire_label,
-  ServedStaticRoute,
-}
+import extdeps.http.server { ServedStaticRoute }
 import extdeps.cloud.cloud {
   CloudAuthScheme,
   SigV4,
@@ -68,7 +61,10 @@ import extdeps.vendor.ampere { ampere }
 import std.http_path { PathTemplate }
 import std.measure { byte_size }
 import std.types { GET }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

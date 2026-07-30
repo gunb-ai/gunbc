@@ -1,5 +1,4 @@
 module test.claim.markdown_source_emit
-
 import std.markdown {
   MarkdownDocument,
   MarkdownListItem,
@@ -31,7 +30,10 @@ import extdeps.languages.markdown {
   serialize_markdown_source,
   serialize_markdown_source_with,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,4 @@
 module test.claim.cache_purity_verdict
-
 import extdeps.realization.cache_purity {
   CachePurityViolation,
   Pure,
@@ -7,7 +6,10 @@ import extdeps.realization.cache_purity {
   cache_purity_verdict,
 }
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

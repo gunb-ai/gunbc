@@ -1,9 +1,21 @@
 module gunbc.tools.card_intake
-
-import std.types { FilePath, NonEmptyStr }
-import std.credentials { CredentialSource, EnvVar }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types {
+  FilePath,
+  NonEmptyStr,
+}
+import std.credentials {
+  CredentialSource,
+  EnvVar,
+}
+import std.disposition {
+  Disposition,
+  Scaffold,
+  SingleAuthority,
+}
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
 import extdeps.llm.anthropic {
   AnthropicChatMessage,
   UserMessage,
@@ -12,8 +24,9 @@ import extdeps.llm.anthropic {
   ImageSource,
   Base64Image,
   AnthropicImageMediaType,
-  ImageJpeg
+  ImageJpeg,
 }
+
 import extdeps.llm.anthropic_rest
 import extdeps.filesystem.filesystem_io
 import extdeps.tcgplayer.tcgplayer

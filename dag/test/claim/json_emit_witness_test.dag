@@ -1,5 +1,4 @@
 module test.claim.json_emit_witness
-
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.emit {
   extdeps_external_authority_anchor,
@@ -24,7 +23,10 @@ import extdeps.languages.json.grammar {
   json_number_lexeme,
   json_int_lexeme,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

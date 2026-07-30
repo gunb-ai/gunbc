@@ -1,6 +1,9 @@
 module gunbc.file_access
-
-import std.types { String, NonEmptyStr, Bool }
+import std.types {
+  String,
+  NonEmptyStr,
+  Bool,
+}
 import std.upsert_decision {
   ObservationVerdict,
   Converged,

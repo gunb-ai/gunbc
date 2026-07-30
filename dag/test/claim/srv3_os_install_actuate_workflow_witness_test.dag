@@ -1,6 +1,5 @@
 module test.claim.srv3_os_install_actuate_workflow
-
-import std.logic { Bool }
+import std.bit { Bool }
 import gunbc.srv3_os_install_actuate_workflow {
   srv3_boot_once_cd_escalation,
   srv3_boot_once_cd_default_approval,
@@ -9,8 +8,14 @@ import gunbc.srv3_os_install_actuate_workflow {
   srv3_os_install_actuate_workflow_includes_operator_approval_before_boot,
   srv3_os_install_actuate_workflow_credential_intent_is_declared,
 }
-import gunbc.workflow_escalation { PendingApproval, ApprovalGranted }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.workflow_escalation {
+  PendingApproval,
+  ApprovalGranted,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -9,7 +9,10 @@ import std.measure {
   measure_count,
 }
 import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

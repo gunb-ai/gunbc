@@ -1,17 +1,22 @@
 module test.claim.bmc_onboarding_lifecycle
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.types { Int }
-import std.credentials { Stored, Chained }
-import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
+import std.credentials {
+  Stored,
+  Chained,
+}
+import std.os.types {
+  UbuntuOs,
+  WindowsOs,
+  MacosOs,
+  NobleNumbat2404Lts,
+}
 import gunbc.bmc_onboarding {
   BmcOnboardingPhase,
-  FactoryDefault,
   CredentialsRotated,
   OsInstalled,
   FabricJoined,
   BmcCredentialPosture,
-  FactoryPublished,
   RotatedSecretManaged,
   KeylessFederated,
   bmc_onboarding_next_phase,
@@ -30,17 +35,26 @@ import gunbc.bmc_onboarding {
   bmc_lifecycle_length,
   bmc_plan_steady_state_phase,
   bmc_plan_steady_state_posture,
-  new_altra_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
   CredentialStateUnknown,
   bmc_credential_probe_to_phase,
 }
-import extdeps.bmc.types { BootTargetCd, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
+import extdeps.bmc.types {
+  BootTargetCd,
+  redfish_boot_target_wire,
+  redfish_account_role_wire,
+}
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
-import extdeps.communication.medium { Lossless, Lossy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.communication.medium {
+  Lossless,
+  Lossy,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,8 @@
 module test.claim.realize_kernel
-
-import std.types { Bool, ContentHash }
+import std.types {
+  Bool,
+  ContentHash,
+}
 import std.cache_identity {
   CacheInterfaceId,
   ArtifactKindId,
@@ -30,7 +32,10 @@ import std.cache_interface {
   realize_route,
   classify_write,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

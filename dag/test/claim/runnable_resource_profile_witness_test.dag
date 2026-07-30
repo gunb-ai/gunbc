@@ -1,5 +1,4 @@
 module test.claim.runnable_resource_profile
-
 import std.realization_schedule {
   SelectionOff,
   Runnable,
@@ -14,9 +13,19 @@ import std.realization_schedule {
   runnable_forbids_corpus_co_residence,
   runnable_heavy_whole_tree_resolve,
 }
-import std.execution_mode { Hermetic, Wet, execution_mode_eq }
-import std.measure { byte_size, byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.execution_mode {
+  Hermetic,
+  Wet,
+  execution_mode_eq,
+}
+import std.measure {
+  byte_size,
+  byte_size_count,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

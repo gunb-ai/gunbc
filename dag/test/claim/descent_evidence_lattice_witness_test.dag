@@ -1,17 +1,10 @@
 module test.claim.descent_evidence_lattice
-
-import std.logic { Bool }
-import std.termination {
-  DescentEvidence
-  Strict
-  NonIncreasing
-  DescentUnknown
-  evidence_rank
-  descent_evidence_lattice_meet
-  descent_evidence_lattice_join
-  promote_to_strict
+import std.bit { Bool }
+import std.termination { DescentEvidence }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

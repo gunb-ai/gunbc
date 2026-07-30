@@ -1,5 +1,4 @@
 module test.claim.python_pep440_version_witness
-
 import std.algebra { Ordering }
 import extdeps.version.pep440 {
   Pep440Alpha,
@@ -20,7 +19,10 @@ import extdeps.version.pep440 {
   pep440_spec_label,
   min_python_interpreter,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

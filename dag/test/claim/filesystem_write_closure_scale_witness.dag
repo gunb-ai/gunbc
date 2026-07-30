@@ -1,7 +1,8 @@
 module test.claim.filesystem_write_closure_scale_witness
+import std.resources { ResourceHandle }
 
 import extdeps.filesystem.filesystem_io
-import std.resources { ResourceHandle }
+
 
 data filesystem_write_closure_scale_anchor: ResourceHandle = ResourceHandle {
   type: "filesystem",

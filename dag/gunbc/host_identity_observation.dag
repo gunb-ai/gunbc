@@ -1,16 +1,25 @@
 module gunbc.host_identity_observation
-
-import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types {
+  String,
+  NonEmptyStr,
+  Bool,
+}
+import std.disposition {
+  Disposition,
+  Terminal,
+  Scaffold,
+  SingleAuthority,
+}
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
 import gunbc.host_effect {
-  ShellCommand,
   NodeControlPlane,
   host_effect_read_evidence,
   HostEffectTransport,
   HostEffectIntent,
   HostEffectEvidence,
-  ShellEffectApplied,
   ConvergePlanApplied,
 }
 import gunbc.host_effect_realize { host_effect_apply }

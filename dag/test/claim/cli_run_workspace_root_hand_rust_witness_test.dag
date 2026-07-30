@@ -1,5 +1,4 @@
 module test.claim.cli_run_workspace_root_hand_rust_witness
-
 import gunbc.cli_run_workspace_root_scaffold {
   cli_run_workspace_root_discovery_scaffold,
   cli_run_workspace_root_discovery_dissolve_trigger,
@@ -14,7 +13,10 @@ import gunbc.cli_run_workspace_root_scaffold {
   cli_run_source_root_anchor_test_discriminator_present_root,
   cli_run_source_root_anchor_test_discriminator_absent_root,
 }
-import std.disposition { Scaffold, SingleAuthority }
+import std.disposition {
+  Scaffold,
+  SingleAuthority,
+}
 
 test fn workspace_root_hand_rust_scaffold_is_seed_retained() -> Bool {
   match cli_run_workspace_root_discovery_scaffold {

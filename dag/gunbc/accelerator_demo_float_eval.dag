@@ -1,6 +1,6 @@
 module gunbc.accelerator_demo_float_eval
-
-import std.types { Float, List }
+import std.float { Float }
+import std.types { List }
 import gunbc.accelerator_demo_program {
   AcceleratorDemoProgram,
   PureElementwiseMap,

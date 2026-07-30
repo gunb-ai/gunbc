@@ -1,8 +1,18 @@
 module gunbc.host_converge_delta
-
-import std.types { String, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types {
+  String,
+  List,
+  Bool,
+}
+import std.disposition {
+  Disposition,
+  Scaffold,
+  SingleAuthority,
+}
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
 import std.change {
   KeyedRow,
   KeyedPatch,

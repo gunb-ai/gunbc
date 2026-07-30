@@ -1,18 +1,33 @@
 module gunbc.host_identity_assimilation
-
-import std.types { String, NonEmptyStr, Bool, ContentHash }
-import std.disposition { Disposition, Terminal }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types {
+  String,
+  NonEmptyStr,
+  Bool,
+  ContentHash,
+}
+import std.disposition {
+  Disposition,
+  Terminal,
+}
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
 import std.content_hash { content_hash_atom }
-import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
 import extdeps.dns.domain_name { DnsLabel }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_intent {
+  ComputeHost,
+  srv1_host,
+  srv2_host,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+}
 import gunbc.host_effect {
   NodeControlPlane,
-  HostOs,
   HostEffectTransport,
 }
 import gunbc.host_identity_knob {
@@ -20,7 +35,10 @@ import gunbc.host_identity_knob {
   HostIdentityLeafVerdict,
   host_identity_knob_key,
 }
-import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
+import std.change {
+  KeyedLeafVerdictFold,
+  keyed_leaf_verdict_fold,
+}
 import gunbc.host_identity_observation {
   HostIdentityObservation,
   host_identity_observation_nonempty,
@@ -54,8 +72,17 @@ import gunbc.host_identity_converge {
   host_identity_read_back_matches,
   host_identity_apply_converged,
 }
-import gunbc.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
-import gunbc.ci_deploy_access { DeployAccess, DeployAccessActor }
+import gunbc.host_identity_access {
+  host_identity_srv1_access,
+  host_identity_srv2_access,
+}
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+}
+
+import extdeps.shell
+
 
 type HostIdentityAssimilationTarget {
   fleet_slot: HostIdentity

@@ -1,6 +1,8 @@
 module test.claim.react_jsx_emit
-
-import gunbc.gunbhub_serve { gunbhub_browse_page, gunbhub_hostile_page }
+import gunbc.gunbhub_serve {
+  gunbhub_browse_page,
+  gunbhub_hostile_page,
+}
 import extdeps.languages.react_jsx {
   serialize_jsx_component,
   try_serialize_jsx_component,
@@ -8,8 +10,10 @@ import extdeps.languages.react_jsx {
   JsxOk,
   JsxRejected,
 }
-import std.markup { ElementNode, TextNode, MarkupAttr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

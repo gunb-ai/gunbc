@@ -1,16 +1,15 @@
 module test.claim.cr1000a_dhcp_lease_naming
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.types { NonEmptyStr }
 import extdeps.dhcp.v4 {
   MacAddress,
-  Ipv4Address,
   DynamicDhcpLease,
   StaticDhcpReservation,
-  Active,
   dhcp_lease_remaining_from_cited_minutes,
   dhcp_lease_remaining_cited_minutes,
 }
+import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.systemd { Active }
 import extdeps.dns.domain_name {
   HostName,
   DomainName,
@@ -22,7 +21,10 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_catalog,
 }
 import extdeps.vendor.verizon { verizon }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,8 @@
 module gunbc.accelerator_demo_eval
-
-import std.types { Int, List }
+import std.types {
+  Int,
+  List,
+}
 import std.realization_width { int_max }
 import gunbc.accelerator_demo_program {
   AcceleratorDemoProgram,

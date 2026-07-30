@@ -1,5 +1,4 @@
 module examples.gunbhub_serve_program
-
 import gunbc.gunbhub_serve {
   GunbhubServeRequest,
   GunbhubServeResult,
@@ -18,7 +17,11 @@ import extdeps.languages.html {
   EmitRejected,
 }
 import std.types { GET }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  ExitFailure,
+}
 import extdeps.process.posix_exit { exit_code_general_error }
 
 fn wa_unknown_path_is_not_found() -> Bool {

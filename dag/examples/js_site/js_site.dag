@@ -1,5 +1,4 @@
 module examples.js_site
-
 import std.markup {
   Fragment,
   Element,

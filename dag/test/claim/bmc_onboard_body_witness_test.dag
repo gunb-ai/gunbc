@@ -1,6 +1,5 @@
 module test.claim.bmc_onboard_body_witness
-
-import std.logic { Bool }
+import std.bit { Bool }
 import gunbc.tools.bmc_onboard {
   netrc_content,
   account_password_body,
@@ -8,7 +7,10 @@ import gunbc.tools.bmc_onboard {
   reset_body,
   gcp_secret_full_name,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

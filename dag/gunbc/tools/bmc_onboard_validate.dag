@@ -1,10 +1,17 @@
 module gunbc.tools.bmc_onboard_validate
+import std.types {
+  NonEmptyStr,
+  Secret,
+}
+import std.cache_interface { Network }
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
 
 import extdeps.bmc.http
-import gunbc.bmc_onboarding { new_altra_onboarding_plan }
-import std.types { NonEmptyStr, Secret }
-import std.resources { Network }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+
 
 func bmc_onboard_validate() -> ProcessExit
   uses net: std.resources.Network

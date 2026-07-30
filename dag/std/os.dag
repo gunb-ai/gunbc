@@ -1,5 +1,4 @@
 module std.os
-
 import std.os.types {
   Apfs,
   Darwin,

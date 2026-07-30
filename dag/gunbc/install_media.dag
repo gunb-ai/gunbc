@@ -1,6 +1,8 @@
 module gunbc.install_media
-
-import std.types { String, NonEmptyStr }
+import std.types {
+  String,
+  NonEmptyStr,
+}
 import std.upsert_decision {
   ObservationVerdict,
   Converged,

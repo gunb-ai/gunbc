@@ -1,15 +1,19 @@
 module test.claim.os_install_deduction
-
-import std.types { Bool, NonEmptyStr }
+import std.types {
+  Bool,
+  NonEmptyStr,
+}
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
   NoCloudLocal,
-  NoCloudNet,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
 }
-import extdeps.uri { Uri, Https }
+import extdeps.uri {
+  Uri,
+  Https,
+}
 import gunbc.os_install {
   srv3_ubuntu_autoinstall_on_iso,
   srv3_autoinstall_identity,
@@ -43,7 +47,10 @@ import gunbc.os_install_deduction {
   runtime_verdict_from_kvm_attestation,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

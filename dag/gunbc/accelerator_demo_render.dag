@@ -1,7 +1,14 @@
 module gunbc.accelerator_demo_render
-
-import std.types { String, Int, NonEmptyStr, List }
-import std.render { kv_pair, list_block }
+import std.types {
+  String,
+  Int,
+  NonEmptyStr,
+  List,
+}
+import std.render {
+  kv_pair,
+  list_block,
+}
 import std.realization {
   Placement,
   LocalAccelerator,
@@ -18,7 +25,11 @@ import std.numerical_contract {
   float_contract,
   integer_exact_contract,
 }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+}
 import gunbc.accelerator_demo_plan {
   AcceleratorRecognitionOutcome,
   AcceleratorRefusalReason,

@@ -1,5 +1,4 @@
 module test.claim.tailscale_acl_phase2_design_witness
-
 import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_ephemeral_token_secret_id,
   tailscale_acl_ephemeral_lifetime,
@@ -33,7 +32,10 @@ import gunbc.tailscale_acl_phase2_credential {
   TokenAbsent,
   TokenExpired,
 }
-import gunbc.fleet_posix_accounts { fleet_operator_gcp_iam_member, fleet_operator_email }
+import gunbc.fleet_posix_accounts {
+  fleet_operator_gcp_iam_member,
+  fleet_operator_email,
+}
 import gunbc.assimilate.bmc_token_federation {
   SecretAccessBinding,
   bmc_secrets_project_id,
@@ -43,10 +45,19 @@ import gunbc.assimilate.bmc_token_federation {
 }
 import extdeps.cloud.gcp.gcp { AdcRefresh }
 import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
-import std.disposition { Scaffold, SingleAuthority }
-import std.measure { second, second_count }
+import std.disposition {
+  Scaffold,
+  SingleAuthority,
+}
+import std.measure {
+  second,
+  second_count,
+}
 import std.types { Secret }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

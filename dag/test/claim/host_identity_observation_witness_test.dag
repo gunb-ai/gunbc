@@ -1,22 +1,35 @@
 module test.claim.host_identity_observation_witness
-
-import std.types { Bool, String, NonEmptyStr }
-import gunbc.fleet_intent { srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
-import std.error_primitives { Ok, Err }
+import std.types {
+  Bool,
+  String,
+  NonEmptyStr,
+}
+import gunbc.fleet_intent {
+  srv1_host,
+  srv2_host,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+}
+import extdeps.dns.domain_name {
+  DnsLabel,
+  parse_dns_label_raw,
+}
+import std.error_primitives {
+  Ok,
+  Err,
+}
 import gunbc.host_effect {
   NodeControlPlane,
-  HostOs,
-  LocalShell,
-  ShellCommand,
   host_effect_identity_evidence,
+  SshShell,
+  EmitArtifactThenThinRun,
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { reconciliation_converged }
 import gunbc.host_identity_observation {
   HostIdentityObservationRow,
-  host_identity_short_hostname_script,
   gunbc_srv1_host_identity_observation_fixture_row,
   gunbc_srv2_host_identity_observation_fixture_row,
   host_identity_observation_from_stdout,
@@ -68,8 +81,10 @@ import gunbc.host_identity_assimilation {
 }
 import gunbc.host_identity_access { host_identity_srv1_access }
 import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
-import gunbc.host_effect { SshShell, EmitArtifactThenThinRun }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

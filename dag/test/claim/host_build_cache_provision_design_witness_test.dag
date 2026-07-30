@@ -1,9 +1,11 @@
 module test.claim.host_build_cache_provision_design
-
-import std.logic { Bool }
+import std.bit { Bool }
 import extdeps.cache.sccache { sccache_local_id }
 import extdeps.cache.github_actions { gha_actions_cache_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 import gunbc.host_effect { ProvisionBuildCache }
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,

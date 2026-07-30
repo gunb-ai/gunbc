@@ -8,7 +8,16 @@ import std.cache_identity {
   typed_module_artifact_kind,
   resolved_graph_artifact_kind,
 }
-import std.cache_interface { ArtifactIdentity }
+import std.cache_interface {
+  ArtifactIdentity,
+  HandAuthoredString,
+  NativeInternalHash,
+  ContentAddressedByValue,
+  PerHostFilesystem,
+  InProcess,
+  StructuredArtifact,
+  MissThenCreate,
+}
 import extdeps.cache {
   cache_interface_facts_from_catalog,
   cache_key_projection_transport,
@@ -24,7 +33,10 @@ import extdeps.realization.resolved_graph {
   resolved_graph_cache_facts,
   resolved_graph_cache_id,
 }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -4,8 +4,16 @@ import extdeps.version {
   VersionConstraint,
 }
 import extdeps.tools.gnu_coreutils { min_coreutils_version }
-import std.algebra { Ordering }
-import v2.std.live_tree { LiveTreeDisposition }
+import std.algebra {
+  Ordering,
+  Less,
+  Equal,
+  Greater,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

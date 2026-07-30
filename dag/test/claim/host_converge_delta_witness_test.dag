@@ -1,22 +1,31 @@
 module test.claim.host_converge_delta_witness
 import std.types {
   Bool,
+  String,
   List,
 }
-import std.string_type { String }
 import std.measure {
   byte_size,
   byte_size_count,
   hardware_thread_count,
 }
 import std.change {
+  KeyedApplyHunk,
+  KeyedConflict,
   KeyedLeafVerdictFold,
   keyed_leaf_verdict_fold,
 }
-import gunbc.ci_runner_placement { RunnerHostDeployment }
+import gunbc.ci_runner_placement {
+  RunnerHostDeployment,
+  BatchLatencyTolerant,
+}
+import extdeps.github.actions { SelfHosted }
 import gunbc.host_converge {
   ConvergeKnob,
   ConvergeSlice,
+  RunnerSlice,
+  PerSlotMemoryCap,
+  SliceProperty,
   legacy_converge_knob,
   runner_host_knobs,
   runner_instance_glob,
@@ -38,7 +47,10 @@ import gunbc.host_converge_delta {
   host_converge_knob_verdict,
   host_converge_three_way_entry_count,
 }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

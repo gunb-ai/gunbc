@@ -1,6 +1,5 @@
 module test.claim.extdeps_git_diff_name_status_witness
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.measure { percent_count }
 import extdeps.git {
   GitDiffChangeStatus,
@@ -17,9 +16,12 @@ import extdeps.git {
   git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
-  git_diff_status_entries_any_unknown
+  git_diff_status_entries_any_unknown,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

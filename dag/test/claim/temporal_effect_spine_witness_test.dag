@@ -1,7 +1,16 @@
 module test.claim.temporal_effect_spine
-
-import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp, Milliseconds }
-import std.measure { millisecond }
+import std.types {
+  Bool,
+  NonEmptyStr,
+  List,
+  ContentHash,
+  Timestamp,
+  Milliseconds,
+}
+import std.measure {
+  millisecond,
+  millisecond_count,
+}
 import std.temporal_effect {
   EffectAttemptIntent,
   EffectStepReceipt,
@@ -51,7 +60,6 @@ import gunbc.srv3_os_install_diagnostic {
   HangStallRouterLeaseAbsent,
   cause_fold_dominant_hang_stall,
 }
-import std.measure { millisecond, millisecond_count }
 import gunbc.host_standup_assimilation_deduction {
   hang_budget_millisecond,
   srv3_os_install_to_host_identity_budget,
@@ -68,7 +76,10 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

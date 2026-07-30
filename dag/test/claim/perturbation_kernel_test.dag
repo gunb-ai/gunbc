@@ -1,5 +1,4 @@
 module test.claim.perturbation_kernel
-
 import std.perturbation {
   PerturbationReading,
   ForwardSameInSameOut,
@@ -11,7 +10,10 @@ import std.perturbation {
   perturbation_consistent,
 }
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

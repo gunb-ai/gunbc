@@ -1,6 +1,5 @@
 module test.claim.srv3_os_install_diagnostic
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.types { Milliseconds }
 import std.measure { byte_size }
 import gunbc.srv3_os_install_diagnostic {
@@ -54,13 +53,14 @@ import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideEnabled,
   BootOverrideOnce,
-  BootOverrideDisabled,
   BootTargetCd,
-  BootTargetNone,
   On,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

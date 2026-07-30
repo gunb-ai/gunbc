@@ -1,6 +1,5 @@
 module test.claim.host_standup_spine
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.types { Int }
 import std.measure { millisecond }
 import gunbc.host_standup {
@@ -62,13 +61,20 @@ import gunbc.bmc_onboarding {
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import std.upsert_decision { Converged }
-import gunbc.host_standup_assimilation_deduction {
-  srv3_post_install_actuation_verdict,
+import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
+import gunbc.ci_fleet {
+  fleet_intent_offers,
+  srv3_offer,
 }
-import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
-import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
+import gunbc.host_converge {
+  ConvergePolicyDerived,
+  ConvergePolicyUnsound,
+}
 import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

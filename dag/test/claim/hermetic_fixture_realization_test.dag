@@ -4,7 +4,14 @@ import std.types {
   ContentHash,
 }
 import std.cache_identity { hermetic_fixture_artifact_kind }
-import std.cache_interface { ArtifactIdentity }
+import std.cache_interface {
+  ArtifactIdentity,
+  ContentAddressedByValue,
+  PerHostFilesystem,
+  InProcess,
+  StructuredArtifact,
+  MissIsDiagnostic,
+}
 import extdeps.cache {
   cache_interface_facts_from_catalog,
   cache_key_projection_transport,
@@ -16,7 +23,10 @@ import extdeps.realization.hermetic_fixture {
   hermetic_fixture_file_store_id,
   hermetic_fixture_in_process_id,
 }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

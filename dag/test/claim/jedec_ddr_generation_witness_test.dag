@@ -1,7 +1,10 @@
 module test.claim.jedec_ddr_generation
-
-import std.logic { Bool }
-import std.measure { byte_size, byte_size_count, bit_width }
+import std.bit { Bool }
+import std.measure {
+  byte_size,
+  byte_size_count,
+  bit_width,
+}
 import extdeps.memory.types {
   DimmBuffering,
   DoubleDataRate,
@@ -17,7 +20,10 @@ import extdeps.memory.jedec {
   jedec_ddr_generation_catalog_row,
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

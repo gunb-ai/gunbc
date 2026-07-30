@@ -1,7 +1,9 @@
 module test.claim.srv3_os_install_actuate
-
-import std.logic { Bool }
-import std.disposition { Scaffold, Terminal }
+import std.bit { Bool }
+import std.disposition {
+  Scaffold,
+  Terminal,
+}
 import gunbc.srv3_os_install_actuate {
   srv3_os_install_actuator_step_count_is_three,
   srv3_os_install_actuate_runbook_is_declared,
@@ -32,7 +34,10 @@ import gunbc.os_install_mechanism {
   VirtualMediaInstall,
   FirmwareUpdateThenVirtualMedia,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,4 @@
 module extdeps.boot.freestanding_witness
-
 import extdeps.boot.emit {
   emit_freestanding_elf64,
   emit_pixel_writer_payload,
@@ -43,12 +42,6 @@ import extdeps.formats.elf.primitives {
   pf_r,
   pf_x,
 }
-import extdeps.formats.elf.segments {
-  PhdrDecoded,
-  PhdrRejected,
-  decode_elf64_phdr,
-  elf64_phdr_to_load_segment,
-}
 import extdeps.formats.elf.types {
   ElfDecoded,
   ElfRejected,
@@ -56,10 +49,17 @@ import extdeps.formats.elf.types {
   decode_elf64_ehdr,
   elf64_ehdr_entry_point,
 }
+import extdeps.formats.elf.segments {
+  decode_elf64_phdr,
+  elf64_phdr_to_load_segment,
+}
 import std.exec_format { EntryPoint }
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.uri {
+  Uri,
+  Https,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

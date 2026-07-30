@@ -1,5 +1,4 @@
 module test.claim.extdeps_version_semver
-
 import extdeps.version.semver {
   SemVerIdentity,
   SemVerConstraint,
@@ -12,8 +11,15 @@ import extdeps.version.semver {
   semver_to_version_identity,
   semver_version_label,
 }
-import std.algebra { Equal, Less, Greater }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra {
+  Equal,
+  Less,
+  Greater,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

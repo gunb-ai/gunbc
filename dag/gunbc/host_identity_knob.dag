@@ -1,6 +1,8 @@
 module gunbc.host_identity_knob
-
-import std.types { String, Bool }
+import std.types {
+  String,
+  Bool,
+}
 import std.change {
   KeyedLeafVerdict,
   keyed_three_way_leaf,

@@ -1,8 +1,7 @@
 module shared.dag_util
-
 import std.types {
   StageResult,
-  Summary
+  Summary,
 }
 
 fn aggregate_results(stages: List<StageResult>) -> Summary {

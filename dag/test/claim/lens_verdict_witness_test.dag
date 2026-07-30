@@ -1,5 +1,4 @@
 module test.claim.lens_verdict_witness
-
 import v2.std.lens_verdict {
   Holds,
   LensVerdict,
@@ -9,7 +8,10 @@ import v2.std.lens_verdict {
   lens_verdict_module_unrealized,
   lens_verdict_module_violation,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

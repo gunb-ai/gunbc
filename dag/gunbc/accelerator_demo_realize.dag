@@ -1,6 +1,10 @@
 module gunbc.accelerator_demo_realize
-
-import std.types { Bool, Int, List, Float }
+import std.types {
+  Bool,
+  Int,
+  List,
+}
+import std.float { Float }
 import std.numerical_contract {
   FmaContractionPolicy,
   NumericalContract,
@@ -10,7 +14,11 @@ import std.numerical_contract {
   float_contract,
 }
 import std.approximate_field { ToNearestEven }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+}
 import gunbc.accelerator_demo_program {
   AcceleratorDemoProgram,
   PureElementwiseMap,

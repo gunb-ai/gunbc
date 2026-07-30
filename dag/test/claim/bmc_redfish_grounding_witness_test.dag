@@ -1,6 +1,5 @@
 module test.claim.bmc_redfish_grounding
-
-import std.logic { Bool }
+import std.bit { Bool }
 import std.measure {
   byte_size_count,
   watt,
@@ -29,7 +28,10 @@ import extdeps.bmc.redfish {
 }
 import extdeps.bmc { bmc_ground_snapshot }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

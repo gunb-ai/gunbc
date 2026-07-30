@@ -1,20 +1,48 @@
 module gunbc.ci_budget_tree
-
-import std.measure { ByteSize, byte_size, Memory, One }
-import std.types { Int, List, String, Bool }
-import std.disposition { Disposition, Terminal }
-import std.realization_width { byte_size_saturating_sub }
-import extdeps.accounting.budget { Appropriation, LineItem }
-import product.budget_tree {
-  BudgetNode, BudgetClaim, Guaranteed,
-  BudgetChild,
-  budget_child_named
+import std.measure {
+  ByteSize,
+  byte_size,
+  Memory,
+  One,
 }
-import gunbc.ci_fleet { ComputeOffer, srv1_offer, srv2_offer, srv3_offer }
+import std.types {
+  Int,
+  List,
+  String,
+  Bool,
+}
+import std.disposition {
+  Disposition,
+  Terminal,
+}
+import std.realization_width { byte_size_saturating_sub }
+import extdeps.accounting.budget {
+  Appropriation,
+  LineItem,
+}
+import product.budget_tree {
+  BudgetNode,
+  BudgetClaim,
+  Guaranteed,
+  BudgetChild,
+  budget_child_named,
+}
+import gunbc.ci_fleet {
+  ComputeOffer,
+  srv1_offer,
+  srv2_offer,
+  srv3_offer,
+}
 import gunbc.fleet_intent { compute_host_ram_bytes_total }
-import gunbc.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
+import gunbc.ci_runner_target {
+  FleetSelfHosted,
+  ci_runner_target_ram_speed_budget,
+  selected_ci_runner_target,
+}
 import gunbc.ci_floor_measurement {
-  HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured,
+  HostFixedOverhead,
+  HostFixedOverheadMeasured,
+  HostFixedOverheadUnmeasured,
   gunbc_ci_host_fixed_overhead,
   gunbc_ci_runner_cgroup_memory_cap,
   gunbc_ci_runner_slot_memory_max_live,
@@ -22,8 +50,10 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.ci_runner_placement {
-  SessionSliceResolution, SessionSliceResolved, SessionSliceUnresolved,
-  resolve_session_slice
+  SessionSliceResolution,
+  SessionSliceResolved,
+  SessionSliceUnresolved,
+  resolve_session_slice,
 }
 import gunbc.fleet_host_budget { gunbc_fleet_oomd_evidence }
 

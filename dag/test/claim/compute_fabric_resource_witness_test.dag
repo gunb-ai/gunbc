@@ -1,5 +1,4 @@
 module test.claim.compute_fabric_resource_witness
-
 import std.types { Bool }
 import product.compute_fabric {
   witness_need_is_only_fabric_plus_program,
@@ -14,7 +13,10 @@ import gunbc.fleet_container {
   witness_fail_open_memory_blind_demand_exceeds_budget,
   witness_unreadable_budget_uses_conservative_demand,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,8 +1,11 @@
 module gunbc.tailscale_acl_emit
-
-import std.types { NonEmptyStr, List }
+import std.types {
+  NonEmptyStr,
+  List,
+}
 import extdeps.languages.json.emit {
-  JsonValue, JsonKeyValue,
+  JsonValue,
+  JsonKeyValue,
   serialize_json,
   json_string,
   json_array,

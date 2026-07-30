@@ -1,6 +1,10 @@
 module gunbc.accelerator_demo_plan
-
-import std.types { Bool, String, Int, NonEmptyStr }
+import std.types {
+  Bool,
+  String,
+  Int,
+  NonEmptyStr,
+}
 import std.measure { Nano }
 import std.effects { ReadEffect }
 import std.realization {
@@ -32,7 +36,11 @@ import std.numerical_contract {
   FmaContractionPermitted,
 }
 import std.approximate_field { ToNearestEven }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+}
 import extdeps.communication.numerical_fidelity {
   LoweringAccepted,
   LoweringRefused,

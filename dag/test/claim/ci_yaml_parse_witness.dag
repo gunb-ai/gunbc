@@ -1,8 +1,14 @@
 module test.claim.ci_yaml_parse_witness
-
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
+import v2.extdeps.file_system { Filesystem }
+import gunbc.ci_yaml_emit {
+  expected_ci_yml,
+  ci_yml_drifted,
+}
 import gunbc.ci_yaml_validate { ci_yml_parses }
 
 data ci_yml_path: String = ".github/workflows/ci.yml"

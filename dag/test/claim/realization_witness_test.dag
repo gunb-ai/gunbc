@@ -1,14 +1,23 @@
 module test.claim.realization_witness
-
 import std.effects {
-  ReadEffect, CreateEffect, PostAlways,
-  UpsertEffect, DeleteEffect, PathParam, InputField
+  ReadEffect,
+  CreateEffect,
+  PostAlways,
+  UpsertEffect,
+  DeleteEffect,
+  PathParam,
+  InputField,
 }
 import std.realization {
-  Unknown, Dependent, Independent,
+  Unknown,
+  Dependent,
+  Independent,
   independence_from_effect_shapes,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

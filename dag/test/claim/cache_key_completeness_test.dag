@@ -6,14 +6,31 @@ import extdeps.cache.key_completeness {
 import v2.extdeps.cache.key_completeness_verdict { cache_key_completeness_verdict }
 import extdeps.cache.types {
   CatalogKeyDerivationFacts,
+  NativeInternal,
+  HandAuthored,
   content_addressed_inputs,
   catalog_inputs_considered,
   catalog_has_vendor_only_key_inputs,
+  RustcInvocation,
+  ToolchainSpec,
+  UpsertSubject,
 }
 import extdeps.cache { cache_catalog }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
+import std.cache_interface {
+  ToolchainChange,
+  ManualPurge,
+  Org,
+}
+import v2.std.lens_verdict {
+  Holds,
+  Violation,
+}
 import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

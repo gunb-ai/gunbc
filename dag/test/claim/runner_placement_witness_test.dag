@@ -1,5 +1,4 @@
 module test.claim.runner_placement_witness
-
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   PlanDerived,
@@ -34,8 +33,6 @@ import gunbc.fleet_host_budget {
 }
 import gunbc.ci_floor_measurement {
   gunbc_ci_runner_cgroup_memory_cap,
-}
-import gunbc.ci_floor_measurement {
   SessionOperatingPointSet,
   SessionAggregateMeasured,
   SessionAggregateUnmeasured,
@@ -58,9 +55,21 @@ import gunbc.runner_deploy_emit {
 import std.languages { json_record_knobs }
 import std.serialize { serialize_record_doc }
 import std.layout { render }
-import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
-import std.types { Bool, Int, List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure {
+  byte_size,
+  byte_size_count,
+  hardware_thread_count_value,
+}
+import std.types {
+  Bool,
+  Int,
+  List,
+  String,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

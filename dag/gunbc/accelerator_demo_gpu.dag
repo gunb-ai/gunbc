@@ -1,7 +1,15 @@
 module gunbc.accelerator_demo_gpu
-
-import std.types { String, Bool, Int, NonEmptyStr }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import std.types {
+  String,
+  Bool,
+  Int,
+  NonEmptyStr,
+}
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+}
 import std.numerical_contract {
   NumericalContract,
   IntegerExact,
@@ -23,7 +31,10 @@ import extdeps.languages.gpu.wgsl.kernel {
   wgsl_relu_mul_add_int_kernel_source,
   wgsl_relu_mul_add_float_kernel_source,
 }
-import std.measure { hardware_thread_count_value, bandwidth_count }
+import std.measure {
+  hardware_thread_count_value,
+  bandwidth_count,
+}
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {

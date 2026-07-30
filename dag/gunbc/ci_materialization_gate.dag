@@ -1,26 +1,52 @@
 module gunbc.ci_materialization_gate
-
-import std.types { Bool, Int, List, String }
+import std.types {
+  Bool,
+  Int,
+  List,
+  String,
+}
 import std.materialization_ladder {
-  FrameDemand, CacheProvider, LadderVerdict,
-  AuthoredDuplication, DeadComputation, AcceptedEffectIsTheUse,
-  Discharged, RefusedNoProvider, RefusedScopeTooNarrow, RefusedExistenceKeyed,
-  RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
+  FrameDemand,
+  CacheProvider,
+  LadderVerdict,
+  AuthoredDuplication,
+  DeadComputation,
+  AcceptedEffectIsTheUse,
+  Discharged,
+  RefusedNoProvider,
+  RefusedScopeTooNarrow,
+  RefusedExistenceKeyed,
+  RefusedUnmodeledWorldRead,
+  ExemptFreshEffect,
+  AcceptedBelowCostFloor,
+  AcceptedSingleRecompute,
   RefusedNatureConflict,
-  materialization_ladder, materialization_ladder_holds,
-  verdict_is_discharged_by, verdict_is_refused_no_provider,
+  materialization_ladder,
+  materialization_ladder_holds,
+  verdict_is_discharged_by,
+  verdict_is_refused_no_provider,
   verdict_is_accepted_single_recompute,
-  no_cache_providers
+  no_cache_providers,
 }
 import gunbc.ci_materialization {
-  ci_cache_providers, ci_cost_floor_exempt_step_names,
+  ci_cache_providers,
+  ci_cost_floor_exempt_step_names,
   ci_sccache_provider_id,
-  workflow_run_demands, workflow_scripts_named, step_run_script,
-  workflow_uses_steps_count, workflow_run_steps_count
+  workflow_run_demands,
+  workflow_scripts_named,
+  step_run_script,
+  workflow_uses_steps_count,
+  workflow_run_steps_count,
 }
-import gunbc.ci_workflow { ci_workflow, ci_floor_peak_pre_step, ci_floor_peak_post_step }
+import gunbc.ci_workflow {
+  ci_workflow,
+  ci_floor_peak_pre_step,
+  ci_floor_peak_post_step,
+}
 import gunbc.ci_spec {
-  DeployStage, gunbc_ci_deploy_stages, gunbc_ci_deploy_invoke
+  DeployStage,
+  gunbc_ci_deploy_stages,
+  gunbc_ci_deploy_invoke,
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 

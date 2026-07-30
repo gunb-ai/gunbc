@@ -1,7 +1,9 @@
 module test.claim.os_install_actuator_selection
-
-import std.logic { Bool }
-import std.disposition { Scaffold, Terminal }
+import std.bit { Bool }
+import std.disposition {
+  Scaffold,
+  Terminal,
+}
 import gunbc.os_install_actuator_selection {
   srv3_os_install_actuator_host,
   srv3_os_install_actuator_host_is_derived_srv1,
@@ -18,9 +20,18 @@ import gunbc.os_install_actuator_selection {
   live_srv3_actuator_reach_facts,
   OperatorHostPreference,
 }
-import gunbc.fleet_intent { srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet_intent {
+  srv1_host,
+  srv2_host,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

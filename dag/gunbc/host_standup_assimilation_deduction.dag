@@ -1,8 +1,21 @@
 module gunbc.host_standup_assimilation_deduction
-
-import std.types { Bool, Int, List, NonEmptyStr, String, Milliseconds }
-import std.measure { Millisecond, millisecond, millisecond_count }
-import std.disposition { Disposition, Terminal }
+import std.types {
+  Bool,
+  Int,
+  List,
+  NonEmptyStr,
+  String,
+  Milliseconds,
+}
+import std.measure {
+  Millisecond,
+  millisecond,
+  millisecond_count,
+}
+import std.disposition {
+  Disposition,
+  Terminal,
+}
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -27,7 +40,6 @@ import std.temporal_effect {
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideMode,
-  BootOverrideModeLegacy,
   BootOverrideModeUefi,
 }
 import product.placement_supply { HostIdentity }

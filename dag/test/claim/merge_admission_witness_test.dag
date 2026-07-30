@@ -1,10 +1,10 @@
 module test.claim.merge_admission_witness
-
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   AdmissionPolicy,
-  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
-  Success,
+  PerPrGateOnly,
+  RequireUpToDateBase,
+  KeyedReceipt,
   policy_admits,
   receipt_is_admissible,
   current_gate_roster_hash,
@@ -12,14 +12,19 @@ import gunbc.merge_admission {
   gunbc_repo_standard,
   SquashMerge,
 }
+import extdeps.github.checks { Success }
 import gunbc.commit_workflow {
   commit_gate_roster,
-  CommitCheckEnrollment, CommitSpecGate,
+  CommitCheckEnrollment,
+  CommitSpecGate,
   GitPrePushHook,
 }
 import gunbc.ci_gate { EmitHostGate }
 import std.types { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

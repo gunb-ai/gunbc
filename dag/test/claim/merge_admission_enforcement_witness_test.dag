@@ -1,9 +1,6 @@
 module test.claim.merge_admission_enforcement_witness
-
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
-  Success,
-  Failure,
   current_gate_roster_hash,
   classify_merge_admission_verdict,
   merge_admission_would_block,
@@ -11,6 +8,10 @@ import gunbc.merge_admission {
   MergeDeniedStaleBase,
   MergeDeniedStaleRoster,
   MergeDeniedNotSuccess,
+}
+import extdeps.github.checks {
+  Success,
+  Failure,
 }
 import gunbc.merge_admission_produce {
   render_receipt_wire,
@@ -24,10 +25,17 @@ import gunbc.ci_failure_class {
   GatingComputedDeferred,
   merge_admission_enforcement_gating_scaffold,
 }
-import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
-import std.disposition { Scaffold, SingleAuthority, Terminal }
+import gunbc.ci_workflow { merge_admission_gate_step_name }
+import std.disposition {
+  Scaffold,
+  SingleAuthority,
+  Terminal,
+}
 import std.types { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

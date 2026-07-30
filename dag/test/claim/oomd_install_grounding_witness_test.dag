@@ -6,13 +6,18 @@ import std.measure {
 }
 import std.realization_reconcile {
   ShowEffectiveRead,
+  ReadObserved,
   Grounding,
+  Grounds,
+  DoesNotGround,
   reconciliation_converged,
 }
 import gunbc.oomd_install {
   OomdEffectiveRead,
   OomdGroundingThresholds,
   OomdGroundingCheck,
+  GroundingPass,
+  GroundingFail,
   SliceMembershipSignal,
   ground_oomd_from_read,
   membership_grounding_check,
@@ -21,8 +26,31 @@ import gunbc.oomd_install {
   gunbc_oomd_install_evidence,
   gunbc_oomd_fleet_evidence,
 }
-import gunbc.ci_floor_measurement { OomdEnforcementEvidence }
-import v2.std.live_tree { LiveTreeDisposition }
+import gunbc.ci_floor_measurement {
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  CapEffective,
+  CapUnbounded,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+}
+import extdeps.systemd {
+  Active,
+  Inactive,
+}
+import extdeps.systemd.systemctl {
+  UnitEnabled,
+  UnitDisabled,
+}
+import extdeps.systemd.oomd {
+  ManagedOomKill,
+  ManagedOomAuto,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

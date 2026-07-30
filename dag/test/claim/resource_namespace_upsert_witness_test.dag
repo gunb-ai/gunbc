@@ -1,6 +1,9 @@
 module test.claim.resource_namespace_upsert
-
-import std.types { Bool, NonEmptyStr, Int }
+import std.types {
+  Bool,
+  NonEmptyStr,
+  Int,
+}
 import std.upsert_decision {
   UpsertClassification,
   Converged,
@@ -41,7 +44,10 @@ import gunbc.install_media {
   classify_seeded_install_media,
   classify_seeded_install_media_upsert,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
