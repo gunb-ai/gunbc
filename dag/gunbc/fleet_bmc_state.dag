@@ -19,6 +19,7 @@ import gunbc.bmc_fan_projection {
   BmcFanDurabilityAdmission,
   BmcFanDurabilityEvidence,
   BmcFanPolicyProjectionCapability,
+  altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   bmc_fan_policy_projection_capability,
   bmc_fan_policy_projection_durability_admission,
 }
@@ -74,7 +75,7 @@ data srv4_bmc_fan_projection_capability: BmcFanPolicyProjectionCapability = bmc_
   board: srv4_baseboard.catalog.model,
   firmware: srv4_bmc_firmware_observation.firmware,
   projected_curve: fleet_bmc_valid_state.fan_policy.curve,
-  projected_config_digest: srv4_bmc_fan_active_config_digest,
+  projected_config_digest: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   config_path: srv4_bmc_fan_observed_config_path,
   controller_service: srv4_bmc_fan_observed_controller_service,
   controller_zone_path: srv4_bmc_fan_observed_controller_zone_path,

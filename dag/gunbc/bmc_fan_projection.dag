@@ -9,6 +9,7 @@ import extdeps.bmc.types {
 }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.crypto.hash { Digest, sha256_digest }
+import gunbc.bmc_intent { fleet_quiet_temp_soc_fan_curve }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
   LinuxFilePublicationProtocolUnsynchronized,
@@ -58,9 +59,39 @@ type BmcAdmittedConfigDigest
   = AdmittedConfigDigestKnown { digest: Digest }
   | AdmittedConfigDigestUnavailable
 
+type BmcProjectedConfigDigest
+  = ProjectedConfigDigestKnown { digest: Digest }
+  | ProjectedConfigDigestUnavailable
+
+data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
+
+data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "altrad8ud-openbmc-3.22.00-swampd-asrr-temp-soc-jffs2-v1"
+
+data altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest: Digest = sha256_digest(
+  hex: "4812a134939f6e6eba9c90fe15fa93cc05936d0d2ef1a4365cc4ee0a4d262481",
+)
+
 data bmc_fan_witness_digest_mismatch_sentinel: Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
+
+fn bmc_fan_projected_config_digest(
+  curve: BmcFanCurve,
+  intent_curve: BmcFanCurve,
+  realization: StateRealizationIdentity,
+  config_path: NonEmptyStr,
+) -> BmcProjectedConfigDigest {
+  if curve == intent_curve
+    && curve == fleet_quiet_temp_soc_fan_curve
+    && realization.realization_id == altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id
+    && config_path == altrad8ud_openbmc_322_swampd_config_asrr_path {
+    ProjectedConfigDigestKnown {
+      digest: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+    }
+  } else {
+    ProjectedConfigDigestUnavailable
+  }
+}
 
 fn bmc_fan_admitted_config_digest(
   curve: BmcFanCurve,
@@ -194,4 +225,4 @@ fn bmc_fan_policy_projection_topology_matches(
   }
 }
 
-data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projected config digest; it never imports observation and returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."
+data bmc_fan_projection_exact_version_note: String = "A fleet firmware track says which states are valid; it does not select a JSON realizer. A projection capability is admitted only for an exact board, firmware version, desired semantic curve, desired projected-config digest derived from that curve and realization, config path, controller service, zone control path, aggregate fan PID entry, and installed tach-input topology witnessed together. bmc_fan_projected_config_digest derives the digest from intent curve plus realization identity and config path; it never reads observation. bmc_fan_admitted_config_digest takes the intent curve and an optional caller-supplied projection-derived digest at the reconcile site; it returns AdmittedConfigDigestUnavailable when the curve is not the modeled intent curve or the digest is absent. bmc_fan_witness_digest_mismatch_sentinel is witness-only observation input for live-digest mismatch controls, not an admitted digest authority. Its durability capability and admission are derived from the same realization content identity, capability version/hash, lifecycle boundaries, executable publication protocol, target host, readback subject, and declared perturbation generation; there is no separately writable string ID that can let an old receipt qualify changed policy bytes. Ordinary convergence requires the live canonical config digest to equal the projection-derived admitted digest; durability qualification is a separate post-apply gate and never uses converge-noop as an activation premise."

@@ -46,6 +46,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_converged_policy_observation,
   srv4_bmc_fan_convergence_receipt,
   srv4_bmc_fan_durability_capability_version,
+  srv4_bmc_fan_observed_config_path,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_firmware_observation,
   srv4_bmc_redfish_surface_observation,
@@ -66,8 +67,13 @@ import gunbc.bmc_fan_projection {
   AdmittedConfigDigestKnown,
   AdmittedConfigDigestUnavailable,
   BmcFanPolicyProjectionCapability,
+  ProjectedConfigDigestKnown,
+  ProjectedConfigDigestUnavailable,
+  altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
   bmc_fan_admitted_config_digest,
   bmc_fan_policy_projection_durability_admission,
+  bmc_fan_policy_projection_live_digest_matches,
+  bmc_fan_projected_config_digest,
   bmc_fan_witness_digest_mismatch_sentinel,
 }
 import std.state_durability {
@@ -489,15 +495,33 @@ test fn srv4_live_receipt_is_converged_quiet_and_failsafe_clear() -> Bool {
     && srv4_bmc_fan_convergence_receipt.final_tachs.length() == 4
 }
 
-test fn srv4_durability_admission_binds_the_literal_live_subject() -> Bool {
+test fn srv4_durability_admission_binds_projection_derived_digest() -> Bool {
   let capability = srv4_bmc_fan_projection_capability
   srv4_bmc_fan_durability_admission == bmc_fan_policy_projection_durability_admission(
     host: srv4_host.identity,
     capability: capability,
     perturbation_generation: srv4_bmc_fan_perturbation_generation,
   )
-    && capability.projected_config_digest == srv4_bmc_fan_convergence_receipt.active_config_digest
+    && capability.projected_config_digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
     && capability.projected_curve == fleet_quiet_temp_soc_fan_curve
+    && match bmc_fan_projected_config_digest(
+      curve: fleet_quiet_temp_soc_fan_curve,
+      intent_curve: fleet_quiet_temp_soc_fan_curve,
+      realization: srv4_bmc_fan_projection_capability.realization,
+      config_path: srv4_bmc_fan_observed_config_path,
+    ) {
+      ProjectedConfigDigestKnown { digest: digest } =>
+        digest == capability.projected_config_digest
+      ProjectedConfigDigestUnavailable => false
+    }
+}
+
+test fn srv4_converged_observation_matches_projection_derived_digest() -> Bool {
+  srv4_bmc_fan_active_config_digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
+    && bmc_fan_policy_projection_live_digest_matches(
+      capability: srv4_bmc_fan_projection_capability,
+      observation: srv4_bmc_fan_converged_policy_observation,
+    )
 }
 
 test fn srv4_bmc_reboot_persistence_receipt_proves_same_config_and_noop() -> Bool {
@@ -896,10 +920,12 @@ test fn fleet_quiet_curve_admits_srv4_active_config_digest() -> Bool {
   match bmc_fan_admitted_config_digest(
     curve: fleet_quiet_temp_soc_fan_curve,
     intent_curve: fleet_quiet_temp_soc_fan_curve,
-    projected_config_digest: Present { value: srv4_bmc_fan_active_config_digest },
+    projected_config_digest: Present {
+      value: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+    },
   ) {
     AdmittedConfigDigestKnown { digest: digest } =>
-      digest == srv4_bmc_fan_active_config_digest
+      digest == altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest
         && digest == srv4_bmc_fan_projection_capability.projected_config_digest
     AdmittedConfigDigestUnavailable => false
   }
@@ -909,7 +935,9 @@ test fn non_fleet_curve_admitted_config_digest_is_unavailable() -> Bool {
   match bmc_fan_admitted_config_digest(
     curve: asrock_altrad8ud_factory_temp_soc_fan_curve,
     intent_curve: fleet_quiet_temp_soc_fan_curve,
-    projected_config_digest: Present { value: srv4_bmc_fan_active_config_digest },
+    projected_config_digest: Present {
+      value: altrad8ud_openbmc_322_fleet_quiet_temp_soc_projected_config_digest,
+    },
   ) {
     AdmittedConfigDigestKnown { digest: _ } => false
     AdmittedConfigDigestUnavailable => true
