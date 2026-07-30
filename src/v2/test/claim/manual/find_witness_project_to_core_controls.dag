@@ -1,7 +1,5 @@
 module v2.test.manual.find_witness_project_to_core_controls
 
-// Class-B standing debt (#6985): never-imported claim resolved via pool
-// coincidence until unique-on-chain made on-chain imports mandatory.
 import std.algebra { Equal, Greater, Less }
 import v2.std.collection { List }
 import v2.std.diagnostic {
