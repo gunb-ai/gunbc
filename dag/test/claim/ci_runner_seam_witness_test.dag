@@ -1,5 +1,13 @@
 module test.claim.ci_runner_seam_witness
 
+import gunbc.ci_fleet { gunbc_ci_fleet_offer }
+import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec }
+import gunbc.ci_workflow { ci_workflow }
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import extdeps.github.actions { SelfHosted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_ci_runner_spec_derives_from_fleet_offer() -> Bool {

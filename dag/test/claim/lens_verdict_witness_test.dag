@@ -1,5 +1,16 @@
 module test.claim.lens_verdict_witness
 
+import v2.std.lens_verdict {
+  Holds,
+  LensVerdict,
+  Unrealized,
+  Violation,
+  lens_verdict_diagnostic_locus_module,
+  lens_verdict_module_unrealized,
+  lens_verdict_module_violation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_module: String = "test.claim.lens_verdict_witness"

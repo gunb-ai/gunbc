@@ -1,5 +1,10 @@
 module test.claim.extdeps_version_base
 
+import extdeps.version { VersionIdentity, VersionConstraint }
+import extdeps.gnu_coreutils { min_coreutils_version }
+import std.algebra { Ordering, Less, Equal, Greater }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn identity_1_0_0() -> VersionIdentity { "1.0.0" }

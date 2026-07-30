@@ -1,5 +1,19 @@
 module test.claim.computation_demand_duplication_witness
 
+import v2.lens.duplicate_computation {
+  ComputationDemandFact,
+  ReplicationIntent,
+  ReplicatedOracle,
+  SingleRun,
+  TypedArgvInvocation,
+  UnguardedDemand,
+  duplicate_computation_clean_holds,
+  duplicate_computation_violation_count,
+  typed_argv_computation_demands
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn synthetic_replicated_invocation(run_site: String, out_dir: String) -> v2.lens.duplicate_computation.TypedArgvInvocation {

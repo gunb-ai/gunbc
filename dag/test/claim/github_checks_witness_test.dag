@@ -1,5 +1,22 @@
 module test.claim.github_checks_witness
 
+import extdeps.github.checks {
+  CheckStatus,
+  CheckConclusion,
+  CheckOutput,
+  CheckRun,
+  CheckRunList,
+  InProgress,
+  Completed,
+  Success,
+  Failure,
+  TimedOut,
+  parse_check_status,
+  parse_check_conclusion,
+  check_status_wire_label,
+  check_conclusion_wire_label,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sample_check_output: CheckOutput = CheckOutput {

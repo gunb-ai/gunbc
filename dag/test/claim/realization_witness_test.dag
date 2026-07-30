@@ -1,5 +1,15 @@
 module test.claim.realization_witness
 
+import std.effects {
+  ReadEffect, CreateEffect, PostAlways,
+  UpsertEffect, DeleteEffect, PathParam, InputField
+}
+import std.realization {
+  Unknown, Dependent, Independent,
+  independence_from_effect_shapes,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_unknown_independence_never_reorders() -> Bool {

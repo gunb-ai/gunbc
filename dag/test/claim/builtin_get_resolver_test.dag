@@ -1,5 +1,7 @@
 module test.claim.builtin_get_resolver
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_get_in_bounds_returns_element() -> Bool {
