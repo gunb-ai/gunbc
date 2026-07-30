@@ -1,0 +1,136 @@
+module test.claim.deploy_revision_witness
+
+import gunbc.live_deploy.revision {
+  DeployTargetId,
+  DeployRevisionRelation,
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  RelationUnverifiable,
+  DeployRevisionVerdict,
+  RevisionAlreadyConverged,
+  RevisionAdvance,
+  RevisionSupersededNoOp,
+  RevisionRefused,
+  classify_deploy_revision,
+  deploy_revision_proceeds,
+  deploy_revision_terminal_success,
+  deploy_revision_refuses,
+  deploy_revision_relation_from_probes,
+  deploy_revision_state_path,
+  deploy_target_mutex_group,
+  srv1_dashboard_target,
+}
+import std.types { NonEmptyStr, CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data sha_older: CommitSha = "1111111111111111111111111111111111111111"
+data sha_newer: CommitSha = "2222222222222222222222222222222222222222"
+
+data all_relations: List<DeployRevisionRelation> = [
+  SameRevision,
+  DeployedIsAncestor,
+  CandidateIsAncestor,
+  UnrelatedHistories,
+  RelationUnverifiable { cause: "probe failed" as NonEmptyStr },
+]
+
+test fn deployed_ancestor_of_candidate_advances() -> Bool {
+  match classify_deploy_revision(relation: DeployedIsAncestor) {
+    RevisionAdvance => true
+    _ => false
+  }
+}
+
+test fn same_revision_is_already_converged() -> Bool {
+  match classify_deploy_revision(relation: SameRevision) {
+    RevisionAlreadyConverged => true
+    _ => false
+  }
+}
+
+test fn candidate_ancestor_of_deployed_is_superseded_noop() -> Bool {
+  match classify_deploy_revision(relation: CandidateIsAncestor) {
+    RevisionSupersededNoOp => true
+    _ => false
+  }
+}
+
+test fn superseded_run_is_success_not_a_refusal() -> Bool {
+  let v = classify_deploy_revision(relation: CandidateIsAncestor)
+  deploy_revision_terminal_success(verdict: v)
+    && !deploy_revision_refuses(verdict: v)
+    && !deploy_revision_proceeds(verdict: v)
+}
+
+test fn unrelated_histories_refuse() -> Bool {
+  let v = classify_deploy_revision(relation: UnrelatedHistories)
+  deploy_revision_refuses(verdict: v)
+    && !deploy_revision_proceeds(verdict: v)
+    && !deploy_revision_terminal_success(verdict: v)
+}
+
+test fn unverifiable_relation_refuses_and_keeps_its_cause() -> Bool {
+  let why = "no persisted revision on host" as NonEmptyStr
+  match classify_deploy_revision(relation: RelationUnverifiable { cause: why }) {
+    RevisionRefused { cause: c } => c == why
+    _ => false
+  }
+}
+
+test fn only_advance_performs_the_mutation() -> Bool {
+  fold(all_relations, init: true, f: fn(ok, rel) {
+    let v = classify_deploy_revision(relation: rel)
+    ok && (deploy_revision_proceeds(verdict: v) == match rel {
+      DeployedIsAncestor => true
+      _ => false
+    })
+  })
+}
+
+test fn every_relation_lands_in_exactly_one_disposition() -> Bool {
+  fold(all_relations, init: true, f: fn(ok, rel) {
+    let v = classify_deploy_revision(relation: rel)
+    let p = deploy_revision_proceeds(verdict: v)
+    let t = deploy_revision_terminal_success(verdict: v)
+    let r = deploy_revision_refuses(verdict: v)
+    ok && ((p && !t && !r) || (!p && t && !r) || (!p && !t && r))
+  })
+}
+
+test fn probe_pair_folds_to_the_four_cases() -> Bool {
+  match deploy_revision_relation_from_probes(
+    deployed: sha_older, candidate: sha_newer,
+    deployed_is_ancestor_of_candidate: true, candidate_is_ancestor_of_deployed: false
+  ) { DeployedIsAncestor => true  _ => false }
+    && match deploy_revision_relation_from_probes(
+      deployed: sha_newer, candidate: sha_older,
+      deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: true
+    ) { CandidateIsAncestor => true  _ => false }
+    && match deploy_revision_relation_from_probes(
+      deployed: sha_older, candidate: sha_newer,
+      deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false
+    ) { UnrelatedHistories => true  _ => false }
+}
+
+test fn equal_shas_short_circuit_before_the_probes() -> Bool {
+  match deploy_revision_relation_from_probes(
+    deployed: sha_newer, candidate: sha_newer,
+    deployed_is_ancestor_of_candidate: false, candidate_is_ancestor_of_deployed: false
+  ) { SameRevision => true  _ => false }
+}
+
+test fn mutex_group_is_the_deployment_domain_not_the_job_name() -> Bool {
+  let g = deploy_target_mutex_group(target: srv1_dashboard_target)
+  string_contains(s: g, pattern: "gunbc-dashboard")
+    && !string_contains(s: g, pattern: "deploy_dashboard_srv1")
+}
+
+test fn revision_state_lives_outside_the_rsynced_tree() -> Bool {
+  let p = deploy_revision_state_path(target: srv1_dashboard_target) as String
+  !string_contains(s: p, pattern: srv1_dashboard_target.destination as String)
+    && string_contains(s: p, pattern: "/var/lib/gunbc/")
+}
