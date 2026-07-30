@@ -114,7 +114,6 @@ type Job {
 
   outputs: List<YamlKeyValue>?
   if_condition: String?
-  strategy: MatrixStrategy?
   timeout_minutes: Int?
   continue_on_error: Bool?
   concurrency: ConcurrencySpec?
@@ -207,13 +206,6 @@ data download_artifact_action: ActionRef = ActionRef {
   owner: "actions", repo: "download-artifact", ref: "v2"
 }
 
-type MatrixStrategy {
-  dimensions: Map<String, List<String>>
-  include: List<Map<String, String>>
-  exclude: List<Map<String, String>>
-  fail_fast: Bool
-  max_parallel: Int?
-}
 
 data checkout_action: ActionRef = ActionRef {
   owner: "actions", repo: "checkout", ref: "v5"
