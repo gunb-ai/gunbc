@@ -1,7 +1,0 @@
-module probe.f
-
-import std.measure { PositiveMillisecond, positive_millisecond }
-
-fn front_door_zero() -> PositiveMillisecond {
-  positive_millisecond(count: 0)
-}
