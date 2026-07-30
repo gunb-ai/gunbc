@@ -17,6 +17,7 @@ data csi_end: String = "m"
 data ansi_escape: String = "\x1b"
 data ansi_carriage_return: String = "\x0d"
 data ansi_line_feed: String = "\n"
+data ansi_horizontal_tab: String = "\x09"
 
 data ansi_c0_controls: List<String> = [
   "\x00",
@@ -28,7 +29,7 @@ data ansi_c0_controls: List<String> = [
   "\x06",
   "\x07",
   "\x08",
-  "\x09",
+  ansi_horizontal_tab,
   ansi_line_feed,
   "\x0b",
   "\x0c",
