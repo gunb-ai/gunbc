@@ -1,0 +1,195 @@
+module extdeps.languages.json.parse
+
+import std.types { String, Int, List, Bool }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  JsonKeyValue, json_kv,
+}
+import extdeps.languages.json.grammar {
+  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
+  json_text_skip_ws, json_text_parse_string, json_text_parse_number,
+  json_number_lexeme_unchecked, is_json_digit_char,
+}
+
+data json_parse_note: String = "parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of extdeps.languages.json.emit.serialize_json. It reuses the recursive-descent span scanner in extdeps.languages.json.grammar (json_text_parse_string / json_text_parse_number / json_text_skip_ws) to find value boundaries, and builds the JsonValue at each span. Interim standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse is a witnessed instance of emit^-1 (DESIGN 4). Escapes: single-char backslash escapes are decoded; a lone trailing backslash and unknown escapes pass the following char through; \\u is NOT decoded (config surfaces this parser targets are escape-free)."
+
+type JsonParse =
+    JsonParsed { value: JsonValue, next: Int }
+  | JsonParseFail { at: Int }
+
+fn json_unescape_from(s: String, i: Int, acc: String) -> String {
+  if i >= s.length() {
+    acc
+  } else {
+    let c = char_at(s: s, i: i)
+    if c == "\\" {
+      if i + 1 >= s.length() {
+        acc
+      } else {
+        let e = char_at(s: s, i: i + 1)
+        let u = if e == "n" { from_code_point(cp: 10) }
+          else if e == "t" { from_code_point(cp: 9) }
+          else if e == "r" { from_code_point(cp: 13) }
+          else if e == "b" { from_code_point(cp: 8) }
+          else if e == "f" { from_code_point(cp: 12) }
+          else { e }
+        json_unescape_from(s: s, i: i + 2, acc: concat(acc, u))
+      }
+    } else {
+      json_unescape_from(s: s, i: i + 1, acc: concat(acc, c))
+    }
+  }
+}
+
+fn json_unescape(s: String) -> String {
+  json_unescape_from(s: s, i: 0, acc: "")
+}
+
+fn parse_json_string_at(s: String, i: Int) -> JsonParse {
+  match json_text_parse_string(s: s, i: i) {
+    JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    JsonTextParseOk { end: e } =>
+      JsonParsed {
+        value: JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
+        next: e,
+      }
+  }
+}
+
+fn parse_json_number_at(s: String, i: Int) -> JsonParse {
+  match json_text_parse_number(s: s, i: i) {
+    JsonTextParseFail { end: e } => JsonParseFail { at: e }
+    JsonTextParseOk { end: e } =>
+      JsonParsed {
+        value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
+        next: e,
+      }
+  }
+}
+
+fn parse_json_literal_at(s: String, i: Int, lit: String, v: JsonValue) -> JsonParse {
+  if substring(s: s, start: i, end: i + lit.length()) == lit {
+    JsonParsed { value: v, next: i + lit.length() }
+  } else {
+    JsonParseFail { at: i }
+  }
+}
+
+fn json_string_value_or_empty(v: JsonValue) -> String {
+  match v {
+    JsonString { value: sv } => sv
+    _ => ""
+  }
+}
+
+type JsonArrayAcc =
+    JsonArrayAccOk { elements: List<JsonValue>, next: Int }
+  | JsonArrayAccFail { at: Int }
+
+fn parse_json_array_elements(s: String, i: Int, acc: List<JsonValue>) -> JsonArrayAcc {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "]" {
+    JsonArrayAccOk { elements: acc, next: p + 1 }
+  } else {
+    match parse_json_value_at(s: s, i: p) {
+      JsonParseFail { at: a } => JsonArrayAccFail { at: a }
+      JsonParsed { value: v, next: n } => {
+        let acc2 = acc |> list_push(v)
+        let q = json_text_skip_ws(s: s, i: n)
+        if char_at(s: s, i: q) == "]" {
+          JsonArrayAccOk { elements: acc2, next: q + 1 }
+        } else if char_at(s: s, i: q) == "," {
+          parse_json_array_elements(s: s, i: q + 1, acc: acc2)
+        } else {
+          JsonArrayAccFail { at: q }
+        }
+      }
+    }
+  }
+}
+
+fn parse_json_array_at(s: String, i: Int) -> JsonParse {
+  match parse_json_array_elements(s: s, i: i + 1, acc: []) {
+    JsonArrayAccFail { at: a } => JsonParseFail { at: a }
+    JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: JsonArray { elements: els }, next: n }
+  }
+}
+
+type JsonObjectAcc =
+    JsonObjectAccOk { members: List<JsonKeyValue>, next: Int }
+  | JsonObjectAccFail { at: Int }
+
+fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> JsonObjectAcc {
+  let p = json_text_skip_ws(s: s, i: i)
+  if char_at(s: s, i: p) == "}" {
+    JsonObjectAccOk { members: acc, next: p + 1 }
+  } else {
+    match parse_json_string_at(s: s, i: p) {
+      JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+      JsonParsed { value: keyval, next: key_end } => {
+        let c = json_text_skip_ws(s: s, i: key_end)
+        if char_at(s: s, i: c) != ":" {
+          JsonObjectAccFail { at: c }
+        } else {
+          match parse_json_value_at(s: s, i: c + 1) {
+            JsonParseFail { at: a } => JsonObjectAccFail { at: a }
+            JsonParsed { value: v, next: val_end } => {
+              let acc2 = acc |> list_push(json_kv(key: json_string_value_or_empty(v: keyval), value: v))
+              let q = json_text_skip_ws(s: s, i: val_end)
+              if char_at(s: s, i: q) == "}" {
+                JsonObjectAccOk { members: acc2, next: q + 1 }
+              } else if char_at(s: s, i: q) == "," {
+                parse_json_object_members(s: s, i: q + 1, acc: acc2)
+              } else {
+                JsonObjectAccFail { at: q }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn parse_json_object_at(s: String, i: Int) -> JsonParse {
+  match parse_json_object_members(s: s, i: i + 1, acc: []) {
+    JsonObjectAccFail { at: a } => JsonParseFail { at: a }
+    JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: JsonObject { members: ms }, next: n }
+  }
+}
+
+fn parse_json_value_at(s: String, i: Int) -> JsonParse {
+  let p = json_text_skip_ws(s: s, i: i)
+  if p >= s.length() {
+    JsonParseFail { at: p }
+  } else {
+    let c = char_at(s: s, i: p)
+    if c == "{" { parse_json_object_at(s: s, i: p) }
+    else if c == "[" { parse_json_array_at(s: s, i: p) }
+    else if c == "\"" { parse_json_string_at(s: s, i: p) }
+    else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: JsonBool { value: true }) }
+    else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: JsonBool { value: false }) }
+    else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: JsonNull) }
+    else if c == "-" || is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
+    else { JsonParseFail { at: p } }
+  }
+}
+
+fn some_json_value(v: JsonValue) -> JsonValue? {
+  Present { value: v }
+}
+
+fn parse_json_fully_consumed(s: String, v: JsonValue, n: Int) -> JsonValue? {
+  if json_text_skip_ws(s: s, i: n) == s.length() {
+    some_json_value(v: v)
+  } else {
+    none
+  }
+}
+
+fn parse_json(s: String) -> JsonValue? {
+  match parse_json_value_at(s: s, i: 0) {
+    JsonParseFail { at: _ } => none
+    JsonParsed { value: v, next: n } => parse_json_fully_consumed(s: s, v: v, n: n)
+  }
+}

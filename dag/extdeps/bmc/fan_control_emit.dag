@@ -1,9 +1,10 @@
 module extdeps.bmc.fan_control_emit
 
-import std.types { String, List, Int }
+import std.types { String, List, Int, Bool }
 import std.measure { celsius_count, percent_count }
 import extdeps.bmc.fan_control { StepwiseFanCurve, FanCurvePoint, FanControlZoneProfile }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonArray, JsonString, JsonKeyValue, json_kv, json_int, json_object, serialize_json }
+import extdeps.languages.json.parse { parse_json }
 
 data fan_control_emit_note: String = "Emit the phosphor-pid-control 'stepwise' reading/output objects for a fan curve — the exact fragment swampd's TEMP_SOC controller consumes, e.g. {\"reading\": {\"0\": 40, ...}, \"output\": {\"0\": 30, ...}}. This is the backward reading of the same StepwiseFanCurve the model carries (DESIGN 4, one grammar both directions): the fleet profile serialized to the bytes a BMC runs. It is the WRITE CONTENT; splicing it into a BMC's live config-asrr.json (topology-preserving) is the transport step, which awaits a JSON parser / modeled BMC-file read-modify-write effect (see gunbc.bmc_fan_converge)."
 
@@ -23,7 +24,7 @@ fn stepwise_emit_fold(points: List<FanCurvePoint>) -> StepwiseEmitFold {
         reading_members: acc.reading_members
           |> list_push(json_kv(key: to_string(acc.index), value: json_int(n: celsius_count(c: point.reading)))),
         output_members: acc.output_members
-          |> list_push(json_kv(key: to_string(acc.index), value: json_int(n: percent_count(p: point.output) as Int))),
+          |> list_push(json_kv(key: to_string(acc.index), value: json_int(n: percent_count(p: point.output)))),
       }
     }
   )
@@ -39,4 +40,103 @@ fn fan_curve_stepwise_json(curve: StepwiseFanCurve) -> String {
 
 fn fan_profile_stepwise_json(profile: FanControlZoneProfile) -> String {
   fan_curve_stepwise_json(curve: profile.curve)
+}
+
+data fan_config_patch_note: String = "patch_fan_config_json is the read-modify-write that finishes the fan-write transport WITHOUT a whole-file overwrite: parse a BMC's live config-asrr.json (extdeps.languages.json.parse), replace ONLY the TEMP_SOC stepwise reading/output curve with the desired one, re-serialize. Every other node — the BMC's own sensor list and fan PID topology — is preserved verbatim, so it is safe across firmware lines whose tach naming differs. Fail-closed: an unparseable config, or one with no stepwise controller, returns none (never a silent no-op that leaves the bad curve)."
+
+fn fan_curve_reading_json(curve: StepwiseFanCurve) -> JsonValue {
+  json_object(members: stepwise_emit_fold(points: curve.points).reading_members)
+}
+
+fn fan_curve_output_json(curve: StepwiseFanCurve) -> JsonValue {
+  json_object(members: stepwise_emit_fold(points: curve.points).output_members)
+}
+
+fn json_value_string_eq(v: JsonValue, expected: String) -> Bool {
+  match v {
+    JsonString { value: sv } => sv == expected
+    _ => false
+  }
+}
+
+fn json_members_has_string(members: List<JsonKeyValue>, key: String, expected: String) -> Bool {
+  fold(members, init: false, f: (acc, kv) => acc || (kv.key == key && json_value_string_eq(v: kv.value, expected: expected)))
+}
+
+fn json_pid_member_replace(kv: JsonKeyValue, reading: JsonValue, output: JsonValue) -> JsonKeyValue {
+  if kv.key == "reading" {
+    json_kv(key: "reading", value: reading)
+  } else if kv.key == "output" {
+    json_kv(key: "output", value: output)
+  } else {
+    kv
+  }
+}
+
+fn json_pid_set_reading_output(pid: JsonValue, reading: JsonValue, output: JsonValue) -> JsonValue {
+  match pid {
+    JsonObject { members: ms } => JsonObject { members: ms |> map(kv => json_pid_member_replace(kv: kv, reading: reading, output: output)) }
+    _ => pid
+  }
+}
+
+fn json_stepwise_member_patch(kv: JsonKeyValue, reading: JsonValue, output: JsonValue) -> JsonKeyValue {
+  if kv.key == "pid" {
+    json_kv(key: "pid", value: json_pid_set_reading_output(pid: kv.value, reading: reading, output: output))
+  } else {
+    kv
+  }
+}
+
+fn json_patch_member_recurse(kv: JsonKeyValue, reading: JsonValue, output: JsonValue) -> JsonKeyValue {
+  json_kv(key: kv.key, value: json_patch_stepwise_curve(v: kv.value, reading: reading, output: output))
+}
+
+fn json_patch_stepwise_object(members: List<JsonKeyValue>, reading: JsonValue, output: JsonValue) -> JsonValue {
+  if json_members_has_string(members: members, key: "type", expected: "stepwise") {
+    JsonObject { members: members |> map(kv => json_stepwise_member_patch(kv: kv, reading: reading, output: output)) }
+  } else {
+    JsonObject { members: members |> map(kv => json_patch_member_recurse(kv: kv, reading: reading, output: output)) }
+  }
+}
+
+fn json_patch_stepwise_curve(v: JsonValue, reading: JsonValue, output: JsonValue) -> JsonValue {
+  match v {
+    JsonArray { elements: els } => JsonArray { elements: els |> map(e => json_patch_stepwise_curve(v: e, reading: reading, output: output)) }
+    JsonObject { members: ms } => json_patch_stepwise_object(members: ms, reading: reading, output: output)
+    _ => v
+  }
+}
+
+fn json_members_any_stepwise(members: List<JsonKeyValue>) -> Bool {
+  json_members_has_string(members: members, key: "type", expected: "stepwise")
+    || fold(members, init: false, f: (acc, kv) => acc || json_has_stepwise(v: kv.value))
+}
+
+fn json_has_stepwise(v: JsonValue) -> Bool {
+  match v {
+    JsonArray { elements: els } => fold(els, init: false, f: (acc, e) => acc || json_has_stepwise(v: e))
+    JsonObject { members: ms } => json_members_any_stepwise(members: ms)
+    _ => false
+  }
+}
+
+fn some_patched_config(config: String) -> String? {
+  Present { value: config }
+}
+
+fn patch_fan_config_json(config_text: String, curve: StepwiseFanCurve) -> String? {
+  match parse_json(s: config_text) {
+    Absent => none
+    Present { value: v } =>
+      if json_has_stepwise(v: v) {
+        some_patched_config(config: serialize_json(v: json_patch_stepwise_curve(
+          v: v,
+          reading: fan_curve_reading_json(curve: curve),
+          output: fan_curve_output_json(curve: curve),
+        )))
+      } else {
+        none
+      }
+  }
 }

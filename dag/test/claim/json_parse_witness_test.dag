@@ -1,0 +1,47 @@
+module test.claim.json_parse_witness
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_parse_roundtrip_object() -> Bool {
+  match parse_json(s: "{\"a\": [1, 2], \"b\": \"x\"}") {
+    Present { value: v } => serialize_json(v: v) == "{\"a\": [1, 2], \"b\": \"x\"}"
+    Absent => false
+  }
+}
+
+fn witness_parse_roundtrip_nested() -> Bool {
+  match parse_json(s: "{\"reading\": {\"0\": 40, \"1\": 55}, \"output\": {\"0\": 30}}") {
+    Present { value: v } => serialize_json(v: v) == "{\"reading\": {\"0\": 40, \"1\": 55}, \"output\": {\"0\": 30}}"
+    Absent => false
+  }
+}
+
+fn witness_parse_literals_and_numbers() -> Bool {
+  match parse_json(s: "[true, false, null, -7, 1.5]") {
+    Present { value: v } => serialize_json(v: v) == "[true, false, null, -7, 1.5]"
+    Absent => false
+  }
+}
+
+fn witness_parse_rejects_garbage() -> Bool {
+  match parse_json(s: "{not json") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_parse_rejects_trailing() -> Bool {
+  match parse_json(s: "{} extra") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn json_parse_witnesses() -> Bool {
+  witness_parse_roundtrip_object()
+    && witness_parse_roundtrip_nested()
+    && witness_parse_literals_and_numbers()
+    && witness_parse_rejects_garbage()
+    && witness_parse_rejects_trailing()
+}

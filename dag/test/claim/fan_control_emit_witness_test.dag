@@ -58,7 +58,32 @@ fn witness_fan_curve_mutation_changes_emission() -> Bool {
   !(fan_curve_stepwise_json(curve: fan_emit_mutated_curve()) == fan_emit_expected_2_07_00_json())
 }
 
+fn fan_emit_stripped_config() -> String {
+  "{\"sensors\": [{\"name\": \"TEMP_SOC\"}], \"zones\": [{\"id\": 0, \"minThermalOutput\": 30, \"pids\": [{\"name\": \"TEMP_SOC\", \"type\": \"stepwise\", \"pid\": {\"samplePeriod\": 1.0, \"reading\": {\"0\": 40, \"1\": 90}, \"output\": {\"0\": 30, \"1\": 30}}}]}]}"
+}
+
+fn witness_patch_replaces_curve_preserves_topology() -> Bool {
+  match patch_fan_config_json(config_text: fan_emit_stripped_config(), curve: fan_emit_sample_2_07_00_curve()) {
+    Absent => false
+    Present { value: p } =>
+      string_contains(s: p, pattern: "\"1\": 55")
+        && string_contains(s: p, pattern: "\"4\": 100")
+        && string_contains(s: p, pattern: "\"type\": \"stepwise\"")
+        && string_contains(s: p, pattern: "\"samplePeriod\": 1.0")
+        && (string_contains(s: p, pattern: "\"1\": 90") == false)
+  }
+}
+
+fn witness_patch_rejects_no_stepwise() -> Bool {
+  match patch_fan_config_json(config_text: "{\"zones\": []}", curve: fan_emit_sample_2_07_00_curve()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 test fn fan_control_emit_witnesses() -> Bool {
   witness_fan_curve_stepwise_json_matches_2_07_00()
     && witness_fan_curve_mutation_changes_emission()
+    && witness_patch_replaces_curve_preserves_topology()
+    && witness_patch_rejects_no_stepwise()
 }

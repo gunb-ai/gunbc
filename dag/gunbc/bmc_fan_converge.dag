@@ -6,7 +6,7 @@ import extdeps.boards.types { BaseboardModel, AsrockRackAltrad8ud1l2t }
 import extdeps.boards.asrock_rack { altrad8ud_fleet_fan_profile }
 import extdeps.exec.command { ArgvCommand, CommandTransport, SshExec, command_over_transport }
 import gunbc.fleet_intent { fleet_intent_known_hosts, ComputeHost }
-import extdeps.bmc.fan_control_emit { fan_profile_stepwise_json }
+import extdeps.bmc.fan_control_emit { fan_profile_stepwise_json, patch_fan_config_json }
 
 data bmc_fan_converge_authority_note: NonEmptyStr = "Durable/uniform fleet fan-control convergence. Every ALTRAD8UD BMC must run altrad8ud_fleet_fan_profile (the 2.07.00 vendor curve); this module is the single authority that pairs each fleet BMC with that desired profile and defines the fail-closed convergence verdict. It exists so the good curve survives BMC reboots/reflashes and no BMC drifts back to a lazy curve (as srv4 had). The profile is topology-agnostic by construction (curve + floor + failsafe, no per-rotor PID / tach enumeration), so the apply is a read-modify-write PATCH of the TEMP_SOC stepwise curve into each BMC's existing config-asrr.json — preserving that BMC's own sensor/fan topology — never a whole-file overwrite."
 
@@ -78,6 +78,10 @@ fn fleet_fan_desired_stepwise_json() -> String {
   fan_profile_stepwise_json(profile: altrad8ud_fleet_fan_profile)
 }
 
+fn bmc_fan_converge_patched_config(target: BmcFanConvergeTarget, observed_config: String) -> String? {
+  patch_fan_config_json(config_text: observed_config, curve: target.desired.curve)
+}
+
 fn bmc_fan_restart_command(target: BmcFanConvergeTarget) -> ArgvCommand {
   command_over_transport(
     command: ArgvCommand { argv: ["systemctl", "restart", target.fan_service as String] },
@@ -85,4 +89,4 @@ fn bmc_fan_restart_command(target: BmcFanConvergeTarget) -> ArgvCommand {
   )
 }
 
-data bmc_fan_curve_patch_realization_note: NonEmptyStr = "REALIZATION STEP (declared): applying a drifted target has two parts — (1) PATCH the desired StepwiseFanCurve into the BMC's live config-asrr.json (read the file over the SshExec BMC transport, replace only the TEMP_SOC stepwise reading/output + zone floor/failsafe, write back — preserving that BMC's sensor/fan-PID topology), then (2) bmc_fan_restart_command. Only step (2) is modeled here with existing argv-over-SshExec vocabulary; step (1) is the same BMC-filesystem read-modify-write transport that fleet_subsumption_manual_gaps still lists as unmodeled (bmc ssh/scp done by hand today). DISSOLVES WHEN a modeled BmcConfigPatch effect (read-modify-write a BMC file over SshExec, fail-closed) lands and this note is replaced by that effect wired through host_effect_apply. Interim manual procedure proven live on srv4 2026-07-30 (backup config-asrr.json.bak-precurve, swap the stepwise reading/output to the 2.07.00 curve, restart phosphor-pid-control)."
+data bmc_fan_curve_patch_realization_note: NonEmptyStr = "REALIZATION: applying a drifted target is (1) fetch the BMC's live config-asrr.json, (2) bmc_fan_converge_patched_config — parse it and replace ONLY the TEMP_SOC stepwise curve with the desired one, preserving that BMC's sensor/fan-PID topology (extdeps.bmc.fan_control_emit.patch_fan_config_json; pure, witness-tested, fail-closed on unparseable / no-stepwise), (3) write the patched text back, (4) bmc_fan_restart_command. Steps (2) and (4) are MODELED and green-by-execution — the JSON parser (extdeps.languages.json.parse, emit^-1) unblocked the read-modify-write MODIFY. The remaining gap is only the I/O transport at (1)/(3): capturing `ssh root@bmc cat <path>` stdout into a String and writing a String back over the SshExec transport — the command-I/O effect boundary. DISSOLVES WHEN that fetch/write is wired (an observe-then-write effect over the BMC SshExec transport, or the patch fn emitted to a stdin->stdout filter binary piped between two ssh calls). Interim: proven live on srv4 2026-07-30 (backup config-asrr.json.bak-precurve, patch, restart)."
