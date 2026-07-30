@@ -5,6 +5,8 @@ import gunbc.namespace_unique_on_chain_policy_scaffold {
   namespace_unique_on_chain_policy_hand_rust_scaffold,
   namespace_unique_on_chain_policy_hand_rust_dissolve_trigger,
   namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor,
+  namespace_unique_on_chain_policy_hand_rust_loc_before,
+  namespace_unique_on_chain_policy_hand_rust_loc_after,
   namespace_unique_on_chain_policy_containment_census_test_discriminator,
   namespace_unique_on_chain_policy_zero_on_chain_test_discriminator,
   namespace_unique_on_chain_policy_single_off_chain_test_discriminator,
@@ -32,8 +34,18 @@ test fn namespace_unique_on_chain_policy_hand_rust_dissolve_trigger_names_lane()
 test fn namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor_is_checkable() -> Bool {
   string_contains(
     s: namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor,
-    pattern: "namespace-resolution-design.md",
-  ) && namespace_unique_on_chain_policy_loc_delta_net > 0
+    pattern: "gunbc.roadmap_authority",
+  ) &&
+    string_contains(
+      s: namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor,
+      pattern: "namespace-canonical-binding",
+    ) &&
+    namespace_unique_on_chain_policy_hand_rust_loc_before > 0 &&
+    namespace_unique_on_chain_policy_hand_rust_loc_after >
+      namespace_unique_on_chain_policy_hand_rust_loc_before &&
+    namespace_unique_on_chain_policy_loc_delta_net ==
+      (namespace_unique_on_chain_policy_hand_rust_loc_after -
+        namespace_unique_on_chain_policy_hand_rust_loc_before)
 }
 
 test fn namespace_unique_on_chain_policy_discriminating_tests_named() -> Bool {

@@ -12,14 +12,20 @@ data namespace_unique_on_chain_policy_hand_rust_scaffold: Disposition = Scaffold
   }
 }
 
-data namespace_unique_on_chain_policy_hand_rust_dissolve_trigger: String = "DISSOLVE-ON: v1 self-host deletes src/v1 and the host thread-local NameResolutionPolicy gate; dag-native policy witnesses replace src/v1/tests/src/namespace_unique_on_chain_policy_test.rs. ROADMAP lane: namespace-canonical-binding."
+data namespace_unique_on_chain_policy_hand_rust_dissolve_trigger: String = "DISSOLVE-ON: v1 self-host deletes src/v1 and the host thread-local NameResolutionPolicy gate; dag-native policy witnesses replace src/v1/tests/src/namespace_unique_on_chain_policy_test.rs (hand-Rust LOC after → 0). ROADMAP row: gunbc.roadmap_authority namespace-canonical-binding."
 
-data namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor: String = "docs/plans/namespace-resolution-design.md"
+data namespace_unique_on_chain_policy_hand_rust_receipt_plan_anchor: String = "gunbc.roadmap_authority namespace-canonical-binding"
+
+data namespace_unique_on_chain_policy_hand_rust_loc_before: Int = 244
+
+data namespace_unique_on_chain_policy_hand_rust_loc_after: Int = 277
+
+data namespace_unique_on_chain_policy_loc_delta_net: Int = 33
+
+data namespace_unique_on_chain_policy_hand_rust_loc_census_note: String = "Hand-Rust keystone witness LOC census vs origin/main (src/v1/tests/src/namespace_unique_on_chain_policy_test.rs): before=244 after=277 net=+33. Interim growth is counted against ROADMAP row namespace-canonical-binding; dissolve-on deletes the rs (after → 0). A bare plan-filename is not the receipt — the checkable anchor is gunbc.roadmap_authority namespace-canonical-binding."
 
 data namespace_unique_on_chain_policy_containment_census_test_discriminator: String = "zero_on_chain_containment_census_matches_inference_unresolved"
 
 data namespace_unique_on_chain_policy_zero_on_chain_test_discriminator: String = "zero_on_chain_homonym_discriminates_the_diagnostic_label"
 
 data namespace_unique_on_chain_policy_single_off_chain_test_discriminator: String = "single_off_chain_unique_refuses_under_namespace_only"
-
-data namespace_unique_on_chain_policy_loc_delta_net: Int = 75
