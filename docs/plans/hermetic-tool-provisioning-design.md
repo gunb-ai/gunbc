@@ -155,7 +155,8 @@ right, and the evidence was already in the tree:
   single site in that namespace joining to a modelled type through a **string**,
   putting tool identity in two places (§2 anemic leaf).
 - Other pinnable subjects already exist and are **not** `CliTool`:
-  `SccacheBinaryRelease`, `extdeps/docker` and `extdeps/container/docker_ce`
+  `SccacheBinaryArtifact` (release × published musl arch — `extdeps.cache.pin`),
+  `extdeps/docker` and `extdeps/container/docker_ce`
   images, apt packages, GitHub releases. A type per pinnable thing is the
   ten-integer-types mistake before `Compose<Int, MachineWidth<N>>`.
 
@@ -170,10 +171,12 @@ existing. `OciDescriptor` (`extdeps/container/oci/descriptor.dag`) is deliberate
 unlike `CliTool` — no name field, **no version field at all**, carrying a
 `mediaType` and `size` instead — and it instantiates `Pin`, `pin_value_eq` and
 `admit_pin_integrity` with zero edits to `extdeps.pin`
-(`pin_composes_over_a_structurally_different_subject`, green by execution). That
-the subject has no version while the *pin* carries one is the point rather than a
-gap: the version is the pin's own declared fact, so the dimension supplies it for
-subjects that have none.
+(`pin_composes_over_a_structurally_different_subject`, green by execution). Content-addressed
+subjects carry `version: Absent` on the pin; selection identity is `expected_identity`
+alone (`extdeps.container.oci.pin`, review 44953). Versioned subjects use
+`Present { value: VersionIdentity }` projected from cited release rows (`extdeps.cache.pin`)
+or authored for CLI tools — the optional `version` axis does not manufacture facts the
+subject does not own.
 
 Three corrections recorded with it:
 
