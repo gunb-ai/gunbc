@@ -110,9 +110,11 @@ fn ci_isolate_toolchain_step() -> Step {
   }
 }
 
+data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
+
 fn ci_native_cache_root_step() -> Step {
   RunStep {
-    name: Present { value: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)" },
+    name: Present { value: ci_native_cache_derive_step_name },
     id: none,
     run: ci_native_cache_root_script(),
     shell: none,
@@ -122,6 +124,13 @@ fn ci_native_cache_root_step() -> Step {
     continue_on_error: none,
     timeout_minutes: none
   }
+}
+
+fn ci_native_cache_prelude_order_bridge() -> String {
+  concat(
+    concat("HOME: ", ci_setup_rust_home()),
+    concat("\n      - name: ", ci_native_cache_derive_step_name)
+  )
 }
 
 fn ci_prelude_steps() -> List<Step> {
@@ -175,72 +184,6 @@ fn ci_prelude_steps() -> List<Step> {
       timeout_minutes: none
     }
   ]
-}
-
-fn ci_step_is_setup_rust(s: Step) -> Bool {
-  match s {
-    UsesStep {
-      name: Present { value: "Setup Rust" },
-      id: _,
-      uses: _,
-      with: _,
-      env: _,
-      if_condition: _,
-      continue_on_error: _,
-      timeout_minutes: _
-    } => true
-    _ => false
-  }
-}
-
-fn ci_step_is_native_cache_derive(s: Step) -> Bool {
-  match s {
-    RunStep {
-      name: Present {
-        value: "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
-      },
-      id: _,
-      run: _,
-      shell: _,
-      env: _,
-      working_directory: _,
-      if_condition: _,
-      continue_on_error: _,
-      timeout_minutes: _
-    } => true
-    _ => false
-  }
-}
-
-type CiPreludeOrderAcc = CiPreludeOrderAcc { seen_setup: Bool, ok: Bool, failed: Bool }
-
-fn ci_prelude_order_acc_advance(acc: CiPreludeOrderAcc, s: Step) -> CiPreludeOrderAcc {
-  match acc {
-    CiPreludeOrderAcc { seen_setup: _, ok: true, failed: _ } => acc
-    CiPreludeOrderAcc { seen_setup: _, ok: _, failed: true } => acc
-    CiPreludeOrderAcc { seen_setup: seen, ok: false, failed: false } =>
-      if ci_step_is_native_cache_derive(s: s) {
-        if seen {
-          CiPreludeOrderAcc { seen_setup: true, ok: true, failed: false }
-        } else {
-          CiPreludeOrderAcc { seen_setup: seen, ok: false, failed: true }
-        }
-      } else if ci_step_is_setup_rust(s: s) {
-        CiPreludeOrderAcc { seen_setup: true, ok: false, failed: false }
-      } else {
-        acc
-      }
-  }
-}
-
-fn ci_prelude_native_cache_root_follows_setup_rust() -> Bool {
-  match fold(
-    ci_prelude_steps(),
-    init: CiPreludeOrderAcc { seen_setup: false, ok: false, failed: false },
-    f: (acc, s) => ci_prelude_order_acc_advance(acc: acc, s: s)
-  ) {
-    CiPreludeOrderAcc { seen_setup: _, ok: ok, failed: _ } => ok
-  }
 }
 
 data ci_artifact_consumer_prelude_note: String = "Checkout-only prelude for deploy jobs that consume the build job's release-bins artifact. Rust release-bin build + isolated rustup stay on build only — deploy verifies and runs prebuilt binaries."

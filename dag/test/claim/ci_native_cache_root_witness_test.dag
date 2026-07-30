@@ -1,7 +1,7 @@
 module test.claim.ci_native_cache_root_witness
 
 import gunbc.ci_workflow {
-  ci_prelude_native_cache_root_follows_setup_rust,
+  ci_native_cache_prelude_order_bridge,
   ci_cargo_build_jobs_count
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
@@ -42,7 +42,9 @@ test fn witness_native_cache_root_fabrication_literal_red_control() -> Bool {
 }
 
 test fn witness_prelude_native_cache_root_step_follows_setup_rust() -> Bool {
-  ci_prelude_native_cache_root_follows_setup_rust()
+  let bridge = ci_native_cache_prelude_order_bridge()
+  string_contains(s: expected_ci_yml(), pattern: bridge) &&
+    string_contains(s: expected_falsifier_yml(), pattern: bridge)
 }
 
 test fn witness_emitted_workflows_exclude_fabricated_segment_literal() -> Bool {
