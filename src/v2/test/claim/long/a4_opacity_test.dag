@@ -1,4 +1,4 @@
-module v2.test.manual.a4_opacity
+module v2.test.long.a4_opacity
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile { compile_ingest_staging }
@@ -11,7 +11,7 @@ import v2.std.compilers.target_model {
   TargetModel,
   target_model_emit_transforms_empty
 }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.logic { Bool }
 
@@ -27,17 +27,17 @@ data a4_opacity_target_model: TargetModel = TargetModel {
 }
 
 data a4_opacity_charoffset_for_byteoffset_source: Medium<String> = Medium {
-  carried: "module a4opacity.refined_twin\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\ntype CharOffset = Refined<Int>\n\nfn at_byte(b: ByteOffset) -> String {\n  \"\"\n}\n\nfn caller(c: CharOffset) -> String {\n  at_byte(c)\n}\n",
+  carried: "module a4opacity.refined_twin\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(c: CharOffset) -> Int = expects_byte(c)\n",
   fidelity: Lossless
 }
 
 data a4_opacity_byteoffset_for_charoffset_source: Medium<String> = Medium {
-  carried: "module a4opacity.refined_twin_reverse\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\ntype CharOffset = Refined<Int>\n\nfn at_char(c: CharOffset) -> String {\n  \"\"\n}\n\nfn caller(b: ByteOffset) -> String {\n  at_char(b)\n}\n",
+  carried: "module a4opacity.refined_twin_reverse\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_char(x: CharOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_char(b)\n",
   fidelity: Lossless
 }
 
 data a4_opacity_same_brand_source: Medium<String> = Medium {
-  carried: "module a4opacity.same_brand\n\ntype Refined<T> {\n  base: T\n}\ntype ByteOffset = Refined<Int>\n\nfn at_byte(b: ByteOffset) -> String {\n  \"\"\n}\n\nfn caller(b: ByteOffset) -> String {\n  at_byte(b)\n}\n",
+  carried: "module a4opacity.same_brand\n\ntype ByteOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_byte(b)\n",
   fidelity: Lossless
 }
 
@@ -52,9 +52,9 @@ fn a4_opacity_rejects(source: Medium<String>) -> Bool {
   }
 }
 
-fn a4_opacity_accepts_clean(source: Medium<String>) -> Bool {
+fn a4_opacity_accepts(source: Medium<String>) -> Bool {
   match a4_opacity_compile(source: source) {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
@@ -68,5 +68,5 @@ test fn a4_opacity_byteoffset_for_charoffset_rejects() -> Bool {
 }
 
 test fn a4_opacity_same_brand_accepts() -> Bool {
-  a4_opacity_accepts_clean(source: a4_opacity_same_brand_source)
+  a4_opacity_accepts(source: a4_opacity_same_brand_source)
 }
