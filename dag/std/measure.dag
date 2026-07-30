@@ -196,7 +196,7 @@ type Mebibyte = Measure<Memory, Mebi, Nat>
 type Gibibyte = Measure<Memory, Gibi, Nat>
 
 fn mebibyte(count: Nat) -> Mebibyte {
-  Mebibyte { count: count }
+  Measure { count: count }
 }
 
 fn mebibyte_count(m: Mebibyte) -> Nat {
@@ -204,7 +204,7 @@ fn mebibyte_count(m: Mebibyte) -> Nat {
 }
 
 fn gibibyte(count: Nat) -> Gibibyte {
-  Gibibyte { count: count }
+  Measure { count: count }
 }
 
 fn gibibyte_count(g: Gibibyte) -> Nat {
@@ -237,9 +237,8 @@ type Celsius = Measure<Temperature, One, Int>
 
 type CelsiusDelta = Measure<TemperatureDifference, One, Int>
 
-type PositiveMeasureCount {
-  predecessor: Nat
-}
+type PositiveMeasureCount
+  = PositiveMeasureSuccessor { predecessor: Nat }
 
 type PositiveMeasureCountBuild
   = PositiveMeasureCountBuilt { count: PositiveMeasureCount }
@@ -252,7 +251,7 @@ type PositiveMeasureCountNonPositive {
 }
 
 fn positive_measure_count(predecessor: Nat) -> PositiveMeasureCount {
-  PositiveMeasureCount { predecessor: predecessor }
+  PositiveMeasureSuccessor { predecessor: predecessor }
 }
 
 fn positive_measure_count_predecessor_from_positive_int(
@@ -288,17 +287,19 @@ fn positive_measure_count_from_int(
 fn positive_measure_count_value(
   count: PositiveMeasureCount,
 ) -> Int {
-  count.predecessor + 1
+  match count {
+    PositiveMeasureSuccessor { predecessor: predecessor } =>
+      predecessor + 1
+  }
 }
 
-type PositiveCelsiusDelta {
-  count: PositiveMeasureCount
-}
+type PositiveCelsiusDelta
+  = PositiveCelsiusDeltaValue { count: PositiveMeasureCount }
 
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
 fn watt(count: Nat) -> Watt {
-  Watt { count: count }
+  Measure { count: count }
 }
 
 fn watt_count(w: Watt) -> Nat {
@@ -306,7 +307,7 @@ fn watt_count(w: Watt) -> Nat {
 }
 
 fn joule(count: Nat) -> Joule {
-  Joule { count: count }
+  Measure { count: count }
 }
 
 fn joule_count(j: Joule) -> Nat {
@@ -314,7 +315,7 @@ fn joule_count(j: Joule) -> Nat {
 }
 
 fn celsius(count: Int) -> Celsius {
-  Celsius { count: count }
+  Measure { count: count }
 }
 
 fn celsius_count(c: Celsius) -> Int {
@@ -322,7 +323,7 @@ fn celsius_count(c: Celsius) -> Int {
 }
 
 fn celsius_delta(count: Int) -> CelsiusDelta {
-  CelsiusDelta { count: count }
+  Measure { count: count }
 }
 
 fn celsius_delta_count(delta: CelsiusDelta) -> Int {
@@ -332,17 +333,20 @@ fn celsius_delta_count(delta: CelsiusDelta) -> Int {
 fn positive_celsius_delta(
   count: PositiveMeasureCount,
 ) -> PositiveCelsiusDelta {
-  PositiveCelsiusDelta { count: count }
+  PositiveCelsiusDeltaValue { count: count }
 }
 
 fn positive_celsius_delta_count(
   delta: PositiveCelsiusDelta,
 ) -> Int {
-  positive_measure_count_value(count: delta.count)
+  match delta {
+    PositiveCelsiusDeltaValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
 }
 
 fn rpm(count: Nat) -> RevolutionsPerMinute {
-  RevolutionsPerMinute { count: count }
+  Measure { count: count }
 }
 
 fn rpm_count(r: RevolutionsPerMinute) -> Nat {
@@ -354,7 +358,7 @@ type MoneyAmount<S> = Measure<Currency, S, Nat>
 type MoneyAmountMicro = MoneyAmount<Micro>
 
 fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
-  MoneyAmountMicro { count: count }
+  Measure { count: count }
 }
 
 fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
@@ -429,7 +433,7 @@ fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
 }
 
 fn byte_size(count: Nat) -> ByteSize {
-  ByteSize { count: count }
+  Measure { count: count }
 }
 
 fn byte_size_count(b: ByteSize) -> Nat {
@@ -437,7 +441,7 @@ fn byte_size_count(b: ByteSize) -> Nat {
 }
 
 fn bit_width(count: Nat) -> BitWidth {
-  BitWidth { count: count }
+  Measure { count: count }
 }
 
 fn bit_width_count(b: BitWidth) -> Nat {
@@ -445,7 +449,7 @@ fn bit_width_count(b: BitWidth) -> Nat {
 }
 
 fn hertz(count: Nat) -> Hertz {
-  Hertz { count: count }
+  Measure { count: count }
 }
 
 fn hertz_count(h: Hertz) -> Nat {
@@ -453,7 +457,7 @@ fn hertz_count(h: Hertz) -> Nat {
 }
 
 fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
-  HardwareThreadCount { count: count }
+  Measure { count: count }
 }
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
@@ -463,7 +467,7 @@ fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
 data character_count_note: String = "A budget or length expressed in characters is a COUNT of a unit, not a bare scalar — the same axis HardwareThreadCount already instantiates, with a different thing being counted. It lives here rather than as a std.types brand because the consumers compare and order these budgets, and measure_le is where that ordering already lives (review 44089)."
 
 fn character_count(count: Nat) -> CharacterCount {
-  CharacterCount { count: count }
+  Measure { count: count }
 }
 
 fn character_count_value(c: CharacterCount) -> Nat {
@@ -471,7 +475,7 @@ fn character_count_value(c: CharacterCount) -> Nat {
 }
 
 fn millicore(count: Nat) -> Millicore {
-  Millicore { count: count }
+  Measure { count: count }
 }
 
 fn millicore_count(m: Millicore) -> Nat {
@@ -481,7 +485,7 @@ fn millicore_count(m: Millicore) -> Nat {
 type Bandwidth = Measure<DataRate, One, Nat>
 
 fn bandwidth(count: Nat) -> Bandwidth {
-  Bandwidth { count: count }
+  Measure { count: count }
 }
 
 fn bandwidth_count(b: Bandwidth) -> Nat {
@@ -491,7 +495,7 @@ fn bandwidth_count(b: Bandwidth) -> Nat {
 type Nanosecond = Measure<Time, Nano, Nat>
 
 fn nanosecond(count: Nat) -> Nanosecond {
-  Nanosecond { count: count }
+  Measure { count: count }
 }
 
 fn nanosecond_count(n: Nanosecond) -> Nat {
@@ -501,7 +505,7 @@ fn nanosecond_count(n: Nanosecond) -> Nat {
 type Microsecond = Measure<Time, Micro, Nat>
 
 fn microsecond(count: Nat) -> Microsecond {
-  Microsecond { count: count }
+  Measure { count: count }
 }
 
 fn microsecond_count(m: Microsecond) -> Nat {
@@ -511,23 +515,25 @@ fn microsecond_count(m: Microsecond) -> Nat {
 type Millisecond = Measure<Time, Milli, Nat>
 
 fn millisecond(count: Nat) -> Millisecond {
-  Millisecond { count: count }
+  Measure { count: count }
 }
 
 fn millisecond_count(m: Millisecond) -> Nat {
   measure_count(m)
 }
 
-type PositiveMillisecond {
-  count: PositiveMeasureCount
-}
+type PositiveMillisecond
+  = PositiveMillisecondValue { count: PositiveMeasureCount }
 
 fn positive_millisecond(count: PositiveMeasureCount) -> PositiveMillisecond {
-  PositiveMillisecond { count: count }
+  PositiveMillisecondValue { count: count }
 }
 
 fn positive_millisecond_count(m: PositiveMillisecond) -> Int {
-  positive_measure_count_value(count: m.count)
+  match m {
+    PositiveMillisecondValue { count: count } =>
+      positive_measure_count_value(count: count)
+  }
 }
 
 fn nanoseconds_per_millisecond() -> Nat {
@@ -547,7 +553,7 @@ data nanosecond_millisecond_projection_note: String = "Nanosecond is the canonic
 type Second = Measure<Time, One, Nat>
 
 fn second(count: Nat) -> Second {
-  Second { count: count }
+  Measure { count: count }
 }
 
 fn second_count(s: Second) -> Nat {
@@ -561,7 +567,7 @@ fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
 type Minute = Measure<Time, Sixty, Nat>
 
 fn minute(count: Nat) -> Minute {
-  Minute { count: count }
+  Measure { count: count }
 }
 
 fn minute_count(m: Minute) -> Nat {
@@ -571,7 +577,7 @@ fn minute_count(m: Minute) -> Nat {
 type Percent = Measure<Dimensionless, One, Nat>
 
 fn percent(count: Nat) -> Percent {
-  Percent { count: count }
+  Measure { count: count }
 }
 
 fn percent_count(p: Percent) -> Nat {
@@ -593,7 +599,7 @@ data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionle
 type BasisPoint = Measure<Dimensionless, One, Nat>
 
 fn basis_point(count: Nat) -> BasisPoint {
-  BasisPoint { count: count }
+  Measure { count: count }
 }
 
 fn basis_point_count(bp: BasisPoint) -> Nat {
@@ -611,7 +617,7 @@ data basis_point_dissolve_on: String = "dissolve-on: Ratio<Scale> carrier unifyi
 type AmortizationMonths = Measure<Count, One, Nat>
 
 fn amortization_months(count: Nat) -> AmortizationMonths {
-  AmortizationMonths { count: count }
+  Measure { count: count }
 }
 
 fn amortization_months_count(m: AmortizationMonths) -> Nat {

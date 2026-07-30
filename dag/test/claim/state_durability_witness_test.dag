@@ -6,6 +6,7 @@ import std.measure {
   PositiveMeasureCountRefused,
   positive_measure_count,
   positive_measure_count_from_int,
+  positive_measure_count_value,
   positive_millisecond,
 }
 import std.state_durability {
@@ -352,6 +353,14 @@ test fn non_positive_measure_counts_are_typed_refusals() -> Bool {
         PositiveMeasureCountBuilt { count: _ } => false
       }
     PositiveMeasureCountBuilt { count: _ } => false
+  }
+}
+
+test fn positive_measure_count_build_executes_positive_arm() -> Bool {
+  match positive_measure_count_from_int(count: 3) {
+    PositiveMeasureCountBuilt { count: count } =>
+      positive_measure_count_value(count: count) == 3
+    PositiveMeasureCountRefused { cause: _ } => false
   }
 }
 
