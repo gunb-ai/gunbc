@@ -103,7 +103,16 @@ fn fixture_transition(
       NativeScmCommitTransitionUncommitted
     IncompatibleGoalsNeedAuthorizedDecider =>
       NativeScmCommitTransitionUncommitted
-    _ => NativeScmCommitTransitionCommitted
+    TwoIndependentChangesLand => NativeScmCommitTransitionCommitted
+    StaleTargetAutoResync => NativeScmCommitTransitionCommitted
+    DuplicateSubmissionAppliesOnce => NativeScmCommitTransitionCommitted
+    RenameReferenceUniqueMeaning => NativeScmCommitTransitionCommitted
+    EvidenceGatheredInternally => NativeScmCommitTransitionCommitted
+    ProjectionFailureRepairsWithoutReinterpretation =>
+      NativeScmCommitTransitionCommitted
+    ConventionalScmImportWithoutManualRewrite =>
+      NativeScmCommitTransitionCommitted
+    VisibilityAuthorizedDetails => NativeScmCommitTransitionCommitted
   }
 }
 
@@ -225,7 +234,17 @@ fn fixture_check(
 ) -> NativeScmLifecycle {
   match scenario {
     ToolModelProofDeficitRoutesInternally => NativeScmLifecyclePending
-    _ => NativeScmLifecycleReady
+    TwoIndependentChangesLand => NativeScmLifecycleReady
+    StaleTargetAutoResync => NativeScmLifecycleReady
+    DuplicateSubmissionAppliesOnce => NativeScmLifecycleReady
+    RenameReferenceUniqueMeaning => NativeScmLifecycleReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmLifecycleReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmLifecycleReady
+    EvidenceGatheredInternally => NativeScmLifecycleReady
+    ProjectionFailureRepairsWithoutReinterpretation =>
+      NativeScmLifecycleReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmLifecycleReady
+    VisibilityAuthorizedDetails => NativeScmLifecycleReady
   }
 }
 
@@ -237,7 +256,15 @@ fn fixture_operational(
       NativeScmProjectionRepairPending
     ToolModelProofDeficitRoutesInternally =>
       NativeScmInternalWorkPending
-    _ => NativeScmOperationalReady
+    TwoIndependentChangesLand => NativeScmOperationalReady
+    StaleTargetAutoResync => NativeScmOperationalReady
+    DuplicateSubmissionAppliesOnce => NativeScmOperationalReady
+    RenameReferenceUniqueMeaning => NativeScmOperationalReady
+    TwoLegitimateMeaningsNeedChoice => NativeScmOperationalReady
+    IncompatibleGoalsNeedAuthorizedDecider => NativeScmOperationalReady
+    EvidenceGatheredInternally => NativeScmOperationalReady
+    ConventionalScmImportWithoutManualRewrite => NativeScmOperationalReady
+    VisibilityAuthorizedDetails => NativeScmOperationalReady
   }
 }
 
@@ -249,7 +276,15 @@ fn fixture_projection(
       "/workspaces/native-scm-projection-repair"
     ConventionalScmImportWithoutManualRewrite =>
       "/workspaces/native-scm-conventional-import"
-    _ => "/workspaces/native-scm-contract"
+    TwoIndependentChangesLand => "/workspaces/native-scm-contract"
+    StaleTargetAutoResync => "/workspaces/native-scm-contract"
+    DuplicateSubmissionAppliesOnce => "/workspaces/native-scm-contract"
+    RenameReferenceUniqueMeaning => "/workspaces/native-scm-contract"
+    TwoLegitimateMeaningsNeedChoice => "/workspaces/native-scm-contract"
+    IncompatibleGoalsNeedAuthorizedDecider => "/workspaces/native-scm-contract"
+    EvidenceGatheredInternally => "/workspaces/native-scm-contract"
+    ToolModelProofDeficitRoutesInternally => "/workspaces/native-scm-contract"
+    VisibilityAuthorizedDetails => "/workspaces/native-scm-contract"
   }
   NativeScmProjection {
     workspace: optional_present(value: workspace),
