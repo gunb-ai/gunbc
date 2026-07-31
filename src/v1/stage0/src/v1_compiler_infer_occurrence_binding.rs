@@ -50,31 +50,16 @@ pub fn module_path_owner_binding_decide(
     }
 }
 
-pub fn global_bare_chain_ambiguity_labels_from_decide(
-    owners: Rc<Vec<String>>,
-    name: String,
-) -> Rc<Vec<String>> {
-    match (*module_path_owner_binding_decide(owners.clone())).clone() {
-        ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: owners, .. } => {
-            Rc::new({
-                let mut __result = Vec::new();
-                for owner in owners.clone().iter().cloned() {
-                    __result.push(v1_rt::concat(
-                        v1_rt::concat(owner.clone(), ".".to_string()),
-                        name.clone(),
-                    ));
-                }
-                __result
-            })
-        }
-        _ => Rc::new(vec![]),
+pub fn ambiguity_labels_single_authority_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ONE labeller for both production candidate sites (review 45364). global_bare_chain_ambiguity_labels_from_decide and func_parent_closure_ambiguity_labels_from_decide were token-identical modulo a local bind name -- a section 3 nickname pair, two names for one concept, which the predicate-dissolution pass left resident. The call site is not part of the fact: qualifying an ambiguous owner list is the same operation whether the candidates came from the global_bare chain (04_env) or a fn parent closure (04_sigs), so the site-prefixed names encoded a distinction that does not exist. Collapsed to ambiguity_labels_from_decide, consumed by both.".to_string()
+        };
     }
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn func_parent_closure_ambiguity_labels_from_decide(
-    owners: Rc<Vec<String>>,
-    name: String,
-) -> Rc<Vec<String>> {
+pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc<Vec<String>> {
     match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous {
             owners: ambiguous_owners,

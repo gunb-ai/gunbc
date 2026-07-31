@@ -15,7 +15,7 @@ use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
     ModulePathBindingAmbiguous, ModulePathBindingHit, ModulePathBindingMiss,
 };
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    global_bare_chain_ambiguity_labels_from_decide, module_path_owner_binding_decide,
+    ambiguity_labels_from_decide, module_path_owner_binding_decide,
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -1041,7 +1041,7 @@ pub fn global_bare_strict_ambiguity_candidates(env: Rc<TypeEnv>, name: String) -
             candidates: cands, ..
         }) => {
             let chain = global_bare_chain_candidates(env.module_path.clone(), cands.clone());
-            global_bare_chain_ambiguity_labels_from_decide(
+            ambiguity_labels_from_decide(
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in chain.clone().iter().cloned() {

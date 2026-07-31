@@ -13,7 +13,7 @@ import v1.std.core {
 import v1.compiler.infer_types { emit_map_has }
 
 import v1.compiler.infer_occurrence_binding {
-  func_parent_closure_ambiguity_labels_from_decide,
+  ambiguity_labels_from_decide,
   module_path_owner_binding_decide,
   ModulePathBindingProjection,
 }
@@ -105,7 +105,7 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
       }
     ModulePathBindingAmbiguous { owners: _ } =>
       FuncSigAmbiguous {
-        candidates: func_parent_closure_ambiguity_labels_from_decide(
+        candidates: ambiguity_labels_from_decide(
           owners: scan.owners,
           name: name,
         ),

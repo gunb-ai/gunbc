@@ -7,7 +7,7 @@ use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
 use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::*;
 pub use crate::v1_compiler_infer_occurrence_binding::{
-    func_parent_closure_ambiguity_labels_from_decide, module_path_owner_binding_decide,
+    ambiguity_labels_from_decide, module_path_owner_binding_decide,
 };
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
@@ -173,10 +173,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
             }
             ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
                 Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                    candidates: func_parent_closure_ambiguity_labels_from_decide(
-                        scan.owners.clone(),
-                        name.clone(),
-                    ),
+                    candidates: ambiguity_labels_from_decide(scan.owners.clone(), name.clone()),
                 })
             }
         }

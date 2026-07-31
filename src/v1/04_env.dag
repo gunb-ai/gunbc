@@ -12,7 +12,7 @@ import v1.compiler.infer_occurrence_binding {
   ModulePathBindingAmbiguous,
   ModulePathBindingHit,
   ModulePathBindingMiss,
-  global_bare_chain_ambiguity_labels_from_decide,
+  ambiguity_labels_from_decide,
 }
 
 
@@ -589,7 +589,7 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
   match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       let chain = global_bare_chain_candidates(env_module_path: env.module_path, candidates: cands)
-      global_bare_chain_ambiguity_labels_from_decide(
+      ambiguity_labels_from_decide(
         owners: chain |> map(c => c.module_path),
         name: name,
       )

@@ -7,11 +7,14 @@
 use std::rc::Rc;
 
 use v1_compiler::cli_run::{containment_resolve_fn_v1_for_module, ContainmentResolve};
+use v1_compiler::std_occurrence_identity::{OccurrenceId, OccurrenceTransportRefusal};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_rt::{
     name_resolution_policy_is_namespace_only, name_resolution_policy_set_namespace_only,
 };
-use v1_compiler::v1_std_core::{diagnostic_to_message, is_error_diagnostic};
+use v1_compiler::v1_std_core::{
+    diagnostic_to_message, diagnostic_to_span, is_error_diagnostic, no_span, CompilerDiagnostic,
+};
 
 /// Panic-safe policy bracket: retained only to prove the host gate no longer bypasses
 /// canonical binding on the production paths this PR routes.
@@ -273,5 +276,73 @@ fn genuinely_unbound_stays_unresolved_not_ambiguous() {
     assert!(
         !diags.iter().any(|m| m.contains("ambiguous")),
         "no fabricated ambiguity for an unbound name; got {diags:?}"
+    );
+}
+
+/// `UnknownOccurrenceIdentity` is the one refusal in the transport that carries no
+/// authored span (the id is in neither index, so none exists — absence by construction).
+/// It must render through the corpus's single no-location authority, `no_span()`, and
+/// must NOT launder the occurrence id into a minted pseudo-file (review 45364).
+///
+/// Discriminating: this goes RED if the `<unknown-occurrence:N>` placeholder is
+/// reintroduced, because the assertions below reject any span whose file names the id.
+#[test]
+fn unknown_occurrence_refusal_renders_no_span_never_a_minted_pseudo_file() {
+    let diagnostic = Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
+        refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
+            occurrence: OccurrenceId { value: 4926 },
+        }),
+    });
+
+    let span = diagnostic_to_span(diagnostic.clone());
+
+    assert_eq!(
+        span,
+        no_span(),
+        "spanless refusal must render as the single no-location authority"
+    );
+    assert!(
+        !span.file.contains("4926"),
+        "span fabricated the occurrence id into a file name: {}",
+        span.file
+    );
+    assert!(
+        !span.file.contains("unknown-occurrence"),
+        "span minted a placeholder file name: {}",
+        span.file
+    );
+
+    // The identity is not lost — the message owns it, and is its only carrier.
+    assert!(
+        diagnostic_to_message(diagnostic).contains("4926"),
+        "occurrence identity must still be reported, via the message"
+    );
+}
+
+/// Span-carrying refusals are unaffected: they still report their authored location,
+/// so the fix above removed a fabrication rather than flattening real spans to nothing.
+#[test]
+fn span_carrying_refusal_still_reports_its_authored_span() {
+    let authored = v1_compiler::std_types::SourceSpan {
+        file: "dag/std/occurrence_identity.dag".to_string(),
+        start: 120,
+        end: 148,
+    };
+    let diagnostic = Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
+        refusal: Rc::new(
+            OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity {
+                occurrence: OccurrenceId { value: 7 },
+                diagnostic_span: Rc::new(authored.clone()),
+            },
+        ),
+    });
+
+    let span = diagnostic_to_span(diagnostic);
+
+    assert_eq!(*span, authored, "authored spans must survive unchanged");
+    assert_ne!(
+        *span,
+        *no_span(),
+        "a real span must not collapse to no_span"
     );
 }

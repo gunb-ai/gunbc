@@ -476,6 +476,15 @@ pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
+pub fn occurrence_transport_refusal_span_absence_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn occurrence_transport_refusal_diagnostic_span(
     refusal: Rc<OccurrenceTransportRefusal>,
 ) -> Option<Rc<SourceSpan>> {
@@ -539,27 +548,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             refusal: refusal, ..
         } => match occurrence_transport_refusal_diagnostic_span(refusal.clone()) {
             Some(span) => span.clone(),
-            None => match (*refusal.clone()).clone() {
-                OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
-                    occurrence: occurrence,
-                    ..
-                } => Rc::new(SourceSpan {
-                    file: v1_rt::concat(
-                        v1_rt::concat(
-                            "<unknown-occurrence:".to_string(),
-                            (occurrence.value.clone()).to_string(),
-                        ),
-                        ">".to_string(),
-                    ),
-                    start: 0,
-                    end: 0,
-                }),
-                _ => Rc::new(SourceSpan {
-                    file: "<occurrence-transport-refusal>".to_string(),
-                    start: 0,
-                    end: 0,
-                }),
-            },
+            None => no_span(),
         },
     }
 }
