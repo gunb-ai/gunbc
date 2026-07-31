@@ -449,7 +449,7 @@ mod compiler_tests {
             .spawn(|| {
                 let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
                     path: "red.dag".to_string(),
-                    content: "module red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\n".to_string(),
+                    content: "module red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n".to_string(),
                 });
                 let red_result = crate::v1_compiler_compile::compile_sources(
                     std::rc::Rc::new(im::vector![red]),
@@ -459,8 +459,8 @@ mod compiler_tests {
                     .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. }))
                     .collect();
                 assert!(
-                    !missing.is_empty(),
-                    "expected MethodNotFound for an unresolved method (the #7479 shape), got: {:?}",
+                    missing.len() >= 3,
+                    "expected MethodNotFound for the unresolved method AND for rostered names on a receiver that does not offer them (starts_with / to_upper on List<Int> — codex review 45327: a name-grain predicate admitted these), got: {:?}",
                     red_result.diagnostics
                 );
                 // POSITIVE CONTROLS the wall must not touch: algebra method templates

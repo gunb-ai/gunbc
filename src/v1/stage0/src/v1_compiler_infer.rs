@@ -23,7 +23,6 @@ pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation}
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
 pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_methods::declared_method_names;
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
@@ -117,12 +116,13 @@ pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
     emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    is_type_expr_annotation, make_callable_type, make_container_type, method_receiver_element_node,
-    node_is_collection, node_is_element_collection, node_is_keyed_collection,
-    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
-    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
-    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
-    template_return_has_variables, template_return_is_receiver_self,
+    is_type_expr_annotation, kernel_profile_lookup, make_callable_type, make_container_type,
+    method_receiver_element_node, node_is_collection, node_is_element_collection,
+    node_is_keyed_collection, node_is_set_collection, node_type_compatible, node_type_deps,
+    node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
+    prefer_specific_type, resolve_type_variables_from_template, resolved_type,
+    structural_carrier_template_name, template_return_has_variables,
+    template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
@@ -2801,21 +2801,11 @@ pub fn method_pipe_map_keys_values_fallback(
                     recv_rt.clone(),
                     scope.type_env.clone().source_indices.clone(),
                 );
-                let name_is_declared_method = {
-                    let mut __found = false;
-                    for m in declared_method_names().iter().cloned() {
-                        if (m.clone() == method_name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                };
-                let receiver_surface_known = is_fully_resolved(
-                    recv_rt.clone(),
+                let recv_surface_established = (kernel_profile_lookup(authored_name_at(
                     scope.type_env.clone().source_indices.clone(),
-                );
-                if (!name_is_declared_method.clone() && receiver_surface_known.clone()) {
+                    recv_rt.clone(),
+                )) != None);
+                if recv_surface_established.clone() {
                     Rc::new(MethodPipeFallback {
                         result_ty: error_type(),
                         kernel_diags: Rc::new(vec![make_error_node(
@@ -2848,7 +2838,7 @@ pub fn method_pipe_map_keys_values_fallback(
 pub fn method_existence_wall_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline and looked plausible to downstream inference, with the expression stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART and two obvious ones are UNSOUND, each measured on the whole tree before being rejected. (i) is_fully_resolved alone: a type can carry no type variables and still be an inference artifact — NonEmptyStr, declared String where non_empty, arrives as Product(NonEmptyStr) instead of peeling to its String base, so 8 correct .length() sites in extdeps/filesystem/linux.dag red while the identical text.length() in extdeps/mercurial.dag stays green; and a coproduct payload bound by pattern destructuring in extdeps/dns/domain_name.dag arrives typed Primitive(ok), a variant-name-shaped garbage type, reding a correct labels |> list_push(label). (ii) the receiver algebra profile as the complete surface: free_monoid_scalar_templates omits count while the interpreter dispatches it natively (the length/count/size arm), so String.count() in 05_emit_rust.dag reds against a profile the runtime contradicts — the five-way primitive fork, measured. Fabricating a refusal is the mirror image of the fabricated success this wall deletes, so the predicate is COMPOSED and each half is a declared authority, not one minted here (§3): refuse only when the method name is absent from std.methods declared_method_names AND the receiver type is fully resolved. The name roster answers is this a substrate method at all; the receiver gate answers could this instead be a product field holding a callable, which is exactly the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag — apply is correctly absent from the roster, so without the receiver gate those 7 sites would red. Measured verdict on the whole corpus: zero false positives, and TWO real latent defects caught — the #7479 filter_map incident, and env.clone() at 05_emit_rust.dag:9009,9831, a Rust-ism with no .dag definition and NO interpreter arm, which compiles clean today because the fallback handed back TypeEnv and would die at InterpError::Unimplemented if that path ran. MethodExistenceUndecided carries the residue: not a silent widen but a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent), so the frequency of the undecidable class stays observable and prioritizable rather than zeroed by construction. Both arms return error_type, never recv_rt: node_type_compatible treats error_type as compatible with everything, so one located refusal does not cascade into derived mismatches downstream. Positive controls that must stay green: map/filter/fold/flat_map resolve at tier0 (lookup_structural_method) and service ops at tier1 — neither reaches this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND DELIBERATELY NOT FIXED HERE, each a promotion trigger that would let the wall decide more: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding from pattern destructuring typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point existence is decided per RECEIVER rather than per NAME, the roster stops being the conservative side of a fork, and MethodExistenceUndecided is deleted.".to_string()
+            "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. Three measured shapes live there — a where-refinement alias arriving as Product(NonEmptyStr) instead of peeling to its String base (8 correct .length() sites in extdeps/filesystem/linux.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), and a product FIELD holding a callable, the legitimate LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. MethodExistenceUndecided carries that residue as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. TWO UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT AND NOT FIXED HERE, each a promotion trigger that would let the wall decide a non-kernel receiver: (1) a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup (resolve_method_receiver_type / resolve_scrutinee_type_node, v1.compiler.infer_lookup); (2) a coproduct payload binding typed as the VARIANT name rather than the field type. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
