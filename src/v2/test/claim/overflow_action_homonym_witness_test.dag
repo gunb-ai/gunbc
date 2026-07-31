@@ -11,7 +11,7 @@ import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data overflow_action_homonym_witness_note: String = "P3b cluster-7 receipt: OverflowAction is singular in v2.extdeps.languages.overflow_action; java.dag and rust.dag import it (no second declaration). Width-tower collapse deferred pending std.measure BitWidth / std.machine_constraints MachineWidth grounding column."
+data overflow_action_homonym_witness_note: String = "P3b cluster-7 receipt (src/v2 scope): OverflowAction type name is singular in src/v2/extdeps/languages; java.dag and rust.dag import overflow_action (no second OverflowAction declaration in src/v2). Variant TwoComplementWrap still has a residual owner in dag/extdeps/languages/rust/primitives.dag IntegerOverflow — not exercised by this witness."
 
 fn overflow_action_is_panic(o: OverflowAction) -> Bool {
   match o {
