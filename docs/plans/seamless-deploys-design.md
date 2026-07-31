@@ -14,15 +14,37 @@ direction that deploy should reconcile to intent and apply the minimal items (§
 widens it. Stated precisely, because the two halves are easy to conflate and item 3 sits across the
 seam:
 
-- **Still out of scope — the desired set.** *Which* artifacts constitute the deployment, and what
-  goes inside them, is unchanged. This ticket adds no member and changes no artifact's contents.
 - **Now in scope — how the desired set is applied.** Whether an unchanged member is re-applied, and
   the member modelling that makes "unchanged" decidable (content identity, and the running service
   as a member distinct from the unit file). This is item 3, and it is required work.
+- **Still out of scope — the deployed *product*.** What the dashboard does, what it shows beyond the
+  honesty fixes the brief itself asks for, and which artifacts constitute the deployment as a
+  product decision. Plus the brief's own exclusions: no dispatch or belt changes, and no attempt to
+  make the service restart-free in general — only invisible to a viewer.
 
-So the ticket does not change *what* the deploy installs; it changes *how much of it is re-applied
-to reach intent*. Everything else in the brief's `out_of_scope` stands: no dispatch or belt changes,
-and no attempt to make the service restart-free in general — only invisible to a viewer.
+**Correction (review 45289): an earlier version of this amendment said the ticket "adds no member and
+changes no artifact's contents." That is false, and false for nearly every item in it** — an
+over-tightening introduced while fixing the previous boundary finding. Implementing this ticket
+necessarily changes deployed content:
+
+- **item 1** edits `roadmap_component.dag`, which emits the dashboard's JS — a change to the served
+  tree, and the brief explicitly puts *"how the browser is told what it is seeing"* **in** scope;
+- **item 2** changes the unit file's own text (`Type=notify`) and the seed binary (`sd_notify`) —
+  both deployment artifacts;
+- **item 4** may **add a `.socket` unit**, which is a new deployment *member*, not merely new
+  contents.
+
+So the honest boundary is not "no artifact changes" — it is that the ticket does not change **what
+the deploy is for**. The reviewer reached this through the staleness cue, which is the mildest
+instance; the socket unit is the one that actually adds a member. The cue itself stays: it falls
+under the brief's own in-scope clause about how the browser is told what it is seeing, and it exists
+to stop socket activation from silently showing stale data (§3).
+
+*Coordination consequence, not a new dependency:* if slice 4 adds a `.socket` member **and** slice 2
+has made membership non-degenerate, that member needs the same bundle as its siblings — identity,
+a content-sensitive value, and an ownership stance. Neither slice gates the other (slice 4 can add
+it under today's degenerate apply; slice 2 can land before the member exists), so the §5 graph is
+unchanged — but whichever lands second inherits the join, and it should not be discovered then.
 
 **Revision, 2026-07-30 (review 45229).** Two central re-cuts in the first draft prescribed models
 that could not establish the behaviour they claimed, and both are corrected in place with the
