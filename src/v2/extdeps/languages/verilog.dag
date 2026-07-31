@@ -1,6 +1,7 @@
 module v2.extdeps.languages.verilog
 
 import v2.std.nat { Nat }
+import std.integer { Signedness }
 import v2.std.node { Symbol }
 import v2.std.grammar {
   StampClass,
@@ -155,10 +156,6 @@ type PackingShape
 type NetVectoredPacking
   = NetUnranged
   | NetRanged { vectoredness: VectorednessClause, range: VectorRange }
-
-type Signedness
-  = Signed
-  | Unsigned
 
 type DriveStrengthClause
   = NoDriveStrength
