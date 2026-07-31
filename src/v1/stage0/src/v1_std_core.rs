@@ -414,6 +414,11 @@ pub enum CompilerDiagnostic {
         method: String,
         span: Rc<SourceSpan>,
     },
+    DeclaredTypeConformanceUnjudged {
+        declared_type: String,
+        produced_type: String,
+        span: Rc<SourceSpan>,
+    },
     FrontierOccurrenceBudgetExceeded {
         method: String,
         receiver_type: String,
@@ -550,6 +555,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::MethodExistenceUndecided { span: s, .. } => s.clone(),
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { span: s, .. } => s.clone(),
         CompilerDiagnostic::ReceiverTypeUnestablished { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { span: s, .. } => s.clone(),
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { span: s, .. } => s.clone(),
         CompilerDiagnostic::MissingField { span: s, .. } => s.clone(),
         CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
@@ -583,6 +589,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::MethodNotFound { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' not found on receiver type '".to_string()), t.clone()), "'".to_string()),
     CompilerDiagnostic::MethodExistenceUndecided { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' cannot be resolved: receiver type '".to_string()), t.clone()), "' establishes no method surface, so the method's existence is not established and no declared frontier row admits it".to_string()),
     CompilerDiagnostic::MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: tr, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("method '".to_string(), m.clone()), "' on receiver type '".to_string()), t.clone()), "' is admitted by a declared unresolved-method frontier row; dissolves on: ".to_string()), tr.clone()),
+    CompilerDiagnostic::DeclaredTypeConformanceUnjudged { declared_type: d, produced_type: p, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("declared '".to_string(), d.clone()), v1_rt::concat("' and produced '".to_string(), p.clone())), "' differ in shape and the conformance relation cannot decide between them: this declaration is NOT proven to conform, it is outside the relation's established domain".to_string()),
     CompilerDiagnostic::ReceiverTypeUnestablished { .. } => "the receiver's own type was never established, so nothing is known about the method's existence here; this is an upstream type-propagation deficit, not a fact about the method".to_string(),
     CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { method: m, receiver_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat("a NEW unresolved call to '".to_string(), m.clone()), v1_rt::concat("' on receiver type '".to_string(), t.clone())), "' has appeared under an existing declared frontier row, which admits fewer occurrences than this module now has. The declared and observed counts are carried on the diagnostic. Establish the receiver's type, or raise the declared count with a measured reason — the count is a ratchet and is meant to fall.".to_string()),
     CompilerDiagnostic::MissingField { field: f, type_name: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("missing required field '".to_string(), f.clone()), "' in literal of type '".to_string()), t.clone()), "'".to_string()),
@@ -614,7 +621,7 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
 pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the five variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded): hand-written fn count in cli_run.rs is 742 at origin/main and 742 on this branch, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs` is 13 added lines containing zero `fn` — so the hand-Rust CARRIER census is flat and only arm count moved. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
+            "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — cli_run::selection_control_input_sources, the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the SIX variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, DeclaredTypeConformanceUnjudged, FrontierOccurrenceBudgetExceeded): hand-written fn count in cli_run.rs is 742 at origin/main and 742 on this branch, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs` is 18 added lines containing zero `fn` — so the hand-Rust CARRIER census is flat and only arm count moved. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed, which made the receipt itself the stale-prose defect it exists to prevent (codex review 45501). Re-derive both figures whenever a variant is added, from the two commands named above, rather than carrying them forward. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -662,6 +669,7 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
+        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. } => false,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             !is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -687,6 +695,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
+        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. } => false,
         _ => true,
     }
 }
@@ -696,6 +705,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
+        CompilerDiagnostic::DeclaredTypeConformanceUnjudged { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }
