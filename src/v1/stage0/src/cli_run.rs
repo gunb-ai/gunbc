@@ -662,6 +662,22 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn exclusive_cost_partition_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_EXCLUSIVE_COST_PARTITION_SCAFFOLD_MARKER,
+            "cli_run_exclusive_cost_partition_probe"
+        );
+    }
+
+    #[test]
+    fn selected_closure_overlap_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER,
+            "cli_run_selected_closure_overlap_probe"
+        );
+    }
+
+    #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
@@ -8393,9 +8409,13 @@ fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
 // `exclusive_cost_partition_from`, `render_exclusive_cost_partition_json`, `json_num`, the
 // `exclusive_cost_partition_law` test module, and the three `[cost-partition]` emissions
 // (`claim_batch`, `claim_executor`, `measure_whole_tree_resolve`) — ~700 LOC incl. tests.
-// Receipt: `rg cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs` == 1
-// until deletion; not a compiler_frontier `.dag` row (seed-Rust, counted here not in the
-// module census).
+// Receipt: `rg -c cli_run_exclusive_cost_partition_probe src/v1/stage0/src/cli_run.rs`
+// returns 4 while the scaffold stands (this block, the const, and its declaration test)
+// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed
+// hit count. (Stated as measured: the two older markers in this file carry a `== 1` claim
+// that is false today at 5 and 4 hits respectively, so this one reports its real count
+// rather than inheriting the convention's error.) Not a compiler_frontier `.dag` row
+// (seed-Rust, counted here not in the module census).
 pub(crate) const CLI_RUN_EXCLUSIVE_COST_PARTITION_SCAFFOLD_MARKER: &str =
     "cli_run_exclusive_cost_partition_probe";
 
@@ -15097,6 +15117,31 @@ fn apply_discovery_scope_dirs_filter(
     });
     rows
 }
+
+// SCAFFOLD (§7 HAND-RUST — `cli_run_selected_closure_overlap_probe`):
+// ROADMAP lane §2 *Minimal work — caching by realization* (gunbc.roadmap_authority /
+// ROADMAP.md), lane `ci-cost`, subject `entry-graph-union-construction` slice 1.
+// This is a ONE-SHOT INSTRUMENT, not standing infrastructure: it exists to answer whether
+// the entry-graph-union program is worth building, and it is allowed to conclude that the
+// program is worth less than assumed.
+// Unblock / DELETE WHEN: the slice-2 union verdict is taken — WHICHEVER WAY IT GOES. If
+// the union program proceeds, its own receipts supersede this probe; if the program is
+// shrunk or closed, the probe has discharged its purpose and goes with it. A standing
+// closure-overlap reader, should one ever be wanted, belongs in `v2.lens.affected_set`
+// over the containment tree, not here — this deliberately does NOT become permanent
+// host-side machinery by default.
+// DELETE WHEN dissolved: `SelectedEntryClosureOverlap`,
+// `measure_selected_entry_closure_overlap`, `render_selected_entry_closure_overlap_json`,
+// the `selected_entry_closure_overlap_arithmetic` test module, and
+// `src/v1/stage0/src/bin/measure_selected_closure_overlap.rs` — ~350 LOC incl. tests and
+// the bin.
+// Receipt: `rg -c cli_run_selected_closure_overlap_probe src/v1/stage0/src/cli_run.rs`
+// returns 4 while the scaffold stands (this block, the const, and its declaration test)
+// and must return 0 at deletion — the deletion is what the receipt checks, not a fixed hit
+// count. Not a compiler_frontier `.dag` row (seed-Rust, counted here not in the module
+// census), and not enrolled in `gunbc.ci_release_bins` — no `measure_*` probe is.
+pub(crate) const CLI_RUN_SELECTED_CLOSURE_OVERLAP_SCAFFOLD_MARKER: &str =
+    "cli_run_selected_closure_overlap_probe";
 
 /// Closure-overlap measurement over the PRODUCTION-selected entry set
 /// (entry-graph-union slice 1 / lane ci-cost).
