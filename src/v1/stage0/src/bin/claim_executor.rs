@@ -156,6 +156,238 @@ fn read_floor_batch_budget_tighten_ms() -> Result<Option<u128>, String> {
     }
 }
 
+/// RED-control fault injection for the compile-clean leg clamp
+/// (`gunbc_ci_compile_clean_clamp_note`): lowers the COMPUTED clamp (min), never
+/// raises — the same posture as `GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS`.
+fn read_compile_clean_budget_tighten_ms() -> Result<Option<u128>, String> {
+    match std::env::var("GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS") {
+        Ok(t) => match t.parse::<u128>() {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Err(format!(
+                "claim_executor: GUNBC_FLOOR_COMPILE_CLEAN_BUDGET_TIGHTEN_MS must parse as milliseconds, got {t:?} (fail-closed)"
+            )),
+        },
+        Err(_) => Ok(None),
+    }
+}
+
+/// The compile-clean leg's clamp constants (authority `gunbc.ci_spec.gunbc_ci_compile_clean_clamp`
+/// + `gunbc_ci_compile_clean_clamp_note`, projected through the floor plan like the batch clamp
+/// lists). Read fail-closed at arm time; returns (overhead_ms, per_unit_ms).
+fn read_compile_clean_clamp(plan_ctx: &InterpContext) -> Result<(u128, u128), String> {
+    let overhead_s = match run_value(plan_ctx, "gunbc_ci_compile_clean_clamp_overhead_seconds") {
+        Ok(Value::Int(v)) if v > 0 => v as u128,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_compile_clean_clamp_overhead_seconds must be a positive Int, got {other:?} (fail-closed)"
+            ))
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: plan schedules the compile-clean gate but gunbc_ci_compile_clean_clamp_overhead_seconds is unavailable (fail-closed): {msg}"
+            ))
+        }
+    };
+    let rate_ms = match run_value(plan_ctx, "gunbc_ci_compile_clean_clamp_rate_per_unit_ms") {
+        Ok(Value::Int(v)) if v >= 0 => v as u128,
+        Ok(other) => {
+            return Err(format!(
+                "claim_executor: gunbc_ci_compile_clean_clamp_rate_per_unit_ms must be a non-negative Int, got {other:?} (fail-closed)"
+            ))
+        }
+        Err(msg) => {
+            return Err(format!(
+                "claim_executor: plan schedules the compile-clean gate but gunbc_ci_compile_clean_clamp_rate_per_unit_ms is unavailable (fail-closed): {msg}"
+            ))
+        }
+    };
+    Ok((overhead_s * 1000, rate_ms))
+}
+
+/// Clamp verdict for the compile-clean leg (prelude coverage follow-up (a), first slice —
+/// authority `gunbc_ci_compile_clean_clamp_note`). Runs POST-WALK so it covers both the eager
+/// and the lazy install path. Returns true when the walk must red (OverBudget). Admission
+/// grain only: the compile receipt's ok is untouched (the signed admission/verdict split).
+/// Also writes `target/floor-compile-clean-wall-receipt.txt` (mirrors the batch-wall body):
+/// Unbudgeted when no clamp params were read, WithinBudget/OverBudget otherwise.
+fn enforce_floor_compile_clean_clamp(
+    clamp: Option<(u128, u128)>,
+    tighten_ms: Option<u128>,
+) -> bool {
+    let Some((wall_ms, units, _rows, subject)) =
+        v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
+    else {
+        // Skipped / refused / never-armed legs record no cost — nothing to clamp; the
+        // gate's own receipt consumption already carries those arms loudly.
+        return false;
+    };
+    let mut body = String::new();
+    body.push_str(&format!("compile_clean_wall_ms={wall_ms}\n"));
+    body.push_str(&format!("compile_clean_units={units}\n"));
+    body.push_str(&format!("compile_clean_scope={subject}\n"));
+    let mut over = false;
+    match clamp {
+        None => {
+            body.push_str("compile_clean_verdict=Unbudgeted\n");
+        }
+        Some((overhead_ms, rate_ms)) => {
+            let mut clamp_ms = overhead_ms + units * rate_ms;
+            if let Some(t) = tighten_ms {
+                clamp_ms = clamp_ms.min(t);
+            }
+            let verdict = if wall_ms > clamp_ms {
+                over = true;
+                "OverBudget"
+            } else {
+                "WithinBudget"
+            };
+            body.push_str(&format!("compile_clean_clamp_ms={clamp_ms}\n"));
+            body.push_str(&format!("compile_clean_verdict={verdict}\n"));
+            if over {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FLOOR-COMPILE-CLEAN-OVER-BUDGET wall_ms={wall_ms} clamp_ms={clamp_ms} units={units} scope={subject}                                  (clamp = overhead + units*rate; authority gunbc.ci_spec                                  gunbc_ci_compile_clean_clamp; raising an overhead or rate requires                                  an operator-signed line per gunbc_ci_compile_clean_clamp_note — a refusal,                                  never a widen)"
+                        ),
+                        sgr::ERROR
+                    )
+                );
+            }
+        }
+    }
+    let path = std::path::Path::new("target").join("floor-compile-clean-wall-receipt.txt");
+    if let Err(e) =
+        std::fs::create_dir_all("target").and_then(|_| std::fs::write(&path, body.as_bytes()))
+    {
+        eprintln!(
+            "claim_executor: failed to write compile-clean wall receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return true;
+    }
+    eprintln!(
+        "[receipt] floor compile-clean wall: wall_ms={wall_ms} units={units} scope={subject} (receipt: {})",
+        path.display()
+    );
+    over
+}
+
+/// Drift comparison for the compile-clean cost rows (pass + per-module typecheck walls)
+/// against `dag/gunbc/compile_clean_cost_basis.tsv` — the counted growth-detector half of
+/// the family margin ruling, sharing the witness row-cost model wholesale: same basis
+/// schema and parser (key = first two columns, here kind/subject), same host-class and
+/// zero-basis refusals, same 2× authority `witness_row_cost_exceeds_basis`, same
+/// three-valued verdict with BasisAbsent counted loudly (an unseeded basis must never
+/// read as no-drift — the #7475 lesson). Runs on every floor walk that produced a cost
+/// snapshot: the leg's row identities are stable (unlike the affected-set-selected
+/// witness rows that keep witness drift on the falsifier cadence).
+fn write_compile_clean_cost_drift_receipt_at(
+    base: &std::path::Path,
+    basis_path: &std::path::Path,
+    source_roots: &[String],
+) -> bool {
+    let Some((wall_ms, _units, module_rows, subject)) =
+        v1_compiler::cli_run::floor_compile_clean_cost_snapshot()
+    else {
+        return true; // no leg, no rows — nothing to compare, nothing to hide
+    };
+    let entry = "dag/gunbc/witness_row_cost.dag";
+    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(v) => v,
+        Err(m) => {
+            eprintln!(
+                "claim_executor: failed to resolve {entry} for compile-clean drift comparator (fail-closed):\n{m}"
+            );
+            return false;
+        }
+    };
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
+        std::collections::HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(basis_path) {
+        for line in text.lines().skip(1) {
+            match parse_witness_row_cost_basis_line(line) {
+                Ok(None) => {}
+                Ok(Some((key, row))) => {
+                    basis.insert(key, row);
+                }
+                Err(msg) => {
+                    eprintln!("claim_executor: compile-clean basis: {msg}");
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "claim_executor: compile-clean cost basis file missing at {} — every row records BasisAbsent",
+            basis_path.display()
+        );
+    }
+
+    let mut rows: Vec<(String, String, u128)> = vec![("pass".to_string(), subject, wall_ms)];
+    for (module, ms) in &module_rows {
+        rows.push(("module_typecheck".to_string(), module.clone(), *ms as u128));
+    }
+
+    let mut body =
+        String::from("kind\tsubject\tobserved_wall_ms\tbasis_wall_ms\tverdict\trun_ref\n");
+    let mut drift_count = 0usize;
+    let mut basis_absent_count = 0usize;
+    for (kind, subj, observed) in &rows {
+        match basis.get(&(kind.clone(), subj.clone())) {
+            None => {
+                basis_absent_count += 1;
+                body.push_str(&format!("{kind}\t{subj}\t{observed}\t\tBasisAbsent\t\n"));
+            }
+            Some(b) => {
+                let exceeds = match witness_row_cost_exceeds_basis_via_authority(
+                    &ctx,
+                    *observed,
+                    b.eval_ms_basis,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!(
+                            "claim_executor: compile-clean drift comparator refused for {kind}::{subj}: {e} — walk fails closed here"
+                        );
+                        return false;
+                    }
+                };
+                let verdict = if exceeds {
+                    drift_count += 1;
+                    "DriftExceeded"
+                } else {
+                    "WithinBasis"
+                };
+                body.push_str(&format!(
+                    "{kind}\t{subj}\t{observed}\t{}\t{verdict}\t{}\n",
+                    b.eval_ms_basis, b.run_ref
+                ));
+            }
+        }
+    }
+    eprintln!(
+        "[compile-clean-cost-drift] basis_absent={basis_absent_count} drift_exceeded={drift_count}"
+    );
+    for line in body.lines() {
+        eprintln!("[compile-clean-cost-drift] {line}");
+    }
+    let path = base.join("floor-compile-clean-cost-drift-receipt.tsv");
+    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
+        eprintln!(
+            "claim_executor: failed to write compile-clean cost drift receipt {}: {e} — walk fails closed here",
+            path.display()
+        );
+        return false;
+    }
+    eprintln!(
+        "[receipt] floor compile-clean cost drift: basis_absent={basis_absent_count} drift_exceeded={drift_count} (TSV: {})",
+        path.display()
+    );
+    true
+}
+
 /// Runtime per-batch unit count for the derived clamp: a discovery aggregate result contributes
 /// its post-selection witness count (`corpus_witnesses`); every single-claim gate row contributes 1.
 fn batch_runtime_unit_count(results: &[ClaimResult]) -> u128 {
@@ -4398,6 +4630,29 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     };
+    // Compile-clean leg clamp constants (prelude coverage follow-up (a)): read for the
+    // two plan shapes that arm the compile-clean gate, at the same fail-closed arm point
+    // as the batch clamps; enforcement runs post-walk where the leg's cost snapshot exists.
+    let compile_clean_clamp: Option<(u128, u128)> = if plan_function == "gunbc_ci_floor_plan"
+        || plan_function == "gunbc_ci_plan_artifact_plan"
+    {
+        match read_compile_clean_clamp(&plan_ctx) {
+            Ok(v) => Some(v),
+            Err(msg) => {
+                eprintln!("{msg}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    } else {
+        None
+    };
+    let compile_clean_tighten_ms: Option<u128> = match read_compile_clean_budget_tighten_ms() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("{msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
     drop(plan_ctx);
     phase_mark("plan eval");
 
@@ -4497,11 +4752,24 @@ fn run() -> Result<ExitCode, ExitCode> {
     // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
     // report an identically-shaped line. Runtime-harmless read-only.
     emit_cgroup_measurement("floor adaptive-width");
+    // Compile-clean leg cost gates (prelude coverage follow-up (a)): the enforced clamp
+    // and the counted basis drift, both over the leg's cost snapshot. Post-walk so both
+    // the eager and the lazy install path are covered; no snapshot (skipped/refused leg)
+    // means nothing to clamp and nothing to compare.
+    let compile_clean_over_budget =
+        enforce_floor_compile_clean_clamp(compile_clean_clamp, compile_clean_tighten_ms);
+    let compile_clean_drift_receipt_ok = write_compile_clean_cost_drift_receipt_at(
+        std::path::Path::new("target"),
+        std::path::Path::new("dag/gunbc/compile_clean_cost_basis.tsv"),
+        &source_roots,
+    );
     v1_compiler::v1_interpreter::group_end();
     if outcome.any_failed {
         emit_falsifier_failure_class(&outcome.failure_details, &outcome.infra_faults);
     }
-    floor_terminal_fast_exit(walk_exit_code(outcome.any_failed))
+    floor_terminal_fast_exit(walk_exit_code(
+        outcome.any_failed || compile_clean_over_budget || !compile_clean_drift_receipt_ok,
+    ))
 }
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
