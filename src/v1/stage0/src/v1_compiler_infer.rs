@@ -2,7 +2,9 @@
 // Source module: v1.compiler.infer
 
 use self::DescentSizeExpr::*;
-pub use crate::extdeps_container_oci_digest::oci_other_digest_algorithm;
+pub use crate::extdeps_container_oci_digest::{
+    oci_other_digest_algorithm, oci_other_digest_encoded,
+};
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
 pub use crate::std_algebra::{CollectionSizeEffect, FreeMonoid};
 pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
@@ -1724,12 +1726,13 @@ pub fn where_refinement_is_int_literal_predicate(pred_name: String) -> bool {
 }
 
 pub fn where_refinement_is_string_literal_predicate(pred_name: String) -> bool {
-    ((((((pred_name.clone() == "non_empty".to_string())
+    (((((((pred_name.clone() == "non_empty".to_string())
         || (pred_name.clone() == "lower_hex_64".to_string()))
         || (pred_name.clone() == "lower_hex_40".to_string()))
         || (pred_name.clone() == "lower_hex_128".to_string()))
         || (pred_name.clone() == "lower_hex_16".to_string()))
         || (pred_name.clone() == "oci_other_digest_algorithm".to_string()))
+        || (pred_name.clone() == "oci_other_digest_encoded".to_string()))
 }
 
 pub fn where_refinement_is_deferred_predicate(pred_name: String) -> bool {
@@ -1762,7 +1765,11 @@ pub fn decidable_where_string_predicate_holds(pred_name: String, value: String) 
                         if (pred_name.clone() == "oci_other_digest_algorithm".to_string()) {
                             Some(oci_other_digest_algorithm(value.clone()))
                         } else {
-                            None
+                            if (pred_name.clone() == "oci_other_digest_encoded".to_string()) {
+                                Some(oci_other_digest_encoded(value.clone()))
+                            } else {
+                                None
+                            }
                         }
                     }
                 }

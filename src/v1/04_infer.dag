@@ -5,7 +5,7 @@ import std.content_hash {
   Fnv1a64Structural,
   content_hash_validate_lower_hex_length,
 }
-import extdeps.container.oci.digest { oci_other_digest_algorithm }
+import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, BinOp, LitStr, LiteralValue }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
@@ -1056,6 +1056,7 @@ fn where_refinement_is_string_literal_predicate(pred_name: String) -> Bool {
     || pred_name == "lower_hex_128"
     || pred_name == "lower_hex_16"
     || pred_name == "oci_other_digest_algorithm"
+    || pred_name == "oci_other_digest_encoded"
 }
 
 fn where_refinement_is_deferred_predicate(pred_name: String) -> Bool {
@@ -1089,6 +1090,8 @@ fn decidable_where_string_predicate_holds(pred_name: String, value: String) -> B
     }
   } else if pred_name == "oci_other_digest_algorithm" {
     Present { value: oci_other_digest_algorithm(value: value) }
+  } else if pred_name == "oci_other_digest_encoded" {
+    Present { value: oci_other_digest_encoded(value: value) }
   } else {
     none
   }
