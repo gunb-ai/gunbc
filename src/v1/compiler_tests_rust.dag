@@ -1405,6 +1405,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        source_indices.clone(),\n",
     "                        intern_table.clone(),\n",
     "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
+    "                        crate::v1_rt::rc_empty_map::<String, std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>>(),\n",
     "                    );\n",
     "                    let full_elapsed = t_full.elapsed();\n",
     "                    let rss_after = get_rss_bytes();\n",
