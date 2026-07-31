@@ -15104,8 +15104,8 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
         return Ok(());
     }
     let (graph, indices) =
-        resolve_entry_graph_shared(source_roots, &floor_discovery_producer_entry_anchored())
-            .map_err(|e| format!("floor_discovery_producer resolve for filename hygiene: {e}"))?;
+        resolve_entry_graph_shared(source_roots, &floor_naming_hygiene_entry_anchored())
+            .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<v1_interpreter::Value> = dag_paths
         .iter()
@@ -15150,6 +15150,7 @@ fn floor_filename_hygiene_refusal_via_producer(source_roots: &[String]) -> Resul
 }
 
 const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_producer.dag";
+const FLOOR_NAMING_HYGIENE_ENTRY: &str = "src/v2/workflow/floor_naming_hygiene.dag";
 
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
@@ -15170,6 +15171,11 @@ const FLOOR_DISCOVERY_PRODUCER_ENTRY: &str = "src/v2/workflow/floor_discovery_pr
 /// anchoring plumbing when entry resolution stops reading cwd.
 fn floor_discovery_producer_entry_anchored() -> String {
     let anchored = process_workspace_root().join(FLOOR_DISCOVERY_PRODUCER_ENTRY);
+    anchored.to_string_lossy().into_owned()
+}
+
+fn floor_naming_hygiene_entry_anchored() -> String {
+    let anchored = process_workspace_root().join(FLOOR_NAMING_HYGIENE_ENTRY);
     anchored.to_string_lossy().into_owned()
 }
 
