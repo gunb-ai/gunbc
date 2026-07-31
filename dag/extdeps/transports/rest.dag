@@ -1,6 +1,6 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod, FermiDepth, NonEmptyStr }
+import std.types { HttpMethod, FermiDepth, NonEmptyStr, HttpStatus, Int, String }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }
@@ -21,6 +21,23 @@ data rest_basic_auth_authority: ExternalAuthority = ExternalAuthority {
 }
 
 data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
+
+data http_status_class_authority_note: String = "RFC 9110 §15 defines the status classes, and it defines FIVE. They live here, beside the citation, because the alternative is what the corpus does today for the shell transport: every caller re-derives what a failure meant, in its own module, in prose - 31 sites interpreting stderr at last count. A class is a fact about the response, so it belongs to the response's authority.\\n\\nWHY THERE IS NO Bool. The obvious convenience is a `success` flag, and it was written and removed. A Bool answers with two arms a question the authority answers with five, so a redirection and a success become indistinguishable at the one place a caller decides what to do next; and the 200/400 boundary it fixes is a convention, which §1 says to reduce to the cited necessity rather than bake into a realization. The status number is the grounded fact. Everything else is derived from it, HERE, once."
+
+type HttpStatusClass
+  = Informational
+  | Successful
+  | Redirection
+  | ClientErrorStatus
+  | ServerErrorStatus
+
+fn http_status_class(status: HttpStatus) -> HttpStatusClass {
+  if status < 200 { Informational }
+  else if status < 300 { Successful }
+  else if status < 400 { Redirection }
+  else if status < 500 { ClientErrorStatus }
+  else { ServerErrorStatus }
+}
 
 type TlsPosture
   = VerifyPeer

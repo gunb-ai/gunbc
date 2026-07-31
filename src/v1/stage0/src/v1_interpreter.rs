@@ -7575,7 +7575,7 @@ fn dispatch_rest(
     };
 
     // Whether this operation asked to OBSERVE its own transport outcome. An operation that
-    // declares an output sourced from `http_status`/`http_success` is saying the status is
+    // declares an output sourced from `http_status` is saying the status is
     // part of its answer, so a non-2xx is data to return rather than a reason to raise. An
     // operation that declares neither keeps the raise it has always had — so this widens
     // nothing by default, and the loud path stays loud for every existing caller.
@@ -7883,16 +7883,21 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
     })
 }
 
-/// The transport-outcome sources a REST operation may declare, mirroring the shell
-/// transport's `exit_success`/`exit_code`. These names are NOT JSON pointers into the
-/// response body: they name the request's own result, which is why they are intercepted
-/// before the body lookup rather than resolved against it.
-const REST_OUTCOME_SOURCE_SUCCESS: &str = "http_success";
+/// The transport-outcome source a REST operation may declare. This name is NOT a JSON
+/// pointer into the response body: it names the request's own result, which is why it is
+/// intercepted before the body lookup rather than resolved against it.
+///
+/// ONE SOURCE, NOT TWO. An earlier cut of this also offered `http_success` as a `Bool`.
+/// That was wrong twice over. RFC 9110 §15 defines FIVE status classes, so a Bool is a
+/// state-space conflation — it answers "was this 2xx-or-3xx" to a question the authority
+/// answers with five arms, and it fixed the boundary at `< 400` inside the seed where no
+/// citation can reach it. It was also a second spelling of a fact `http_status` already
+/// determines: success is DERIVED, and it is derived in `.dag` beside the RFC that
+/// defines it (`extdeps.transports.rest` `http_status_class`), not here.
 const REST_OUTCOME_SOURCE_STATUS: &str = "http_status";
 
 fn rest_outcome_source_value(from_key: &str, status: u16) -> Option<Value> {
     match from_key {
-        REST_OUTCOME_SOURCE_SUCCESS => Some(Value::Bool(status < 400)),
         REST_OUTCOME_SOURCE_STATUS => Some(Value::Int(status as i64)),
         _ => None,
     }

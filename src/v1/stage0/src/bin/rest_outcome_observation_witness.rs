@@ -194,11 +194,18 @@ fn resolve_imports_transitively(
 }
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) -> Result<(), String> {
+    // Advisory-vs-blocking is NOT re-decided here. `gunbc compile` already answers it,
+    // and a second classification in a witness would drift from the compiler's — the
+    // first cut of this filter dropped only `complexity:` and duly failed on the
+    // pre-existing unlisted-import advisories in `extdeps.transports.rest`, i.e. it was
+    // stricter than the compiler it is supposed to be observing.
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
+        .filter(|d| {
+            v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+        })
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
         .collect();
     if msgs.is_empty() && result.graph.is_some() {
         return Ok(());
@@ -229,28 +236,50 @@ fn observing_source(port: u16) -> String {
     format!(
         r#"module rest_outcome_observing
 
+import std.types {{ HttpStatus, Int, String, Bool }}
+import extdeps.transports.rest {{
+  HttpStatusClass, http_status_class,
+  Informational, Successful, Redirection, ClientErrorStatus, ServerErrorStatus,
+}}
+
 service test.Probe {{
   config {{
     endpoint: "http://127.0.0.1:{port}"
   }}
   operation Observed {{
     output {{
-      ok: Bool from "http_success"
-      status: Int from "http_status"
+      status: HttpStatus from "http_status"
       detail: String from "message"
     }}
     transport rest {{ method: GET, path: "/thing" }}
   }}
 }}
 
-fn probe_ok() -> Bool {{
-  let r = test.Probe.Observed()
-  r.ok
-}}
-
-fn probe_status() -> Int {{
+fn probe_status() -> HttpStatus {{
   let r = test.Probe.Observed()
   r.status
+}}
+
+fn probe_is_client_error() -> Bool {{
+  let r = test.Probe.Observed()
+  match http_status_class(status: r.status) {{
+    ClientErrorStatus => true
+    Informational => false
+    Successful => false
+    Redirection => false
+    ServerErrorStatus => false
+  }}
+}}
+
+fn probe_is_successful() -> Bool {{
+  let r = test.Probe.Observed()
+  match http_status_class(status: r.status) {{
+    Successful => true
+    Informational => false
+    Redirection => false
+    ClientErrorStatus => false
+    ServerErrorStatus => false
+  }}
 }}
 
 fn probe_detail() -> String {{
@@ -289,6 +318,8 @@ fn array_source(port: u16) -> String {
     format!(
         r#"module rest_outcome_array
 
+import std.types {{ HttpStatus, Int, List }}
+
 service test.Probe {{
   config {{
     endpoint: "http://127.0.0.1:{port}"
@@ -296,7 +327,7 @@ service test.Probe {{
   operation Listed {{
     output {{
       items: List<Int>
-      ok: Bool from "http_success"
+      status: HttpStatus from "http_status"
     }}
     transport rest {{ method: GET, path: "/things" }}
   }}
@@ -307,9 +338,9 @@ fn probe_count() -> Int {{
   count(r.items)
 }}
 
-fn probe_ok() -> Bool {{
+fn probe_status() -> HttpStatus {{
   let r = test.Probe.Listed()
-  r.ok
+  r.status
 }}
 "#
     )
@@ -346,13 +377,17 @@ fn a_refused_request_arrives_as_a_value_when_declared(idx: &ModuleIndex) -> Resu
     let port = serve_canned("401 Unauthorized", r#"{"message":"denied"}"#)?;
     let src = observing_source(port);
 
-    let ok = expect_bool(run_probe(idx, &src, "probe_ok")?, "401 http_success")?;
-    if ok {
-        return Err("401 mapped http_success to true".to_string());
-    }
     let status = expect_int(run_probe(idx, &src, "probe_status")?, "401 http_status")?;
     if status != 401 {
         return Err(format!("expected http_status 401, got {status}"));
+    }
+    // The status reaches the CITED class projection, not a Bool invented here. This is
+    // the half that proves the number is usable as a decision and not merely present.
+    if !expect_bool(
+        run_probe(idx, &src, "probe_is_client_error")?,
+        "401 status class",
+    )? {
+        return Err("401 did not classify as ClientErrorStatus via http_status_class".to_string());
     }
     // The error BODY is still mapped, so a caller can name the cause rather than
     // reporting a bare code. This is the half that makes the arm useful, not merely
@@ -396,8 +431,11 @@ fn a_successful_request_still_maps_and_reports_success(idx: &ModuleIndex) -> Res
     let port = serve_canned("200 OK", r#"{"message":"fine"}"#)?;
     let src = observing_source(port);
 
-    if !expect_bool(run_probe(idx, &src, "probe_ok")?, "200 http_success")? {
-        return Err("200 mapped http_success to false".to_string());
+    if !expect_bool(
+        run_probe(idx, &src, "probe_is_successful")?,
+        "200 status class",
+    )? {
+        return Err("200 did not classify as Successful via http_status_class".to_string());
     }
     let status = expect_int(run_probe(idx, &src, "probe_status")?, "200 http_status")?;
     if status != 200 {
@@ -425,8 +463,11 @@ fn an_array_body_survives_beside_an_outcome_field(idx: &ModuleIndex) -> Result<(
              the outcome field stranded the document"
         ));
     }
-    if !expect_bool(run_probe(idx, &src, "probe_ok")?, "array http_success")? {
-        return Err("200 array mapped http_success to false".to_string());
+    let status = expect_int(run_probe(idx, &src, "probe_status")?, "array http_status")?;
+    if status != 200 {
+        return Err(format!(
+            "expected http_status 200 beside the array, got {status}"
+        ));
     }
     Ok(())
 }
