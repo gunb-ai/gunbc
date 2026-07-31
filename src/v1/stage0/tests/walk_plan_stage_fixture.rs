@@ -6,6 +6,11 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex;
+
+/// Production-path walks share `target/` hygiene paths; serialize harness runs so
+/// parallel `cargo test` threads cannot interleave cleanup with overlap markers.
+static FIXTURE_RUN_LOCK: Mutex<()> = Mutex::new(());
 
 /// Must match `walk_plan_stage_attempt_id` in `common.dag` — the executor refuses
 /// staged walks without `GUNBC_WALK_ATTEMPT_ID` or the GitHub triple.
@@ -52,6 +57,9 @@ fn claim_executor_bin() -> PathBuf {
 }
 
 fn run_fixture_plan(plan_function: &str) -> FixtureOutput {
+    let _guard = FIXTURE_RUN_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let root = workspace_root();
     let bin = claim_executor_bin();
     assert!(
