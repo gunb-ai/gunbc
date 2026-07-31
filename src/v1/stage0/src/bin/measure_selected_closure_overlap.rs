@@ -26,7 +26,7 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     measure_selected_entry_closure_overlap, render_selected_entry_closure_overlap_json,
-    whole_tree_probe_exclusion_substrings,
+    witness_exclusion_substrings,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -44,7 +44,13 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut discovery_scope_dirs: Vec<String> = Vec::new();
-    let mut exclude_substrings = whole_tree_probe_exclusion_substrings();
+    // The FLOOR's exclusion authority (`gunbc.ci_layer_roots.witness_exclusion_substrings`),
+    // not `whole_tree_probe_exclusion_substrings` — the probe list is the floor list UNION
+    // the whole-tree strict-resolve exclusions, so defaulting to it measured a corpus far
+    // narrower than the one production selects over (measured: 45 roster entries against
+    // 579 `*_test.dag` files under the same scan dirs). A subject drawn from 8% of the
+    // corpus cannot answer a question about the corpus.
+    let mut exclude_substrings = witness_exclusion_substrings();
 
     let mut i = 1;
     while i < args.len() {
