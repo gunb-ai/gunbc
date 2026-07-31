@@ -620,49 +620,49 @@ mod compiler_tests {
                     crate::v1_std_core::is_discovery_corpus_advisory_typecheck_diagnostic(unestablished_diag.clone()),
                     "...and it must be a COUNTED advisory, never absent — an uncounted degradation is the absorbing fallback DESIGN §5 forbids"
                 );
-                // DISCRIMINATING RED for the occurrence budget (codex review 45464).
-                // A (module, method, receiver_shape) key bounds WHERE an unresolved
-                // call may live but not HOW MANY, and the rows are not all singletons
-                // — v2.compiler.tokenize admits seven `apply` — so a row admitting
-                // seven would silently admit an eighth. Exercised at the mechanism
-                // rather than through a corpus compile, so the boundary is exact:
-                // declared occurrences must pass and declared+1 must refuse.
+                // DISCRIMINATING CONTROL for the occurrence ratchet (codex reviews
+                // 45464 and 45491). A (module, method, receiver_shape) key bounds
+                // WHERE an unresolved call may live but not HOW MANY, and the rows
+                // are not singletons — v2.compiler.tokenize admits seven `apply`.
+                // The comparison is EQUALITY, not a ceiling: a ceiling lets seven
+                // shrink to six and a seventh come back silently, which is a static
+                // limit rather than a ratchet. Equality is safe because the check runs
+                // per MODULE, and every occurrence in a module is present whenever
+                // that module is typechecked at all — a closure that omits the module
+                // never runs its rows. Exercised at the mechanism so the boundary is
+                // exact on both sides.
                 let budget_row = rows.iter()
                     .find(|r| r.receiver_shape == "Primitive()")
                     .expect("expected at least one anonymous-receiver row to bound");
+                let probe_span = || std::rc::Rc::new(crate::std_types::SourceSpan {
+                    file: "probe.dag".to_string(), start: 0, end: 0,
+                });
                 let unestablished_at = |n: usize| {
                     std::rc::Rc::new((0..n).map(|_| std::rc::Rc::new(crate::v1_std_core::ErrorNode {
                         diagnostic: std::rc::Rc::new(crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished {
                             method: budget_row.method.clone(),
-                            span: std::rc::Rc::new(crate::std_types::SourceSpan {
-                                file: "probe.dag".to_string(), start: 0, end: 0,
-                            }),
+                            span: probe_span(),
                         }),
                         module_name: budget_row.module_name.clone(),
                     })).collect::<im::Vector<_>>())
                 };
-                let at_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
-                    budget_row.module_name.clone(), unestablished_at(budget_row.occurrences as usize));
+                let budget_at = |n: usize| crate::v1_compiler_infer::frontier_occurrence_budget_diags(
+                    budget_row.module_name.clone(), probe_span(), unestablished_at(n));
                 assert!(
-                    at_budget.is_empty(),
-                    "exactly the declared occurrence count must pass — the budget is a ceiling, not an equality, or any narrower compile closure would red"
-                );
-                let over_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
-                    budget_row.module_name.clone(), unestablished_at(budget_row.occurrences as usize + 1));
-                assert!(
-                    over_budget.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. })),
-                    "one MORE than the declared count must refuse — without this the row bounds where an unresolved call may live but not how many, got: {:?}",
-                    over_budget
+                    budget_at(budget_row.occurrences as usize).is_empty(),
+                    "exactly the declared occurrence count must pass"
                 );
                 assert!(
-                    over_budget.iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+                    budget_at(budget_row.occurrences as usize + 1).iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. })),
+                    "one MORE than the declared count must refuse — otherwise the row bounds where an unresolved call may live but not how many"
+                );
+                assert!(
+                    budget_at(budget_row.occurrences as usize + 1).iter().all(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
                     "...and that refusal must BLOCK, or the ratchet is decorative"
                 );
-                let under_budget = crate::v1_compiler_infer::frontier_occurrence_budget_diags(
-                    budget_row.module_name.clone(), unestablished_at(0));
                 assert!(
-                    under_budget.is_empty(),
-                    "fewer occurrences must never red: fixing a call lowers the count, and a partial closure legitimately sees fewer"
+                    budget_at(0).iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. })),
+                    "FEWER than declared must ALSO refuse, and this is the half that makes it a ratchet rather than a ceiling: fixing a call forces the declared count DOWN, so a later reintroduction has no headroom to slip back into (codex review 45491)"
                 );
                 // DISCRIMINATING PAIR for the early-return walk. An early return is a
                 // second exit from the same declaration and must meet its declared
