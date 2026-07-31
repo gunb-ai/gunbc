@@ -1,6 +1,14 @@
 module v2.workflow.floor_naming_hygiene
 
-import std.types { String, Bool }
+import std.types { String, Bool, List }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.algebra { fold_list }
 
 data floor_test_sidecar_suffix: String = "_test.dag"
 data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"
@@ -50,4 +58,110 @@ fn floor_wire_contract_decl_allowed_in_entry(entry_path: String) -> Bool {
   floor_entry_requires_wire_contract_sidecar(entry_path: entry_path)
 }
 
-data floor_naming_hygiene_note: String = "Single authority for floor witness filename + sidecar placement predicates. Host discovery walks files and projects rows; these pure fns decide whether a path or entry placement is admissible. Dissolves HAND-Rust mirrors in cli_run.rs check_floor_filename_hygiene and SIDECAR_PLACEMENT_RULES suffix checks once dual-run equivalence receipts are green."
+fn floor_discovery_line_starts_test_decl(line: String) -> Bool {
+  starts_with(s: trim(line), prefix: "test fn ") || starts_with(s: trim(line), prefix: "test data ")
+}
+
+fn floor_discovery_test_rest_from_line(line: String) -> String {
+  let trimmed = trim(line)
+  if starts_with(s: trimmed, prefix: "test fn ") {
+    substring(s: trimmed, start: 8, end: string_length(s: trimmed))
+  } else if starts_with(s: trimmed, prefix: "test data ") {
+    substring(s: trimmed, start: 10, end: string_length(s: trimmed))
+  } else {
+    ""
+  }
+}
+
+fn floor_discovery_first_token_before_space(seg: String) -> String {
+  fold(
+    split(s: seg, delimiter: " "),
+    init: "",
+    f: fn(name, token) {
+      if name != "" {
+        name
+      } else if token == "" {
+        ""
+      } else {
+        token
+      }
+    }
+  )
+}
+
+fn floor_discovery_test_decl_name_from_rest(rest: String) -> String {
+  let before_paren = fold(
+    split(s: rest, delimiter: "("),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+  let before_colon = fold(
+    split(s: before_paren, delimiter: ":"),
+    init: "",
+    f: fn(acc, seg) {
+      if acc != "" {
+        acc
+      } else {
+        seg
+      }
+    }
+  )
+  floor_discovery_first_token_before_space(seg: before_colon)
+}
+
+fn floor_discovery_test_decl_name_from_line(line: String) -> String {
+  floor_discovery_test_decl_name_from_rest(
+    rest: floor_discovery_test_rest_from_line(line: line)
+  )
+}
+
+fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
+  fold(
+    split(s: content, delimiter: "\n"),
+    init: [],
+    f: fn(acc, line) {
+      if floor_discovery_line_starts_test_decl(line: line) {
+        let name = floor_discovery_test_decl_name_from_line(line: line)
+        if name == "" {
+          acc
+        } else {
+          concat(acc, [name])
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn floor_filename_hygiene_refusal_for_paths(
+  dag_paths: List<String>
+) -> Optional<String> {
+  fold_list(
+    xs: dag_paths,
+    empty: optional_absent(),
+    cons: fn(found, path) {
+      match found {
+        Present { value: _ } => found
+        Absent => if floor_filename_contains_double_underscore(path: path) {
+          optional_present(
+            value: concat(
+              "filename hygiene: `.dag` basenames must not contain `__`; offending: ",
+              path
+            )
+          )
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  )
+}
+
+data floor_naming_hygiene_note: String = "Single authority for floor witness filename + sidecar placement + test-decl name scan predicates. Host discovery walks files and projects rows; these pure fns decide whether a path or entry placement is admissible and which decls a *_test.dag enrolls. Lives here (not in floor_discovery_producer) so orphan/filename hygiene resolve stays free of the Filesystem service closure — filesystem_io's stripped ExternalAuthority/Uri imports are Class-B accidental coverage and refuse when resolved as a small entry. Dissolves HAND-Rust mirrors in cli_run.rs check_floor_filename_hygiene and SIDECAR_PLACEMENT_RULES suffix checks once dual-run equivalence receipts are green."
