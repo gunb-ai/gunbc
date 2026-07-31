@@ -20,10 +20,6 @@ import v2.compiler.translate {
   target_serialize_source_from_model,
   translate,
 }
-import v2.extdeps.languages.overflow_action {
-  PanicOnOverflow,
-  TwoComplementWrap
-}
 import v2.extdeps.languages.rust {
   rust_inhabitant_i32_node,
   rust_inhabitant_atom,
@@ -42,7 +38,9 @@ import v2.extdeps.languages.rust {
   rust_fn_add_lex,
   rust_facts_i32,
   Signed,
-  Bits32
+  Bits32,
+  PanicOnOverflow,
+  TwoComplementWrap
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }

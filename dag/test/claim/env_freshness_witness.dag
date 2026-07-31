@@ -1,4 +1,7 @@
 module test.claim.env_freshness_witness
+import std.types { NonEmptyStr }
+
+import extdeps.shell
 
 
 data path_env_name: NonEmptyStr = "PATH"

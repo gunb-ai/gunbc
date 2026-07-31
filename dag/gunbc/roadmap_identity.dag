@@ -19,10 +19,16 @@ type RoadmapIdentityRecord
       superseded_by: RoadmapNodeIdentity?,
     }
 
-data roadmap_tombstone_roster_note: String = "Empty today, and that is the honest state rather than a placeholder: no roadmap node has yet been retired under this model. The row exists so the first retirement has a home that is not deletion — the failure the 2026-07-27 authority refresh already demonstrated, when a node carrying the only execution contract was removed and nothing noticed. A retirement lands here in the same change that removes the node from declared_roadmap_nodes()."
+data roadmap_tombstone_roster_note: String = "The first retirement landed 2026-07-31, in the same change that removed its node from declared_roadmap_nodes() — exactly the discipline this roster exists for (a retirement is a state, never a deletion; the failure mode is the 2026-07-27 authority refresh, when a node carrying the only execution contract was removed and nothing noticed). v2-phase-carriers was split by the post-merge verdict on gunbc#7489 into five staged nodes (self-grounding frontier, Translate refusal, inferred-tree completeness, per-kind derivation coverage, target realization gate); its identity is tombstoned with superseded_by naming the split's entry node, so historical links resolve and the identity can never be reused."
 
 fn roadmap_tombstoned_identities() -> List<RoadmapIdentityRecord> {
-  []
+  [
+    TombstonedIdentity {
+      identity: "rn_SMUGMQLFC6PJT7CF2AKG745O2Y" as RoadmapNodeIdentity,
+      former_slug: "v2-phase-carriers" as RoadmapNodeId,
+      superseded_by: Present { value: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ" as RoadmapNodeIdentity },
+    },
+  ]
 }
 
 fn roadmap_active_identities() -> List<RoadmapIdentityRecord> {

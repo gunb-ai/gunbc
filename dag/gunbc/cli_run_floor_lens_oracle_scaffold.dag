@@ -1,5 +1,14 @@
 module gunbc.cli_run_floor_lens_oracle_scaffold
-
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
+import std.disposition {
+  Disposition,
+  Scaffold,
+  SingleAuthority,
+  Terminal,
+}
 
 data cli_run_floor_lens_legacy_graph_oracle_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

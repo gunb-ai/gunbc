@@ -1,4 +1,18 @@
 module gunbc.tools.bmc_read_telemetry
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_chassis_id }
+import std.types {
+  NonEmptyStr,
+  String,
+}
+import std.cache_interface { Network }
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
+
+import extdeps.shell
+import extdeps.bmc.http
 
 
 func bmc_read_telemetry() -> ProcessExit

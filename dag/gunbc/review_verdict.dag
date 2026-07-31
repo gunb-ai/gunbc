@@ -1,5 +1,12 @@
 module gunbc.review_verdict
-
+import std.types {
+  ArtifactId,
+  CommitSha,
+  ContentHash,
+  NonEmptyStr,
+  Timestamp,
+}
+import extdeps.github.pulls { ReviewState }
 
 type LlmReviewProvider
   = OpenaiPro

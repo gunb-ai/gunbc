@@ -38,7 +38,6 @@ import v2.std.compilers.lexing {
 import v2.std.collection { Absent, List, Map, Present, Set }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import std.algebra { Cons, Empty }
-import std.measure { BitWidth, bit_width, bit_width_count }
 import v2.std.algebra { BooleanAlgebra, boolean_algebra_type_node, commutative_ring_type_node, fold_list, list_map }
 import v2.std.text { String }
 import v2.std.model_core {
@@ -186,11 +185,15 @@ type LeanIntKind
   = Signed
   | Unsigned
 
-data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers admit 8/16/32/64-bit widths via std.measure.BitWidth; usize is platform word (PointerWidth axis), not a fixed BitWidth variant. P3b cluster-1 collapse: no Bits8|Bits16|... enum — admissibility is lean_admits_bit_width over BitWidth."
+type LeanIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | Pointer
 
 type LeanScalar
-  = IntScalar { kind: LeanIntKind, width: BitWidth }
-  | UsizeScalar
+  = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
   | BoolScalar
 
 type LeanPrimitiveFacts {
@@ -201,55 +204,55 @@ type LeanPrimitiveFacts {
 
 data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int8,
-  scalar: IntScalar { kind: Signed, width: bit_width(count: 8) },
+  scalar: IntScalar { kind: Signed, width: Bits8 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int16: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int16,
-  scalar: IntScalar { kind: Signed, width: bit_width(count: 16) },
+  scalar: IntScalar { kind: Signed, width: Bits16 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int32: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int32,
-  scalar: IntScalar { kind: Signed, width: bit_width(count: 32) },
+  scalar: IntScalar { kind: Signed, width: Bits32 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_int64: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int64,
-  scalar: IntScalar { kind: Signed, width: bit_width(count: 64) },
+  scalar: IntScalar { kind: Signed, width: Bits64 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint8: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_uint8,
-  scalar: IntScalar { kind: Unsigned, width: bit_width(count: 8) },
+  scalar: IntScalar { kind: Unsigned, width: Bits8 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint16: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_uint16,
-  scalar: IntScalar { kind: Unsigned, width: bit_width(count: 16) },
+  scalar: IntScalar { kind: Unsigned, width: Bits16 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint32: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_uint32,
-  scalar: IntScalar { kind: Unsigned, width: bit_width(count: 32) },
+  scalar: IntScalar { kind: Unsigned, width: Bits32 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_uint64: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_uint64,
-  scalar: IntScalar { kind: Unsigned, width: bit_width(count: 64) },
+  scalar: IntScalar { kind: Unsigned, width: Bits64 },
   representation: ^lean_repr_fixed_precision_integer
 }
 
 data lean_facts_usize: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_usize,
-  scalar: UsizeScalar,
+  scalar: IntScalar { kind: Unsigned, width: Pointer },
   representation: ^lean_repr_usize_platform_word
 }
 
@@ -294,25 +297,13 @@ fn lean_int_kind_node(kind: LeanIntKind) -> Node {
   }
 }
 
-fn lean_admits_bit_width(width: BitWidth) -> Bool {
-  let n = bit_width_count(width)
-  n == 8 || n == 16 || n == 32 || n == 64
-}
-
-fn lean_platform_word_width_node() -> Node {
-  lean_inhabitant_atom(id: ^lean_tag_pointer)
-}
-
-fn lean_bit_width_node(width: BitWidth) -> Node {
-  let n = bit_width_count(width)
-  if n == 8 {
-    lean_inhabitant_atom(id: ^lean_tag_bits8)
-  } else if n == 16 {
-    lean_inhabitant_atom(id: ^lean_tag_bits16)
-  } else if n == 32 {
-    lean_inhabitant_atom(id: ^lean_tag_bits32)
-  } else {
-    lean_inhabitant_atom(id: ^lean_tag_bits64)
+fn lean_int_width_node(width: LeanIntWidth) -> Node {
+  match width {
+    Bits8 => lean_inhabitant_atom(id: ^lean_tag_bits8)
+    Bits16 => lean_inhabitant_atom(id: ^lean_tag_bits16)
+    Bits32 => lean_inhabitant_atom(id: ^lean_tag_bits32)
+    Bits64 => lean_inhabitant_atom(id: ^lean_tag_bits64)
+    Pointer => lean_inhabitant_atom(id: ^lean_tag_pointer)
   }
 }
 
@@ -326,22 +317,7 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
           target: lean_inhabitant_atom(id: ^lean_tag_scalar_int)
         ),
         lean_named_edge(name: ^lean_scalar_field_kind, target: lean_int_kind_node(kind: kind)),
-        lean_named_edge(name: ^lean_scalar_field_width, target: lean_bit_width_node(width: width))
-      ],
-      occurrence_id: SyntheticOccurrence
-}
-    UsizeScalar => Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        lean_named_edge(
-          name: ^lean_scalar_field_classifier,
-          target: lean_inhabitant_atom(id: ^lean_tag_scalar_int)
-        ),
-        lean_named_edge(name: ^lean_scalar_field_kind, target: lean_int_kind_node(kind: Unsigned)),
-        lean_named_edge(
-          name: ^lean_scalar_field_width,
-          target: lean_platform_word_width_node()
-        )
+        lean_named_edge(name: ^lean_scalar_field_width, target: lean_int_width_node(width: width))
       ],
       occurrence_id: SyntheticOccurrence
 }
@@ -388,33 +364,15 @@ fn lean_inhabitant_int32_node() -> Node {
   lean_primitive_inhabitant_node(id: ^lean_inhabitant_int32, facts: lean_facts_int32)
 }
 
-fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: BitWidth) -> Map<Symbol, Node> {
+fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
       } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: lean_bit_width_node(width: width) }
+          v2.std.optional.Present { value: lean_int_width_node(width: width) }
       } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: lean_int_kind_node(kind: kind) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
-}
-
-fn lean_usize_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: lean_platform_word_width_node() }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: lean_int_kind_node(kind: Unsigned) }
       } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
@@ -443,10 +401,6 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
     IntScalar { kind, width } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_int_spec_facts(facts: facts, kind: kind, width: width)
-    }
-    UsizeScalar => PrimitiveFactBundle {
-      substrate_carrier: lean_primitive_facts_node(facts: facts),
-      spec_facts: lean_usize_spec_facts(facts: facts)
     }
     BoolScalar => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
@@ -634,7 +588,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: BitWidth) -> Node {
+fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -652,32 +606,7 @@ fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKin
       ),
       lean_named_edge(
         name: ^lean_witness_field_width,
-        target: lean_bit_width_node(width: width)
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn lean_usize_algebra_witness_node(facts: LeanPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      lean_named_edge(
-        name: ^lean_witness_integer_commutative_ring,
-        target: lean_inhabitant_atom(id: ^lean_witness_integer_commutative_ring)
-      ),
-      lean_named_edge(
-        name: ^lean_witness_field_representation,
-        target: lean_inhabitant_atom(id: facts.representation)
-      ),
-      lean_named_edge(
-        name: ^lean_witness_field_signedness,
-        target: lean_int_kind_node(kind: Unsigned)
-      ),
-      lean_named_edge(
-        name: ^lean_witness_field_width,
-        target: lean_platform_word_width_node()
+        target: lean_int_width_node(width: width)
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -709,11 +638,6 @@ fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabita
       algebra: commutative_ring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: lean_integer_algebra_witness_node(facts: facts, kind: kind, width: width)
-    }
-    UsizeScalar => AlgebraInhabitanceDecl {
-      algebra: commutative_ring_type_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: lean_usize_algebra_witness_node(facts: facts)
     }
     BoolScalar => AlgebraInhabitanceDecl {
       algebra: boolean_algebra_type_node(inhabitant: inhabitant),

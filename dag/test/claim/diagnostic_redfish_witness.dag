@@ -1,4 +1,7 @@
 module test.claim.diagnostic_redfish_witness
+import std.types { NonEmptyStr }
+
+import extdeps.bmc.http
 
 
 data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"

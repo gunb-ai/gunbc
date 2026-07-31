@@ -18,11 +18,14 @@ pub use crate::v1_compiler_infer_emit_info::{
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
-    lookup_binding_by_name, lookup_binding_by_name_local, lookup_type, lookup_type_for,
-    qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+    authored_name, borrowed_generic_param_names, global_bare_policy_candidate,
+    global_bare_unique_chain_candidate, is_recursive_type, lookup_binding_by_name,
+    lookup_binding_by_name_local, lookup_type, lookup_type_for, qualified_all_but_last,
+    qualify_borrowed_type_names, symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
+};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
@@ -142,10 +145,19 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Bo
                 module_path: mp,
                 binding: b,
                 ..
-            }) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: mp.clone(),
-                node: b.resolved.clone(),
-            })),
+            }) => match global_bare_unique_chain_candidate(
+                type_env.module_path.clone(),
+                Rc::new(vec![Rc::new(GlobalBareCandidate {
+                    module_path: mp.clone(),
+                    binding: b.clone(),
+                })]),
+            ) {
+                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                    owner_module_path: cand.module_path.clone(),
+                    node: cand.binding.clone().resolved.clone(),
+                })),
+                None => None,
+            },
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                 candidates: cands, ..
             }) => match global_bare_policy_candidate(type_env.module_path.clone(), cands.clone()) {

@@ -1,4 +1,36 @@
 module test.claim.gha_expression_roundtrip
+import extdeps.github.expressions {
+  Expression,
+  ContextAccess,
+  FunctionCall,
+  StringLiteral,
+  LogicalOr,
+  ExpressionTemplate,
+  TemplateSegment,
+  LiteralText,
+  Interpolation,
+  ExpressionSpellings,
+  default_expression_spellings,
+  serialize_expression,
+  serialize_expression_with,
+  serialize_template,
+  serialize_template_with,
+  ingest_expression,
+  ingest_expression_with,
+  ingest_template,
+  Github,
+  Runner,
+  HashFiles,
+  Contains,
+  FromJSON,
+  Format,
+}
+import extdeps.communication.fidelity_carriers { source_medium_carried }
+import extdeps.communication.medium { Lossless }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,66 @@
 module test.claim.srv3_os_install_diagnostic
-
+import std.bit { Bool }
+import std.types { Milliseconds }
+import std.measure { byte_size }
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  srv3_install_hang_no_installer_progress_ms,
+  srv3_install_hang_no_router_lease_ms,
+  diagnose_os_install_actuation,
+  classify_nbd_serve_readiness,
+  classify_router_lease_table,
+  install_diagnostic_verdict_is_ready_to_boot,
+  install_diagnostic_verdict_is_os_installed,
+  install_diagnostic_verdict_is_boot_override_consumed_failure,
+  bmc_install_debug_checklist_surface_count_is_seven,
+  srv3_os_install_diagnostic_runbook_is_declared,
+  OsInstallActuationObservations,
+  NbdServeProcessObservation,
+  NbdServePortObservation,
+  IsoServeReadinessObservation,
+  RedfishSystemBootObservation,
+  BmcVirtualMediaObservation,
+  SolConsoleContentObservation,
+  KvmObservation,
+  KvmFirmwareMenu,
+  KvmUnknown,
+  NbdkitAbsent,
+  ServeProcessesPresent,
+  ServePortListening,
+  ServePortAbsent,
+  TokenPresent,
+  IsoPresent,
+  IsoHashMismatch,
+  BootProgressNone,
+  BootProgressOsRunning,
+  ReadyToBootVerdict,
+  VirtualMediaServeDown,
+  BootOverrideConsumedNoInstall,
+  BootAttemptInProgress,
+  AutoinstallRunning,
+  InstallerHungVerdict,
+  OsInstalledVerdict,
+  OnlyBmcLeasePresent,
+}
+import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_content_hash }
+import gunbc.network_identity_subsumption {
+  srv3_pre_install_lease_table,
+  srv3_post_install_lease_table_fixture,
+}
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideEnabled,
+  BootOverrideOnce,
+  BootTargetCd,
+  On,
+}
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

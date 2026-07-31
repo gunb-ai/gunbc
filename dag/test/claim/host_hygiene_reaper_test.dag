@@ -1,4 +1,30 @@
 module test.claim.host_hygiene_reaper
+import extdeps.systemd {
+  Active,
+  Failed,
+  Inactive,
+}
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
+import std.types { NonEmptyStr }
+import gunbc.host_hygiene_reaper {
+  CgroupBuildCacheServerOccupant,
+  CgroupEmpty,
+  CgroupOrdinaryProcesses,
+  ResidualSlotObservation,
+  action_kills_build_cache_server,
+  collect_exempt_causes,
+  ground_residual_reap,
+  residual_reap_action,
+  residual_reap_action_absorbing_fallback_widen_sketch,
+}
+import gunbc.host_hygiene_reaper_script {
+  host_hygiene_reap_refuses_build_cache_occupant,
+  host_hygiene_reap_removes_only_disabled_overrides,
+  host_hygiene_reap_skips_active_units,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

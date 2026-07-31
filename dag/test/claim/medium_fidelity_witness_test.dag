@@ -1,4 +1,16 @@
 module test.claim.medium_fidelity
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+  Medium,
+}
+import std.types { String }
+import std.bit { Bool }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

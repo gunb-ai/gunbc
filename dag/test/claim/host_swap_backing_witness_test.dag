@@ -1,4 +1,23 @@
 module test.claim.host_swap_backing
+import v2.std.live_tree { LiveTreeDisposition }
+import extdeps.tools.free { SwapStats }
+import std.measure {
+  byte_size,
+  byte_size_count,
+}
+import gunbc.host_phase_status {
+  fleet_subsumption_hosts,
+  observation_verdict_eq,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.host_swap_backing {
+  host_swap_backing_fleet_unobserved_count,
+  host_swap_backing_requirement,
+  host_swap_backing_verdict,
+  swap_cap_verdict_backing_blind_widen_sketch,
+  swap_cap_verdict_gate_accepts,
+  swap_cap_verdict_qualified_by_backing,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

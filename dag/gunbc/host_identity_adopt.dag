@@ -1,4 +1,61 @@
 module gunbc.host_identity_adopt
+import std.types {
+  String,
+  NonEmptyStr,
+  Bool,
+  ContentHash,
+}
+import std.disposition {
+  Disposition,
+  Terminal,
+  Scaffold,
+  SingleAuthority,
+}
+import std.decl_ref {
+  DeclarationRef,
+  WholeDeclaration,
+}
+import std.process {
+  ProcessExit,
+  ExitSuccess,
+  exit_failure,
+}
+import std.content_hash { content_hash_atom }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent {
+  ComputeHost,
+  srv1_host,
+  srv2_host,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+}
+import gunbc.host_effect {
+  NodeControlPlane,
+  HostEffectTransport,
+  SshShell,
+  EmitArtifactThenThinRun,
+}
+import gunbc.host_identity_knob {
+  HostIdentityKnobKey,
+  host_identity_knob_key,
+}
+import gunbc.host_identity_observation {
+  HostIdentityObservation,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+  host_identity_observation_nonempty,
+}
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_v0_adopt_observed_base,
+  deployed_intent_observed_differs_from_fleet_slot,
+  deployed_intent_observed_short_hostname,
+}
+import std.realization_reconcile { reconciliation_converged }
+
+import extdeps.shell
 
 
 type HostIdentityAdoptReceipt {

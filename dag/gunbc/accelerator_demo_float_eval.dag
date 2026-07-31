@@ -1,5 +1,14 @@
 module gunbc.accelerator_demo_float_eval
-
+import std.float { Float }
+import std.types { List }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  ElementwiseArrayOp,
+  pure_elementwise_ops_shape_recognizable,
+}
 
 fn float_relu(x: Float) -> Float {
   if x > 0.0 {

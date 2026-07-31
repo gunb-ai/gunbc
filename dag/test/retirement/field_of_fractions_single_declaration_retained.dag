@@ -1,5 +1,8 @@
 module test.retirement.field_of_fractions_single_declaration_retained
-
+import test.retirement.model {
+  RetainedNonMigratable,
+  TestModuleRetirement,
+}
 
 data field_of_fractions_single_declaration_retention: TestModuleRetirement = TestModuleRetirement {
   module: "field_of_fractions_single_declaration_test.rs",

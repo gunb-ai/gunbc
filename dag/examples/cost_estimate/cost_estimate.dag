@@ -1,5 +1,9 @@
 module examples.cost_estimate
-
+import std.currency {
+  CurrencyCode,
+  Usd,
+  currency_minor_unit_exponent,
+}
 
 type CostProjection {
   expected_hours: Float

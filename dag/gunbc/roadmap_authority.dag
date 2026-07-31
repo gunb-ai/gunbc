@@ -1855,7 +1855,7 @@ fn active_section_for(focus: RoadmapFocus) -> RoadmapSection {
   }
 }
 
-data guarantee_ladder_lane_note: String = "STATE vs WORK, and IN-GRAPH vs BESIDE-IT. Rung STATE has one authority — the guarantee claims carrier (ladder-claims-carrier node), its dispositions DERIVED from execution receipts and EMITTED by ladder-census-emitters — never a ticket; a climb node names its target transition and lets the census/carrier say where the class stands today (the 2026-07-31 operator verdict on gunbc#7489 caught headlines transcribing rungs, the third rung-inflation catch in this lane's own artifacts). The WORK rows below are ordinary declared roadmap nodes under lane owner compiler-guarantee: the first cut rendered them from a section-local list beside the graph, which minted a second roadmap universe — uncounted, receipt-unreachable, invisible to the identity/endpoint/acyclicity witnesses and to active_roadmap_nodes() (same verdict; review 45356 independently flagged the owner-less rows the placement forced). Owner here is the LANE's identity, not an assignee: nodes are unbound until dispatch binds a session and a closing contract, exactly like every other lane. Page visibility is the typed focus policy in roadmap_focus_selection (the lane is selected so the unstaffed backlog stays on the page), and rendered-node containment is witnessed — see roadmap_rendered_containment_note."
+data guarantee_ladder_lane_note: String = "STATE vs WORK, and IN-GRAPH vs BESIDE-IT. Rung STATE has one authority — the guarantee claims carrier (ladder-claims-carrier node), its dispositions DERIVED from execution receipts and EMITTED by ladder-census-emitters — never a ticket; a climb node names its target transition and lets the census/carrier say where the class stands today (the 2026-07-31 operator verdict on gunbc#7489 caught headlines transcribing rungs, the third rung-inflation catch in this lane's own artifacts). The WORK rows below are ordinary declared roadmap nodes under lane owner compiler-guarantee: the first cut rendered them from a section-local list beside the graph, which minted a second roadmap universe — uncounted, receipt-unreachable, invisible to the identity/endpoint/acyclicity witnesses and to active_roadmap_nodes() (same verdict; review 45356 independently flagged the owner-less rows the placement forced). Owner here is the LANE's identity, not an assignee: nodes are unbound until dispatch binds a session and a closing contract, exactly like every other lane. Page visibility is the typed focus policy in roadmap_focus_selection (the lane is selected so the unstaffed backlog stays on the page), and rendered-node containment is witnessed — see roadmap_rendered_containment_note. Post-merge verdict (2026-07-31, on the merged gunbc#7489): v2-phase-carriers split into five staged nodes (its identity is the registry's first tombstone, superseded by v2-self-grounding-frontier); floor-parse-formation-wall, floor-record-construction-wall, and the compiler-accepted-obligation-closure terminal added; baseline anchored to the merge commit; and the standing discipline that an OPEN PR is candidate evidence, never main's rung — tickets cite open work as 'open candidate', and the census states main's disposition separately."
 
 fn guarantee_ladder_nodes() -> List<RoadmapNode> {
   [
@@ -1881,7 +1881,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "The guarantee claims carrier: rung state becomes DERIVED from execution receipts, never stored",
-        boundary: "Four carriers, measurement separated from claim: GuaranteeRequirement (class identity, domain, harm, ceiling with typed reason, next_rung_trigger); GuaranteePath (subject_grain, acceptance_boundary, compile_mode, realization_target — one row per in-scope path, population derived from the census or completeness-witnessed); GuaranteeMeasurement (executed receipts naming their consumer); and GuaranteeDisposition DERIVED per path — Unmeasured | BelowFloor | OnLadder | OutsideModeledGuarantee — folded by below-floor dominance, then unmeasured, then MINIMUM rung across paths. No stored current_rung field exists, so a transcribed rung is unrepresentable; the five recovered vocabularies stay orthogonal, joined by class identity. Full shape: gap analysis sec 12 Stage 1b.",
+        boundary: "Four carriers, measurement separated from claim: GuaranteeRequirement (class identity, domain, harm, ceiling with typed reason, next_rung_trigger); GuaranteePath (subject_grain, acceptance_boundary, compile_mode, realization_target — one row per in-scope path, population derived from the census or completeness-witnessed); GuaranteeMeasurement (executed receipts naming their consumer); and GuaranteeDisposition DERIVED per path — Unmeasured | BelowFloor | FrontierAccepted | OnLadder | OutsideModeledGuarantee — folded by below-floor dominance, then frontier, then unmeasured, then MINIMUM rung across paths. No stored current_rung field exists, so a transcribed rung is unrepresentable; the five recovered vocabularies stay orthogonal, joined by class identity. Full shape: gap analysis sec 12 Stage 1b.",
         displaced_cost: "Ends the per-conversation re-derivation of what the compiler guarantees (the operator performed the missing meta-lens by hand three times this month); grounds the enforcement-intent StandingIntent thread instead of minting beside it.",
         first_slice: "The four carrier types plus the floor-domain classes' path rows, dispositions derived from the ladder-probe-corpus receipts (the probe corpus precedes this node for exactly that reason).",
         red_control: "A synthetic measurement-less row folds to Unmeasured, never to a rung; deleting a probe receipt visibly demotes the derived disposition; a path population missing a census axis reds the completeness witness; a row below its ceiling with next_rung_trigger absent reds the stall check.",
@@ -1896,7 +1896,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Baseline prevalence: the whole-corpus floor rerun bucketed by ladder position, before any wall lands",
-        boundary: "Re-run the whole-corpus floor and bucket every failure — statically-decidable-should-have-refused, runtime-value-dependent, external-boundary, resource-budget, capability-not-grounded, interpreter-defect — keyed to the carrier's class ids: the honest BEFORE picture. Replaces the carried-but-unverified historical figures (1454/149 and the 66/40/6 histogram) with current receipts. Sequenced after the probe corpus and carrier (buckets key to their class/path rows) and BEFORE the walls: each wall's dependency edge on this node encodes that a wall landing first would pollute the baseline.",
+        boundary: "Re-run the whole-corpus floor and bucket every failure — statically-decidable-should-have-refused, runtime-value-dependent, external-boundary, resource-budget, capability-not-grounded, interpreter-defect — keyed to the carrier's class ids: the honest BEFORE picture. Replaces the carried-but-unverified historical figures (1454/149 and the 66/40/6 histogram) with current receipts. Anchored: anchor_commit 6c6e2dcb8587d73350ac252f5b07a6b50d684485 (the gunbc#7489 merge — pre-P0-implementation main), so the measurement is content-addressed and reproducible after in-flight branches merge; walls sequence after it without racing a live tree (post-merge verdict).",
         displaced_cost: "Denominates the climbs in displaced cost (DESIGN 6) instead of elegance; the honest number for how many programs the gap admits today.",
         first_slice: "The bucketing classifier over one batch's failures, validated by hand against ten cases.",
         red_control: "Bucket counts reconcile to the total (no absorbed remainder); a failure the classifier cannot bucket is a typed Unknown row, never dropped.",
@@ -1911,7 +1911,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeSmall,
       t: fields(
         headline: "Method existence: an unresolved method refuses at compile on every applicable path",
-        boundary: "An unresolved method refuses at compile with name, receiver type, and locus: delete the method_pipe_map_keys_values_fallback else-arm and the resolve_builtin_call_type Absent-to-unit_type arm. A narrow per-receiver wall over kernel receivers landed on gunbc#7484; promotion to every receiver is gated on two measured resolution defects (where-refinement alias unpeeled to base; pattern-destructured payload typed as its variant name) and on primitive-identity-join — the measured length/count/size dispatch fork is what forces the wall narrow, so the join is a prerequisite (gap analysis sec 12 Stage 2 amendment). Refusal fires only on cardinality zero; more-than-one is floor-method-ambiguity-wall.",
+        boundary: "An unresolved method refuses at compile with name, receiver type, and locus: delete the method_pipe_map_keys_values_fallback else-arm and the resolve_builtin_call_type Absent-to-unit_type arm. Main today: compile-time method existence unenforced outside existing paths. Open candidate gunbc#7484 carries narrow R2 coverage for established receiver surfaces plus a typed, countable MethodExistenceUndecided frontier elsewhere — candidate evidence on an open branch, never main's rung (post-merge verdict). Zero-resolution is decided over the union of current admissible sources — enumeration suffices for absence — so the identity join gates only the more-than-one half, not this node. First: receiver normalization, then zero-resolution refusal.",
         displaced_cost: "The gunbc#7479 class (typechecked filter_map, HTTP 500 at dispatch) becomes unwritable-to-ship; the compile gate stops being quieter than the interpreter.",
         first_slice: "The two receiver-type resolution repairs (alias peel, pattern payload), probe-paired, widening the landed kernel-receiver wall one receiver family at a time.",
         red_control: "The probe corpus's method pair flips red-to-green exactly when the general wall lands; the map/filter/fold/flat_map/service positive controls never refuse (an over-wide wall reds them).",
@@ -2009,19 +2009,124 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         handback: "The lattice fragment landed, the seam judgment site, both probe receipts."
       )
     ),
-    active_sized(identity: "rn_SMUGMQLFC6PJT7CF2AKG745O2Y", id: "v2-phase-carriers",
+    active_sized(identity: "rn_PBIAB7X2M6IXIKMOXT3D7DKIXQ", id: "v2-self-grounding-frontier",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "v2 stops treating source structure as inferred fact: the self-grounding slice becomes a typed frontier",
+        boundary: "The strict-narrowing slice, carried today by open candidate gunbc#7485 (candidate evidence on an open branch, never main's rung): exact self-evidence leaves solve_constraints' generic arm; underived facts become typed, located, counted GroundingNotDerived diagnostics inside an accepted InferredTree — the FrontierAccepted disposition's live specimen. Identity admission reads the authored declared-inhabitant roster inside the authority, never caller-supplied candidates; Bool/Int literal derivations raised via the canonical literal query. Closes when the slice is on main with its witnesses enrolled.",
+        displaced_cost: "Silent self-certification becomes a counted frontier: the deficit ranks for fixing instead of reading as green (the absorbing-fallback rule applied to inference).",
+        first_slice: "The gunbc#7485 stack merged to main; the self-grounding and identity-admission witnesses enrolled on the floor.",
+        red_control: "The claims carrier's v2 self-grounding path flips BelowFloor-to-FrontierAccepted exactly here; the identity path refuses caller-supplied candidate sets.",
+        out_of_scope: "Translate propagation; carrier completeness; target realization (each its own node downstream).",
+        handback: "The merged receipts and the frontier diagnostic counts by class."
+      )
+    ),
+    active_sized(identity: "rn_R34TEJZQSFSFZPHUPA3QLNDXYY", id: "v2-translate-underived-refusal",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Translate propagates the refusal: an underived fact cannot be swallowed downstream",
+        boundary: "gunbc#7485 records that Translate can swallow the new GroundingNotDerived rejection and continue — the frontier diagnostic exists but the emission path proceeds. This node makes Translate refuse or thread the typed frontier so Eval and Translate agree: compile-time refusal on both is the class minimum (post-merge verdict grid). The per-path grain is exactly why the carrier models paths separately.",
+        displaced_cost: "Closes the path split where the same underived fact refuses in one phase and ships in another — the subject-grain failure mode measured on the call-shape class.",
+        first_slice: "Translate refusing the existing frontier diagnostic, probe-paired with an underived-generic fixture.",
+        red_control: "A source tree with an underived fact refuses translation naming the fact; every derived corpus module still translates.",
+        out_of_scope: "New derivation rules; realization.",
+        handback: "The refusal arm, probe flip, per-path disposition receipts."
+      )
+    ),
+    active_sized(identity: "rn_33MD6AG25ANERCNTXHLLCWSRAA", id: "v2-inferred-tree-completeness",
       owner: "compiler-guarantee",
       path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
       intricacy: IntricacyHigh,
-      volume: VolumeLarge,
+      volume: VolumeMedium,
       t: fields(
-        headline: "Source, inferred, realized: v2 self-grounding becomes type-invalid",
-        boundary: "Separate carriers so candidate-equals-source is not even well-typed as a grounding proof: the inferred carrier holds source plus derived result type, resolved behavior, and constraint discharge; the realized carrier adds target realization. solve_constraints stops passing graph.root as source, algebra, and sole candidate; the generic infer arm either derives or returns a typed compile refusal, never an accepted self-certified tree. The validate_then_compile door and its lens roster stay.",
-        displaced_cost: "InferredTree becomes a trustworthy proof boundary; every lens consuming it stops reading facts that were never derived; the self-host frontier stops reading greener than it is. Deferral compounds weekly — every new InferredTree consumer raises this migration's bill.",
-        first_slice: "The carrier split with Branch/Match/Loop (the three real inference paths) migrated; the generic arm refuses.",
-        red_control: "The claims carrier's v2 self-grounding disposition flips exactly here (this node's refusal is the measurement that class waits on); a well-formed node with no derived facts cannot inhabit the inferred carrier.",
-        out_of_scope: "New inference beyond the three behaviors; evaluator realization coverage.",
-        handback: "The carrier types, the migrated arm list, the disposition flip receipt."
+        headline: "InferredTree carries only derived facts: the all-derived carrier lands",
+        boundary: "Separate source and inferred carriers so candidate-equals-source is not even well-typed as a grounding proof: every fact on the inferred carrier traces to a derivation or the node refuses. Branch/Match/Loop (the three real inference paths) migrate first; the validate_then_compile door and its lens roster stay. A well-formed node with no derived facts cannot inhabit the carrier.",
+        displaced_cost: "InferredTree becomes a trustworthy proof boundary; every lens consuming it stops reading facts that were never derived; the self-host frontier stops reading greener than it is.",
+        first_slice: "The carrier split with the three real inference paths migrated.",
+        red_control: "A well-formed node with no derived facts cannot inhabit the inferred carrier (type-invalid, not lens-caught); the carrier's v2 disposition climbs exactly here.",
+        out_of_scope: "Derivation rules beyond the three behaviors (next node); realization.",
+        handback: "The carrier types, the migrated arm list, the disposition climb receipt."
+      )
+    ),
+    active_sized(identity: "rn_XYRCAJC6YWM4CU774LOSFYDJ4U", id: "v2-node-kind-derivation-coverage",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Every node kind derives or refuses: the generic acceptance arm deletes",
+        boundary: "The remaining derivation rules beyond Branch/Match/Loop: each v2 node kind either derives into the inferred carrier or its acceptance is a typed compile refusal — the generic accept-anything arm deletes. Coverage is counted per kind, so the frontier shrinks to zero or to named FrontierAccepted rows each carrying a trigger.",
+        displaced_cost: "The last self-certification residue: any kind without a rule is currently accepted on well-formedness alone, which is the recovered defect class in its most general form.",
+        first_slice: "The per-kind coverage census (derived | refused | frontier), then the highest-count kind's rule.",
+        red_control: "A kind with neither rule nor refusal reds the coverage census; deleting the generic arm keeps the whole-tree compile green.",
+        out_of_scope: "Realization; new language behaviors.",
+        handback: "The per-kind coverage table and the deleted-arm commit."
+      )
+    ),
+    active_sized(identity: "rn_223FAUHF5IVK24UVR6PPYSXQCI", id: "v2-target-realization-gate",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Realization per target: an operation cannot compile for T without exactly one realization",
+        boundary: "The realized carrier adds target realization: every executable operation in a program accepted for target T has exactly one compatible realization row for T, refused target-relatively otherwise. gunbc#7485 explicitly leaves this open; it consumes the primitive-identity join (realization rows are its per-target facts) and the derivation-coverage node (a realized tree is derived-then-realized, never source-then-realized).",
+        displaced_cost: "The gunbc#7479 shape at its root: a costed-but-unrealized primitive currently compiles and fails at dispatch; the gate moves that to a located target-relative refusal.",
+        first_slice: "The gate over the collection-algebra family for the interpreter target, probe-paired.",
+        red_control: "A costed-but-unrealized primitive refuses for the target naming the missing row; every realized corpus call still compiles.",
+        out_of_scope: "New targets; deleting seed dispatch.",
+        handback: "The gate site, the per-target refusal variant, probe flip receipt."
+      )
+    ),
+    active_sized(identity: "rn_VNYPK344GM56QEWP34G7VCG4OA", id: "floor-parse-formation-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Parse formation refuses: a dropped separator cannot silently change the program",
+        boundary: "Two slices, one wall. Safety: a missing list separator refuses at parse instead of parsing as element juxtaposition (the measured below-floor census row — a dropped comma silently changes list arity). Completeness: a block after a bare identifier in if-condition position parses as the block it is, closing the measured false refusal (expected-RParen on legitimate input). Probe-paired via the corpus's parser pair; grammar-owned, no host parser (census queue items 6-7).",
+        displaced_cost: "The separator specimen survived regen, whole-corpus compile, fixed-point verify, and a 15-case matrix; only a human diff read caught it (review 45347).",
+        first_slice: "The separator refusal with legitimate-list controls green.",
+        red_control: "The separator probe flips exactly when the refusal lands; the if-block fixture parses correctly; every legitimate list in corpus still parses.",
+        out_of_scope: "Grammar redesign; lookahead classes the census does not name.",
+        handback: "The two closed defects, probe flips, corpus parse receipt."
+      )
+    ),
+    active_sized(identity: "rn_ILWLG34LVL5SAS6QPN5GZDPMFY", id: "floor-record-construction-wall",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyMedium,
+      volume: VolumeSmall,
+      t: fields(
+        headline: "Record construction refuses: missing required fields, bad defaults, ungrounded nominal literals",
+        boundary: "A record literal missing a required field refuses at compile with the field named; defaults apply only where declared; a literal claiming a nominal type it does not ground refuses. Owns the census's record-completeness class — floor-inhabitance-wall owns return, data, and generic instantiation, not this. Probe-paired via the corpus's record-completeness pair. Motivating specimen: HandAuthoredDocBind's primary_work construction wall currently rests on record-completeness enforcement that is itself unmeasured.",
+        displaced_cost: "A construction wall anywhere in the corpus is only as strong as required-field enforcement; this node is what makes primary_work-style walls load-bearing rather than declared.",
+        first_slice: "Missing-required-field refusal, probe-paired.",
+        red_control: "A record literal minus one required field refuses naming it; every corpus record literal compiles.",
+        out_of_scope: "Row polymorphism; invocation default semantics (call-shape owns those).",
+        handback: "The judgment site, probe flip, corpus receipt."
+      )
+    ),
+    active_sized(identity: "rn_J5XDQKBF6J4YPGFKWQXE45KOQM", id: "compiler-accepted-obligation-closure",
+      owner: "compiler-guarantee",
+      path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md",
+      intricacy: IntricacyHigh,
+      volume: VolumeMedium,
+      t: fields(
+        headline: "Accepted means established: the acceptance-completeness door closes the contract",
+        boundary: "The terminal P0 wall (the recovered P0.0 meta-guarantee — no exhaustive acceptance contract exists today): for every Required guarantee path in the claims carrier, exactly one live consumer, consumed before the relevant Accepted constructor; acceptance refuses when a required class or path is Unmeasured, BelowFloor, FrontierAccepted, or lacks its live consumer. Depends on the carrier and EVERY required-now climb — the floor walls, the ambiguity wall, and the cardinality seam included (review 45545: a door closing over known-open required judgments would certify its own headline falsely).",
+        displaced_cost: "The original thesis promise — if it compiles, declared intent is sound inside the modeled system — becomes checkable instead of aspirational; the carrier turns from observability into the contract.",
+        first_slice: "The closure check over the floor domain only, census-first (count, then flip).",
+        red_control: "A Required path with no live consumer reds; a FrontierAccepted path admitted into Accepted reds; the whole-tree compile stays green at flip.",
+        out_of_scope: "New walls (it consumes them); domains beyond the declared Required set.",
+        handback: "The door site, the refusal variants, the flip receipt."
       )
     ),
     active_sized(identity: "rn_W2KPJ5VLF3RMNDELVJXP6EKL5A", id: "primitive-identity-join",
@@ -2091,7 +2196,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       volume: VolumeMedium,
       t: fields(
         headline: "Residual prevalence: the post-climb rerun that prices what remains",
-        boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the terminal climb nodes so a partial rerun cannot masquerade as the residual.",
+        boundary: "The baseline's bucketing classifier re-run after the declared climbs land, diffed against the anchored baseline: per-class delta receipts showing which buckets each wall emptied, and the residual histogram pricing the next round (DESIGN 6 displaced-cost denomination). Depends on the acceptance-closure door alone — every required climb, ambiguity and the cardinality seam included, now flows through that door (review 45545) — so a partial rerun cannot masquerade as the residual.",
         displaced_cost: "Turns each wall's landing into a measured before/after instead of an assumed win; the residual table is the priced backlog for the next design round.",
         first_slice: "The diff projection over one class (method existence) with its wall's before/after receipts.",
         red_control: "Bucket counts reconcile to the total; a class whose wall landed but whose bucket did not shrink is a counted finding, never smoothed over.",
@@ -2108,25 +2213,37 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "guarantee-baseline-prevalence", parent: "ladder-probe-corpus"),
     edge(child: "guarantee-baseline-prevalence", parent: "ladder-claims-carrier"),
     edge(child: "floor-method-existence-wall", parent: "guarantee-baseline-prevalence"),
-    edge(child: "floor-method-existence-wall", parent: "primitive-identity-join"),
     edge(child: "floor-call-shape-wall", parent: "guarantee-baseline-prevalence"),
     edge(child: "floor-inhabitance-wall", parent: "guarantee-baseline-prevalence"),
     edge(child: "floor-exhaustiveness-refusal", parent: "guarantee-baseline-prevalence"),
     edge(child: "floor-generic-field-constraint-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-parse-formation-wall", parent: "guarantee-baseline-prevalence"),
+    edge(child: "floor-record-construction-wall", parent: "guarantee-baseline-prevalence"),
     edge(child: "floor-method-ambiguity-wall", parent: "floor-method-existence-wall"),
     edge(child: "floor-method-ambiguity-wall", parent: "primitive-identity-join"),
     edge(child: "cardinality-vertical-slice", parent: "ladder-claims-carrier"),
     edge(child: "cardinality-vertical-slice", parent: "unforgeable-construction-capability"),
-    edge(child: "v2-phase-carriers", parent: "ladder-claims-carrier"),
+    edge(child: "v2-self-grounding-frontier", parent: "ladder-claims-carrier"),
+    edge(child: "v2-translate-underived-refusal", parent: "v2-self-grounding-frontier"),
+    edge(child: "v2-inferred-tree-completeness", parent: "v2-translate-underived-refusal"),
+    edge(child: "v2-node-kind-derivation-coverage", parent: "v2-inferred-tree-completeness"),
+    edge(child: "v2-target-realization-gate", parent: "v2-node-kind-derivation-coverage"),
+    edge(child: "v2-target-realization-gate", parent: "primitive-identity-join"),
     edge(child: "ladder-census-emitters", parent: "ladder-claims-carrier"),
     edge(child: "compiler-source-exemption-removal", parent: "floor-call-shape-wall"),
     edge(child: "compiler-source-exemption-removal", parent: "floor-inhabitance-wall"),
-    edge(child: "guarantee-residual-prevalence", parent: "compiler-source-exemption-removal"),
-    edge(child: "guarantee-residual-prevalence", parent: "floor-exhaustiveness-refusal"),
-    edge(child: "guarantee-residual-prevalence", parent: "floor-generic-field-constraint-wall"),
-    edge(child: "guarantee-residual-prevalence", parent: "floor-method-ambiguity-wall"),
-    edge(child: "guarantee-residual-prevalence", parent: "cardinality-vertical-slice"),
-    edge(child: "guarantee-residual-prevalence", parent: "v2-phase-carriers"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "ladder-claims-carrier"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-method-existence-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "compiler-source-exemption-removal"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-record-construction-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-generic-field-constraint-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-exhaustiveness-refusal"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-parse-formation-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "v2-translate-underived-refusal"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "v2-target-realization-gate"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "floor-method-ambiguity-wall"),
+    edge(child: "compiler-accepted-obligation-closure", parent: "cardinality-vertical-slice"),
+    edge(child: "guarantee-residual-prevalence", parent: "compiler-accepted-obligation-closure"),
   ]
 }
 

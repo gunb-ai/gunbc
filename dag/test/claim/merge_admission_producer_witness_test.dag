@@ -1,5 +1,34 @@
 module test.claim.merge_admission_producer_witness
-
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  current_gate_roster_hash,
+  mint_merge_admission_receipt,
+}
+import extdeps.github.checks {
+  Success,
+  Failure,
+  check_conclusion_wire_label,
+  Skipped,
+}
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_schema,
+  merge_admission_receipt_rel_path,
+  render_receipt_wire,
+  parse_receipt_wire,
+  stamp_floor_receipt,
+  floor_exit_to_check_conclusion,
+  shell_stdout_line,
+}
+import v2.workflow.ci_merge_admission_emit { ci_floor_stamp_merge_admission_script }
+import tools.merge_admission_stamp {
+  merge_admission_stamp_missing_floor_exit_is_failure,
+  merge_admission_stamp_non_pr_omits_pr_number,
+}
+import std.types { ContentHash }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

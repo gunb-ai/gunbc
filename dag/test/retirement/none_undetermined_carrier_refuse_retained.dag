@@ -1,5 +1,8 @@
 module test.retirement.none_undetermined_carrier_refuse_retained
-
+import test.retirement.model {
+  RetainedNonMigratable,
+  TestModuleRetirement,
+}
 
 data none_undetermined_carrier_refuse_retention: TestModuleRetirement = TestModuleRetirement {
   module: "none_undetermined_carrier_refuse_test.rs",

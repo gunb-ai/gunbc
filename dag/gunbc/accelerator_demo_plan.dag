@@ -1,5 +1,60 @@
 module gunbc.accelerator_demo_plan
-
+import std.types {
+  Bool,
+  String,
+  Int,
+  NonEmptyStr,
+}
+import std.measure { Nano }
+import std.effects { ReadEffect }
+import std.realization {
+  Placement,
+  LocalAccelerator,
+  LocalInProcess,
+  LocalFilesystem,
+  RemoteNetwork,
+  RealizedStep,
+  Materialization,
+  Recompute,
+}
+import std.realization_schedule {
+  RealizationPlan,
+  RealizationObjective,
+  Runnable,
+  RunnableKernelWorkload,
+  Schedule,
+  CostAccount,
+  cost_account_predicted_zero,
+}
+import std.numerical_contract {
+  NumericalContract,
+  IntegerExact,
+  FloatApproximate,
+  integer_exact_contract,
+  float_contract,
+  FmaContractionRefused,
+  FmaContractionPermitted,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.communication.medium {
+  DecodeFidelity,
+  Lossless,
+  Lossy,
+}
+import extdeps.communication.numerical_fidelity {
+  LoweringAccepted,
+  LoweringRefused,
+  LoweringRefusalReason,
+  FmaContractionRefusedByContract,
+  UnsupportedNumericalDomain,
+  lowering_fidelity_verdict_for_contract,
+}
+import extdeps.gpu.types { AcceleratorFacts }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.languages.simd.kernel {
+  simd_kernel_target_medium_name,
+  witness_relu_mul_add_kernel_surface_shape,
+}
 
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }

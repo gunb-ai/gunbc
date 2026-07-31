@@ -1,5 +1,40 @@
 module test.claim.srv3_install_media_fetch
-
+import std.bit { Bool }
+import std.disposition {
+  Scaffold,
+  Terminal,
+}
+import std.effects {
+  CreateEffect,
+  CreateIfAbsent,
+  InputField,
+}
+import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
+import gunbc.srv3_install_media_fetch {
+  srv3_ubuntu_install_media_install_path,
+  install_media_fetch_effect_shape,
+  classify_install_media_fetch,
+  install_media_fetch_verdict_is_idempotent_skip,
+  install_media_fetch_first_mirror_url,
+  srv3_install_media_fetch_install_path_is_versioned,
+  srv3_install_media_fetch_actuator_host_is_srv1,
+  srv3_install_media_fetch_shell_runner_scaffold,
+  Absent,
+  Present,
+  AlreadyPresent,
+  FetchRequired,
+  HashMismatchRefusal,
+}
+import extdeps.provisioning.ubuntu_install_media {
+  CdimageUbuntuCom,
+  ReleasesUbuntuCom,
+  ubuntu_install_media_mirror_rows,
+}
+import extdeps.provisioning.ubuntu_install_media_fetch { install_media_fetch_bash_emit_dissolution_trigger }
+import v2.std.live_tree {
+  LiveTreeDisposition,
+  SubstrateInputsOnly,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
