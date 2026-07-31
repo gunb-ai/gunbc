@@ -6,14 +6,9 @@ import std.types { String, NonEmptyStr, List }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
-  HashFamily,
-  Sha256Family,
-  Sha1Family,
   content_hash_atom,
   content_hash_combine_structural,
   as_content_hash_structural,
-  as_content_hash_cryptographic,
-  as_content_hash_sha1,
   serialize_content_hash,
 }
 import std.integer { NonNegativeInt }
@@ -54,7 +49,6 @@ type EmitHostStructuralIdentityOutcome
   | EmitHostStructuralIdentityRefusedCrypto {
       component: NonEmptyStr
       identity: ContentHash
-      family: HashFamily
     }
 
 type ResolvedBuildContextIdentityOutcome
@@ -62,7 +56,6 @@ type ResolvedBuildContextIdentityOutcome
   | ResolvedBuildContextIdentityRefusedCrypto {
       component: NonEmptyStr
       identity: ContentHash
-      family: HashFamily
     }
 
 type ToolchainIdentityOutcome
@@ -70,10 +63,9 @@ type ToolchainIdentityOutcome
   | ToolchainIdentityRefusedCrypto {
       component: NonEmptyStr
       identity: ContentHash
-      family: HashFamily
     }
 
-data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash and Sha1Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component, identity, and family so the deficit is typed, located, and countable."
+data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash and Sha1Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."
 
 fn emit_host_structural_identity_outcome(
   component: NonEmptyStr,
@@ -81,17 +73,15 @@ fn emit_host_structural_identity_outcome(
 ) -> EmitHostStructuralIdentityOutcome {
   match identity {
     Fnv1a64(s) => EmitHostStructuralIdentityPresent { structural: s }
-    Sha256Hash(d) =>
+    Sha256Hash(_) =>
       EmitHostStructuralIdentityRefusedCrypto {
         component: component,
-        identity: as_content_hash_cryptographic(digest: d),
-        family: Sha256Family
+        identity: identity
       }
-    Sha1Hash(d) =>
+    Sha1Hash(_) =>
       EmitHostStructuralIdentityRefusedCrypto {
         component: component,
-        identity: as_content_hash_sha1(digest: d),
-        family: Sha1Family
+        identity: identity
       }
   }
 }
@@ -117,18 +107,16 @@ fn toolchain_identity_structural_outcome(
                 right: right
               )
             }
-          EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+          EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
             EmitHostStructuralIdentityRefusedCrypto {
               component: c,
-              identity: i,
-              family: f
+              identity: i
             }
         }
-      EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+      EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
         EmitHostStructuralIdentityRefusedCrypto {
           component: c,
-          identity: i,
-          family: f
+          identity: i
         }
     }
   )
@@ -140,11 +128,10 @@ fn toolchain_identity_outcome(context: ResolvedBuildContext) -> ToolchainIdentit
       ToolchainIdentityPresent {
         identity: as_content_hash_structural(structural: s)
       }
-    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
       ToolchainIdentityRefusedCrypto {
         component: c,
-        identity: i,
-        family: f
+        identity: i
       }
   }
 }
@@ -197,25 +184,22 @@ fn resolved_build_context_identity_outcome(
                   },
                 ])
               }
-            EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+            EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
               ResolvedBuildContextIdentityRefusedCrypto {
                 component: c,
-                identity: i,
-                family: f
+                identity: i
               }
           }
-        EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+        EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
           ResolvedBuildContextIdentityRefusedCrypto {
             component: c,
-            identity: i,
-            family: f
+            identity: i
           }
       }
-    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i, family: f } =>
+    EmitHostStructuralIdentityRefusedCrypto { component: c, identity: i } =>
       ResolvedBuildContextIdentityRefusedCrypto {
         component: c,
-        identity: i,
-        family: f
+        identity: i
       }
   }
 }

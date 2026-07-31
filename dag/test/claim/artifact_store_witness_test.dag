@@ -8,6 +8,7 @@ import std.content_hash {
   Sha256Family,
   content_hash_atom,
   content_hash_combine_structural,
+  content_hash_family,
   as_content_hash_structural,
   as_content_hash_cryptographic,
   sha256_hex_digest,
@@ -80,7 +81,7 @@ fn key_of(toolchain: String) -> ContentHash {
 fn structural_resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash {
   match resolved_build_context_identity_outcome(context: context) {
     ResolvedBuildContextIdentityPresent { identity: id } => id
-    ResolvedBuildContextIdentityRefusedCrypto { component: _, identity: _, family: _ } =>
+    ResolvedBuildContextIdentityRefusedCrypto { component: _, identity: _ } =>
       as_content_hash_structural(
         structural: content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
       )
@@ -90,7 +91,7 @@ fn structural_resolved_build_context_identity(context: ResolvedBuildContext) -> 
 fn structural_toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
   match toolchain_identity_outcome(context: context) {
     ToolchainIdentityPresent { identity: id } => id
-    ToolchainIdentityRefusedCrypto { component: _, identity: _, family: _ } =>
+    ToolchainIdentityRefusedCrypto { component: _, identity: _ } =>
       as_content_hash_structural(
         structural: content_hash_atom(value: "artifact-store-witness-unexpected-crypto-refusal")
       )
@@ -269,8 +270,8 @@ test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
     ),
   }
   match resolved_build_context_identity_outcome(context: context) {
-    ResolvedBuildContextIdentityRefusedCrypto { component: c, identity: _, family: f } =>
-      (c as String) == "cargo" && f == Sha256Family
+    ResolvedBuildContextIdentityRefusedCrypto { component: c, identity: i } =>
+      (c as String) == "cargo" && content_hash_family(hash: i) == Sha256Family
     ResolvedBuildContextIdentityPresent { identity: _ } => false
   }
 }
