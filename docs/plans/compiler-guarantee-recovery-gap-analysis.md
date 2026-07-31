@@ -89,10 +89,11 @@ examples sit above mainstream while method-existence and return-conformance sit 
 | Class | Floor status | Today | Ceiling | The climb |
 |---|---|---|---|---|
 | Misspelled label binds positionally (§4) | **BELOW FLOOR — silent wrong binding** | — | R2 | floor first (any diagnostic), then the exact call-shape judgment |
-| Unknown method (`filter_map`, #7479) | at floor | R0 — typed `Unimplemented`, found as a 500 on the lab | **R2** — a nonexistent name can always be *typed*; refusal is the top rung for reference classes | zero-resolution wall now; ambiguity wall after the identity join |
+| Unknown method (`filter_map`, #7479) | at floor | R0 — typed `Unimplemented`, found as a 500 on the lab | **R3 in the accepted model** — a resolved call carries a unique declaration identity, so an unresolved name has no accepted form; the author experiences it as R2-style refusal at the source boundary | zero-resolution wall now; ambiguity wall after the identity join; `FunctionRef`-carrying IR |
 | Return / `data` / generic inhabitance (#7481 probes) | at floor | R0 — first consumer breaks, typed | R2 | return-position checking (wall-after-grounding) |
 | Empty list into requires-one (the operator's case, §4b) | at floor | R0 — runtime surprise or degenerate arm | **R3** — the bad *seam* becomes unwritable | seal `Refined` (capability ceiling) + propagate through `InterfaceSummary`; expecting-red probes land first |
-| Cross-representation `==` | **was below floor** (silent `false`) | **R3** — numeric tower grounded by construction (#5428), guard dead-in-corpus | R3 | **done — the exemplar full climb, floor to top** |
+| **Numeric-tower** cross-representation `==` | **was below floor** (silent `false`) | **R3** — grounded by construction (#5428), guard dead-in-corpus for numerics | R3 | **done — the exemplar full climb, floor to top** |
+| Cross-representation `==`, full class (`Bool` straddle; `Optional`/`Witness` over `Value::Null`) | at floor | R0 — typed `CrossRepresentationEquality` backstop; the `Value::Null` overload is live at ~131 sites | R3 — each primitive grounded in its realization | the `Value::Null` split (its own runway, `value-null-split` plan). *Row split from a single "R3 done" claim per review 45310 — the table's own inflation rule, caught by review* |
 | v2 loop termination | — | **R2** (undeclared measure refused) with R3 character (unbounded iteration has no substrate spelling; recursion is sugar over `Loop`) | R3 | done in v2; the v1 seed's classes climb by deletion, not hardening |
 | Idempotency-unsafe retry | at floor | R1-capable — algebra declared, consumers exist, not at binding sites | R2 | the dimension migrates onto `TypeBinding` (§8c) |
 | Non-exhaustive match via blocked lookup | below-floor risk (`diagnostics: []`) | mixed R0/R1 | R2 | `ExhaustivenessUnknown` refuses instead of passing as success |
@@ -121,6 +122,54 @@ refines the rungs (e.g. `RepresentableButForgeable` = R1 wanting R3 behind the c
 ceiling; `LiteralOnlyWall` = R2 on a fragment); the claim carrier of §11/§12 gives every
 class `current_rung` (probe-measured), `ceiling` (with its justification kind), and
 `next_rung_trigger`.
+
+## 1c. Current rung census (seed population for the Stage-1 carrier — status `Unknown` where this audit has not measured)
+
+The operator's reorganization directive (2026-07-31): the ladder is the mechanism, the
+historical tiers are *example domains*. These rows are the draft population for the Stage-1
+`ErrorClassGuarantee` carrier; every `Unknown` is honest unmeasured state, not a gap claim.
+Floor-domain failures are **below-baseline safety regressions** — never compensated by
+higher-order capability.
+
+**Domain: ordinary compiler safety floor**
+
+| Class | Current rung | Ceiling | Why not higher | Evidence | Next trigger |
+|---|---|---|---|---|---|
+| Unknown fn/method | R0 (typed at dispatch) | R3 (resolved call carries declaration identity) | fabricating fallback live | #7479 | zero-resolution wall; `FunctionRef` IR |
+| Call shape (labels/count) | **partly below floor** (misspelled label binds positionally, silent) | R3 (exact bijection in normalized IR) | formal-driven walk; `ArityMismatch` is constructor-grain | `direct_call_arg_mismatch_diags` | floor diagnostic first, then exact-shape judgment |
+| Return conformance | R0 | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
+| `data` annotation | R0 | R3 | same lane | #7481 | same lane |
+| Generic instantiation | R0 | R2 | substitution unproven | #7481 | inhabitance at instantiation |
+| Field through generics | R0 | R2 (pending-constraint discharge) | `field_of_type_var` minted | §4 | constraint carried + unique discharge |
+| Closed-match exhaustiveness | mixed R1/R0, one silent arm | R3 (full arm population at elimination) | `PatternLookupBlocked => []` | §4 | `ExhaustivenessUnknown` refuses |
+| Record completeness | **Unknown — unmeasured** | R3 | not audited this pass | — | audit probe |
+| Producer/consumer cardinality | R0 | R3 (seam unwritable) | forgeable carrier; no signature propagation (capability ceiling) | §4b | Stage-3 vertical slice |
+
+**Domain: structural safety extensions (the differentiator)**
+
+| Class | Current rung | Ceiling | Why not higher | Evidence | Next trigger |
+|---|---|---|---|---|---|
+| Termination | v2 loops R2 (R3 character: unbounded iteration has no substrate spelling); v1 recursion **Unknown** (thesis-era "421 non-blocking") | R3 | v1 coverage unmeasured | `v2.std.cardinality` | universal recursive-call lowering |
+| Retry × idempotency | R1/R2 partial (algebra declared; `Retry` emit refuses shapes, #7303/#7318) | R2 (`Retry` admits only retry-safe evidence or compensation) | not at binding sites | `std.effects` | dimension onto `TypeBinding` (§8c) |
+| Complexity budget | R2 for enrolled classes (accumulator-copy in the compile door; bare-minimum-cost rule) | R2 | coverage partial | door roster | contract propagation |
+| Exponential branching | **Unknown** | R2 (against declared budget — exponential can be intentional) | unmeasured | error-examples #7 | measure, then gate |
+| Algebraic cancellation | **Unknown, likely absent** | R2 (derive where algebra declared) | unmeasured | error-examples #6 | algebraic-rewrite lane |
+| Redundant cross-service computation | R1 (duplicate-work design; flagship proven) | R2 | `ComputationIdentity` staged | DESIGN open thread | Half A/B landing |
+| Partial-failure convergence | R2/R3 partial in-model (`MemberTeardownRefused` has no effect arm — teardown-of-unowned unwritable) | R3 in-model; external residue stays boundary | grain expansion pending | membership-reconcile | remaining grains |
+| Numeric-tower cross-representation `==` | **R3 — done** (exemplar climb) | R3 | — | #5428 | backstop guard dissolves with the Null split |
+| Cross-representation `==`, full class (`Bool`; `Optional`/`Witness` over `Value::Null`) | R0 (typed backstop; Null overload live, ~131 sites) | R3 | Null split is its own runway | value-null-split plan | `Value::Null` split *(split from one inflated "R3 done" row per review 45310)* |
+| L4: emitted vs modeled behavior | R1 (behavioral equivalence by execution) | R2 for supported forms | derivation not proof | witness-realization plan | realization proof |
+| L5: cross-target equivalence | **Unknown** | R1→R2 | unmeasured | — | witness matrix |
+
+**Domain: external boundary (low ceilings BY DESIGN — correct, not gaps)**
+
+| Class | Rung | Note |
+|---|---|---|
+| Host/tool availability | R0 typed at the boundary | no higher rung claimed |
+| Resource/budget exhaustion | R0 by design | the bound *is* the product |
+| Optimality | outside the ladder | Rice; permanent ratchet |
+| Unstated business intent | outside | never fabricated |
+| Unmodeled upstream behavior | outside | observe → typed evidence → admit or refuse |
 
 ## 2. The failure history (revised after independent review, 2026-07-31)
 
@@ -186,7 +235,7 @@ guarantee authority lands (§11), the same way `DescentEvidence` and `DecodeFide
 their own verdicts. The DESIGN.md §5 wall-classification (*wall now* / *wall after
 grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 
-## 4. Tier 1 — structural correctness ("impossible to write the bug")
+## 4. Domain: the ordinary compiler safety floor (historical Tier 1 — "impossible to write the bug")
 
 | Claim (THESIS.md) | Today | Receipt | §5 class |
 |---|---|---|---|
@@ -228,7 +277,7 @@ connecting three artifacts that already exist — the operator direction, the sc
 plan, and the green fold-propagation seed — and closing the two named gaps (unforgeable
 construction; signature-level propagation through `InterfaceSummary`).
 
-## 5. Tier 2 — runtime safety ("proven safe or total")
+## 5. Domain: runtime-safety floor obligations (historical Tier 2 — "proven safe or total")
 
 The claim is one sentence: **"No partial functions in the runtime."**
 
@@ -256,7 +305,7 @@ vocabulary must be the *substrate's*, not the v1 Rust seed's. `InterpError` is o
 realization's taxonomy; using it as the denominator is the §3 inversion. It is admitted here
 as **evidence**, not as spec.
 
-## 6. Tier 3 — verification from structure
+## 6. Domain: realization and fidelity (historical Tier 3 — verification from structure)
 
 L4 (emitted matches `.dag` eval) · L5 (same behavior across targets) · L6 (every form
 compiles to every target) · L7 (operations obey declared algebraic laws).
