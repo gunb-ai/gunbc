@@ -31,6 +31,8 @@ data occurrence_binding_resolve_authority_note: String = "THE one exact name-bin
 
 data occurrence_binding_resolve_transport_boundary_note: String = "Transport validity is outside OccurrenceBindingResult: malformed transports or supplied identities that do not name the validated reference/declaration roles refuse as OccurrenceReferenceBindingTransportRefused before any Bound/Unbound/Ambiguous decision. ValidatedOccurrenceTransport entries_by_id, references_by_id, and declarations_by_id are the exact lookup authorities; the resolver never rescans a transported population."
 
+data occurrence_binding_resolve_duplicate_identity_residual_note: String = "RESIDUAL: a repeated exact OccurrenceId in supplied_candidates currently reaches the canonical Many arm and reports OccurrenceAmbiguous. This fails closed, but conflates a malformed producer population with genuine ambiguity between distinct declarations. DISSOLVE-ON: P2a's exact candidate catalogue is the sole caller and this resolver carries a typed, located malformed-supplied-population refusal naming the repeated identity before the cardinality fold. Never silently deduplicate here: that would fabricate a plausible Bound result and hide the producer defect."
+
 fn occurrence_containment_to_binding_path(
   path: OccurrenceContainmentPath
 ) -> ContainmentPath<OccurrenceId> {
