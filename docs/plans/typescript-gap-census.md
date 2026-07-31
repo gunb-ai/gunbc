@@ -28,7 +28,7 @@
 6. **#6 enum / disj union** — VEP. Witness: `ts_enum_union_emit_by_execution_exact_holds` (`typescript_enum_union_emit_by_execution_test.dag`).
 7. **#7 module import** — VEP. Witness: `ts_import_emit_by_execution_exact_holds` (`typescript_import_emit_by_execution_test.dag`).
 8. **#8 effect apply** — VEP. Witness: `ts_effect_io_emit_holds` (`typescript_effect_io_emit_test.dag`).
-9. **#9 fold_call body via translate** — VEP. Witness: `fold_call_closure_emit_keystone_holds` (`fold_call_closure_emit_test.dag`).
+9. **#9 fold_call body via translate** — VEP. Witness: `v2.test.manual.fold_call_closure_emit` `fold_call_emit_holds`; the paired `fold_call_swap_discriminates` is the red control.
 10. **#10 operators (arith/cmp)** — VEP with **ad-hoc test catalog only** (`add_body_ts_emit_catalog_minus_discriminates`, `add_body_ts_emit_missing_catalog_rejects`). Default `v2.extdeps.languages.typescript` `ts_operator_realizations_catalog_node` enrolls **OpAdd only** — see #16.
 
 ### FAIL-CLOSED (emit explicitly Rejected — named)
