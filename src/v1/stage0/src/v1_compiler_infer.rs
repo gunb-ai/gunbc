@@ -997,6 +997,23 @@ pub fn type_mismatch_error(
     )
 }
 
+pub fn declared_return_type_node(item: Rc<Node>) -> Rc<Node> {
+    preserve_outer_optional_cardinality(item.clone(), resolved_type(item.clone()))
+}
+
+pub fn conformance_ground_kernel_scalar(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let plain_shape = ((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0));
+        let required = (n.return_cardinality.clone() == Cardinality::Required);
+        let kernel_named = is_kernel_type(authored_name_at(source_indices.clone(), n.clone()));
+        ((plain_shape.clone() && required.clone()) && kernel_named.clone())
+    }
+}
+
 pub fn declared_type_conformance_diags(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -1005,15 +1022,21 @@ pub fn declared_type_conformance_diags(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+        let both_ground = (conformance_ground_kernel_scalar(declared.clone(), si.clone())
+            && conformance_ground_kernel_scalar(produced.clone(), si.clone()));
+        if !both_ground.clone() {
             Rc::new(vec![])
         } else {
-            Rc::new(vec![type_mismatch_error(
-                node_type_shape(declared.clone(), si.clone()),
-                node_type_shape(produced.clone(), si.clone()),
-                span.clone(),
-                scope.module_name.clone(),
-            )])
+            if node_type_compatible(declared.clone(), produced.clone(), si.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![type_mismatch_error(
+                    node_type_shape(declared.clone(), si.clone()),
+                    node_type_shape(produced.clone(), si.clone()),
+                    span.clone(),
+                    scope.module_name.clone(),
+                )])
+            }
         }
     }
 }
@@ -1021,7 +1044,7 @@ pub fn declared_type_conformance_diags(
 pub fn declared_type_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as `expected` but then kept the declaration's own inferred return REGARDLESS of what the body produced, and the generic `expected` handling in infer_expr applies where-refinement checks rather than a general actual-<:-declared judgment. So `fn f() -> Int { \"wrong\" }` typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are now checked against their declaration: a fn body vs its declared return (both the param'd and paramless arms) and a `data` value vs its type annotation. The relation is the EXISTING node_type_compatible (§3 single authority — the same compatibility used at argument sites, not a second relation minted here), which is deliberately permissive: an error type, a type variable, or an under-resolved shape on either side answers compatible, so this wall fires only where the mismatch is PROVEN and never manufactures a red from inference's own frontier. The diagnostic is the existing TypeMismatch, located at the BODY's span so it points at the offending expression rather than the signature. Not covered here, and each its own lane: direct-call argument types inside compiler modules (the `v2.`/`v1.compiler.` exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
+            "WALL (DESIGN §5) — a declaration must CONSTRAIN the value it declares, not merely state an intent beside it. infer_item passed the declared return into body inference as expected but then kept the declaration own inferred return REGARDLESS of what the body produced, and the generic expected handling in infer_expr applies where-refinement checks rather than a general actual-subtype-of-declared judgment. So fn f() -> Int { \"wrong\" } typechecked with ZERO diagnostics and the lie surfaced at the first consumer, field access, or host parser. Three positions are checked against their declaration: a fn body vs its declared return (both the param-carrying and paramless arms) and a data value vs its type annotation. THE SCOPE IS DELIBERATELY NARROW AND THE NARROWING IS THE FINDING. node_type_compatible is the corpus compatibility relation and it is NOT sound as a general declared-versus-produced conformance judgment: measured over the whole tree, four independent classes of CORRECT code reported a mismatch, each a place where the relation compares names across representations it never peels. (1) OPTIONALITY LIVES IN TWO REPRESENTATIONS — a fn declared -> String? carries optionality in item.return_cardinality while its body produces the nominal Optional coproduct, so 4 correct sites in 05_emit_rust.dag read as expected Primitive(String) got Coproduct(Optional). (2) BRAND ALIASES ARE NOT PEELED — Hash is ContentHash is a branded String, so 3 correct sites in dag_collect_support.dag read as expected Primitive(String) got Primitive(Hash); the same class the method wall measured as NonEmptyStr arriving as Product(NonEmptyStr). (3) ANONYMOUS RECORD LITERALS — the corpus writes a typed list as [ { name: ..., .. }, .. ] without repeating the nominal type, so 8+ correct rows in dag/std/algebra.dag read as expected Container(List,Product(AlgebraFieldTemplate)) got Container(List,Product(<anon>)). (4) CARDINALITY IS NOT ON THE RESOLVED TYPE NODE — resolved_type(n: item) drops the declaration optional marker, which is why the declared side is built through preserve_outer_optional_cardinality, the existing single authority for carrying an outer node cardinality onto an inner type node. Each class was found by RUNNING the wall over the corpus, never by reasoning about it, and the list is not known to be exhaustive — which is precisely why this wall does not chase them with exemptions. Four ad-hoc carve-outs would leave a wall that is neither principled nor trustworthy, and fabricating a refusal is the mirror image of the fabricated success the wall exists to delete. So the predicate is POSITIVE ESTABLISHMENT, the same discipline the method wall uses: judge ONLY when both sides are ground kernel scalars — plain shape, Required cardinality, and a name in std.types kernel_type_set — because then a name difference IS a real difference with no alias, brand, container, coproduct or cardinality representation in between. That admits the whole class the operator named (declaring one primitive and returning another, fn f() -> Int { \"a string\" } and data d: Int = \"a string\") and admits nothing it cannot prove. Everything wider is UNJUDGED, not silently passed: it is the declared frontier of this wall, and each numbered class above is a promotion trigger. Dissolve-on: a peeling conformance relation that grounds brand aliases to their base, reconciles the two optionality representations, and grounds an anonymous literal against its expected nominal type — at which point the ground-kernel-scalar gate widens class by class and finally deletes. Not covered here and each its own lane: direct-call argument types inside compiler modules (the v2. / v1.compiler. exemption), default field values, generic record instantiation, and post-substitution generic field access.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -12853,7 +12876,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     };
                     let return_conformance_diags = if (item.inferred.clone() != None) {
                         declared_type_conformance_diags(
-                            resolved_type(item.clone()),
+                            declared_return_type_node(item.clone()),
                             resolved_type(body_typed.clone()),
                             item.body.clone().clone().unwrap().span.clone(),
                             scope.clone(),
@@ -12941,7 +12964,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         let body_diags = v1_rt::concat(
                             body_result.diagnostics.clone(),
                             declared_type_conformance_diags(
-                                resolved_type(item.clone()),
+                                declared_return_type_node(item.clone()),
                                 resolved_type(body_typed.clone()),
                                 item.body.clone().clone().unwrap().span.clone(),
                                 scope.clone(),
