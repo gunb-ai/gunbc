@@ -1,7 +1,9 @@
 # Compiler guarantee recovery — gap analysis
 
-**Status:** reconciled analysis — two audit passes complete (initial archaeology 2026-07-30;
-independent review + receipt verification 2026-07-31, ledger in §10). No code lands from this
+**Status:** reconciled analysis — three audit passes complete (initial archaeology 2026-07-30;
+independent review + receipt verification 2026-07-31; post-merge verdict adopted 2026-07-31 —
+seed rungs demoted to specimen-denominated honesty, capability premise corrected to the
+`sole_constructor` audit, ledger in §10). No code lands from this
 note. Open by design: §12 sequencing awaits operator sign-off; prevalence numbers are
 deliberately unmeasured until Stage 7.
 **Question it answers:** what did this compiler intend to guarantee, and what does it guarantee today?
@@ -35,7 +37,7 @@ And the framing immediately above it:
 > drains are structurally coherent **before emission becomes a mechanical translation**.
 
 Emission is specified as the downstream, mechanical half of a two-stage contract. The
-upstream half — validation — is the one that was not built.
+upstream half — validation — was never completed as an exhaustive acceptance contract (real argument checks, match machinery for resolved types, constructor arity, the v2 loop wall, and the lens door all exist; what never existed is the total obligation set a program must discharge before `Accepted`).
 
 ## 1b. The safety ladder (operator framing, 2026-07-31 — the organizing frame for every class in this note)
 
@@ -61,13 +63,22 @@ Three rules make it a discipline rather than a diagram:
 2. **Every class climbs to its ceiling, and states its ceiling.** Ceilings come in exactly
    three kinds: **mathematical** (undecidability, the external-reality boundary,
    root-authority self-governance — permanent and honest), **capability** (R3 for
-   carrier-borne invariants requires unforgeable construction, i.e. reference-level
-   visibility the language does not yet have — no `private`/`sealed`/`opaque` in the keyword
-   set; one unlock raises every such class at once), and **price** (deferral compounds in
+   carrier-borne invariants requires unforgeable construction — `sole_constructor` is the
+   *existing* candidate wall: a cross-module construction refusal with its own
+   `SoleConstructorViolation` diagnostic and a sealed-record test specimen; its completeness
+   for generic carriers like `Refined<B>`, for all construction forms, and under the
+   compiler-module exemptions is **unverified**, so this ceiling is an audit finding, never a
+   declared absence — corrected per post-merge review 2026-07-31, which refuted an earlier
+   revision's claim that no such capability exists), and **price** (deferral compounds in
    sites — `Value::Null` at 131 — so lateness raises the bill but never closes the door).
    "Climb the ladder" always means *to the stated ceiling*, not unconditionally to R3.
-3. **Reported rung == measured rung.** A rung is established by an executing probe, never
-   asserted. Rung *inflation* — v2's `CanonicalGrounding` reporting R3 while occupying R0;
+3. **Reported rung == measured rung, at a declared subject grain.** A rung is established
+   by an executing probe, never asserted — and it is measured against a *declared acceptance
+   boundary*. Source→interpretation, source→each emission target, and phase→phase are
+   structurally distinct paths with independently different rungs (the interpreter refuses
+   the mislabeled call that the emitter's `order_typed_call_args` reorders into positional
+   leftovers), so a class's current rung is the **minimum across its in-scope paths**, or one
+   row per path; citing the strongest path while another stays silent is inflation. Rung *inflation* — v2's `CanonicalGrounding` reporting R3 while occupying R0;
    the historical ledger's "Yes (blocking)" — is worse than sitting low, because an inflated
    class never ranks for climbing. A lens reds inflation and reds stalls (below ceiling
    with no named next-rung trigger).
@@ -78,8 +89,7 @@ syntax, constructor arity), leaves everything else at R1 (hand-written tests) or
 floor (silent), and barely uses R3 at all. The bet here is at both ends: the **floor is
 enforced** (§5 — nothing silent survives), and the **top is open** — the R2 set is
 user-extensible by rows rather than compiler forks (§7's language-design-opens-up), and R3
-is a *working* rung (derive-don't-store, closed algebras, sealed construction once
-visibility lands). The recovered `error-examples.md` cases — `reverse |> reverse`,
+is a *working* rung (derive-don't-store, closed algebras, sealed construction pending the `sole_constructor` completeness audit). The recovered `error-examples.md` cases — `reverse |> reverse`,
 non-idempotent retry, O(n²) — are ordinary classes *lifted to R2* that no mainstream
 compiler holds there. The scandal this note documents is the inversion: the ambition
 examples sit above mainstream while method-existence and return-conformance sit below it.
@@ -89,14 +99,14 @@ examples sit above mainstream while method-existence and return-conformance sit 
 | Class | Floor status | Today | Ceiling | The climb |
 |---|---|---|---|---|
 | Misspelled label binds positionally (§4) | **BELOW FLOOR — silent wrong binding** | — | R2 | floor first (any diagnostic), then the exact call-shape judgment |
-| Unknown method (`filter_map`, #7479) | at floor | R0 — typed `Unimplemented`, found as a 500 on the lab | **R3 in the accepted model** — a resolved call carries a unique declaration identity, so an unresolved name has no accepted form; the author experiences it as R2-style refusal at the source boundary | zero-resolution wall now; ambiguity wall after the identity join; `FunctionRef`-carrying IR |
-| Return / `data` / generic inhabitance (#7481 probes) | at floor | R0 — first consumer breaks, typed | R2 | return-position checking (wall-after-grounding) |
-| Empty list into requires-one (the operator's case, §4b) | at floor | R0 — runtime surprise or degenerate arm | **R3** — the bad *seam* becomes unwritable | seal `Refined` (capability ceiling) + propagate through `InterfaceSummary`; expecting-red probes land first |
+| Unknown method (`filter_map`, #7479) | at floor on the interpretation path | R0 on source→interpretation (typed `Unimplemented`, the lab 500); **emission-path disposition unmeasured** | **R3 in the accepted model** — a resolved call carries a unique declaration identity, so an unresolved name has no accepted form; the author experiences it as R2-style refusal at the source boundary | zero-resolution wall now; ambiguity wall after the identity join; `FunctionRef`-carrying IR |
+| Return / `data` / generic inhabitance (#7481 probes) | **floor status UNPROVEN** | **UnknownUnmeasured** — compile admission proven (#7481); a typed runtime mitigation is not proven for the class, and a silent path (into `==`, serialization) is not excluded. *Demoted from R0 per post-merge review* | R3 (typed Arrow-body boundary) | return-position checking (wall-after-grounding) |
+| Empty list into requires-one (the operator's case, §4b) | **split unmeasured** | **UnknownUnmeasured** — "runtime surprise or degenerate arm" spans R0 (typed rejection) and below-floor (silent degeneration); which occurs where is unmeasured | **R3** — the bad *seam* becomes unwritable | seal `Refined` (capability ceiling) + propagate through `InterfaceSummary`; expecting-red probes land first |
 | **Numeric-tower** cross-representation `==` | **was below floor** (silent `false`) | **R3** — grounded by construction (#5428), guard dead-in-corpus for numerics | R3 | **done — the exemplar full climb, floor to top** |
-| Cross-representation `==`, full class (`Bool` straddle; `Optional`/`Witness` over `Value::Null`) | at floor | R0 — typed `CrossRepresentationEquality` backstop; the `Value::Null` overload is live at ~131 sites | R3 — each primitive grounded in its realization | the `Value::Null` split (its own runway, `value-null-split` plan). *Row split from a single "R3 done" claim per review 45310 — the table's own inflation rule, caught by review* |
+| Cross-representation `==`, full class (`Bool` straddle; `Optional`/`Witness` over `Value::Null`) | **floor status UNPROVEN** | **UnknownUnmeasured / below-floor-permitted** — the typed backstop covers the *numeric* straddle only; `Bool` has no wall (and no corpus `==` site); `Optional`/`Witness` cannot use a blanket guard because `Value::Null` conflates legitimate `false` with a representation straddle. *Split from one "R3 done" row per review 45310, then demoted from R0 per post-merge review — the backstop does not reach this class* | R3 — each primitive grounded in its realization | the `Value::Null` split (its own runway, `value-null-split` plan) |
 | v2 loop termination | — | **R2** (undeclared measure refused) with R3 character (unbounded iteration has no substrate spelling; recursion is sugar over `Loop`) | R3 | done in v2; the v1 seed's classes climb by deletion, not hardening |
 | Idempotency-unsafe retry | at floor | R1-capable — algebra declared, consumers exist, not at binding sites | R2 | the dimension migrates onto `TypeBinding` (§8c) |
-| Non-exhaustive match via blocked lookup | below-floor risk (`diagnostics: []`) | mixed R0/R1 | R2 | `ExhaustivenessUnknown` refuses instead of passing as success |
+| Non-exhaustive match via blocked lookup | below-floor candidate | **UnknownUnmeasured** — compile-time silence proven (`diagnostics: []`); the shipped match's runtime disposition unmeasured | R2 | `ExhaustivenessUnknown` refuses instead of passing as success |
 | Doc orphan (this PR's own incident) | was below floor — silent rot, twice historically | **R1** — `ReadsLiveTree` witness; it caught this very PR | R2-ish (registration-derived roots) | live proof that climbing pays: the wall that failed open twice, repaired, did its job |
 
 ### Non-goals — ceilings that are low BY DESIGN, stated so they are never mistaken for gaps
@@ -120,8 +130,9 @@ examples sit above mainstream while method-existence and return-conformance sit 
 doctrine (§7b discipline — never a hand edit of the markdown). The §3 status lattice below
 refines the rungs (e.g. `RepresentableButForgeable` = R1 wanting R3 behind the capability
 ceiling; `LiteralOnlyWall` = R2 on a fragment); the claim carrier of §11/§12 gives every
-class `current_rung` (probe-measured), `ceiling` (with its justification kind), and
-`next_rung_trigger`.
+class a **derived disposition** (folded per path from executed measurements — no stored rung
+field exists to inflate; see §12 Stage 1b, corrected per review 45367), `ceiling` (with its
+justification kind), and `next_rung_trigger`.
 
 ## 1c. Current rung census (seed population for the Stage-1 carrier — status `Unknown` where this audit has not measured)
 
@@ -129,21 +140,25 @@ The operator's reorganization directive (2026-07-31): the ladder is the mechanis
 historical tiers are *example domains*. These rows are the draft population for the Stage-1
 `ErrorClassGuarantee` carrier; every `Unknown` is honest unmeasured state, not a gap claim.
 Floor-domain failures are **below-baseline safety regressions** — never compensated by
-higher-order capability.
+higher-order capability. **Specimen-denominated (post-merge review, 2026-07-31):** every rung
+below is established only by the cited specimen on the cited path; coverage across the
+class's population and its other paths (interpretation vs each emission target) is unproven
+unless the row says otherwise, and `Unknown` is the honest default.
 
 **Domain: ordinary compiler safety floor**
 
 | Class | Current rung | Ceiling | Why not higher | Evidence | Next trigger |
 |---|---|---|---|---|---|
-| Unknown fn/method | R0 (typed at dispatch) | R3 (resolved call carries declaration identity) | fabricating fallback live | #7479 | zero-resolution wall; `FunctionRef` IR |
+| Unknown fn/method | R0 on interpretation path (typed at dispatch); **R2 on the compile gate for kernel receivers only** (narrow per-receiver wall landed, gunbc#7484: six REDs/positive controls, regen divergence 0 — tidy-deer-730, 2026-07-31); emission path and non-kernel receivers unmeasured | R3 (resolved call carries declaration identity) | fabricating fallback live outside the narrow wall; promotion gated on two measured receiver-type resolution defects (where-refinement alias unpeeled to base; pattern-destructured payload typed as its variant name) and the primitive-identity dispatch fork (§12 Stage 2 amendment) | #7479 · gunbc#7484 | general zero-resolution wall (identity join is a prerequisite); `FunctionRef` IR |
 | Call shape (labels/count) | **partly below floor** (misspelled label binds positionally, silent) | R3 (exact bijection in normalized IR) | formal-driven walk; `ArityMismatch` is constructor-grain | `direct_call_arg_mismatch_diags` | floor diagnostic first, then exact-shape judgment |
-| Return conformance | R0 | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
-| `data` annotation | R0 | R3 | same lane | #7481 | same lane |
-| Generic instantiation | R0 | R2 | substitution unproven | #7481 | inhabitance at instantiation |
-| Field through generics | R0 | R2 (pending-constraint discharge) | `field_of_type_var` minted | §4 | constraint carried + unique discharge |
-| Closed-match exhaustiveness | mixed R1/R0, one silent arm | R3 (full arm population at elimination) | `PatternLookupBlocked => []` | §4 | `ExhaustivenessUnknown` refuses |
+| Return conformance | **UnknownUnmeasured** (compile admission proven; runtime disposition and silent paths unmeasured) | R3 (body edge inhabits Arrow codomain) | no general judgment | #7481 | return-position checking |
+| `data` annotation | **UnknownUnmeasured** (same basis) | R3 | same lane | #7481 | same lane |
+| Generic instantiation | **UnknownUnmeasured** (same basis) | R2 | substitution unproven | #7481 | inhabitance at instantiation |
+| Field through generics | **UnknownUnmeasured** (same basis) | R2 (pending-constraint discharge) | `field_of_type_var` minted | §4 | constraint carried + unique discharge |
+| Closed-match exhaustiveness | below-floor candidate / **UnknownUnmeasured** (compile silence proven; runtime unmeasured) | R3 (full arm population at elimination) | `PatternLookupBlocked => []` | §4 | `ExhaustivenessUnknown` refuses |
 | Record completeness | **Unknown — unmeasured** | R3 | not audited this pass | — | audit probe |
-| Producer/consumer cardinality | R0 | R3 (seam unwritable) | forgeable carrier; no signature propagation (capability ceiling) | §4b | Stage-3 vertical slice |
+| Parse: list separator dropped | **Below floor — silent** (measured: `[ {a}, {b}  {c} ]` compiles with zero diagnostics — a dropped comma is a silent semantic change, two- vs three-element list; survived regen, whole-corpus compile, fixed-point verify and a 15-case matrix, caught only by a human diff read) | R3 (decidable grammar fact) | separator omission parses as element juxtaposition | tidy-deer-730 probe on gunbc#7484 + review 45347, 2026-07-31 | probe pair in the corpus; refusal in the list production (§11 item 6) |
+| Producer/consumer cardinality | **UnknownUnmeasured** (typed-rejection vs silent-degeneration split unmeasured) | R3 (seam unwritable) | forgeable carrier; no signature propagation (`sole_constructor` audit pending) | §4b | Stage-3 vertical slice |
 
 **Domain: structural safety extensions (the differentiator)**
 
@@ -157,8 +172,8 @@ higher-order capability.
 | Redundant cross-service computation | R1 (duplicate-work design; flagship proven) | R2 | `ComputationIdentity` staged | DESIGN open thread | Half A/B landing |
 | Partial-failure convergence | R2/R3 partial in-model (`MemberTeardownRefused` has no effect arm — teardown-of-unowned unwritable) | R3 in-model; external residue stays boundary | grain expansion pending | membership-reconcile | remaining grains |
 | Numeric-tower cross-representation `==` | **R3 — done** (exemplar climb) | R3 | — | #5428 | backstop guard dissolves with the Null split |
-| Cross-representation `==`, full class (`Bool`; `Optional`/`Witness` over `Value::Null`) | R0 (typed backstop; Null overload live, ~131 sites) | R3 | Null split is its own runway | value-null-split plan | `Value::Null` split *(split from one inflated "R3 done" row per review 45310)* |
-| L4: emitted vs modeled behavior | R1 (behavioral equivalence by execution) | R2 for supported forms | derivation not proof | witness-realization plan | realization proof |
+| Cross-representation `==`, full class (`Bool`; `Optional`/`Witness` over `Value::Null`) | **UnknownUnmeasured / below-floor-permitted** (backstop is numeric-only; `Bool` unwalled; Null conflated) | R3 | Null split is its own runway | value-null-split plan | `Value::Null` split *(split per review 45310; demoted from R0 post-merge)* |
+| L4: emitted vs modeled behavior | **UnknownUnmeasured** — §6 records L4–L7 unaudited; the witness-realization lane exists but class coverage is unestablished *(was R1; contradiction with §6 caught post-merge)* | R2 for supported forms | derivation not proof | witness-realization plan | realization proof |
 | L5: cross-target equivalence | **Unknown** | R1→R2 | unmeasured | — | witness matrix |
 
 **Domain: external boundary (low ceilings BY DESIGN — correct, not gaps)**
@@ -244,7 +259,7 @@ grounding* / *ratchet forever*) stays as the orthogonal decidability axis.
 | Field typos | **PARTIAL** — concrete types checked; through a type variable, not | `v1.compiler.infer` mints `TypeVariable { id: "field_of_type_var" }` instead of refusing | wall after grounding |
 | Application arity / call shape (missing, extra, misspelled-label args) | **fail-open by construction of the walk** | `v1.compiler.infer` `direct_call_arg_mismatch_diags` is *formal-driven*: per formal it seeks a same-named arg, else falls back to the **positional** arg at the same index (a misspelled label silently binds by position if the type fits), and `Absent => []` (missing arg → no diagnostic); extra args are never visited. The `ArityMismatch` diagnostic is **type-constructor** arity ("expects N *type* arguments"), not invocation arity — invocation arity has no compile diagnostic; #6896's wall is runtime-only | wall now |
 | Non-exhaustive matches | **PARTIAL — one confirmed silent arm** | resolved coproducts have exhaustiveness machinery; but `v1.compiler.infer_patterns` `lookup_variant_in_type` / `lookup_field_in_variant` both have `PatternLookupBlocked => node_lookup_failed(diagnostics: [])` — a blocked scrutinee lookup fails with **zero diagnostics** and the pattern types as `error_type` (`PatternDynamic`, by contrast, does diagnose at these sites). "Exhaustiveness not established" is treated as success-adjacent, not refused | wall after grounding |
-| Cardinality / multiplicity (empty list into a callee that requires one) | **RepresentableButForgeable, not statically propagated** — reclassified from UNEXPRESSIBLE after independent review | Representation exists: `v2.std.refinement` `Validation<B>`/`Refined<B>`/`refine`, a `NonEmptyList<T>` manual fixture (`v2.test.claim.manual.refinement_nonempty_list` + testgen anchor), and **green fold-propagation witnesses** (`cardinality_fold_propagation_test`: `cardinality_is_a_fold_homomorphism`, `fold_overflow_rejects`). Forgeable: `Refined<B>` is a public record — `refined_vacuous_stub_pack`'s `Rejected` arm literally returns `Refined { base }`, so the carrier proves nothing about validation. Not propagated: no cardinality lattice in signatures (`v2.std.cardinality` is loop-termination), `InterfaceSummary` (`dag/std/interface_summary.dag`) carries no cardinality slot, no transfer functions across `map`/`filter`/`concat`. The substrate `Cardinality` connective remains production-uninhabited and v1 forks the name onto optionality (`Required \| CardOptional`) | wall after grounding |
+| Cardinality / multiplicity (empty list into a callee that requires one) | **RepresentableButForgeable, not statically propagated** — reclassified from UNEXPRESSIBLE after independent review | Representation exists: `v2.std.refinement` `Validation<B>`/`Refined<B>`/`refine`, a `NonEmptyList<T>` manual fixture (`v2.test.claim.manual.refinement_nonempty_list` + testgen anchor), and manual value-level algebra specimens (`cardinality_fold_propagation_test` — length homomorphism over literals + runtime `refine_byte`; no binding-level propagation). Forgeable: `Refined<B>` is a public record — `refined_vacuous_stub_pack`'s `Rejected` arm literally returns `Refined { base }`, so the carrier proves nothing about validation. Not propagated: no cardinality lattice in signatures (`v2.std.cardinality` is loop-termination), `InterfaceSummary` (`dag/std/interface_summary.dag`) carries no cardinality slot, no transfer functions across `map`/`filter`/`concat`. The substrate `Cardinality` connective remains production-uninhabited and v1 forks the name onto optionality (`Required \| CardOptional`) | wall after grounding |
 | Method existence | **UNENFORCED — fabricates** | `v1.compiler.infer` `method_pipe_map_keys_values_fallback` else-arm returns the *receiver type* with `kernel_diags: []`; unresolved method stamped `PlainMethodSemantics` | wall now |
 | Grounding completeness — "**not** a name-keyed table lookup" | **VIOLATED literally** | `v1.compiler.infer_method` `builtin_function_registry() -> Map<String, Node>` is a name-keyed table (~120 entries), one of ≥5 independent primitive-existence authorities | wall after grounding |
 | Circular deps / stale imports / cross-target drift | **UNVERIFIED** | not yet audited | — |
@@ -274,7 +289,7 @@ on 2026-07-04** — which is simultaneously the strongest evidence that the guar
 be re-invented rather than consulted, and 27 days later the design pass has not started
 because nothing ranks it). The salvage for this axis is therefore **not new design**: it is
 connecting three artifacts that already exist — the operator direction, the scoped lattice
-plan, and the green fold-propagation seed — and closing the two named gaps (unforgeable
+plan, and the manual value-level specimens — and closing the two named gaps (unforgeable
 construction; signature-level propagation through `InterfaceSummary`).
 
 ## 5. Domain: runtime-safety floor obligations (historical Tier 2 — "proven safe or total")
@@ -453,15 +468,21 @@ subject to all dimensions, no escape hatch, no wrapper functions.**
 **Clause 4 is violated by name.** `v1.compiler.infer` `module_skips_direct_call_arg_check` is
 exactly an escape hatch, and it exempts the two module trees that most need the dimension.
 
-**But the carriers are real and present**, verified on `main`:
+**A binding-site integration point exists and one dimension prototype reached it**, verified
+on `main` — stated at that grain because the stronger claim an earlier revision made here
+("the mechanism was built, not just designed") was refuted post-merge: `TypeBinding` carries
+two *bespoke* coordinates, not a generic dimension population — there is no lattice registry,
+no dimension-keyed fact map, and no user-defined dimension path. Whether the generic,
+user-extensible architecture is recoverable by *extension* rather than redesign is an open
+audit question, and it materially affects the pricing of every migration row below.
 
 - `v1.compiler.infer_env` `TypeBinding { name, resolved, provenance: SubValueRelation }` —
   the thesis names `TypeBinding.provenance`, and it is there.
 - `v1.compiler.core` `ExprCall { call_semantics, descent_evidence: List<SubValueRelation>? }`
   — the thesis names `ExprCall.descent_evidence`, and it is there.
 
-So the mechanism the thesis describes was **built, not just designed**. What did not happen is
-the rest of the dimensions moving onto it. Restated in the thesis's own table format
+So the *integration point* the thesis describes is real and load-bearing for two coordinates.
+What did not happen is the generic mechanism, or the rest of the dimensions moving anywhere. Restated in the thesis's own table format
 (*Carried on bindings* / *Enforced* are the load-bearing columns):
 
 | Dimension | Declared today | Carried on bindings | Enforced |
@@ -475,11 +496,10 @@ the rest of the dimensions moving onto it. Restated in the thesis's own table fo
 | Purity | not declared | — | No |
 | Space bounds | not declared | — | No |
 
-**Why this matters for sequencing:** two of eight dimensions reached the binding carrier and
-the carrier still works. The salvage is therefore *not* an architecture rebuild — it is
-finishing a migration that stalled, plus deleting one escape hatch. That is a materially
-cheaper and more defensible proposition than the wall-by-wall roadmap implies, and it should
-be the frame for step 3.
+**Why this matters for sequencing:** two coordinates reached the binding carrier and it still
+works, so the binding site is a *viable* integration point — but whether salvage is
+"finish a stalled migration" or "build the generic mechanism first" is exactly the open audit
+question above, and the roadmap must price both branches rather than assume the cheaper one.
 
 The thesis also names its own falsification test: *"If user-defined dimensions work the same
 as built-in ones, the mechanism is general. If they require special compiler support, the
@@ -519,6 +539,19 @@ for removing the exemption); the fallback-arm census figures (2,586 / 408 / 24 /
 claim; #5585 is base64/RFC 4648 in `std.encoding`. The claim is true, the receipt was
 fabricated. (§3 citation class.)
 
+**Post-merge verdict ledger (third pass, all checked on `main`):** CONFIRMED —
+`sole_constructor` exists (`SoleConstructorViolation`, "cannot be constructed outside its
+defining module", sealed-record specimen in the generated corpus); my §1b keyword-set
+inference ("no such capability") is WITHDRAWN — the keyword table was the wrong place to
+look, `sole_constructor` is a type-decl modifier. CONFIRMED — `order_typed_call_args`
+(`v1.compiler.emit`) reorders recognized labels to signature order on the named-only path,
+so interpretation and emission are structurally distinct acceptance paths for the call-shape
+class. CONFIRMED — `cardinality_fold_propagation_test` is value-level manual algebra (length
+homomorphism over literals; runtime `refine_byte`), not compiler propagation; the "green
+fold-propagation witnesses" phrasing was rung inflation on evidence and is withdrawn.
+ADOPTED — every seed rung not established by executed evidence on a declared path demoted to
+`UnknownUnmeasured`; the census is specimen-denominated until coverage is proven.
+
 **Independent-review verification ledger (2026-07-31 pass, all checked on `main`):**
 CONFIRMED — `Refined<B>` forgeable incl. the `stub_pack` `Rejected => Refined { base }` arm;
 five advisory `WhereRefinementUnenforced` deferral reasons; `NonEmptyList` manual fixture +
@@ -538,11 +571,39 @@ TypeMismatch false positives" (no receipt in tree or history found by either pas
 specific historical wording "branch, argument, and return type checking DONE" (the
 `correctness-dimensions.md` *"Yes (blocking)"* row is the receipt actually in hand).
 
+**Restructure-pass ledger (2026-07-31, fourth pass):** ADOPTED with provenance —
+tidy-deer-730's measured receipts from the gunbc#7484 lane: the parser silent-separator
+specimen (`[ {a}, {b}  {c} ]` compiles with zero diagnostics; caught only by review 45347's
+human diff read after surviving regen, whole-corpus compile, fixed-point verify, and a
+15-case matrix), the kernel-profile/interpreter-dispatch fork (`String`/`Map` declare
+`length` but not `count`; the interpreter dispatches `length`/`count`/`size`), and two
+receiver-type resolution defects gating method-wall promotion (where-refinement alias
+unpeeled to base; pattern-destructured payload typed as its variant name) — landed as
+census/queue rows with the dependency corrected: the identity join **precedes** the general
+method wall (§12 Stage 2 amendment). CORRECTED per review 45367 — Stage 1 listed
+`current_rung` as a stored carrier field in two places while the roadmap node said no such
+field exists; the stored-field reading is withdrawn everywhere (disposition is derived,
+§12 Stage 1b), and the DESIGN §4b tail's "per-class current rung" phrasing re-projected to
+match. STRUCTURAL (operator verdict on gunbc#7489) — the ladder roadmap nodes moved inside
+`declared_roadmap_nodes()`/`declared_roadmap_edges()` under lane owner `compiler-guarantee`
+(the section-local list was a second roadmap universe — uncounted, receipt-unreachable,
+invisible to the identity/endpoint/acyclicity witnesses; review 45356 independently flagged
+the owner-less rows the placement forced), with rendered⊆declared∪derived now witnessed
+plus a synthetic-ghost RED; `HandAuthoredDocBind` re-typed `primary_work +
+additional_works` so the zero-anchor bind is unwritable (the empty-works RED deleted with
+the validation it backed, its residue named on the carrier note), the two remaining
+duplicate `(home, slug)` pairs merged, and bind-identity uniqueness witnessed with a
+synthetic-duplicate RED.
+
 ## 11. Audit queue
 
-1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b.** Recovered intact; 7 cases, all
-   Tier 2+, zero Tier 1. Still to pull: the rest of `docs/thesis/` —
-   `correctness-dimensions`, `what-falls-out`, `two-groundings`, `the-derived-homomorphism`.
+1. ~~Recover `docs/error-examples.md`~~ **DONE — see §8b**; ~~`correctness-dimensions`~~
+   **DONE — see §8c.** Still to pull: `what-falls-out`, `two-groundings`,
+   `the-derived-homomorphism`.
+1a. **Audit `sole_constructor` completeness** (new, post-merge review): generic carriers
+   (`Refined<B>`), every construction form, interaction with `module_skips_direct_call_arg_check`.
+   The capability ceiling's status — and the cardinality wall's first candidate
+   (`type Refined<B> sole_constructor`) — both hang on this audit.
 1b. **Author the missing Tier 1 RED controls** (new, and the cheapest item here). They never
    existed. Start with the cardinality archetype, method existence, and declared-return
    conformance — each a three-line `.dag` program with an expected-error acceptance criterion,
@@ -557,35 +618,77 @@ specific historical wording "branch, argument, and return type checking DONE" (t
    claim⇄coverage. The claims list already carried that rule in prose — *"If a claim IS here
    but the ROADMAP has no track for it, that's a gap"* — so the thread should be **grounded
    on the recovered list, not re-coined** (§3).
+6. **Parser: separator-omission refusal** (new, measured 2026-07-31 — see the §1c census
+   row): a dropped list separator must be a parse refusal, never element juxtaposition.
+   Probe pair first (ladder-probe-corpus), then the wall in the list production.
+7. **Parser: block-after-bare-identifier misparse** (new, measured 2026-07-31,
+   tidy-deer-730): `if c == CardOpt { f(n: 1) } else { 2 }` fails with `expected RParen,
+   found Colon` — the block is read as a variant/record literal. A **false refusal of
+   legitimate input** (loud, wrong locus), so it is a parser-completeness defect rather than
+   a ladder harm class; root-cause the lookahead before any wall leans on if-condition
+   equality against variant names.
+8. **Receiver-type resolution defects** (new, measured 2026-07-31): (a) a where-refinement
+   alias arrives as its brand, unpeeled to the base; (b) a pattern-destructured coproduct
+   payload arrives typed as the variant name rather than the field type. Both gate
+   method-wall promotion beyond kernel receivers (§12 Stage 2 amendment).
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
-**Stage 1 — the claims authority and the probe corpus land together, both as `.dag`.**
-Model the guarantee population (the review's G0–G9 families are a good candidate cut:
-binding · formation · inhabitance · invocation · domain/totality · control soundness ·
-semantic dimensions · realization · fidelity · external boundary) as rows with: identity,
-proof mode, authoritative carrier, negative RED, positive control, per-compiler enforcement
-status, **a named consumer in `Accepted`**, and the three ladder fields of §1b —
-`current_rung` (probe-measured, never asserted), `ceiling` (with its
-mathematical/capability/price justification), `next_rung_trigger` — plus the two lens
-obligations: red on rung inflation (reported > measured; v2's generic arm reds on day one)
-and red on stalls (below ceiling with no named trigger). The ladder also consolidates five
-existing fragment-vocabularies onto one axis (§3's lattice, `wall now`/`after`/`ratchet`,
-`LifecycleByConstruction|Convention`, `DecodeFidelity`, the thesis tiers) — a §2/§3 merge,
-not a new taxonomy. Two §3 grounding rules so this doesn't fork
-existing machinery: the families ground on the recovered *dimension* architecture (§8c) and
-the DESIGN open thread `StandingIntent` — this IS that thread's missing claims list, not a
-second taxonomy beside it; and per §7b the authority is `.dag` rows projected into DESIGN.md,
-never hand-edited prose. Historical claims enter `Required` + `Gap` (mode-2 rule, §2).
-The probe corpus lands simultaneously as **enrolled expecting-red rows** (the known-red
-quarantine mechanism already exists: rows execute *expecting* red, so a wall landing flips
-them loudly to controls). That makes the corpus a continuous measurement of the gap from day
-one, before any wall exists — each probe that compiles-when-it-should-refuse is a counted
-deficit, not an anecdote.
+**(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap
+authority itself — the `compiler-guarantee` lane's declared nodes and edges
+(`gunbc.roadmap_authority` `guarantee_ladder_nodes` / `guarantee_ladder_edges`) — after the
+operator's verdict caught the first cut rendering these nodes from a section-local list
+outside `declared_roadmap_nodes()`. This section stays as the narrative rationale; where
+prose and edges disagree, **the edges are the authority**.
+
+**Stage 1a — the probe corpus first, as `.dag`.** One probe pair per floor class
+(deliberately-bad input expected to refuse; legitimate control expected to accept), landed
+as **enrolled expecting-red rows** (the known-red quarantine mechanism already exists: rows
+execute *expecting* red, so a wall landing flips them loudly to controls). That makes the
+corpus a continuous measurement of the gap before any wall exists — each
+compiles-when-it-should-refuse is a counted deficit, not an anecdote — and it is what the
+carrier's dispositions derive from, which is why it precedes the carrier.
+
+**Stage 1b — the claims carrier, measurement separated from claim.** Model the guarantee
+population (the review's G0–G9 families are a good candidate cut: binding · formation ·
+inhabitance · invocation · domain/totality · control soundness · semantic dimensions ·
+realization · fidelity · external boundary) as **four carriers**: `GuaranteeRequirement`
+(class identity, domain, harm, `ceiling` with its mathematical/capability/price
+justification, `next_rung_trigger`); `GuaranteePath` (`subject_grain`,
+`acceptance_boundary`, `compile_mode`, `realization_target` — one row per in-scope path,
+the population **derived from the census's path axes or completeness-witnessed against
+them**, so a strongest-path-only reading is a red, not an oversight); `GuaranteeMeasurement`
+(an executed probe/witness receipt, **with a named consumer in `Accepted`**); and
+`GuaranteeDisposition` **derived per path, never stored** — `Unmeasured |
+BelowFloor{evidence} | OnLadder{rung, evidence} | OutsideModeledGuarantee{reason}` — folded
+to class state as below-floor dominates, then unmeasured, then the **minimum rung across
+paths**. There is no stored `current_rung` column, so a transcribed rung is
+*unrepresentable* rather than lens-caught (corrected per review 45367: an earlier draft of
+this stage listed `current_rung` as a carrier field, which would have reintroduced exactly
+the rung-inflation class §1b forbids). What survives as checks: an `OnLadder` disposition's
+evidence refs must execute (honesty — v2's generic self-grounding is the day-one
+below-target disposition), and a class below its ceiling with no `next_rung_trigger` reds
+(stall). The five recovered fragment-vocabularies (§3's lattice, `wall
+now`/`after`/`ratchet`, `LifecycleByConstruction|Convention`, `DecodeFidelity`, the thesis
+tiers) are **joined by class identity and kept orthogonal** — decidability/grounding,
+fidelity, construction/enforcement state, historical domain, and harm-timing rung are
+different axes and none consolidates into another (corrected per the operator's 2026-07-31
+verdict: an earlier draft said "consolidates five vocabularies onto one axis"). Two §3
+grounding rules so this doesn't fork existing machinery: the families ground on the
+recovered *dimension* architecture (§8c) and the DESIGN open thread `StandingIntent` — this
+IS that thread's missing claims list, not a second taxonomy beside it; and per §7b the
+authority is `.dag` rows projected into DESIGN.md, never hand-edited prose. Historical
+claims enter `Required` + `Gap` (mode-2 rule, §2).
+
+**Stage 1c — baseline prevalence, before any wall** (split out of the old Stage 7 per the
+operator's verdict): the whole-corpus floor rerun bucketed by ladder position, keyed to the
+carrier's class ids — the honest *before* picture. Each wall node's roadmap edge on the
+baseline node encodes that a wall landing first would pollute it.
 
 **Stage 2 — close the ordinary premises (wall-now set):** method/callable existence; exact
 call labels and counts (the §4 application-arity row); return/`data`/field/generic
-inhabitance; `PatternLookupBlocked` refusing instead of `[]`; delete the success-shaped
+inhabitance (incl. deleting the `field_of_type_var` fabrication — its own roadmap node);
+`PatternLookupBlocked` refusing instead of `[]`; delete the success-shaped
 fallbacks. One staging correction to the review's interim method wall: the
 **zero-resolution half lands now** (strictly narrowing — refuse when *no* path resolves a
 method; matches runtime reality, cannot red legitimate code), but the **ambiguity half
@@ -594,9 +697,23 @@ which dual-path resolutions are the *same* primitive — otherwise `map` resolvi
 registry and algebra template reds the whole corpus on day one and the wall gets reverted
 exactly the way the 104 preserved the exemption.
 
+**Stage 2 measured amendment (2026-07-31, tidy-deer-730 on gunbc#7484):** a narrow
+per-receiver method-existence wall over **kernel receivers** has landed (six REDs/positive
+controls, regen divergence 0). What keeps it narrow, measured: (a) two receiver-type
+resolution defects — a where-refinement alias arrives as its brand, unpeeled to the base;
+a pattern-destructured coproduct payload arrives typed as the *variant name* rather than
+the field type — and (b) the primitive-identity fork itself: the kernel algebra profiles
+disagree with interpreter dispatch (`String` and `Map` declare `length` but not `count`
+while the interpreter dispatches `length`/`count`/`size`). So the Stage-5 join is a
+**prerequisite of the general method wall, not a follow-on** — the roadmap edges encode
+`floor-method-existence-wall ← primitive-identity-join`, correcting this section's
+original order; the two resolution defects are §11 item 8.
+
 **Stage 3 — one cardinality vertical slice** (§4b: connect the 2026-07-04 operator
-direction + the scoped lattice plan + the green fold seed; acceptance = the operator's
-scenario refusing at the seam, with the nonempty-proof positive control compiling).
+direction + the scoped lattice plan + the manual value-level fold specimens; acceptance =
+the operator's scenario refusing at the seam, with the nonempty-proof positive control
+compiling; the construction-wall candidate is gated on the §11 item 1a `sole_constructor`
+audit — a declared roadmap edge, not prose).
 
 **Stage 4 — v2 phase carriers** (source ≠ inferred ≠ realized, so self-grounding becomes
 type-invalid; keep the `validate_then_compile` door).
@@ -608,6 +725,8 @@ facts on one identity; dispatch derived, not hand-listed).
 `v2.*`/`v1.compiler.*`, classify every failure, fix, delete; the unsourced 104 is neither a
 blocker nor a promise).
 
-**Stage 7 — prevalence, measured last**, with failures bucketed into: statically-decidable /
+**Stage 7 — residual prevalence, measured last** (the baseline half moved to Stage 1c per
+the operator's verdict): the same bucketing classifier — statically-decidable /
 runtime-value-dependent / external-boundary / resource-budget / capability-not-grounded /
-interpreter-defect.
+interpreter-defect — re-run after the declared climbs land and **diffed against the
+baseline**, so each wall's landing is a measured before/after receipt, never an assumed win.
