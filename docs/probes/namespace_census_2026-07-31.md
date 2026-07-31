@@ -56,6 +56,9 @@ python3 docs/probes/namespace_census_2026-07-31/provider_bounds.py \
   . /tmp/namespace-census/population.json
 python3 docs/probes/namespace_census_2026-07-31/classify_ambiguity.py \
   /tmp/namespace-census/ambiguity.json /tmp/namespace-census/ambiguity-classified.json
+python3 docs/probes/namespace_census_2026-07-31/classify_ambiguity_covisibility.py \
+  . /tmp/namespace-census/pop_stderr.log \
+  /tmp/namespace-census/ambiguity-covisibility.json
 ```
 
 The normalized parser output must equal `summary.json`'s compiler-authoritative
@@ -68,7 +71,7 @@ fail-closed parser partitions those same diagnostics as:
 
 ```text
 17,112 unresolved-name
-   324 ambiguous-variant
+   324 ambiguous-variant diagnostics under the synthetic root
    594 no-field
     12 type-mismatch
      6 singleton diagnostic shapes
@@ -90,9 +93,39 @@ strict catalogue's 2,867 zero-provider rows are not a semantic finding: 2,663 ha
 different-category declaration and only the agnostic bound's 204 remain absent.
 
 `INFERRED GROUPING`: grouping by variant name plus unordered candidate pair maps 324
-occurrences to 315 decisions. The suffix heuristic then labels them A_SELF (30
+synthetic-root diagnostics to 315 decisions. The suffix heuristic then labels them A_SELF (30
 decisions/34 occurrences), B_PARALLEL_TOWER (63/63), and C_TRUE_HOMONYM (222/227).
 Both sums are asserted by `classify_ambiguity.py`. The grouping key and labels are
 analysis choices, not compiler output. In particular, B's suffix list was selected
 by inspection; reading those pairs as one axis forked per language is an inference,
 not a semantic compiler judgment.
+
+## Ambiguity instrument contamination
+
+The 324 compiler-authoritative count is the number of ambiguity diagnostics emitted
+under the synthetic all-importing root. It is **not** the ambiguity population. The
+instrument forces every module into one pool, so it can report a collision between
+owners that no real compilation makes mutually visible. The reporting file identifies
+where one owner is declared; it does not prove both owners were visible there.
+
+`INFERRED INSTRUMENT ANALYSIS`: `classify_ambiguity_covisibility.py` reads the exact
+pinned corpus files and partitions all 324 diagnostics without residue:
+
+```text
+ 42 CoVisible            reporting file names both owners
+  1 BracelessUndecided   wholesale import defeats textual visibility inference
+281 PoolReach            reporting file does not name one or both owners
+---
+324 synthetic-root ambiguity diagnostics
+```
+
+Thus 281 of 324 (86.7%) are demonstrated pool-reach artifacts. At most 42 are
+candidates for genuine co-resolution. Textual co-visibility is necessary but not
+sufficient, so 42 is itself only an upper bound; this instrument establishes no lower
+bound on the real ambiguity population. Measuring that population requires running
+against real compile closures, outside this receipt's scope.
+
+The contamination is itself the central finding: binding and module discovery are
+coupled at the wrong boundary, so a whole-corpus pool cannot measure ambiguity without
+creating most of the ambiguity it reports. The receipt preserves that limitation
+rather than converting an instrument artifact into a language claim.

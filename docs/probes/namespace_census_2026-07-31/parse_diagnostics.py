@@ -18,7 +18,7 @@ PATTERNS = {
         re.compile(r"^unresolved type '?[^'\s]+'?" + LOCATION),
         re.compile(r"^type '[^']+' not found[^()]*" + LOCATION),
     ),
-    "ambiguous_variant": (re.compile(r"^variant '[^']+' appears in both '[^']+' and '[^']+'" + LOCATION),),
+    "ambiguous_variant_synthetic_root_diagnostic": (re.compile(r"^variant '[^']+' appears in both '[^']+' and '[^']+'" + LOCATION),),
     "no_field": (re.compile(r"^no field '[^']+' on type '[^']+'" + LOCATION),),
     "type_mismatch": (re.compile(r"^type mismatch: expected '[^']+', got '[^']+'" + LOCATION),),
 }
@@ -33,7 +33,7 @@ SINGLETONS = (
 NOISE = re.compile(r"^(indexed |resolved |\[census\]|◐|✓|✗|◷|\s*$)")
 EXPECTED = {
     "unresolved_name": 17112,
-    "ambiguous_variant": 324,
+    "ambiguous_variant_synthetic_root_diagnostic": 324,
     "no_field": 594,
     "type_mismatch": 12,
     "singleton": 6,
@@ -96,7 +96,7 @@ def main() -> None:
                 population.append({"category": population_category, "symbol": symbol,
                                    "owner_type": owner, "file": file})
                 break
-        elif category == "ambiguous_variant":
+        elif category == "ambiguous_variant_synthetic_root_diagnostic":
             match = re.fullmatch(
                 r"variant '([^']+)' appears in both '([^']+)' and '([^']+)' \(([^:]+):\d+-\d+\)",
                 line,
@@ -120,7 +120,7 @@ def main() -> None:
         raise SystemExit(f"population extraction drift: {len(population)}")
     if args.population_json:
         args.population_json.write_text(json.dumps({"rows": population}, indent=2) + "\n")
-    if len(ambiguities) != EXPECTED["ambiguous_variant"]:
+    if len(ambiguities) != EXPECTED["ambiguous_variant_synthetic_root_diagnostic"]:
         raise SystemExit(f"ambiguity extraction drift: {len(ambiguities)}")
     if args.ambiguity_json:
         args.ambiguity_json.write_text(json.dumps({"occurrences": ambiguities}, indent=2) + "\n")

@@ -1,7 +1,7 @@
 {
   "compiler_authoritative": {
     "classification": {
-      "ambiguous_variant": 324,
+      "ambiguous_variant_synthetic_root_diagnostic": 324,
       "no_field": 594,
       "singleton": 6,
       "type_mismatch": 12,
@@ -24,7 +24,18 @@
       "A_SELF": 34,
       "B_PARALLEL_TOWER": 63,
       "C_TRUE_HOMONYM": 227
-    }
+    },
+    "scope_note": "groups synthetic-root diagnostics, not the real ambiguity population"
+  },
+  "inferred_instrument_analysis": {
+    "covisibility_partition": {
+      "BracelessUndecided": 1,
+      "CoVisible": 42,
+      "PoolReach": 281
+    },
+    "real_ambiguity_lower_bound": null,
+    "real_ambiguity_upper_bound": 42,
+    "upper_bound_note": "textual co-visibility is necessary, not sufficient"
   },
   "inputs": {
     "compiler_binary_bytes": 21563472,
