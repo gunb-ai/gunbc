@@ -1,10 +1,15 @@
 module v2.test.fixture.walk_plan_stage.cleanup
 
-import extdeps.shell.exec { TransportScript }
+import extdeps.shell
 
-data walk_plan_stage_cleanup_script: String = "rm -rf target/walk_plan_stage_overlap target/walk_plan_stage_stage2_ran target/floor-on-success-stage-1-receipt.tsv target/floor-on-success-stage-2-receipt.tsv target/floor-on-success-receipt.txt"
+fn walk_plan_stage_remove_path(path: String) -> Bool {
+  shell.Remove.RecursiveForce(path: path).success
+}
 
 test fn walk_plan_stage_cleanup_holds() -> Bool {
-  let result = shell.Exec.Run(script: walk_plan_stage_cleanup_script as TransportScript)
-  result.success
+  walk_plan_stage_remove_path(path: "target/walk_plan_stage_overlap")
+    && walk_plan_stage_remove_path(path: "target/walk_plan_stage_stage2_ran")
+    && walk_plan_stage_remove_path(path: "target/floor-on-success-stage-1-receipt.tsv")
+    && walk_plan_stage_remove_path(path: "target/floor-on-success-stage-2-receipt.tsv")
+    && walk_plan_stage_remove_path(path: "target/floor-on-success-receipt.txt")
 }

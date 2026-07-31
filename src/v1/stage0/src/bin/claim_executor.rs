@@ -4090,6 +4090,11 @@ struct StageRun {
 /// It deliberately does NOT print PASS/FAIL, classify failures, or write receipts.
 /// Folding either population's ordering law in here would put one population's policy
 /// inside the other's executor, which is the fork this extraction exists to close.
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority:
+/// `std.realization_schedule.walk_plan_run_stage_claim_executor_seed_deferral`,
+/// symbols `run_stage` / `StageRun` / `StagePopulation`):
+/// shared walk-stage executor for both `WalkPlan` populations; schedule law stays
+/// in `.dag` (`walk_plan_note`, `FloorBatchStopPolicy` roster).
 #[allow(clippy::too_many_arguments)]
 fn run_stage(
     source_roots: &[String],

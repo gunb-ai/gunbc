@@ -1,10 +1,15 @@
 module v2.test.fixture.walk_plan_stage.receipt_refusal_poison
 
-import extdeps.shell.exec { TransportScript }
+import extdeps.shell
 
-data walk_plan_stage_receipt_refusal_poison_script: String = "mkdir -p target && rm -rf target/floor-on-success-stage-1-receipt.tsv && mkdir target/floor-on-success-stage-1-receipt.tsv"
+data walk_plan_stage_receipt_poison_path: String = "target/floor-on-success-stage-1-receipt.tsv"
 
 test fn walk_plan_stage_receipt_refusal_poison_holds() -> Bool {
-  let result = shell.Exec.Run(script: walk_plan_stage_receipt_refusal_poison_script as TransportScript)
-  result.success
+  let target_ready = shell.Mkdir.Parents(path: "target")
+  if !target_ready.success {
+    false
+  } else {
+    let _cleared = shell.Remove.RecursiveForce(path: walk_plan_stage_receipt_poison_path)
+    shell.Mkdir.Parents(path: walk_plan_stage_receipt_poison_path).success
+  }
 }
