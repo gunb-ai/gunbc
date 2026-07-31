@@ -384,6 +384,10 @@ fn shape_git_rev_parse_verify_quiet_argv(target: String) -> List<String> {
   ["git", "rev-parse", "--verify", "--quiet", target]
 }
 
+fn shape_git_rev_parse_head_args() -> List<String> {
+  ["rev-parse", "HEAD"]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
     "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
