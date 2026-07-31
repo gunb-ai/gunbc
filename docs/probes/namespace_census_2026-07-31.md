@@ -22,7 +22,9 @@ how that exact compiler reads that exact corpus; neither identity may float.
 ## Reproduce
 
 `namespace_census_reproduction_steps` in `gunbc.namespace_census_receipt` is the
-ordered workflow authority. The shell below is a `SCAFFOLD` projection of those typed
+ordered workflow authority. Its `namespace_census_compile_invocation` carrier owns
+the compiler binding, subcommand, source roots, entry, output directory, target, and
+stdout/stderr captures. The shell below is a `SCAFFOLD` projection of those typed
 intents. It dissolves when the canonical orchestration-to-bash emitter (bash-emit
 #5828) renders that step sequence; the model remains and the hand-authored block is
 deleted.
