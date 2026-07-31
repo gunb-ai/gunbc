@@ -37,6 +37,91 @@ And the framing immediately above it:
 Emission is specified as the downstream, mechanical half of a two-stage contract. The
 upstream half — validation — is the one that was not built.
 
+## 1b. The safety ladder (operator framing, 2026-07-31 — the organizing frame for every class in this note)
+
+The guarantee statement's operational form is a ladder that every discovered error class
+climbs. It is DESIGN §1's safety axis made kinetic: safety is time-to-recover from a silent
+wrong answer, paid later at interest — so each rung moves detection of the *same* defect
+earlier and cheaper, and the top rung means the defect is never paid for by anyone.
+
+| Rung | Name | Who pays, and when |
+|---|---|---|
+| **R3** | Structurally impossible | No one, ever — the bad state has no writable form (construction / derivation / sealed carrier) |
+| **R2** | Structural guarantee | The author, at compile time — typed, located refusal |
+| **R1** | Testable / validatable / preventable | CI, before ship — witness, lens, RED control |
+| **R0** | Mitigatable | The operator, at runtime — typed refusal, budget, rollback |
+| — | **below the floor: silent** | The end user, at interest, unknowingly — **forbidden outright (§5)** |
+
+Three rules make it a discipline rather than a diagram:
+
+1. **The floor is absolute.** No class may sit below R0. A silently-wrong behavior — the
+   misspelled label that binds positionally and computes the wrong answer with no signal —
+   is not a low rung; it is outside the ladder, and §5 already outlaws it. The first move
+   for any discovered class is *to the floor*: loud, typed, counted. Climbing starts after.
+2. **Every class climbs to its ceiling, and states its ceiling.** Ceilings come in exactly
+   three kinds: **mathematical** (undecidability, the external-reality boundary,
+   root-authority self-governance — permanent and honest), **capability** (R3 for
+   carrier-borne invariants requires unforgeable construction, i.e. reference-level
+   visibility the language does not yet have — no `private`/`sealed`/`opaque` in the keyword
+   set; one unlock raises every such class at once), and **price** (deferral compounds in
+   sites — `Value::Null` at 131 — so lateness raises the bill but never closes the door).
+   "Climb the ladder" always means *to the stated ceiling*, not unconditionally to R3.
+3. **Reported rung == measured rung.** A rung is established by an executing probe, never
+   asserted. Rung *inflation* — v2's `CanonicalGrounding` reporting R3 while occupying R0;
+   the historical ledger's "Yes (blocking)" — is worse than sitting low, because an inflated
+   class never ranks for climbing. A lens reds inflation and reds stalls (below ceiling
+   with no named next-rung trigger).
+
+**How this compiler makes programming safer than a traditional one — the two ends of the
+ladder.** A traditional compiler holds a fixed, non-negotiable set of classes at R2 (types,
+syntax, constructor arity), leaves everything else at R1 (hand-written tests) or below the
+floor (silent), and barely uses R3 at all. The bet here is at both ends: the **floor is
+enforced** (§5 — nothing silent survives), and the **top is open** — the R2 set is
+user-extensible by rows rather than compiler forks (§7's language-design-opens-up), and R3
+is a *working* rung (derive-don't-store, closed algebras, sealed construction once
+visibility lands). The recovered `error-examples.md` cases — `reverse |> reverse`,
+non-idempotent retry, O(n²) — are ordinary classes *lifted to R2* that no mainstream
+compiler holds there. The scandal this note documents is the inversion: the ambition
+examples sit above mainstream while method-existence and return-conformance sit below it.
+
+### The conversation's own specimens, placed on the ladder
+
+| Class | Floor status | Today | Ceiling | The climb |
+|---|---|---|---|---|
+| Misspelled label binds positionally (§4) | **BELOW FLOOR — silent wrong binding** | — | R2 | floor first (any diagnostic), then the exact call-shape judgment |
+| Unknown method (`filter_map`, #7479) | at floor | R0 — typed `Unimplemented`, found as a 500 on the lab | **R2** — a nonexistent name can always be *typed*; refusal is the top rung for reference classes | zero-resolution wall now; ambiguity wall after the identity join |
+| Return / `data` / generic inhabitance (#7481 probes) | at floor | R0 — first consumer breaks, typed | R2 | return-position checking (wall-after-grounding) |
+| Empty list into requires-one (the operator's case, §4b) | at floor | R0 — runtime surprise or degenerate arm | **R3** — the bad *seam* becomes unwritable | seal `Refined` (capability ceiling) + propagate through `InterfaceSummary`; expecting-red probes land first |
+| Cross-representation `==` | **was below floor** (silent `false`) | **R3** — numeric tower grounded by construction (#5428), guard dead-in-corpus | R3 | **done — the exemplar full climb, floor to top** |
+| v2 loop termination | — | **R2** (undeclared measure refused) with R3 character (unbounded iteration has no substrate spelling; recursion is sugar over `Loop`) | R3 | done in v2; the v1 seed's classes climb by deletion, not hardening |
+| Idempotency-unsafe retry | at floor | R1-capable — algebra declared, consumers exist, not at binding sites | R2 | the dimension migrates onto `TypeBinding` (§8c) |
+| Non-exhaustive match via blocked lookup | below-floor risk (`diagnostics: []`) | mixed R0/R1 | R2 | `ExhaustivenessUnknown` refuses instead of passing as success |
+| Doc orphan (this PR's own incident) | was below floor — silent rot, twice historically | **R1** — `ReadsLiveTree` witness; it caught this very PR | R2-ish (registration-derived roots) | live proof that climbing pays: the wall that failed open twice, repaired, did its job |
+
+### Non-goals — ceilings that are low BY DESIGN, stated so they are never mistaken for gaps
+
+- **External reality** (host state, network, tool presence): outside the program graph *by
+  the guarantee statement*; the ceiling is a typed refusal at the boundary — R0-at-boundary
+  is correct there, not a deficit.
+- **Arbitrary refinement predicates** (`admits: fn(B) -> Bool`): undecidable; ceiling is the
+  runtime constructor boundary. The decidable cardinality *fragment* climbs instead — that
+  split is the whole design of `cardinality-refinement.md`.
+- **Resource / budget exhaustion** (`EvalBudgetExceeded`, ARG_MAX, witness-wall budgets):
+  R0 by design — the bound *is* the product.
+- **Optimality**: ratchet forever (Rice); §5 already names "never" as the trap.
+- **Root-authority self-governance**: the substrate cannot wall edits to its own axioms;
+  operator review is the permanent mechanism, not a temporary one.
+- **Byte-identical self-emission**: retired non-goal — behavioral equivalence replaced it
+  (DESIGN §7) precisely to avoid cementing the seed's accidents.
+
+**Landing target:** this section is drafted here for operator sign-off and lands as
+`gunbc.design_document` rows projected into DESIGN.md beside §5's construction/validation
+doctrine (§7b discipline — never a hand edit of the markdown). The §3 status lattice below
+refines the rungs (e.g. `RepresentableButForgeable` = R1 wanting R3 behind the capability
+ceiling; `LiteralOnlyWall` = R2 on a fragment); the claim carrier of §11/§12 gives every
+class `current_rung` (probe-measured), `ceiling` (with its justification kind), and
+`next_rung_trigger`.
+
 ## 2. The failure history (revised after independent review, 2026-07-31)
 
 An earlier draft of this section told a two-part story: the spec was lost, then the claims
@@ -293,7 +378,13 @@ The user-supplied case is the archetype and belongs in the corpus as example 0:
 
 ```dag
 // callee requires at least one; caller can supply zero.
-// Today: unexpressible — no NonEmpty<T> carrier, Cardinality connective uninhabited.
+// Expected on landing: located refusal at the seam — a 0..n producer bound to a
+// 1..n consumer position (interface-summary-declared-use-arity.md Sec 3.1).
+// Today it compiles. The RED exercises unforgeable construction + seam
+// propagation — NOT absence of representation: Refined<List<T>> exists and is
+// forgeable (Sec 4/4b). (Corrected per review 45305 — an earlier draft said
+// "unexpressible" here, which would have aimed the fix at inventing a carrier
+// instead of sealing and propagating the one that exists.)
 ```
 
 ## 8c. The dimension architecture — recovered contract, and it is still standing
@@ -425,7 +516,14 @@ Model the guarantee population (the review's G0–G9 families are a good candida
 binding · formation · inhabitance · invocation · domain/totality · control soundness ·
 semantic dimensions · realization · fidelity · external boundary) as rows with: identity,
 proof mode, authoritative carrier, negative RED, positive control, per-compiler enforcement
-status, and **a named consumer in `Accepted`**. Two §3 grounding rules so this doesn't fork
+status, **a named consumer in `Accepted`**, and the three ladder fields of §1b —
+`current_rung` (probe-measured, never asserted), `ceiling` (with its
+mathematical/capability/price justification), `next_rung_trigger` — plus the two lens
+obligations: red on rung inflation (reported > measured; v2's generic arm reds on day one)
+and red on stalls (below ceiling with no named trigger). The ladder also consolidates five
+existing fragment-vocabularies onto one axis (§3's lattice, `wall now`/`after`/`ratchet`,
+`LifecycleByConstruction|Convention`, `DecodeFidelity`, the thesis tiers) — a §2/§3 merge,
+not a new taxonomy. Two §3 grounding rules so this doesn't fork
 existing machinery: the families ground on the recovered *dimension* architecture (§8c) and
 the DESIGN open thread `StandingIntent` — this IS that thread's missing claims list, not a
 second taxonomy beside it; and per §7b the authority is `.dag` rows projected into DESIGN.md,
