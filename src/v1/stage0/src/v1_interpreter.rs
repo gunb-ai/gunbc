@@ -731,10 +731,6 @@ pub enum InterpError {
         service: String,
         reason: String,
     },
-    ServiceConfigUnresolved {
-        key: String,
-        spelled: String,
-    },
     EvalBudgetExceeded {
         elapsed_ms: u64,
         budget_ms: u64,
@@ -820,11 +816,6 @@ impl fmt::Display for InterpError {
                 f,
                 "auth declared but unwired for '{}': {} — refusing to send unauthenticated request",
                 service, reason
-            ),
-            InterpError::ServiceConfigUnresolved { key, spelled } => write!(
-                f,
-                "service config '{}' did not resolve to a value (spelled '{}') — refusing to send a request against an unresolved endpoint",
-                key, spelled
             ),
             InterpError::ArgvExceedsHostArgMax {
                 actual_bytes,
@@ -7315,20 +7306,8 @@ fn dispatch_rest(
 ) -> InterpResult<Value> {
     let si = ctx.si();
 
-    // An unresolvable endpoint REFUSES here rather than defaulting to "". An empty
-    // base produces the same `RelativeUrlWithoutBase` failure as a garbage one, so
-    // `unwrap_or_default()` was a second way for the same defect to arrive unlocated.
     let base_url =
-        match find_service_config_string(service_node, "svc_endpoint", &si, param_env, ctx) {
-            Some(Ok(url)) => url,
-            Some(Err(spelled)) => {
-                return Err(InterpError::ServiceConfigUnresolved {
-                    key: "endpoint".to_string(),
-                    spelled,
-                })
-            }
-            None => String::new(),
-        };
+        find_service_config_string(service_node, "svc_endpoint", &si).unwrap_or_default();
 
     let path = match find_property(transport.properties.clone(), "path".to_string(), si.clone()) {
         Some(path_node) => {
@@ -7367,17 +7346,8 @@ fn dispatch_rest(
     let auth = resolve_auth(service_node, transport, param_env, &si, ctx);
     if let AuthResolution::DeclaredButUnwired { ref reason } = auth {
         return Err(InterpError::AuthDeclaredButUnwired {
-            service: match find_service_config_string(
-                service_node,
-                "svc_endpoint",
-                &si,
-                param_env,
-                ctx,
-            ) {
-                Some(Ok(url)) => url,
-                Some(Err(spelled)) => format!("<unresolved: {}>", spelled),
-                None => "<unknown>".to_string(),
-            },
+            service: find_service_config_string(service_node, "svc_endpoint", &si)
+                .unwrap_or_else(|| "<unknown>".to_string()),
             reason: reason.clone(),
         });
     }
@@ -7695,43 +7665,24 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
     None
 }
 
-// A service-config value is EVALUATED, exactly like the `path` template two lines
-// below its only caller — one authority for "what does this config entry say", not
-// two. The previous reading had a literal fast-path plus a fallback that returned
-// `authored_name_at`, i.e. the SOURCE TEXT of the identifier. So a config written as
-// a data reference resolved to its own spelling: `endpoint: default_api_base` became
-// the string "default_api_base", which is a plausible non-empty value and a nonsense
-// base URL. Every `github.Pulls` caller in the corpus has been failing on it with
-// `RelativeUrlWithoutBase` — the service is modeled, cited, mock-covered and has
-// production callers, and its live path had never once succeeded.
-//
-// The fallback is deleted rather than repaired because it was the thing that hid the
-// defect: "the configured literal" and "the name of something I could not resolve"
-// were both returned as `Some(String)`, so the failure could only surface downstream
-// as a malformed URL instead of as a located refusal at the config read.
 fn find_service_config_string(
     service_node: &Rc<Node>,
     key: &str,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    param_env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> Option<Result<String, String>> {
+) -> Option<String> {
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
         if name == key {
             let val_node = field_init_node_value(prop.clone());
-            let spelled = authored_name_at(si.clone(), val_node.clone());
-            return Some(match eval_expr(&val_node, param_env, ctx) {
-                Ok(v) => {
-                    let s = format!("{}", v);
-                    if s.is_empty() {
-                        Err(spelled)
-                    } else {
-                        Ok(s)
-                    }
+            if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
+                if let LiteralValue::LitStr { value: s } = value.as_ref() {
+                    return Some(s.clone());
                 }
-                Err(_) => Err(spelled),
-            });
+            }
+            let authored = authored_name_at(si.clone(), val_node);
+            if !authored.is_empty() {
+                return Some(authored);
+            }
         }
     }
     None
