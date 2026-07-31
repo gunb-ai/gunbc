@@ -28,8 +28,8 @@
 6. **#6 enum / disj union** — VEP. Witness: `ts_enum_union_emit_by_execution_exact_holds` (`typescript_enum_union_emit_by_execution_test.dag`).
 7. **#7 module import** — VEP. Witness: `ts_import_emit_by_execution_exact_holds` (`typescript_import_emit_by_execution_test.dag`).
 8. **#8 effect apply** — VEP. Witness: `ts_effect_io_emit_holds` (`typescript_effect_io_emit_test.dag`).
-9. **#9 fold_call body via translate** — VEP. Witness: `fold_call_closure_emit_keystone_holds` (`fold_call_closure_emit_test.dag`).
-10. **#10 operators (arith/cmp)** — VEP with **ad-hoc test catalog only** (`add_body_ts_emit_catalog_minus_discriminates`, `add_body_ts_emit_missing_catalog_rejects`). Default `ts_operator_realizations_catalog_node()` enrolls **OpAdd only** (`typescript.dag:640`) — see #16.
+9. **#9 fold_call body via translate** — VEP. Witness: `v2.test.manual.fold_call_closure_emit` `fold_call_emit_holds`; the paired `fold_call_swap_discriminates` is the red control.
+10. **#10 operators (arith/cmp)** — VEP with **ad-hoc test catalog only** (`add_body_ts_emit_catalog_minus_discriminates`, `add_body_ts_emit_missing_catalog_rejects`). Default `v2.extdeps.languages.typescript` `ts_operator_realizations_catalog_node` enrolls **OpAdd only** — see #16.
 
 ### FAIL-CLOSED (emit explicitly Rejected — named)
 
@@ -38,11 +38,11 @@
 
 ### FAIL-OPEN (compiler-scale; no green bar (b)+(c) on default model today)
 
-1. **#13 match / coproduct dispatch** — `match_form.match_token = ^ts_token_unwired_match` (`typescript.dag:623`); no TS match witness; compiler uses `Match` heavily (`05_eval.dag`).
-2. **#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`typescript.dag:606`).
-3. **#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`typescript.dag:609`).
-4. **#16 default operator catalog** — `ts_operator_realizations_catalog_node()` rows = `[ts_add_operator_realization_row()]` only (`typescript.dag:640–641`). Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`).
-5. **#17 grammar-inverse rows beyond add** — committed `ts_translation_rules_node()` has **1** child (`fn_add`); witness bundle `ts_translation_rules_witness()` expects **3** (add + type_alias + pr3) (`typescript.dag:1381–1414`).
+1. **#13 match / coproduct dispatch** — `match_form.match_token = ^ts_token_unwired_match` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`); no TS match witness; compiler uses `Match` heavily (`05_eval.dag`).
+2. **#14 bind-in scoping** — `let_form.in_token = ^ts_token_unwired_bind_in` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`).
+3. **#15 loop form wiring** — `loop_form.loop_token = ^ts_token_unwired_loop` (`v2.extdeps.languages.typescript` `ts_value_expression_projection_full`).
+4. **#16 default operator catalog** — `v2.extdeps.languages.typescript` `ts_operator_realizations_catalog_node` rows = `[ts_add_operator_realization_row()]` only. Algebra ops miss on default model (`add_body_ts_emit_missing_catalog_rejects`).
+5. **#17 grammar-inverse rows beyond add** — committed `v2.extdeps.languages.typescript` `ts_translation_rules_node` has **1** child (`fn_add`); `ts_translation_rules_witness` carries **2** rows (add + type_alias), while `ts_pr3_translation_rules_witness` carries **3** (add + type_alias + pr3). Type_alias and pr3 are witnessed candidates but neither is enrolled in the committed bundle.
 6. **#18 branch dispatch** — compiler uses `Branch` (`04_infer` / `05_eval`); zero TS emit witnesses.
 7. **#19 tsc-green / emit_host oracle** — §5 spec-without-execution crack. Sole consumer path: `ts_host_transport_descriptor` + `emit_host_gate.dag`. **`typescript_descriptor_node_ts_node_run_add_holds` FAIL** (wet `claim_batch`); **`emit_host_gate_passes` FAIL** (wet). Bar (c) red even for add.
 8. **#20 whole `src/v2` → TS** — no module; Route-A tsc analogue not started (terminal slice E).
@@ -63,7 +63,7 @@
 
 1. **A. Land this census** (this plan) — audit-first record, generated md.
 2. **A2. tsc-green oracle REAL on existing VEP-green slices (#19 pulled forward)** — per-construct `tsc` acceptance on #1–#9 before stacking breadth. Converts string-green families into compile-green. Highest-value foundation work.
-3. **B. Cheap row extensions (#17)** — enroll type_alias + pr3 rows into committed `ts_translation_rules_node`; rows only, no new TargetModel surface.
+3. **B. Cheap row extensions (#17)** — enroll the type_alias row from `v2.extdeps.languages.typescript` `ts_translation_rules_witness` and the pr3 row from `ts_pr3_translation_rules_witness` into committed `ts_translation_rules_node`; rows only, no new TargetModel surface.
 4. **C. Operator catalog (#16)** — proceed **only** if genuinely row-derivation onto the default model; if it needs a new TargetModel surface → load-bearing → sign first.
 5. **D. HOLD for parent sign:** Match (#13) + loop/bind (#14–#15) + Branch (#18) — compiler-scale TargetModel surfaces.
 6. **E. Whole-tree Route-A tsc (#20)** — terminal.
