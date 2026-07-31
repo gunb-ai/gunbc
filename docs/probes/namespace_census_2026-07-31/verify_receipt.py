@@ -18,9 +18,91 @@ def require_equal(label: str, actual, expected) -> None:
         raise SystemExit(f"{label} drift:\nexpected {expected!r}\nactual   {actual!r}")
 
 
+def comma(value: int) -> str:
+    return f"{value:,}"
+
+
+def require_doc_claims(doc: str, summary: dict) -> None:
+    inputs = summary["inputs"]
+    compiler = summary["compiler_authoritative"]
+    classification = compiler["classification"]
+    scenarios = summary["regex_sensitivity_scenarios"]
+    grouping = summary["human_or_inferred_grouping"]
+    textual = summary["reproducible_textual_classification"]
+    agnostic = scenarios["category_agnostic_regex_scenario"]
+    strict = scenarios["category_strict_regex_scenario"]
+    claims = {
+        "corpus identity": inputs["corpus_commit"],
+        "compiler PR": f"PR {inputs['compiler_pull_request']} commit",
+        "compiler source identity": inputs["compiler_source_commit"],
+        "compiler binary identity": (
+            f"{comma(inputs['compiler_binary_bytes'])} bytes, SHA-256\n"
+            f"  `{inputs['compiler_binary_sha256']}`"
+        ),
+        "raw log identity": inputs["raw_log_sha256"],
+        "synthetic root identity": inputs["synthetic_root_sha256"],
+        "plain compile population": (
+            f"reached only {comma(inputs['plain_compile_reached_modules'])} of the\n"
+            f"{comma(inputs['declared_corpus_modules'])} declared modules, leaving "
+            f"{comma(inputs['plain_compile_uncompiled_modules'])} uncompiled"
+        ),
+        "synthetic compile population": (
+            f"all {comma(inputs['declared_corpus_modules'])} corpus modules "
+            f"(the compiler reports {comma(inputs['compiler_reported_modules_with_synthetic_root'])}"
+        ),
+        "compiler total": f"reported {comma(compiler['compiler_reported_hard_diagnostics'])} hard diagnostics",
+        "unresolved-name total": f"{comma(classification['unresolved_name'])} unresolved-name",
+        "synthetic ambiguity total": (
+            f"{comma(classification['ambiguous_variant_synthetic_root_diagnostic'])} "
+            "ambiguous-variant diagnostics"
+        ),
+        "no-field total": f"{comma(classification['no_field'])} no-field",
+        "type-mismatch total": f"{comma(classification['type_mismatch'])} type-mismatch",
+        "singleton total": f"{comma(classification['singleton'])} singleton diagnostic shapes",
+        "diagnostic-section lines": (
+            f"contains {comma(compiler['classification_sum'] + compiler['header_lines_excluded_from_diagnostics'])} "
+            "lines in the diagnostic section"
+        ),
+        "agnostic scenario": (
+            f"reports {agnostic['apparent_single_provider_share_percent']}% apparent single-provider\n"
+            f"rows and {comma(agnostic['unique_apparent_single_provider_edges'])} unique apparent"
+        ),
+        "strict scenario": (
+            f"reports {strict['apparent_single_provider_share_percent']}% and "
+            f"{comma(strict['unique_apparent_single_provider_edges'])} respectively"
+        ),
+        "consumer mapping zeros": "both unmapped and\nduplicate mapping counts are asserted to be zero",
+        "ambiguity decision total": (
+            f"maps {comma(grouping['ambiguous_variant_occurrences'])}\nsynthetic-root diagnostics to "
+            f"{comma(grouping['ambiguous_variant_decisions'])} decisions"
+        ),
+        "A grouping": (
+            f"A_SELF ({grouping['decision_counts']['A_SELF']}\ndecisions/"
+            f"{grouping['occurrence_counts']['A_SELF']} occurrences)"
+        ),
+        "B grouping": (
+            f"B_PARALLEL_TOWER ({grouping['decision_counts']['B_PARALLEL_TOWER']}/"
+            f"{grouping['occurrence_counts']['B_PARALLEL_TOWER']})"
+        ),
+        "C grouping": (
+            f"C_TRUE_HOMONYM ({grouping['decision_counts']['C_TRUE_HOMONYM']}/"
+            f"{grouping['occurrence_counts']['C_TRUE_HOMONYM']})"
+        ),
+    }
+    for bucket, count in textual["counts"].items():
+        claims[f"textual bucket {bucket}"] = f"{count:>3} {bucket}"
+    claims["textual partition total"] = (
+        f"{textual['synthetic_root_ambiguity_diagnostics']} synthetic-root ambiguity diagnostics"
+    )
+    for label, claim in claims.items():
+        if claim not in doc:
+            raise SystemExit(f"receipt prose {label} drift: missing {claim!r}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("summary", type=pathlib.Path)
+    parser.add_argument("receipt_doc", type=pathlib.Path)
     parser.add_argument("compiler_binary", type=pathlib.Path)
     parser.add_argument("synthetic_root", type=pathlib.Path)
     parser.add_argument("parser_result", type=pathlib.Path)
@@ -30,6 +112,7 @@ def main() -> None:
     args = parser.parse_args()
 
     summary = load_summary(args.summary)
+    require_doc_claims(args.receipt_doc.read_text(encoding="utf-8"), summary)
     compiler = args.compiler_binary.read_bytes()
     require_equal("compiler binary bytes", len(compiler), summary["inputs"]["compiler_binary_bytes"])
     require_equal("compiler binary SHA-256", hashlib.sha256(compiler).hexdigest(),

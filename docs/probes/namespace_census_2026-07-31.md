@@ -79,7 +79,8 @@ python3 "$RECEIPT_TOOLS/classify_ambiguity_textual.py" \
   /tmp/namespace-census/ambiguity-textual.json \
   --summary-json "$RECEIPT_SUMMARY"
 python3 "$RECEIPT_TOOLS/verify_receipt.py" \
-  "$RECEIPT_SUMMARY" /path/to/pinned/gunbc \
+  "$RECEIPT_SUMMARY" "$RECEIPT_TOOLS/../namespace_census_2026-07-31.md" \
+  /path/to/pinned/gunbc \
   /tmp/namespace-census/complete_population_root.dag \
   /tmp/namespace-census/parser-result.json \
   /tmp/namespace-census/provider-result.json \
@@ -89,8 +90,9 @@ python3 "$RECEIPT_TOOLS/verify_receipt.py" \
 
 `summary.json` is the single expected-value authority. The classifiers derive facts
 without embedding receipt totals; `verify_receipt.py` compares every result, the raw
-log digest, the compiler binary identity, and the exact generated-root digest to that
-one authority. Any drift is a nonzero exit.
+log digest, the compiler binary identity, the exact generated-root digest, and every
+repeated measurement claim in this document to that one authority. Any drift is a
+nonzero exit.
 
 The receipt distinguishes four evidence grades: `COMPILER-AUTHORITATIVE`,
 `REPRODUCIBLE TEXTUAL CLASSIFICATION`, `REGEX SENSITIVITY SCENARIO`, and
