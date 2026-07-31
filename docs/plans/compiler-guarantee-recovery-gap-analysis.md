@@ -1,6 +1,9 @@
 # Compiler guarantee recovery — gap analysis
 
-**Status:** WORKING DRAFT, audit in progress. No code lands from this note.
+**Status:** reconciled analysis — two audit passes complete (initial archaeology 2026-07-30;
+independent review + receipt verification 2026-07-31, ledger in §10). No code lands from this
+note. Open by design: §12 sequencing awaits operator sign-off; prevalence numbers are
+deliberately unmeasured until Stage 7.
 **Question it answers:** what did this compiler intend to guarantee, and what does it guarantee today?
 
 ## 0. Provenance
