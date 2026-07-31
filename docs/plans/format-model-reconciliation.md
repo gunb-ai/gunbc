@@ -34,24 +34,24 @@ text = render(doc, layout_protocol)     // line half (regime-2)
 
 ### The swap test (acid test)
 
-`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness_test` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media.
+`test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness` exercise the same record projection with manifest and JSON knob values. This is the execution-grounded substrate for JSON-as-first-class under §6 cross-media.
 
 ### Relationship to regime-2 (complementary, not duplicate)
 
 - [regime-2 shared emission fold](regime2-shared-emission-fold.md) — **line-layout half**: one `render(doc, protocol)` fold over `std.layout.Doc` for yaml/gitignore/runner-deploy/ci.yml projections.
 - **This doc — record-spelling half**: `serialize_record` → `Doc`, then regime-2 renders. Cross-reference only; do not merge the plans.
 
-## 3. Hazard — do not build on `std.render` kv helpers
+## 3. Boundary — `std.render` kv helpers are presentation utilities
 
-`std.render` `kv_pair` / `kv_block` are **broken** for real emission: in `.dag` runtime literals bare curly-brace interpolation is live, while the escaped-brace form in `std.render` `kv_pair` emits literal brace characters, not key=value pairs. `digest_render.dag` and friends must route through `serialize_record`, not these helpers.
+`std.render` `kv_pair` and `kv_block` correctly render caller-supplied separators, but they do not carry format-owned `SerializationKnobs` or recursive record structure. Keep them for presentation-only key/value lists; record emitters such as manifest and JSON projections route through `std.serialize` `serialize_record_doc`.
 
 ## 4. Ordered scope (completed foundation, then remaining tail)
 
 1. **C1 complete:** `std.languages` `SerializationKnobs` + recursive `std.serialize` `serialize_record_doc` → `Doc`; `FormatModel` deleted; `gunbc.runner_deploy_emit` manifest fields migrated byte-identically.
-2. **C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness_test`.
+2. **C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness`.
 3. **C3 complete:** `OutputFormat` and the orphan gitignore renderer are absent. `gunbc.gitignore_emit` derives comments from `std.languages` `gitignore_format` and renders a `Doc` with its `gitignore_protocol`; because gitignore is a line-list rather than a record, it does not acquire fake `SerializationKnobs`.
 4. **C4 complete at the honest boundary:** `extdeps.formats.dnsmasq` projects directives to `Doc` with `dnsmasq_protocol`; its positional micro-syntax remains explicit rather than being forced into a key/value record.
-5. **C5 (low):** digest/accelerator kv blocks (`dag/gunbc/digest_render.dag` and friends) — route through `serialize_record`; supersedes broken `std.render` kv helpers.
+5. **C5 (low):** classify digest/accelerator key/value blocks (`gunbc.digest_render` and `gunbc.accelerator_demo_render`) by semantic grain: presentation-only lists stay on the correct `std.render` helpers; true record projections route through `std.serialize` `serialize_record_doc` with byte-identical witnesses.
 6. **C6 complete:** `gunbc.roadmap_style` now uses typed `CssDecl` rows on shared `BuildRule` machinery; the old `css_rule_props_scaffold` remains only as historical text in its dissolution note.
 
 ## 5. Audit receipts (live tree 2026-07-31)
