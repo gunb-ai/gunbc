@@ -1105,20 +1105,20 @@ pub fn conformance_ground_type(
         || conformance_ground_element_collection(n.clone(), source_indices.clone()))
 }
 
-pub fn conformance_expanded_shape(n: Rc<Node>, scope: Rc<InferScope>) -> String {
-    match lookup_type_for(scope.type_env.clone(), n.clone()) {
-        Some(resolved) => node_type_shape(
-            resolved.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ),
-        None => node_type_shape(n.clone(), scope.type_env.clone().source_indices.clone()),
+pub fn conformance_expanded_node(n: Rc<Node>, scope: Rc<InferScope>) -> Rc<Node> {
+    {
+        let peeled = peel_where_refinement_base(n.clone(), scope.type_env.clone());
+        match lookup_type_for(scope.type_env.clone(), peeled.clone()) {
+            Some(resolved) => peel_where_refinement_base(resolved.clone(), scope.type_env.clone()),
+            None => peeled.clone(),
+        }
     }
 }
 
 pub fn conformance_expansion_depth_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so a shape comparison alone reads `Primitive(Node)` against `Product(Node)` and calls one type two. Measured over the whole corpus, that accounted for the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, every one of them a reference and its own body. Reporting those as unjudged was not a conservative silence, it was a WRONG COUNT: it inflated the frontier with pairs that are the same type by construction, and an inflated frontier is the rung-inflation failure pointed the other way — it makes the gap look bigger than it is and buries the residue that genuinely cannot be decided. Resolving each side through lookup_type_for before comparing is a real judgment step, not a name heuristic: it asks the type environment what the reference denotes and compares the answers, which is the same peel the where-refinement chain performs on its own base. It can only ever REMOVE a diagnostic — both branches below already treat unequal shapes as unjudged rather than as a refusal — so widening here cannot introduce a fabricated refusal.".to_string()
+            "A declared type and a produced type routinely arrive at DIFFERENT EXPANSION DEPTHS: the declaration side is a nominal reference to T while the body side is T's already-expanded body, so comparing them as they arrive reads one type as two. Measured over the whole corpus that was the majority of the unjudged residue — 203 Node, 173 Outcome, 46 Witness, 43 Optional, 38 PipelineStep and a long tail, each a reference and its own body. Reporting those as unjudged was not a conservative silence but a WRONG COUNT, and an inflated frontier buries the residue that genuinely cannot be decided under pairs that were never in doubt. conformance_expanded_node resolves each side through lookup_type_for and peels where-refinement brands through peel_where_refinement_base — the SAME peel the method wall uses, one authority with two consumers rather than a second one minted here (DESIGN section 3). THE COMPARISON IS THE STRUCTURAL RELATION, NOT A RENDERED SHAPE STRING, and the first version of this got that wrong in a way worth keeping on the record: it compared node_type_shape output, which collapses every anonymous product to the literal text Product(<anon>) and every named product to its OUTER NAME ONLY, discarding fields, variants and their types. So two structurally different records compared EQUAL and were stamped proven-conforming — the exact fail-open this wall exists to delete, reintroduced while removing a different one, and by the same mechanism as the earlier 1.0/0.0 seam: a projection that looks like evidence used where a proof was required (codex review 45600). A display projection is for MESSAGES; a judgment must consume the structural relation. node_type_compatible recurses into container elements and compares canonical template names, so identity is established rather than rendered. Its known imprecision is safe in this position: it reports MISMATCH for four classes of correct code, and a mismatch here yields the counted unjudged advisory rather than a refusal, so a false negative costs a count and never reds correct code.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -1135,9 +1135,11 @@ pub fn declared_type_conformance_diags(
         let both_ground = (conformance_ground_type(declared.clone(), si.clone())
             && conformance_ground_type(produced.clone(), si.clone()));
         if !both_ground.clone() {
-            if (conformance_expanded_shape(declared.clone(), scope.clone())
-                == conformance_expanded_shape(produced.clone(), scope.clone()))
-            {
+            if node_type_compatible(
+                conformance_expanded_node(declared.clone(), scope.clone()),
+                conformance_expanded_node(produced.clone(), scope.clone()),
+                si.clone(),
+            ) {
                 Rc::new(vec![])
             } else {
                 Rc::new(vec![make_error_node(
