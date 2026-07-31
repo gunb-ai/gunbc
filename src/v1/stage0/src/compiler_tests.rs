@@ -587,6 +587,30 @@ mod compiler_tests {
                     "map_keys and map_values must route through the SAME refusal as every other method when the receiver is not a keyed collection — a wall reachable only from the final else is not a wall, got: {:?}",
                     special.diagnostics
                 );
+                // DISCRIMINATING RED for ReceiverTypeUnestablished. An untyped lambda
+                // parameter inside a record-field fn never receives the field's
+                // declared type, so the receiver has NO authored name — no evidence
+                // about the method either way. This must be COUNTED, which is what
+                // distinguishes it from the two failure modes on either side: silence
+                // (the #7479 fail-open) and refusal (fabricating a refusal over
+                // correct code, 18 such sites corpus-wide).
+                let unestablished = compile_one("unestablished.dag",
+                    "module unestablished\ntype Fold { partial: fn(List<Int>) -> Int }\nfn mk() -> Fold { Fold { partial: fn(xs) { xs |> count } } }\n".to_string());
+                assert!(
+                    unestablished.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. })),
+                    "a receiver whose own type was never established must be COUNTED, not silently inherited, got: {:?}",
+                    unestablished.diagnostics
+                );
+                assert!(
+                    unestablished.diagnostics.iter().all(|d| !crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+                    "...and it must NOT block: the receiver's type is an upstream deficit, so refusing here would fabricate a refusal over correct code, got: {:?}",
+                    unestablished.diagnostics
+                );
+                assert!(
+                    unestablished.diagnostics.iter().all(|d| !matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
+                    "an unestablished receiver must not be reported as a missing METHOD — that diagnostic would lie about the cause (the review 45327 lesson), got: {:?}",
+                    unestablished.diagnostics
+                );
                 let peel_red = compile_one("peel_red.dag", peel_src("filter_map(x => x)"));
                 assert!(
                     peel_red.diagnostics.iter().any(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. })),
