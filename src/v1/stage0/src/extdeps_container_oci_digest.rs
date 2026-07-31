@@ -32,7 +32,7 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
 pub fn oci_content_digest_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(OciSha512DigestBody) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. sha256 arm carries std.content_hash.Sha256Digest directly; sha512 body uses OciSha512DigestHex (String where lower_hex_128); other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (NonEmptyStr where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate). dissolve-on: cite digest-length law per algorithm when a second validated sha512 consumer needs more than length-128 wire check.".to_string()
+            "OCI digest authority (image-spec descriptor.md; distribution-spec digest): algorithm-qualified content address with wire form algorithm:encoded. Modelled as OciContentDigest coproduct (review 45466) — OciSha256Digest(Sha256Digest) | OciSha512Digest(OciSha512DigestBody) | OciOtherDigest(OciOtherDigestBody) — so algorithm tag and payload cannot be forged independently. sha256 arm carries std.content_hash.Sha256Digest directly; sha512 body uses OciSha512DigestHex (String where lower_hex_128); other body uses OciOtherDigestAlgorithm (String where oci_other_digest_algorithm — construction-walls reserved sha256/sha512 wire tokens and cites image-spec algorithm grammar algorithm-component ([a-z0-9]+) separated by [+._-], review 45505) plus OciOtherDigestEncoded (String where oci_other_digest_encoded — [a-zA-Z0-9=_-]+ per descriptor.md, review 45479/45731). Equality is substrate structural == on the coproduct (no parallel oci_content_digest_eq predicate). dissolve-on: cite digest-length law per algorithm when a second validated sha512 consumer needs more than length-128 wire check.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -185,9 +185,7 @@ pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
         OciContentDigest::OciSha512Digest(body) => body.hex.clone(),
-        OciContentDigest::OciOtherDigest(body) => {
-            panic!("unsupported cast from NonEmptyStr to String")
-        }
+        OciContentDigest::OciOtherDigest(body) => body.encoded.clone(),
     }
 }
 
@@ -262,7 +260,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                             Some(_) => Some(Rc::new(OciContentDigest::OciOtherDigest(Rc::new(
                                 OciOtherDigestBody {
                                     algorithm: parts.algorithm.clone(),
-                                    encoded: panic!("unsupported cast from String to NonEmptyStr"),
+                                    encoded: parts.encoded.clone(),
                                 },
                             )))),
                             None => None,
