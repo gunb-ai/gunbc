@@ -61,23 +61,6 @@ Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-rad
 
 - **(A) Tree-scoped builtin availability / registry partition** — the direction. Split the registry into *substrate-available* builtins (real `.dag`/std defs, or the sanctioned primitive surface) and *seed-only kernel* intrinsics; admit the seed-only set only when the entry root is the v1 seed itself. A dag-substrate compile then fails closed on a seed-only name. This **advances the registry's own marked dissolve-on** (04_method.dag:55-62) — it is not new debt. The enforcing flip is **load-bearing** (inference scope) + **changes what compiles** → operator-gated; escalates via parent + bright-stag. This doc + §6's measured number is the input to that sign-off.
 - **(B) Return-type enforcement** — SEPARATE (ROADMAP §0 line 31; #5293 closed only record-field). Does not close the literal witness (the `as Secret` cast satisfies the return type). **PARTIALLY LANDED** as the P0 live-system lane's declared-type conformance wall (`v1.compiler.infer` `declared_type_conformance_note`): §1 probe 4 (`fn f()->Int{ "a string" }` → 0 diagnostics) is now RED, and `data d: Int = "a string"` with it, witnessed by `declared_type_conformance_witness`. Scope is deliberately narrow and the narrowing is the finding: the wall judges only where BOTH sides are ground kernel scalars, because running the general relation over the corpus found four classes of CORRECT code that `node_type_compatible` calls a mismatch (optionality in two representations, unpeeled brand aliases, anonymous record literals, and cardinality absent from the resolved type node). Those four are the promotion triggers, carried on the note; the wall does not chase them with exemptions.
-### HAND-RUST GATE receipt — CompilerDiagnostic seed projection
-
-**Explicit deferral. Lane: compiler-static-failure-closure (`v1-method-existence-wall` / `v1-declared-type-conformance-wall`). ROADMAP row: hand-MAINTAINED Rust → zero at v2 self-host.**
-
-The (B) wall above adds five variants to the `CompilerDiagnostic` coproduct in `.dag` (`MethodNotFound`, `MethodExistenceUndecided`, `MethodExistenceFrontierAdmitted`, `ReceiverTypeUnestablished`, `FrontierOccurrenceBudgetExceeded`). Each forces an arm in two **total** matches in the hand-maintained seed transport `cli_run.rs` — `compile_clean_diagnostic_histogram_key` and its method-name extractor. Without those arms the seed does not compile, so they are the mechanical consequence of the `.dag` change rather than host capability chosen in Rust.
-
-This is a different class from the gate's usual subject, and the distinction is the receipt. The gate's other explicit deferrals (`cli_run::selection_control_input_sources`; the emit-surface retirement rows) are **decision surfaces** that could live in `.dag` and are deferred for a stated reason, so they owe a dissolution schedule of their own. An exhaustiveness arm owes none: it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. There is no separable work to schedule, which is why the dissolution trigger is the seed itself and not a lane-specific one.
-
-**Checkable receipt — the hand-Rust carrier census is flat, only arm count moved:**
-
-| measure | `origin/main` | this branch |
-| --- | --- | --- |
-| hand-written `fn` count in `cli_run.rs` | 742 | 742 |
-| `git diff origin/main -- src/v1/stage0/src/cli_run.rs` | — | 13 added lines, **zero `fn`** |
-
-`compiler_tests.rs` is **generated**, not hand-written — it is emitted from `src/v1/compiler_tests_rust.dag` by `regen_stage0` and is listed in `gunbc.stage0_emit_model.generated_stage0_files`, so its line growth is witness text authored in `.dag` and is not hand-Rust surface. The authority for this receipt is the carrier: `v1.compiler.core` `compiler_diagnostic_seed_projection_note`, beside the coproduct whose extension forces the arms.
-
 - **(C) Grounding `utf8_decode_bytes` as a real std fn** — **2(i)'s job** (bright-stag `adhoc-8e5771e1-14a`). Nuance relayed: `utf8_decode_bytes` is a *registry entry* (→ `string_type`), not purely undefined — so 2(i) must define the std fn **and** delete its registry bridge row, else the registry shadows the new def. (A) is what makes that grounding *required* by construction.
 
 ## 5. (A) partition design
