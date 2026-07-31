@@ -19,6 +19,7 @@ import gunbc.ci_spec {
   plan_artifact_plan_function,
   FloorBatchStopPolicy,
   gunbc_ci_floor_batch_clamp_params,
+  gunbc_ci_compile_clean_clamp,
 }
 import gunbc.falsifier_workflow { falsifier_plan_function }
 import gunbc.commit_workflow { commit_gate_roster, project_falsifier_witness_entries, project_falsifier_gates }
@@ -453,6 +454,22 @@ fn gunbc_ci_floor_batch_clamp_overhead_seconds() -> List<Int> {
 
 fn gunbc_ci_floor_batch_clamp_per_unit_ms() -> List<Int> {
   map(gunbc_ci_floor_batch_clamp_params, c => c.per_unit_ms)
+}
+
+fn gunbc_ci_compile_clean_clamp_overhead_seconds() -> Int {
+  gunbc_ci_compile_clean_clamp.overhead_seconds
+}
+
+fn gunbc_ci_compile_clean_clamp_rate_per_unit_ms() -> Int {
+  gunbc_ci_compile_clean_clamp.per_unit_ms
+}
+
+fn gunbc_ci_compile_clean_clamp_ms(units: Int) -> Int {
+  (gunbc_ci_compile_clean_clamp.overhead_seconds * 1000) + (units * gunbc_ci_compile_clean_clamp.per_unit_ms)
+}
+
+fn gunbc_ci_compile_clean_wall_exceeds_clamp(observed_ms: Int, units: Int) -> Bool {
+  observed_ms > gunbc_ci_compile_clean_clamp_ms(units: units)
 }
 
 fn witness_floor_batch_clamp_params_cover_schedule() -> Bool {
