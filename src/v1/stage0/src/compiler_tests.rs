@@ -439,6 +439,103 @@ mod compiler_tests {
     }
 
     #[test]
+    fn method_existence_wall_witness() {
+        // DISCRIMINATING RED for method_existence_wall_note. Before the wall an
+        // unresolved method inherited the RECEIVER's type with no diagnostic, so
+        // `xs |> filter_map(..)` on List<Int> typed as List<Int>, compiled clean, and
+        // died at InterpError::Unimplemented in live dispatch (#7479, HTTP 500).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "red.dag".to_string(),
+                    content: "module red\nfn f(xs: List<Int>) -> List<Int> { xs |> filter_map(x => x) }\nfn g(xs: List<Int>) -> Bool { xs |> starts_with(\"x\") }\nfn h(xs: List<Int>) -> String { xs |> to_upper() }\n".to_string(),
+                });
+                let red_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let missing: Vec<_> = red_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::MethodNotFound { .. }))
+                    .collect();
+                assert!(
+                    missing.len() >= 3,
+                    "expected MethodNotFound for the unresolved method AND for rostered names on a receiver that does not offer them (starts_with / to_upper on List<Int> — codex review 45327: a name-grain predicate admitted these), got: {:?}",
+                    red_result.diagnostics
+                );
+                // POSITIVE CONTROLS the wall must not touch: algebra method templates
+                // resolve at tier0, and `count` is in the declared std.methods roster
+                // even though free_monoid_scalar_templates omits it (the measured fork).
+                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "green.dag".to_string(),
+                    content: "module green\nfn p(xs: List<Int>) -> List<Int> { xs |> filter(x => x > 1) |> map(x => x + 1) }\nfn q(xs: List<Int>) -> Int { xs |> fold(0, (a, x) => a + x) }\nfn r(s: String) -> Int { s |> count }\n".to_string(),
+                });
+                let green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                // The positive control asserts ZERO diagnostics, not merely no
+                // MethodNotFound. Filtering to the blocking variant let an ADVISORY
+                // MethodExistenceUndecided pass unnoticed, which is how `String |> count`
+                // was reported as a passing control while it was actually resolving
+                // through the non-blocking arm (codex review 45357).
+                assert!(
+                    green_result.diagnostics.is_empty(),
+                    "legitimate methods must resolve with NO diagnostic of any severity — an advisory here means the call is not actually resolving, got: {:?}",
+                    green_result.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("method_existence_wall_witness panicked");
+    }
+
+    #[test]
+    fn declared_type_conformance_witness() {
+        // DISCRIMINATING RED for declared_type_conformance_note. infer_item kept the
+        // declaration's inferred return regardless of what the body produced, so
+        // `fn f() -> Int { \"wrong\" }` typechecked with ZERO diagnostics.
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let red = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "red.dag".to_string(),
+                    content: "module red\nfn f() -> Int { \"a string\" }\ndata d: Int = \"a string\"\n".to_string(),
+                });
+                let red_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![red]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let mismatches: Vec<_> = red_result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. }))
+                    .collect();
+                assert!(
+                    mismatches.len() >= 2,
+                    "expected a TypeMismatch for BOTH the fn return and the data annotation, got: {:?}",
+                    red_result.diagnostics
+                );
+                // POSITIVE CONTROLS: conforming declarations, and the optional-cardinality
+                // case (`first` yields Int? for a declared Int?) which must not red.
+                let green = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "green.dag".to_string(),
+                    content: "module green\nfn a() -> Int { 42 }\nfn b() -> String { \"fine\" }\ndata c: Int = 7\nfn e(xs: List<Int>) -> Int? { xs |> first }\n".to_string(),
+                });
+                let green_result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![green]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                assert!(
+                    green_result.diagnostics.is_empty(),
+                    "conforming declarations must produce NO diagnostic of any severity — filtering to the blocking variant would let an advisory pass unnoticed (codex review 45357), got: {:?}",
+                    green_result.diagnostics
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("declared_type_conformance_witness panicked");
+    }
+
+    #[test]
     fn sole_constructor_violation_outside_module() {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
@@ -2030,10 +2127,6 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
-                        crate::v1_rt::rc_empty_map::<
-                            String,
-                            std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
-                        >(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
