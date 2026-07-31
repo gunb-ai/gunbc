@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Partition synthetic-root ambiguity diagnostics by textual co-visibility.
+"""Partition synthetic-root ambiguity diagnostics by textual owner-name presence.
 
-PROVENANCE LABEL: INFERRED INSTRUMENT ANALYSIS. Textual co-visibility is necessary,
-not sufficient, for genuine co-resolution. CoVisible is therefore an upper bound;
-this instrument establishes no lower bound on the real ambiguity population.
+PROVENANCE LABEL: REPRODUCIBLE TEXTUAL CLASSIFICATION. This predicate does not
+constrain semantic visibility in either direction and establishes no bound.
 """
 
 import argparse
@@ -17,7 +16,11 @@ AMBIGUITY = re.compile(
     r"variant '([^']+)' appears in both '([^']+)' and '([^']+)' \(([^:]+):\d+-\d+\)"
 )
 BRACELESS_IMPORT = re.compile(r"^\s*import\s+[\w.]+\s*$", re.MULTILINE)
-BUCKET_NAMES = ("CoVisible", "BracelessUndecided", "PoolReach")
+BUCKET_NAMES = (
+    "BothOwnerNamesTextual",
+    "BracelessImportTextPresent",
+    "BothOwnerNamesNotTextual",
+)
 
 
 def main() -> None:
@@ -41,11 +44,11 @@ def main() -> None:
     for variant, first, second, site in occurrences:
         source = contents[site]
         if all(re.search(r"\b" + re.escape(owner) + r"\b", source) for owner in (first, second)):
-            bucket = "CoVisible"
+            bucket = "BothOwnerNamesTextual"
         elif BRACELESS_IMPORT.search(source):
-            bucket = "BracelessUndecided"
+            bucket = "BracelessImportTextPresent"
         else:
-            bucket = "PoolReach"
+            bucket = "BothOwnerNamesNotTextual"
         buckets[bucket].append({
             "variant": variant, "owner_a": first, "owner_b": second, "site": site,
         })
@@ -54,13 +57,11 @@ def main() -> None:
     if total != len(occurrences):
         raise SystemExit(f"partition lost rows: {total} != {len(occurrences)}")
     result = {
-        "authority": "inferred-instrument-analysis",
+        "authority": "reproducible-textual-classification",
         "corpus_commit": summary["inputs"]["corpus_commit"],
         "synthetic_root_ambiguity_diagnostics": total,
         "counts": counts,
-        "real_ambiguity_lower_bound": None,
-        "real_ambiguity_upper_bound": counts["CoVisible"],
-        "upper_bound_note": "textual co-visibility is necessary, not sufficient",
+        "semantic_visibility_note": "textual owner-name presence constrains semantic visibility in neither direction",
         "buckets": buckets,
     }
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

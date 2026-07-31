@@ -1,6 +1,6 @@
 # Whole-corpus namespace census receipt — 2026-07-31
 
-This directory makes the namespace measurement reproducible without committing its
+This receipt makes the namespace measurement reproducible without committing its
 1.9 MB raw log or the synthetic compile root. Every reported number is labelled by
 its actual authority; the regex catalogue is never presented as compiler resolution.
 
@@ -13,6 +13,8 @@ its actual authority; the regex catalogue is never presented as compiler resolut
   `87538a75c2b56111f9ab1440336b858ee8618cd7892758f9c21c5af0655a68b6`.
 - Raw stderr identity: SHA-256
   `06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f`.
+- Generated synthetic-root identity: SHA-256
+  `69f80839ecf0d9edf2f43210311a781396f365b7c64dbfd4e63c93b2363530c6`.
 
 The corpus and compiler are deliberately different commits. The measurement asks
 how that exact compiler reads that exact corpus; neither identity may float.
@@ -60,15 +62,15 @@ python3 "$RECEIPT_TOOLS/parse_diagnostics.py" \
   --summary-json "$RECEIPT_SUMMARY" \
   --population-json /tmp/namespace-census/population.json \
   --ambiguity-json /tmp/namespace-census/ambiguity.json
-python3 "$RECEIPT_TOOLS/provider_bounds.py" \
+python3 "$RECEIPT_TOOLS/provider_scenarios.py" \
   . /tmp/namespace-census/population.json \
   /tmp/namespace-census/provider-result.json \
   --summary-json "$RECEIPT_SUMMARY"
 python3 "$RECEIPT_TOOLS/classify_ambiguity.py" \
   /tmp/namespace-census/ambiguity.json /tmp/namespace-census/ambiguity-classified.json
-python3 "$RECEIPT_TOOLS/classify_ambiguity_covisibility.py" \
+python3 "$RECEIPT_TOOLS/classify_ambiguity_textual.py" \
   . /tmp/namespace-census/pop_stderr.log \
-  /tmp/namespace-census/ambiguity-covisibility.json \
+  /tmp/namespace-census/ambiguity-textual.json \
   --summary-json "$RECEIPT_SUMMARY"
 python3 "$RECEIPT_TOOLS/verify_receipt.py" \
   "$RECEIPT_SUMMARY" /path/to/pinned/gunbc \
@@ -76,13 +78,17 @@ python3 "$RECEIPT_TOOLS/verify_receipt.py" \
   /tmp/namespace-census/parser-result.json \
   /tmp/namespace-census/provider-result.json \
   /tmp/namespace-census/ambiguity-classified.json \
-  /tmp/namespace-census/ambiguity-covisibility.json
+  /tmp/namespace-census/ambiguity-textual.json
 ```
 
 `summary.json` is the single expected-value authority. The classifiers derive facts
 without embedding receipt totals; `verify_receipt.py` compares every result, the raw
-log digest, the compiler binary identity, and the generated-root population to that
+log digest, the compiler binary identity, and the exact generated-root digest to that
 one authority. Any drift is a nonzero exit.
+
+The receipt distinguishes four evidence grades: `COMPILER-AUTHORITATIVE`,
+`REPRODUCIBLE TEXTUAL CLASSIFICATION`, `REGEX SENSITIVITY SCENARIO`, and
+`HUMAN OR INFERRED GROUPING`. Only the first is compiler semantics.
 
 ## Classification-total witness
 
@@ -103,16 +109,20 @@ The log therefore contains 18,049 lines in the diagnostic section: one compiler
 header plus 18,048 diagnostics. The header says how many diagnostics follow; it is
 not itself a diagnostic.
 
-`REGEX BOUND`: `provider_bounds.py` approximates declarations in two deliberately
-opposite ways. Category-strict lookup over-counts one-provider references because it
-mis-keys providers declared under another category. Category-agnostic lookup
-over-counts two-plus references because it merges namespaces the compiler keeps
-separate. Together they bracket, rather than determine, mechanical share at
-60.7–81.6% and unique consumer-to-provider edges at 2,197–2,717. In particular, the
-strict catalogue's 2,867 zero-provider rows are not a semantic finding: 2,663 have a
-different-category declaration and only the agnostic bound's 204 remain absent.
+`REGEX SENSITIVITY SCENARIO`: `provider_scenarios.py` runs two declaration-catalogue
+approximations. The category-agnostic scenario reports 60.7% apparent single-provider
+rows and 2,197 unique apparent consumer-to-provider edges. The category-strict
+scenario reports 81.6% and 2,717 respectively. These are scenarios, not bounds:
+either can fall on either side of semantic resolution. Both include declarations
+that may not be structurally visible and can miss multiline forms, aliases, and
+grounded operations. Strict lookup can turn true-many into apparent-one; agnostic
+lookup can turn true-one into apparent-many; either can turn a real provider into
+zero. Neither executes namespace admissibility or containment. Consequently these
+figures must not size a migration population. The scripts also fail closed unless
+every apparent-single row maps to exactly one consumer module; both unmapped and
+duplicate mapping counts are asserted to be zero.
 
-`INFERRED GROUPING`: grouping by variant name plus unordered candidate pair maps 324
+`HUMAN OR INFERRED GROUPING`: grouping by variant name plus unordered candidate pair maps 324
 synthetic-root diagnostics to 315 decisions. The suffix heuristic then labels them A_SELF (30
 decisions/34 occurrences), B_PARALLEL_TOWER (63/63), and C_TRUE_HOMONYM (222/227).
 Both sums are asserted by `classify_ambiguity.py`. The grouping key and labels are
@@ -128,24 +138,26 @@ instrument forces every module into one pool, so it can report a collision betwe
 owners that no real compilation makes mutually visible. The reporting file identifies
 where one owner is declared; it does not prove both owners were visible there.
 
-`INFERRED INSTRUMENT ANALYSIS`: `classify_ambiguity_covisibility.py` reads the exact
+`REPRODUCIBLE TEXTUAL CLASSIFICATION`: `classify_ambiguity_textual.py` reads the exact
 pinned corpus files and partitions all 324 diagnostics without residue:
 
 ```text
- 42 CoVisible            reporting file names both owners
-  1 BracelessUndecided   wholesale import defeats textual visibility inference
-281 PoolReach            reporting file does not name one or both owners
+ 42 BothOwnerNamesTextual       reporting file text names both owners
+  1 BracelessImportTextPresent  reporting file contains a brace-less import
+281 BothOwnerNamesNotTextual    reporting file text does not name both owners
 ---
 324 synthetic-root ambiguity diagnostics
 ```
 
-Thus 281 of 324 (86.7%) are demonstrated pool-reach artifacts. At most 42 are
-candidates for genuine co-resolution. Textual co-visibility is necessary but not
-sufficient, so 42 is itself only an upper bound; this instrument establishes no lower
-bound on the real ambiguity population. Measuring that population requires running
-against real compile closures, outside this receipt's scope.
+This text predicate constrains semantic visibility in neither direction. Declarations
+may be visible through imported constructors, functions, aliases, or a module surface
+without either owner name appearing in the reporting file. Conversely, both names may
+appear in notes, strings, or unrelated annotations without being visible at the
+failing occurrence. Therefore 42 is not an upper bound, 281 is not a demonstrated
+artifact population, and this classification cannot justify or avoid a projection
+mechanism.
 
-The contamination is itself the central finding: binding and module discovery are
-coupled at the wrong boundary, so a whole-corpus pool cannot measure ambiguity without
-creating most of the ambiguity it reports. The receipt preserves that limitation
-rather than converting an instrument artifact into a language claim.
+The only authoritative ambiguity population comes from the compiler fold over real
+compile closures. No homonym-renaming wave may be dispatched from this receipt's
+textual classifications. Measuring real closures belongs to later work; this durable
+historical instrument receipt does not block P1 or P2 implementation.

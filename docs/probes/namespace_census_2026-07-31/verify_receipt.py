@@ -26,7 +26,7 @@ def main() -> None:
     parser.add_argument("parser_result", type=pathlib.Path)
     parser.add_argument("provider_result", type=pathlib.Path)
     parser.add_argument("grouping_result", type=pathlib.Path)
-    parser.add_argument("covisibility_result", type=pathlib.Path)
+    parser.add_argument("textual_result", type=pathlib.Path)
     args = parser.parse_args()
 
     summary = load_summary(args.summary)
@@ -34,8 +34,8 @@ def main() -> None:
     require_equal("compiler binary bytes", len(compiler), summary["inputs"]["compiler_binary_bytes"])
     require_equal("compiler binary SHA-256", hashlib.sha256(compiler).hexdigest(),
                   summary["inputs"]["compiler_binary_sha256"])
-    imports = sum(line.startswith("import ") for line in args.synthetic_root.read_text().splitlines())
-    require_equal("synthetic-root import count", imports, summary["inputs"]["declared_corpus_modules"])
+    require_equal("synthetic-root SHA-256", hashlib.sha256(args.synthetic_root.read_bytes()).hexdigest(),
+                  summary["inputs"]["synthetic_root_sha256"])
 
     parsed = load(args.parser_result)
     compiler_expected = summary["compiler_authoritative"]
@@ -48,16 +48,12 @@ def main() -> None:
     require_equal("raw log SHA-256", parsed["raw_log_sha256"], summary["inputs"]["raw_log_sha256"])
 
     provider = load(args.provider_result)
-    provider_expected = summary["regex_bound"]
-    require_equal("mechanical-share bracket", provider["bracket"]["mechanical_share_percent"],
-                  [provider_expected["mechanical_share_percent"]["lower"],
-                   provider_expected["mechanical_share_percent"]["upper"]])
-    require_equal("provider-edge bracket", provider["bracket"]["unique_provider_edges"],
-                  [provider_expected["unique_provider_edges"]["lower"],
-                   provider_expected["unique_provider_edges"]["upper"]])
+    provider_expected = summary["regex_sensitivity_scenarios"]
+    for name in ("category_strict_regex_scenario", "category_agnostic_regex_scenario"):
+        require_equal(name, provider[name], provider_expected[name])
 
     grouping = load(args.grouping_result)
-    grouping_expected = summary["inferred_grouping"]
+    grouping_expected = summary["human_or_inferred_grouping"]
     require_equal("ambiguity decision counts", grouping["decision_counts"],
                   grouping_expected["decision_counts"])
     require_equal("ambiguity occurrence counts", grouping["occurrence_counts"],
@@ -67,15 +63,14 @@ def main() -> None:
     require_equal("ambiguity occurrence total", sum(grouping["occurrence_counts"].values()),
                   grouping_expected["ambiguous_variant_occurrences"])
 
-    covisibility = load(args.covisibility_result)
-    covisibility_expected = summary["inferred_instrument_analysis"]
-    require_equal("co-visibility partition", covisibility["counts"],
-                  covisibility_expected["covisibility_partition"])
-    require_equal("real ambiguity lower bound", covisibility["real_ambiguity_lower_bound"],
-                  covisibility_expected["real_ambiguity_lower_bound"])
-    require_equal("real ambiguity upper bound", covisibility["real_ambiguity_upper_bound"],
-                  covisibility_expected["real_ambiguity_upper_bound"])
-    require_equal("co-visibility input total", covisibility["synthetic_root_ambiguity_diagnostics"],
+    textual = load(args.textual_result)
+    textual_expected = summary["reproducible_textual_classification"]
+    require_equal("textual partition", textual["counts"], textual_expected["counts"])
+    require_equal("textual semantic-visibility note", textual["semantic_visibility_note"],
+                  textual_expected["semantic_visibility_note"])
+    require_equal("textual input total", textual["synthetic_root_ambiguity_diagnostics"],
+                  textual_expected["synthetic_root_ambiguity_diagnostics"])
+    require_equal("textual/compiler input total", textual["synthetic_root_ambiguity_diagnostics"],
                   compiler_expected["classification"]["ambiguous_variant_synthetic_root_diagnostic"])
     print("namespace census receipt verified")
 

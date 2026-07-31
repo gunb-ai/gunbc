@@ -11,7 +11,7 @@
     "compiler_reported_hard_diagnostics": 18048,
     "header_lines_excluded_from_diagnostics": 1
   },
-  "inferred_grouping": {
+  "human_or_inferred_grouping": {
     "decision_counts": {
       "A_SELF": 30,
       "B_PARALLEL_TOWER": 63,
@@ -27,15 +27,14 @@
     },
     "scope_note": "groups synthetic-root diagnostics, not the real ambiguity population"
   },
-  "inferred_instrument_analysis": {
-    "covisibility_partition": {
-      "BracelessUndecided": 1,
-      "CoVisible": 42,
-      "PoolReach": 281
+  "reproducible_textual_classification": {
+    "counts": {
+      "BothOwnerNamesTextual": 42,
+      "BracelessImportTextPresent": 1,
+      "BothOwnerNamesNotTextual": 281
     },
-    "real_ambiguity_lower_bound": null,
-    "real_ambiguity_upper_bound": 42,
-    "upper_bound_note": "textual co-visibility is necessary, not sufficient"
+    "semantic_visibility_note": "textual owner-name presence constrains semantic visibility in neither direction",
+    "synthetic_root_ambiguity_diagnostics": 324
   },
   "inputs": {
     "compiler_binary_bytes": 21563472,
@@ -43,16 +42,27 @@
     "compiler_source_commit": "b222f079a0425a4015718175dd7f41a55b76b759",
     "corpus_commit": "0337fb27c039a800a1aff4b80140d6dbf027e595",
     "declared_corpus_modules": 2746,
-    "raw_log_sha256": "06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f"
+    "raw_log_sha256": "06289db522ff4cbf1613d07219e6241fe1d92994710e2fc871ad82c3de19823f",
+    "synthetic_root_sha256": "69f80839ecf0d9edf2f43210311a781396f365b7c64dbfd4e63c93b2363530c6"
   },
-  "regex_bound": {
-    "mechanical_share_percent": {
-      "lower": 60.7,
-      "upper": 81.6
+  "regex_sensitivity_scenarios": {
+    "category_agnostic_regex_scenario": {
+      "apparent_single_provider_share_percent": 60.7,
+      "duplicate_consumer_module_mappings": 0,
+      "many": 6517,
+      "one": 10391,
+      "unique_apparent_single_provider_edges": 2197,
+      "unmapped_consumer_rows": 0,
+      "zero": 204
     },
-    "unique_provider_edges": {
-      "lower": 2197,
-      "upper": 2717
+    "category_strict_regex_scenario": {
+      "apparent_single_provider_share_percent": 81.6,
+      "duplicate_consumer_module_mappings": 0,
+      "many": 284,
+      "one": 13961,
+      "unique_apparent_single_provider_edges": 2717,
+      "unmapped_consumer_rows": 0,
+      "zero": 2867
     }
   }
 }
