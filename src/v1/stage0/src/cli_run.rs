@@ -5206,11 +5206,22 @@ pub fn load_sources_for_entry_with_pool_index(
     entry_path: &str,
     primary_precedence: bool,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = if primary_precedence {
-        build_multi_entry_index_primary_precedence(source_roots)
-    } else {
-        build_multi_entry_index(source_roots)
-    };
+    if primary_precedence {
+        let index = build_multi_entry_index_primary_precedence(source_roots);
+        return load_sources_for_entry_with_pool(&index, entry_path);
+    }
+    // Strict pool policy routes through the process-shared index (DESIGN §3 —
+    // one index authority per (thread, canonical roots)). Before this, a
+    // `gunbc compile --entry` process built its closure index here, dropped it,
+    // and then the first compile-clean diagnostic classification rebuilt the
+    // SAME index inside resolve_entry_graph_shared to evaluate the
+    // compile_clean_diagnostic_policy row — a second full pool_parse of the
+    // corpus (measured: 5,450 pool_parse files for a 2,725-module pool, two
+    // tree censuses per root) to read one policy Bool. Same construction fn
+    // (build_multi_entry_index), same canonical roots key, so sharing is a
+    // cache hit, not a behavior change; primary-precedence keeps its own
+    // fresh build (process_shared_index only builds strict).
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
