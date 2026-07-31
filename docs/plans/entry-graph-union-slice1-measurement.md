@@ -186,6 +186,33 @@ Largest closures (narrow): `generated_artifact_drift_test.dag` 504, `srv3_runner
 3. **Max fanout ≈ N** in every subject (281/286, 311/316, 388/393). A small `std` core sits in essentially every selected closure.
 4. **The median module is rare and falls as N rises** (5 → 3 → 2). The distribution is a universal core plus a long private tail — not uniform sharing. Any union benefit is concentrated in the core.
 
+### B.1a The weighting, stated — and redone byte-weighted
+
+**Every figure in the table above is module-count weighted.** It counts a 200-byte module and
+a 200-KB module as one membership each, which is a uniformity assumption the count itself
+cannot expose (operator review point 3).
+
+Redone with each membership weighted by its module's source bytes, same subject, same
+selection, same probe run:
+
+| typical subject | module-count | byte-weighted |
+|---|---:|---:|
+| Σ over memberships | 47,759 modules | 548,899,266 bytes |
+| union | 1,243 modules | 11,454,316 bytes |
+| **duplication factor** | **38.42** | **47.92** |
+| upper bound on repeats | 46,516 | 537,444,950 bytes |
+| repeats as share of Σ | 97.40% | 97.91% |
+
+**The count-weighted figure was the conservative one.** Byte-weighted duplication is 24.7%
+*higher*, which says the modules with high fanout are systematically **larger** than average —
+consistent with B.1 read 3, since the universal core is `std.algebra`, `std.types`,
+`std.error_primitives` and friends rather than small leaf modules.
+
+This moves the weighting question in the direction that *favours* the union program, and it
+is worth being explicit that it does not rescue it: both numbers are still counts of repeated
+membership, and §A.7 is why no count here converts into a displaced cost. The byte figure is
+a better-weighted upper bound, not a different kind of claim.
+
 ### B.2 A selection observation, incidental but worth recording
 
 A **3-file** diff still selects **286 of 807** roster entries (35%); the 29-file diff selects 49%. Selection shrinks the corpus by roughly 2×, not 10×. That is a fact about selection breadth, not about the union, and is not part of this lane's claim.
