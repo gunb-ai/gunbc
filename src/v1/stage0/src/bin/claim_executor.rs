@@ -4037,13 +4037,14 @@ fn validate_floor_finalization(
 
 /// THE CONCURRENCY PRIMITIVE, extracted so the contract is reachable by a test.
 ///
-/// `walk_plan_note` states that members WITHIN a stage run concurrently — that is why
-/// anything sequential must be one claim whose body sequences its steps, or two
-/// singleton stages. While the spawn and the join were inlined in the batch loop, that
-/// promise was checkable only by reading the code, and the first attempt at success
-/// stages promised it while executing serially. Split out, the two halves each get a
-/// latch control: members really do overlap, and the join really does wait for all of
-/// them.
+/// `walk_plan_note` deliberately does NOT promise members within a stage run wall-clock
+/// concurrent — overlap is subject to per-lane admission and grouping — but eligible
+/// independent resolve groups MAY overlap, which is why anything sequential must be one
+/// claim whose body sequences its steps, or two singleton stages. While the spawn and
+/// the join were inlined in the batch loop, that weaker overlap property was checkable
+/// only by reading the code, and the first attempt at success stages promised more
+/// overlap than it delivered. Split out, the two halves each get a latch control: members
+/// really do overlap, and the join really does wait for all of them.
 ///
 /// The join half is what makes the stage BARRIER real. Stage N+1 cannot begin early
 /// because `run_walk`'s stage loop is sequential by construction — each iteration takes
@@ -4549,8 +4550,9 @@ fn run_walk(
     // barrier and stage-to-stage execution is ALWAYS fail-fast — FloorBatchStopPolicy
     // is an ordinary-floor policy and never applies between stages. Members run through
     // `run_stage`, the SAME executor the ordinary batches use — same unit grouping, same
-    // lane partition, same governor admission — so a stage's members are concurrent
-    // exactly as the contract says, and nothing reaches a weaker route. The two
+    // lane partition, same derived cost clamp. Admission is per-lane (spawned units
+    // hold an `AdmittedSlot`; memo/main-thread units do not), so overlap is subject to
+    // lane placement, not a promise that every member runs concurrently. The two
     // populations differ here only in ordering and failure policy, which is the whole
     // claim of the extraction. Their memo contexts drop AFTER
     // write_materialization_receipt above, so stage materialization is structurally NOT
