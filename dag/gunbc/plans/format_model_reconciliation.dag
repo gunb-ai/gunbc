@@ -69,6 +69,6 @@ data format_model_reconciliation_plan: Plan = Plan {
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),
   dissolution: HasTrigger {
-    text: "Delete this doc when the remaining real record emitters (the C5 digest/accelerator tail) route through `std.serialize` `serialize_record_doc` with byte-identical witnesses. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete."
+    text: "Delete this doc when the C5 digest/accelerator tail is classified by semantic grain and every true record projection routes through `std.serialize` `serialize_record_doc` with byte-identical witnesses; presentation-only lists explicitly remain on `std.render`. The legacy FormatModel/OutputFormat collapse, runner manifest/JSON swap, gitignore line-layout de-fork, dnsmasq boundary, and CSS typed-row migration are already complete."
   }
 }
