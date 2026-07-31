@@ -1,6 +1,0 @@
-module probe.unknown_method
-
-fn main() -> Int {
-  let xs = [1, 2, 3]
-  xs |> frobnicate() |> count
-}

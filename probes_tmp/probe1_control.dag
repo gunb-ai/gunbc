@@ -1,6 +1,0 @@
-module probe.unknown_method_control
-
-fn main() -> Int {
-  let xs = [1, 2, 3]
-  xs |> map(x => x + 1) |> count
-}
